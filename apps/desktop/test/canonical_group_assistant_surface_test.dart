@@ -13,14 +13,15 @@ import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+import 'support/canonical_group/canonical_group_binding_fixture.dart';
 
 void main() {
   testWidgets(
@@ -39,7 +40,7 @@ void main() {
 
       await tester.pumpWidget(
         _groupApp(
-          CanonicalGroupConversationPane(
+          CanonicalGroupConversationPaneFixture(
             controller: controller,
             targets: [
               _target('codex', 'Codex'),
@@ -105,7 +106,7 @@ void main() {
 
       await tester.pumpWidget(
         _groupApp(
-          CanonicalGroupConversationPane(
+          CanonicalGroupConversationPaneFixture(
             controller: controller,
             targets: [_target('codex', 'Codex')],
             onCopyText: (_) async {},
@@ -162,7 +163,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: unconfiguredController,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -192,7 +193,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -238,7 +239,7 @@ void main() {
     await controller.selectConversation('conversation:group');
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -307,7 +308,7 @@ void main() {
 
       await tester.pumpWidget(
         _groupApp(
-          CanonicalGroupConversationPane(
+          CanonicalGroupConversationPaneFixture(
             controller: controller,
             targets: [
               _target('codex', 'Codex'),
@@ -376,7 +377,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -417,7 +418,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -473,7 +474,7 @@ void main() {
 
       await tester.pumpWidget(
         _groupApp(
-          CanonicalGroupConversationPane(
+          CanonicalGroupConversationPaneFixture(
             controller: controller,
             targets: [_target('codex', 'Codex')],
             onCopyText: (_) async {},
@@ -581,7 +582,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [
             _target('codex', 'Codex'),
@@ -686,7 +687,7 @@ void main() {
 
       await tester.pumpWidget(
         _groupApp(
-          CanonicalGroupConversationPane(
+          CanonicalGroupConversationPaneFixture(
             controller: controller,
             targets: [_target('codex', 'Codex')],
             onCopyText: (_) async {},
@@ -761,7 +762,7 @@ void main() {
 
     await tester.pumpWidget(
       _groupApp(
-        CanonicalGroupConversationPane(
+        CanonicalGroupConversationPaneFixture(
           controller: controller,
           targets: [_target('codex', 'Codex')],
           onCopyText: (_) async {},
@@ -820,7 +821,7 @@ void main() {
         _groupApp(
           StatefulBuilder(
             builder: (context, setState) {
-              return CanonicalGroupConversationPane(
+              return CanonicalGroupConversationPaneFixture(
                 controller: controller,
                 targets: [_target('codex', 'Codex')],
                 onCopyText: (_) async {},
@@ -916,7 +917,7 @@ void main() {
         _groupApp(
           StatefulBuilder(
             builder: (context, setState) {
-              return CanonicalGroupConversationPane(
+              return CanonicalGroupConversationPaneFixture(
                 controller: controller,
                 targets: [_target('codex', 'Codex')],
                 onCopyText: (_) async {},

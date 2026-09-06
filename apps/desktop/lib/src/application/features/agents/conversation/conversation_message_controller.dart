@@ -988,7 +988,10 @@ mixin AgentConversationMessageController
           );
         }
         statusCaption = 'Agent chat';
-        clearConversationComposerAttachmentsForScope(queuedTurn.scopeKey);
+        await clearConversationComposerAttachmentsForScope(
+          queuedTurn.scopeKey,
+          ifMatching: queuedTurn.attachments,
+        );
         completedSuccessfully = true;
         break;
       }

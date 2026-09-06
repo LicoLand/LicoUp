@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
-
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 
@@ -22,8 +20,6 @@ final class ClientLifecycleComponentAssembly {
        );
 
   final ClientLifecycleCoordinator controller;
-
-  Iterable<ChangeNotifier> get listenables => [controller];
 
   void dispose() => controller.dispose();
 }

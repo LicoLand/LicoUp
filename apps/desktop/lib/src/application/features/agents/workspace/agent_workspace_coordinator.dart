@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
@@ -11,6 +11,7 @@ import 'package:licoup/src/application/features/agents/policy/conversation_refre
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
@@ -21,7 +22,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
-abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
+abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   AgentConversationGateway get conversationGateway;
   MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
@@ -81,6 +82,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   });
   void agentWorkspaceNotifyActiveConversationChanged();
   void agentWorkspaceNotifyLiveConversationChanged();
+  void agentWorkspaceNotifyConversationTabActivityChanged();
   void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
   String get relaySourceClientId;
@@ -366,14 +368,23 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     agentWorkspaceNotifyStateChanged();
   }
 
-  void clearConversationComposerAttachments() {
-    replaceConversationComposerAttachments(const <ConversationAttachment>[]);
+  Future<void> clearConversationComposerAttachments() {
+    return clearConversationComposerAttachmentsForScope(
+      conversationComposerScopeKey,
+    );
   }
 
-  void clearConversationComposerAttachmentsForScope(String scopeKey) {
+  Future<void> clearConversationComposerAttachmentsForScope(
+    String scopeKey, {
+    Iterable<ConversationAttachment>? ifMatching,
+  }) async {
     final attachments = conversationPresentationSignals.composerAttachmentsFor(
       scopeKey,
     );
+    if (ifMatching != null &&
+        !_conversationAttachmentsMatch(attachments, ifMatching)) {
+      return;
+    }
     conversationPresentationSignals.replaceComposerAttachments(
       scopeKey,
       const <ConversationAttachment>[],
@@ -382,8 +393,34 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       scopeKey,
       '',
     );
-    unawaited(conversationAttachmentRelease.releaseAttachments(attachments));
     agentWorkspaceNotifyStateChanged();
+    try {
+      await conversationAttachmentRelease.releaseAttachments(attachments);
+    } catch (_) {
+      // Attachment staging cleanup must not turn a committed send into a
+      // failed Conversation result. The semantic state is already cleared.
+    }
+  }
+
+  bool _conversationAttachmentsMatch(
+    List<ConversationAttachment> current,
+    Iterable<ConversationAttachment> expected,
+  ) {
+    final expectedList = expected is List<ConversationAttachment>
+        ? expected
+        : expected.toList(growable: false);
+    if (current.length != expectedList.length) return false;
+    for (var index = 0; index < current.length; index += 1) {
+      final left = current[index];
+      final right = expectedList[index];
+      if (left.id != right.id ||
+          left.name != right.name ||
+          left.mediaType != right.mediaType ||
+          left.path != right.path) {
+        return false;
+      }
+    }
+    return true;
   }
 
   String newConversationDraftTokenFor(String agentId) =>

@@ -12,6 +12,18 @@ import {
   CLIENT_ARCHITECTURE_PHASE_IDS,
   runClientArchitecturePhases,
 } from "../../../apps/desktop/scripts/verify-client-architecture.mjs";
+import { REQUIRED_FLUTTER_TOP_LEVEL_DIRS } from "../../../apps/desktop/scripts/client-architecture/checks/flutter/physical-layers-and-libraries.mjs";
+import {
+  PRESENTATION_BINDING_NAMES,
+  PRESENTATION_PLANE_DIRECTORIES,
+  PRESENTATION_STATE_PLANES,
+  RETIRED_PRESENTATION_PATHS,
+  inspectPresentationBoundaryPolicySources,
+  inspectPresentationBoundarySources,
+  inspectPresentationContractPubspec,
+  inspectPresentationContractSources,
+  inspectPresentationPlaneDirectories,
+} from "../../../apps/desktop/scripts/client-architecture/checks/flutter/presentation-boundary.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const entryPath = "apps/desktop/scripts/verify-client-architecture.mjs";
@@ -38,6 +50,7 @@ const expectedReexportFacades = Object.freeze({
     ["checkFlutterPhysicalLayersAndLibraries", "flutter/physical-layers-and-libraries.mjs"],
     ["checkShellIsolationAndNativeStdio", "flutter/shell-isolation-and-native-stdio.mjs"],
     ["checkMobileRelayBridges", "flutter/mobile-relay-bridges.mjs"],
+    ["checkPresentationBoundary", "flutter/presentation-boundary.mjs"],
   ]),
   "native.mjs": Object.freeze([
     ["checkCrateCoreAndFacadeBounds", "native/crate-core-and-facade-bounds.mjs"],
@@ -91,6 +104,7 @@ const phaseRunners = Object.freeze([
   ["platform.android-secure-mesh", "checkAndroidSecureMesh"],
   ["native.command-and-file-transport", "checkCommandAndFileTransport"],
   ["flutter.mobile-relay-bridges", "checkMobileRelayBridges"],
+  ["flutter.presentation-boundary", "checkPresentationBoundary"],
   ["composition.client-root-and-shell", "checkClientRootAndShell"],
   ["native.target-readiness-reducer", "checkTargetReadinessReducer"],
 ]);
@@ -172,6 +186,34 @@ test("client architecture verifier has one thin entry and the complete source bu
   }
 });
 
+test("source and architecture gates share one required Flutter layer catalog", async () => {
+  assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
+    "events",
+    "projections",
+    "display",
+    "protocol",
+    "shared",
+    "presentation",
+    "composition",
+    "application",
+    "frontend",
+    "backend",
+    "platform",
+    "contracts",
+  ]);
+  assert.equal(Object.isFrozen(REQUIRED_FLUTTER_TOP_LEVEL_DIRS), true);
+
+  const sourceGate = await fs.readFile(
+    path.join(repoRoot, "tools/verify-client-boundary.mjs"),
+    "utf8",
+  );
+  assert.match(
+    sourceGate,
+    /import \{ REQUIRED_FLUTTER_TOP_LEVEL_DIRS \} from "\.\.\/apps\/desktop\/scripts\/client-architecture\/checks\/flutter\/physical-layers-and-libraries\.mjs";/u,
+  );
+  assert.equal(sourceGate.includes("const requiredFlutterPhysicalDirs"), false);
+});
+
 test("importing the architecture entry and leaves has no verification side effects", async () => {
   const entryUrl = pathToFileURL(path.join(repoRoot, entryPath)).href;
   const result = spawnSync(process.execPath, [
@@ -204,7 +246,7 @@ test("client architecture phases run strictly and sequentially in the frozen ord
     CLIENT_ARCHITECTURE_PHASE_IDS,
     phaseRunners.map(([id]) => id),
   );
-  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 20);
+  assert.equal(CLIENT_ARCHITECTURE_PHASE_IDS.length, 21);
 
   const context = Object.freeze({ marker: "context" });
   const events = [];
@@ -357,4 +399,455 @@ test("architecture finalization preserves JSON shape, stream, and exit semantics
     exit: () => assert.fail("success must not exit"),
   });
   assert.deepEqual(successStdout, [success.text]);
+});
+
+function terminalPresentationTree() {
+  const tree = new Map();
+  tree.set(
+    "apps/desktop/lib/src/application/state/application_signal.dart",
+    "import 'dart:async';\nfinal class ApplicationSignal<T> { Stream<T> get changes => const Stream.empty(); }\n",
+  );
+  tree.set(
+    "apps/desktop/lib/src/application/controller/example_owner.dart",
+    "final class ExampleOwner {}\n",
+  );
+  tree.set(
+    "apps/desktop/lib/src/presentation/shell/shell_binding.dart",
+    `final class AppearanceProjection {}
+final class LocaleProjection {}
+final class LayoutProjection {}
+final class EnvironmentProjection {}
+final class NavigationProjection {}
+final class StatusProjection {}
+final class ShellBinding {
+  const ShellBinding();
+  final ProjectionSource<AppearanceProjection> appearance;
+  final ProjectionSource<LocaleProjection> locale;
+  final ProjectionSource<LayoutProjection> layout;
+  final ProjectionSource<EnvironmentProjection> environment;
+  final ProjectionSource<NavigationProjection> navigation;
+  final ProjectionSource<StatusProjection> status;
+}
+`,
+  );
+  for (const bindingName of PRESENTATION_BINDING_NAMES.slice(1)) {
+    const prefix = bindingName.slice(0, -"Binding".length);
+    tree.set(
+      `apps/desktop/lib/src/presentation/features/${prefix.toLowerCase()}_binding.dart`,
+      `final class ${prefix}Projection {}
+sealed class ${prefix}Intent {}
+sealed class ${prefix}Effect {}
+final class ${bindingName} {
+  const ${bindingName}();
+  final ProjectionSource<${prefix}Projection> projection;
+  final IntentSink<${prefix}Intent> intents;
+  final EffectSource<${prefix}Effect> effects;
+}
+`,
+    );
+  }
+  tree.set(
+    "apps/desktop/lib/src/frontend/shell/client_shell.dart",
+    "import 'package:flutter/widgets.dart';\nimport 'package:licoup/src/presentation/shell/shell_binding.dart';\nfinal class ClientShell extends Widget {}\n",
+  );
+  tree.set(
+    "apps/desktop/lib/src/composition/client_app_composition.dart",
+    `import 'package:licoup/src/application/controller/example_owner.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/frontend/shell/client_shell.dart';
+import 'package:licoup/src/presentation/shell/shell_binding.dart';
+final bindings = [
+  ${PRESENTATION_BINDING_NAMES.map((name) => `${name}()`).join(",\n  ")}
+];
+`,
+  );
+  return tree;
+}
+
+function rulesFor(tree) {
+  return inspectPresentationBoundarySources(tree).map(([rule]) => rule);
+}
+
+function withSource(tree, relativePath, source) {
+  const changed = new Map(tree);
+  changed.set(relativePath, source);
+  return changed;
+}
+
+test("terminal presentation boundary accepts the complete target architecture", () => {
+  assert.deepEqual(PRESENTATION_STATE_PLANES, [
+    "functional",
+    "layout",
+    "appearance",
+    "environment",
+    "locale",
+  ]);
+  assert.equal(Object.isFrozen(PRESENTATION_STATE_PLANES), true);
+  assert.equal(Object.isFrozen(PRESENTATION_PLANE_DIRECTORIES), true);
+  assert.deepEqual(PRESENTATION_BINDING_NAMES, [
+    "ShellBinding",
+    "AgentsBinding",
+    "MonitoringBinding",
+    "SkillHubBinding",
+    "PluginManagementBinding",
+    "MobileRelayBinding",
+    "ModelsBinding",
+    "SettingsBinding",
+    "AgentHubBinding",
+    "ConversationBinding",
+    "TargetsBinding",
+    "SearchBinding",
+    "ChromeBinding",
+  ]);
+  assert.equal(Object.isFrozen(PRESENTATION_BINDING_NAMES), true);
+  assert.deepEqual(inspectPresentationBoundarySources(terminalPresentationTree()), []);
+});
+
+test("Application gate rejects Flutter, notifier, lifecycle, and listener forwarding", () => {
+  const tree = terminalPresentationTree();
+  const sourcePath = "apps/desktop/lib/src/application/nested/example_owner.dart";
+  assert.ok(rulesFor(withSource(tree, sourcePath,
+    "import 'package:flutter/foundation.dart';\nfinal class Signal {}\n",
+  )).includes("presentation_boundary_application_flutter"));
+  for (const token of [
+    "ChangeNotifier",
+    "ValueNotifier<int>",
+    "ValueListenable<int>",
+    "Widget",
+    "BuildContext",
+    "AppLifecycleState",
+    "WidgetsBindingObserver",
+    "debugPrint",
+  ]) {
+    assert.ok(
+      rulesFor(withSource(tree, sourcePath, `final ${token} value;\n`))
+        .includes("presentation_boundary_application_framework_type"),
+      token,
+    );
+  }
+  assert.ok(rulesFor(withSource(tree, sourcePath,
+    "void forward() { addListener(forward); notifyListeners(); }\n",
+  )).includes("presentation_boundary_application_listener"));
+  assert.ok(rulesFor(withSource(tree, sourcePath,
+    "import 'package:licoup/src/frontend/shell/client_shell.dart';\nfinal class Signal {}\n",
+  )).includes("presentation_boundary_application_direction"));
+  assert.equal(
+    rulesFor(withSource(tree, sourcePath,
+      "// ValueNotifier and notifyListeners are documentation only.\nfinal note = '''ClientController\nWidget\nValueNotifier''';\n",
+    )).some((rule) => rule.startsWith("presentation_boundary_application_")),
+    false,
+  );
+});
+
+test("stable Presentation and frontend reject every implementation direction", () => {
+  const tree = terminalPresentationTree();
+  const stablePath = "apps/desktop/lib/src/presentation/features/example.dart";
+  assert.ok(rulesFor(withSource(tree, stablePath,
+    "import 'package:flutter/widgets.dart';\nfinal class Example {}\n",
+  )).includes("presentation_boundary_stable_flutter"));
+  for (const layer of ["application", "backend", "platform", "projections", "composition", "frontend"]) {
+    assert.ok(
+      rulesFor(withSource(tree, stablePath,
+        `import 'package:licoup/src/${layer}/example.dart';\nfinal class Example {}\n`,
+      )).includes("presentation_boundary_stable_direction"),
+      layer,
+    );
+  }
+
+  const frontendPath = "apps/desktop/lib/src/frontend/features/example_panel.dart";
+  for (const layer of ["application", "backend", "platform", "projections", "composition"]) {
+    assert.ok(
+      rulesFor(withSource(tree, frontendPath,
+        `import 'package:licoup/src/${layer}/example.dart' as hidden;\nfinal value = hidden.value;\n`,
+      )).includes("presentation_boundary_frontend_direction"),
+      layer,
+    );
+  }
+  assert.ok(rulesFor(withSource(tree, frontendPath,
+    "final Object? value = ClientController;\n",
+  )).includes("presentation_boundary_frontend_controller"));
+
+  const privateContract = "apps/desktop/lib/src/contracts/private_runtime_port.dart";
+  const contractTree = withSource(tree, privateContract, "abstract interface class PrivateRuntimePort {}\n");
+  assert.ok(rulesFor(withSource(
+    contractTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/private_runtime_port.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
+  const staticValuePath =
+    "apps/desktop/lib/src/contracts/presentation/public_projection.dart";
+  const staticValueTree = withSource(
+    tree,
+    staticValuePath,
+    "final class PublicProjectionValue { const PublicProjectionValue(); }\n",
+  );
+  assert.equal(rulesFor(withSource(
+    staticValueTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/presentation/public_projection.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"), false);
+  const staticPortTree = withSource(
+    tree,
+    "apps/desktop/lib/src/contracts/presentation/private_port.dart",
+    "abstract interface class PrivatePort { Stream<void> get changes; }\n",
+  );
+  assert.ok(rulesFor(withSource(
+    staticPortTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/presentation/private_port.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
+  const valuePath = "apps/desktop/lib/src/contracts/feature_value.dart";
+  const valueTree = withSource(tree, valuePath, "final class FeatureValue { const FeatureValue(this.id); final String id; }\n");
+  assert.ok(rulesFor(withSource(
+    valueTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/feature_value.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
+  const exposedValueTree = withSource(
+    valueTree,
+    "apps/desktop/lib/src/presentation/features/public_projection.dart",
+    "import 'package:licoup/src/contracts/feature_value.dart';\nfinal class PublicProjection { const PublicProjection(this.value); final FeatureValue value; }\n",
+  );
+  assert.equal(rulesFor(withSource(
+    exposedValueTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/feature_value.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"), false);
+  const emptyImportTree = withSource(
+    valueTree,
+    "apps/desktop/lib/src/presentation/features/public_projection.dart",
+    "import 'package:licoup/src/contracts/feature_value.dart';\nfinal class PublicProjection {}\n",
+  );
+  assert.ok(rulesFor(withSource(
+    emptyImportTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/feature_value.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
+
+  assert.ok(rulesFor(withSource(
+    tree,
+    "apps/desktop/lib/src/frontend/features/nested/panel.dart",
+    "export '../../../mystery/runtime.dart' if (dart.library.io) '../../../backend/runtime.dart';\n",
+  )).includes("presentation_boundary_frontend_unknown_internal"));
+});
+
+test("stable Presentation rejects runtime ownership regardless of naming", () => {
+  const tree = terminalPresentationTree();
+  const stablePath = "apps/desktop/lib/src/presentation/features/semantic_cache.dart";
+  for (const source of [
+    "final values = StreamController<void>.broadcast();\n",
+    "final class SemanticCache extends ApplicationStateOwner {}\n",
+    "final PresentationPreferencesRepository repository;\n",
+    "void publish() { publishChange(); }\n",
+    "void dispose() {}\n",
+  ]) {
+    assert.ok(
+      rulesFor(withSource(tree, stablePath, source))
+        .includes("presentation_boundary_stable_runtime_owner"),
+      source,
+    );
+  }
+});
+
+test("Application environment rejection is semantic and path-independent", () => {
+  const tree = terminalPresentationTree();
+  for (const nestedPath of [
+    "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart",
+    "apps/desktop/lib/src/application/arbitrary/deep/renamed_capability.dart",
+  ]) {
+    assert.ok(rulesFor(withSource(
+      tree,
+      nestedPath,
+      "import 'package:licoup/src/contracts/presentation/layout_environment.dart';\nfinal class Capability {}\n",
+    )).includes("presentation_boundary_application_environment_state"), nestedPath);
+  }
+  assert.ok(rulesFor(withSource(
+    tree,
+    "apps/desktop/lib/src/application/renamed/anything.dart",
+    "final viewport = LayoutViewportPolicy.supportedFor(surface);\n",
+  )).includes("presentation_boundary_application_environment_state"));
+});
+
+test("all six physical plane directories require non-empty role owners", () => {
+  const tree = new Map(PRESENTATION_PLANE_DIRECTORIES.map(([root, semanticType, requiresFlutter]) => [
+    `${root}owner.dart`,
+    `${requiresFlutter ? "import 'package:flutter/widgets.dart';\n" : ""}final class ${semanticType || "FlutterOwner"} {}\n`,
+  ]));
+  assert.deepEqual(inspectPresentationPlaneDirectories(tree), []);
+  tree.delete(`${PRESENTATION_PLANE_DIRECTORIES[0][0]}owner.dart`);
+  assert.ok(inspectPresentationPlaneDirectories(tree).some(
+    ([rule]) => rule === "presentation_boundary_plane_directory_empty",
+  ));
+});
+
+test("shell state planes are separate and reject a recombined root projection", () => {
+  const tree = terminalPresentationTree();
+  const shellPath = "apps/desktop/lib/src/presentation/shell/shell_binding.dart";
+  const shellSource = tree.get(shellPath);
+  assert.ok(rulesFor(withSource(
+    tree,
+    shellPath,
+    shellSource.replace("  final ProjectionSource<LocaleProjection> locale;\n", ""),
+  )).includes("presentation_boundary_state_plane_coverage"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    shellPath,
+    shellSource.replace(
+      "  final ProjectionSource<StatusProjection> status;",
+      "  final ProjectionSource<ShellProjection> status;\n  final int appRevision;",
+    ),
+  )).includes("presentation_boundary_state_planes_combined"));
+});
+
+test("Binding catalog requires exact semantic, immutable, lifecycle-free surfaces", () => {
+  const tree = terminalPresentationTree();
+  const agentsPath = "apps/desktop/lib/src/presentation/features/agents_binding.dart";
+  const agentsSource = tree.get(agentsPath);
+
+  const missing = new Map(tree);
+  missing.delete(agentsPath);
+  assert.ok(rulesFor(missing).includes("presentation_boundary_binding_coverage"));
+
+  assert.ok(rulesFor(withSource(
+    tree,
+    agentsPath,
+    agentsSource.replace("final class AgentsProjection {}\n", ""),
+  )).includes("presentation_boundary_binding_semantics"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    agentsPath,
+    agentsSource.replace("  final EffectSource<AgentsEffect> effects;", "  void dispose() {}"),
+  )).includes("presentation_boundary_binding_lifecycle"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    agentsPath,
+    agentsSource.replace("  final EffectSource<AgentsEffect> effects;", "  final List<Object> mutableValues;"),
+  )).includes("presentation_boundary_binding_mutable_collection"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    "apps/desktop/lib/src/presentation/features/root_binding.dart",
+    "final class RootBinding {}\n",
+  )).includes("presentation_boundary_binding_unexpected"));
+});
+
+test("only composition may wire concrete owners, renderers, and all Bindings", () => {
+  const tree = terminalPresentationTree();
+  const frontendPath = "apps/desktop/lib/src/frontend/features/example_panel.dart";
+  assert.ok(rulesFor(withSource(
+    tree,
+    frontendPath,
+    "final value = AgentsBinding();\n",
+  )).includes("presentation_boundary_wiring_outside_composition"));
+
+  const compositionPath = "apps/desktop/lib/src/composition/client_app_composition.dart";
+  const compositionSource = tree.get(compositionPath);
+  assert.ok(rulesFor(withSource(
+    tree,
+    compositionPath,
+    compositionSource.replace("  ChromeBinding()", "  Object()"),
+  )).includes("presentation_boundary_composition_binding_coverage"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    compositionPath,
+    compositionSource.replace(
+      "import 'package:licoup/src/frontend/shell/client_shell.dart';\n",
+      "",
+    ),
+  )).includes("presentation_boundary_composition_concrete_edges"));
+});
+
+test("retired paths, symbols, annotations, and path-count substitution stay absent", async () => {
+  const tree = terminalPresentationTree();
+  assert.deepEqual(RETIRED_PRESENTATION_PATHS, [
+    "apps/desktop/lib/src/composition/m2_legacy_shell_renderer_transition_adapter.dart",
+    "apps/desktop/lib/src/application/controller/client_shell_controller.dart",
+    "apps/desktop/test/client_shell_controller_test.dart",
+    "apps/desktop/lib/src/frontend/locale/locale_projection_adapter.dart",
+    "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
+    "apps/desktop/lib/src/projections/listenable_projection_consumer.dart",
+    "apps/desktop/lib/src/projections/adapters/legacy_projection_consumer_source_adapter.dart",
+  ]);
+  assert.equal(Object.isFrozen(RETIRED_PRESENTATION_PATHS), true);
+  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[0], ""))
+    .includes("presentation_boundary_retired_path"));
+  assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[2], ""))
+    .includes("presentation_boundary_retired_path"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    "apps/desktop/lib/src/composition/replacement.dart",
+    "final value = M2LegacyShellRendererTransitionAdapter();\n",
+  )).includes("presentation_boundary_retired_symbol"));
+  assert.ok(rulesFor(withSource(
+    tree,
+    "apps/desktop/lib/src/application/controller/client_controller.dart",
+    "@Deprecated('migration')\nfinal class ClientController {}\n",
+  )).includes("presentation_boundary_deprecated_controller_annotation"));
+
+  for (const debtPath of [
+    "apps/desktop/lib/src/frontend/features/agents/old_debt.dart",
+    "apps/desktop/lib/src/frontend/features/new/replacement_debt.dart",
+  ]) {
+    assert.ok(rulesFor(withSource(
+      tree,
+      debtPath,
+      "import 'package:licoup/src/application/controller/client_controller.dart';\n",
+    )).includes("presentation_boundary_frontend_direction"));
+  }
+
+  const policyPath =
+    "apps/desktop/scripts/client-architecture/checks/flutter/presentation-boundary.mjs";
+  assert.deepEqual(inspectPresentationBoundaryPolicySources(new Map([
+    [policyPath, "const terminalRules = Object.freeze([]);"],
+  ])), []);
+  assert.deepEqual(inspectPresentationBoundaryPolicySources(new Map([
+    [policyPath, "const replacementDebtAllowlist = new Set(['one.dart']);"],
+  ])), [["presentation_boundary_stale_allowlist", policyPath]]);
+
+  for (const catalogPath of [
+    "tools/regression/client-module-catalog/groups/flutter.mjs",
+    "tools/regression/client-module-catalog/groups/regression.mjs",
+  ]) {
+    const source = await fs.readFile(path.join(repoRoot, catalogPath), "utf8");
+    assert.equal(source.includes(RETIRED_PRESENTATION_PATHS[0]), false, catalogPath);
+  }
+});
+
+test("SDK-only presentation contract source and pubspec have positive and negative fixtures", () => {
+  const contractPath = "packages/presentation_contract/lib/projection_source.dart";
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "import 'dart:async';\nabstract interface class ProjectionSource<T> {}\n"],
+  ])), []);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "import 'package:flutter/widgets.dart';\nfinal class Port {}\n"],
+  ])), [["presentation_boundary_package_purity", contractPath]]);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "final class Port { void close() {} }\n"],
+  ])), [["presentation_boundary_package_surface", contractPath]]);
+  assert.deepEqual(inspectPresentationContractPubspec("name: contract\n"), []);
+  assert.deepEqual(inspectPresentationContractPubspec("name: contract\ndependencies:\n"), [
+    "presentation_boundary_package_dependency_surface",
+  ]);
+});
+
+test("terminal Presentation Boundary owns one focused Flutter module registration", async () => {
+  const [flutterCatalog, order] = await Promise.all([
+    fs.readFile(
+      path.join(repoRoot, "tools/regression/client-module-catalog/groups/flutter.mjs"),
+      "utf8",
+    ),
+    fs.readFile(
+      path.join(repoRoot, "tools/regression/client-module-catalog/order.mjs"),
+      "utf8",
+    ),
+  ]);
+  assert.equal(
+    [...flutterCatalog.matchAll(/id:\s*"flutter\.presentation\.boundary-closure"/gu)].length,
+    1,
+  );
+  assert.equal(
+    [...order.matchAll(/"flutter\.presentation\.boundary-closure"/gu)].length,
+    1,
+  );
+  assert.equal(flutterCatalog.includes("flutter.presentation.shell-boundary"), false);
+  assert.equal(order.includes("flutter.presentation.shell-boundary"), false);
 });

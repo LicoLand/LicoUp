@@ -14,6 +14,9 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
+
+import 'fixtures/agent_hub_renderer_binding_fixture.dart';
 
 const _ids = [
   'codex',
@@ -190,6 +193,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.seedCache,
     this.warehouseSnapshot,
     this.catalogFuture,
+    this.lifecycleGate,
     Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
   }) : inspectDelays = inspectDelays ?? {};
 
@@ -204,6 +208,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final AgentHubCatalogSnapshot? seedCache;
   final AgentHubCatalogSnapshot? warehouseSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
+
+  /// When set, the install lifecycle step waits on this completer so tests
+  /// can observe the in-progress UI before the operation effect arrives.
+  final Completer<void>? lifecycleGate;
   final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
   final List<AgentHubLifecycleAction> actions = [];
   final List<String> catalogRecipeIds = [];
@@ -271,6 +279,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   ) async {
     lastChannelId = request.channelId;
     lastVersion = request.version;
+    final gate = lifecycleGate;
+    if (gate != null) {
+      await gate.future;
+    }
     return _record(
       AgentHubLifecycleAction.install,
       request.recipeId,
@@ -342,15 +354,22 @@ final class _FakeHubEngine implements AgentHubEnginePort {
 }
 
 typedef _HubHarness = (Widget, AgentHubCatalogController);
+typedef _AgentHubCatalogOrder =
+    List<AgentHubEntryProjection> Function(
+      List<AgentHubEntryProjection> entries,
+    );
 
 _HubHarness _harness(
   AgentHubEnginePort engine, {
   Locale locale = const Locale('en'),
-  AgentHubHomepageOpener? openHomepage,
-  AgentHubOpenAgent? onOpenAgent,
-  AgentHubCatalogOrder? orderRecipes,
+  AgentHubExternalOpener? openHomepage,
+  ValueChanged<String>? onOpenAgent,
+  _AgentHubCatalogOrder? orderRecipes,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
+  final feature = AgentHubRendererBindingFixture(controller);
+  addTearDown(controller.dispose);
+  addTearDown(feature.dispose);
   return (
     MaterialApp(
       locale: locale,
@@ -372,10 +391,10 @@ _HubHarness _harness(
           width: 1000,
           height: 720,
           child: AgentHubPanel(
-            controller: controller,
-            orderRecipes: orderRecipes ?? (recipes) => recipes,
-            openHomepage: openHomepage ?? (uri) async => true,
+            binding: feature.binding,
+            openHomepage: openHomepage ?? (_) async {},
             onOpenAgent: onOpenAgent,
+            orderEntries: orderRecipes ?? (entries) => entries,
           ),
         ),
       ),
@@ -422,11 +441,20 @@ List<String> _cardOrder(WidgetTester tester) {
 }
 
 void main() {
-  test('shuffleAgentHubRecipes keeps every supported agent exactly once', () {
-    final recipes = _recipes();
-    final shuffled = shuffleAgentHubRecipes(recipes);
-    expect(shuffled.map((recipe) => recipe.id), unorderedEquals(_ids));
-  });
+  test(
+    'Agent Hub semantic projection keeps every supported agent once',
+    () async {
+      final controller = AgentHubCatalogController(engine: _FakeHubEngine());
+      final feature = AgentHubRendererBindingFixture(controller);
+      await controller.refresh();
+      expect(
+        feature.binding.projection.current.entries.map((entry) => entry.id),
+        unorderedEquals(_ids),
+      );
+      await feature.dispose();
+      controller.dispose();
+    },
+  );
 
   test('cached catalog remains visible and marks a failed refresh', () async {
     final cached = _snapshot(ownedIds: const {'codex'});
@@ -763,7 +791,6 @@ void main() {
         _FakeHubEngine(),
         openHomepage: (uri) async {
           opened.add(uri);
-          return true;
         },
       ),
     );
@@ -780,7 +807,10 @@ void main() {
   ) async {
     await _pumpHub(
       tester,
-      _harness(_FakeHubEngine(), openHomepage: (uri) async => false),
+      _harness(
+        _FakeHubEngine(),
+        openHomepage: (_) async => throw StateError('open failed'),
+      ),
     );
     await tester.pump();
     await _openDetail(tester, 'codex');
@@ -830,15 +860,17 @@ void main() {
     'catalog order shuffles once per refresh and incremental resolution keeps it stable',
     (tester) async {
       final calls = <int>[];
-      List<AgentHubRecipe> rotatingOrder(List<AgentHubRecipe> recipes) {
-        calls.add(recipes.length);
-        if (recipes.isEmpty) {
-          return recipes;
+      List<AgentHubEntryProjection> rotatingOrder(
+        List<AgentHubEntryProjection> entries,
+      ) {
+        calls.add(entries.length);
+        if (entries.isEmpty) {
+          return entries;
         }
         if (calls.length.isEven) {
-          return [recipes.last, ...recipes.sublist(0, recipes.length - 1)];
+          return [entries.last, ...entries.sublist(0, entries.length - 1)];
         }
-        return recipes.reversed.toList();
+        return entries.reversed.toList();
       }
 
       final inspectDelays = {
@@ -894,34 +926,35 @@ void main() {
     'Agent Hub panel joins plan/confirm/install/verify/rescan through the native port',
     (tester) async {
       final engine = _FakeHubEngine();
-      await _pumpHub(tester, _harness(engine));
+      final harness = _harness(engine);
+      await _pumpHub(tester, harness);
 
-      final panel = tester.widget<AgentHubPanel>(find.byType(AgentHubPanel));
-      final plan = await panel.runLifecycle(
+      final controller = harness.$2;
+      final plan = await controller.runLifecycle(
         AgentHubLifecycleAction.plan,
         recipeId: 'codex',
       );
-      final confirm = await panel.runLifecycle(
+      final confirm = await controller.runLifecycle(
         AgentHubLifecycleAction.confirm,
         recipeId: 'codex',
       );
-      final install = await panel.runLifecycle(
+      final install = await controller.runLifecycle(
         AgentHubLifecycleAction.install,
         recipeId: 'codex',
       );
-      final verify = await panel.runLifecycle(
+      final verify = await controller.runLifecycle(
         AgentHubLifecycleAction.verify,
         recipeId: 'cursor',
       );
-      final rescan = await panel.runLifecycle(
+      final rescan = await controller.runLifecycle(
         AgentHubLifecycleAction.rescan,
         recipeId: 'opencode',
       );
-      final update = await panel.runLifecycle(
+      final update = await controller.runLifecycle(
         AgentHubLifecycleAction.update,
         recipeId: 'codex',
       );
-      final uninstall = await panel.runLifecycle(
+      final uninstall = await controller.runLifecycle(
         AgentHubLifecycleAction.uninstall,
         recipeId: 'codex',
       );
@@ -1391,10 +1424,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('install picker defaults to latest then confirms before apply', (
+  testWidgets('install picker installs directly and shows progress in place', (
     tester,
   ) async {
-    final engine = _FakeHubEngine();
+    final gate = Completer<void>();
+    final engine = _FakeHubEngine(lifecycleGate: gate);
     await _pumpHub(tester, _harness(engine));
 
     await tester.tap(find.byKey(const Key('agent-hub-install-codex')));
@@ -1408,14 +1442,16 @@ void main() {
       find.byKey(const Key('agent-hub-install-version')),
     );
     expect(versionField.initialValue, 'latest');
-    await tester.tap(find.byKey(const Key('agent-hub-install-continue')));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('agent-hub-install-start')));
+    await tester.pump();
+    // No second confirmation: the same dialog morphs into its progress state.
     expect(
       find.byKey(const Key('agent-hub-install-confirm-dialog')),
-      findsOneWidget,
+      findsNothing,
     );
-    await tester.tap(find.byKey(const Key('agent-hub-install-confirm')));
-    await tester.pump();
+    expect(find.byKey(const Key('agent-hub-install-progress')), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
     expect(engine.actions, [
       AgentHubLifecycleAction.plan,
       AgentHubLifecycleAction.confirm,
@@ -1424,6 +1460,8 @@ void main() {
     expect(engine.lastRecipeId, 'codex');
     expect(engine.lastChannelId, 'homebrew');
     expect(engine.lastVersion, 'latest');
+    // The completed install closes the dialog on its own.
+    expect(find.byKey(const Key('agent-hub-install-dialog')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

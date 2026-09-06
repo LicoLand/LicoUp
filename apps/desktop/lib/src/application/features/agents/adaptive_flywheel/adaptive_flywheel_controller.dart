@@ -1,9 +1,9 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 
-final class AdaptiveFlywheelController extends ChangeNotifier {
+final class AdaptiveFlywheelController extends ApplicationStateOwner {
   AdaptiveFlywheelController({required AdaptiveFlywheelGateway gateway})
     : _gateway = gateway;
 
@@ -168,7 +168,7 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
     if (_busy) return;
     _busy = true;
     _error = '';
-    notifyListeners();
+    publishChange();
     try {
       await operation();
     } on AdaptiveFlywheelFailure catch (failure) {
@@ -177,7 +177,7 @@ final class AdaptiveFlywheelController extends ChangeNotifier {
       _error = 'Adaptive Flywheel operation failed.';
     } finally {
       _busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 }

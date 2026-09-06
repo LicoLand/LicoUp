@@ -1156,6 +1156,10 @@ impl ConversationStore {
             if changed != 1 {
                 return Err(anyhow!("runtime_dispatch_not_active"));
             }
+            // A dispatch id claimed through the Subagent MCP door is also the
+            // lineage claim id; settle that claim in the same transaction so
+            // the claims table never lingers `running` past the turn.
+            dispatches::writeback_subagent_claim_terminal(&transaction, &scope.dispatch_id, state)?;
             let direct_turn_state = match state {
                 DispatchState::Completed => TurnState::Succeeded,
                 DispatchState::Cancelled => TurnState::Cancelled,
@@ -4992,6 +4996,21 @@ fn runtime_terminal_diagnostic(terminal: &Value, error_code: Option<&str>) -> St
     if let Some(retryable) = nested.get("retryable").and_then(Value::as_bool) {
         diagnostic.insert("retryable".into(), serde_json::Value::Bool(retryable));
     }
+    if let Some(root_cause) = nested
+        .get("rootCause")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            matches!(
+                *value,
+                "auth" | "network_unreachable" | "env_mismatch" | "quota" | "unknown"
+            )
+        })
+    {
+        diagnostic.insert(
+            "rootCause".into(),
+            serde_json::Value::String(root_cause.to_owned()),
+        );
+    }
     if let Some(recovery) = nested
         .get("recovery")
         .and_then(Value::as_str)
@@ -5001,6 +5020,9 @@ fn runtime_terminal_diagnostic(terminal: &Value, error_code: Option<&str>) -> St
                 "review_terminal_result"
                     | "preserve_draft_and_retry"
                     | "select_available_model_or_wait_for_quota_reset"
+                    | "reauthenticate_provider_and_retry"
+                    | "restore_network_reachability_and_retry"
+                    | "subagent_env_mismatch: LicoUp-launched CLI environment differs from user terminal"
             )
         })
     {
@@ -7107,6 +7129,7 @@ mod tests {
                         "component": "native_cli",
                         "retryable": false,
                         "recovery": "select_available_model_or_wait_for_quota_reset",
+                        "rootCause": "quota",
                         "turnStatus": "failed/UsageLimitExceeded",
                         "message": "turn-fixture/secret.txt is unreadable"
                     }
@@ -7135,6 +7158,7 @@ mod tests {
         assert!(diagnostics[0].contains("native_cli"));
         assert!(diagnostics[0].contains("\"retryable\":false"));
         assert!(diagnostics[0].contains("select_available_model_or_wait_for_quota_reset"));
+        assert!(diagnostics[0].contains("\"rootCause\":\"quota\""));
         assert!(!diagnostics[0].contains("secret.txt"));
         assert!(!diagnostics[0].contains("turn-fixture"));
         assert!(!diagnostics.contains(&"runtime diagnostic"));
@@ -7144,6 +7168,36 @@ mod tests {
         assert!(event.parts.iter().any(|part| {
             part.kind == EventPartKind::Metadata && part.content.contains("accepted")
         }));
+    }
+
+    #[test]
+    fn terminal_diagnostic_root_cause_is_allow_listed() {
+        let carried = runtime_terminal_diagnostic(
+            &serde_json::json!({
+                "error": {
+                    "code": "antigravity_hook_receipt_missing",
+                    "stage": "session/new",
+                    "rootCause": "env_mismatch",
+                    "recovery": "subagent_env_mismatch: LicoUp-launched CLI environment differs from user terminal"
+                }
+            }),
+            None,
+        );
+        assert!(carried.contains("\"rootCause\":\"env_mismatch\""));
+        assert!(carried.contains("subagent_env_mismatch"));
+
+        let dropped = runtime_terminal_diagnostic(
+            &serde_json::json!({
+                "error": {
+                    "code": "agent_conversation_dispatch_failed",
+                    "rootCause": "unreviewed-root-cause-text",
+                    "recovery": "unreviewed-recovery-text"
+                }
+            }),
+            None,
+        );
+        assert!(!dropped.contains("rootCause"));
+        assert!(!dropped.contains("unreviewed"));
     }
 
     #[test]

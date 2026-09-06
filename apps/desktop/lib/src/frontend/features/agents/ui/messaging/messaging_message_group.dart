@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_target_catalog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
@@ -13,12 +13,12 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubbl
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// One author group in the messaging participant flow: a header row with the
@@ -41,6 +41,7 @@ class MessagingMessageGroup extends StatelessWidget {
     this.runtimeProfile,
     this.assistantActive = false,
     this.conversationId = '',
+    this.streamingMessageIds = const <String>{},
     this.onCopyText,
     this.onRetryMessage,
     this.onDeleteMessage,
@@ -59,6 +60,11 @@ class MessagingMessageGroup extends StatelessWidget {
   /// message header carries its agent's brand mark instead of the generic
   /// sparkles.
   final bool assistantActive;
+
+  /// Ids of messages whose body is a partially written streamed reply. The
+  /// owning pane derives the set from the live turn state; it is never
+  /// inferred from text shape.
+  final Set<String> streamingMessageIds;
 
   /// Clipboard write routed through the platform boundary; message rows
   /// expose an explicit copy action when present.
@@ -179,6 +185,7 @@ class MessagingMessageGroup extends StatelessWidget {
             authorIsUser: authorIsUser,
             agentKey: bubbleGlowKey,
             conversationId: conversationId,
+            isStreaming: streamingMessageIds.contains(messages[index].id),
             onCopyText: onCopyText,
             onRetryMessage: onRetryMessage,
             onDeleteMessage: onDeleteMessage,
@@ -220,6 +227,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.authorIsUser,
     this.agentKey = '',
     this.conversationId = '',
+    this.isStreaming = false,
     this.onCopyText,
     this.onRetryMessage,
     this.onDeleteMessage,
@@ -237,6 +245,9 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// empty selects the shared white light.
   final String agentKey;
   final String conversationId;
+
+  /// Whether the message body is a partially written streamed reply.
+  final bool isStreaming;
 
   /// Clipboard write routed through the platform boundary; hovering the bubble
   /// reveals an explicit copy action at its bottom-left corner when present.
@@ -262,11 +273,10 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     if (text.isEmpty) return;
     await write(text);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      appleGlassSnackBar(
-        context: context,
-        message: LicoStrings.of(context).conversationMessageCopied,
-      ),
+    showLicoToast(
+      context,
+      message: LicoStrings.of(context).conversationMessageCopied,
+      kind: LicoToastKind.success,
     );
   }
 
@@ -429,6 +439,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       borderColor: colors.line,
       renderStyle: widget.adapter.markdownStyle,
       images: widget.message.images,
+      isStreaming: widget.isStreaming,
     );
     final bubbleRadius = BorderRadius.circular(LicoRadius.composerField);
     final bubblePadding = const EdgeInsets.symmetric(

@@ -73,6 +73,7 @@ pub(in crate::platform) fn execute(
         }
     };
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     config.apply_to(&mut command, &receipt);
     crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
     crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);

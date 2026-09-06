@@ -4,8 +4,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 
 /// Generic feature-pane layout: title bar on top, padded content container
-/// below. Agent Hub, Skill Hub, and Plugin Management inherit this so spacing
-/// cannot drift between surfaces.
+/// below. Agent Hub, Skill Hub, Plugin Management, Mobile Relay, Monitoring,
+/// and the Models panes (模型网关/聊天频道) all inherit this so spacing cannot
+/// drift between surfaces — inherit the structure first, then customize
+/// through the title/refresh/leading/trailing/body slots.
 ///
 /// Title-to-top equals title-to-container ([LicoContentSpacing.paneTitleGap]).
 /// The title left edge lines up with the content container left edge. Cards

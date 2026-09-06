@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_update_gateway.dart';
@@ -22,7 +22,7 @@ typedef ClientUpdateStatusSink = void Function(ClientUpdateStatusUpdate update);
 /// source and the local manifest flow. The staging and state roots live under
 /// the client data directory so installed clients never depend on the
 /// process working directory.
-final class ClientUpdateController extends ChangeNotifier {
+final class ClientUpdateController extends ApplicationStateOwner {
   ClientUpdateController({
     required ClientUpdateGateway gateway,
     required AgentCommandRunner agentService,
@@ -111,7 +111,7 @@ final class ClientUpdateController extends ChangeNotifier {
       updateAvailable: false,
       restartRequired: false,
     );
-    notifyListeners();
+    publishChange();
   }
 
   /// Reads the running product version from native client-update identity
@@ -174,7 +174,7 @@ final class ClientUpdateController extends ChangeNotifier {
         'A signed update manifest and public keys file are required.',
         errorCode: 'client_update_check_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     _source = 'local';
@@ -203,7 +203,7 @@ final class ClientUpdateController extends ChangeNotifier {
       updateAvailable: false,
     );
     _report(chinese, english);
-    notifyListeners();
+    publishChange();
     await _resolveRoots();
     try {
       final checked = await _gateway.check(
@@ -255,7 +255,7 @@ final class ClientUpdateController extends ChangeNotifier {
         'Check an update and select its local artifact first.',
         errorCode: 'client_update_download_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     _source = 'local';
@@ -272,7 +272,7 @@ final class ClientUpdateController extends ChangeNotifier {
         'Check the GitHub release source for an update first.',
         errorCode: 'client_update_download_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     await _downloadStaged(sourcePath: '');
@@ -281,7 +281,7 @@ final class ClientUpdateController extends ChangeNotifier {
   Future<void> _downloadStaged({required String sourcePath}) async {
     _begin();
     _status = _status.copyWith(phase: ClientUpdatePhase.downloading);
-    notifyListeners();
+    publishChange();
     await _resolveRoots();
     try {
       final downloaded = await _gateway.download(
@@ -323,7 +323,7 @@ final class ClientUpdateController extends ChangeNotifier {
         'Check and download an update first.',
         errorCode: 'client_update_verify_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     _begin();
@@ -348,7 +348,7 @@ final class ClientUpdateController extends ChangeNotifier {
 
   Future<void> _verifyUnlocked() async {
     _status = _status.copyWith(phase: ClientUpdatePhase.verifying);
-    notifyListeners();
+    publishChange();
     await _resolveRoots();
     final verified = await _gateway.verify(
       agentService: _agentService,
@@ -387,7 +387,7 @@ final class ClientUpdateController extends ChangeNotifier {
         'Verify an update first.',
         errorCode: 'client_update_apply_invalid',
       );
-      notifyListeners();
+      publishChange();
       return false;
     }
     _begin();
@@ -466,13 +466,13 @@ final class ClientUpdateController extends ChangeNotifier {
   bool _begin() {
     if (_busy) return false;
     _busy = true;
-    notifyListeners();
+    publishChange();
     return true;
   }
 
   void _end() {
     _busy = false;
-    notifyListeners();
+    publishChange();
   }
 
   void _fail(String code) {

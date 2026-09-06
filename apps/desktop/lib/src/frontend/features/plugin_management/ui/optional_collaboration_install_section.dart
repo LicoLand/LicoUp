@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/presentation/plugin_management/optional_collaboration_presentation_actions.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_install_plan_review.dart';
 
@@ -15,7 +15,7 @@ final class OptionalCollaborationInstallSection extends StatefulWidget {
     required this.isChinese,
   });
 
-  final OptionalCollaborationController controller;
+  final OptionalCollaborationPresentationActions controller;
   final OptionalCollaborationInstallPlan? plan;
   final bool busy;
   final bool isChinese;

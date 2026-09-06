@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/binding/effect_listener.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/pairing.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/scan.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart';
@@ -9,14 +10,20 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_capabil
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayPanel extends StatefulWidget {
-  const MobileRelayPanel({super.key, required this.controller});
+  const MobileRelayPanel({super.key, required this.binding});
 
-  final ClientController controller;
+  final MobileRelayBinding binding;
 
   @override
   State<MobileRelayPanel> createState() => _MobileRelayPanelState();
@@ -25,22 +32,19 @@ class MobileRelayPanel extends StatefulWidget {
 class _MobileRelayPanelState extends State<MobileRelayPanel> {
   late final TextEditingController _stationBaseUrlController;
 
-  ClientController get controller => widget.controller;
-
   @override
   void initState() {
     super.initState();
     _stationBaseUrlController = TextEditingController(
-      text: controller.mobileRelayConfig.stationBaseUrl,
+      text: widget.binding.projection.current.stationLabel,
     );
   }
 
   @override
   void didUpdateWidget(covariant MobileRelayPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final next = controller.mobileRelayConfig.stationBaseUrl;
-    if (_stationBaseUrlController.text != next) {
-      _stationBaseUrlController.text = next;
+    if (!identical(oldWidget.binding, widget.binding)) {
+      _syncStation(widget.binding.projection.current.stationLabel);
     }
   }
 
@@ -52,65 +56,123 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
 
   @override
   Widget build(BuildContext context) {
+    return EffectListener<MobileRelayEffect>(
+      source: widget.binding.effects,
+      onEffect: _onEffect,
+      child: ProjectionBuilder<MobileRelayProjection, MobileRelayProjection>(
+        source: widget.binding.projection,
+        select: (projection) => projection,
+        builder: (context, projection) {
+          _syncStation(projection.stationLabel);
+          return _buildProjection(context, projection);
+        },
+      ),
+    );
+  }
+
+  Widget _buildProjection(
+    BuildContext context,
+    MobileRelayProjection projection,
+  ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final config = controller.mobileRelayConfig;
-    final paired = config.paired;
-    final mobileClient = isMobileClientPlatform(context);
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        LicoSectionHeader(
-          title: strings.pairing,
-          leading: MinimalScanIcon(color: colors.accent, size: 22),
-        ),
-        const SizedBox(height: 12),
-        if (mobileClient) ...[
-          MobileRelayScanPairingPrompt(
-            colors: colors,
-            label: strings.scanPairingPrompt,
+    final paired = projection.paired;
+    final mobileClient =
+        projection.mobileRuntime || isMobileClientPlatform(context);
+    final busy = projection.busy || projection.polling;
+    // The standard feature-page structure: pane title bar (移动配对 +
+    // refresh) above, the pairing/trust/capability content below.
+    return LicoPaneScaffold(
+      title: strings.mobilePairing,
+      refreshTooltip: strings.refresh,
+      onRefresh: busy
+          ? null
+          : () => widget.binding.intents.send(const RefreshMobileRelay()),
+      refreshing: busy,
+      refreshButtonKey: const Key('mobile-relay-refresh'),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          LicoSectionHeader(
+            title: strings.pairing,
+            leading: MinimalScanIcon(color: colors.accent, size: 22),
           ),
           const SizedBox(height: 12),
-          MobileRelayPairingInfoRow(
-            label: strings.status,
-            value: paired ? strings.paired : strings.waiting,
-          ),
-          MobileRelayPairingInfoRow(
-            label: strings.pairingId,
-            value: config.pairingId,
-          ),
-          MobileRelayPairingInfoRow(
-            label: strings.expires,
-            value: config.lastPairingExpiresAt,
-          ),
-        ] else
-          MobileRelayPairingWorkspaceCard(
-            controller: controller,
-            stationBaseUrlController: _stationBaseUrlController,
-            presentation: controller.mobilePairingPresentation,
-            onGenerate: controller.createMobilePairing,
-          ),
-        if (paired && config.trustPresentation != null) ...[
-          const _MobileRelayDivider(),
-          MobileRelayTrustVerificationCard(
-            presentation: config.trustPresentation!,
-            colors: colors,
-          ),
+          if (mobileClient) ...[
+            MobileRelayScanPairingPrompt(
+              colors: colors,
+              label: strings.scanPairingPrompt,
+            ),
+            const SizedBox(height: 12),
+            MobileRelayPairingInfoRow(
+              label: strings.status,
+              value: paired ? strings.paired : strings.waiting,
+            ),
+            MobileRelayPairingInfoRow(
+              label: strings.pairingId,
+              value: projection.pairingId,
+            ),
+            MobileRelayPairingInfoRow(
+              label: strings.expires,
+              value: projection.pairingExpiresLabel,
+            ),
+          ] else
+            MobileRelayPairingWorkspaceCard(
+              projection: projection,
+              intents: widget.binding.intents,
+              stationBaseUrlController: _stationBaseUrlController,
+            ),
+          if (paired && projection.trust != null) ...[
+            const _MobileRelayDivider(),
+            MobileRelayTrustVerificationCard(
+              presentation: projection.trust!,
+              colors: colors,
+            ),
+          ],
+          if (paired) ...[
+            const _MobileRelayDivider(),
+            SecureMeshFileSyncCard(
+              projection: projection,
+              intents: widget.binding.intents,
+            ),
+            const SizedBox(height: 12),
+            SecureMeshApprovalCard(
+              projection: projection,
+              intents: widget.binding.intents,
+            ),
+          ],
+          if (projection.secureMeshCapabilities != null) ...[
+            const _MobileRelayDivider(),
+            SecureMeshCapabilityCard(
+              projection: projection.secureMeshCapabilities!,
+            ),
+          ],
         ],
-        if (paired) ...[
-          const _MobileRelayDivider(),
-          SecureMeshFileSyncCard(controller: controller),
-          const SizedBox(height: 12),
-          SecureMeshApprovalCard(controller: controller),
-        ],
-        if (controller.secureMeshCapabilityProjection != null) ...[
-          const _MobileRelayDivider(),
-          SecureMeshCapabilityCard(
-            projection: controller.secureMeshCapabilityProjection!,
-          ),
-        ],
-      ],
+      ),
     );
+  }
+
+  void _syncStation(String value) {
+    if (_stationBaseUrlController.text != value) {
+      _stationBaseUrlController.text = value;
+    }
+  }
+
+  void _onEffect(MobileRelayEffect effect) {
+    if (!mounted) return;
+    final (message, kind) = switch (effect) {
+      RelayPairingCodeCopied() => (
+        LicoStrings.of(context).pairingCodeCopied,
+        LicoToastKind.success,
+      ),
+      RelayActionRejected(:final reasonCode) => (
+        reasonCode,
+        LicoToastKind.error,
+      ),
+      RelayPairingReady() || RelayPairingClaimed() => ('', LicoToastKind.info),
+    };
+    if (message.isEmpty) return;
+    showLicoToast(context, message: message, kind: kind);
   }
 }
 
@@ -129,7 +191,7 @@ class _MobileRelayDivider extends StatelessWidget {
 /// Floating pairing card opened from top-bar / sidebar-rail chrome.
 Future<void> showMobileRelayPopup(
   BuildContext context,
-  ClientController controller,
+  MobileRelayBinding binding,
 ) {
   return showDialog<void>(
     context: context,
@@ -145,7 +207,7 @@ Future<void> showMobileRelayPopup(
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(14),
             clipBehavior: Clip.antiAlias,
-            child: MobileRelayPanel(controller: controller),
+            child: MobileRelayPanel(binding: binding),
           ),
         ),
       );

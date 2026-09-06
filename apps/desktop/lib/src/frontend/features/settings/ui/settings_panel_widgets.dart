@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -50,7 +50,7 @@ class SettingsDropdownRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
     final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
       color: colors.text,
       fontWeight: FontWeight.w600,
@@ -119,7 +119,7 @@ class SettingsDayNightToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final presentation = LayoutDestinationPresentationScope.settingsOf(context);
+    final presentation = layoutSettingsPresentationOf(context);
     final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
       color: colors.text,
       fontWeight: FontWeight.w600,
