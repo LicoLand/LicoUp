@@ -540,13 +540,13 @@ printf 'gemini-3.6-flash-medium\nclaude-opus-4-6-thinking\ngpt-oss-120b-medium\n
 
     #[cfg(unix)]
     #[test]
-    fn antigravity_cli_model_lookup_inherits_process_environment() {
-        let dir = temp_test_dir("antigravity-cli-inherit-env");
+    fn antigravity_cli_model_lookup_uses_the_user_shell_environment() {
+        let dir = temp_test_dir("antigravity-cli-shell-env");
         let executable = dir.join("agent-models");
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$PATH" ]; then
+if [ "$LICO_TEST_SHELL_SNAPSHOT_MARKER" != "shell-snapshot-env" ]; then
 exit 1
 fi
 printf 'gemini-account-model\nclaude-account-model\n'
@@ -554,6 +554,11 @@ printf 'gemini-account-model\nclaude-account-model\n'
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        // The lookup child observes the user shell snapshot; pin it so the
+        // marker channel is explicit instead of ambient process inheritance.
+        let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
+            &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
+        );
         let catalog = model_catalog_for_target(
             "antigravity",
             None,
@@ -820,13 +825,13 @@ printf 'Available models\n\ncomposer-2.5 - Composer 2.5 (current)\n'
 
     #[cfg(unix)]
     #[test]
-    fn cursor_cli_model_lookup_inherits_process_environment() {
-        let dir = temp_test_dir("cursor-cli-inherit-env");
+    fn cursor_cli_model_lookup_uses_the_user_shell_environment() {
+        let dir = temp_test_dir("cursor-cli-shell-env");
         let executable = dir.join("cursor-agent");
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$PATH" ]; then
+if [ "$LICO_TEST_SHELL_SNAPSHOT_MARKER" != "shell-snapshot-env" ]; then
 printf 'Available models\n\nstale-isolated - Isolated\n'
 exit 0
 fi
@@ -835,6 +840,11 @@ printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Curs
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        // The lookup child observes the user shell snapshot; pin it so the
+        // marker channel is explicit instead of ambient process inheritance.
+        let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
+            &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
+        );
         let catalog = model_catalog_for_target(
             "cursor",
             None,
@@ -970,13 +980,13 @@ mod kilo {
 
     #[cfg(unix)]
     #[test]
-    fn kilo_selected_catalog_uses_full_cli_output_and_account_environment() {
+    fn kilo_selected_catalog_uses_full_cli_output_and_user_shell_environment() {
         let home = temp_test_dir("kilo-cli-model-catalog");
         let executable = home.join("kilo");
         fs::write(
             &executable,
             r#"#!/bin/sh
-if [ -z "$PATH" ]; then
+if [ "$LICO_TEST_SHELL_SNAPSHOT_MARKER" != "shell-snapshot-env" ]; then
 exit 1
 fi
 printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
@@ -984,6 +994,11 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        // The lookup child observes the user shell snapshot; pin it so the
+        // marker channel is explicit instead of ambient process inheritance.
+        let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
+            &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
+        );
         let catalog = model_catalog_for_target(
             "kilo-code",
             None,
