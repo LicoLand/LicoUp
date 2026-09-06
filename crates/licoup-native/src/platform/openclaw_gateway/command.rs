@@ -26,6 +26,7 @@ impl GatewayRunner for CommandGatewayRunner {
     ) -> Result<u32, SpawnFailure> {
         config::ensure_minimal(config_path, port).map_err(|_| SpawnFailure::Start)?;
         let mut command = Command::new(executable);
+        super::super::user_shell_environment::apply_to_command(&mut command);
         command
             .args([
                 "gateway",

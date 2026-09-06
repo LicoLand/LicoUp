@@ -142,6 +142,7 @@ impl LaunchSpec {
                 .map_err(io::Error::other)?,
             None => {
                 let mut command = Command::new(&self.executable);
+                super::super::user_shell_environment::apply_to_command(&mut command);
                 command.args(self.driver.launch_args).current_dir(&self.cwd);
                 command
             }

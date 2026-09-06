@@ -77,10 +77,14 @@ class AgentConversationAssistantDocumentBlock extends StatelessWidget {
     super.key,
     required this.message,
     required this.adapter,
+    this.isStreaming = false,
   });
 
   final AgentConversationMessage message;
   final AgentRenderAdapter adapter;
+
+  /// Whether the message body is a partially written streamed reply.
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +130,7 @@ class AgentConversationAssistantDocumentBlock extends StatelessWidget {
                 borderColor: colors.line,
                 renderStyle: adapter.markdownStyle,
                 images: message.images,
+                isStreaming: isStreaming,
               ),
             ],
           ),
@@ -140,10 +145,14 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
     super.key,
     required this.message,
     required this.adapter,
+    this.isStreaming = false,
   });
 
   final AgentConversationMessage message;
   final AgentRenderAdapter adapter;
+
+  /// Whether the message body is a partially written streamed reply.
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
@@ -178,6 +187,7 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
               borderColor: colors.line,
               renderStyle: adapter.markdownStyle,
               images: message.images,
+              isStreaming: isStreaming,
             ),
           ),
         ),

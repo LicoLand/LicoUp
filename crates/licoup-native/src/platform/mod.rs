@@ -40,6 +40,7 @@ pub(crate) mod skill_invocation_projection;
 pub(crate) mod strategy_runtime;
 mod turn_event_emit;
 pub(crate) mod user_presence;
+pub mod user_shell_environment;
 pub(crate) mod virtual_machine;
 
 pub mod antigravity_subagent_mcp_manager;
