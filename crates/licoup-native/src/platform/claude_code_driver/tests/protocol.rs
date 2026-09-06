@@ -106,3 +106,67 @@ fn interaction_metadata_does_not_replace_a_later_valid_reply() {
         .unwrap();
     assert_eq!(outcome.output, "valid reply");
 }
+
+#[test]
+fn interrupted_is_error_terminal_is_cancelled_not_failed() {
+    let config = config(json!({}), "hello", "native-session");
+    let identity = LaunchIdentity::new("claude", &config, None);
+    let mut state = ClaudeCodeParser::new(&config, &identity, Some("native-session".to_string()));
+    state.mark_cancel_requested();
+    let failure = state
+        .handle(json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "result": "interrupted",
+            "session_id": "native-session",
+            "permission_denials": []
+        }))
+        .unwrap_err();
+    assert_eq!(failure.code, "claude_code_turn_cancelled");
+    assert_eq!(failure.stage, "turn/cancelled");
+    assert_eq!(failure.turn_status.as_deref(), Some("cancelled"));
+}
+
+#[test]
+fn genuine_is_error_without_cancel_still_fails_the_turn() {
+    let config = config(json!({}), "hello", "native-session");
+    let identity = LaunchIdentity::new("claude", &config, None);
+    let mut state = ClaudeCodeParser::new(&config, &identity, Some("native-session".to_string()));
+    let failure = state
+        .handle(json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "result": "tool failed",
+            "session_id": "native-session",
+            "permission_denials": []
+        }))
+        .unwrap_err();
+    assert_eq!(failure.code, "claude_code_turn_failed");
+    assert_eq!(failure.stage, "turn/completed");
+    assert_eq!(
+        failure.turn_status.as_deref(),
+        Some("error_during_execution")
+    );
+}
+
+#[test]
+fn cancel_requested_but_successful_terminal_completes_normally() {
+    let config = config(json!({}), "hello", "native-session");
+    let identity = LaunchIdentity::new("claude", &config, None);
+    let mut state = ClaudeCodeParser::new(&config, &identity, Some("native-session".to_string()));
+    state.mark_cancel_requested();
+    let outcome = state
+        .handle(json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "final answer",
+            "session_id": "native-session",
+            "permission_denials": []
+        }))
+        .unwrap()
+        .unwrap();
+    assert_eq!(outcome.output, "final answer");
+}

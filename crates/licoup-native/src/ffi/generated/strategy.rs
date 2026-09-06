@@ -46,6 +46,24 @@ pub enum StrategyStateKind {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyTransitionMode {
+    #[serde(rename = "callback")]
+    Callback,
+    #[serde(rename = "flow")]
+    Flow,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum StrategyCallbackDecision {
+    #[serde(rename = "advance")]
+    Advance,
+    #[serde(rename = "return")]
+    Return,
+    #[serde(rename = "terminate")]
+    Terminate,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum StrategyRunStatus {
     #[serde(rename = "pending")]
     Pending,
@@ -245,6 +263,10 @@ pub enum StrategyWorkflowDiagnosticCode {
     WorkflowGuardAmbiguous,
     #[serde(rename = "workflow_routing_invalid")]
     WorkflowRoutingInvalid,
+    #[serde(rename = "workflow_transition_mode_invalid")]
+    WorkflowTransitionModeInvalid,
+    #[serde(rename = "workflow_flow_target_incomplete")]
+    WorkflowFlowTargetIncomplete,
     #[serde(rename = "workflow_topology_invalid")]
     WorkflowTopologyInvalid,
     #[serde(rename = "workflow_state_unreachable")]

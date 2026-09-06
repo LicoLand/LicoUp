@@ -498,6 +498,8 @@ function readStrategySchema(family) {
     !validValues(schema.bindingKinds, /^[a-z][a-z0-9-]*$/u) ||
     !validValues(schema.runtimeKinds, /^[a-z][a-z0-9-]*$/u) ||
     !validValues(schema.stateKinds, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.transitionModes, /^[a-z][a-z0-9-]*$/u) ||
+    !validValues(schema.callbackDecisions, /^[a-z][a-z0-9-]*$/u) ||
     !validValues(schema.runStatuses, /^[a-z][a-z0-9-]*$/u) ||
     !validValues(schema.failureCodes, /^[a-z][a-z0-9_]*$/u) ||
     !validValues(schema.diagnosticStages, /^[a-z][a-z0-9/-]*$/u) ||
@@ -519,6 +521,8 @@ function rustStrategyOutput(schema, schemaPath) {
     ["StrategyBindingKind", schema.bindingKinds],
     ["StrategyRuntimeKind", schema.runtimeKinds],
     ["StrategyStateKind", schema.stateKinds],
+    ["StrategyTransitionMode", schema.transitionModes],
+    ["StrategyCallbackDecision", schema.callbackDecisions],
     ["StrategyRunStatus", schema.runStatuses],
     ["StrategyFailureCode", schema.failureCodes],
     ["StrategyWorkflowDiagnosticStage", schema.diagnosticStages],
@@ -550,6 +554,8 @@ function dartStrategyOutput(schema, schemaPath) {
     ["StrategyBindingKind", schema.bindingKinds],
     ["StrategyRuntimeKind", schema.runtimeKinds],
     ["StrategyStateKind", schema.stateKinds],
+    ["StrategyTransitionMode", schema.transitionModes],
+    ["StrategyCallbackDecision", schema.callbackDecisions],
     ["StrategyRunStatus", schema.runStatuses],
     ["StrategyFailureCode", schema.failureCodes],
     ["StrategyWorkflowDiagnosticStage", schema.diagnosticStages],
@@ -768,11 +774,47 @@ ${schema.fields
 `;
 }
 
+const DART_RESERVED_WORDS = new Set([
+  "assert",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "default",
+  "do",
+  "else",
+  "enum",
+  "extends",
+  "false",
+  "final",
+  "finally",
+  "for",
+  "if",
+  "in",
+  "is",
+  "new",
+  "null",
+  "rethrow",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "var",
+  "void",
+  "while",
+  "with",
+]);
+
 function dartEnum(name, values) {
   const entries = values.map((value) => {
     const member = pascal(value);
     const rawCamelMember = member[0].toLowerCase() + member.slice(1);
-    const camelMember = new Set(["false", "null", "true"]).has(rawCamelMember)
+    const camelMember = DART_RESERVED_WORDS.has(rawCamelMember)
       ? `${rawCamelMember}Value`
       : rawCamelMember;
     const line = `  ${camelMember}(${JSON.stringify(value)}),`;
