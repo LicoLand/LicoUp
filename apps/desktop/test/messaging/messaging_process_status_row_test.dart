@@ -180,17 +180,80 @@ void main() {
     expect(pulse.enabled, isTrue);
   });
 
-  testWidgets('active row auto-expands the operation list', (tester) async {
+  testWidgets('active row stays collapsed while working and expands on tap', (
+    tester,
+  ) async {
     await _pumpRow(
       tester,
       events: [_event('e1', _at(10, 1, 0)), _event('e2', _at(10, 1, 4))],
       active: true,
     );
 
+    // Default-collapsed while working: no operation rows are built at all.
+    expect(find.byType(ConversationProcessOperationList), findsNothing);
+    // The top-edge pulse stays enabled for the active run.
+    final pulse = tester.widget<LicoTopEdgePulse>(
+      find.byKey(const Key('messaging-process-status-active')),
+    );
+    expect(pulse.enabled, isTrue);
+
+    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
+    await tester.pump();
     expect(find.byType(ConversationProcessOperationList), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
+    await tester.pump();
+    expect(find.byType(ConversationProcessOperationList), findsNothing);
   });
 
-  testWidgets('active row surfaces the latest redacted step headline', (
+  testWidgets('a new active turn resets an expanded card to collapsed', (
+    tester,
+  ) async {
+    final events = [_event('e1', _at(10, 1, 0)), _event('e2', _at(10, 1, 4))];
+    Future<void> pumpRow({required bool active}) => tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 400,
+            child: MessagingProcessStatusRow(
+              events: events,
+              adapter: AgentRenderAdapter.fallback(),
+              detailsBuilder: buildAgentConversationEventDetails,
+              active: active,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // A completed run the user expanded for review.
+    await pumpRow(active: false);
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ConversationProcessOperationList), findsOneWidget);
+
+    // The next turn starts (active false→true): back to the collapsed
+    // default — the operation list is not built and the pulse resumes.
+    await pumpRow(active: true);
+    await tester.pump();
+    expect(find.byType(ConversationProcessOperationList), findsNothing);
+    final pulse = tester.widget<LicoTopEdgePulse>(
+      find.byKey(const Key('messaging-process-status-active')),
+    );
+    expect(pulse.enabled, isTrue);
+  });
+
+  testWidgets('collapsed working header keeps step headlines in the list', (
     tester,
   ) async {
     await _pumpRow(
@@ -207,14 +270,20 @@ void main() {
       active: true,
     );
 
-    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
-    await tester.pump();
-
+    // Collapsed: the card shows title/status only — no redacted step
+    // headline leaks into the header.
     expect(
       find.byKey(const Key('messaging-process-latest-step')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Read file · Native agent activity'), findsOneWidget);
+    expect(find.text('Read file'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    // Expanding surfaces the redacted headline as an operation row.
+    expect(find.text('Read file'), findsOneWidget);
+    expect(find.text('Native agent activity'), findsWidgets);
   });
 
   testWidgets('active lifecycle shows the five-stage progress rail', (
@@ -260,6 +329,12 @@ void main() {
     );
 
     expect(find.byKey(const Key('conversation-lifecycle-rail')), findsNothing);
+    // Default-collapsed while working: no operation rows yet.
+    expect(find.byType(ConversationProcessOperationList), findsNothing);
+
+    await tester.tap(find.byKey(const Key('messaging-process-status-toggle')));
+    await tester.pump();
+
     expect(find.byType(ConversationProcessOperationList), findsOneWidget);
   });
 
