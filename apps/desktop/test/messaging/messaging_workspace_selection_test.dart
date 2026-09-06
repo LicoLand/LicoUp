@@ -27,7 +27,7 @@ void main() {
     'tapping a messaging contact lands on its new-conversation home',
     (tester) async {
       final fixture = await ProductionClientShellFixture.create(
-        profileId: LayoutProfileId.parse('messaging'),
+        profileId: LayoutProfileId.parse('dashboard'),
         surface: LayoutRuntimeSurface.desktop,
         destination: ClientSection.agents,
         size: const Size(1180, 820),
@@ -145,7 +145,7 @@ void main() {
     tester,
   ) async {
     final fixture = await ProductionClientShellFixture.create(
-      profileId: LayoutProfileId.parse('messaging'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.agents,
       size: const Size(1180, 820),

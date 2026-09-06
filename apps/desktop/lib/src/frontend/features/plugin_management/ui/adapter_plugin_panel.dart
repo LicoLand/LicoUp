@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_effect.dart';
@@ -82,11 +83,19 @@ final class AdapterPluginPanel extends StatelessWidget {
       case PluginLifecyclePlanReady():
         unawaited(_confirmPluginLifecycle(context, effect));
       case PluginActionCompleted():
-        _showActionSnack(context, _completedMessage(context, effect));
+        showLicoToast(
+          context,
+          message: _completedMessage(context, effect),
+          kind: LicoToastKind.success,
+        );
       case CollaborationInstallPlanReady():
         unawaited(_confirmCollaborationInstall(context, effect));
       case PluginActionRejected():
-        _showActionSnack(context, _rejectionMessage(context, effect));
+        showLicoToast(
+          context,
+          message: _rejectionMessage(context, effect),
+          kind: LicoToastKind.error,
+        );
     }
   }
 
@@ -180,14 +189,6 @@ final class AdapterPluginPanel extends StatelessWidget {
           ),
         ) ??
         false;
-  }
-
-  void _showActionSnack(BuildContext context, String message) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _completedMessage(BuildContext context, PluginActionCompleted effect) {
