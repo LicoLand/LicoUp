@@ -17,10 +17,12 @@ sealed class DesktopDockDragData {
 /// clamped to the bar's own max) and the current [entryCount]. Shared by the
 /// bar and the shell's floating input row so the two stay aligned as the bar
 /// stretches.
-double desktopDockBarWidth({required double maxWidth, required int entryCount}) {
+double desktopDockBarWidth({
+  required double maxWidth,
+  required int entryCount,
+}) {
   const entrySlot =
-      DesktopDesktopMetrics.dockIconExtent +
-      DesktopDesktopMetrics.dockIconGap;
+      DesktopDesktopMetrics.dockIconExtent + DesktopDesktopMetrics.dockIconGap;
   const fixedExtent =
       DesktopDesktopMetrics.dockIconExtent * 2 +
       DesktopDesktopMetrics.dockIconGap * 3 +
@@ -173,18 +175,18 @@ final class DesktopDockBar extends StatelessWidget {
                           onAcceptFolderChild: (folderId, app) =>
                               onExtractFromFolder(folderId, app, 0),
                         ),
-                        for (var index = 0; index < entries.length; index++) ...[
+                        for (
+                          var index = 0;
+                          index < entries.length;
+                          index++
+                        ) ...[
                           _buildEntry(context, entries[index]),
                           _DesktopDockGapTarget(
                             key: Key('desktop-dock-gap-${index + 1}'),
                             onAcceptEntry: (storageId) =>
                                 onMoveEntry(storageId, index + 1),
                             onAcceptFolderChild: (folderId, app) =>
-                                onExtractFromFolder(
-                                  folderId,
-                                  app,
-                                  index + 1,
-                                ),
+                                onExtractFromFolder(folderId, app, index + 1),
                           ),
                         ],
                       ],

@@ -224,10 +224,7 @@ final class _DesktopLaunchpadPluginSlot extends StatelessWidget {
               borderRadius: BorderRadius.circular(
                 DesktopDesktopMetrics.launchpadIconRadius,
               ),
-              border: Border.all(
-                color: DesktopDesktopOnBlack.line,
-                width: 0.5,
-              ),
+              border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
             ),
             child: const Icon(
               Icons.add_rounded,

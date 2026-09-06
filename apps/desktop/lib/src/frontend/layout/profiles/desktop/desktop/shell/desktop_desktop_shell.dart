@@ -320,10 +320,8 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
           child: Material(
             color: Colors.transparent,
             child: LayoutBuilder(
-              builder: (context, constraints) => _buildZStack(
-                context,
-                constraints,
-              ),
+              builder: (context, constraints) =>
+                  _buildZStack(context, constraints),
             ),
           ),
         ),
@@ -717,8 +715,8 @@ final class _PinnedModelsPaneStatePort implements LayoutStatePort {
   @override
   LayoutPresentationStateValue? read(LayoutStateNamespace namespace) =>
       _isPaneNamespace(namespace)
-          ? LayoutTabState(_paneIndex)
-          : _inner.read(namespace);
+      ? LayoutTabState(_paneIndex)
+      : _inner.read(namespace);
 
   @override
   void write(

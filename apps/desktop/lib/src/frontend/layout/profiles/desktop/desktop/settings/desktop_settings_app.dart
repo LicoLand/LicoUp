@@ -91,8 +91,7 @@ final class DesktopSettingsNavCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: DesktopTrafficLightAnchor(
                     key: Key('desktop-settings-traffic-light-row'),
-                    height:
-                        DesktopDesktopMetrics.settingsTrafficLightRowExtent,
+                    height: DesktopDesktopMetrics.settingsTrafficLightRowExtent,
                   ),
                 ),
               ),
@@ -127,11 +126,10 @@ final class DesktopSettingsNavCard extends StatelessWidget {
                           selectedIndex: desktopSettingsSectionIndex(
                             scopedState,
                           ),
-                          onSelectIndex: (index) =>
-                              scopedState.writeIfDeclared(
-                                LayoutStateChannels.settingsSection,
-                                LayoutTabState(index),
-                              ),
+                          onSelectIndex: (index) => scopedState.writeIfDeclared(
+                            LayoutStateChannels.settingsSection,
+                            LayoutTabState(index),
+                          ),
                         ),
                       ),
               ),

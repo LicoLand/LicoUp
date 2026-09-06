@@ -29,10 +29,7 @@ void main() {
 
       expect(bundle.profile.id, LayoutProfileId.parse('desktop'));
       expect(bundle.profile.label.resolve('en'), 'Desktop');
-      expect(
-        bundle.profile.description.resolve('zh'),
-        contains('Desktop 布局'),
-      );
+      expect(bundle.profile.description.resolve('zh'), contains('Desktop 布局'));
       expect(bundle.profile.styleIdentity, 'spacious-card-desktop');
       expect(bundle.profile.isDefault, isFalse);
       expect(bundle.surface, LayoutRuntimeSurface.mobile);

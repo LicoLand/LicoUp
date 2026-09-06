@@ -176,9 +176,8 @@ class LicoToastHost extends StatefulWidget {
   final Widget child;
 
   /// The nearest host above [context], or null on surfaces without one.
-  static LicoToastHostState? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<_LicoToastHostScope>()
-      ?.state;
+  static LicoToastHostState? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_LicoToastHostScope>()?.state;
 
   @override
   State<LicoToastHost> createState() => LicoToastHostState();
@@ -200,9 +199,7 @@ class LicoToastHostState extends State<LicoToastHost> {
   }) {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return;
-    _items.removeWhere(
-      (item) => item.message == trimmed && item.kind == kind,
-    );
+    _items.removeWhere((item) => item.message == trimmed && item.kind == kind);
     _items.add(
       _LicoToastItem(
         id: _nextToastId++,
@@ -457,8 +454,7 @@ class LicoToastNoticesListener extends StatefulWidget {
 class _LicoToastNoticesListenerState extends State<LicoToastNoticesListener> {
   late int _seenOperationRevision;
   late int _seenGatewayRevision;
-  late Map<String, ChromeOperationNotificationProjection>
-  _operationNoticesById;
+  late Map<String, ChromeOperationNotificationProjection> _operationNoticesById;
   late Set<String> _agentNoticeKeys;
 
   @override
@@ -592,8 +588,7 @@ class _LicoToastNoticesListenerState extends State<LicoToastNoticesListener> {
     final status = switch (notice.activity) {
       AgentConversationTabActivity.needsApproval =>
         strings.agentTabNeedsApproval,
-      AgentConversationTabActivity.workFinished =>
-        strings.agentTabWorkFinished,
+      AgentConversationTabActivity.workFinished => strings.agentTabWorkFinished,
       AgentConversationTabActivity.none => '',
     };
     if (status.isEmpty) return;

@@ -42,10 +42,14 @@ final class DesktopDesktopPreview extends StatelessWidget {
           decoration: BoxDecoration(
             color: colors.background,
             border: Border.all(color: colors.line),
-            borderRadius: BorderRadius.circular(desktopDesktopTokens.cardRadius),
+            borderRadius: BorderRadius.circular(
+              desktopDesktopTokens.cardRadius,
+            ),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(desktopDesktopTokens.cardRadius),
+            borderRadius: BorderRadius.circular(
+              desktopDesktopTokens.cardRadius,
+            ),
             child: Stack(
               fit: StackFit.expand,
               children: [

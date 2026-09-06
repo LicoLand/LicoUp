@@ -34,8 +34,7 @@ const List<DesktopAppId> desktopLaunchpadBuiltinApps = <DesktopAppId>[
   DesktopAppId.conversation,
 ];
 
-bool desktopAppIsFloating(DesktopAppId app) =>
-    app != DesktopAppId.conversation;
+bool desktopAppIsFloating(DesktopAppId app) => app != DesktopAppId.conversation;
 
 ClientSection desktopAppSection(DesktopAppId app) => switch (app) {
   DesktopAppId.conversation => ClientSection.agents,
@@ -68,17 +67,16 @@ IconData desktopAppIcon(DesktopAppId app) => switch (app) {
   DesktopAppId.modelsChatChannels => Icons.forum_outlined,
 };
 
-String desktopAppLabel(LicoStrings strings, DesktopAppId app) =>
-    switch (app) {
-      DesktopAppId.conversation => strings.conversationListNav,
-      DesktopAppId.agentHub => strings.agentHub,
-      DesktopAppId.skillHub => strings.skillsNav,
-      DesktopAppId.pluginManagement => strings.pluginsNav,
-      DesktopAppId.monitoring => strings.tokenUsage,
-      DesktopAppId.modelsGateway => strings.modelGateway,
-      DesktopAppId.mobileRelay => strings.mobilePairing,
-      DesktopAppId.modelsChatChannels => strings.chatChannels,
-    };
+String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
+  DesktopAppId.conversation => strings.conversationListNav,
+  DesktopAppId.agentHub => strings.agentHub,
+  DesktopAppId.skillHub => strings.skillsNav,
+  DesktopAppId.pluginManagement => strings.pluginsNav,
+  DesktopAppId.monitoring => strings.tokenUsage,
+  DesktopAppId.modelsGateway => strings.modelGateway,
+  DesktopAppId.mobileRelay => strings.mobilePairing,
+  DesktopAppId.modelsChatChannels => strings.chatChannels,
+};
 
 DesktopAppId? desktopAppByName(String name) {
   for (final app in DesktopAppId.values) {
