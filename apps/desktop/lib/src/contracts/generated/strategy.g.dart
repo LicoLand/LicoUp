@@ -69,6 +69,47 @@ enum StrategyStateKind {
   }
 }
 
+enum StrategyTransitionMode {
+  callback("callback"),
+  flow("flow"),
+  unknown('');
+
+  const StrategyTransitionMode(this.wireName);
+  final String wireName;
+
+  static StrategyTransitionMode fromWire(Object? value) {
+    if (value is! String) return StrategyTransitionMode.unknown;
+    for (final candidate in StrategyTransitionMode.values) {
+      if (candidate != StrategyTransitionMode.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyTransitionMode.unknown;
+  }
+}
+
+enum StrategyCallbackDecision {
+  advance("advance"),
+  returnValue("return"),
+  terminate("terminate"),
+  unknown('');
+
+  const StrategyCallbackDecision(this.wireName);
+  final String wireName;
+
+  static StrategyCallbackDecision fromWire(Object? value) {
+    if (value is! String) return StrategyCallbackDecision.unknown;
+    for (final candidate in StrategyCallbackDecision.values) {
+      if (candidate != StrategyCallbackDecision.unknown &&
+          candidate.wireName == value) {
+        return candidate;
+      }
+    }
+    return StrategyCallbackDecision.unknown;
+  }
+}
+
 enum StrategyRunStatus {
   pending("pending"),
   authorizationRequired("authorization-required"),
@@ -219,6 +260,8 @@ enum StrategyWorkflowDiagnosticCode {
   workflowGuardInvalid("workflow_guard_invalid"),
   workflowGuardAmbiguous("workflow_guard_ambiguous"),
   workflowRoutingInvalid("workflow_routing_invalid"),
+  workflowTransitionModeInvalid("workflow_transition_mode_invalid"),
+  workflowFlowTargetIncomplete("workflow_flow_target_incomplete"),
   workflowTopologyInvalid("workflow_topology_invalid"),
   workflowStateUnreachable("workflow_state_unreachable"),
   workflowTerminalUnreachable("workflow_terminal_unreachable"),
