@@ -15,16 +15,6 @@ use super::{
 };
 
 const DATABASE_FILE: &str = "strategies.sqlite3";
-const RETIRED_BUILTIN_DEFINITION_ID: &str = "licoup-basic";
-const RETIRED_BUILTIN_DEFINITION_NAME: &str = "LicoUp Basic Strategy";
-
-pub(crate) fn validate_import_identity(definition_id: &str, name: &str) -> Result<()> {
-    ensure!(
-        definition_id != RETIRED_BUILTIN_DEFINITION_ID && name != RETIRED_BUILTIN_DEFINITION_NAME,
-        "strategy_definition_identity_reserved"
-    );
-    Ok(())
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LeaseRecovery {
@@ -48,15 +38,15 @@ impl StrategyStore {
             db_path,
             package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
         };
-        store.with_connection(|connection| {
+        let retired = store.with_connection(|connection| {
             if existed {
-                validate_current_schema(connection)
+                validate_current_schema(connection).map(|()| Vec::new())
             } else {
                 initialize_schema(connection)
             }
         })?;
         crate::platform::file_security::harden_private_path(&store.db_path)?;
-        store.purge_retired_builtin_definitions()?;
+        store.remove_retired_revision_trees(&retired);
         Ok(store)
     }
 
@@ -67,9 +57,9 @@ impl StrategyStore {
             db_path: root.join(DATABASE_FILE),
             package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
         };
-        store.with_connection(initialize_schema)?;
+        let retired = store.with_connection(initialize_schema)?;
         crate::platform::file_security::harden_private_path(&store.db_path)?;
-        store.purge_retired_builtin_definitions()?;
+        store.remove_retired_revision_trees(&retired);
         Ok(store)
     }
 
@@ -81,7 +71,6 @@ impl StrategyStore {
             package_revisions_root: None,
         };
         store.with_connection(initialize_schema)?;
-        store.purge_retired_builtin_definitions()?;
         Ok(store)
     }
 
@@ -107,7 +96,6 @@ impl StrategyStore {
         asset_count: usize,
         imported_at_unix_ms: i64,
     ) -> Result<StrategyDefinition> {
-        validate_import_identity(&workflow.metadata.id, &workflow.metadata.name)?;
         let compiled = compile_workflow(workflow.clone())?;
         let workflow_json = serde_json::to_string(&compiled.definition)?;
         self.with_connection(|connection| {
@@ -152,7 +140,6 @@ impl StrategyStore {
     }
 
     pub fn list_definitions(&self) -> Result<Vec<StrategyDefinitionSummary>> {
-        self.purge_retired_builtin_definitions()?;
         self.with_connection(|connection| {
             let mut statement = connection.prepare(
                 "SELECT definition_id, revision_digest, semantics_digest, name, version, imported_at,
@@ -1244,6 +1231,7 @@ impl StrategyStore {
             },
             history_count: 0,
             fallbacks: Vec::new(),
+            pending_callbacks: Vec::new(),
             needs_human_input: false,
             entry_session_id: None,
         })
@@ -1292,6 +1280,7 @@ impl StrategyStore {
                 )
                 .map_err(Into::into)
         })?;
+        let pending_callbacks = snapshot.pending_callbacks.clone();
         Ok(StrategyProjection {
             schema: STRATEGY_SCHEMA_VERSION.into(),
             definition: definition.summary,
@@ -1315,13 +1304,15 @@ impl StrategyStore {
             }),
             history_count,
             fallbacks: snapshot.fallbacks,
-            needs_human_input: matches!(
-                snapshot.status,
-                StrategyRunStatus::AuthorizationRequired
-                    | StrategyRunStatus::RuntimeMissing
-                    | StrategyRunStatus::Waiting
-                    | StrategyRunStatus::Retryable
-            ),
+            pending_callbacks: pending_callbacks.clone(),
+            needs_human_input: !pending_callbacks.is_empty()
+                || matches!(
+                    snapshot.status,
+                    StrategyRunStatus::AuthorizationRequired
+                        | StrategyRunStatus::RuntimeMissing
+                        | StrategyRunStatus::Waiting
+                        | StrategyRunStatus::Retryable
+                ),
             entry_session_id: definition
                 .workflow
                 .actor_slots
@@ -1402,68 +1393,33 @@ impl StrategyStore {
         })
     }
 
-    fn purge_retired_builtin_definitions(&self) -> Result<()> {
-        let digests = self.with_connection(|connection| {
-            let transaction =
-                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let mut statement = transaction.prepare(
-                "SELECT revision_digest FROM strategy_definitions
-                 WHERE definition_id=?1 OR name=?2",
-            )?;
-            let digests = statement
-                .query_map(
-                    params![
-                        RETIRED_BUILTIN_DEFINITION_ID,
-                        RETIRED_BUILTIN_DEFINITION_NAME
-                    ],
-                    |row| row.get::<_, String>(0),
-                )?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            drop(statement);
-            if !digests.is_empty() {
-                for digest in &digests {
-                    transaction.execute(
-                        "DELETE FROM strategy_runs WHERE revision_digest=?1",
-                        params![digest],
-                    )?;
-                    transaction.execute(
-                        "DELETE FROM strategy_definitions WHERE revision_digest=?1",
-                        params![digest],
-                    )?;
-                }
-            }
-            transaction.commit()?;
-            Ok(digests)
-        })?;
+    /// Remove the on-disk package trees of definitions the typed migration
+    /// deleted. Only runs for digests the migration actually returned.
+    fn remove_retired_revision_trees(&self, digests: &[String]) {
         for digest in digests {
-            self.remove_retired_revision_tree(&digest);
+            let Some(root) = &self.package_revisions_root else {
+                return;
+            };
+            if digest.len() != 64
+                || !digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+            {
+                continue;
+            }
+            let path = root.join(digest);
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            remove_directory_tree(&path);
         }
-        Ok(())
-    }
-
-    fn remove_retired_revision_tree(&self, digest: &str) {
-        let Some(root) = &self.package_revisions_root else {
-            return;
-        };
-        if digest.len() != 64
-            || !digest
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
-        {
-            return;
-        }
-        let path = root.join(digest);
-        let Ok(metadata) = fs::symlink_metadata(&path) else {
-            return;
-        };
-        if metadata.file_type().is_symlink() {
-            return;
-        }
-        remove_directory_tree(&path);
     }
 }
 
-fn initialize_schema(connection: &mut Connection) -> Result<()> {
+fn initialize_schema(connection: &mut Connection) -> Result<Vec<String>> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS strategy_meta(
            key TEXT PRIMARY KEY, value TEXT NOT NULL
@@ -1558,6 +1514,7 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
     )?;
     ensure_column(connection, "strategy_runs", "conversation_id", "TEXT")?;
     ensure_column(connection, "strategy_runs", "terminal", "INTEGER")?;
+    let retired = migrate_retired_builtin_definition(connection)?;
     backfill_run_query_columns(connection)?;
     connection.execute_batch(
         "CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx
@@ -1565,7 +1522,39 @@ fn initialize_schema(connection: &mut Connection) -> Result<()> {
     )?;
     migrate_bindings_ordinal_primary_key(connection)?;
     connection.execute("UPDATE strategy_meta SET value='2' WHERE key='version'", [])?;
-    Ok(())
+    Ok(retired)
+}
+
+/// Typed one-time migration for the retired built-in strategy: databases from
+/// before the retirement still hold its definition rows (and runs), and the
+/// removal lives here — at migration, with no runtime compatibility path.
+/// Returns the deleted revision digests so the caller can drop the orphaned
+/// package trees.
+fn migrate_retired_builtin_definition(connection: &mut Connection) -> Result<Vec<String>> {
+    const RETIRED_DEFINITION_ID: &str = "licoup-basic";
+    const RETIRED_DEFINITION_NAME: &str = "LicoUp Basic Strategy";
+    let mut statement = connection.prepare(
+        "SELECT revision_digest FROM strategy_definitions
+         WHERE definition_id=?1 OR name=?2",
+    )?;
+    let digests = statement
+        .query_map(
+            params![RETIRED_DEFINITION_ID, RETIRED_DEFINITION_NAME],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    for digest in &digests {
+        connection.execute(
+            "DELETE FROM strategy_runs WHERE revision_digest=?1",
+            params![digest],
+        )?;
+        connection.execute(
+            "DELETE FROM strategy_definitions WHERE revision_digest=?1",
+            params![digest],
+        )?;
+    }
+    Ok(digests)
 }
 
 fn validate_current_schema(connection: &mut Connection) -> Result<()> {
@@ -2010,7 +1999,7 @@ mod tests {
     use super::*;
     use crate::domain::adaptive_flywheel::{
         ActorSlot, BindingCandidate, GraphState, GraphStateKind, RetryPolicy, Transition,
-        TransitionEvent, WorkflowLimits, WorkflowMetadata,
+        TransitionEvent, TransitionMode, WorkflowLimits, WorkflowMetadata,
     };
     use serde_json::json;
 
@@ -2072,6 +2061,7 @@ mod tests {
                     from: "work".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2079,6 +2069,7 @@ mod tests {
                     from: "work".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2133,7 +2124,8 @@ mod tests {
             )
             .unwrap();
 
-        initialize_schema(&mut connection).unwrap();
+        let retired = initialize_schema(&mut connection).unwrap();
+        assert!(retired.is_empty());
 
         let (ordinal, active, version): (i64, i64, String) = connection
             .query_row(
@@ -2594,93 +2586,86 @@ mod tests {
         assert_eq!(bound.conversation_id.as_deref(), Some("conversation:group"));
     }
 
-    fn named_workflow(id: &str, name: &str) -> WorkflowDefinition {
-        let mut definition = workflow();
-        definition.metadata.id = id.into();
-        definition.metadata.name = name.into();
-        definition
-    }
-
     fn digest(fill: char) -> String {
         fill.to_string().repeat(64)
     }
 
     #[test]
-    fn list_definitions_purges_retired_builtin_identity() {
+    fn retired_builtin_definition_is_deleted_by_the_typed_migration() {
         let root =
-            std::env::temp_dir().join(format!("lico-adaptive-flywheel-purge-{}", Uuid::new_v4()));
-        fs::create_dir_all(&root).unwrap();
-        let store = StrategyStore::open(&root).unwrap();
+            std::env::temp_dir().join(format!("lico-adaptive-flywheel-retire-{}", Uuid::new_v4()));
+        let database = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
         let retired_id_digest = digest('a');
         let retired_name_digest = digest('b');
         let kept_digest = digest('c');
-        assert!(
-            store
-                .register_definition(
-                    &retired_id_digest,
-                    &digest('d'),
-                    &named_workflow("licoup-basic", "LicoUp Basic Strategy"),
-                    1,
-                    1,
-                )
-                .is_err()
-        );
-        assert!(
-            store
-                .register_definition(
-                    &retired_name_digest,
-                    &digest('e'),
-                    &named_workflow("other-id", "LicoUp Basic Strategy"),
-                    1,
-                    2,
-                )
-                .is_err()
-        );
-        store
-            .with_connection(|connection| {
-                for (definition_id, revision, semantics, name, imported_at) in [
-                    (
-                        "licoup-basic",
-                        &retired_id_digest,
-                        digest('d'),
-                        "LicoUp Basic Strategy",
-                        1,
-                    ),
-                    (
-                        "other-id",
-                        &retired_name_digest,
-                        digest('e'),
-                        "LicoUp Basic Strategy",
-                        2,
-                    ),
-                ] {
-                    connection.execute(
-                        "INSERT INTO strategy_definitions(
-                           definition_id, revision_digest, semantics_digest, name, version,
-                           workflow_json, asset_count, imported_at
-                         ) VALUES (?1, ?2, ?3, ?4, '1', ?5, 1, ?6)",
-                        params![
-                            definition_id,
-                            revision,
-                            semantics,
-                            name,
-                            serde_json::to_string(&named_workflow(definition_id, name))?,
-                            imported_at,
-                        ],
-                    )?;
-                }
-                Ok(())
-            })
-            .unwrap();
-        store
-            .register_definition(
-                &kept_digest,
-                &digest('f'),
-                &named_workflow("imported-graph", "Imported Graph"),
-                1,
-                3,
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key, value) VALUES ('version', '1');
+                 CREATE TABLE strategy_definitions(
+                   definition_id TEXT NOT NULL,
+                   revision_digest TEXT PRIMARY KEY,
+                   semantics_digest TEXT NOT NULL,
+                   name TEXT NOT NULL,
+                   version TEXT NOT NULL,
+                   workflow_json TEXT NOT NULL,
+                   asset_count INTEGER NOT NULL,
+                   imported_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE strategy_runs(
+                   run_id TEXT PRIMARY KEY,
+                   revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest),
+                   semantics_digest TEXT NOT NULL,
+                   idempotency_key TEXT NOT NULL UNIQUE,
+                   request_digest TEXT NOT NULL,
+                   snapshot_json TEXT NOT NULL,
+                   created_at INTEGER NOT NULL,
+                   updated_at INTEGER NOT NULL
+                 );",
             )
             .unwrap();
+        let workflow_json = serde_json::to_string(&workflow()).unwrap();
+        for (definition_id, revision, name) in [
+            (
+                "licoup-basic",
+                retired_id_digest.clone(),
+                "LicoUp Basic Strategy",
+            ),
+            (
+                "other-id",
+                retired_name_digest.clone(),
+                "LicoUp Basic Strategy",
+            ),
+            ("imported-graph", kept_digest.clone(), "Imported Graph"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO strategy_definitions(
+                       definition_id, revision_digest, semantics_digest, name, version,
+                       workflow_json, asset_count, imported_at
+                     ) VALUES (?1, ?2, ?3, ?4, '1', ?5, 1, 1)",
+                    params![definition_id, revision, digest('d'), name, workflow_json],
+                )
+                .unwrap();
+        }
+        let snapshot_json = serde_json::to_string(&RunSnapshot::empty(
+            "run-retired",
+            &retired_id_digest,
+            "semantics",
+        ))
+        .unwrap();
+        connection
+            .execute(
+                "INSERT INTO strategy_runs(
+                   run_id, revision_digest, semantics_digest, idempotency_key,
+                   request_digest, snapshot_json, created_at, updated_at
+                 ) VALUES ('run-retired', ?1, 'semantics', 'key-retired', 'request', ?2, 1, 1)",
+                params![retired_id_digest, snapshot_json],
+            )
+            .unwrap();
+        drop(connection);
         let revisions = root
             .join("client-state")
             .join("adaptive-flywheel")
@@ -2693,12 +2678,20 @@ mod tests {
         fs::create_dir_all(kept_tree.join("content")).unwrap();
         fs::write(kept_tree.join("content").join("marker.txt"), "kept").unwrap();
 
+        assert!(
+            StrategyStore::open(&root).is_err(),
+            "a legacy schema must pass through the migration path first"
+        );
+        StrategyStore::open_for_migration(&root).unwrap();
+
+        let store = StrategyStore::open(&root).unwrap();
         let listed = store.list_definitions().unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].definition_id, "imported-graph");
         assert_eq!(listed[0].name, "Imported Graph");
         assert_eq!(listed[0].revision_digest, kept_digest);
         assert!(store.definition_by_revision(&retired_id_digest).is_err());
+        assert!(store.definition_by_revision(&retired_name_digest).is_err());
         assert!(!retired_tree.exists());
         assert!(kept_tree.join("content").join("marker.txt").exists());
         remove_directory_tree(&root);

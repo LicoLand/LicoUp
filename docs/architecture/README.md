@@ -165,8 +165,8 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 |:---|:---|
 | `apps/desktop/` | Flutter desktop and mobile client (Tier 1 and parts of Tier 2) |
 | `crates/licoup-native/` | Rust client core, commands, and platform bridges (Tier 3 and Tier 4) |
-| `crates/licoup-conversation/` | (Target, placeholder — not yet a workspace member) Extracted Conversation domain crate |
-| `crates/licoup-agent-runtime/` | (Target, placeholder — not yet a workspace member) Extracted Agent Runtime and adapter crate |
+| `crates/licoup-conversation/` | Canonical Conversation domain crate (workspace member; extraction in progress) |
+| `crates/licoup-agent-runtime/` | Agent Runtime and adapter crate (workspace member; extraction in progress) |
 | `crates/licoup-platform-bridges/` | Native platform ABI and handle management (Tier 4) |
 | `crates/licoup-endpoint-core/` | Endpoint identity, key custody, crypto foundations |
 | `crates/licoup-protocol-bindings/` | Protocol type definitions |
@@ -430,11 +430,10 @@ this document.
    observes only those projections. The M2 adapter, controller renderer ports, notifier
    presentation paths, and migration allowlists were deleted in the same migration.
 
-3. **Rust crate extraction** — add `licoup-conversation` and
-   `licoup-agent-runtime` to the workspace (currently placeholder directories
-   outside the workspace), extract L3 from `licoup-native/src/domain/` and L4+L5
-   from `licoup-native/src/platform/`, and reduce `licoup-native` to the binary
-   host + FFI shell.
+3. **Rust crate extraction** — `licoup-conversation` and
+   `licoup-agent-runtime` are workspace members; continue extracting L3 from
+   `licoup-native/src/domain/` and L4+L5 from `licoup-native/src/platform/`
+   into them, and reduce `licoup-native` to the binary host + FFI shell.
 
 The legacy directory tree, the architecture verifier allowlist, and the target
 tree must switch atomically per migrated feature; a false "done" claim in either

@@ -5,8 +5,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind, MAX_WORKSET_ITEMS,
-    SessionPolicy, StrategyRunStatus, TransitionEvent,
+    CallbackDecisionKind, CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind,
+    MAX_WORKSET_ITEMS, PendingCallback, SessionPolicy, StrategyRunStatus, TransitionEvent,
+    TransitionMode,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -101,6 +102,11 @@ pub struct RunSnapshot {
     pub route_receipt: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Callback-mode edges whose targets wait for the master agent's decision,
+    /// in the deterministic order the waits were entered. The decision event
+    /// always settles the first entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_callbacks: Vec<PendingCallback>,
     pub commands: BTreeMap<String, RunCommand>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostic_code: Option<String>,
@@ -133,6 +139,7 @@ impl RunSnapshot {
             assistant_membership_id: None,
             route_receipt: None,
             cwd: None,
+            pending_callbacks: Vec::new(),
             commands: BTreeMap::new(),
             diagnostic_code: None,
         }
@@ -182,6 +189,15 @@ pub enum ReducerEvent {
     /// Graph settles in-doubt without duplicating or guessing an effect.
     AssistantDriveFailed {
         code: String,
+    },
+    /// The master agent's decision for the oldest pending callback wait. The
+    /// declared callback edge is only taken (`advance`), the completed state
+    /// re-entered (`return`), or the run terminated (`terminate`) after this
+    /// run input arrives; the wait itself is durable.
+    CallbackDecision {
+        state_id: String,
+        state_visit: u64,
+        decision: CallbackDecisionKind,
     },
     RetryRequested {
         command_id: String,
@@ -360,6 +376,11 @@ pub fn reduce(
         ReducerEvent::AssistantDriveFailed { code } => {
             machine.settle_assistant_drive_failure(&code)?
         }
+        ReducerEvent::CallbackDecision {
+            state_id,
+            state_visit,
+            decision,
+        } => machine.apply_callback_decision(&state_id, state_visit, decision)?,
         ReducerEvent::RetryRequested { command_id } => machine.retry(&command_id)?,
         ReducerEvent::CancelRequested => machine.cancel()?,
         ReducerEvent::CancellationAcknowledged {
@@ -533,8 +554,75 @@ impl Machine<'_> {
             .workflow
             .select_transition(state_id, event, payload)?
             .ok_or_else(|| anyhow!("strategy_transition_missing"))?;
+        if transition.mode == TransitionMode::Callback {
+            let event = transition.event;
+            let transition_id = transition.id.clone();
+            let target = transition.to.clone();
+            self.park_callback(state_id, event, &transition_id, &target);
+            return Ok(());
+        }
         let target = transition.to.clone();
         self.enter(&target, Some(state_id))
+    }
+
+    /// A callback-mode edge does not take the run to its target on its own:
+    /// the settled state is recorded and the run durably waits for the master
+    /// agent's decision as a run input.
+    fn park_callback(
+        &mut self,
+        state_id: &str,
+        event: TransitionEvent,
+        transition_id: &str,
+        target: &str,
+    ) {
+        let state_visit = self
+            .snapshot
+            .state_visits
+            .get(state_id)
+            .copied()
+            .unwrap_or(0);
+        self.snapshot.pending_callbacks.push(PendingCallback {
+            state_id: state_id.to_owned(),
+            state_visit,
+            transition_id: transition_id.to_owned(),
+            event,
+            target: target.to_owned(),
+        });
+        self.snapshot.status = StrategyRunStatus::Waiting;
+    }
+
+    fn apply_callback_decision(
+        &mut self,
+        state_id: &str,
+        state_visit: u64,
+        decision: CallbackDecisionKind,
+    ) -> Result<()> {
+        // The decision binds the exact wait it settles: a replayed or stale
+        // decision can never consume a later callback of the same edge.
+        let matches_pending = self
+            .snapshot
+            .pending_callbacks
+            .first()
+            .is_some_and(|pending| {
+                pending.state_id == state_id && pending.state_visit == state_visit
+            });
+        ensure!(matches_pending, "strategy_callback_stale");
+        let pending = self.snapshot.pending_callbacks.remove(0);
+        match decision {
+            CallbackDecisionKind::Advance => {
+                self.snapshot.status = StrategyRunStatus::Running;
+                self.enter(&pending.target, Some(&pending.state_id))?;
+            }
+            CallbackDecisionKind::Return => {
+                self.snapshot.status = StrategyRunStatus::Running;
+                let state_id = pending.state_id.clone();
+                self.enter(&state_id, None)?;
+            }
+            CallbackDecisionKind::Terminate => {
+                self.cancel()?;
+            }
+        }
+        Ok(())
     }
 
     fn schedule_workset(&mut self, state_id: &str) -> Result<bool> {
@@ -929,8 +1017,14 @@ impl Machine<'_> {
             .workflow
             .select_transition(state_id, TransitionEvent::Failure, &payload)?
             .ok_or_else(|| anyhow!("strategy_transition_missing"))?;
+        let transition_id = transition.id.clone();
         let target = transition.to.clone();
+        let callback = transition.mode == TransitionMode::Callback;
         self.snapshot.active_states.remove(state_id);
+        if callback {
+            self.park_callback(state_id, TransitionEvent::Failure, &transition_id, &target);
+            return Ok(true);
+        }
         self.enter(&target, Some(state_id))?;
         Ok(true)
     }
@@ -1311,8 +1405,19 @@ impl Machine<'_> {
                 TransitionEvent::Failure,
                 &json!({"code": code}),
             )? {
+                let transition_id = transition.id.clone();
                 let target = transition.to.clone();
+                let callback = transition.mode == TransitionMode::Callback;
                 self.snapshot.active_states.remove(&state_id);
+                if callback {
+                    self.park_callback(
+                        &state_id,
+                        TransitionEvent::Failure,
+                        &transition_id,
+                        &target,
+                    );
+                    return Ok(());
+                }
                 self.enter(&target, Some(&state_id))?;
             } else {
                 self.snapshot.status = StrategyRunStatus::Blocked;
@@ -1370,8 +1475,14 @@ impl Machine<'_> {
             TransitionEvent::Failure,
             &json!({"code": code}),
         )? {
+            let transition_id = transition.id.clone();
             let target = transition.to.clone();
+            let callback = transition.mode == TransitionMode::Callback;
             self.snapshot.active_states.remove(&state_id);
+            if callback {
+                self.park_callback(&state_id, TransitionEvent::Failure, &transition_id, &target);
+                return Ok(());
+            }
             self.enter(&target, Some(&state_id))?;
         } else {
             self.snapshot.status = StrategyRunStatus::Failed;
@@ -1425,6 +1536,7 @@ impl Machine<'_> {
         };
         command.failure_class = Some(class);
         command.failure_code = Some(code.to_owned());
+        self.snapshot.pending_callbacks.clear();
         self.cancel_unstarted_assistant_commands();
         self.snapshot.status = if class == FailureClass::InDoubt {
             StrategyRunStatus::CancelInDoubt
@@ -1449,6 +1561,7 @@ impl Machine<'_> {
             return Ok(());
         }
         self.cancel_unstarted_assistant_commands();
+        self.snapshot.pending_callbacks.clear();
         for command in self.snapshot.commands.values_mut().filter(|command| {
             matches!(
                 command.status,
@@ -1558,6 +1671,7 @@ impl Machine<'_> {
             self.applied = false;
             return Ok(());
         }
+        self.snapshot.pending_callbacks.clear();
         let mut in_flight = false;
         for command in self.snapshot.commands.values_mut() {
             match command.status {
@@ -1931,6 +2045,7 @@ mod tests {
                     from: "work".into(),
                     to: "work".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: Some(super::super::GuardExpression {
                         path: "again".into(),
                         equals: Some(true.into()),
@@ -1942,6 +2057,7 @@ mod tests {
                     from: "work".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -1949,6 +2065,7 @@ mod tests {
                     from: "work".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2055,6 +2172,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2062,6 +2180,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2141,6 +2260,7 @@ mod tests {
                     from: "authorize".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2148,6 +2268,7 @@ mod tests {
                     from: "authorize".into(),
                     to: "blocked".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2220,6 +2341,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "repeat".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: Some(super::super::GuardExpression {
                         path: "context.again".into(),
                         equals: Some(true.into()),
@@ -2231,6 +2353,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2238,6 +2361,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2245,6 +2369,7 @@ mod tests {
                     from: "repeat".into(),
                     to: "tasks".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2252,6 +2377,7 @@ mod tests {
                     from: "repeat".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2346,6 +2472,7 @@ mod tests {
                     from: "plan".into(),
                     to: "tasks".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2353,6 +2480,7 @@ mod tests {
                     from: "plan".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2360,6 +2488,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "done".into(),
                     event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
                 Transition {
@@ -2367,6 +2496,7 @@ mod tests {
                     from: "tasks".into(),
                     to: "fail".into(),
                     event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
                     guard: None,
                 },
             ],
@@ -2657,5 +2787,343 @@ mod tests {
         .unwrap();
         assert!(!duplicate.applied);
         assert_eq!(duplicate.snapshot, failed.snapshot);
+    }
+
+    fn callback_workflow(failure_mode: TransitionMode) -> CompiledWorkflow {
+        compile_workflow(WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "callback".into(),
+                name: "Callback".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits::default(),
+            actor_slots: vec![ActorSlot::required_actor("worker", "Worker")],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "work".into(),
+            states: vec![
+                GraphState {
+                    id: "work".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Work".into(),
+                    instruction: String::new(),
+                    binding: Some("worker".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+                state("done", GraphStateKind::Succeed),
+                state("fail", GraphStateKind::Fail),
+            ],
+            transitions: vec![
+                Transition {
+                    id: "review".into(),
+                    from: "work".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Callback,
+                    guard: None,
+                },
+                Transition {
+                    id: "failed".into(),
+                    from: "work".into(),
+                    to: "fail".into(),
+                    event: TransitionEvent::Failure,
+                    mode: failure_mode,
+                    guard: None,
+                },
+            ],
+        })
+        .unwrap()
+    }
+
+    fn park_work(workflow: &CompiledWorkflow) -> (ReducerOutput, RunCommand) {
+        let started = reduce(
+            workflow,
+            &RunSnapshot::empty("run-callback", "revision", "semantics"),
+            ReducerEvent::Start { input: json!({}) },
+        )
+        .unwrap();
+        let command = started.emitted_commands[0].clone();
+        let parked = reduce(
+            workflow,
+            &started.snapshot,
+            ReducerEvent::CommandSucceeded {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                output: json!({"context": {"note": "ready"}}),
+            },
+        )
+        .unwrap();
+        (parked, command)
+    }
+
+    fn decide(
+        workflow: &CompiledWorkflow,
+        snapshot: &RunSnapshot,
+        decision: CallbackDecisionKind,
+    ) -> Result<ReducerOutput> {
+        reduce(
+            workflow,
+            snapshot,
+            ReducerEvent::CallbackDecision {
+                state_id: "work".into(),
+                state_visit: 1,
+                decision,
+            },
+        )
+    }
+
+    #[test]
+    fn callback_edge_parks_the_run_until_the_master_decides() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, command) = park_work(&workflow);
+        assert_eq!(parked.snapshot.status, StrategyRunStatus::Waiting);
+        assert!(
+            parked.emitted_commands.is_empty(),
+            "a callback edge emits no next command before the decision"
+        );
+        assert!(parked.snapshot.completed_states.contains("work"));
+        assert!(parked.snapshot.active_states.is_empty());
+        assert_eq!(parked.snapshot.pending_callbacks.len(), 1);
+        let pending = &parked.snapshot.pending_callbacks[0];
+        assert_eq!(pending.state_id, "work");
+        assert_eq!(pending.state_visit, 1);
+        assert_eq!(pending.transition_id, "review");
+        assert_eq!(pending.event, TransitionEvent::Success);
+        assert_eq!(pending.target, "done");
+        // The completed effect already merged its output into the run input.
+        assert_eq!(parked.snapshot.input["context"]["note"], "ready");
+        // A duplicate settlement stays idempotent and never double-parks.
+        let duplicate = reduce(
+            &workflow,
+            &parked.snapshot,
+            ReducerEvent::CommandSucceeded {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                output: json!({"context": {"note": "ready"}}),
+            },
+        )
+        .unwrap();
+        assert!(!duplicate.applied);
+        assert_eq!(duplicate.snapshot.pending_callbacks.len(), 1);
+    }
+
+    #[test]
+    fn callback_decision_advance_enters_the_declared_target() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        let advanced = decide(&workflow, &parked.snapshot, CallbackDecisionKind::Advance).unwrap();
+        assert_eq!(advanced.snapshot.status, StrategyRunStatus::Completed);
+        assert!(advanced.snapshot.pending_callbacks.is_empty());
+        assert!(advanced.snapshot.completed_states.contains("done"));
+        // The same decision replayed against the settled run is stale.
+        let replay = decide(&workflow, &advanced.snapshot, CallbackDecisionKind::Advance);
+        assert!(
+            replay
+                .unwrap_err()
+                .to_string()
+                .contains("strategy_callback_stale")
+        );
+    }
+
+    #[test]
+    fn callback_decision_return_reenters_the_completed_state() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        let returned = decide(&workflow, &parked.snapshot, CallbackDecisionKind::Return).unwrap();
+        assert_eq!(returned.snapshot.status, StrategyRunStatus::Running);
+        assert!(returned.snapshot.pending_callbacks.is_empty());
+        assert_eq!(returned.snapshot.state_visits["work"], 2);
+        assert_eq!(returned.emitted_commands.len(), 1);
+        assert_eq!(returned.emitted_commands[0].state_id, "work");
+        assert_eq!(returned.emitted_commands[0].state_visit, 2);
+        // The re-entered visit parks again on the same callback edge.
+        let command = returned.emitted_commands[0].clone();
+        let reparked = reduce(
+            &workflow,
+            &returned.snapshot,
+            ReducerEvent::CommandSucceeded {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                output: json!({}),
+            },
+        )
+        .unwrap();
+        assert_eq!(reparked.snapshot.status, StrategyRunStatus::Waiting);
+        assert_eq!(reparked.snapshot.pending_callbacks.len(), 1);
+        assert_eq!(reparked.snapshot.pending_callbacks[0].state_visit, 2);
+        // The visit-1 decision is stale against the visit-2 wait.
+        assert!(
+            decide(&workflow, &reparked.snapshot, CallbackDecisionKind::Advance)
+                .unwrap_err()
+                .to_string()
+                .contains("strategy_callback_stale")
+        );
+    }
+
+    #[test]
+    fn callback_decision_terminate_cancels_the_run() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        let terminated =
+            decide(&workflow, &parked.snapshot, CallbackDecisionKind::Terminate).unwrap();
+        assert_eq!(terminated.snapshot.status, StrategyRunStatus::Cancelled);
+        assert!(terminated.snapshot.pending_callbacks.is_empty());
+        assert!(terminated.emitted_commands.is_empty());
+        assert!(
+            decide(
+                &workflow,
+                &terminated.snapshot,
+                CallbackDecisionKind::Advance
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("strategy_callback_stale")
+        );
+    }
+
+    #[test]
+    fn callback_decision_binds_the_exact_pending_wait() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        for (state_id, state_visit) in [("work", 2u64), ("done", 1u64)] {
+            let stale = reduce(
+                &workflow,
+                &parked.snapshot,
+                ReducerEvent::CallbackDecision {
+                    state_id: state_id.into(),
+                    state_visit,
+                    decision: CallbackDecisionKind::Advance,
+                },
+            );
+            assert!(
+                stale
+                    .unwrap_err()
+                    .to_string()
+                    .contains("strategy_callback_stale"),
+                "decision for {state_id} visit {state_visit} must be stale"
+            );
+        }
+    }
+
+    #[test]
+    fn callback_failure_edge_parks_the_failed_state_for_decision() {
+        let workflow = callback_workflow(TransitionMode::Callback);
+        let started = reduce(
+            &workflow,
+            &RunSnapshot::empty("run-callback", "revision", "semantics"),
+            ReducerEvent::Start { input: json!({}) },
+        )
+        .unwrap();
+        let command = started.emitted_commands[0].clone();
+        let parked = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::CommandFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class: FailureClass::Permanent,
+                code: "effect_failed".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(parked.snapshot.status, StrategyRunStatus::Waiting);
+        assert!(parked.emitted_commands.is_empty());
+        assert_eq!(parked.snapshot.pending_callbacks.len(), 1);
+        assert_eq!(
+            parked.snapshot.pending_callbacks[0].event,
+            TransitionEvent::Failure
+        );
+        assert_eq!(parked.snapshot.pending_callbacks[0].target, "fail");
+        let advanced = decide(&workflow, &parked.snapshot, CallbackDecisionKind::Advance).unwrap();
+        assert_eq!(advanced.snapshot.status, StrategyRunStatus::Failed);
+        assert!(advanced.snapshot.state_visits.contains_key("fail"));
+    }
+
+    #[test]
+    fn callback_wait_survives_snapshot_persistence_and_legacy_snapshots_default_empty() {
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        let bytes = serde_json::to_vec(&parked.snapshot).unwrap();
+        let restored: RunSnapshot = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored, parked.snapshot);
+        // Snapshots persisted before callback mode existed carry no field.
+        let legacy = serde_json::to_vec(&parked.snapshot).unwrap();
+        let mut value: Value = serde_json::from_slice(&legacy).unwrap();
+        value.as_object_mut().unwrap().remove("pendingCallbacks");
+        let restored: RunSnapshot = serde_json::from_value(value).unwrap();
+        assert!(restored.pending_callbacks.is_empty());
+    }
+
+    #[test]
+    fn authorization_denial_on_a_callback_failure_edge_parks_for_decision() {
+        let workflow = compile_workflow(WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "callback-authorization".into(),
+                name: "Callback authorization".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits::default(),
+            actor_slots: vec![],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "authorize".into(),
+            states: vec![
+                state("authorize", GraphStateKind::Authorization),
+                state("done", GraphStateKind::Succeed),
+                state("blocked", GraphStateKind::Blocked),
+            ],
+            transitions: vec![
+                Transition {
+                    id: "granted".into(),
+                    from: "authorize".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "denied".into(),
+                    from: "authorize".into(),
+                    to: "blocked".into(),
+                    event: TransitionEvent::Failure,
+                    mode: TransitionMode::Callback,
+                    guard: None,
+                },
+            ],
+        })
+        .unwrap();
+        let started = reduce(
+            &workflow,
+            &RunSnapshot::empty("run", "revision", "semantics"),
+            ReducerEvent::Start { input: json!({}) },
+        )
+        .unwrap();
+        let parked = reduce(
+            &workflow,
+            &started.snapshot,
+            ReducerEvent::AuthorizationDenied,
+        )
+        .unwrap();
+        assert_eq!(parked.snapshot.status, StrategyRunStatus::Waiting);
+        assert_eq!(parked.snapshot.pending_callbacks.len(), 1);
+        assert_eq!(parked.snapshot.pending_callbacks[0].target, "blocked");
+        let decided = reduce(
+            &workflow,
+            &parked.snapshot,
+            ReducerEvent::CallbackDecision {
+                state_id: "authorize".into(),
+                state_visit: 1,
+                decision: CallbackDecisionKind::Advance,
+            },
+        )
+        .unwrap();
+        assert_eq!(decided.snapshot.status, StrategyRunStatus::Blocked);
     }
 }
