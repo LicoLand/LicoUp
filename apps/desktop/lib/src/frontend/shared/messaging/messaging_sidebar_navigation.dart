@@ -15,26 +15,27 @@ import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/platform/layout/dashboard_feature_order_store.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Telegram-style tabs at the bottom of the shared sidebar foundation.
-enum MessagingSidebarNavItem { skills, conversations, communication, settings }
+enum MessagingSidebarNavItem { features, conversations, settings }
 
-/// Hosted index rows under the 通信 bottom-nav tile.
-enum MessagingCommunicationItem { modelGateway, mobilePairing, chatChannels }
+/// One row of the Dashboard 功能 list. 模型网关 and 聊天频道 both target the
+/// models destination and differ only in the pane they select through the
+/// retained communicationSection channel.
+enum MessagingFeatureItem {
+  agentHub,
+  modelGateway,
+  mobilePairing,
+  statsPanel,
+  pluginManagement,
+  skillHub,
+  chatChannels,
+}
 
 const messagingCommunicationModelsPaneGateway = 0;
 const messagingCommunicationModelsPaneChatChannels = 1;
-
-/// Destinations whose shared sidebar foundation stays on screen. Monitoring
-/// is top-right chrome only and uses the main card full width.
-bool messagingSidebarNavHosts(ClientSection section) =>
-    section == ClientSection.agents ||
-    section == ClientSection.skillHub ||
-    section == ClientSection.pluginManagement ||
-    section == ClientSection.agentHub ||
-    section == ClientSection.models ||
-    section == ClientSection.mobileRelay ||
-    section == ClientSection.settings;
 
 /// Destinations whose list sits in the shell-owned sidebar column. Agents
 /// uses that same column widget from the workspace through the shell geometry.
@@ -49,21 +50,25 @@ bool messagingSidebarShowsSearch(ClientSection section) =>
     section == ClientSection.pluginManagement ||
     section == ClientSection.agentHub;
 
+/// Destinations the 功能 bottom-nav tab owns: the six sidebar-hosted feature
+/// panes plus full-width 统计面板.
+bool messagingSidebarHostsFeatures(ClientSection section) =>
+    section == ClientSection.agentHub ||
+    section == ClientSection.models ||
+    section == ClientSection.mobileRelay ||
+    section == ClientSection.monitoring ||
+    section == ClientSection.pluginManagement ||
+    section == ClientSection.skillHub;
+
 ClientSection messagingSidebarNavTarget({
   required MessagingSidebarNavItem item,
   required ClientSection current,
 }) => switch (item) {
-  MessagingSidebarNavItem.communication =>
-    current == ClientSection.models || current == ClientSection.mobileRelay
-        ? current
-        : ClientSection.models,
-  MessagingSidebarNavItem.conversations => ClientSection.agents,
-  MessagingSidebarNavItem.skills =>
-    current == ClientSection.skillHub ||
-            current == ClientSection.pluginManagement ||
-            current == ClientSection.agentHub
+  MessagingSidebarNavItem.features =>
+    messagingSidebarHostsFeatures(current)
         ? current
         : ClientSection.agentHub,
+  MessagingSidebarNavItem.conversations => ClientSection.agents,
   MessagingSidebarNavItem.settings => ClientSection.settings,
 };
 
@@ -71,22 +76,16 @@ bool messagingSidebarNavItemSelected({
   required MessagingSidebarNavItem item,
   required ClientSection current,
 }) => switch (item) {
-  MessagingSidebarNavItem.communication =>
-    current == ClientSection.mobileRelay || current == ClientSection.models,
+  MessagingSidebarNavItem.features => messagingSidebarHostsFeatures(current),
   MessagingSidebarNavItem.conversations => current == ClientSection.agents,
-  MessagingSidebarNavItem.skills =>
-    current == ClientSection.skillHub ||
-        current == ClientSection.pluginManagement ||
-        current == ClientSection.agentHub,
   MessagingSidebarNavItem.settings => current == ClientSection.settings,
 };
 
 IconData messagingSidebarNavIcon(MessagingSidebarNavItem item) =>
     switch (item) {
-      MessagingSidebarNavItem.communication => Icons.qr_code_2_rounded,
+      MessagingSidebarNavItem.features => Icons.functions,
       MessagingSidebarNavItem.conversations =>
         Icons.chat_bubble_outline_rounded,
-      MessagingSidebarNavItem.skills => Icons.functions,
       MessagingSidebarNavItem.settings => Icons.settings_outlined,
     };
 
@@ -94,42 +93,58 @@ String messagingSidebarNavLabel(
   LicoStrings strings,
   MessagingSidebarNavItem item,
 ) => switch (item) {
-  MessagingSidebarNavItem.communication => strings.pairing,
+  MessagingSidebarNavItem.features => strings.features,
   MessagingSidebarNavItem.conversations => strings.conversationListNav,
-  MessagingSidebarNavItem.skills => strings.features,
   MessagingSidebarNavItem.settings => strings.settings,
 };
 
 String messagingSidebarNavKey(MessagingSidebarNavItem item) =>
     'messaging-sidebar-nav-${item.name}';
 
-String messagingCommunicationLabel(
+String messagingFeatureItemLabel(
   LicoStrings strings,
-  MessagingCommunicationItem item,
+  MessagingFeatureItem item,
 ) => switch (item) {
-  MessagingCommunicationItem.modelGateway => strings.modelGateway,
-  MessagingCommunicationItem.mobilePairing => strings.mobilePairing,
-  MessagingCommunicationItem.chatChannels => strings.chatChannels,
+  MessagingFeatureItem.agentHub => strings.agentHub,
+  MessagingFeatureItem.modelGateway => strings.modelGateway,
+  MessagingFeatureItem.mobilePairing => strings.mobilePairing,
+  MessagingFeatureItem.statsPanel => strings.statsPanel,
+  MessagingFeatureItem.pluginManagement => strings.pluginManagement,
+  MessagingFeatureItem.skillHub => strings.skillHubNav,
+  MessagingFeatureItem.chatChannels => strings.chatChannels,
 };
 
-IconData messagingCommunicationIcon(MessagingCommunicationItem item) =>
+IconData messagingFeatureItemIcon(MessagingFeatureItem item) =>
     switch (item) {
-      MessagingCommunicationItem.modelGateway => Icons.key_outlined,
-      MessagingCommunicationItem.mobilePairing => Icons.qr_code_2_rounded,
-      MessagingCommunicationItem.chatChannels => Icons.forum_outlined,
+      MessagingFeatureItem.agentHub => Icons.auto_awesome_outlined,
+      MessagingFeatureItem.modelGateway => Icons.key_outlined,
+      MessagingFeatureItem.mobilePairing => Icons.qr_code_2_rounded,
+      MessagingFeatureItem.statsPanel => Icons.query_stats_outlined,
+      MessagingFeatureItem.pluginManagement => Icons.extension_outlined,
+      MessagingFeatureItem.skillHub => Icons.library_books_outlined,
+      MessagingFeatureItem.chatChannels => Icons.forum_outlined,
     };
 
-ClientSection messagingCommunicationTarget(MessagingCommunicationItem item) =>
+ClientSection messagingFeatureItemSection(MessagingFeatureItem item) =>
     switch (item) {
-      MessagingCommunicationItem.modelGateway ||
-      MessagingCommunicationItem.chatChannels => ClientSection.models,
-      MessagingCommunicationItem.mobilePairing => ClientSection.mobileRelay,
+      MessagingFeatureItem.agentHub => ClientSection.agentHub,
+      MessagingFeatureItem.modelGateway => ClientSection.models,
+      MessagingFeatureItem.mobilePairing => ClientSection.mobileRelay,
+      MessagingFeatureItem.statsPanel => ClientSection.monitoring,
+      MessagingFeatureItem.pluginManagement => ClientSection.pluginManagement,
+      MessagingFeatureItem.skillHub => ClientSection.skillHub,
+      MessagingFeatureItem.chatChannels => ClientSection.models,
     };
 
-int messagingCommunicationModelsPane(MessagingCommunicationItem item) =>
-    item == MessagingCommunicationItem.chatChannels
-    ? messagingCommunicationModelsPaneChatChannels
-    : messagingCommunicationModelsPaneGateway;
+/// The models pane a 功能 entry selects, or null for non-models entries.
+int? messagingFeatureItemModelsPane(MessagingFeatureItem item) =>
+    switch (item) {
+      MessagingFeatureItem.modelGateway =>
+        messagingCommunicationModelsPaneGateway,
+      MessagingFeatureItem.chatChannels =>
+        messagingCommunicationModelsPaneChatChannels,
+      _ => null,
+    };
 
 int messagingCommunicationModelsPaneIndex(LayoutScopedState? state) {
   final tab = state?.readIfDeclaredFor(
@@ -143,37 +158,18 @@ int messagingCommunicationModelsPaneIndex(LayoutScopedState? state) {
   return messagingCommunicationModelsPaneGateway;
 }
 
-MessagingCommunicationItem messagingCommunicationSelection({
+bool messagingFeatureItemSelected({
+  required MessagingFeatureItem item,
   required ClientSection current,
   required int modelsPane,
 }) {
-  if (current == ClientSection.mobileRelay) {
-    return MessagingCommunicationItem.mobilePairing;
+  final section = messagingFeatureItemSection(item);
+  if (section == ClientSection.models) {
+    return current == ClientSection.models &&
+        messagingFeatureItemModelsPane(item) == modelsPane;
   }
-  if (current == ClientSection.models &&
-      modelsPane == messagingCommunicationModelsPaneChatChannels) {
-    return MessagingCommunicationItem.chatChannels;
-  }
-  return MessagingCommunicationItem.modelGateway;
+  return current == section;
 }
-
-String messagingSidebarHeading(
-  LicoStrings strings,
-  ClientSection destination, {
-  int modelsPane = messagingCommunicationModelsPaneGateway,
-}) => switch (destination) {
-  ClientSection.settings => strings.settings,
-  ClientSection.skillHub => strings.skillsNav,
-  ClientSection.pluginManagement => strings.pluginsNav,
-  ClientSection.agentHub => strings.agentHub,
-  ClientSection.models =>
-    modelsPane == messagingCommunicationModelsPaneChatChannels
-        ? strings.chatChannels
-        : strings.modelGateway,
-  ClientSection.mobileRelay => strings.mobilePairing,
-  ClientSection.monitoring => strings.tokenUsage,
-  ClientSection.agents => strings.contacts,
-};
 
 IconData messagingSidebarDestinationIcon(ClientSection section) =>
     switch (section) {
@@ -200,9 +196,6 @@ Widget messagingSidebarListFor({
   required ValueChanged<ClientSection> onSelectDestination,
   int settingsSectionIndex = 0,
   ValueChanged<int>? onSelectSettings,
-  MessagingCommunicationItem communicationSelected =
-      MessagingCommunicationItem.modelGateway,
-  ValueChanged<MessagingCommunicationItem>? onSelectCommunication,
 }) {
   if (destination == ClientSection.settings) {
     return MessagingSettingsSectionList(
@@ -210,19 +203,11 @@ Widget messagingSidebarListFor({
       onSelectIndex: onSelectSettings ?? (_) {},
     );
   }
-  if (destination == ClientSection.skillHub ||
-      destination == ClientSection.pluginManagement ||
-      destination == ClientSection.agentHub) {
-    return MessagingSkillPluginSidebarList(
+  if (messagingSidebarHostsFeatures(destination) &&
+      destination != ClientSection.monitoring) {
+    return MessagingFeatureSidebarList(
       current: destination,
       onSelectDestination: onSelectDestination,
-    );
-  }
-  if (destination == ClientSection.models ||
-      destination == ClientSection.mobileRelay) {
-    return MessagingCommunicationSidebarList(
-      selected: communicationSelected,
-      onSelect: onSelectCommunication ?? (_) {},
     );
   }
   return const SizedBox.expand();
@@ -485,9 +470,36 @@ final class MessagingSettingsSectionList extends StatelessWidget {
   }
 }
 
-/// Skills and Plugins as distinct left-sidebar destinations.
-final class MessagingSkillPluginSidebarList extends StatelessWidget {
-  const MessagingSkillPluginSidebarList({
+/// Optional ambient override of the 功能 order store and its storage root.
+/// Production shells never provide it (the platform store and the real
+/// client-state directory are used); tests provide an in-memory store so the
+/// sidebar never touches the host's real `dashboard-feature-order.json`.
+final class MessagingFeatureOrderScope extends InheritedWidget {
+  const MessagingFeatureOrderScope({
+    super.key,
+    this.orderStore,
+    this.portableData,
+    required super.child,
+  });
+
+  final DashboardFeatureOrderStore? orderStore;
+  final Object? portableData;
+
+  static MessagingFeatureOrderScope? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<MessagingFeatureOrderScope>();
+
+  @override
+  bool updateShouldNotify(MessagingFeatureOrderScope oldWidget) =>
+      !identical(oldWidget.orderStore, orderStore) ||
+      !identical(oldWidget.portableData, portableData);
+}
+
+/// The seven-entry 功能 list: 智能体中心, 模型网关, 移动配对, 统计面板, 插件管理,
+/// 技能一览, 聊天频道 in the frozen default order. Long-press drag reorders
+/// entries vertically and the custom order persists through
+/// `dashboard-feature-order.json`.
+final class MessagingFeatureSidebarList extends StatefulWidget {
+  const MessagingFeatureSidebarList({
     super.key,
     required this.current,
     required this.onSelectDestination,
@@ -496,69 +508,160 @@ final class MessagingSkillPluginSidebarList extends StatelessWidget {
   final ClientSection current;
   final ValueChanged<ClientSection> onSelectDestination;
 
-  static const _items = <ClientSection>[
-    ClientSection.agentHub,
-    ClientSection.skillHub,
-    ClientSection.pluginManagement,
-  ];
-
   @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    return ListView(
-      key: const Key('messaging-sidebar-skill-plugin-list'),
-      padding: const EdgeInsets.fromLTRB(
-        LicoContentSpacing.compact,
-        0,
-        LicoContentSpacing.compact,
-        LicoContentSpacing.item,
-      ),
-      children: [
-        for (final section in _items)
-          MessagingSidebarIndexRow(
-            key: Key('messaging-sidebar-list-${section.name}'),
-            icon: messagingSidebarDestinationIcon(section),
-            label: messagingSidebarHeading(strings, section),
-            selected: current == section,
-            onTap: () => onSelectDestination(section),
-          ),
-      ],
-    );
-  }
+  State<MessagingFeatureSidebarList> createState() =>
+      _MessagingFeatureSidebarListState();
 }
 
-/// Model gateway, mobile pairing, and chat channels under 通信.
-final class MessagingCommunicationSidebarList extends StatelessWidget {
-  const MessagingCommunicationSidebarList({
-    super.key,
-    required this.selected,
-    required this.onSelect,
-  });
+final class _MessagingFeatureSidebarListState
+    extends State<MessagingFeatureSidebarList> {
+  static const _defaultItems = <MessagingFeatureItem>[
+    MessagingFeatureItem.agentHub,
+    MessagingFeatureItem.modelGateway,
+    MessagingFeatureItem.mobilePairing,
+    MessagingFeatureItem.statsPanel,
+    MessagingFeatureItem.pluginManagement,
+    MessagingFeatureItem.skillHub,
+    MessagingFeatureItem.chatChannels,
+  ];
 
-  final MessagingCommunicationItem selected;
-  final ValueChanged<MessagingCommunicationItem> onSelect;
+  late List<MessagingFeatureItem> _order =
+      _itemsFor(DashboardFeatureOrderStore.defaultOrder);
+  late DashboardFeatureOrderStore _orderStore;
+  late Object _portableData;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = MessagingFeatureOrderScope.maybeOf(context);
+    _orderStore = scope?.orderStore ?? const PlatformDashboardFeatureOrderStore();
+    _portableData = scope?.portableData ?? PortableDataRoot();
+    if (!_loaded) {
+      _loaded = true;
+      _order = _itemsFor(
+        PlatformDashboardFeatureOrderStore.peekLastKnownOrder() ??
+            DashboardFeatureOrderStore.defaultOrder,
+      );
+      unawaited(_load());
+    }
+  }
+
+  List<MessagingFeatureItem> _itemsFor(List<String> ids) {
+    final byName = <String, MessagingFeatureItem>{
+      for (final item in MessagingFeatureItem.values) item.name: item,
+    };
+    final ordered = <MessagingFeatureItem>[];
+    for (final id in ids) {
+      final item = byName[id];
+      if (item != null && !ordered.contains(item)) {
+        ordered.add(item);
+      }
+    }
+    for (final item in _defaultItems) {
+      if (!ordered.contains(item)) {
+        ordered.add(item);
+      }
+    }
+    return List.unmodifiable(ordered);
+  }
+
+  Future<void> _load() async {
+    List<String> ids;
+    try {
+      ids = await _orderStore.load(_portableData);
+    } on Object {
+      // A corrupt durable document never breaks the sidebar; keep the
+      // default order already on screen.
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _order = _itemsFor(ids));
+  }
+
+  void _select(MessagingFeatureItem item) {
+    final pane = messagingFeatureItemModelsPane(item);
+    if (pane != null) {
+      LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
+        ClientSection.models,
+        LayoutStateChannels.communicationSection,
+        LayoutTabState(pane),
+      );
+    }
+    widget.onSelectDestination(messagingFeatureItemSection(item));
+  }
+
+  void _reorder(int oldIndex, int newIndex) {
+    setState(() {
+      final next = [..._order];
+      final moved = next.removeAt(oldIndex);
+      next.insert(newIndex.clamp(0, next.length), moved);
+      _order = List.unmodifiable(next);
+    });
+    unawaited(
+      _orderStore.save(_portableData, [
+        for (final item in _order) item.name,
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    return ListView(
-      key: const Key('messaging-sidebar-communication-list'),
-      padding: const EdgeInsets.fromLTRB(
-        LicoContentSpacing.compact,
-        0,
-        LicoContentSpacing.compact,
-        LicoContentSpacing.item,
-      ),
-      children: [
-        for (final item in MessagingCommunicationItem.values)
-          MessagingSidebarIndexRow(
-            key: Key('messaging-sidebar-list-${item.name}'),
-            icon: messagingCommunicationIcon(item),
-            label: messagingCommunicationLabel(strings, item),
-            selected: selected == item,
-            onTap: () => onSelect(item),
+    final scopedState = LayoutScope.maybeOf(context)?.state;
+    // The drag proxy renders in the root overlay, above the app-provided
+    // LayoutPaletteScope; re-provide the palette around the dragged row so
+    // proxy builds keep resolving it.
+    final palette = context.layoutPalette;
+    return StreamBuilder<void>(
+      stream: scopedState?.changes,
+      builder: (context, _) {
+        final modelsPane = messagingCommunicationModelsPaneIndex(scopedState);
+        return ReorderableListView(
+          key: const Key('messaging-sidebar-feature-list'),
+          buildDefaultDragHandles: false,
+          proxyDecorator: (child, index, animation) => LayoutPaletteScope(
+            palette: palette,
+            child: AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                final t = Curves.easeInOut.transform(animation.value);
+                return Transform.scale(
+                  scale: 1.0 + (0.03 * t),
+                  child: Opacity(opacity: 0.9 + (0.1 * t), child: child),
+                );
+              },
+              child: child,
+            ),
           ),
-      ],
+          padding: const EdgeInsets.fromLTRB(
+            LicoContentSpacing.compact,
+            0,
+            LicoContentSpacing.compact,
+            LicoContentSpacing.item,
+          ),
+          onReorderItem: _reorder,
+          children: [
+            for (final (index, item) in _order.indexed)
+              ReorderableDelayedDragStartListener(
+                key: Key('messaging-sidebar-list-${item.name}'),
+                index: index,
+                child: MessagingSidebarIndexRow(
+                  icon: messagingFeatureItemIcon(item),
+                  label: messagingFeatureItemLabel(strings, item),
+                  selected: messagingFeatureItemSelected(
+                    item: item,
+                    current: widget.current,
+                    modelsPane: modelsPane,
+                  ),
+                  onTap: () => _select(item),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -582,9 +685,6 @@ final class MessagingDesktopNavSidebar extends StatelessWidget {
         context,
         settingsSectionIndex: 0,
         onSelectSettings: (_) {},
-        modelsPane: messagingCommunicationModelsPaneGateway,
-        onSelectCommunication: (item) =>
-            onSelectDestination(messagingCommunicationTarget(item)),
       );
     }
     return StreamBuilder<void>(
@@ -596,15 +696,6 @@ final class MessagingDesktopNavSidebar extends StatelessWidget {
           LayoutStateChannels.settingsSection,
           LayoutTabState(index),
         ),
-        modelsPane: messagingCommunicationModelsPaneIndex(scopedState),
-        onSelectCommunication: (item) {
-          scopedState.writeIfDeclaredFor(
-            ClientSection.models,
-            LayoutStateChannels.communicationSection,
-            LayoutTabState(messagingCommunicationModelsPane(item)),
-          );
-          onSelectDestination(messagingCommunicationTarget(item));
-        },
       ),
     );
   }
@@ -613,10 +704,7 @@ final class MessagingDesktopNavSidebar extends StatelessWidget {
     BuildContext context, {
     required int settingsSectionIndex,
     required ValueChanged<int> onSelectSettings,
-    required int modelsPane,
-    required ValueChanged<MessagingCommunicationItem> onSelectCommunication,
   }) {
-    final strings = LicoStrings.of(context);
     final chrome = LayoutChromePortScope.maybeOf(context);
     final showSearch =
         messagingSidebarShowsSearch(destination) && chrome != null;
@@ -624,12 +712,6 @@ final class MessagingDesktopNavSidebar extends StatelessWidget {
       key: const Key('messaging-desktop-nav-sidebar'),
       color: Colors.transparent,
       child: MessagingSidebarFoundation(
-        heading: messagingSidebarHeading(
-          strings,
-          destination,
-          modelsPane: modelsPane,
-        ),
-        headingKey: const Key('messaging-desktop-nav-sidebar-heading'),
         onSearch: showSearch
             ? () => unawaited(chrome.openGlobalSearch(context))
             : null,
@@ -638,11 +720,6 @@ final class MessagingDesktopNavSidebar extends StatelessWidget {
           onSelectDestination: onSelectDestination,
           settingsSectionIndex: settingsSectionIndex,
           onSelectSettings: onSelectSettings,
-          communicationSelected: messagingCommunicationSelection(
-            current: destination,
-            modelsPane: modelsPane,
-          ),
-          onSelectCommunication: onSelectCommunication,
         ),
         bottomNav: MessagingSidebarBottomNav(
           current: destination,

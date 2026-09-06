@@ -1,164 +1,106 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 
-const String dashboardMobilePreviewSemanticLabel =
-    'layout.profile.dashboard.label';
-
-/// Metadata-only preview: the shapes describe the Dashboard composition but
-/// never consume live feature state, user content, or backend data.
 Widget buildDashboardMobilePreview(BuildContext context) {
-  final colors = Theme.of(context).colorScheme;
-  return Semantics(
-    key: const ValueKey<String>('dashboard-mobile-preview'),
-    container: true,
-    image: true,
-    label: dashboardMobilePreviewSemanticLabel,
-    child: ExcludeSemantics(
-      child: AspectRatio(
-        aspectRatio: 10 / 13,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(
-            dashboardMobileTokens.cardRadius * 0.72,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLow,
-              border: Border.all(
-                color: colors.outlineVariant.withValues(alpha: 0.7),
-              ),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit * 1.25),
-              child: Column(
-                children: [
-                  _PreviewNavigation(colors: colors),
-                  SizedBox(height: dashboardMobileTokens.spacingUnit * 1.25),
-                  Expanded(child: _PreviewCardStack(colors: colors)),
-                  SizedBox(height: dashboardMobileTokens.spacingUnit),
-                  _PreviewComposer(colors: colors),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
+  return const DashboardMobilePreview();
 }
 
-final class _PreviewNavigation extends StatelessWidget {
-  const _PreviewNavigation({required this.colors});
-
-  final ColorScheme colors;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    key: const ValueKey<String>('dashboard-mobile-preview-navigation'),
-    decoration: BoxDecoration(
-      color: colors.primaryContainer,
-      borderRadius: BorderRadius.circular(dashboardMobileTokens.cardRadius),
-    ),
-    child: Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: dashboardMobileTokens.spacingUnit * 1.25,
-        vertical: dashboardMobileTokens.spacingUnit,
-      ),
-      child: Row(
-        children: [
-          _PreviewDot(color: colors.primary),
-          SizedBox(width: dashboardMobileTokens.spacingUnit),
-          Expanded(
-            child: _PreviewLine(
-              color: colors.onPrimaryContainer.withValues(alpha: 0.62),
-              height: 7,
-            ),
-          ),
-          SizedBox(width: dashboardMobileTokens.spacingUnit * 1.5),
-          Icon(
-            Icons.expand_more_rounded,
-            size: 16,
-            color: colors.onPrimaryContainer,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-final class _PreviewCardStack extends StatelessWidget {
-  const _PreviewCardStack({required this.colors});
-
-  final ColorScheme colors;
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    key: const ValueKey<String>('dashboard-mobile-preview-card-stack'),
-    fit: StackFit.expand,
-    children: [
-      Positioned(
-        left: dashboardMobileTokens.spacingUnit * 2,
-        right: 0,
-        top: dashboardMobileTokens.spacingUnit * 1.5,
-        bottom: 0,
-        child: _PreviewCard(
-          color: colors.secondaryContainer.withValues(alpha: 0.58),
-          outline: colors.secondary.withValues(alpha: 0.2),
-        ),
-      ),
-      Positioned(
-        left: dashboardMobileTokens.spacingUnit,
-        right: dashboardMobileTokens.spacingUnit,
-        top: dashboardMobileTokens.spacingUnit * 0.75,
-        bottom: dashboardMobileTokens.spacingUnit * 0.75,
-        child: _PreviewCard(
-          color: colors.surfaceContainer,
-          outline: colors.outlineVariant.withValues(alpha: 0.64),
-        ),
-      ),
-      Positioned.fill(
-        right: dashboardMobileTokens.spacingUnit * 2,
-        bottom: dashboardMobileTokens.spacingUnit * 1.5,
-        child: _PreviewCard(
-          color: colors.surfaceContainerLowest,
-          outline: colors.primary.withValues(alpha: 0.2),
-          foreground: colors.onSurfaceVariant,
-        ),
-      ),
-    ],
-  );
-}
-
-final class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({
-    required this.color,
-    required this.outline,
-    this.foreground,
-  });
-
-  final Color color;
-  final Color outline;
-  final Color? foreground;
+/// A deterministic, non-interactive thumbnail of the Dashboard mobile
+/// surface: a destination rail, a header band, and grouped participant
+/// message rows above a composer strip.
+final class DashboardMobilePreview extends StatelessWidget {
+  const DashboardMobilePreview({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final lineColor = foreground?.withValues(alpha: 0.42) ?? outline;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(dashboardMobileTokens.cardRadius),
-        border: Border.all(color: outline),
+    final colors = context.layoutPalette;
+    return Semantics(
+      key: const Key('dashboard-mobile-preview'),
+      container: true,
+      image: true,
+      label: dashboardMobileStyleIdentity,
+      child: RepaintBoundary(
+        child: AspectRatio(
+          aspectRatio: 1.68,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.background,
+              borderRadius: BorderRadius.circular(
+                DashboardMobileMetrics.compactRadius,
+              ),
+              border: Border.all(color: colors.line, width: 1),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(
+                DashboardMobileMetrics.compactRadius - 1,
+              ),
+              child: ExcludeSemantics(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 260;
+                    return Row(
+                      children: [
+                        _DashboardPreviewRail(compact: compact),
+                        Expanded(
+                          child: _DashboardPreviewConversation(
+                            compact: compact,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
-      child: Padding(
-        padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit * 1.5),
+    );
+  }
+}
+
+final class _DashboardPreviewRail extends StatelessWidget {
+  const _DashboardPreviewRail({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    return SizedBox(
+      width: compact ? 27 : 34,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border(right: BorderSide(color: colors.line, width: 1)),
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _PreviewLine(color: lineColor, height: 8, widthFactor: 0.48),
-            SizedBox(height: dashboardMobileTokens.spacingUnit * 1.25),
-            _PreviewLine(color: lineColor, height: 6),
-            SizedBox(height: dashboardMobileTokens.spacingUnit * 0.75),
-            _PreviewLine(color: lineColor, height: 6, widthFactor: 0.72),
+            SizedBox(height: compact ? 9 : 12),
+            for (var index = 0; index < 4; index++) ...[
+              Container(
+                width: compact ? 18 : 23,
+                height: compact ? 18 : 23,
+                decoration: BoxDecoration(
+                  color: index == 0
+                      ? colors.primary.withAlpha(colors.isDark ? 52 : 34)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                alignment: Alignment.center,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: index == 0 ? colors.accent : colors.textMuted,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 3),
+            ],
           ],
         ),
       ),
@@ -166,70 +108,132 @@ final class _PreviewCard extends StatelessWidget {
   }
 }
 
-final class _PreviewComposer extends StatelessWidget {
-  const _PreviewComposer({required this.colors});
+final class _DashboardPreviewConversation extends StatelessWidget {
+  const _DashboardPreviewConversation({required this.compact});
 
-  final ColorScheme colors;
+  final bool compact;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    key: const ValueKey<String>('dashboard-mobile-preview-composer'),
-    decoration: BoxDecoration(
-      color: colors.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(dashboardMobileTokens.cardRadius),
-      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.64)),
-    ),
-    child: Padding(
-      padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit),
-      child: Row(
-        children: [
-          Expanded(
-            child: _PreviewLine(
-              color: colors.onSurfaceVariant.withValues(alpha: 0.32),
-              height: 7,
+  Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    return Column(
+      children: [
+        SizedBox(
+          height: compact ? 26 : 32,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              border: Border(bottom: BorderSide(color: colors.line, width: 1)),
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: compact ? 12 : 15,
+                    height: compact ? 12 : 15,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withAlpha(colors.isDark ? 52 : 34),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: compact ? 44 : 60,
+                    height: 5,
+                    color: colors.text.withAlpha(120),
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(width: dashboardMobileTokens.spacingUnit),
-          _PreviewDot(color: colors.primary),
-        ],
-      ),
-    ),
-  );
-}
-
-final class _PreviewLine extends StatelessWidget {
-  const _PreviewLine({
-    required this.color,
-    required this.height,
-    this.widthFactor = 1,
-  });
-
-  final Color color;
-  final double height;
-  final double widthFactor;
-
-  @override
-  Widget build(BuildContext context) => FractionallySizedBox(
-    widthFactor: widthFactor,
-    alignment: Alignment.centerLeft,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(height),
-      ),
-      child: SizedBox(height: height),
-    ),
-  );
-}
-
-final class _PreviewDot extends StatelessWidget {
-  const _PreviewDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    child: const SizedBox.square(dimension: 12),
-  );
+        ),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              compact ? 7 : 10,
+              compact ? 6 : 8,
+              compact ? 7 : 10,
+              0,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var group = 0; group < 2; group++) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: compact ? 12 : 15,
+                        height: compact ? 12 : 15,
+                        decoration: BoxDecoration(
+                          color: group == 1
+                              ? colors.primary.withAlpha(
+                                  colors.isDark ? 52 : 34,
+                                )
+                              : colors.line.withAlpha(170),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: compact ? 40 : 54,
+                              height: 4,
+                              color: colors.text.withAlpha(120),
+                            ),
+                            const SizedBox(height: 3),
+                            Container(
+                              width: double.infinity,
+                              height: 4,
+                              color: colors.textMuted.withAlpha(90),
+                            ),
+                            const SizedBox(height: 3),
+                            FractionallySizedBox(
+                              widthFactor: 0.7,
+                              child: Container(
+                                height: 4,
+                                color: colors.textMuted.withAlpha(70),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: compact ? 6 : 8),
+                ],
+                const Spacer(),
+                Container(
+                  height: compact ? 21 : 27,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    border: Border.all(color: colors.line, width: 1),
+                    borderRadius: BorderRadius.circular(
+                      DashboardMobileMetrics.controlRadius,
+                    ),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      margin: const EdgeInsets.all(3),
+                      width: compact ? 18 : 22,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: compact ? 5 : 7),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

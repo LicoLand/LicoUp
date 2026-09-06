@@ -81,6 +81,9 @@ final class _AgentsPresentation implements LayoutAgentsPresentation {
   bool get showConversationSidebarControl => true;
 
   @override
+  bool get showSidebarBottomNav => true;
+
+  @override
   bool get showExpandedSidebarControl => false;
 
   @override

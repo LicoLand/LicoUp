@@ -10,8 +10,8 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_capabil
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
@@ -146,15 +146,19 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
 
   void _onEffect(MobileRelayEffect effect) {
     if (!mounted) return;
-    final message = switch (effect) {
-      RelayPairingCodeCopied() => LicoStrings.of(context).pairingCodeCopied,
-      RelayActionRejected(:final reasonCode) => reasonCode,
-      RelayPairingReady() || RelayPairingClaimed() => '',
+    final (message, kind) = switch (effect) {
+      RelayPairingCodeCopied() => (
+        LicoStrings.of(context).pairingCodeCopied,
+        LicoToastKind.success,
+      ),
+      RelayActionRejected(:final reasonCode) => (
+        reasonCode,
+        LicoToastKind.error,
+      ),
+      RelayPairingReady() || RelayPairingClaimed() => ('', LicoToastKind.info),
     };
     if (message.isEmpty) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(appleGlassSnackBar(context: context, message: message));
+    showLicoToast(context, message: message, kind: kind);
   }
 }
 
