@@ -35,7 +35,10 @@ final class ConversationPresentationSignals {
     final previous = _composerDrafts[normalized] ?? '';
     if (next == previous) return;
     _composerDrafts = {..._composerDrafts, normalized: next};
-    _active.publish();
+    // Deliberately no _active.publish(): drafts mutate at keystroke rate and
+    // an active publish recomputes and equality-scans every conversation
+    // projection. The intent layer publishes only the composer channel after
+    // this mutation; send/clear paths follow with their own full publishes.
   }
 
   /// Pending image attachments for one conversation scope, beside the text

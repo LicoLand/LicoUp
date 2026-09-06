@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -136,16 +137,31 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   final ScrollController _mentionScrollController = ScrollController();
   late final _ComposerPasteAction _pasteAction;
 
+  /// The draft text last pushed into the store by this field. The debounced
+  /// echo comes back as [RuntimeMessageComposer.initialDraft]; when it
+  /// matches this value it must not overwrite in-flight typing. Any other
+  /// incoming value is an external restore (conversation switch, send-clear)
+  /// and applies immediately.
+  String? _lastSyncedDraft;
+
   /// Field height readback target for the capsule morph; the public field key
   /// stays a plain [ValueKey] for tests.
   final GlobalKey _fieldSizeKey = GlobalKey();
   bool _multilineEstimate = false;
+
+  /// Trailing debounce for the draft-store echo. Typing stays purely local;
+  /// the store write republishes the composer projection and rebuilds the
+  /// conversation workspace, so it runs only after a short silence, on focus
+  /// loss, and before dispose.
+  Timer? _draftSyncTimer;
+  static const Duration _draftSyncDelay = Duration(milliseconds: 180);
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialDraft);
     _hasText = widget.initialDraft.trim().isNotEmpty;
+    _lastSyncedDraft = widget.initialDraft;
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
     _pasteAction = _ComposerPasteAction(
@@ -158,11 +174,18 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     super.didUpdateWidget(oldWidget);
     // The draft is scoped per conversation: switching conversations (or a
     // successful send clearing the current draft) replaces the text without
-    // recreating this widget. The store echoes every keystroke, so a rebuild
-    // passes the same text back and this sync stays a no-op while typing.
+    // recreating this widget. An incoming draft equal to the last text this
+    // field flushed is the debounced echo of our own write and must never
+    // overwrite in-flight typing; anything else is an external restore.
     if (oldWidget.initialDraft != widget.initialDraft &&
-        widget.initialDraft != _controller.text) {
+        widget.initialDraft != _controller.text &&
+        widget.initialDraft != _lastSyncedDraft) {
+      // A pending flush still holds the previous draft; the store already
+      // carries the new value, so flushing now would clobber the restore.
+      _draftSyncTimer?.cancel();
+      _draftSyncTimer = null;
       final restored = widget.initialDraft;
+      _lastSyncedDraft = restored;
       _controller.value = TextEditingValue(
         text: restored,
         selection: TextSelection.collapsed(offset: restored.length),
@@ -190,6 +213,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   void dispose() {
+    _flushDraftSync();
     _layoutFocusCoordinator?.unregister(
       LayoutFocusTargets.composerField,
       _focusNode,
@@ -205,11 +229,23 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   }
 
   void _onTextChanged() {
-    widget.onDraftChanged(_controller.text);
+    _scheduleDraftSync();
     final next = _controller.text.trim().isNotEmpty;
     final mentionChanged = _syncMentionQuery();
     if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
+  }
+
+  void _scheduleDraftSync() {
+    _draftSyncTimer?.cancel();
+    _draftSyncTimer = Timer(_draftSyncDelay, _flushDraftSync);
+  }
+
+  void _flushDraftSync() {
+    _draftSyncTimer?.cancel();
+    _draftSyncTimer = null;
+    _lastSyncedDraft = _controller.text;
+    widget.onDraftChanged(_controller.text);
   }
 
   /// The field's laid-out height drives the capsule morph: one text line of
@@ -384,6 +420,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     if (next == _focused || !mounted) {
       return;
     }
+    if (!next) _flushDraftSync();
     setState(() => _focused = next);
   }
 

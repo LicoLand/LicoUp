@@ -88,4 +88,30 @@ final class MessageMarkdownBlock {
   final List<String> items;
   final List<List<String>> rows;
   final String language;
+
+  /// Content fingerprint for keyed streaming layouts: two blocks with the same
+  /// fingerprint render identically, so a keyed widget can be reused without
+  /// re-layout while the surrounding stream grows.
+  int get contentHash => Object.hash(
+    type,
+    text,
+    level,
+    language,
+    Object.hashAll(items),
+    Object.hashAll(rows.map(Object.hashAll)),
+  );
+}
+
+/// Streaming-aware parse of a partially written message: [complete] holds the
+/// blocks whose Markdown boundary has been observed (safe to render with final
+/// styling), and [tail] holds the still-growing trailing block, or null when
+/// the input ends on a clean block boundary.
+final class MessageMarkdownStreamingParse {
+  const MessageMarkdownStreamingParse({
+    required this.complete,
+    required this.tail,
+  });
+
+  final List<MessageMarkdownBlock> complete;
+  final MessageMarkdownBlock? tail;
 }

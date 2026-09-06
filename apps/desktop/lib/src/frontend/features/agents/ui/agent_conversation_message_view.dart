@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -17,6 +19,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_proce
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({
@@ -104,8 +107,10 @@ class AgentConversationMessageListState
   List<AgentSemanticArtifactRef> _artifacts = const [];
   int _footerCount = 0;
 
-  /// Distance from the top of the loaded history that starts loading the
-  /// earlier page.
+  /// Minimum distance from the top of the loaded history that starts loading
+  /// the earlier page. The effective lead-in is one full viewport (see
+  /// [_loadEarlierOnScroll]) so the request lands before a fast fling reaches
+  /// the oldest loaded edge.
   static const double _earlierPageLeadIn = 120;
 
   int _timelineTotal = 0;
@@ -113,10 +118,14 @@ class AgentConversationMessageListState
   String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
-  /// While the transcript scrolls, decorative animations (process spinners,
-  /// shimmer text, the earlier-page indicator) pause under a muted
-  /// [TickerMode]; data keeps updating because only tickers are gated.
-  bool _scrollActive = false;
+  /// Owned anchor controller used when the pane does not provide one; keeps
+  /// the reader's position pinned while streamed content grows at the newest
+  /// end of the reversed list.
+  ScrollController? _ownedScrollController;
+
+  ScrollController get _effectiveScrollController =>
+      widget.scrollController ??
+      (_ownedScrollController ??= ReadingPositionScrollController());
 
   @override
   void initState() {
@@ -130,10 +139,24 @@ class AgentConversationMessageListState
   void didUpdateWidget(covariant AgentConversationMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncAdapterFuture();
+    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
+      // The incoming history page lands at the far (oldest) end, which is
+      // already position-stable; skip exactly one reading-position hold.
+      final controller = _effectiveScrollController;
+      if (controller is ReadingPositionScrollController) {
+        controller.notifyFarEndAppend();
+      }
+    }
     final timelineChanged = _syncTimelineCache();
     if (timelineChanged || oldWidget.turnActive != widget.turnActive) {
       _syncActiveProcessStorageKey();
     }
+  }
+
+  @override
+  void dispose() {
+    _ownedScrollController?.dispose();
+    super.dispose();
   }
 
   void _syncAdapterFuture() {
@@ -324,6 +347,29 @@ class AgentConversationMessageListState
     }
   }
 
+  /// Ids of the live assistant replies whose bodies are still streaming.
+  ///
+  /// The signal is the real turn state, never text shape: a message streams
+  /// only while the pane's turn is active AND the message object is one of
+  /// the live turn's assistant replies (identity '$turnId-assistant…' in the
+  /// live list). User echoes, lifecycle/evidence events, subagent cards, and
+  /// readback history are excluded. Once the turn settles, [widget.turnActive]
+  /// flips false and every message returns to the finalized rendering.
+  Set<String> _streamingMessageIds() {
+    if (!widget.turnActive) {
+      return const <String>{};
+    }
+    final ids = <String>{};
+    for (final message in widget.liveMessages) {
+      if (message.kind == AgentConversationMessageKind.assistant &&
+          !message.isStructuredEvent &&
+          message.childMessages.isEmpty) {
+        ids.add(message.id);
+      }
+    }
+    return ids;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
@@ -347,6 +393,7 @@ class AgentConversationMessageListState
       future: _adapterFuture,
       builder: (context, snapshot) {
         final adapter = snapshot.data ?? AgentRenderAdapter.fallback();
+        final streamingMessageIds = _streamingMessageIds();
         if (widget.messageStyle == AgentsMessageStyle.participantFlow) {
           final session = widget.session;
           final primaryConversationId = session == null
@@ -369,6 +416,7 @@ class AgentConversationMessageListState
             assistantActive: widget.assistantActive,
             primaryConversationId: primaryConversationId,
             preferPeerAgents: false,
+            streamingMessageIds: streamingMessageIds,
             topOverlayInset: widget.topOverlayInset,
             bottomOverlayInset: widget.bottomOverlayInset,
             messagePageLoading: widget.messagePageLoading,
@@ -386,41 +434,43 @@ class AgentConversationMessageListState
             widget.messagePageError.isNotEmpty;
         return NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
-          child: TickerMode(
-            enabled: !_scrollActive,
-            child: ListView.builder(
-              controller: widget.scrollController,
-              key: PageStorageKey<String>(
-                'agent-conversation-message-list-$_timelineSessionKey',
-              ),
-              reverse: true,
-              scrollCacheExtent: const ScrollCacheExtent.pixels(600),
-              padding: EdgeInsets.fromLTRB(
-                LicoContentSpacing.item,
-                LicoContentSpacing.item + widget.topOverlayInset,
-                LicoContentSpacing.item,
-                LicoContentSpacing.item +
-                    adapter.assistantVerticalPadding +
-                    widget.bottomOverlayInset,
-              ),
-              findChildIndexCallback: (key) {
-                if (key case ValueKey<String>(:final value)) {
-                  return _timelineIndexByStorageKey[value];
-                }
-                return null;
-              },
-              itemCount: _timelineTotal + (showPageRow ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (showPageRow && index == _timelineTotal) {
-                  return _ConversationEarlierPageRow(
-                    loading: widget.messagePageLoading,
-                    errorCode: widget.messagePageError,
-                    onRetry: widget.onLoadEarlier,
-                  );
-                }
-                return _buildConsoleRow(context, adapter, index);
-              },
+          child: ListView.builder(
+            controller: _effectiveScrollController,
+            key: PageStorageKey<String>(
+              'agent-conversation-message-list-$_timelineSessionKey',
             ),
+            reverse: true,
+            scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+            padding: EdgeInsets.fromLTRB(
+              LicoContentSpacing.item,
+              LicoContentSpacing.item + widget.topOverlayInset,
+              LicoContentSpacing.item,
+              LicoContentSpacing.item +
+                  adapter.assistantVerticalPadding +
+                  widget.bottomOverlayInset,
+            ),
+            findChildIndexCallback: (key) {
+              if (key case ValueKey<String>(:final value)) {
+                return _timelineIndexByStorageKey[value];
+              }
+              return null;
+            },
+            itemCount: _timelineTotal + (showPageRow ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (showPageRow && index == _timelineTotal) {
+                return _ConversationEarlierPageRow(
+                  loading: widget.messagePageLoading,
+                  errorCode: widget.messagePageError,
+                  onRetry: widget.onLoadEarlier,
+                );
+              }
+              return _buildConsoleRow(
+                context,
+                adapter,
+                index,
+                streamingMessageIds,
+              );
+            },
           ),
         );
       },
@@ -428,34 +478,7 @@ class AgentConversationMessageListState
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    _syncScrollActiveFromNotification(notification);
     return _loadEarlierOnScroll(notification);
-  }
-
-  /// Scroll notifications can be dispatched mid-frame (a scroll activity
-  /// going idle during layout fires [ScrollEndNotification] synchronously),
-  /// so the ticker gate always applies on the next frame instead of calling
-  /// setState inside the notification.
-  void _syncScrollActiveFromNotification(ScrollNotification notification) {
-    if (notification.depth != 0) {
-      return;
-    }
-    if (notification is ScrollStartNotification) {
-      _setScrollActive(true);
-    } else if (notification is ScrollEndNotification) {
-      _setScrollActive(false);
-    }
-  }
-
-  void _setScrollActive(bool active) {
-    if (_scrollActive == active) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scrollActive != active) {
-        setState(() => _scrollActive = active);
-      }
-    });
   }
 
   bool _loadEarlierOnScroll(ScrollNotification notification) {
@@ -468,7 +491,11 @@ class AgentConversationMessageListState
     if (!(widget.session?.messagePage.hasEarlier ?? false)) {
       return false;
     }
-    if (metrics.pixels < metrics.maxScrollExtent - _earlierPageLeadIn) {
+    // Start the page one full viewport ahead of the oldest loaded edge so the
+    // request lands before a fast fling reaches the wall; reaching the wall
+    // kills the in-flight scroll and forces a second swipe.
+    final leadIn = math.max(_earlierPageLeadIn, metrics.viewportDimension);
+    if (metrics.pixels < metrics.maxScrollExtent - leadIn) {
       return false;
     }
     final request = widget.onLoadEarlier;
@@ -485,6 +512,7 @@ class AgentConversationMessageListState
     BuildContext context,
     AgentRenderAdapter adapter,
     int index,
+    Set<String> streamingMessageIds,
   ) {
     if (index < _footerCount) {
       if (widget.session?.hasDiagnostics ?? false) {
@@ -521,7 +549,11 @@ class AgentConversationMessageListState
     final item = _timelineItems[index - _footerCount];
     final content = switch (item) {
       ConversationMessageTimelineItem(:final message) =>
-        AgentConversationMessageBlock(message: message, adapter: adapter),
+        AgentConversationMessageBlock(
+          message: message,
+          adapter: adapter,
+          isStreaming: streamingMessageIds.contains(message.id),
+        ),
       ConversationProcessTimelineItem(:final events) =>
         switch (widget.processStyle) {
           AgentsProcessStyle.processCard => ConversationProcessCard(
@@ -582,30 +614,30 @@ final class _ConversationEarlierPageRow extends StatelessWidget {
   final String errorCode;
   final Future<void> Function()? onRetry;
 
+  /// Fixed extent for the oldest-edge slot. The row sits exactly where the
+  /// reader parks while a page loads; a height swap there would shift
+  /// maxScrollExtent mid-gesture and cancel the in-flight scroll.
+  static const double extent = 48;
+
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 14),
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-    if (errorCode.isEmpty) return const SizedBox(height: 1);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+    return SizedBox(
+      height: extent,
       child: Center(
-        child: TextButton.icon(
-          key: const Key('conversation-message-page-retry'),
-          onPressed: onRetry == null ? null : () => onRetry!.call(),
-          icon: const Icon(Icons.refresh_rounded, size: 17),
-          label: Text('History page failed: $errorCode'),
-        ),
+        child: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : errorCode.isNotEmpty
+            ? TextButton.icon(
+                key: const Key('conversation-message-page-retry'),
+                onPressed: onRetry == null ? null : () => onRetry!.call(),
+                icon: const Icon(Icons.refresh_rounded, size: 17),
+                label: Text('History page failed: $errorCode'),
+              )
+            : const SizedBox.shrink(),
       ),
     );
   }
