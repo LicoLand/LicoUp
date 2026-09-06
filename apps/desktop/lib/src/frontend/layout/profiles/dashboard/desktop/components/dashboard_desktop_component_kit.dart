@@ -1,14 +1,22 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
-/// Card-oriented component recipes owned exclusively by the desktop dashboard.
+const LayoutComponentKit dashboardDesktopComponentKit =
+    DashboardDesktopComponentKit();
+
+/// Dashboard-owned control recipes: quiet tonal fills, moderate radii, and
+/// the brand accent reserved for state — the channel-chat counterpart of the
+/// Native kit.
 final class DashboardDesktopComponentKit implements LayoutComponentKit {
   const DashboardDesktopComponentKit();
 
   @override
-  String get styleIdentity => 'spacious-card-dashboard';
+  String get styleIdentity => 'dashboard-channel-chat';
 
   @override
   Widget navigationItem(
@@ -19,65 +27,71 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required bool selected,
     required VoidCallback onPressed,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
-    final foreground = selected
-        ? colors.onPrimaryContainer
-        : colors.onSurfaceVariant;
+    final reducedMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final duration = reducedMotion ? Duration.zero : tokens.motionDuration;
 
     return Semantics(
-      key: key,
       button: true,
       selected: selected,
       label: label,
       child: Tooltip(
         message: label,
+        waitDuration: const Duration(milliseconds: 500),
         child: Material(
-          color: selected ? colors.primaryContainer : colors.surfaceContainer,
-          shape: StadiumBorder(
-            side: BorderSide(
-              color: selected
-                  ? colors.primary.withValues(alpha: 0.34)
-                  : colors.outlineVariant.withValues(alpha: 0.7),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
+          key: key,
+          type: MaterialType.transparency,
           child: InkWell(
             onTap: onPressed,
-            customBorder: const StadiumBorder(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: tokens.navigationExtent.clamp(44, 64),
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: BorderRadius.circular(10),
+            focusColor: colors.primary.withValues(alpha: 0.10),
+            hoverColor: colors.text.withValues(alpha: 0.04),
+            highlightColor: colors.primary.withValues(alpha: 0.08),
+            child: AnimatedContainer(
+              duration: duration,
+              curve: Curves.easeOutCubic,
+              constraints: const BoxConstraints(minHeight: 32),
+              decoration: BoxDecoration(
+                color: selected
+                    ? colors.primary.withValues(
+                        alpha: colors.isDark ? 0.14 : 0.10,
+                      )
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: tokens.spacingUnit * 1.75,
-                  vertical: tokens.spacingUnit,
-                ),
-                child: ExcludeSemantics(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconTheme(
-                        data: IconThemeData(color: foreground, size: 20),
-                        child: icon,
-                      ),
-                      SizedBox(width: tokens.spacingUnit),
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: foreground,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w600,
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ],
+              padding: EdgeInsetsDirectional.only(
+                start: tokens.spacingUnit * 1.5,
+                end: tokens.spacingUnit,
+              ),
+              child: Row(
+                children: [
+                  IconTheme(
+                    data: IconThemeData(
+                      size: 17,
+                      color: selected ? colors.accent : colors.textMuted,
+                    ),
+                    child: icon,
                   ),
-                ),
+                  SizedBox(width: tokens.spacingUnit * 1.25),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: selected ? colors.text : colors.textMuted,
+                        fontSize: 12 * tokens.typographyScale,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        letterSpacing: 0.05,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -93,34 +107,13 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     bool emphasized = false,
   }) {
-    final colors = Theme.of(context).colorScheme;
-    final tokens = context.layoutVisualTokens;
-    final radius = BorderRadius.circular(
-      emphasized ? tokens.cardRadius + 4 : tokens.cardRadius,
-    );
-
-    return Container(
+    final colors = context.layoutPalette;
+    return DecoratedBox(
       key: key,
       decoration: BoxDecoration(
-        color: emphasized
-            ? colors.surfaceContainerLowest
-            : colors.surfaceContainerLow,
-        borderRadius: radius,
-        border: Border.all(
-          color: colors.outlineVariant.withValues(
-            alpha: emphasized ? 0.72 : 0.5,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.shadow.withValues(alpha: emphasized ? 0.14 : 0.08),
-            blurRadius: emphasized ? 34 : 20,
-            spreadRadius: emphasized ? 1 : 0,
-            offset: Offset(0, emphasized ? 12 : 7),
-          ),
-        ],
+        color: emphasized ? colors.surfaceRaised : colors.surface,
+        border: Border.all(color: colors.line.withAlpha(90)),
       ),
-      clipBehavior: Clip.antiAlias,
       child: child,
     );
   }
@@ -132,36 +125,28 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     VoidCallback? onPressed,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(tokens.cardRadius - 4),
-      side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.54)),
-    );
-    final content = Padding(
-      padding: EdgeInsets.all(tokens.spacingUnit * 2.5),
+    final body = Padding(
+      padding: EdgeInsets.all(tokens.spacingUnit * 1.5),
       child: child,
     );
-
-    if (onPressed == null) {
-      return Material(
-        key: key,
-        color: colors.surfaceContainer,
-        shape: shape,
-        clipBehavior: Clip.antiAlias,
-        child: content,
-      );
-    }
-
-    return Semantics(
+    return Material(
       key: key,
-      button: true,
-      child: Material(
-        color: colors.surfaceContainer,
-        shape: shape,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onPressed, child: content),
+      color: colors.surfaceLow,
+      elevation: tokens.elevation,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(tokens.cardRadius),
+        side: BorderSide(color: colors.line.withAlpha(110)),
       ),
+      clipBehavior: Clip.antiAlias,
+      child: onPressed == null
+          ? body
+          : InkWell(
+              onTap: onPressed,
+              mouseCursor: SystemMouseCursors.click,
+              child: body,
+            ),
     );
   }
 
@@ -172,26 +157,30 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     String? semanticLabel,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
-    final framed = Container(
-      constraints: const BoxConstraints(minHeight: 46),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(tokens.cardRadius - 8),
-        border: Border.all(
-          color: colors.outlineVariant.withValues(alpha: 0.62),
-        ),
-      ),
-      child: child,
-    );
-
     return Semantics(
-      key: key,
-      container: true,
       label: semanticLabel,
-      explicitChildNodes: semanticLabel != null,
-      child: framed,
+      textField: semanticLabel != null,
+      child: Container(
+        key: key,
+        constraints: BoxConstraints(
+          minHeight: math.max(
+            32,
+            32 * MediaQuery.textScalerOf(context).scale(1),
+          ),
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: tokens.spacingUnit * 1.25,
+          vertical: tokens.spacingUnit * 0.5,
+        ),
+        decoration: BoxDecoration(
+          color: colors.background,
+          border: Border.all(color: colors.line.withAlpha(110)),
+          borderRadius: BorderRadius.circular(tokens.cardRadius),
+        ),
+        child: child,
+      ),
     );
   }
 
@@ -201,21 +190,17 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required Key key,
     required Widget child,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
-    return Semantics(
+    return ConstrainedBox(
       key: key,
-      scopesRoute: true,
-      explicitChildNodes: true,
+      constraints: const BoxConstraints(maxWidth: 720),
       child: Material(
-        color: colors.surfaceContainerLowest,
-        elevation: tokens.elevation + 4,
-        shadowColor: colors.shadow.withValues(alpha: 0.2),
+        color: colors.surface,
+        elevation: tokens.elevation,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(tokens.cardRadius + 6),
-          side: BorderSide(
-            color: colors.outlineVariant.withValues(alpha: 0.65),
-          ),
+          borderRadius: BorderRadius.circular(tokens.cardRadius + 2),
+          side: BorderSide(color: colors.line.withAlpha(130)),
         ),
         clipBehavior: Clip.antiAlias,
         child: child,
@@ -230,30 +215,25 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     required bool attention,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
-    return Semantics(
+    final accent = attention ? colors.warning : colors.accent;
+    return Container(
       key: key,
-      container: true,
-      liveRegion: attention,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: attention ? colors.tertiaryContainer : colors.surfaceContainer,
-          borderRadius: BorderRadius.circular(tokens.cardRadius - 6),
-          border: Border.all(
-            color: attention
-                ? colors.tertiary.withValues(alpha: 0.38)
-                : colors.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: tokens.spacingUnit * 1.75,
-            vertical: tokens.spacingUnit * 1.25,
-          ),
-          child: child,
+      padding: EdgeInsets.symmetric(
+        horizontal: tokens.spacingUnit * 1.5,
+        vertical: tokens.spacingUnit,
+      ),
+      decoration: BoxDecoration(
+        color: attention ? colors.brandSurface : colors.surfaceLow,
+        border: Border(
+          left: BorderSide(color: accent, width: 2),
+          top: BorderSide(color: colors.line.withAlpha(90)),
+          right: BorderSide(color: colors.line.withAlpha(90)),
+          bottom: BorderSide(color: colors.line.withAlpha(90)),
         ),
       ),
+      child: child,
     );
   }
 }

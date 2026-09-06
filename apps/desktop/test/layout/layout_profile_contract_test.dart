@@ -12,22 +12,19 @@ void main() {
       LayoutProfileId.parse('dashboard'),
       LayoutProfileId.parse('dashboard'),
     );
+    expect(LayoutProfileId.parse('desktop'), LayoutProfileId.parse('desktop'));
     expect(
-      LayoutProfileId.parse('messaging'),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      [LayoutProfileId.parse('messaging'), LayoutProfileId.parse('dashboard')]
+      [LayoutProfileId.parse('desktop'), LayoutProfileId.parse('dashboard')]
         ..sort(),
-      [LayoutProfileId.parse('dashboard'), LayoutProfileId.parse('messaging')],
+      [LayoutProfileId.parse('dashboard'), LayoutProfileId.parse('desktop')],
     );
 
     for (final invalid in [
       'numeric-2',
       'legacy',
       'dashboard-v-two',
-      'messaging-compatibility',
-      'Messaging',
+      'desktop-compatibility',
+      'Desktop',
     ]) {
       Object? failure;
       try {
@@ -48,7 +45,7 @@ void main() {
         english: 'Dashboard layout',
         chinese: '仪表盘布局',
       ),
-      styleIdentity: 'spacious-card-dashboard',
+      styleIdentity: 'dashboard-channel-chat',
       isDefault: true,
     );
 

@@ -11,7 +11,6 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_status_capsule_toast.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -19,6 +18,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// One author group in the messaging participant flow: a header row with the
@@ -273,9 +273,10 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     if (text.isEmpty) return;
     await write(text);
     if (!context.mounted) return;
-    showMessagingStatusCapsuleToast(
+    showLicoToast(
       context,
       message: LicoStrings.of(context).conversationMessageCopied,
+      kind: LicoToastKind.success,
     );
   }
 

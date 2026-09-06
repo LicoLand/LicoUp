@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+
 /// Shared renderer measurements for the Messaging presentation.
 abstract final class MessagingDesktopMetrics {
   /// Far-left destination column on the unified frosted-glass shell.
@@ -23,21 +25,22 @@ abstract final class MessagingDesktopMetrics {
   /// Minimum remaining width for the detail pane when the column grows.
   static const double conversationDetailMinExtent = 360;
 
-  /// Inset of the floating conversation-list glass card on the shared chat
-  /// canvas (tighter than [mainCardMargin] so the list sits closer to the
-  /// main content card edges).
+  /// Inset of the floating conversation-list glass card within the main
+  /// content region — the card floats 4 inside the region (6 from the window
+  /// edge), keeping a visible glass gutter around the one floating card.
   static const double conversationListCardInset = 4;
 
-  /// Inner radius of the floating conversation-list glass card. The outer
-  /// content radius remains inner radius + card inset: 16 = 12 + 4.
-  static const double conversationListCardCornerRadius = 12;
+  /// Inner radius of the floating conversation-list glass card — concentric
+  /// with the region clip: [mainCardCornerRadius] − [conversationListCardInset]
+  /// = 20 − 4 = 16.
+  static const double conversationListCardCornerRadius = 16;
 
-  /// Translucent card fill on the dark chat canvas — same alpha family as the
-  /// Dashboard folder sidebar card on native glass.
-  static const int conversationListCardTintDarkAlpha = 22;
+  /// Translucent card fill on the dark chat canvas — thin enough that the
+  /// native glass reads through instead of stacking into a gray haze.
+  static const int conversationListCardTintDarkAlpha = 12;
 
   /// Translucent card fill on the light chat canvas.
-  static const int conversationListCardTintLightAlpha = 140;
+  static const int conversationListCardTintLightAlpha = 92;
 
   /// Hairline border alpha on the floating list card (dark canvas).
   static const int conversationListCardBorderAlphaDark = 90;
@@ -165,7 +168,8 @@ abstract final class MessagingDesktopMetrics {
 
   /// Shared BackdropFilter sigma for conversation overlay glass (header
   /// capsules + floating composer). One value — keep header and input matched.
-  static const double conversationOverlayGlassBlurSigma = 20;
+  /// Kept low so the glass reads clear （清透） rather than frosted.
+  static const double conversationOverlayGlassBlurSigma = 12;
 
   /// Approximate height reserved under the floating composer so the
   /// transcript clears it (padding + field + send row).
@@ -335,10 +339,12 @@ abstract final class MessagingDesktopMetrics {
   /// Black readability veil on floating conversation overlays (dark).
   /// Layered with [conversationOverlayGlassFill] and blur so menus and
   /// popovers remain distinct from live content without becoming opaque.
-  static const int conversationOverlayReadabilityVeilDarkAlpha = 84;
+  /// Thinner than the original frosted recipe — the clear-glass direction
+  /// keeps the veil minimal and lets the blur do the separation work.
+  static const int conversationOverlayReadabilityVeilDarkAlpha = 60;
 
   /// Lighter counterpart for floating overlays on the light preset.
-  static const int conversationOverlayReadabilityVeilLightAlpha = 40;
+  static const int conversationOverlayReadabilityVeilLightAlpha = 28;
 
   /// Shared black readability veil for floating conversation overlays — use
   /// with overlay glass, not as a standalone opaque panel.
@@ -405,97 +411,81 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Window inset of the unified content card on its left, right, and bottom
-  /// edges; the card's top edge meets the chrome band.
-  static const double mainCardMargin = 8;
+  /// Specular edge light for clear-glass surfaces: a crisp top-bright rim
+  /// (light catching the glass edge) plus a soft sheen band decaying downward
+  /// from the top. The light is [chromeForegroundColor] — the same
+  /// preset-independent light the shell chrome already uses on native glass —
+  /// never brand/primary, so the rim reads as reflected light instead of a
+  /// colored outline. Painted by `GlassEdgeLight`; shells must use these
+  /// tokens, not hardcoded alphas.
+  static const double glassEdgeRimWidth = 1;
 
-  /// Page inset inside the unified main content card. Every single-pane
-  /// destination (Settings, Models, Skill Hub, Plugins, Monitoring, Mobile
-  /// Relay) uses this same padding so content does not hug the card chrome.
-  static const EdgeInsets mainPanePadding = EdgeInsets.fromLTRB(24, 20, 24, 40);
+  /// Rim alpha at the top edge (dark canvas) — the bright catch-light.
+  static const int glassEdgeRimAlphaDark = 110;
 
-  /// Outer corner radius of the unified content card.
-  static const double mainCardCornerRadius = 16;
+  /// Rim alpha at the top edge (light canvas).
+  static const int glassEdgeRimAlphaLight = 185;
 
-  /// Black veil on the main conversation content card (dark). The card itself
-  /// is transparent glass over native VE; without this mask, dense chat/list
-  /// text loses contrast. Kept thin (historically 77 over the old gray
-  /// `.underWindowBackground`) now that the native `.popover` material
-  /// supplies the deep dark base — the veil only guards readability while
-  /// letting more of the desktop bleed through. Shell band and gutters stay
-  /// untinted — only this reading surface uses the veil.
-  static const int mainContentCardOverlayDarkAlpha = 48;
+  /// Rim alpha at the bottom edge (dark canvas) — faint, not invisible, so
+  /// the glass silhouette stays continuous.
+  static const int glassEdgeRimDimAlphaDark = 22;
 
-  /// Black veil on the main conversation content card (light). Same
-  /// readability role as the dark overlay; lighter alpha so the card does not
-  /// read as a solid slab on bright VE.
-  static const int mainContentCardOverlayLightAlpha = 40;
+  /// Rim alpha at the bottom edge (light canvas).
+  static const int glassEdgeRimDimAlphaLight = 44;
 
-  /// The unified card has no painted rim. Native glass, fill, and elevation
-  /// establish its boundary without leaving a painted chrome seam.
-  static const int mainContentCardBorderAlphaDark = 0;
+  /// Top sheen band alpha (dark canvas) — a faint glint; brighter bands read
+  /// as a painted highlight instead of reflected light.
+  static const int glassEdgeSheenAlphaDark = 10;
 
-  /// Light-preset counterpart of [mainContentCardBorderAlphaDark].
-  static const int mainContentCardBorderAlphaLight = 0;
+  /// Top sheen band alpha (light canvas).
+  static const int glassEdgeSheenAlphaLight = 16;
 
-  /// Drop-shadow alpha on the main content card (dark).
-  static const int mainContentCardShadowAlphaDark =
-      conversationListCardShadowAlphaDark;
+  /// Height of the top sheen band on structural cards (main card, floating
+  /// list card). Small capsules pass a tighter extent.
+  static const double glassEdgeSheenExtent = 56;
 
-  /// Drop-shadow alpha on the main content card (light).
-  static const int mainContentCardShadowAlphaLight =
-      conversationListCardShadowAlphaLight;
-
-  /// Drop-shadow blur of the main content card.
-  static const double mainContentCardShadowBlur =
-      conversationListCardShadowBlur;
-
-  /// Drop-shadow Y offset of the main content card.
-  static const double mainContentCardShadowOffsetY =
-      conversationListCardShadowOffsetY;
-
-  /// Black mask fill for the main conversation content card (over native VE).
-  /// Shell code must use this helper — do not hardcode overlay alphas.
-  static Color mainContentCardFill({required bool isDark}) => Color.fromARGB(
-    isDark ? mainContentCardOverlayDarkAlpha : mainContentCardOverlayLightAlpha,
-    0,
-    0,
-    0,
-  );
-
-  /// Border color for the main conversation content card on [line].
-  static Color mainContentCardBorder(Color line, {required bool isDark}) =>
-      line.withAlpha(
-        isDark
-            ? mainContentCardBorderAlphaDark
-            : mainContentCardBorderAlphaLight,
+  /// Top-bright rim gradient for the specular edge stroke.
+  static Gradient glassEdgeRimGradient({required bool isDark}) =>
+      LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          chromeForegroundColor.withAlpha(
+            isDark ? glassEdgeRimAlphaDark : glassEdgeRimAlphaLight,
+          ),
+          chromeForegroundColor.withAlpha(
+            isDark ? glassEdgeRimDimAlphaDark : glassEdgeRimDimAlphaLight,
+          ),
+        ],
       );
 
-  /// Elevation shadow for the main conversation content card.
-  static List<BoxShadow> mainContentCardShadows({required bool isDark}) => [
-    BoxShadow(
-      color: Color.fromARGB(
-        isDark
-            ? mainContentCardShadowAlphaDark
-            : mainContentCardShadowAlphaLight,
-        0,
-        0,
-        0,
-      ),
-      blurRadius: mainContentCardShadowBlur,
-      offset: const Offset(0, mainContentCardShadowOffsetY),
-    ),
-  ];
+  /// Sheen gradient for the top band: the rim hue fading to nothing.
+  static Gradient glassEdgeSheenGradient({required bool isDark}) =>
+      LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          chromeForegroundColor.withAlpha(
+            isDark ? glassEdgeSheenAlphaDark : glassEdgeSheenAlphaLight,
+          ),
+          chromeForegroundColor.withAlpha(0),
+        ],
+      );
 
-  /// Full-width window-chrome band height; the system traffic lights stay
-  /// vertically centered inside its left inset, mirroring the other
-  /// profiles' top-band convention.
-  static const double topBandExtent = 48;
+  /// Window inset of the unified content region on every edge. Narrow (4) by
+  /// design: destinations sit nearly flush with the window frame so the
+  /// region merges into the window glass and only the sidebar card reads as
+  /// floating (macOS split-view idiom).
+  static const double mainCardMargin = 4;
 
-  /// Historical reference only. Shell blur comes from the native
-  /// NSVisualEffectView; Flutter chrome applies tint via [surfaceGlassTint]
-  /// and does not use BackdropFilter.
-  static const double chromeGlassBlurSigma = 28;
+  /// Page inset inside the unified main content region. Every single-pane
+  /// destination (Settings, Models, Skill Hub, Plugins, Monitoring, Mobile
+  /// Relay) uses this same padding so content does not hug the region chrome.
+  static const EdgeInsets mainPanePadding = EdgeInsets.fromLTRB(24, 20, 24, 40);
+
+  /// Outer corner radius of the unified content region's clip — concentric
+  /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
+  static const double mainCardCornerRadius = 20;
 
   /// Dark preset shell tint alpha — 0 (native NSVisualEffectView only).
   /// Flutter color overlays (especially white, and black in dark mode) severely
@@ -524,20 +514,8 @@ abstract final class MessagingDesktopMetrics {
   /// Search capsule and similar chrome control fills on glass.
   static const int chromeControlFillAlpha = 12;
 
-  /// Icon-button and tab hover wash on glass.
-  static const int chromeControlHoverAlpha = 10;
-
-  /// Selected conversation tab fill on glass.
-  static const int chromeTabSelectedAlpha = 26;
-
   static Color chromeControlFill({required bool isDark}) =>
       chromeGlassOverlay(isDark: isDark, alpha: chromeControlFillAlpha);
-
-  static Color chromeControlHover({required bool isDark}) =>
-      chromeGlassOverlay(isDark: isDark, alpha: chromeControlHoverAlpha);
-
-  static Color chromeTabSelectedFill({required bool isDark}) =>
-      chromeGlassOverlay(isDark: isDark, alpha: chromeTabSelectedAlpha);
 
   /// Shared light-on-glass foreground for shell chrome — identical in both
   /// presets. Widgets must resolve icon, label, and search chrome through
@@ -546,9 +524,6 @@ abstract final class MessagingDesktopMetrics {
 
   /// Resting chrome icon alpha on glass (both presets).
   static const int chromeIconMutedAlpha = 255;
-
-  /// Disabled chrome icon alpha on glass (both presets).
-  static const int chromeIconDisabledAlpha = 120;
 
   /// Search field border alpha on glass (both presets).
   static const int chromeSearchBorderAlpha = 110;
@@ -563,13 +538,6 @@ abstract final class MessagingDesktopMetrics {
   static Color chromeIconMuted() =>
       chromeForegroundColor.withAlpha(chromeIconMutedAlpha);
 
-  /// Hovered icon on shell chrome.
-  static Color chromeIconHover() => chromeForegroundColor;
-
-  /// Disabled icon on shell chrome.
-  static Color chromeIconDisabled() =>
-      chromeForegroundColor.withAlpha(chromeIconDisabledAlpha);
-
   /// Search field border on shell chrome.
   static Color chromeSearchBorder() =>
       chromeForegroundColor.withAlpha(chromeSearchBorderAlpha);
@@ -581,19 +549,39 @@ abstract final class MessagingDesktopMetrics {
   static Color chromeSearchPlaceholder() =>
       chromeForegroundColor.withAlpha(chromeSearchPlaceholderAlpha);
 
+  /// Content height of one sidebar bottom-nav button: compact vertical
+  /// padding ×2 (16) + icon (20) + icon–label gap (4) + label line
+  /// (10 × 1.1 = 11) = 51.
+  static const double sidebarBottomNavButtonExtent = 51;
+
+  /// Horizontal margin on each sidebar bottom-nav button. At the default
+  /// sidebar width the row slot is (224 − 4 card inset − 16 nav padding) / 3
+  /// = 68; margin 8.5 makes the visible button exactly
+  /// [sidebarBottomNavButtonExtent] wide — a perfect square by default.
+  /// Wider sidebars stretch the buttons wider than square.
+  static const double sidebarBottomNavButtonMargin =
+      ((conversationListExtent -
+                  conversationListCardInset -
+                  LicoContentSpacing.compact * 2) /
+              3 -
+          sidebarBottomNavButtonExtent) /
+      2;
+
   static const double searchFieldHeight = 32;
-  static const double searchFieldCornerRadius = mainCardCornerRadius;
 
   /// Vertical rhythm between stacked primary sidebar controls and the next
   /// semantic row. Search → action and action → group label use one gap.
   static const double sidebarPrimaryControlGap = 14;
 
-  /// Left inset of the chrome band so its content clears the macOS
-  /// traffic-light cluster (same reservation as the Dashboard top bar).
-  static const double trafficLightInset = 96;
+  /// Height of the sidebar top row that hosts the native macOS traffic-light
+  /// cluster. The row replaces the old sidebar heading text; the lights
+  /// overlay it vertically centered with an equal left inset.
+  static const double trafficLightRowExtent = 40;
 
-  /// Square extent of the chrome-band right-cluster action buttons.
-  static const double chromeActionButtonExtent = 32;
+  /// Reserved width of the traffic-light anchor at a sidebar card top-left;
+  /// the native cluster (three buttons plus equal edge insets) overlays this
+  /// zone, so list content must not start left of it.
+  static const double trafficLightAnchorExtent = 88;
 
   static const double windowCornerRadius = 24;
 

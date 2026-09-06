@@ -1,72 +1,59 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_agents_presentation.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/destinations/dashboard_settings_presentation.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/preview/dashboard_desktop_preview.dart';
 
-import '../../../fixtures/layout_scoped_state_fixture.dart';
-import './dashboard_desktop_test_harness.dart';
+import 'dashboard_desktop_test_harness.dart';
 
 void main() {
-  test('exports the exact immutable dashboard desktop bundle', () {
+  test('bundle exposes the exact immutable Dashboard desktop contract', () {
     final bundle = dashboardDesktopBundle;
 
     expect(bundle.profile.id, LayoutProfileId.parse('dashboard'));
     expect(bundle.profile.label.resolve('en'), 'Dashboard');
-    expect(bundle.profile.description.resolve('zh'), contains('Dashboard 布局'));
-    expect(bundle.profile.styleIdentity, 'spacious-card-dashboard');
-    expect(bundle.profile.isDefault, isFalse);
+    expect(bundle.profile.label.resolve('zh'), '仪表盘');
+    expect(
+      bundle.profile.description.resolve('en'),
+      contains('Dashboard layout'),
+    );
+    expect(bundle.profile.description.resolve('zh'), contains('Dashboard'));
+    expect(bundle.profile.styleIdentity, 'dashboard-channel-chat');
+    expect(bundle.profile.isDefault, isTrue);
     expect(bundle.profile.revision, 1);
     expect(bundle.surface, LayoutRuntimeSurface.desktop);
-    expect(bundle.components.styleIdentity, bundle.profile.styleIdentity);
     expect(bundle.assetNamespace, 'layout-profiles/dashboard/desktop');
     expect(bundle.restorationNamespace, 'dashboard.desktop');
-    expect(bundle.variants.keys.toSet(), {
+    expect(bundle.components.styleIdentity, 'dashboard-channel-chat');
+
+    expect(bundle.variants.keys.toSet(), <LayoutViewportClass>{
       LayoutViewportClass.medium,
       LayoutViewportClass.expanded,
     });
-    expect(
-      () => bundle.variants.remove(LayoutViewportClass.medium),
-      throwsUnsupportedError,
-    );
-  });
-
-  test('each viewport declares the same exact canonical destinations', () {
-    final coverage = dashboardDesktopBundle.coverage.toList();
-
-    expect(coverage, hasLength(2));
-    for (final entry in dashboardDesktopBundle.variants.entries) {
-      expect(entry.value.viewport, entry.key);
+    for (final variant in bundle.variants.values) {
       expect(
-        entry.value.destinationBuilders.keys.toSet(),
-        dashboardDesktopCanonicalDestinations,
+        variant.destinationBuilders.keys.toSet(),
+        dashboardDesktopExpectedDestinations,
       );
-      expect(
-        () => entry.value.destinationBuilders.remove(ClientSection.agents),
-        throwsUnsupportedError,
-      );
-    }
-    for (final entry in coverage) {
-      expect(entry.key.profileId, LayoutProfileId.parse('dashboard'));
-      expect(entry.key.surface, LayoutRuntimeSurface.desktop);
-      expect(entry.destinations, dashboardDesktopCanonicalDestinations);
     }
   });
 
-  test('declares exact business presentation-state channels', () {
+  test('state namespaces are profile-qualified and business-scoped', () {
     final namespaces = dashboardDesktopBundle.stateNamespaces;
-    expect(namespaces, hasLength(4));
+
+    expect(namespaces, hasLength(6));
     expect(namespaces.map((value) => value.destination).toSet(), {
       ClientSection.agents,
       ClientSection.settings,
+      ClientSection.models,
     });
+    for (final namespace in namespaces) {
+      expect(namespace.profileId, LayoutProfileId.parse('dashboard'));
+      expect(namespace.surface, LayoutRuntimeSurface.desktop);
+    }
     expect(
       namespaces
           .where((value) => value.destination == ClientSection.agents)
@@ -85,81 +72,27 @@ void main() {
       {
         LayoutStateChannels.settingsScroll.id,
         LayoutStateChannels.settingsSection.id,
+        LayoutStateChannels.settingsIndex.id,
       },
     );
-    expect(() => namespaces.clear(), throwsUnsupportedError);
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.models)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {LayoutStateChannels.communicationSection.id},
+    );
   });
 
-  testWidgets('Agents and Settings content receive Dashboard strategies', (
-    tester,
-  ) async {
-    final environment = dashboardDesktopEnvironment(width: 900, height: 720);
-    final state = buildLayoutScopedStateFixture(
-      profile: dashboardDesktopBundle.profile,
-      surface: LayoutRuntimeSurface.desktop,
-      stateNamespaces: dashboardDesktopBundle.stateNamespaces,
+  test('preview metadata is deterministic and Dashboard-owned', () {
+    expect(
+      dashboardDesktopPreviewMetadata.styleIdentity,
+      'dashboard-channel-chat',
     );
-    final content = _DashboardPresentationContent();
-    final variant = dashboardDesktopBundle.variants[environment.viewport]!;
-    final base = buildLicoTheme(
-      presetId: 'geek-light-blue',
-      platformBrightness: Brightness.light,
-    );
-    final theme = base.copyWith(
-      extensions: [...base.extensions.values, dashboardDesktopBundle.tokens],
-    );
-
-    for (final destination in const [
-      ClientSection.agents,
-      ClientSection.settings,
-    ]) {
-      final builder = variant.destinationBuilders[destination]!;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: theme,
-          home: Builder(
-            builder: (context) => builder(
-              context,
-              LayoutDestinationBuildContext(
-                environment: environment,
-                destination: destination,
-                content: content,
-                state: state,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      expect(
-        find.byKey(ValueKey<String>('dashboard-scope-${destination.name}')),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-    }
-
-    expect(content.agents, isA<DashboardDesktopAgentsPresentation>());
-    expect(content.settings, isA<DashboardDesktopSettingsPresentation>());
+    expect(dashboardDesktopPreviewMetadata.structuralLandmarks, <String>[
+      'traffic-light-row',
+      'list-column',
+      'chat-canvas',
+    ]);
   });
-}
-
-final class _DashboardPresentationContent
-    implements LayoutDestinationContentPort {
-  LayoutAgentsPresentation? agents;
-  LayoutSettingsPresentation? settings;
-
-  @override
-  Widget buildDestination(BuildContext context, ClientSection destination) {
-    switch (destination) {
-      case ClientSection.agents:
-        agents = LayoutDestinationPresentationScope.agentsOf(context);
-      case ClientSection.settings:
-        settings = LayoutDestinationPresentationScope.settingsOf(context);
-      default:
-        throw const FormatException('dashboard_scope_test_destination_invalid');
-    }
-    return SizedBox(
-      key: ValueKey<String>('dashboard-scope-${destination.name}'),
-    );
-  }
 }

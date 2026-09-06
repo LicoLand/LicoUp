@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+
 import 'panel_test_harness.dart';
 
 void main() {
@@ -17,6 +19,11 @@ void main() {
     );
     await tester.pump();
 
+    // The panel inherits the standard feature-page structure: pane title bar
+    // (移动配对 + refresh) above, content below.
+    expect(find.byType(LicoPaneScaffold), findsOneWidget);
+    expect(find.text('Mobile Pairing'), findsOneWidget);
+    expect(find.byKey(const Key('mobile-relay-refresh')), findsOneWidget);
     expect(find.text('Communication'), findsOneWidget);
     expect(find.byKey(const Key('pairing-qr-workspace-card')), findsOneWidget);
     expect(find.byKey(const Key('pairing-qr-frame')), findsOneWidget);

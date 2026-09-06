@@ -109,10 +109,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 20));
 
-    composition.settings.intents.send(const SetLayoutPreference('messaging'));
+    composition.settings.intents.send(const SetLayoutPreference('desktop'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 20));
-    expect(find.byKey(const Key('replacement-layout-messaging')), findsOne);
+    expect(find.byKey(const Key('replacement-layout-desktop')), findsOne);
     composition.settings.intents.send(const SetLayoutPreference('dashboard'));
     composition.settings.intents.send(
       const SetAppearancePreference('lico-soda'),

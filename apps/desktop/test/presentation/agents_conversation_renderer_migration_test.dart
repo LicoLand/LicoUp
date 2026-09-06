@@ -11,8 +11,6 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_chrome_tabs.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_notification_bell.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
@@ -23,10 +21,6 @@ import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
-import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
-import 'package:licoup/src/presentation/chrome/chrome_effect.dart';
-import 'package:licoup/src/presentation/chrome/chrome_intent.dart';
-import 'package:licoup/src/presentation/chrome/chrome_projection.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
@@ -88,56 +82,6 @@ void main() {
       expect(sent.single.dispatchCanonical, isFalse);
       expect(
         conversationIntents.values.whereType<InterruptConversationTurn>(),
-        isEmpty,
-      );
-    },
-  );
-
-  testWidgets(
-    'Chrome tabs render and select native catalog sessions by intent',
-    (tester) async {
-      final session = AgentConversationSession(
-        id: 'session-1',
-        agentId: 'codex',
-        title: 'Persistent session',
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-        messages: const [],
-      );
-      final conversationIntents = _RecordingIntentSink<ConversationIntent>();
-      final bindings = _RendererBindings(
-        session: session,
-        messages: const [],
-        conversationIntents: conversationIntents,
-      );
-
-      await tester.pumpWidget(
-        _host(
-          SizedBox(
-            height: 60,
-            child: MessagingConversationTabStrip(
-              agents: bindings.agents,
-              conversation: bindings.conversation,
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(
-        find.byKey(const Key('messaging-chrome-tab-session-1')),
-        findsOneWidget,
-      );
-      await tester.tap(find.byKey(const Key('messaging-chrome-tab-session-1')));
-      await tester.pump(const Duration(milliseconds: 400));
-      final selection = bindings.agentsIntents.values
-          .whereType<SelectAgentConversationSession>()
-          .single;
-      expect(selection.agentId, 'codex');
-      expect(selection.sessionId, 'session-1');
-      expect(selection.nativeSessionId, isEmpty);
-      expect(
-        conversationIntents.values.whereType<SelectConversationSession>(),
         isEmpty,
       );
     },
@@ -208,54 +152,6 @@ void main() {
     );
     expect(intents.values.whereType<DismissSearch>(), isNotEmpty);
   });
-
-  testWidgets(
-    'Chrome notification bell renders and dismisses binding notices',
-    (tester) async {
-      final intents = _RecordingIntentSink<ChromeIntent>();
-      final binding = ChromeBinding(
-        projection: _FixedProjection(
-          ChromeProjection(
-            destinations: const [],
-            notifications: const [
-              PresentationNotice(
-                id: 'notice-1',
-                title: 'Runtime',
-                message: 'Needs attention',
-                severity: PresentationNoticeSeverity.warning,
-              ),
-            ],
-            auxiliaryPanelOpen: false,
-            searchAvailable: true,
-          ),
-        ),
-        intents: intents,
-        effects: const _EmptyEffects<ChromeEffect>(),
-      );
-
-      await tester.pumpWidget(
-        _host(Center(child: MessagingNotificationBell(chrome: binding))),
-      );
-      expect(
-        find.byKey(const Key('messaging-notification-bell-badge')),
-        findsOneWidget,
-      );
-      await tester.tap(find.byKey(const Key('messaging-notification-bell')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(
-          const Key('messaging-operation-notification-dismiss-notice-1'),
-        ),
-      );
-      expect(
-        intents.values
-            .whereType<DismissChromeNotification>()
-            .single
-            .notificationId,
-        'notice-1',
-      );
-    },
-  );
 }
 
 Widget _host(Widget child) => MaterialApp(

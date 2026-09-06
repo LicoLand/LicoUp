@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
@@ -69,8 +70,10 @@ class _ArchivedConversationsSettingsSectionState
     setState(() => _restoringIds.remove(result.conversationId));
     if (result.restored && title != null) {
       final strings = LicoStrings.of(context);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(strings.conversationRestored(title))),
+      showLicoToast(
+        context,
+        message: strings.conversationRestored(title),
+        kind: LicoToastKind.success,
       );
     }
   }
