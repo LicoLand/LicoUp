@@ -64,9 +64,10 @@ pub(super) fn collect_antigravity_cli_model_catalog(
     }
     let mut command = Command::new(program);
     command.arg("models");
-    // This lookup runs only after the user selects Antigravity. Preserve the
-    // account environment used by `agy models`; clearing it can hide every
-    // entitled model while leaving only local settings fallbacks.
+    // This lookup runs only after the user selects Antigravity. The child
+    // observes the user shell environment (ADR 0007): `agy models` reads the
+    // same account/proxy environment it has in the user's terminal.
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     let output = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
