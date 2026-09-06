@@ -17,8 +17,10 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+mod callback;
 mod production;
 
+pub use callback::{CALLBACK_CAUSATION_ID, subagent_callback_plan};
 pub use production::production_application;
 
 pub const PROTOCOL_REVISION: &str = "2025-06-18";
@@ -653,6 +655,23 @@ pub fn tool_catalog() -> Vec<Value> {
                 ("filters", json!({"type": "object"})),
                 ("input", json!({"type": "object"})),
                 ("idempotencyKey", bounded_string(MAX_ID_BYTES)),
+                // Optional callback-decision fields: when the replayed execute
+                // answers a parked callback wait, the master agent's decision
+                // rides the same idempotent call.
+                (
+                    "decision",
+                    json!({
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": MAX_ID_BYTES,
+                        "enum": ["advance", "return", "terminate"]
+                    }),
+                ),
+                ("callbackStateId", bounded_string(MAX_ID_BYTES)),
+                (
+                    "callbackStateVisit",
+                    json!({"type": "integer", "minimum": 1}),
+                ),
             ],
             &[
                 "conversationId",
