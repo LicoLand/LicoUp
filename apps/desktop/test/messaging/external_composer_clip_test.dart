@@ -5,9 +5,7 @@ import 'package:licoup/src/frontend/shared/messaging/external_conversation_compo
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 
 void main() {
-  testWidgets('external composer scope defaults to not hosted', (
-    tester,
-  ) async {
+  testWidgets('external composer scope defaults to not hosted', (tester) async {
     late bool hosted;
     await tester.pumpWidget(
       MaterialApp(

@@ -98,10 +98,7 @@ void main() {
       find.byKey(const Key('messaging-notification-bell-panel')),
       findsNothing,
     );
-    expect(
-      find.byKey(const Key('messaging-notification-bell')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('messaging-notification-bell')), findsNothing);
     // The warning tone keeps the legacy amber glyph on the unified toast.
     final toast = tester.widget<LicoToast>(find.byType(LicoToast));
     expect(toast.kind, LicoToastKind.error);

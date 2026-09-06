@@ -28,9 +28,7 @@ final class FakeDesktopDestinationContent
   Widget buildDestination(BuildContext context, ClientSection destination) {
     builds.add(destination);
     return ColoredBox(
-      key: ValueKey<String>(
-        'fake-desktop-mobile-content-${destination.name}',
-      ),
+      key: ValueKey<String>('fake-desktop-mobile-content-${destination.name}'),
       color: color,
       child: Center(
         child: Text(

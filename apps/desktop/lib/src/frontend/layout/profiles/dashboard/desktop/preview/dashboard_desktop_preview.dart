@@ -67,9 +67,7 @@ final class DashboardDesktopPreview extends StatelessWidget {
                 child: Container(
                   key: const ValueKey<String>('dashboard-preview-main-card'),
                   decoration: BoxDecoration(
-                    color: colors.isDark
-                        ? colors.surface
-                        : colors.surfaceLow,
+                    color: colors.isDark ? colors.surface : colors.surfaceLow,
                     borderRadius: BorderRadius.circular(
                       constraints.maxHeight * 0.06,
                     ),

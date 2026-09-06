@@ -270,9 +270,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
       expect(
-        find.byKey(
-          const Key('desktop-mobile-medium-contextual-navigation'),
-        ),
+        find.byKey(const Key('desktop-mobile-medium-contextual-navigation')),
         findsOneWidget,
       );
       expect(find.byTooltip('Pair Device'), findsNothing);
@@ -538,15 +536,11 @@ void main() {
       await tester.pump();
 
       await tester.tap(
-        find.byKey(
-          const Key('desktop-mobile-compact-navigation-trigger'),
-        ),
+        find.byKey(const Key('desktop-mobile-compact-navigation-trigger')),
       );
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(
-          const Key('desktop-mobile-compact-navigation-mobileRelay'),
-        ),
+        find.byKey(const Key('desktop-mobile-compact-navigation-mobileRelay')),
       );
       await tester.pumpAndSettle();
 

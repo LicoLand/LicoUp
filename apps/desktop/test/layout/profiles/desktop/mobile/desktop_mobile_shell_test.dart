@@ -176,9 +176,7 @@ void main() {
         expect(
           tester
               .getTopLeft(
-                find.byKey(
-                  const ValueKey('desktop-mobile-compact-card-stack'),
-                ),
+                find.byKey(const ValueKey('desktop-mobile-compact-card-stack')),
               )
               .dy,
           greaterThanOrEqualTo(32),
@@ -234,9 +232,7 @@ void main() {
         hasTouch: true,
       );
       await tester.tap(
-        find.byKey(
-          const ValueKey('desktop-mobile-compact-navigation-trigger'),
-        ),
+        find.byKey(const ValueKey('desktop-mobile-compact-navigation-trigger')),
       );
       await tester.pumpAndSettle();
       expect(

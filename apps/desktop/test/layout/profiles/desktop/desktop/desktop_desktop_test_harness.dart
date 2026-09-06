@@ -96,15 +96,14 @@ final class DesktopDesktopRecordingChromePort implements LayoutChromePort {
 
 /// Chrome-features stand-in: the dock composer is a probe widget so tests
 /// can assert the contextual input state without feature code.
-final class DesktopDesktopFixtureChromeFeatures implements LayoutChromeFeatures {
+final class DesktopDesktopFixtureChromeFeatures
+    implements LayoutChromeFeatures {
   DesktopDesktopFixtureChromeFeatures(this.harness);
 
   final DesktopDesktopHarness harness;
 
   final ValueNotifier<LicoToastNoticesSnapshot> _notices =
-      ValueNotifier<LicoToastNoticesSnapshot>(
-        const LicoToastNoticesSnapshot(),
-      );
+      ValueNotifier<LicoToastNoticesSnapshot>(const LicoToastNoticesSnapshot());
 
   @override
   ValueNotifier<bool>? get auxChromePanelOpen => null;

@@ -131,9 +131,8 @@ void main() {
     );
     final cardIndex = stack.children.indexWhere(
       (child) =>
-          child.key == const ValueKey<String>(
-            'desktop-floating-card-monitoring',
-          ),
+          child.key ==
+          const ValueKey<String>('desktop-floating-card-monitoring'),
     );
     final barIndex = stack.children.indexWhere(
       (child) =>
@@ -190,9 +189,7 @@ void main() {
         const Key('desktop-floating-card-header-monitoring'),
       );
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(header),
-      );
+      final gesture = await tester.startGesture(tester.getCenter(header));
       for (var i = 0; i < 20; i++) {
         await gesture.moveBy(const Offset(0, 40));
         await tester.pump();
@@ -236,10 +233,11 @@ void main() {
       ..openApp(DesktopAppId.skillHub);
     await pumpShell(tester);
 
-    expect(
-      dockModel.entries.map((entry) => entry.storageId).toList(),
-      ['app:monitoring', 'app:skillHub', 'app:conversation'],
-    );
+    expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
+      'app:monitoring',
+      'app:skillHub',
+      'app:conversation',
+    ]);
 
     final start = tester.getCenter(
       find.byKey(const Key('desktop-dock-entry-app:skillHub')),
@@ -255,10 +253,11 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(
-      dockModel.entries.map((entry) => entry.storageId).toList(),
-      ['app:skillHub', 'app:monitoring', 'app:conversation'],
-    );
+    expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
+      'app:skillHub',
+      'app:monitoring',
+      'app:conversation',
+    ]);
   });
 
   testWidgets('dropping one icon on another creates an openable folder', (
@@ -287,12 +286,8 @@ void main() {
     await tester.pump();
 
     expect(dockModel.entries, hasLength(2));
-    final folder =
-        dockModel.entries.first as DesktopDockFolderEntry;
-    expect(folder.children, [
-      DesktopAppId.monitoring,
-      DesktopAppId.skillHub,
-    ]);
+    final folder = dockModel.entries.first as DesktopDockFolderEntry;
+    expect(folder.children, [DesktopAppId.monitoring, DesktopAppId.skillHub]);
     expect(
       (dockModel.entries.last as DesktopDockAppEntry).app,
       DesktopAppId.conversation,
@@ -303,9 +298,7 @@ void main() {
     );
 
     // The folder opens to show its contained icons; tapping one launches it.
-    await tester.tap(
-      find.byKey(Key('desktop-dock-entry-${folder.storageId}')),
-    );
+    await tester.tap(find.byKey(Key('desktop-dock-entry-${folder.storageId}')));
     await tester.pump();
     expect(find.byKey(const Key('desktop-folder-popup')), findsOneWidget);
     expect(
@@ -375,9 +368,7 @@ void main() {
     expect(harness.selections, [ClientSection.settings]);
   });
 
-  testWidgets('search capsule opens the global search palette', (
-    tester,
-  ) async {
+  testWidgets('search capsule opens the global search palette', (tester) async {
     await pumpShell(tester, activeDestination: ClientSection.settings);
     expect(find.byKey(const Key('desktop-dock-input-search')), findsOneWidget);
     expect(find.byKey(const Key('desktop-dock-input-composer')), findsNothing);
@@ -417,10 +408,7 @@ void main() {
     await pumpShell(tester, activeDestination: ClientSection.settings);
 
     expect(find.byKey(const Key('desktop-settings-app')), findsOneWidget);
-    expect(
-      find.byKey(const Key('desktop-settings-nav-card')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('desktop-settings-nav-card')), findsOneWidget);
     expect(
       find.byKey(const Key('desktop-settings-traffic-light-row')),
       findsOneWidget,

@@ -47,9 +47,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await expectLater(
-        find.byKey(
-          ValueKey<String>('desktop-mobile-${appearance.key}-golden'),
-        ),
+        find.byKey(ValueKey<String>('desktop-mobile-${appearance.key}-golden')),
         matchesGoldenFile(
           'goldens/desktop_mobile_preview_${appearance.key}.png',
         ),

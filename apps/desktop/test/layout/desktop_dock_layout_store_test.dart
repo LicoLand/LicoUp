@@ -36,13 +36,16 @@ void main() {
     expect(snapshot.entries, isEmpty);
   });
 
-  test('malformed file loads the default empty dock instead of throwing', () async {
-    final file = await storeFile();
-    await file.parent.create(recursive: true);
-    await file.writeAsString('{ not json');
-    final snapshot = await store.load(portableData);
-    expect(snapshot.entries, isEmpty);
-  });
+  test(
+    'malformed file loads the default empty dock instead of throwing',
+    () async {
+      final file = await storeFile();
+      await file.parent.create(recursive: true);
+      await file.writeAsString('{ not json');
+      final snapshot = await store.load(portableData);
+      expect(snapshot.entries, isEmpty);
+    },
+  );
 
   test('foreign schema version loads the default empty dock', () async {
     final file = await storeFile();
@@ -105,7 +108,10 @@ void main() {
             'id': 'folder-2',
             'children': ['skillHub'],
           },
-          {'type': 'folder', 'children': ['agentHub']},
+          {
+            'type': 'folder',
+            'children': ['agentHub'],
+          },
           {
             'type': 'mystery',
             'id': 'folder-3',
@@ -121,10 +127,7 @@ void main() {
       'monitoring',
     );
     // A single-child folder promotes its child to a plain app entry.
-    expect(
-      (snapshot.entries[1] as DesktopDockStoredAppEntry).app,
-      'skillHub',
-    );
+    expect((snapshot.entries[1] as DesktopDockStoredAppEntry).app, 'skillHub');
   });
 
   test('save promotes single-child folders and drops empty ones', () async {

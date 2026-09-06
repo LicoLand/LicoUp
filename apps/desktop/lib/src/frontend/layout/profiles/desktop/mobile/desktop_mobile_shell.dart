@@ -96,9 +96,7 @@ final class _DesktopMobileShell extends StatelessWidget {
         (compact
             ? desktopMobileTokens.spacingUnit
             : desktopMobileTokens.spacingUnit * 1.5);
-    final bottomClearance = DesktopMobileMetrics.composerClearance(
-      environment,
-    );
+    final bottomClearance = DesktopMobileMetrics.composerClearance(environment);
 
     return ColoredBox(
       key: ValueKey<String>(
@@ -116,9 +114,7 @@ final class _DesktopMobileShell extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: boundedContentWidth),
             child: AnimatedPadding(
-              key: const ValueKey<String>(
-                'desktop-mobile-composer-clearance',
-              ),
+              key: const ValueKey<String>('desktop-mobile-composer-clearance'),
               duration: DesktopMobileMetrics.motionDuration(environment),
               curve: Curves.easeOutCubic,
               padding: EdgeInsets.only(bottom: bottomClearance),
@@ -178,8 +174,7 @@ final class _CompactContextualNavigation extends StatelessWidget {
     final titleStyle = baseTitleStyle?.copyWith(
       color: colors.onSurface,
       fontSize:
-          (baseTitleStyle.fontSize ?? 16) *
-          desktopMobileTokens.typographyScale,
+          (baseTitleStyle.fontSize ?? 16) * desktopMobileTokens.typographyScale,
       fontWeight: FontWeight.w700,
     );
 
@@ -405,9 +400,7 @@ final class _DestinationFocusAnchor extends StatelessWidget {
     ),
     container: true,
     child: KeyedSubtree(
-      key: ValueKey<String>(
-        'desktop-mobile-focus-${data.initialFocusTarget}',
-      ),
+      key: ValueKey<String>('desktop-mobile-focus-${data.initialFocusTarget}'),
       child: data.destination,
     ),
   );

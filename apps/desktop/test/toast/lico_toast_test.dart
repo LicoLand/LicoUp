@@ -60,27 +60,31 @@ void main() {
   );
 
   group('toast kinds', () {
-    testWidgets('each kind surfaces as a floating LicoToast, never a SnackBar', (
-      tester,
-    ) async {
-      await pumpHostApp(tester, child: contextProbe());
+    testWidgets(
+      'each kind surfaces as a floating LicoToast, never a SnackBar',
+      (tester) async {
+        await pumpHostApp(tester, child: contextProbe());
 
-      for (final kind in LicoToastKind.values) {
-        await showToast(tester, 'kind-${kind.name}', kind: kind);
-      }
+        for (final kind in LicoToastKind.values) {
+          await showToast(tester, 'kind-${kind.name}', kind: kind);
+        }
 
-      expect(find.byType(LicoToast), findsNWidgets(LicoToastKind.values.length));
-      expect(find.byType(SnackBar), findsNothing);
-      for (final kind in LicoToastKind.values) {
-        expect(find.text('kind-${kind.name}'), findsOneWidget);
-      }
-      final kinds = tester
-          .widgetList<LicoToast>(find.byType(LicoToast))
-          .map((toast) => toast.kind)
-          .toSet();
-      expect(kinds, containsAll(LicoToastKind.values));
-      expect(tester.takeException(), isNull);
-    });
+        expect(
+          find.byType(LicoToast),
+          findsNWidgets(LicoToastKind.values.length),
+        );
+        expect(find.byType(SnackBar), findsNothing);
+        for (final kind in LicoToastKind.values) {
+          expect(find.text('kind-${kind.name}'), findsOneWidget);
+        }
+        final kinds = tester
+            .widgetList<LicoToast>(find.byType(LicoToast))
+            .map((toast) => toast.kind)
+            .toSet();
+        expect(kinds, containsAll(LicoToastKind.values));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('stacking', () {

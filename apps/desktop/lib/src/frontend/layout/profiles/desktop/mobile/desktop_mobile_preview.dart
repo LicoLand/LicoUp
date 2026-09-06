@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_tokens.dart';
 
-const String desktopMobilePreviewSemanticLabel =
-    'layout.profile.desktop.label';
+const String desktopMobilePreviewSemanticLabel = 'layout.profile.desktop.label';
 
 /// Metadata-only preview: the shapes describe the Desktop composition but
 /// never consume live feature state, user content, or backend data.
