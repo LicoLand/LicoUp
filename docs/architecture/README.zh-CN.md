@@ -164,8 +164,8 @@ flowchart TB
 |:---|:---|
 | `apps/desktop/` | Flutter 桌面与移动客户端（第 1 层与部分第 2 层） |
 | `crates/licoup-native/` | Rust 客户端核心、命令与平台桥接（第 3 层与第 4 层） |
-| `crates/licoup-conversation/` | （目标占位，尚非 workspace 成员）抽取后的 Conversation 领域 crate |
-| `crates/licoup-agent-runtime/` | （目标占位，尚非 workspace 成员）抽取后的 Agent Runtime 与 adapter crate |
+| `crates/licoup-conversation/` | Canonical Conversation 领域 crate（已是 workspace 成员，抽取进行中） |
+| `crates/licoup-agent-runtime/` | Agent Runtime 与 adapter crate（已是 workspace 成员，抽取进行中） |
 | `crates/licoup-platform-bridges/` | 原生平台 ABI 与句柄管理（第 4 层） |
 | `crates/licoup-endpoint-core/` | 端点身份、密钥保管与加密基础 |
 | `crates/licoup-protocol-bindings/` | 协议类型定义 |
@@ -421,9 +421,9 @@ Flutter 渲染性能是一等架构关注点。
    将其映射为带相等抑制的语义投影，Flutter 只观察这些投影。M2 adapter、
    controller renderer port、notifier presentation 路径与迁移 allowlist 已在同一迁移中删除。
 
-3. **Rust crate 抽取**——把 `licoup-conversation` 与 `licoup-agent-runtime`
-   加入 workspace（当前是 workspace 外的占位目录），从 `licoup-native/src/domain/`
-   抽取 L3、从 `licoup-native/src/platform/` 抽取 L4+L5，把 `licoup-native`
+3. **Rust crate 抽取**——`licoup-conversation` 与 `licoup-agent-runtime`
+   已是 workspace 成员；继续从 `licoup-native/src/domain/` 抽取 L3、从
+   `licoup-native/src/platform/` 抽取 L4+L5 进入这两个 crate，把 `licoup-native`
    缩减为二进制宿主 + FFI 外壳。
 
 旧目录树、架构验证器 allowlist 与目标树必须按已迁移功能原子切换；

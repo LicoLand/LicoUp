@@ -10,10 +10,16 @@ class AgentConversationMessageBlock extends StatelessWidget {
     super.key,
     required this.message,
     required this.adapter,
+    this.isStreaming = false,
   });
 
   final AgentConversationMessage message;
   final AgentRenderAdapter adapter;
+
+  /// Whether the message body is a partially written streamed reply. Only
+  /// assistant blocks consume it; user and subagent card rendering is
+  /// unchanged.
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +39,12 @@ class AgentConversationMessageBlock extends StatelessWidget {
             ? AgentConversationAssistantBubbleBlock(
                 message: message,
                 adapter: adapter,
+                isStreaming: isStreaming,
               )
             : AgentConversationAssistantDocumentBlock(
                 message: message,
                 adapter: adapter,
+                isStreaming: isStreaming,
               ),
       AgentConversationMessageKind.toolCall ||
       AgentConversationMessageKind.toolResult ||

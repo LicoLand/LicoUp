@@ -49,9 +49,10 @@ pub(super) fn collect_cursor_cli_model_catalog(
     }
     let mut command = Command::new(program);
     command.arg("models");
-    // Selected-agent catalog lookup is a user action. Inherit the process
-    // environment so `cursor-agent models` can read the same account catalog
-    // it did before unused-agent discovery stopped spawning CLIs.
+    // Selected-agent catalog lookup is a user action. The child observes the
+    // user shell environment (ADR 0007) so `cursor-agent models` reads the
+    // same account catalog it does in the user's terminal.
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     let Ok(output) = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),
