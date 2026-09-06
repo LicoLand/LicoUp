@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_models.da
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_foundation.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -109,8 +110,8 @@ class MessagingContactList extends StatefulWidget {
   final bool scanning;
   final bool loading;
 
-  /// Which of the four sidebar tabs is active. The list body follows this
-  /// identity; the bottom nav stays mounted across the four destinations.
+  /// Which of the three sidebar tabs is active. The list body follows this
+  /// identity; the bottom nav stays mounted across the destinations.
   final ClientSection activeDestination;
   final ValueChanged<ClientSection>? onSelectDestination;
   final int settingsSectionIndex;
@@ -355,13 +356,10 @@ class _MessagingContactListState extends State<MessagingContactList> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
     return MessagingSidebarFoundation(
       key: widget.showConversationList && _showsConversations
           ? const Key('messaging-conversation-list')
           : const Key('messaging-contact-list'),
-      heading: messagingSidebarHeading(strings, widget.activeDestination),
-      headingKey: const Key('messaging-contact-list-heading'),
       headingActions: _showsConversations
           ? _conversationHeadingActions()
           : null,
@@ -373,10 +371,17 @@ class _MessagingContactListState extends State<MessagingContactList> {
           ? _contextualActionBar()
           : null,
       list: _sidebarBody(),
-      bottomNav: MessagingSidebarBottomNav(
-        current: widget.activeDestination,
-        onSelectDestination: widget.onSelectDestination ?? (_) {},
-      ),
+      // The active profile decides whether its chrome already provides the
+      // 功能/对话/设置 navigation: the Desktop dock does, so the
+      // fullscreen-exclusive conversation app hides this Dashboard row.
+      bottomNav:
+          (maybeLayoutAgentsPresentationOf(context)?.showSidebarBottomNav ??
+              true)
+          ? MessagingSidebarBottomNav(
+              current: widget.activeDestination,
+              onSelectDestination: widget.onSelectDestination ?? (_) {},
+            )
+          : null,
     );
   }
 

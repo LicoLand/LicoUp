@@ -405,8 +405,8 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Window inset of the unified content card on its left, right, and bottom
-  /// edges; the card's top edge meets the chrome band.
+  /// Window inset of the unified content card on every edge, now that the
+  /// chrome band is gone and the card stands free inside the content region.
   static const double mainCardMargin = 8;
 
   /// Page inset inside the unified main content card. Every single-pane
@@ -487,16 +487,6 @@ abstract final class MessagingDesktopMetrics {
     ),
   ];
 
-  /// Full-width window-chrome band height; the system traffic lights stay
-  /// vertically centered inside its left inset, mirroring the other
-  /// profiles' top-band convention.
-  static const double topBandExtent = 48;
-
-  /// Historical reference only. Shell blur comes from the native
-  /// NSVisualEffectView; Flutter chrome applies tint via [surfaceGlassTint]
-  /// and does not use BackdropFilter.
-  static const double chromeGlassBlurSigma = 28;
-
   /// Dark preset shell tint alpha — 0 (native NSVisualEffectView only).
   /// Flutter color overlays (especially white, and black in dark mode) severely
   /// degrade frosted-glass material quality; both presets rely on native VE.
@@ -524,20 +514,8 @@ abstract final class MessagingDesktopMetrics {
   /// Search capsule and similar chrome control fills on glass.
   static const int chromeControlFillAlpha = 12;
 
-  /// Icon-button and tab hover wash on glass.
-  static const int chromeControlHoverAlpha = 10;
-
-  /// Selected conversation tab fill on glass.
-  static const int chromeTabSelectedAlpha = 26;
-
   static Color chromeControlFill({required bool isDark}) =>
       chromeGlassOverlay(isDark: isDark, alpha: chromeControlFillAlpha);
-
-  static Color chromeControlHover({required bool isDark}) =>
-      chromeGlassOverlay(isDark: isDark, alpha: chromeControlHoverAlpha);
-
-  static Color chromeTabSelectedFill({required bool isDark}) =>
-      chromeGlassOverlay(isDark: isDark, alpha: chromeTabSelectedAlpha);
 
   /// Shared light-on-glass foreground for shell chrome — identical in both
   /// presets. Widgets must resolve icon, label, and search chrome through
@@ -546,9 +524,6 @@ abstract final class MessagingDesktopMetrics {
 
   /// Resting chrome icon alpha on glass (both presets).
   static const int chromeIconMutedAlpha = 255;
-
-  /// Disabled chrome icon alpha on glass (both presets).
-  static const int chromeIconDisabledAlpha = 120;
 
   /// Search field border alpha on glass (both presets).
   static const int chromeSearchBorderAlpha = 110;
@@ -562,13 +537,6 @@ abstract final class MessagingDesktopMetrics {
   /// Resting icon on shell chrome.
   static Color chromeIconMuted() =>
       chromeForegroundColor.withAlpha(chromeIconMutedAlpha);
-
-  /// Hovered icon on shell chrome.
-  static Color chromeIconHover() => chromeForegroundColor;
-
-  /// Disabled icon on shell chrome.
-  static Color chromeIconDisabled() =>
-      chromeForegroundColor.withAlpha(chromeIconDisabledAlpha);
 
   /// Search field border on shell chrome.
   static Color chromeSearchBorder() =>
@@ -588,12 +556,19 @@ abstract final class MessagingDesktopMetrics {
   /// semantic row. Search → action and action → group label use one gap.
   static const double sidebarPrimaryControlGap = 14;
 
-  /// Left inset of the chrome band so its content clears the macOS
-  /// traffic-light cluster (same reservation as the Dashboard top bar).
-  static const double trafficLightInset = 96;
+  /// Height of the sidebar top row that hosts the native macOS traffic-light
+  /// cluster. The row replaces the old sidebar heading text; the lights
+  /// overlay it vertically centered with an equal left inset.
+  static const double trafficLightRowExtent = 40;
 
-  /// Square extent of the chrome-band right-cluster action buttons.
-  static const double chromeActionButtonExtent = 32;
+  /// Reserved width of the traffic-light anchor at a sidebar card top-left;
+  /// the native cluster (three buttons plus equal edge insets) overlays this
+  /// zone, so list content must not start left of it.
+  static const double trafficLightAnchorExtent = 88;
+
+  /// Top clearance that keeps full-width destination content (统计面板) below
+  /// the shell traffic-light row that overlays the main card top-left.
+  static const double trafficLightRowClearance = trafficLightRowExtent + 4;
 
   static const double windowCornerRadius = 24;
 
