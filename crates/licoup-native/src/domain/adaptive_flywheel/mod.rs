@@ -22,12 +22,12 @@ pub use assistant::{
     preflight_assistant_graph,
 };
 pub use definition::{
-    ActorSlot, BindingCandidate, BindingKind, BindingValue, FailureClass, FallbackReceipt,
-    GraphState, GraphStateKind, GuardExpression, RetryPolicy, RuntimeKind, RuntimeRequirement,
-    SessionPolicy, SlotFallbackPolicy, StrategyAuthorization, StrategyDefinition,
-    StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,
-    StrategyProjection, StrategyRunStatus, Transition, TransitionEvent, WorkflowDefinition,
-    WorkflowLimits, WorkflowMetadata, WorksetTemplate,
+    ActorSlot, BindingCandidate, BindingKind, BindingValue, CallbackDecisionKind, FailureClass,
+    FallbackReceipt, GraphState, GraphStateKind, GuardExpression, PendingCallback, RetryPolicy,
+    RuntimeKind, RuntimeRequirement, SessionPolicy, SlotFallbackPolicy, StrategyAuthorization,
+    StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyError,
+    StrategyErrorCode, StrategyProjection, StrategyRunStatus, Transition, TransitionEvent,
+    TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata, WorksetTemplate,
 };
 pub use graph::{CompiledWorkflow, compile_persisted_workflow, compile_workflow};
 pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};

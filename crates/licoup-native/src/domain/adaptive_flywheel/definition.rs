@@ -203,8 +203,49 @@ pub struct Transition {
     pub from: String,
     pub to: String,
     pub event: TransitionEvent,
+    /// Declared handoff mode. `flow` (the default when the field is absent)
+    /// enters the target as soon as the edge is selected; `callback` first
+    /// parks the run and waits for the master agent's decision.
+    #[serde(default, skip_serializing_if = "TransitionMode::is_flow")]
+    pub mode: TransitionMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guard: Option<GuardExpression>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransitionMode {
+    #[default]
+    Flow,
+    Callback,
+}
+
+impl TransitionMode {
+    pub const fn is_flow(&self) -> bool {
+        matches!(self, Self::Flow)
+    }
+}
+
+/// One durable callback wait: the edge was selected but the declared target is
+/// not entered until the master agent's decision arrives as a run input.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingCallback {
+    pub state_id: String,
+    pub state_visit: u64,
+    pub transition_id: String,
+    pub event: TransitionEvent,
+    pub target: String,
+}
+
+/// The master agent's decision for one pending callback: enter the declared
+/// next node, return to the completed node, or terminate the run.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CallbackDecisionKind {
+    Advance,
+    Return,
+    Terminate,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -352,6 +393,10 @@ pub struct StrategyProjection {
     pub history_count: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<FallbackReceipt>,
+    /// Callback-mode edges that settled and now wait for the master agent's
+    /// decision, in the deterministic order the waits were entered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_callbacks: Vec<PendingCallback>,
     #[serde(default)]
     pub needs_human_input: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
