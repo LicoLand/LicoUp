@@ -7,7 +7,7 @@
 // This file is inert in normal test runs: it returns immediately unless
 // LICO_VISUAL_DRIVE=1 is set. Run it with:
 //   LICO_VISUAL_DRIVE=1 flutter test \
-//     test/layout/profiles/dashboard/desktop/dashboard_visual_drive_test.dart \
+//     integration_test/dashboard_visual_drive_test.dart \
 //     -d macos
 // MARK lines on stdout sync external `screencapture` shots.
 

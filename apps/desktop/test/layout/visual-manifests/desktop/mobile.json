@@ -6,6 +6,7 @@
   "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_bundle.dart",
   "sourceRoots": [
     "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile",
+    "apps/desktop/test/goldens/layout/desktop/mobile",
     "apps/desktop/test/layout/profiles/desktop/mobile"
   ],
   "authorityEntries": [
@@ -15,7 +16,7 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:76bea3ce2f1bb813fa8bf45cfc415e1c852767240f2a3d29843414d07b597d76"
+      "digest": "sha256:fa4911a579e1a03f858da9989b520591f1ed79fbec205552cfd140f9beeae480"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
@@ -49,7 +50,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_mobile_agents_presentation.dart",
-      "digest": "sha256:63da3a66d2a7b59b0741d75eb19be8015df459806566848089325273a435f241"
+      "digest": "sha256:9bcc70813e0af22893651462dd774e185dde6b31d9695c1fc6e75aaac6daee7b"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_mobile_settings_presentation.dart",
@@ -62,6 +63,14 @@
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/mobile/destinations/desktop_settings_destination.dart",
       "digest": "sha256:951c5aa12a8267745fb1952ed68fc7fc8027e98c0779fcb5d4bceb881e89cd90"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/desktop/mobile/production-baseline/agents.png",
+      "digest": "sha256:1b162ead58fe83107828f9a1bb8e8164a289a3cfcf33ff3eeabefc0ddf7aad9d"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/desktop/mobile/production-baseline/settings.png",
+      "digest": "sha256:d8f4844e7c165b90ab6d7e2a54cc2f2d9e9388d8fd1e77ef4a21534daf3434c8"
     },
     {
       "path": "apps/desktop/test/layout/profiles/desktop/mobile/desktop_mobile_bundle_test.dart",
@@ -88,5 +97,5 @@
       "digest": "sha256:350f9cc0a533d494ba86f4253a907165f9a1dd6af81f43b078623a943ae8b0db"
     }
   ],
-  "manifestDigest": "sha256:b956cd61d4d0f85d63c9bd20b52f66c5d44af3c843ebbde39d73e50412cae39b"
+  "manifestDigest": "sha256:cdf09c5b20865364526b0fdd20eaa4ebe026f8546ed3d975854ab00c34af66ef"
 }

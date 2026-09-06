@@ -3,15 +3,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_controller.dart';
-import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 
-import 'desktop_desktop_test_harness.dart' show buildDesktopTestDockController;
+import '../../../fixtures/desktop_dock_store_fixture.dart';
+import 'desktop_desktop_test_harness.dart' show buildDesktopTestDockModel;
 
 void main() {
   group('open and close lifecycle', () {
     test('openApp appends new apps and ignores duplicates', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
 
       expect(controller.openApp(DesktopAppId.monitoring), isTrue);
@@ -26,7 +26,7 @@ void main() {
     });
 
     test('closeApp removes app entries', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -40,7 +40,7 @@ void main() {
 
   group('reorder', () {
     test('moveEntry relocates entries by gap index', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('moveEntry onto the same slot is a no-op', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller.openApp(DesktopAppId.monitoring);
       expect(controller.moveEntry('app:monitoring', 0), isFalse);
@@ -82,7 +82,7 @@ void main() {
 
   group('folders', () {
     test('merging two apps creates a folder at the target slot', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('merging onto a folder appends the dragged app', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -129,7 +129,7 @@ void main() {
     });
 
     test('folders cannot be merged (no nesting)', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -142,7 +142,7 @@ void main() {
     });
 
     test('closing a folder child dissolves a two-child folder', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -155,7 +155,7 @@ void main() {
     });
 
     test('extractFromFolder returns the app to the entry list', () async {
-      final controller = buildDesktopTestDockController();
+      final controller = buildDesktopTestDockModel();
       await controller.load();
       controller
         ..openApp(DesktopAppId.monitoring)
@@ -187,9 +187,12 @@ void main() {
         'desktop_dock_restart_test',
       );
       addTearDown(() => directory.deleteSync(recursive: true));
-      final portableData = PortableDataRoot(dataDirectoryOverride: directory);
+      final portableData = createDesktopDockPortableData(directory);
 
-      final first = DesktopDockController(portableData: portableData);
+      final first = DesktopDockModel(
+        store: createDesktopDockLayoutStore(),
+        portableData: portableData,
+      );
       await first.load();
       first
         ..openApp(DesktopAppId.monitoring)
@@ -202,7 +205,7 @@ void main() {
       // the serialized writes land instead of waiting a fixed delay. The
       // match must be the final shape — intermediate states can share the
       // entry count.
-      bool matchesFinalShape(DesktopDockController controller) {
+      bool matchesFinalShape(DesktopDockModel controller) {
         if (controller.entries.length != 2) return false;
         final first = controller.entries.first;
         final last = controller.entries.last;
@@ -214,9 +217,12 @@ void main() {
             last.children.last == DesktopAppId.skillHub;
       }
 
-      DesktopDockController? second;
+      DesktopDockModel? second;
       for (var attempt = 0; attempt < 100; attempt++) {
-        final candidate = DesktopDockController(portableData: portableData);
+        final candidate = DesktopDockModel(
+          store: createDesktopDockLayoutStore(),
+          portableData: portableData,
+        );
         await candidate.load();
         if (matchesFinalShape(candidate)) {
           second = candidate;
@@ -241,8 +247,10 @@ void main() {
         'desktop_dock_unknown_app_test',
       );
       addTearDown(() => directory.deleteSync(recursive: true));
-      final portableData = PortableDataRoot(dataDirectoryOverride: directory);
-      final stateDir = await portableData.clientDirectory();
+      final portableData = createDesktopDockPortableData(directory);
+      // `PortableDataRoot.clientDirectory()` is `<root>/client-state`.
+      final stateDir = Directory('${directory.path}/client-state');
+      stateDir.createSync(recursive: true);
       File('${stateDir.path}/desktop-dock-layout.json').writeAsStringSync(
         '{"schemaVersion": 1, "entries": ['
         '{"type": "app", "app": "notAnApp"},'
@@ -250,7 +258,10 @@ void main() {
         ']}',
       );
 
-      final controller = DesktopDockController(portableData: portableData);
+      final controller = DesktopDockModel(
+        store: createDesktopDockLayoutStore(),
+        portableData: portableData,
+      );
       await controller.load();
       expect(controller.openApps, {DesktopAppId.monitoring});
     });

@@ -3,20 +3,21 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/presentation/desktop_dock_layout.dart';
 import 'package:licoup/src/platform/layout/desktop_dock_layout_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 void main() {
   late Directory directory;
   late PortableDataRoot portableData;
-  late DesktopDockLayoutStore store;
+  late PlatformDesktopDockLayoutStore store;
 
   setUp(() {
     directory = Directory.systemTemp.createTempSync(
       'desktop_dock_layout_store_test',
     );
     portableData = PortableDataRoot(dataDirectoryOverride: directory);
-    store = const DesktopDockLayoutStore();
+    store = const PlatformDesktopDockLayoutStore();
   });
 
   tearDown(() {
@@ -27,7 +28,7 @@ void main() {
 
   Future<File> storeFile() async {
     final root = await portableData.clientDirectory();
-    return File('${root.path}/${DesktopDockLayoutStore.fileName}');
+    return File('${root.path}/${PlatformDesktopDockLayoutStore.fileName}');
   }
 
   test('missing file loads the default empty dock', () async {

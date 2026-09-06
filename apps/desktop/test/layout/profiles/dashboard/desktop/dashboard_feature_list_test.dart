@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
+import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -14,7 +16,6 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/layout/dashboard_feature_order_store.dart';
 
 import '../../../fixtures/layout_scoped_state_fixture.dart';
 
@@ -125,17 +126,19 @@ void main() {
     tester,
   ) async {
     final selections = <ClientSection>[];
-    final store = _RecordingOrderStore(DashboardFeatureOrderStore.defaultOrder);
+    final store = _RecordingOrderStore(DashboardFeatureOrder.defaultOrder);
     await _pumpFeatureList(tester, store: store, selections: selections);
 
     final first = find.byKey(const Key('messaging-sidebar-list-agentHub'));
     expect(first, findsOneWidget);
 
+    // Row pitch is 48 (padding 10×2 + icon 20 + row gap 8): 80 carries the
+    // first row past two boundaries without reaching a third.
     final gesture = await tester.startGesture(tester.getCenter(first));
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
     await gesture.moveBy(const Offset(0, 40));
     await tester.pumpAndSettle();
-    await gesture.moveBy(const Offset(0, 32));
+    await gesture.moveBy(const Offset(0, 40));
     await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();
@@ -167,12 +170,14 @@ void main() {
     final selections = <ClientSection>[];
     await _pumpFeatureList(
       tester,
-      store: _RecordingOrderStore(DashboardFeatureOrderStore.defaultOrder),
+      store: _RecordingOrderStore(DashboardFeatureOrder.defaultOrder),
       selections: selections,
       current: ClientSection.models,
     );
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-chatChannels')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+    );
     await tester.pump();
     expect(selections, [ClientSection.models]);
 
@@ -187,7 +192,9 @@ void main() {
     expect(pane, isA<LayoutTabState>());
     expect((pane! as LayoutTabState).index, 1);
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-modelGateway')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-modelGateway')),
+    );
     await tester.pump();
     pane = scopedState.readIfDeclaredFor(
       ClientSection.models,
@@ -202,7 +209,7 @@ void main() {
     final selections = <ClientSection>[];
     await _pumpFeatureList(
       tester,
-      store: _RecordingOrderStore(DashboardFeatureOrderStore.defaultOrder),
+      store: _RecordingOrderStore(DashboardFeatureOrder.defaultOrder),
       selections: selections,
       current: ClientSection.models,
     );
@@ -210,12 +217,13 @@ void main() {
     final colors = tester
         .element(find.byKey(const Key('messaging-sidebar-feature-list')))
         .licoColors;
-    AnimatedContainer rowContainer(String id) => tester.widget<AnimatedContainer>(
-      find.descendant(
-        of: find.byKey(Key('messaging-sidebar-list-$id')),
-        matching: find.byType(AnimatedContainer),
-      ),
-    );
+    AnimatedContainer rowContainer(String id) =>
+        tester.widget<AnimatedContainer>(
+          find.descendant(
+            of: find.byKey(Key('messaging-sidebar-list-$id')),
+            matching: find.byType(AnimatedContainer),
+          ),
+        );
 
     expect(
       (rowContainer('modelGateway').decoration! as BoxDecoration).color,
@@ -226,7 +234,9 @@ void main() {
       isNot(colors.primary),
     );
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-chatChannels')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+    );
     await tester.pump();
     expect(
       (rowContainer('chatChannels').decoration! as BoxDecoration).color,

@@ -10,12 +10,14 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_capabil
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayPanel extends StatefulWidget {
@@ -77,64 +79,76 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
     final paired = projection.paired;
     final mobileClient =
         projection.mobileRuntime || isMobileClientPlatform(context);
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        LicoSectionHeader(
-          title: strings.pairing,
-          leading: MinimalScanIcon(color: colors.accent, size: 22),
-        ),
-        const SizedBox(height: 12),
-        if (mobileClient) ...[
-          MobileRelayScanPairingPrompt(
-            colors: colors,
-            label: strings.scanPairingPrompt,
+    final busy = projection.busy || projection.polling;
+    // The standard feature-page structure: pane title bar (移动配对 +
+    // refresh) above, the pairing/trust/capability content below.
+    return LicoPaneScaffold(
+      title: strings.mobilePairing,
+      refreshTooltip: strings.refresh,
+      onRefresh: busy
+          ? null
+          : () => widget.binding.intents.send(const RefreshMobileRelay()),
+      refreshing: busy,
+      refreshButtonKey: const Key('mobile-relay-refresh'),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          LicoSectionHeader(
+            title: strings.pairing,
+            leading: MinimalScanIcon(color: colors.accent, size: 22),
           ),
           const SizedBox(height: 12),
-          MobileRelayPairingInfoRow(
-            label: strings.status,
-            value: paired ? strings.paired : strings.waiting,
-          ),
-          MobileRelayPairingInfoRow(
-            label: strings.pairingId,
-            value: projection.pairingId,
-          ),
-          MobileRelayPairingInfoRow(
-            label: strings.expires,
-            value: projection.pairingExpiresLabel,
-          ),
-        ] else
-          MobileRelayPairingWorkspaceCard(
-            projection: projection,
-            intents: widget.binding.intents,
-            stationBaseUrlController: _stationBaseUrlController,
-          ),
-        if (paired && projection.trust != null) ...[
-          const _MobileRelayDivider(),
-          MobileRelayTrustVerificationCard(
-            presentation: projection.trust!,
-            colors: colors,
-          ),
+          if (mobileClient) ...[
+            MobileRelayScanPairingPrompt(
+              colors: colors,
+              label: strings.scanPairingPrompt,
+            ),
+            const SizedBox(height: 12),
+            MobileRelayPairingInfoRow(
+              label: strings.status,
+              value: paired ? strings.paired : strings.waiting,
+            ),
+            MobileRelayPairingInfoRow(
+              label: strings.pairingId,
+              value: projection.pairingId,
+            ),
+            MobileRelayPairingInfoRow(
+              label: strings.expires,
+              value: projection.pairingExpiresLabel,
+            ),
+          ] else
+            MobileRelayPairingWorkspaceCard(
+              projection: projection,
+              intents: widget.binding.intents,
+              stationBaseUrlController: _stationBaseUrlController,
+            ),
+          if (paired && projection.trust != null) ...[
+            const _MobileRelayDivider(),
+            MobileRelayTrustVerificationCard(
+              presentation: projection.trust!,
+              colors: colors,
+            ),
+          ],
+          if (paired) ...[
+            const _MobileRelayDivider(),
+            SecureMeshFileSyncCard(
+              projection: projection,
+              intents: widget.binding.intents,
+            ),
+            const SizedBox(height: 12),
+            SecureMeshApprovalCard(
+              projection: projection,
+              intents: widget.binding.intents,
+            ),
+          ],
+          if (projection.secureMeshCapabilities != null) ...[
+            const _MobileRelayDivider(),
+            SecureMeshCapabilityCard(
+              projection: projection.secureMeshCapabilities!,
+            ),
+          ],
         ],
-        if (paired) ...[
-          const _MobileRelayDivider(),
-          SecureMeshFileSyncCard(
-            projection: projection,
-            intents: widget.binding.intents,
-          ),
-          const SizedBox(height: 12),
-          SecureMeshApprovalCard(
-            projection: projection,
-            intents: widget.binding.intents,
-          ),
-        ],
-        if (projection.secureMeshCapabilities != null) ...[
-          const _MobileRelayDivider(),
-          SecureMeshCapabilityCard(
-            projection: projection.secureMeshCapabilities!,
-          ),
-        ],
-      ],
+      ),
     );
   }
 

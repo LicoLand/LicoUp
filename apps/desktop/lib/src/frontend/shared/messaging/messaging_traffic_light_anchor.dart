@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/platform/window_chrome/window_chrome_channel.dart';
 
 /// Invisible anchor that reserves the native traffic-light cluster zone at a
 /// sidebar card's top-left and reports its rect through the window-chrome
@@ -43,7 +43,7 @@ final class _MessagingTrafficLightAnchorState
       return;
     }
     _reported = rect;
-    unawaited(WindowChromeChannel.instance.setTrafficLightAnchor(rect));
+    unawaited(ClientPlatformPorts.reportTrafficLightAnchor(rect));
   }
 
   void _scheduleReport() {
