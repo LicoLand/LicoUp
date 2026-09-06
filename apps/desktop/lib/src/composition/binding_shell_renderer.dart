@@ -223,7 +223,10 @@ final class _ChromeNoticesListenable
   _ChromeNoticesListenable({required this.projection});
 
   final ProjectionSource<ChromeProjection> projection;
-  final Map<VoidCallback, StreamSubscription<ProjectionUpdate<ChromeProjection>>>
+  final Map<
+    VoidCallback,
+    StreamSubscription<ProjectionUpdate<ChromeProjection>>
+  >
   _subscriptions =
       <VoidCallback, StreamSubscription<ProjectionUpdate<ChromeProjection>>>{};
 
@@ -484,9 +487,8 @@ final class _DockConversationComposer extends StatelessWidget {
       selectedReasoningEffort: selectedReasoningEffort,
       onModelChanged: (model) =>
           conversation.intents.send(SelectConversationModel(model)),
-      onReasoningEffortChanged: (effort) => conversation.intents.send(
-        SelectConversationReasoningEffort(effort),
-      ),
+      onReasoningEffortChanged: (effort) =>
+          conversation.intents.send(SelectConversationReasoningEffort(effort)),
       onDraftChanged: (draft) => conversation.intents.send(
         UpdateConversationDraft(composer.conversationId, draft),
       ),

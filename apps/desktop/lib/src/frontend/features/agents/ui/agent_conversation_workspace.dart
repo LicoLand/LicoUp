@@ -473,8 +473,7 @@ class _AgentConversationWorkspaceState
     final canonicalDetail =
         root.authority == ConversationAuthority.canonicalConversation &&
         !_showAgentDetailInsideGroupList;
-    final detail =
-        canonicalDetail
+    final detail = canonicalDetail
         ? CanonicalGroupConversationPane(
             conversation: widget.conversation,
             agents: widget.agents,

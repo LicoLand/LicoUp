@@ -28,8 +28,7 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
     final labelStyle = baseLabelStyle?.copyWith(
       color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
       fontSize:
-          (baseLabelStyle.fontSize ?? 14) *
-          desktopMobileTokens.typographyScale,
+          (baseLabelStyle.fontSize ?? 14) * desktopMobileTokens.typographyScale,
       fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
     );
     final foreground = selected

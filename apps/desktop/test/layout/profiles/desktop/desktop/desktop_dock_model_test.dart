@@ -48,19 +48,12 @@ void main() {
         ..openApp(DesktopAppId.agentHub);
 
       // Move monitoring (index 0) past skillHub+agentHub (gap 3).
-      expect(
-        controller.moveEntry('app:monitoring', 3),
-        isTrue,
-      );
+      expect(controller.moveEntry('app:monitoring', 3), isTrue);
       expect(
         controller.entries
             .map((entry) => (entry as DesktopDockAppEntry).app)
             .toList(),
-        [
-          DesktopAppId.skillHub,
-          DesktopAppId.agentHub,
-          DesktopAppId.monitoring,
-        ],
+        [DesktopAppId.skillHub, DesktopAppId.agentHub, DesktopAppId.monitoring],
       );
 
       // Move it back to the front (gap 0).
@@ -89,16 +82,10 @@ void main() {
         ..openApp(DesktopAppId.skillHub)
         ..openApp(DesktopAppId.agentHub);
 
-      expect(
-        controller.mergeEntries('app:skillHub', 'app:monitoring'),
-        isTrue,
-      );
+      expect(controller.mergeEntries('app:skillHub', 'app:monitoring'), isTrue);
       expect(controller.entries, hasLength(2));
       final folder = controller.entries.first as DesktopDockFolderEntry;
-      expect(folder.children, [
-        DesktopAppId.monitoring,
-        DesktopAppId.skillHub,
-      ]);
+      expect(folder.children, [DesktopAppId.monitoring, DesktopAppId.skillHub]);
       expect(
         (controller.entries.last as DesktopDockAppEntry).app,
         DesktopAppId.agentHub,
@@ -116,10 +103,7 @@ void main() {
 
       final folderId =
           (controller.entries.first as DesktopDockFolderEntry).storageId;
-      expect(
-        controller.mergeEntries('app:agentHub', folderId),
-        isTrue,
-      );
+      expect(controller.mergeEntries('app:agentHub', folderId), isTrue);
       final folder = controller.entries.single as DesktopDockFolderEntry;
       expect(folder.children, [
         DesktopAppId.monitoring,
@@ -174,10 +158,7 @@ void main() {
         DesktopAppId.skillHub,
         DesktopAppId.agentHub,
       });
-      expect(
-        controller.entries.whereType<DesktopDockFolderEntry>(),
-        isEmpty,
-      );
+      expect(controller.entries.whereType<DesktopDockFolderEntry>(), isEmpty);
     });
   });
 
@@ -236,10 +217,7 @@ void main() {
         DesktopAppId.agentHub,
       );
       final folder = second.entries.last as DesktopDockFolderEntry;
-      expect(folder.children, [
-        DesktopAppId.monitoring,
-        DesktopAppId.skillHub,
-      ]);
+      expect(folder.children, [DesktopAppId.monitoring, DesktopAppId.skillHub]);
     });
 
     test('unknown stored app names are dropped on load', () async {

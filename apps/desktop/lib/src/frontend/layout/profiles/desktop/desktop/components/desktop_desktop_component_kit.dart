@@ -87,7 +87,9 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         color: selected ? colors.text : colors.textMuted,
                         fontSize: 12 * tokens.typographyScale,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                         letterSpacing: 0.05,
                       ),
                     ),
@@ -168,7 +170,10 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
       child: Container(
         key: key,
         constraints: BoxConstraints(
-          minHeight: math.max(32, 32 * MediaQuery.textScalerOf(context).scale(1)),
+          minHeight: math.max(
+            32,
+            32 * MediaQuery.textScalerOf(context).scale(1),
+          ),
         ),
         padding: EdgeInsets.symmetric(
           horizontal: tokens.spacingUnit * 1.5,

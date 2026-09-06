@@ -127,7 +127,8 @@ final class DesktopDockModel extends ChangeNotifier {
   bool openApp(DesktopAppId app) {
     if (isOpen(app)) return false;
     return _mutate(
-      () => _entries = List.unmodifiable([..._entries, DesktopDockAppEntry(app)]),
+      () =>
+          _entries = List.unmodifiable([..._entries, DesktopDockAppEntry(app)]),
     );
   }
 
@@ -227,8 +228,7 @@ final class DesktopDockModel extends ChangeNotifier {
     int? insertIndex,
   }) {
     final folderIndex = _entries.indexWhere(
-      (entry) =>
-          entry is DesktopDockFolderEntry && entry.id == folderId,
+      (entry) => entry is DesktopDockFolderEntry && entry.id == folderId,
     );
     if (folderIndex < 0) return false;
     final folder = _entries[folderIndex] as DesktopDockFolderEntry;

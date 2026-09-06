@@ -228,9 +228,7 @@ final class _FixtureChromeFeatures implements LayoutChromeFeatures {
       _fixtureNotices;
 
   static final ValueNotifier<LicoToastNoticesSnapshot> _fixtureNotices =
-      ValueNotifier<LicoToastNoticesSnapshot>(
-        const LicoToastNoticesSnapshot(),
-      );
+      ValueNotifier<LicoToastNoticesSnapshot>(const LicoToastNoticesSnapshot());
 }
 
 /// In-memory 功能 order store for shell tests: starts from the frozen

@@ -94,9 +94,7 @@ final class DesktopFloatingCard extends StatelessWidget {
                             ),
                           ),
                           _DesktopFloatingCardCloseButton(
-                            key: Key(
-                              'desktop-floating-card-close-${app.name}',
-                            ),
+                            key: Key('desktop-floating-card-close-${app.name}'),
                             tooltip: DesktopDesktopCopy.closeAppTooltip(
                               strings,
                             ),
