@@ -80,8 +80,8 @@ final class ClientAppComposition {
       TargetPlatform.macOS ||
       TargetPlatform.windows ||
       TargetPlatform.iOS ||
-      TargetPlatform.android => LayoutProfileId.parse('messaging'),
-      _ => LayoutProfileId.parse('dashboard'),
+      TargetPlatform.android => LayoutProfileId.parse('dashboard'),
+      _ => LayoutProfileId.parse('desktop'),
     };
     final fallback = PresentationPreferences(
       layoutProfileId: preferredLayout,

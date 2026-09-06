@@ -45,21 +45,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(controller.currentSection, ClientSection.agentHub);
+      // The app lands on 对话 with the bottom nav embedded in the
+      // conversation-list column.
       expect(
-        find.byKey(const Key('messaging-desktop-destination-agentHub')),
+        find.byKey(const Key('messaging-sidebar-nav-conversations')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('messaging-sidebar-nav-features')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
 
+      // The 功能 bottom nav opens the features home (agent hub).
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-features')));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.agentHub);
+      expect(
+        find.byKey(const Key('dashboard-desktop-destination-agentHub')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      // A 功能 row opens plugin management.
       await tester.tap(
         find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
       );
       await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.pluginManagement);
       expect(
-        find.byKey(const Key('messaging-desktop-destination-pluginManagement')),
+        find.byKey(
+          const Key('dashboard-desktop-destination-pluginManagement'),
+        ),
         findsOneWidget,
       );
       expect(
@@ -68,28 +85,45 @@ void main() {
         reason: 'plugins list must fit at 200% text scale',
       );
 
-      await tester.tap(find.byKey(const Key('messaging-chrome-usage-button')));
+      // 设置 opens settings.
+      await tester.tap(
+        find.byKey(const Key('messaging-sidebar-nav-settings')),
+      );
       await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.settings);
       expect(
-        find.byKey(const Key('messaging-desktop-destination-monitoring')),
+        find.byKey(const Key('dashboard-desktop-destination-settings')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.byKey(const Key('messaging-chrome-usage-button')));
+      // Re-entering 功能 from settings hosts the agent hub again.
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-features')));
       await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.agentHub);
+
+      // The stats row opens the full-width monitoring destination last.
+      await tester.tap(
+        find.byKey(const Key('messaging-sidebar-list-statsPanel')),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.monitoring);
       expect(
-        find.byKey(const Key('messaging-desktop-destination-agents')),
+        find.byKey(const Key('dashboard-desktop-destination-monitoring')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
+      // Full-width destinations carry no sidebar; drive the section change
+      // through the same navigation the shell intents use, then finish on 设置.
+      controller.selectSection(ClientSection.agents);
       await tester.pump(const Duration(milliseconds: 250));
-      expect(
-        find.byKey(const Key('messaging-desktop-destination-settings')),
-        findsOneWidget,
+      expect(controller.currentSection, ClientSection.agents);
+      await tester.tap(
+        find.byKey(const Key('messaging-sidebar-nav-settings')),
       );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.currentSection, ClientSection.settings);
       expect(tester.takeException(), isNull);
     },
   );
@@ -128,19 +162,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('messaging-mobile-menu-button')));
+    await tester.tap(find.byKey(const Key('dashboard-mobile-menu-button')));
     await tester.pump(const Duration(milliseconds: 180));
     await tester.tap(
-      find.byKey(const Key('messaging-mobile-compact-navigation-settings')),
+      find.byKey(const Key('dashboard-mobile-compact-navigation-settings')),
     );
     await tester.pump(const Duration(milliseconds: 250));
     expect(controller.currentSection, ClientSection.settings);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byKey(const Key('messaging-mobile-menu-button')));
+    await tester.tap(find.byKey(const Key('dashboard-mobile-menu-button')));
     await tester.pump(const Duration(milliseconds: 180));
     await tester.tap(
-      find.byKey(const Key('messaging-mobile-compact-navigation-agents')),
+      find.byKey(const Key('dashboard-mobile-compact-navigation-agents')),
     );
     await tester.pump(const Duration(milliseconds: 250));
     expect(controller.currentSection, ClientSection.agents);
@@ -162,7 +196,7 @@ final class _UiAgentService extends AgentService {
 final class _JourneyPreferencesRepository
     implements PresentationPreferencesRepository {
   var _preferences = PresentationPreferences(
-    layoutProfileId: LayoutProfileId.parse('messaging'),
+    layoutProfileId: LayoutProfileId.parse('dashboard'),
     appearancePresetId: 'default-system',
     localePreference: 'system',
   );

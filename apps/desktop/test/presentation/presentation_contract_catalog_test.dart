@@ -386,8 +386,8 @@ ShellBinding _shellBinding() {
     layout: _Projection(
       LayoutProjection(
         LayoutSelectionState(
-          committedId: LayoutProfileId.parse('messaging'),
-          effectiveId: LayoutProfileId.parse('messaging'),
+          committedId: LayoutProfileId.parse('dashboard'),
+          effectiveId: LayoutProfileId.parse('dashboard'),
           status: LayoutSelectionStatus.stable,
           surface: LayoutRuntimeSurface.desktop,
           viewport: LayoutViewportClass.medium,

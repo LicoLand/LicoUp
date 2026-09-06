@@ -1,166 +1,196 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
-import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/presentation/dashboard_desktop_destination_presentations.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_content_region.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_main_content_card.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_profile_page.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_column.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_traffic_light_anchor.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 
-/// Sidebar card tint alphas (dark/light); the blur itself comes from the
-/// native NSVisualEffectView beneath the window's transparent zone.
-const int _sidebarTintDarkAlpha = 22;
-const int _sidebarTintLightAlpha = 150;
-
-/// Dashboard's macOS-Notes desktop composition: the folder sidebar floats as
-/// a lighter frosted-glass card inset from the window edges, above flush list
-/// and detail panes on the window background — no top bar, no status bar.
+/// Dashboard desktop shell hierarchy: one frosted-glass content region whose
+/// rounded main card carries the navigation sidebar — the macOS traffic
+/// lights sit at the sidebar card top-left (or at the main card top-left on
+/// full-width destinations). There is no top chrome band; notifications
+/// surface through the shared floating toast.
 Widget buildDashboardDesktopMediumShell(
   BuildContext context,
   LayoutShellBuildContext data,
-) => _DashboardNotesShell(data: data);
+) => _DashboardDesktopShell(data: data);
 
 Widget buildDashboardDesktopExpandedShell(
   BuildContext context,
   LayoutShellBuildContext data,
-) => _DashboardNotesShell(data: data);
+) => _DashboardDesktopShell(data: data);
 
-final class _DashboardNotesShell extends StatefulWidget {
-  const _DashboardNotesShell({required this.data});
+final class _DashboardDesktopShell extends StatefulWidget {
+  const _DashboardDesktopShell({required this.data});
 
   final LayoutShellBuildContext data;
 
   @override
-  State<_DashboardNotesShell> createState() => _DashboardNotesShellState();
+  State<_DashboardDesktopShell> createState() => _DashboardDesktopShellState();
 }
 
-final class _DashboardNotesShellState extends State<_DashboardNotesShell> {
-  static const double _defaultSidebarWidth = 180;
-  static const double _minSidebarWidth = 140;
-  static const double _maxSidebarWidth = 320;
+final class _DashboardDesktopShellState extends State<_DashboardDesktopShell> {
+  bool _profileOpen = false;
+  ValueNotifier<bool>? _auxPanelOpen;
 
-  double _sidebarWidth = _defaultSidebarWidth;
+  void _closeProfile() {
+    final notifier = _auxPanelOpen;
+    if (notifier != null) {
+      if (notifier.value) {
+        notifier.value = false;
+      }
+      return;
+    }
+    if (_profileOpen) {
+      setState(() => _profileOpen = false);
+    }
+  }
+
+  void _selectDestination(ClientSection destination) {
+    _closeProfile();
+    widget.data.onSelectDestination(destination);
+  }
 
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
-    if (data.environment.surface != LayoutRuntimeSurface.desktop) {
-      throw const FormatException('dashboard_desktop_surface_invalid');
-    }
     final colors = context.layoutPalette;
-    final tokens = context.layoutVisualTokens;
-    final scopedState = LayoutScope.maybeOf(context)?.state;
-    // Concentric corner radius: outer (window) radius 24 = card radius 16 +
-    // padding 8, so the card's curve shares the window corner's center.
-    const cardRadius = 16.0;
+    assert(
+      data.environment.surface == LayoutRuntimeSurface.desktop,
+      'dashboard_desktop_surface_invalid',
+    );
+    if (data.environment.surface != LayoutRuntimeSurface.desktop) {
+      return ColoredBox(color: colors.background);
+    }
+    final notifier = LayoutChromeFeaturesScope.maybeOf(
+      context,
+    )?.auxChromePanelOpen;
+    if (!identical(_auxPanelOpen, notifier)) {
+      _auxPanelOpen = notifier;
+    }
 
-    return Semantics(
-      key: const ValueKey<String>('dashboard-desktop-notes-shell'),
+    final content = Semantics(
+      key: const ValueKey<String>('dashboard-desktop-shell'),
       container: true,
       label: data.destinationLabel(data.activeDestination),
-      // Transparent base under the sidebar card: the native NSVisualEffectView
-      // beneath the window supplies the real Apple-style blur there, while
-      // the list/detail panes stay opaque on their own fills.
-      child: Material(
-        color: Colors.transparent,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...[
-              Padding(
-                padding: EdgeInsets.only(
-                  left: tokens.spacingUnit,
-                  top: tokens.spacingUnit,
-                  bottom: tokens.spacingUnit,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(cardRadius),
-                  // No Flutter BackdropFilter here: the native visual-effect
-                  // view already blurs the desktop beneath this transparent
-                  // zone; the card is just a light tint plus a hairline rim.
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: colors.isDark
-                          ? Colors.white.withAlpha(_sidebarTintDarkAlpha)
-                          : Colors.white.withAlpha(_sidebarTintLightAlpha),
-                      borderRadius: BorderRadius.circular(cardRadius),
-                      border: Border.all(
-                        color: colors.line.withAlpha(colors.isDark ? 90 : 120),
-                        width: 1,
-                      ),
-                    ),
-                    child: scopedState == null
-                        ? DashboardFolderSidebar(
-                            section: data.activeDestination,
-                            availableSections: data.availableDestinations,
-                            onSelectSection: data.onSelectDestination,
-                            width: _sidebarWidth,
-                          )
-                        : StreamBuilder<void>(
-                            stream: scopedState.changes,
-                            builder: (context, _) {
-                              final tab = scopedState.readIfDeclared(
-                                LayoutStateChannels.settingsSection,
-                              );
-                              return DashboardFolderSidebar(
-                                section: data.activeDestination,
-                                availableSections: data.availableDestinations,
-                                onSelectSection: data.onSelectDestination,
-                                width: _sidebarWidth,
-                                settingsSectionIndex: tab is LayoutTabState
-                                    ? tab.index
-                                    : 0,
-                                onSelectSettingsSection: (index) =>
-                                    scopedState.writeIfDeclared(
-                                      LayoutStateChannels.settingsSection,
-                                      LayoutTabState(index),
-                                    ),
-                              );
-                            },
-                          ),
+      child: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): _closeProfile,
+        },
+        child: Focus(
+          skipTraversal: true,
+          child: Material(
+            // Transparent base: the native NSVisualEffectView blurs the
+            // desktop beneath every chrome region and margin gutter.
+            color: Colors.transparent,
+            child: notifier == null
+                ? _shellContent(data, profileOpen: _profileOpen)
+                : ValueListenableBuilder<bool>(
+                    valueListenable: notifier,
+                    builder: (context, open, _) =>
+                        _shellContent(data, profileOpen: open),
                   ),
-                ),
-              ),
-              // Drag-to-resize handle on the card's trailing edge.
-              MouseRegion(
-                key: const Key('dashboard-sidebar-resize-handle'),
-                cursor: SystemMouseCursors.resizeLeftRight,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragUpdate: (details) {
-                    setState(() {
-                      _sidebarWidth = (_sidebarWidth + details.delta.dx).clamp(
-                        _minSidebarWidth,
-                        _maxSidebarWidth,
-                      );
-                    });
-                  },
-                  child: const SizedBox(width: 6),
-                ),
-              ),
-            ],
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  top: tokens.spacingUnit,
-                  right: tokens.spacingUnit,
-                  bottom: tokens.spacingUnit,
-                ),
-                child: Semantics(
-                  key: ValueKey<String>(
-                    'dashboard-desktop-focus-${data.initialFocusTarget}',
-                  ),
-                  container: true,
-                  explicitChildNodes: true,
-                  child: data.destination,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
+    );
+
+    // Mount the unified toast host and the chrome-notices listener (frozen
+    // toast contract): notifications surface as floating toasts now that the
+    // chrome band and its bell are gone.
+    final features = LayoutChromeFeaturesScope.maybeOf(context);
+    if (features == null) {
+      return content;
+    }
+    return LicoToastHost(
+      child: LicoToastNoticesListener(
+        notices: features.notificationNotices,
+        child: content,
+      ),
+    );
+  }
+
+  Widget _shellContent(
+    LayoutShellBuildContext data, {
+    required bool profileOpen,
+  }) {
+    return DashboardContentRegion(
+      child: DashboardMainContentCard(
+        child: _mainCardBody(data, profileOpen: profileOpen),
+      ),
+    );
+  }
+
+  Widget _mainCardBody(
+    LayoutShellBuildContext data, {
+    required bool profileOpen,
+  }) {
+    return Semantics(
+      key: ValueKey<String>(
+        'dashboard-desktop-focus-${data.initialFocusTarget}',
+      ),
+      container: true,
+      explicitChildNodes: true,
+      child: profileOpen
+          ? DashboardProfilePage(
+              onOpenPairing: () =>
+                  _selectDestination(ClientSection.mobileRelay),
+              onOpenSettings: () => _selectDestination(ClientSection.settings),
+            )
+          : LayoutChromePortScope(
+              chrome: data.chrome,
+              child: MessagingSidebarGeometry(
+                child: _destinationWithSidebar(data),
+              ),
+            ),
+    );
+  }
+
+  Widget _destinationWithSidebar(LayoutShellBuildContext data) {
+    final destination = data.activeDestination;
+    // Agents renders the conversation list through the same column widget,
+    // reading width from MessagingSidebarGeometry; its contact-list
+    // foundation carries the traffic-light row. Monitoring is full-width and
+    // gets a shell light row over the main card top-left instead. Other
+    // hosted destinations keep that column so width does not jump.
+    if (!messagingSidebarKeepsColumn(destination)) {
+      if (destination == ClientSection.agents) {
+        return data.destination;
+      }
+      return Stack(
+        key: const Key('dashboard-desktop-fullwidth-destination'),
+        fit: StackFit.expand,
+        children: [
+          data.destination,
+          const Positioned(
+            left: MessagingDesktopMetrics.conversationListCardInset,
+            top: MessagingDesktopMetrics.conversationListCardInset,
+            child: MessagingTrafficLightAnchor(
+              key: Key('dashboard-shell-traffic-light-row'),
+            ),
+          ),
+        ],
+      );
+    }
+    return MessagingSidebarColumn(
+      presentation: dashboardDesktopAgentsPresentation,
+      sidebar: MessagingDesktopNavSidebar(
+        destination: destination,
+        onSelectDestination: _selectDestination,
+      ),
+      detail: data.destination,
     );
   }
 }

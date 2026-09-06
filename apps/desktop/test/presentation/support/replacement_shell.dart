@@ -116,7 +116,7 @@ final class _ReplacementShellState extends State<ReplacementShell> {
           ),
       ],
     );
-    final shell = profileId == 'messaging'
+    final shell = profileId == 'desktop'
         ? Column(
             children: [
               navigationBar,

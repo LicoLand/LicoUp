@@ -27,18 +27,32 @@ final class ModelsPanel extends StatelessWidget {
   const ModelsPanel({
     super.key,
     required this.binding,
-    this.pane = ModelsPanelPane.gateway,
+    this.pane,
   });
 
   final ModelsBinding binding;
-  final ModelsPanelPane pane;
+
+  /// An explicit pane pin, or null to follow the shared pane channel and
+  /// re-resolve it on every layout-state change.
+  final ModelsPanelPane? pane;
 
   @override
   Widget build(BuildContext context) {
+    final pinned = pane;
+    if (pinned != null) {
+      return _buildFor(context, pinned);
+    }
+    return StreamBuilder<void>(
+      stream: LayoutScope.maybeOf(context)?.state.changes,
+      builder: (context, _) => _buildFor(context, modelsPanelPaneOf(context)),
+    );
+  }
+
+  Widget _buildFor(BuildContext context, ModelsPanelPane resolvedPane) {
     return ProjectionBuilder<ModelsProjection, ModelsProjection>(
       source: binding.projection,
       select: (projection) => projection,
-      builder: (context, projection) => pane == ModelsPanelPane.chatChannels
+      builder: (context, projection) => resolvedPane == ModelsPanelPane.chatChannels
           ? ListView(
               key: const Key('models-panel-chat-channels'),
               padding: MessagingDesktopMetrics.mainPanePadding,
