@@ -28,7 +28,10 @@ import 'package:licoup/src/frontend/binding/causal_frame_telemetry.dart';
 import 'package:licoup/src/frontend/binding/causal_projection_source_registry.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
+import 'package:licoup/src/composition/client_platform_port_adapters.dart';
 import 'package:licoup/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
+import 'package:licoup/src/platform/window_chrome/window_chrome_channel.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
@@ -65,6 +68,15 @@ final class ClientAppComposition {
         : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
         controller ?? _createProductionController(layout);
+    // Frontend code never imports the platform layer; the composition root
+    // hands the renderer its platform-backed services here instead.
+    ClientPlatformPorts.install(
+      portableData: resolvedController.portableData,
+      featureOrderStore: PlatformDashboardFeatureOrderStoreAdapter.new,
+      dockLayoutStore: PlatformDesktopDockLayoutStoreAdapter.new,
+      reportTrafficLightAnchor:
+          WindowChromeChannel.instance.setTrafficLightAnchor,
+    );
     return ClientAppComposition._(
       resolvedController,
       layout,
@@ -80,8 +92,8 @@ final class ClientAppComposition {
       TargetPlatform.macOS ||
       TargetPlatform.windows ||
       TargetPlatform.iOS ||
-      TargetPlatform.android => LayoutProfileId.parse('messaging'),
-      _ => LayoutProfileId.parse('dashboard'),
+      TargetPlatform.android => LayoutProfileId.parse('dashboard'),
+      _ => LayoutProfileId.parse('desktop'),
     };
     final fallback = PresentationPreferences(
       layoutProfileId: preferredLayout,

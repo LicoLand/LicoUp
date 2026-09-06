@@ -27,6 +27,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_column.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -464,9 +465,15 @@ class _AgentConversationWorkspaceState
     final selectedTarget = _selectedTarget(agents);
     final selectedSession = _selectedSession(native);
     final mobile = agents.mobileRuntime || isMobileClientPlatform(context);
-    final detail =
+    final externalComposerHosted =
+        !mobile &&
+        LayoutExternalComposerScope.isHosted(context) &&
+        LayoutAgentsStrategyScope.maybeOf(context).messageStyle ==
+            AgentsMessageStyle.participantFlow;
+    final canonicalDetail =
         root.authority == ConversationAuthority.canonicalConversation &&
-            !_showAgentDetailInsideGroupList
+        !_showAgentDetailInsideGroupList;
+    final detail = canonicalDetail
         ? CanonicalGroupConversationPane(
             conversation: widget.conversation,
             agents: widget.agents,
@@ -515,12 +522,17 @@ class _AgentConversationWorkspaceState
             attachments,
             mobile: mobile,
           );
+    final hostsInternalComposer =
+        canonicalDetail || (!_showWelcome && selectedTarget != null);
+    final relocatedDetail = externalComposerHosted && hostsInternalComposer
+        ? ExternalConversationComposerClip(child: detail)
+        : detail;
 
     final pendingApprovals = relay.approvals.where(
       (approval) => approval.state == RelayApprovalState.pending,
     );
     final decoratedDetail = pendingApprovals.isEmpty
-        ? detail
+        ? relocatedDetail
         : Column(
             children: [
               Padding(
@@ -530,7 +542,7 @@ class _AgentConversationWorkspaceState
                   intents: widget.relay.intents,
                 ),
               ),
-              Expanded(child: detail),
+              Expanded(child: relocatedDetail),
             ],
           );
     if (mobile) return decoratedDetail;

@@ -65,6 +65,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   String? _layoutStateIdentity;
   StreamSubscription<void>? _layoutStateChanges;
   double? _pendingScrollOffset;
+  double _lastScrollOffset = 0;
   // Default to the narrowest usable rail; users can drag wider.
   double _indexWidth = _settingsIndexMinWidth;
   DateTime _settleSuppressedUntil = DateTime.fromMillisecondsSinceEpoch(0);
@@ -139,19 +140,27 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 
   void _handleScroll() {
-    _persistScrollOffset();
+    // Scroll frames fire per pixel — only the spy and a plain field write run
+    // here. Persisting the offset writes shared layout state, which
+    // synchronously notifies every sidebar listener; doing that per frame
+    // turned scrolling into a rebuild storm. The offset persists once when
+    // the scroll ends.
+    _lastScrollOffset = _scrollController.offset;
     _updateSpySelection();
   }
 
   void _persistScrollOffset() {
-    if (!_scrollController.hasClients) {
-      return;
-    }
+    // By the time dispose() runs, the framework has already unmounted the
+    // Scrollable below this panel (children unmount before their ancestors),
+    // so the controller reports no clients. Fall back to the last offset the
+    // scroll listener tracked; otherwise the dispose path would silently drop
+    // a scroll position that never saw a ScrollEndNotification.
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : _lastScrollOffset;
     _layoutState?.writeIfDeclared(
       LayoutStateChannels.settingsScroll,
-      LayoutScrollState(
-        _scrollController.offset.clamp(0, double.infinity).toDouble(),
-      ),
+      LayoutScrollState(offset.clamp(0, double.infinity).toDouble()),
     );
   }
 
@@ -214,6 +223,17 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 
   bool _handleScrollEnd() {
+    _persistScrollOffset();
+    // Scroll notifications fire before the layout pass that repositions the
+    // sections, so every mid-scroll spy measurement reads one-frame-stale
+    // geometry. A single fast fling leaves no later frame to catch up —
+    // reconcile once against the settled geometry so the sidebar selection
+    // always lands on the section the user actually stopped at.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _updateSpySelection();
+      }
+    });
     if (_jumpInFlight ||
         _settling ||
         DateTime.now().isBefore(_settleSuppressedUntil)) {
@@ -356,6 +376,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   @override
   void dispose() {
+    _persistScrollOffset();
     _unwatchLayoutState();
     _scrollController
       ..removeListener(_handleScroll)

@@ -75,8 +75,9 @@ void main() {
             await expectLater(
               find.byKey(repaintBoundaryKey),
               matchesGoldenFile(
-                '../../goldens/layout/production-baseline/'
-                '${profileId.value}/${surface.name}/${destination.name}.png',
+                '../../goldens/layout/'
+                '${profileId.value}/${surface.name}/'
+                'production-baseline/${destination.name}.png',
               ),
             );
           } finally {

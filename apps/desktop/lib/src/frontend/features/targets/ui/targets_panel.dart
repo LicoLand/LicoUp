@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dar
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
@@ -117,9 +118,11 @@ final class TargetsPanel extends StatelessWidget {
           ),
         );
       case TargetActionRejected():
-        ScaffoldMessenger.maybeOf(
+        showLicoToast(
           context,
-        )?.showSnackBar(SnackBar(content: Text(effect.reasonCode)));
+          message: effect.reasonCode,
+          kind: LicoToastKind.error,
+        );
     }
   }
 }

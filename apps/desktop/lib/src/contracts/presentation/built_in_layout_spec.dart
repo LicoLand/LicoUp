@@ -9,35 +9,36 @@ import 'semantic_destination.dart';
 /// Application state and Flutter registries consume this same catalog so
 /// neither layer duplicates profile identity, coverage, or state channels.
 abstract final class BuiltInLayoutSpec {
-  static final LayoutProfileDescriptor messaging = LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('messaging'),
-    label: LayoutProfileCopy(english: 'Default', chinese: '默认'),
-    description: LayoutProfileCopy(
-      english:
-          'Default layout: a flat conversation list, participant-style chat flow, and agent runtime details tucked into a details panel.',
-      chinese: '默认布局：扁平会话列表、参与者式聊天流，智能体运行细节收进详情面板。',
-    ),
-    styleIdentity: 'messaging-channel-chat',
-    isDefault: true,
-    revision: 1,
-  );
-
   static final LayoutProfileDescriptor dashboard = LayoutProfileDescriptor(
     id: LayoutProfileId.parse('dashboard'),
     label: LayoutProfileCopy(english: 'Dashboard', chinese: '仪表盘'),
     description: LayoutProfileCopy(
       english:
-          'Dashboard layout: the cross-platform product shell with a spacious card dashboard.',
-      chinese: 'Dashboard 布局：跨平台产品壳，宽松卡片式工作台。',
+          'Dashboard layout: the default product shell with a left navigation card, a flat conversation list, participant-style chat flow, and agent runtime details tucked into a details panel.',
+      chinese: 'Dashboard 布局：默认产品壳——左侧导航卡片、扁平会话列表、参与者式聊天流，智能体运行细节收进详情面板。',
     ),
-    styleIdentity: 'spacious-card-dashboard',
+    styleIdentity: 'dashboard-channel-chat',
+    isDefault: true,
+    revision: 1,
+  );
+
+  static final LayoutProfileDescriptor desktop = LayoutProfileDescriptor(
+    id: LayoutProfileId.parse('desktop'),
+    label: LayoutProfileCopy(english: 'Desktop', chinese: '桌面'),
+    description: LayoutProfileCopy(
+      english:
+          'Desktop layout: a floating stretchable capsule dock and Launchpad-style glass app store over one spacious main canvas.',
+      chinese: 'Desktop 布局：主画布上方可伸缩的悬浮胶囊 Dock 与 Launchpad 风格玻璃应用商店。',
+    ),
+    styleIdentity: 'spacious-card-desktop',
     isDefault: false,
-    selectable: false,
+    selectable: true,
+    revision: 1,
   );
 
   static final List<LayoutProfileDescriptor> profiles = List.unmodifiable([
-    messaging,
     dashboard,
+    desktop,
   ]);
 
   static final Set<ClientSection> desktopDestinations = Set.unmodifiable(
@@ -69,30 +70,30 @@ abstract final class BuiltInLayoutSpec {
           ),
   ]);
 
-  static final Set<LayoutStateNamespace> messagingDesktopStateNamespaces =
-      _stateNamespaces(
-        messaging,
-        LayoutRuntimeSurface.desktop,
-        desktopMessagingExtras: true,
-      );
-  static final Set<LayoutStateNamespace> messagingMobileStateNamespaces =
-      _stateNamespaces(messaging, LayoutRuntimeSurface.mobile);
   static final Set<LayoutStateNamespace> dashboardDesktopStateNamespaces =
-      _stateNamespaces(dashboard, LayoutRuntimeSurface.desktop);
+      _stateNamespaces(dashboard, LayoutRuntimeSurface.desktop, extras: true);
   static final Set<LayoutStateNamespace> dashboardMobileStateNamespaces =
       _stateNamespaces(dashboard, LayoutRuntimeSurface.mobile);
+  static final Set<LayoutStateNamespace> desktopDesktopStateNamespaces =
+      _stateNamespaces(desktop, LayoutRuntimeSurface.desktop, extras: true);
+  static final Set<LayoutStateNamespace> desktopMobileStateNamespaces =
+      _stateNamespaces(desktop, LayoutRuntimeSurface.mobile);
 
   static final Set<LayoutStateNamespace> stateNamespaces = Set.unmodifiable({
-    ...messagingDesktopStateNamespaces,
-    ...messagingMobileStateNamespaces,
     ...dashboardDesktopStateNamespaces,
     ...dashboardMobileStateNamespaces,
+    ...desktopDesktopStateNamespaces,
+    ...desktopMobileStateNamespaces,
   });
 
+  /// Both desktop-surface profiles expose the desktop-only state channels
+  /// (settings index and models pane selection) so the Dashboard navigation
+  /// list and the Desktop app store write pane selection through the same
+  /// retained channel.
   static Set<LayoutStateNamespace> _stateNamespaces(
     LayoutProfileDescriptor profile,
     LayoutRuntimeSurface surface, {
-    bool desktopMessagingExtras = false,
+    bool extras = false,
   }) => Set.unmodifiable({
     LayoutStateNamespace(
       profileId: profile.id,
@@ -118,7 +119,7 @@ abstract final class BuiltInLayoutSpec {
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsSection,
     ),
-    if (desktopMessagingExtras) ...{
+    if (extras) ...{
       LayoutStateNamespace(
         profileId: profile.id,
         surface: surface,

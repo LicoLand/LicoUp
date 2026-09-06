@@ -113,8 +113,9 @@ final class LayoutProfileSelector extends StatelessWidget {
                           selected: choices[profiles[index].id.value]!.selected,
                           committed:
                               choices[profiles[index].id.value]!.selected,
-                          // The Dashboard layout is not ready yet: it stays
-                          // visible as a preview but cannot be selected.
+                          // Enabled state comes from the layout manager's
+                          // per-profile selection choices (both built-in
+                          // desktop layouts are selectable).
                           enabled:
                               !committing &&
                               choices[profiles[index].id.value]!.enabled,
