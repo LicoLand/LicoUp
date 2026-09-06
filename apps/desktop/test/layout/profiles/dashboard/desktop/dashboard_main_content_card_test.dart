@@ -21,7 +21,7 @@ void main() {
     },
   );
 
-  testWidgets('DashboardMainContentCard uses shared mainContentCard tokens', (
+  testWidgets('DashboardMainContentCard is a chromeless glass-flush region', (
     tester,
   ) async {
     configureDashboardTestView(tester, const Size(400, 300));
@@ -45,23 +45,29 @@ void main() {
     );
     await tester.pump();
 
-    final card = tester.widget<Container>(
+    // The region paints no fill, border, shadow, or edge light: content sits
+    // flush on the native window glass and only the rounded clip shapes it.
+    final card = tester.widget<ClipRRect>(
       find.byKey(const Key('dashboard-desktop-main-card')),
     );
-    final decoration = card.decoration! as BoxDecoration;
     expect(
-      decoration.color,
-      MessagingDesktopMetrics.mainContentCardFill(isDark: true),
+      card.borderRadius,
+      BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
+    );
+    expect(card.clipBehavior, Clip.antiAlias);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('dashboard-desktop-main-card')),
+        matching: find.byType(DecoratedBox),
+      ),
+      findsNothing,
     );
     expect(
-      (decoration.borderRadius! as BorderRadius).topLeft.x,
-      MessagingDesktopMetrics.mainCardCornerRadius,
-    );
-    expect(decoration.border!.top.width, MessagingDesktopMetrics.hairline);
-    expect(decoration.border!.top.color.a, 0);
-    expect(
-      decoration.boxShadow!.single.blurRadius,
-      MessagingDesktopMetrics.mainContentCardShadowBlur,
+      find.descendant(
+        of: find.byKey(const Key('dashboard-desktop-main-card')),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNothing,
     );
     expect(find.byKey(const Key('card-child')), findsOneWidget);
     expect(tester.takeException(), isNull);

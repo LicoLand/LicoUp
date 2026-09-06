@@ -3,15 +3,23 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'layout/fixtures/layout_scoped_state_fixture.dart';
 import 'layout/layout_host_test_fixtures.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
@@ -157,6 +165,90 @@ void main() {
     }
 
     expect(find.text('Enable auto-start'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('scroll offset persists when the panel unmounts mid-drag', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    addTearDown(fixture.source.dispose);
+    final scopedState = buildLayoutScopedStateFixture(
+      profile: BuiltInLayoutSpec.dashboard,
+      surface: LayoutRuntimeSurface.desktop,
+      stateNamespaces: BuiltInLayoutSpec.dashboardDesktopStateNamespaces,
+      destination: ClientSection.settings,
+    );
+
+    Widget host(Widget child) => MaterialApp(
+      builder: (context, child) =>
+          FixtureLayoutPresentationScope(child: child!),
+      locale: const Locale('en'),
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(
+        platformBrightness: Brightness.dark,
+      ).copyWith(platform: TargetPlatform.macOS),
+      home: LayoutScope(
+        profileId: scopedState.profileId,
+        environment: LayoutEnvironment.fromConstraints(
+          surface: LayoutRuntimeSurface.desktop,
+          width: 980,
+          height: 720,
+          textScale: 1,
+        ),
+        restorationNamespace: 'dashboard.desktop',
+        tokens: LayoutVisualTokens(
+          spacingUnit: 4,
+          density: 1,
+          cardRadius: 12,
+          elevation: 0,
+          navigationExtent: 72,
+          contentMaxWidth: 960,
+          typographyScale: 1,
+          motionDuration: Duration.zero,
+        ),
+        state: scopedState,
+        child: Scaffold(body: SizedBox(width: 980, height: 720, child: child)),
+      ),
+    );
+
+    await tester.pumpWidget(
+      host(
+        SettingsPanel(
+          binding: fixture.binding,
+          layoutRegistry: buildFixtureLayoutRuntime().registry,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    // A drag that never releases never emits a ScrollEndNotification, so the
+    // only persist path left is the panel's dispose — which runs after the
+    // Scrollable below it has already detached the controller.
+    final gesture = await tester.startGesture(tester.getCenter(scrollable));
+    await gesture.moveBy(const Offset(0, -240));
+    await tester.pump();
+
+    await tester.pumpWidget(host(const SizedBox.shrink()));
+    await tester.pump();
+    await gesture.up();
+
+    final stored = scopedState.readIfDeclared(
+      LayoutStateChannels.settingsScroll,
+    );
+    expect(stored, isA<LayoutScrollState>());
+    expect((stored! as LayoutScrollState).offset, greaterThan(0));
     expect(tester.takeException(), isNull);
   });
 

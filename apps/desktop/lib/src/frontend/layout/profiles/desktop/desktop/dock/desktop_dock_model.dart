@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:licoup/src/contracts/presentation/desktop_dock_layout.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
-import 'package:licoup/src/platform/layout/desktop_dock_layout_store.dart';
-import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
+import 'package:licoup/src/frontend/shared/desktop_dock_layout_store.dart';
 
 /// One dock entry after the pinned icons: an app icon, or an iOS-style
 /// folder with an ordered child list. Nesting is disallowed; the sealed type
@@ -38,10 +39,11 @@ final class DesktopDockFolderEntry extends DesktopDockEntry {
 /// derived from them, and persistence through `desktop-dock-layout.json`.
 /// Every mutation applies in memory, notifies, then persists fire-and-forget;
 /// the store's serialized atomic writes keep the file consistent.
-final class DesktopDockController extends ChangeNotifier {
-  DesktopDockController({DesktopDockLayoutStore? store, Object? portableData})
-    : _store = store ?? const DesktopDockLayoutStore(),
-      _portableData = portableData ?? PortableDataRoot();
+final class DesktopDockModel extends ChangeNotifier {
+  DesktopDockModel({DesktopDockLayoutStore? store, Object? portableData})
+    : _store = store ?? ClientPlatformPorts.dockLayoutStore(),
+      _portableData =
+          portableData ?? ClientPlatformPorts.portableData ?? const Object();
 
   final DesktopDockLayoutStore _store;
   final Object _portableData;
@@ -101,7 +103,7 @@ final class DesktopDockController extends ChangeNotifier {
   }
 
   /// Test seam: widget tests cannot await real file I/O inside the fake
-  /// zone, so they seed entries synchronously and mark the controller ready.
+  /// zone, so they seed entries synchronously and mark the model ready.
   /// Persists nothing.
   void debugSeed(List<DesktopDockEntry> entries) {
     _applyLoaded(entries);

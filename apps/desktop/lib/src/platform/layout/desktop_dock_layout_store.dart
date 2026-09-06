@@ -1,38 +1,14 @@
+import 'package:licoup/src/contracts/presentation/desktop_dock_layout.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
-
-/// One stored dock entry in `desktop-dock-layout.json`: either an app icon or
-/// an iOS-style folder holding an ordered child list. Nesting is disallowed,
-/// so the tree stays one level deep.
-sealed class DesktopDockStoredEntry {
-  const DesktopDockStoredEntry();
-}
-
-final class DesktopDockStoredAppEntry extends DesktopDockStoredEntry {
-  const DesktopDockStoredAppEntry(this.app);
-
-  final String app;
-}
-
-final class DesktopDockStoredFolderEntry extends DesktopDockStoredEntry {
-  const DesktopDockStoredFolderEntry({required this.id, required this.children});
-
-  final String id;
-  final List<String> children;
-}
-
-/// The persisted dock layout: the ordered entry list after the pinned icons.
-final class DesktopDockLayoutSnapshot {
-  const DesktopDockLayoutSnapshot({required this.entries});
-
-  final List<DesktopDockStoredEntry> entries;
-}
 
 /// File-backed store for the Desktop dock layout. Dock order is pure
 /// presentation state, so load is fully tolerant: a missing, malformed, or
 /// foreign-version document falls back to the default empty dock instead of
 /// failing startup. Writes follow the shared atomic temp-file replace idiom.
-final class DesktopDockLayoutStore {
-  const DesktopDockLayoutStore({
+/// The composition root adapts this onto the renderer-facing
+/// `DesktopDockLayoutStore` port.
+final class PlatformDesktopDockLayoutStore {
+  const PlatformDesktopDockLayoutStore({
     MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
   }) : _jsonStore = jsonStore;
 

@@ -14,13 +14,13 @@ import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_controller.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_desktop_shell.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
+import '../../../fixtures/desktop_dock_store_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const Set<ClientSection> desktopDesktopExpectedDestinations = <ClientSection>{
@@ -123,9 +123,10 @@ final class DesktopDesktopFixtureChromeFeatures implements LayoutChromeFeatures 
   ValueListenable<LicoToastNoticesSnapshot> get notificationNotices => _notices;
 }
 
-/// Builds a dock controller backed by a throwaway directory, registered for
-/// cleanup.
-DesktopDockController buildDesktopTestDockController() {
+/// Builds a dock model backed by a throwaway directory, registered for
+/// cleanup. The platform-backed store and data root come from the fixture
+/// bridge because owned profile tests never import platform code directly.
+DesktopDockModel buildDesktopTestDockModel() {
   final directory = Directory.systemTemp.createTempSync(
     'desktop_dock_controller_test',
   );
@@ -134,8 +135,9 @@ DesktopDockController buildDesktopTestDockController() {
       directory.deleteSync(recursive: true);
     }
   });
-  return DesktopDockController(
-    portableData: PortableDataRoot(dataDirectoryOverride: directory),
+  return DesktopDockModel(
+    store: createDesktopDockLayoutStore(),
+    portableData: createDesktopDockPortableData(directory),
   );
 }
 
@@ -146,7 +148,7 @@ final class DesktopDesktopTestShell extends StatelessWidget {
     required this.activeDestination,
     required this.content,
     required this.harness,
-    this.dockController,
+    this.dockModel,
     this.brightness = Brightness.dark,
     this.locale = const Locale('en'),
   });
@@ -155,7 +157,7 @@ final class DesktopDesktopTestShell extends StatelessWidget {
   final ClientSection activeDestination;
   final DesktopDesktopFixtureContent content;
   final DesktopDesktopHarness harness;
-  final DesktopDockController? dockController;
+  final DesktopDockModel? dockModel;
   final Brightness brightness;
   final Locale locale;
 
@@ -228,7 +230,7 @@ final class DesktopDesktopTestShell extends StatelessWidget {
                           ),
                         );
                         return DesktopDesktopShell(
-                          dockController: dockController,
+                          dockModel: dockModel,
                           data: LayoutShellBuildContext(
                             environment: environment,
                             activeDestination: activeDestination,
@@ -278,7 +280,7 @@ void configureDesktopTestView(WidgetTester tester, Size size) {
 Future<void> pumpDesktopShell(
   WidgetTester tester, {
   required DesktopDesktopHarness harness,
-  required DesktopDockController dockController,
+  required DesktopDockModel dockModel,
   ClientSection activeDestination = ClientSection.agents,
   Size size = const Size(1280, 800),
 }) async {
@@ -292,7 +294,7 @@ Future<void> pumpDesktopShell(
       activeDestination: activeDestination,
       content: DesktopDesktopFixtureContent(harness),
       harness: harness,
-      dockController: dockController,
+      dockModel: dockModel,
     ),
   );
   await tester.pump();

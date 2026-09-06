@@ -4,7 +4,7 @@ import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
 
 /// Frosted-glass backdrop for the Dashboard desktop content zone, including
-/// the margin gutters around the unified content card. The tint is fully
+/// the margin gutters around the unified content region. The tint is fully
 /// transparent; blur comes from the native NSVisualEffectView beneath the
 /// transparent window base.
 final class DashboardContentRegion extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 
 void main() {

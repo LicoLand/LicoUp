@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
-import 'package:licoup/src/platform/window_chrome/window_chrome_channel.dart';
+import 'package:licoup/src/frontend/shared/client_platform_ports.dart';
 
 /// Reports its global rect to the macOS window chrome so the traffic lights
 /// track this band (frozen window-chrome contract: `setTrafficLightAnchor`
@@ -52,7 +52,7 @@ final class _DesktopTrafficLightAnchorState
   void dispose() {
     if (identical(_lastReporter, this)) {
       _lastReporter = null;
-      unawaited(WindowChromeChannel.instance.setTrafficLightAnchor(null));
+      unawaited(ClientPlatformPorts.reportTrafficLightAnchor(null));
     }
     super.dispose();
   }
@@ -69,7 +69,7 @@ final class _DesktopTrafficLightAnchorState
     if (_reported == rect) return;
     _reported = rect;
     _lastReporter = this;
-    unawaited(WindowChromeChannel.instance.setTrafficLightAnchor(rect));
+    unawaited(ClientPlatformPorts.reportTrafficLightAnchor(rect));
   }
 
   @override
