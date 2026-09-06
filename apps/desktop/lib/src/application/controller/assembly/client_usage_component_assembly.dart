@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
-
 import 'package:licoup/src/application/composition/agent_usage_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
@@ -33,8 +31,6 @@ final class ClientUsageComponentAssembly {
        );
 
   final AgentUsageController controller;
-
-  Iterable<ChangeNotifier> get listenables => [controller];
 
   void dispose() => controller.dispose();
 }

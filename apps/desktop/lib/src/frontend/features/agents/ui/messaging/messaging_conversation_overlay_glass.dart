@@ -2,13 +2,15 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// Shared frosted-glass chrome for messaging conversation overlays: header
+/// Shared clear-glass chrome for messaging conversation overlays: header
 /// identity capsule, header icon buttons, and the floating composer field.
 /// Fill / border / blur / shadow all come from [MessagingDesktopMetrics]
-/// conversation-overlay tokens — do not hardcode per widget.
+/// conversation-overlay tokens — do not hardcode per widget. A static
+/// [GlassEdgeLight] rim gives each capsule the specular glass edge.
 class MessagingConversationOverlayGlass extends StatelessWidget {
   const MessagingConversationOverlayGlass({
     super.key,
@@ -87,7 +89,11 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
       borderRadius: borderRadius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: DecoratedBox(decoration: decoration, child: content),
+        child: GlassEdgeLight(
+          borderRadius: borderRadius,
+          sheenExtent: 20,
+          child: DecoratedBox(decoration: decoration, child: content),
+        ),
       ),
     );
   }

@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "repository": "LicoLand/LicoUp",
   "profile": "semver",
-  "currentVersion": "0.1.1",
+  "currentVersion": "0.1.2",
   "versionSources": [
     {
       "format": "json",

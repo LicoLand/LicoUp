@@ -26,6 +26,10 @@ pub(super) fn collect_pi_cli_model_catalog(
     }
     let mut command = Command::new(program);
     command.arg("--list-models");
+    // Applied for uniformity with the other catalog lookups; this lookup runs
+    // through the deliberately scrubbed untrusted-agent runner, whose
+    // env_clear + whitelist is applied afterwards and still wins.
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     let Ok(output) = run_bounded_untrusted_agent_output(
         &mut command,
         PI_CLI_MODEL_LOOKUP_TIMEOUT,

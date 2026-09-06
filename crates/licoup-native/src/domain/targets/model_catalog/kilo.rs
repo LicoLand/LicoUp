@@ -117,7 +117,9 @@ fn collect_kilo_cli_model_catalog(
     let mut command = Command::new(program);
     command.arg("models");
     // Provider availability may depend on account and provider environment
-    // variables, so the selected-agent lookup must inherit the user process.
+    // variables, so the selected-agent lookup runs with the user shell
+    // environment (ADR 0007).
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     let Ok(output) = run_bounded_command_output(
         &mut command,
         Duration::from_millis(timeout_ms),

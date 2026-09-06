@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:licoup/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
@@ -6,7 +6,7 @@ import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns Secure Mesh runtime status, capability projection, and device trust.
-final class SecureMeshStatusController extends ChangeNotifier {
+final class SecureMeshStatusController extends ApplicationStateOwner {
   SecureMeshStatusController({
     required SecureMeshGateway gateway,
     required MobileRelayOperationGate operationGate,
@@ -30,19 +30,19 @@ final class SecureMeshStatusController extends ChangeNotifier {
 
   void replaceStatus(Map<String, dynamic>? value) {
     _status = value == null ? null : SecureMeshPolicy.statusProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceCapabilityProjection(SecureMeshCapabilityProjection? value) {
     _capabilityProjection = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceDeviceTrustPolicy(Map<String, dynamic>? value) {
     _deviceTrustPolicy = value == null
         ? null
         : SecureMeshPolicy.deviceTrustProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> refreshStatus({
@@ -53,7 +53,7 @@ final class SecureMeshStatusController extends ChangeNotifier {
     if (showProgress) {
       _report('正在刷新 Secure Mesh 状态。', 'Refreshing Secure Mesh status.');
     }
-    notifyListeners();
+    publishChange();
     try {
       final raw = await _gateway.status(authorize: authorize);
       _capabilityProjection = _gateway.projectStatus(raw);
@@ -76,7 +76,7 @@ final class SecureMeshStatusController extends ChangeNotifier {
       }
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -92,7 +92,7 @@ final class SecureMeshStatusController extends ChangeNotifier {
       '正在评估 Secure Mesh 设备信任策略。',
       'Evaluating the Secure Mesh device trust policy.',
     );
-    notifyListeners();
+    publishChange();
     try {
       _deviceTrustPolicy = SecureMeshPolicy.deviceTrustProjection(
         await _gateway.evaluateDeviceTrust(
@@ -119,7 +119,7 @@ final class SecureMeshStatusController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 }

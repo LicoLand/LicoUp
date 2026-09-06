@@ -54,7 +54,7 @@ void registerAgentsWorkspaceRendererCollapseScenarios() {
           body: SizedBox(
             width: 760,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -152,7 +152,7 @@ void registerAgentsWorkspaceRendererCollapseScenarios() {
           body: SizedBox(
             width: 760,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -271,7 +271,7 @@ void registerAgentsWorkspaceRendererCollapseScenarios() {
           body: SizedBox(
             width: 760,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,

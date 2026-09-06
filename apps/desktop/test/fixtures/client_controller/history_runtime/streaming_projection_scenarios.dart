@@ -112,7 +112,7 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       final observedReplies = <String>[];
       final observedProcessKinds = <AgentConversationMessageKind>[];
       var liveProjectionUpdates = 0;
-      controller.liveConversationListenable.addListener(() {
+      controller.liveConversationChanges.listen((_) {
         liveProjectionUpdates += 1;
         final live = controller.selectedLiveConversationMessages;
         observedReplies.addAll(
@@ -255,7 +255,7 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       });
       var updateCardCounts = <int>[];
       var updateCardSubtitles = <String>[];
-      controller.liveConversationListenable.addListener(() {
+      controller.liveConversationChanges.listen((_) {
         final live = controller.selectedLiveConversationMessages;
         final cards = live.where(
           (message) => message.cardType == 'runtime-update',

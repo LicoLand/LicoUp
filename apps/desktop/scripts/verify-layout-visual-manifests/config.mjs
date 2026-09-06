@@ -19,7 +19,7 @@ export const forbiddenDiagnosticBasename =
 
 export const DEFAULT_LAYOUT_VISUAL_CONFIG = Object.freeze({
   compositionPath:
-    "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
+    "apps/desktop/lib/src/composition/built_in_layout_composition.dart",
   surfaceContractPath:
     "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
   profileSourceRoot:

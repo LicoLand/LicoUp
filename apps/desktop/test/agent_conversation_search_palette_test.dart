@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/features/search/search_feature_composition.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
@@ -49,7 +52,7 @@ void main() {
     expect(find.text('搜索功能和所有对话的标题、内容'), findsWidgets);
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'release',
     );
     await tester.pump();
@@ -86,7 +89,7 @@ void main() {
     await _pumpPalette(tester, controller, onClose: () => closed = true);
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'alpha',
     );
     await tester.pump();
@@ -127,7 +130,7 @@ void main() {
     await _pumpPalette(tester, controller, onClose: () => closed = true);
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'stitch',
     );
     await tester.pump();
@@ -175,7 +178,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'skill',
     );
     await tester.pump();
@@ -229,7 +232,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'notarization-missing',
     );
     await tester.pump();
@@ -271,7 +274,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.byKey(const Key('conversation-search-palette-input')),
+      find.byKey(const Key('agent-conversation-search-field')),
       'skill',
     );
     await tester.pump();
@@ -341,6 +344,12 @@ Future<void> _pumpPalette(
   List<GlobalSearchFeatureEntry> features = const [],
   List<GlobalSearchFeatureEntry> settingsFeatures = const [],
 }) async {
+  final composition = SearchFeatureComposition(
+    controller,
+    features: features,
+    settingsFeatures: settingsFeatures,
+  );
+  addTearDown(composition.close);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('zh'),
@@ -352,18 +361,27 @@ Future<void> _pumpPalette(
       ],
       theme: buildLicoTheme(platformBrightness: Brightness.dark),
       home: Scaffold(
-        body: SizedBox(
-          width: 900,
-          height: 640,
-          child: AgentConversationSearchPalette(
-            controller: controller,
-            features: features,
-            settingsFeatures: settingsFeatures,
-            onClose: onClose ?? () {},
+        body: Builder(
+          builder: (context) => SizedBox(
+            width: 900,
+            height: 640,
+            child: Center(
+              child: FilledButton(
+                key: const Key('open-agent-conversation-search'),
+                onPressed: () => unawaited(
+                  showAgentConversationSearchPalette(
+                    context,
+                    composition.binding,
+                  ).whenComplete(onClose ?? () {}),
+                ),
+                child: const Text('Open search'),
+              ),
+            ),
           ),
         ),
       ),
     ),
   );
-  await tester.pump();
+  await tester.tap(find.byKey(const Key('open-agent-conversation-search')));
+  await tester.pumpAndSettle();
 }

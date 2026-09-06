@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void _useComposerPopoverViewport(WidgetTester tester) {
@@ -27,6 +27,23 @@ Future<void> _tapRuntimeSelectorRow(WidgetTester tester, Key rowKey) async {
 }
 
 void main() {
+  test('workspace path shortening uses the injected environment home only', () {
+    expect(
+      shortenComposerWorkspacePath(
+        '/workspace/alice/projects/licoup',
+        homeDirectory: '/workspace/alice',
+      ),
+      '~/projects/licoup',
+    );
+    expect(
+      shortenComposerWorkspacePath(
+        '/workspace/bob/projects/licoup',
+        homeDirectory: '/workspace/alice',
+      ),
+      '/workspace/bob/projects/licoup',
+    );
+  });
+
   test('shortenComposerModelName keeps short ids intact', () {
     expect(shortenComposerModelName('gpt-5.4-mini'), 'gpt-5.4-mini');
   });

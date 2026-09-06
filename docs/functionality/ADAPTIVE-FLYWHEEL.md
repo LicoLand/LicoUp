@@ -111,6 +111,42 @@ states take one unguarded `complete` edge, a `choice` routes `complete` with an
 unguarded fallback, and a `fork` fans out through at least two unguarded
 `complete` edges to distinct targets.
 
+Each transition also declares a node handoff mode: `flow` or `callback`. A
+missing `mode` defaults to `flow`, and any other value is rejected at
+validation. Fork fan-out edges are structural and must stay `flow`.
+
+A `flow` edge enters its target as soon as the source settles. Because no
+master agent intervenes on that path, a flow-entered state — the initial
+state or the target of any `flow` edge — may not leave the key fields its
+kind executes with empty: actor states declare `binding`, workset states
+declare `binding` and `workset`, and script states declare `runtime` and
+`entry`. Import and validation reject an under-declared flow target with
+`workflow_flow_target_incomplete`.
+
+A `callback` edge parks the run instead: the settled state is completed, the
+run durably waits, and the master agent — the originating Assistant
+membership — receives the pending callback through the same
+Membership-scoped conversation projection that effect outputs use. The run
+resumes only when the master's decision arrives as a run input, and the
+callback request names that answer channel: `strategy.run.resume` for an
+imported run, or the same idempotent `lico_assistant_workflow_execute` call
+for a master agent driving an Assistant-run graph through the Subagent MCP
+surface. `advance`
+enters the declared target, `return` re-enters the completed state, and
+`terminate` cancels the run. A decision binds one exact wait by state id and
+visit, so a replayed or foreign decision is stale and settles nothing.
+Multiple callback waits queue in the order they were entered and are decided
+in that order. A target reached only through `callback` edges may defer its
+actor binding to the master decision; if the binding is still undeclared when
+the effect runs, the ordinary failure fallback applies.
+
+The failure fallback holds under both modes. An Assistant-run effect or drive
+failure settles one typed terminal outcome back to the originating Assistant
+turn. For an imported run, the terminal failure outcome — failed, blocked, or
+in-doubt — is reported to the bound Conversation's designated Assistant
+Membership as a typed Membership event, so the master agent decides what
+happens next; only identifier-level facts cross that seam.
+
 Guard routing must select exactly one edge for every bounded payload. A state
 may declare one arbitrary guard with an unguarded fallback, or multiple
 equality guards on the same payload path whose canonical values are distinct,
@@ -193,7 +229,9 @@ and safe-boundary behavior remain those of the selected adapter.
 The first send is still a Conversation Event. Native addressing starts
 `strategy.run.start` on the persistent conversation sidecar (the Graph does not
 own a send process). Later sends stay Events: an in-flight Membership
-PersistentTurn is steered; a Waiting run is resumed. Clearing the capsule exits
+PersistentTurn is steered; a Waiting run is resumed — except a callback wait,
+which only the master agent's explicit `advance` / `return` / `terminate`
+decision settles. Clearing the capsule exits
 strategy mode and does not cancel a run that is already executing.
 
 An `@mention` only selects Memberships. It uses the same PersistentTurn stream

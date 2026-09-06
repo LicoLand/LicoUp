@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/agent_usage_gateway.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_daily_cache.dart';
@@ -30,7 +30,7 @@ typedef AgentUsageStatusSink =
 /// Owns usage-report state, bounded history, polling, and all single-flight
 /// guards. The application composition root only projects this state.
 /// Flutter holds one immutable native projection and never merges Maps.
-final class AgentUsageController extends ChangeNotifier {
+final class AgentUsageController extends ApplicationStateOwner {
   AgentUsageController({
     required this.gateway,
     required this.selectedAgentId,
@@ -62,14 +62,11 @@ final class AgentUsageController extends ChangeNotifier {
   Future<void>? _scanFuture;
   bool _disposed = false;
 
-  @visibleForTesting
   int get pollingOwnerCount => _pollingOwners.length;
 
-  @visibleForTesting
   bool get dailyCacheIsEmpty => _nativeProjection == null;
 
   /// Backward-compatible alias for tests and facades.
-  @visibleForTesting
   AgentUsageReport? get scanCache =>
       projectViewport(_nativeProjection, agentUsageDailyCacheMaxDays);
 
@@ -93,7 +90,6 @@ final class AgentUsageController extends ChangeNotifier {
     _applyViewport();
   }
 
-  @visibleForTesting
   void replaceScanning(bool value) {
     scanning = value;
   }
@@ -158,7 +154,7 @@ final class AgentUsageController extends ChangeNotifier {
     }
     if (hasFreshScanCoverage) {
       _applyViewport();
-      notifyListeners();
+      publishChange();
       return Future<void>.value();
     }
     final active = _refreshFuture;
@@ -177,7 +173,7 @@ final class AgentUsageController extends ChangeNotifier {
     }
     if (hasFreshScanCoverage) {
       _applyViewport();
-      notifyListeners();
+      publishChange();
       return;
     }
     if (_nativeProjection == null || report == null) {
@@ -188,7 +184,7 @@ final class AgentUsageController extends ChangeNotifier {
     }
     if (hasFreshScanCoverage) {
       _applyViewport();
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_hasFullCoverage()) {
@@ -204,7 +200,7 @@ final class AgentUsageController extends ChangeNotifier {
       return;
     }
     _applyViewport();
-    notifyListeners();
+    publishChange();
   }
 
   /// Changes only the viewport. Never triggers scan, slice, or gateway I/O.
@@ -215,7 +211,7 @@ final class AgentUsageController extends ChangeNotifier {
     if (normalized == historyDays) return;
     historyDays = normalized;
     _applyViewport();
-    notifyListeners();
+    publishChange();
   }
 
   void _applyViewport() {
@@ -268,7 +264,7 @@ final class AgentUsageController extends ChangeNotifier {
         english: 'Refreshing local token usage.',
         caption: 'Agent usage',
       );
-      notifyListeners();
+      publishChange();
     }
     try {
       final next = await gateway.scan(
@@ -312,7 +308,7 @@ final class AgentUsageController extends ChangeNotifier {
       if (showProgress) {
         scanning = false;
       }
-      if (!_disposed) notifyListeners();
+      if (!_disposed) publishChange();
     }
   }
 
@@ -329,7 +325,7 @@ final class AgentUsageController extends ChangeNotifier {
     if (showProgress) {
       scanning = true;
       onStatus(chinese: '', english: '', caption: 'Agent usage');
-      notifyListeners();
+      publishChange();
     }
     try {
       reports = List.unmodifiable(await gateway.reports(limit: limit));
@@ -363,7 +359,7 @@ final class AgentUsageController extends ChangeNotifier {
       if (showProgress) {
         scanning = false;
       }
-      if (!_disposed) notifyListeners();
+      if (!_disposed) publishChange();
     }
   }
 

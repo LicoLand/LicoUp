@@ -1,48 +1,93 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
+
+final class DashboardDesktopPreviewMetadata {
+  const DashboardDesktopPreviewMetadata({
+    required this.styleIdentity,
+    required this.structuralLandmarks,
+  });
+
+  final String styleIdentity;
+  final List<String> structuralLandmarks;
+}
+
+const DashboardDesktopPreviewMetadata dashboardDesktopPreviewMetadata =
+    DashboardDesktopPreviewMetadata(
+      styleIdentity: 'dashboard-channel-chat',
+      structuralLandmarks: <String>[
+        'traffic-light-row',
+        'list-column',
+        'chat-canvas',
+      ],
+    );
 
 Widget buildDashboardDesktopPreview(BuildContext context) =>
     const DashboardDesktopPreview();
 
-/// A deterministic, non-interactive thumbnail of the Dashboard composition:
-/// the macOS-Notes flush three panes — folder sidebar, list, and editor —
-/// with the selected folder in solid brand yellow.
+/// A deterministic, non-interactive layout-picker thumbnail of the Dashboard
+/// shell. The live shell uses native frosted glass for the content region and
+/// gutters; this preview approximates structure with flat palette fills for
+/// the list column and chat canvas, with a traffic-light hint at the list
+/// column's top-left.
 final class DashboardDesktopPreview extends StatelessWidget {
   const DashboardDesktopPreview({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final strings = LicoStrings.of(context);
-    final label = strings.isChinese
-        ? 'Dashboard 桌面布局预览'
-        : 'Dashboard desktop preview';
-
+    final colors = context.layoutPalette;
     return Semantics(
-      key: const ValueKey<String>('dashboard-desktop-preview'),
+      container: true,
       image: true,
-      label: label,
-      child: ExcludeSemantics(
-        child: AspectRatio(
-          aspectRatio: 16 / 10,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.outlineVariant),
+      label: dashboardDesktopPreviewMetadata.styleIdentity,
+      child: AspectRatio(
+        aspectRatio: 16 / 10,
+        child: DecoratedBox(
+          key: const ValueKey<String>('dashboard-desktop-preview'),
+          decoration: BoxDecoration(
+            color: colors.background,
+            border: Border.all(color: colors.line),
+            borderRadius: BorderRadius.circular(
+              dashboardDesktopTokens.cardRadius,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _PreviewFolderSidebar(colors: colors),
-                  _PreviewHairline(colors: colors),
-                  Expanded(flex: 3, child: _PreviewListPane(colors: colors)),
-                  _PreviewHairline(colors: colors),
-                  Expanded(flex: 5, child: _PreviewEditorPane(colors: colors)),
-                ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              dashboardDesktopTokens.cardRadius,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Padding(
+                padding: EdgeInsets.only(
+                  left: constraints.maxWidth * 0.015,
+                  right: constraints.maxWidth * 0.015,
+                  top: constraints.maxHeight * 0.024,
+                  bottom: constraints.maxHeight * 0.03,
+                ),
+                child: Container(
+                  key: const ValueKey<String>('dashboard-preview-main-card'),
+                  decoration: BoxDecoration(
+                    color: colors.isDark ? colors.surface : colors.surfaceLow,
+                    borderRadius: BorderRadius.circular(
+                      constraints.maxHeight * 0.06,
+                    ),
+                    border: Border.all(
+                      color: colors.line.withAlpha(100),
+                      width: 0.5,
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: constraints.maxWidth * 0.32,
+                        child: _PreviewListColumn(colors: colors),
+                      ),
+                      Expanded(child: _PreviewChatCanvas(colors: colors)),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -52,152 +97,163 @@ final class DashboardDesktopPreview extends StatelessWidget {
   }
 }
 
-final class _PreviewHairline extends StatelessWidget {
-  const _PreviewHairline({required this.colors});
+final class _PreviewListColumn extends StatelessWidget {
+  const _PreviewListColumn({required this.colors});
 
-  final ColorScheme colors;
-
-  @override
-  Widget build(BuildContext context) =>
-      Container(width: 1, color: colors.outlineVariant);
-}
-
-final class _PreviewFolderSidebar extends StatelessWidget {
-  const _PreviewFolderSidebar({required this.colors});
-
-  final ColorScheme colors;
+  final LayoutPalette colors;
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    flex: 2,
-    child: ColoredBox(
-      color: colors.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              height: 9,
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
-            for (var index = 0; index < 5; index++) ...[
-              if (index > 0) const SizedBox(height: 5),
-              Container(
-                height: 15,
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                decoration: BoxDecoration(
-                  color: index == 0 ? colors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                ),
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey<String>('dashboard-preview-list-column'),
+    decoration: BoxDecoration(
+      color: colors.isDark ? colors.surface : colors.surfaceLow,
+      border: Border(
+        right: BorderSide(color: colors.line.withAlpha(80), width: 0.5),
+      ),
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final unit = constraints.maxHeight / 18;
+        return Padding(
+          padding: EdgeInsets.all(unit * 0.8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                key: const ValueKey<String>('dashboard-preview-light-row'),
+                padding: EdgeInsets.only(bottom: unit * 0.6),
                 child: Row(
                   children: [
+                    for (var index = 0; index < 3; index++) ...[
+                      Container(
+                        width: unit * 0.7,
+                        height: unit * 0.7,
+                        decoration: BoxDecoration(
+                          color: colors.textMuted.withAlpha(110),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      if (index < 2) SizedBox(width: unit * 0.45),
+                    ],
+                  ],
+                ),
+              ),
+              for (var index = 0; index < 5; index++) ...[
+                Row(
+                  children: [
                     Container(
-                      width: 8,
-                      height: 8,
+                      width: unit * 1.6,
+                      height: unit * 1.6,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
                         color: index == 0
-                            ? colors.onPrimary
-                            : colors.onSurfaceVariant,
+                            ? colors.primary.withAlpha(colors.isDark ? 60 : 36)
+                            : colors.line,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: unit * 0.5),
                     Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: index == 0
-                              ? colors.onPrimary
-                              : colors.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: unit * 0.55,
+                            width: constraints.maxWidth * 0.5,
+                            color: colors.text.withAlpha(140),
+                          ),
+                          SizedBox(height: unit * 0.3),
+                          Container(
+                            height: unit * 0.45,
+                            width: constraints.maxWidth * 0.35,
+                            color: colors.textMuted.withAlpha(110),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
+                SizedBox(height: unit * 0.9),
+              ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+final class _PreviewChatCanvas extends StatelessWidget {
+  const _PreviewChatCanvas({required this.colors});
+
+  final LayoutPalette colors;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    key: const ValueKey<String>('dashboard-preview-chat-canvas'),
+    color: colors.isDark ? colors.surfaceLow : colors.surface,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final unit = constraints.maxHeight / 18;
+        return Padding(
+          padding: EdgeInsets.all(unit * 1.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var group = 0; group < 3; group++) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: unit * 1.6,
+                      height: unit * 1.6,
+                      decoration: BoxDecoration(
+                        color: group == 1
+                            ? colors.primary.withAlpha(colors.isDark ? 60 : 36)
+                            : colors.line.withAlpha(180),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(width: unit * 0.5),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: unit * 0.55,
+                            width: constraints.maxWidth * 0.4,
+                            color: colors.text.withAlpha(150),
+                          ),
+                          SizedBox(height: unit * 0.35),
+                          Container(
+                            height: unit * 0.5,
+                            width: constraints.maxWidth * 0.7,
+                            color: colors.textMuted.withAlpha(110),
+                          ),
+                          SizedBox(height: unit * 0.25),
+                          Container(
+                            height: unit * 0.5,
+                            width: constraints.maxWidth * 0.55,
+                            color: colors.textMuted.withAlpha(90),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: unit * 1.1),
+              ],
+              const Spacer(),
+              Container(
+                height: unit * 1.7,
+                decoration: BoxDecoration(
+                  color: colors.line.withAlpha(120),
+                  borderRadius: BorderRadius.circular(unit * 0.5),
+                ),
               ),
             ],
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-final class _PreviewListPane extends StatelessWidget {
-  const _PreviewListPane({required this.colors});
-
-  final ColorScheme colors;
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: colors.surfaceContainerLowest,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var index = 0; index < 6; index++) ...[
-            if (index > 0) const SizedBox(height: 8),
-            Container(
-              height: 7,
-              margin: EdgeInsets.only(right: index.isEven ? 22 : 6),
-              decoration: BoxDecoration(
-                color: index == 0
-                    ? colors.surfaceContainerHighest
-                    : colors.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ],
-        ],
-      ),
-    ),
-  );
-}
-
-final class _PreviewEditorPane extends StatelessWidget {
-  const _PreviewEditorPane({required this.colors});
-
-  final ColorScheme colors;
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: colors.surfaceContainerLowest,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 11,
-            margin: const EdgeInsets.only(right: 90),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(5),
-            ),
           ),
-          const SizedBox(height: 12),
-          for (var index = 0; index < 5; index++) ...[
-            if (index > 0) const SizedBox(height: 8),
-            Container(
-              height: 7,
-              margin: EdgeInsets.only(
-                right: [40.0, 12.0, 64.0, 24.0, 96.0][index],
-              ),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     ),
   );
 }

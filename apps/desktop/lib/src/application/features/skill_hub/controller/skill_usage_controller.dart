@@ -85,7 +85,7 @@ class SkillUsageController extends SkillOperationController {
       }
     } finally {
       _countsLoading = false;
-      notifyListeners();
+      publishChange();
     }
   }
 }

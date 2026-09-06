@@ -1,16 +1,17 @@
 use super::super::*;
 use anyhow::anyhow;
 use licoup_native::domain::client_conversation::{
-    ConversationRuntimeScope, ConversationStore, DispatchState,
+    ConversationRuntimeScope, ConversationStore, DispatchState, SubagentDispatchClaim,
+    SubagentDispatchClaimState,
 };
 use licoup_native::ffi::generated::client_error::ClientError;
 use licoup_native::platform::runtime_adapters::RuntimeAdapterError;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     panic::{AssertUnwindSafe, catch_unwind},
     path::PathBuf,
     sync::{
-        Arc, Condvar, Mutex,
+        Arc, Condvar, Mutex, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -33,6 +34,18 @@ struct PersistentConversationRuntimeInner {
     clients: AtomicUsize,
     store: ConversationStore,
     cache_budget: usize,
+    /// Fired-once guard for subagent caller callbacks, keyed by claim id. One
+    /// completion signal per claim is the contract: terminal settlement and
+    /// the timeout watchdog race here and the loser stays silent. In-memory
+    /// v1: a host restart may re-fire the timeout callback for a claim whose
+    /// state is still non-terminal.
+    subagent_callback_fired: Mutex<BTreeSet<String>>,
+    /// Watchdog deadlines (claim/dispatch id → fire-at) for claimed subagent
+    /// dispatches carrying an explicit `timeoutMs`. One watcher thread wakes
+    /// at the earliest registered deadline.
+    subagent_watchdog: Mutex<BTreeMap<String, Instant>>,
+    subagent_watchdog_changed: Condvar,
+    subagent_watchdog_spawned: AtomicBool,
 }
 
 pub(super) struct PersistentTurn {
@@ -45,6 +58,10 @@ pub(super) struct PersistentTurn {
     changed: Condvar,
     store: ConversationStore,
     cache_budget: usize,
+    /// Back-reference used to dispatch the subagent caller callback after a
+    /// terminal settlement. Weak so a finished turn never keeps the runtime
+    /// alive.
+    runtime: Weak<PersistentConversationRuntimeInner>,
 }
 
 #[derive(Default)]
@@ -81,6 +98,10 @@ impl PersistentConversationRuntime {
                 clients: AtomicUsize::new(0),
                 store,
                 cache_budget,
+                subagent_callback_fired: Mutex::new(BTreeSet::new()),
+                subagent_watchdog: Mutex::new(BTreeMap::new()),
+                subagent_watchdog_changed: Condvar::new(),
+                subagent_watchdog_spawned: AtomicBool::new(false),
             }),
         }
     }
@@ -159,9 +180,27 @@ impl PersistentConversationRuntime {
             changed: Condvar::new(),
             store: self.inner.store.clone(),
             cache_budget: self.inner.cache_budget,
+            runtime: Arc::downgrade(&self.inner),
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
         self.inner.turns_changed.notify_all();
+        // A dispatch carrying an explicit `timeoutMs` and backed by a durable
+        // subagent claim gets a watchdog deadline: when the delegated turn
+        // has not settled by then, the caller still receives one callback
+        // carrying the current claim state. Ordinary (unclaimed) dispatches
+        // never register.
+        let timeout_ms = params.get("timeoutMs").and_then(Value::as_u64).unwrap_or(0);
+        if timeout_ms > 0
+            && matches!(
+                self.inner.store.subagent_claim(&scope.dispatch_id),
+                Ok(Some(_))
+            )
+        {
+            self.register_subagent_watchdog(
+                scope.dispatch_id.clone(),
+                Duration::from_millis(timeout_ms),
+            );
+        }
         Ok(turn)
     }
 
@@ -710,9 +749,173 @@ impl PersistentConversationRuntime {
         }
         turn.store
             .finish_runtime_dispatch(&turn.scope, &terminal.payload, state, error_code)?;
+        let callback_payload = terminal.payload.clone();
         persistent_state.terminal = Some(terminal);
         turn.changed.notify_all();
+        drop(persistent_state);
+        // The delegated PersistentTurn settled: deliver the single completion
+        // signal to the caller membership. Turns without a durable subagent
+        // claim — including every callback turn — never trigger a callback.
+        if let Some(inner) = turn.runtime.upgrade() {
+            PersistentConversationRuntime { inner }.notify_subagent_terminal(
+                &turn.scope.dispatch_id,
+                state,
+                &callback_payload,
+            );
+        }
         Ok(())
+    }
+
+    /// Register one watchdog deadline for a claimed subagent dispatch and
+    /// start the single watcher thread on first use. The watcher is lazily
+    /// spawned so a runtime that never hosts a claimed dispatch never carries
+    /// the thread; it parks on the condvar between deadlines.
+    fn register_subagent_watchdog(&self, dispatch_id: String, timeout: Duration) {
+        {
+            let mut registry = self
+                .inner
+                .subagent_watchdog
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            registry.insert(dispatch_id, Instant::now() + timeout);
+        }
+        self.inner.subagent_watchdog_changed.notify_all();
+        if !self
+            .inner
+            .subagent_watchdog_spawned
+            .swap(true, Ordering::AcqRel)
+        {
+            let inner = Arc::clone(&self.inner);
+            if std::thread::Builder::new()
+                .name("subagent-watchdog".to_owned())
+                .spawn(move || Self::subagent_watchdog_main(inner))
+                .is_err()
+            {
+                self.inner
+                    .subagent_watchdog_spawned
+                    .store(false, Ordering::Release);
+            }
+        }
+    }
+
+    fn subagent_watchdog_main(inner: Arc<PersistentConversationRuntimeInner>) {
+        const LIVENESS_POLL: Duration = Duration::from_secs(30);
+        let mut registry = inner
+            .subagent_watchdog
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        loop {
+            let now = Instant::now();
+            let earliest = registry.values().min().copied();
+            if earliest.is_some_and(|deadline| deadline <= now) {
+                let expired: Vec<String> = registry
+                    .iter()
+                    .filter(|(_, deadline)| **deadline <= now)
+                    .map(|(id, _)| id.clone())
+                    .collect();
+                for id in &expired {
+                    registry.remove(id);
+                }
+                drop(registry);
+                for id in expired {
+                    Self::fire_subagent_timeout(&inner, &id);
+                }
+                registry = inner
+                    .subagent_watchdog
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                continue;
+            }
+            let wait = earliest
+                .map(|deadline| deadline.saturating_duration_since(now))
+                .unwrap_or(LIVENESS_POLL)
+                .min(LIVENESS_POLL);
+            let (guard, _) = inner
+                .subagent_watchdog_changed
+                .wait_timeout(registry, wait)
+                .unwrap_or_else(|poison| poison.into_inner());
+            registry = guard;
+        }
+    }
+
+    /// Timeout fallback: the deadline elapsed and the claim is still
+    /// non-terminal, so the caller receives the same callback carrying the
+    /// current claim state. A claim that already settled is left to the
+    /// terminal-settlement callback.
+    fn fire_subagent_timeout(inner: &Arc<PersistentConversationRuntimeInner>, dispatch_id: &str) {
+        let claim = match inner.store.subagent_claim(dispatch_id) {
+            Ok(Some(claim)) => claim,
+            _ => return,
+        };
+        if matches!(
+            claim.state,
+            SubagentDispatchClaimState::Completed
+                | SubagentDispatchClaimState::Failed
+                | SubagentDispatchClaimState::Cancelled
+        ) {
+            return;
+        }
+        let runtime = PersistentConversationRuntime {
+            inner: Arc::clone(inner),
+        };
+        runtime.dispatch_subagent_callback(&claim, claim.state.as_str(), None);
+    }
+
+    /// Terminal finish path: the delegated turn settled, so notify the caller
+    /// membership once and retire any pending watchdog deadline for the claim.
+    fn notify_subagent_terminal(
+        &self,
+        dispatch_id: &str,
+        state: DispatchState,
+        terminal_payload: &Value,
+    ) {
+        let claim = match self.inner.store.subagent_claim(dispatch_id) {
+            Ok(Some(claim)) => claim,
+            _ => return,
+        };
+        self.inner
+            .subagent_watchdog
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(&claim.id);
+        self.dispatch_subagent_callback(&claim, state.as_str(), Some(terminal_payload));
+    }
+
+    /// Dispatch the one callback turn to the caller membership through the
+    /// same Membership-scoped PersistentTurn door as every other dispatch.
+    /// The fired-once guard is the single-signal contract; the claim lookup
+    /// upstream is the no-recursion guard because callback dispatches never
+    /// carry a claim identity.
+    fn dispatch_subagent_callback(
+        &self,
+        claim: &SubagentDispatchClaim,
+        state: &str,
+        terminal_payload: Option<&Value>,
+    ) {
+        {
+            let mut fired = self
+                .inner
+                .subagent_callback_fired
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            if !fired.insert(claim.id.clone()) {
+                return;
+            }
+        }
+        let Some(params) = licoup_native::domain::subagent_mcp::subagent_callback_plan(
+            &self.inner.store,
+            claim,
+            state,
+            terminal_payload,
+        ) else {
+            return;
+        };
+        let runtime = self.clone();
+        let _ = std::thread::Builder::new()
+            .name("subagent-callback".to_owned())
+            .spawn(move || {
+                let _ = runtime.start_background(&params, None);
+            });
     }
 
     fn force_terminal(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) {
@@ -1265,7 +1468,8 @@ mod tests {
     use super::*;
     use licoup_native::domain::client_conversation::{
         ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
-        ImageAttachment, ImageAttachmentReference, TurnState,
+        ImageAttachment, ImageAttachmentReference, MembershipAccess, Principal, PrincipalKind,
+        SubagentDispatchClaimState, TurnState,
     };
 
     fn runtime(cache_budget: usize) -> PersistentConversationRuntime {
@@ -1655,6 +1859,267 @@ mod tests {
             runtime.active(&json!({"conversationId": conversation_id}))["turns"][0]["turnHandle"],
             turn.scope.dispatch_id
         );
+    }
+
+    struct SubagentFixture {
+        conversation_id: String,
+        caller_membership: String,
+        target_membership: String,
+        claim_id: String,
+    }
+
+    /// One admitted caller→target edge with the durable claim in `running`,
+    /// using non-driver agent ids so the callback's lane dispatch fails fast
+    /// instead of reaching a real provider executable.
+    fn subagent_fixture(store: &ConversationStore) -> SubagentFixture {
+        let owner = Principal {
+            id: "human:owner".into(),
+            kind: PrincipalKind::Human,
+            display_name: "Owner".into(),
+            agent_id: None,
+            created_at_unix_ms: 1,
+        };
+        let members = ["caller-agent", "target-agent"].map(|agent_id| {
+            (
+                Principal {
+                    id: format!("agent:{agent_id}"),
+                    kind: PrincipalKind::Agent,
+                    display_name: agent_id.into(),
+                    agent_id: Some(agent_id.into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+        });
+        let conversation = store
+            .create_conversation_with_members("Subagent Callback", owner, &members)
+            .unwrap();
+        let membership = |agent_id: &str| {
+            conversation
+                .memberships
+                .iter()
+                .find(|membership| membership.principal.agent_id.as_deref() == Some(agent_id))
+                .unwrap()
+                .id
+                .clone()
+        };
+        let caller_membership = membership("caller-agent");
+        let target_membership = membership("target-agent");
+        let claim = store
+            .claim_subagent_dispatch(
+                &conversation.id,
+                &caller_membership,
+                &target_membership,
+                None,
+            )
+            .unwrap();
+        store
+            .update_subagent_claim_state(&claim.id, SubagentDispatchClaimState::Running)
+            .unwrap();
+        SubagentFixture {
+            conversation_id: conversation.id,
+            caller_membership,
+            target_membership,
+            claim_id: claim.id,
+        }
+    }
+
+    fn callback_events(
+        store: &ConversationStore,
+        conversation_id: &str,
+    ) -> Vec<licoup_native::domain::client_conversation::ConversationEvent> {
+        store
+            .page_events(conversation_id, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .filter(|event| {
+                event.causation_id.as_deref()
+                    == Some(licoup_native::domain::subagent_mcp::CALLBACK_CAUSATION_ID)
+            })
+            .collect()
+    }
+
+    fn wait_for_callback_events(
+        store: &ConversationStore,
+        conversation_id: &str,
+        expected: usize,
+    ) -> Vec<licoup_native::domain::client_conversation::ConversationEvent> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let events = callback_events(store, conversation_id);
+            if events.len() >= expected || Instant::now() >= deadline {
+                return events;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// A claimed delegated turn settles: the claim moves to the matching
+    /// terminal state eagerly and exactly one callback turn is dispatched to
+    /// the caller membership through the same PersistentTurn door.
+    #[test]
+    fn subagent_terminal_finish_fires_one_caller_callback_turn() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let fixture = subagent_fixture(&store);
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
+        let turn = runtime
+            .begin(&json!({
+                "agent": "target-agent",
+                "text": "delegated prompt",
+                "timeoutMs": 60_000,
+                "conversationId": fixture.conversation_id.as_str(),
+                "membershipId": fixture.target_membership.as_str(),
+                "causationId": "subagent-mcp",
+                "dispatchId": fixture.claim_id.as_str(),
+            }))
+            .unwrap();
+        assert_eq!(
+            runtime.inner.subagent_watchdog.lock().unwrap().len(),
+            1,
+            "a claimed dispatch with timeoutMs registers a watchdog deadline"
+        );
+        PersistentConversationRuntime::record_event(
+            &turn,
+            json!({
+                "event": "agent.message.chunk",
+                "sessionId": "native-session-1",
+                "turnId": "turn-1",
+                "payload": {"text": "delegated final answer"}
+            }),
+        )
+        .unwrap();
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: true,
+                payload: json!({"ok": true, "output": "delegated final answer"}),
+            },
+        )
+        .unwrap();
+
+        // Eager claim writeback: `subagent_claim` is a direct row read that
+        // never reconciles.
+        assert_eq!(
+            store
+                .subagent_claim(&fixture.claim_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            SubagentDispatchClaimState::Completed
+        );
+        assert!(
+            runtime.inner.subagent_watchdog.lock().unwrap().is_empty(),
+            "terminal settlement retires the pending watchdog deadline"
+        );
+
+        let callbacks = wait_for_callback_events(&store, &fixture.conversation_id, 1);
+        assert_eq!(callbacks.len(), 1);
+        assert_eq!(
+            callbacks[0].author_membership_id.as_deref(),
+            Some(fixture.caller_membership.as_str())
+        );
+        // The fired-once guard holds: the completion signal is one callback.
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(callback_events(&store, &fixture.conversation_id).len(), 1);
+    }
+
+    /// The delegated turn never settles: at the configured deadline the
+    /// watchdog fires the same caller callback while the claim is still
+    /// running, and the later terminal settlement stays silent.
+    #[test]
+    fn subagent_watchdog_fires_current_state_callback_after_deadline() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let fixture = subagent_fixture(&store);
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
+        let turn = runtime
+            .begin(&json!({
+                "agent": "target-agent",
+                "text": "delegated prompt",
+                "timeoutMs": 80,
+                "conversationId": fixture.conversation_id.as_str(),
+                "membershipId": fixture.target_membership.as_str(),
+                "causationId": "subagent-mcp",
+                "dispatchId": fixture.claim_id.as_str(),
+            }))
+            .unwrap();
+
+        let callbacks = wait_for_callback_events(&store, &fixture.conversation_id, 1);
+        assert_eq!(callbacks.len(), 1);
+        assert_eq!(
+            callbacks[0].author_membership_id.as_deref(),
+            Some(fixture.caller_membership.as_str())
+        );
+        assert_eq!(
+            store
+                .subagent_claim(&fixture.claim_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            SubagentDispatchClaimState::Running,
+            "the timeout fallback reports the current state, not a terminal one"
+        );
+        assert!(runtime.inner.subagent_watchdog.lock().unwrap().is_empty());
+
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: true,
+                payload: json!({"ok": true, "output": "late answer"}),
+            },
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(
+            callback_events(&store, &fixture.conversation_id).len(),
+            1,
+            "the terminal settlement after a watchdog fire must not re-notify"
+        );
+        assert_eq!(
+            store
+                .subagent_claim(&fixture.claim_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            SubagentDispatchClaimState::Completed
+        );
+    }
+
+    /// Without a durable claim row a dispatch never registers a watchdog and
+    /// its terminal finish stays silent: callback turns themselves can never
+    /// recurse into further callbacks.
+    #[test]
+    fn unclaimed_turn_with_timeout_never_registers_a_subagent_callback() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
+        let turn = runtime
+            .begin(&json!({
+                "agent": "synthetic",
+                "text": "synthetic prompt",
+                "timeoutMs": 80,
+            }))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(runtime.inner.subagent_watchdog.lock().unwrap().is_empty());
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: true,
+                payload: json!({"ok": true}),
+            },
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(callback_events(&store, &turn.scope.conversation_id).is_empty());
     }
 
     #[test]

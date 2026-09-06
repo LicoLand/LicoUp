@@ -7,6 +7,10 @@ import { atomicWriteReportJson } from "../../../tools/scripts/lib/safe-report-io
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const reportRef = "build/reports/client-agent-usage-metering.json";
+const agentUsagePanelPath =
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart";
+const bindingShellRendererPath =
+  "apps/desktop/lib/src/composition/binding_shell_renderer.dart";
 const failures = [];
 
 function assert(condition, message) {
@@ -25,6 +29,31 @@ async function readText(relativePath) {
 
 async function readJoinedText(relativePaths) {
   return (await Promise.all(relativePaths.map((relativePath) => readText(relativePath)))).join("\n");
+}
+
+async function collectSourceFiles(relativeRoot, extension) {
+  const files = [];
+
+  async function walk(relativeDirectory = "") {
+    const entries = await fs.readdir(
+      path.join(repoRoot, relativeRoot, relativeDirectory),
+      { withFileTypes: true },
+    );
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const childPath = relativeDirectory
+        ? `${relativeDirectory}/${entry.name}`
+        : entry.name;
+      if (entry.isDirectory()) {
+        await walk(childPath);
+      } else if (entry.isFile() && childPath.endsWith(extension)) {
+        files.push(`${relativeRoot}/${childPath}`);
+      }
+    }
+  }
+
+  await walk();
+  return files;
 }
 
 const nativeUsage = await readJoinedText([
@@ -90,7 +119,7 @@ const usageController = await readText(
   "apps/desktop/lib/src/application/features/agents/controller/agent_usage_controller.dart"
 );
 const usagePanel = await readJoinedText([
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
+  agentUsagePanelPath,
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_wave_overview.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart",
@@ -102,6 +131,14 @@ const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_token_breakdown.dart",
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
+const bindingShellRenderer = await readText(bindingShellRendererPath);
+const flutterProductionSources = new Map(
+  await Promise.all(
+    (await collectSourceFiles("apps/desktop/lib", ".dart")).map(
+      async (relativePath) => [relativePath, await readText(relativePath)],
+    ),
+  ),
+);
 const serviceTest = await readText("apps/desktop/test/agent_usage_service_test.dart");
 const controllerTest = await readText("apps/desktop/test/agent_usage_controller_test.dart");
 const componentTest = await readText("apps/desktop/test/agent_usage_component_boundary_test.dart");
@@ -327,14 +364,50 @@ assertIncludes(
     "workflowRunLabel",
     "workflowCommandLabel",
     "workflowMembershipLabel",
-    "startAgentUsagePolling",
-    "ensureAgentUsageLoadedAndFresh"
+    "StartAutomaticMonitoring",
+    "StopAutomaticMonitoring",
+    "SetMonitoringHistoryDays"
   ],
   "local-token usage UI"
 );
+const usagePanelMountedByComposition =
+  bindingShellRenderer.includes("class BindingShellRenderer") &&
+  bindingShellRenderer.includes(
+    "frontend/features/agents/ui/agent_usage_panel.dart",
+  ) &&
+  /ClientSection\.monitoring\s*=>\s*AgentUsagePanel\s*\(\s*binding:\s*_monitoring\s*,?/u
+    .test(bindingShellRenderer);
 assert(
-  clientShell.includes("ClientSection.monitoring => AgentUsagePanel"),
-  "desktop routes must mount the dedicated local-token usage panel"
+  usagePanelMountedByComposition,
+  "desktop monitoring route must mount the dedicated local-token usage panel through the binding renderer",
+);
+
+const clientShellDelegatesFeatureConstruction =
+  clientShell.includes("widget.renderer.buildDestination(") &&
+  !/\bClientController\b/u.test(clientShell) &&
+  !clientShell.includes("agent_usage_panel.dart") &&
+  !/\bAgentUsagePanel\b/u.test(clientShell);
+assert(
+  clientShellDelegatesFeatureConstruction,
+  "stable ClientShell must delegate destination rendering without ClientController or AgentUsagePanel",
+);
+
+const usagePanelReferencePaths = [...flutterProductionSources]
+  .filter(([, source]) =>
+    /\bAgentUsagePanel\s*\(/u.test(source) ||
+    source.includes("agent_usage_panel.dart"))
+  .map(([relativePath]) => relativePath);
+const expectedUsagePanelReferencePaths = new Set([
+  agentUsagePanelPath,
+  bindingShellRendererPath,
+]);
+const usagePanelConstructionIsCompositionOnly =
+  usagePanelReferencePaths.length === expectedUsagePanelReferencePaths.size &&
+  usagePanelReferencePaths.every((relativePath) =>
+    expectedUsagePanelReferencePaths.has(relativePath));
+assert(
+  usagePanelConstructionIsCompositionOnly,
+  "AgentUsagePanel construction and imports must remain confined to its feature definition and the binding renderer",
 );
 
 assertIncludes(
@@ -444,6 +517,10 @@ const report = {
       usageModels.includes("AgentUsageWorkflow") &&
       usagePanel.includes("AgentUsageWorkflowSection") &&
       workflowLedger.includes("workflow_report"),
+    dedicatedPanelRoute:
+      usagePanelMountedByComposition &&
+      clientShellDelegatesFeatureConstruction &&
+      usagePanelConstructionIsCompositionOnly,
     singleFlightController: usageController.includes("_scanFuture"),
     independentUiComponents: componentTest.includes("one-way normal-library graph"),
     localOnlyDocumentation:

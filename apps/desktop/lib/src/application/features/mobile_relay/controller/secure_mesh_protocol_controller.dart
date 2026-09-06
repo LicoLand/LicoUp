@@ -1,11 +1,11 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns the independent KT and MLS protocol action projections.
-final class SecureMeshProtocolController extends ChangeNotifier {
+final class SecureMeshProtocolController extends ApplicationStateOwner {
   SecureMeshProtocolController({
     required SecureMeshGateway gateway,
     required MobileRelayOperationGate operationGate,
@@ -31,7 +31,7 @@ final class SecureMeshProtocolController extends ChangeNotifier {
     SecureMeshMlsRequest request,
   ) async {
     if (!_operationGate.tryAcquire()) return null;
-    notifyListeners();
+    publishChange();
     try {
       final response = await _gateway.executeMls(request);
       _mlsState = _state(request.action.wireName, true);
@@ -51,13 +51,13 @@ final class SecureMeshProtocolController extends ChangeNotifier {
       return null;
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
   Future<SecureMeshKtResponse?> executeKt(SecureMeshKtRequest request) async {
     if (!_operationGate.tryAcquire()) return null;
-    notifyListeners();
+    publishChange();
     try {
       final response = await _gateway.executeKt(request);
       _ktState = _state(request.action.wireName, true);
@@ -77,7 +77,7 @@ final class SecureMeshProtocolController extends ChangeNotifier {
       return null;
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 

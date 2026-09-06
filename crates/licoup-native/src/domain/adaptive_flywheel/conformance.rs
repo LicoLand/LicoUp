@@ -9,15 +9,16 @@
 //! semantic table.
 
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::reducer::fallback_reason;
 use super::{
-    ActorSlot, BindingKind, CommandStatus, CompiledWorkflow, FailureClass, GraphState,
-    GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS, ReducerEvent, RetryPolicy, RunCommand,
-    RunSnapshot, RuntimeKind, RuntimeRequirement, StrategyRunStatus, StrategyStore, Transition,
-    TransitionEvent, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
-    WorksetTemplate, compile_workflow, reduce,
+    ActorSlot, BindingKind, CallbackDecisionKind, CommandStatus, CompiledWorkflow, FailureClass,
+    GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS, ReducerEvent, RetryPolicy,
+    RunCommand, RunSnapshot, RuntimeKind, RuntimeRequirement, StrategyRunStatus, StrategyStore,
+    Transition, TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition,
+    WorkflowLimits, WorkflowMetadata, WorksetTemplate, compile_workflow, reduce,
 };
 
 fn state(id: &str, kind: GraphStateKind) -> GraphState {
@@ -54,7 +55,21 @@ fn edge(
         from: from.into(),
         to: to.into(),
         event,
+        mode: TransitionMode::Flow,
         guard: expression,
+    }
+}
+
+fn callback_edge(
+    id: &str,
+    from: &str,
+    to: &str,
+    event: TransitionEvent,
+    expression: Option<GuardExpression>,
+) -> Transition {
+    Transition {
+        mode: TransitionMode::Callback,
+        ..edge(id, from, to, event, expression)
     }
 }
 
@@ -322,6 +337,101 @@ fn typed_event_vocabulary_is_closed_and_kebab_case() {
     }
     assert!(serde_json::from_str::<TransitionEvent>("\"cancel\"").is_err());
     assert!(serde_json::from_str::<TransitionEvent>("\"Complete\"").is_err());
+}
+
+#[test]
+fn typed_mode_vocabulary_is_closed_and_kebab_case() {
+    assert_eq!(
+        serde_json::from_str::<TransitionMode>("\"flow\"").unwrap(),
+        TransitionMode::Flow
+    );
+    assert_eq!(
+        serde_json::from_str::<TransitionMode>("\"callback\"").unwrap(),
+        TransitionMode::Callback
+    );
+    assert!(serde_json::from_str::<TransitionMode>("\"warp\"").is_err());
+    assert!(serde_json::from_str::<TransitionMode>("\"Flow\"").is_err());
+}
+
+#[test]
+fn callback_edges_park_and_the_master_decision_settles_the_wait() {
+    let workflow = compile_workflow(defn(
+        "work",
+        vec![
+            GraphState {
+                id: "work".into(),
+                kind: GraphStateKind::Actor,
+                label: "Work".into(),
+                instruction: String::new(),
+                binding: Some("worker".into()),
+                runtime: None,
+                entry: None,
+                workset: None,
+                retry: RetryPolicy::default(),
+            },
+            state("done", GraphStateKind::Succeed),
+            state("fail", GraphStateKind::Fail),
+        ],
+        vec![
+            callback_edge("review", "work", "done", TransitionEvent::Success, None),
+            edge(
+                "work-failed",
+                "work",
+                "fail",
+                TransitionEvent::Failure,
+                None,
+            ),
+        ],
+        vec![worker_slot()],
+        vec![],
+        WorkflowLimits::default(),
+    ))
+    .unwrap();
+    let (snapshot, commands) = start_run(&workflow, json!({}));
+    let snapshot = fence(&snapshot, &workflow, &commands[0]);
+    let parked = reduce(
+        &workflow,
+        &snapshot,
+        ReducerEvent::CommandSucceeded {
+            command_id: commands[0].id.clone(),
+            attempt_token: commands[0].attempt_token.clone(),
+            output: json!({"ok": true}),
+        },
+    )
+    .unwrap();
+    assert_eq!(parked.snapshot.status, StrategyRunStatus::Waiting);
+    assert!(parked.emitted_commands.is_empty());
+    assert_eq!(parked.snapshot.pending_callbacks.len(), 1);
+    assert_eq!(parked.snapshot.pending_callbacks[0].transition_id, "review");
+
+    let terminated = reduce(
+        &workflow,
+        &parked.snapshot,
+        ReducerEvent::CallbackDecision {
+            state_id: "work".into(),
+            state_visit: 1,
+            decision: CallbackDecisionKind::Terminate,
+        },
+    )
+    .unwrap();
+    assert_eq!(terminated.snapshot.status, StrategyRunStatus::Cancelled);
+    assert!(terminated.snapshot.pending_callbacks.is_empty());
+
+    let advanced = reduce(
+        &workflow,
+        &parked.snapshot,
+        ReducerEvent::CallbackDecision {
+            state_id: "work".into(),
+            state_visit: 1,
+            decision: CallbackDecisionKind::Advance,
+        },
+    )
+    .unwrap();
+    assert_eq!(advanced.snapshot.status, StrategyRunStatus::Completed);
+    assert_eq!(
+        advanced.snapshot.completed_states,
+        BTreeSet::from(["work".to_owned(), "done".to_owned()])
+    );
 }
 
 #[test]

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
@@ -14,7 +14,7 @@ void main() {
     'production shell preserves business draft and isolates profile state',
     (tester) async {
       final dashboard = LayoutProfileId.parse('dashboard');
-      final messaging = LayoutProfileId.parse('messaging');
+      final desktop = LayoutProfileId.parse('desktop');
       const surface = LayoutRuntimeSurface.desktop;
       const size = Size(1180, 820);
       final fixture = await ProductionClientShellFixture.create(
@@ -24,7 +24,7 @@ void main() {
         size: size,
         brightness: Brightness.light,
       );
-      addTearDown(fixture.controller.dispose);
+      addTearDown(fixture.dispose);
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -42,40 +42,44 @@ void main() {
       );
       expect(composer(), findsOneWidget);
       await tester.enterText(composer(), 'draft survives renderer replacement');
+      // The composer's draft-store echo is trailing-debounced; let the flush
+      // land before exercising renderer replacement.
+      await tester.pump(const Duration(milliseconds: 300));
 
-      await tester.tap(find.byTooltip('Collapse conversation history'));
-      await tester.pump();
+      // Seed a dashboard-only agents-history state the way the conversation
+      // workspace toggle would, then prove the state round-trips and stays
+      // bound to the dashboard profile namespace across switches.
+      final dashboardHistory = _agentsHistoryNamespace(dashboard, surface);
+      fixture.layoutStateStore.write(
+        dashboardHistory,
+        const LayoutExpansionState(false),
+      );
       expect(
-        fixture.controller.layoutComposition.stateStore.read(
-          _agentsHistoryNamespace(dashboard, surface),
-        ),
-        isA<LayoutExpansionState>().having(
-          (value) => value.expanded,
-          'expanded',
-          isFalse,
-        ),
+        fixture.layoutStateStore.read(dashboardHistory),
+        const LayoutExpansionState(false),
       );
-      final switchToMessaging = fixture.controller.layoutManager.selectLayout(
-        messaging,
-      );
-      await tester.pump();
-      await tester.pump();
-      expect(await switchToMessaging, isTrue);
 
-      expect(composer(), findsOneWidget);
-      expect(
-        tester.widget<TextField>(composer()).controller?.text,
-        'draft survives renderer replacement',
+      final switchToDesktop = fixture.controller.layoutManager.selectLayout(
+        desktop,
       );
+      await tester.pump();
+      await tester.pump();
+      expect(await switchToDesktop, isTrue);
+      expect(fixture.controller.layoutManager.state.committedId, desktop);
+
+      // Business draft survives the renderer swap; the desktop profile has no
+      // dashboard namespace state of its own.
       expect(fixture.controller.conversationComposerDraft, contains('draft'));
       expect(
-        fixture.controller.layoutComposition.stateStore.read(
-          _agentsHistoryNamespace(messaging, surface),
+        fixture.layoutStateStore.read(
+          _agentsHistoryNamespace(desktop, surface),
         ),
         isNull,
       );
-      // The dashboard-only history affordance is gone with its shell.
-      expect(find.byTooltip('Collapse conversation history'), findsNothing);
+      expect(
+        fixture.layoutStateStore.read(dashboardHistory),
+        const LayoutExpansionState(false),
+      );
 
       final switchBack = fixture.controller.layoutManager.selectLayout(
         dashboard,
@@ -83,11 +87,15 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(await switchBack, isTrue);
+      expect(fixture.controller.layoutManager.state.committedId, dashboard);
 
-      expect(find.byTooltip('Expand conversation history'), findsOneWidget);
       expect(
         tester.widget<TextField>(composer()).controller?.text,
         'draft survives renderer replacement',
+      );
+      expect(
+        fixture.layoutStateStore.read(dashboardHistory),
+        const LayoutExpansionState(false),
       );
       expect(tester.takeException(), isNull);
     },

@@ -1,11 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/models/skill_category_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
+
+const _skillIconIds = <String>[
+  'plug',
+  'zap',
+  'globe',
+  'wrench',
+  'list-checks',
+  'message-circle',
+  'palette',
+  'book-open',
+  'brain',
+  'activity',
+  'shield',
+  'wallet-cards',
+  'shapes',
+  'package',
+];
 
 const _skillIconColorTokens = <String>[
   'primary',
@@ -20,30 +37,22 @@ const _skillIconColorTokens = <String>[
   'slate',
 ];
 
+String skillCategoryIconAssetPath(String iconId) =>
+    'assets/skill-category-icons/$iconId.svg';
+
 Color resolveSkillIconColor(LicoThemeColors colors, String colorToken) {
-  switch (colorToken.trim()) {
-    case 'info':
-      return colors.accent;
-    case 'success':
-      return colors.success;
-    case 'warning':
-      return colors.warning;
-    case 'error':
-      return colors.error;
-    case 'violet':
-      return const Color(0xFF8B7CF6);
-    case 'cyan':
-      return const Color(0xFF38BDF8);
-    case 'orange':
-      return const Color(0xFFFB923C);
-    case 'rose':
-      return const Color(0xFFFB7185);
-    case 'slate':
-      return colors.textMuted;
-    case 'primary':
-    default:
-      return colors.primary;
-  }
+  return switch (colorToken.trim()) {
+    'info' => colors.accent,
+    'success' => colors.success,
+    'warning' => colors.warning,
+    'error' => colors.error,
+    'violet' => const Color(0xFF8B7CF6),
+    'cyan' => const Color(0xFF38BDF8),
+    'orange' => const Color(0xFFFB923C),
+    'rose' => const Color(0xFFFB7185),
+    'slate' => colors.textMuted,
+    _ => colors.primary,
+  };
 }
 
 class SkillCategoryIconBadge extends StatelessWidget {
@@ -103,10 +112,8 @@ class SkillCategoryIconBadge extends StatelessWidget {
 
 Future<void> showSkillIconPicker({
   required BuildContext context,
-  required ClientController controller,
+  required IntentSink<SkillHubIntent> intents,
   required String skillId,
-  required String title,
-  required String description,
   required String currentIconId,
   required String currentColorToken,
 }) async {
@@ -114,136 +121,121 @@ Future<void> showSkillIconPicker({
   var selectedColorToken = currentColorToken.trim().isEmpty
       ? 'primary'
       : currentColorToken.trim();
-
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) {
-      final colors = dialogContext.licoColors;
-      final strings = LicoStrings.of(dialogContext);
-      return StatefulBuilder(
-        builder: (context, setState) {
-          final previewColor = resolveSkillIconColor(
-            colors,
-            selectedColorToken,
-          );
-          return AlertDialog(
-            title: Text(strings.customizeSkillIcon),
-            content: SizedBox(
-              width: 360,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    strings.skillIconColor,
-                    style: TextStyle(fontSize: 12, color: colors.textMuted),
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) {
+        final colors = context.licoColors;
+        final strings = LicoStrings.of(context);
+        final previewColor = resolveSkillIconColor(colors, selectedColorToken);
+        return AlertDialog(
+          key: const Key('skill-icon-picker'),
+          title: Text(strings.customizeSkillIcon),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.skillIconColor,
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final token in _skillIconColorTokens)
+                      _SkillColorDot(
+                        key: Key('skill-color-$token'),
+                        color: resolveSkillIconColor(colors, token),
+                        selected: selectedColorToken == token,
+                        onTap: () => setState(() => selectedColorToken = token),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  strings.skillIconGlyph,
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
+                ),
+                const SizedBox(height: 10),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _skillIconIds.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final token in _skillIconColorTokens)
-                        _SkillColorDot(
-                          color: resolveSkillIconColor(colors, token),
-                          selected: selectedColorToken == token,
-                          onTap: () {
-                            setState(() => selectedColorToken = token);
-                          },
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    strings.skillIconGlyph,
-                    style: TextStyle(fontSize: 12, color: colors.textMuted),
-                  ),
-                  const SizedBox(height: 10),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: skillCategoryDefinitions.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 5,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                        ),
-                    itemBuilder: (context, index) {
-                      final category = skillCategoryDefinitions[index];
-                      final selected = selectedIconId == category.iconId;
-                      return Tooltip(
-                        message: category.label,
-                        child: InkWell(
+                  itemBuilder: (context, index) {
+                    final iconId = _skillIconIds[index];
+                    final selected = selectedIconId == iconId;
+                    return InkWell(
+                      key: Key('skill-icon-$iconId'),
+                      borderRadius: BorderRadius.circular(LicoRadius.floating),
+                      onTap: () => setState(() => selectedIconId = iconId),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? previewColor.withValues(alpha: 0.14)
+                              : colors.surfaceLow,
                           borderRadius: BorderRadius.circular(
                             LicoRadius.floating,
                           ),
-                          onTap: () {
-                            setState(() => selectedIconId = category.iconId);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? previewColor.withValues(alpha: 0.14)
-                                  : colors.surfaceLow,
-                              borderRadius: BorderRadius.circular(
-                                LicoRadius.floating,
-                              ),
-                              border: Border.all(
-                                color: selected
-                                    ? previewColor
-                                    : colors.line.withValues(alpha: 0.5),
-                                width: selected ? 1.5 : 1,
-                              ),
-                            ),
-                            child: Center(
-                              child: SvgPicture.asset(
-                                skillCategoryIconAssetPath(category.iconId),
-                                width: 20,
-                                height: 20,
-                                colorFilter: ColorFilter.mode(
-                                  selected ? previewColor : colors.text,
-                                  BlendMode.srcIn,
-                                ),
-                              ),
+                          border: Border.all(
+                            color: selected
+                                ? previewColor
+                                : colors.line.withValues(alpha: 0.5),
+                            width: selected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: SvgPicture.asset(
+                            skillCategoryIconAssetPath(iconId),
+                            width: 20,
+                            height: 20,
+                            colorFilter: ColorFilter.mode(
+                              selected ? previewColor : colors.text,
+                              BlendMode.srcIn,
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(strings.cancel),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  await controller.updateSkillVisualOverride(
-                    skillId: skillId,
-                    iconId: selectedIconId,
-                    colorToken: selectedColorToken,
-                  );
-                  if (dialogContext.mounted) {
-                    Navigator.of(dialogContext).pop();
-                  }
-                },
-                child: Text(strings.apply),
-              ),
-            ],
-          );
-        },
-      );
-    },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              key: const Key('skill-icon-apply'),
+              onPressed: () {
+                intents.send(
+                  SetSkillVisual(skillId, selectedIconId, selectedColorToken),
+                );
+                Navigator.pop(dialogContext);
+              },
+              child: Text(strings.apply),
+            ),
+          ],
+        );
+      },
+    ),
   );
 }
 
 class _SkillColorDot extends StatelessWidget {
   const _SkillColorDot({
+    super.key,
     required this.color,
     required this.selected,
     required this.onTap,

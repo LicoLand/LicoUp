@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_details_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_metadata_fields.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
