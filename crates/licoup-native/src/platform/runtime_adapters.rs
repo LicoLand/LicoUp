@@ -12,6 +12,7 @@ pub(crate) mod protocol_selector {
     pub use licoup_agent_runtime::protocol_selector::*;
 }
 mod registry;
+pub mod root_cause;
 mod subagent_mesh;
 
 // Public host-neutral L4/L5 contracts. Concrete drivers remain composed in

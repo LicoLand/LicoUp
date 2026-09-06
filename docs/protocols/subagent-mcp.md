@@ -48,6 +48,19 @@ workflow and turn owner; the MCP service does not create a second scheduler,
 history, or terminal-output store. Native identities, paths, prompts, and Agent
 output remain outside Profile and workflow receipts.
 
+Three optional `lico_assistant_workflow_execute` fields carry the master
+agent's decision for a callback-mode Graph edge: `decision` (`advance`,
+`return`, or `terminate`), `callbackStateId`, and `callbackStateVisit`. When
+an Assistant-run workflow settles a callback edge, the run parks durably
+instead of entering the declared target, the execute call returns
+`callback_decision_required` with the pending callback list, and the master
+Membership receives a `strategy-callback-request` conversation event naming
+this answer channel. The decision rides the same idempotent execute call —
+same Conversation, Membership, workflow, bindings, input, and idempotency
+key — so a replayed decision is stale and settles nothing. `advance` enters
+the declared target, `return` re-enters the completed state, and `terminate`
+cancels the run. The nine-tool catalog is unchanged.
+
 ## Authority and lineage
 
 Every effect is bound to an authenticated caller Membership and an exact target
