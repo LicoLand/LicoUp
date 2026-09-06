@@ -14,15 +14,30 @@ pub(super) const BINARY_SOURCE_PACKAGE_MANAGER: &str = "package-manager";
 pub(super) const BINARY_SOURCE_EXECUTABLE_PATH: &str = "executable-path";
 
 pub(super) fn find_binary(names: &[&str]) -> Option<PathBuf> {
-    let dirs = binary_search_dirs();
-    find_binary_in_dirs(names, &dirs)
+    find_binary_with_path_dirs(
+        names,
+        &crate::platform::user_shell_environment::search_path_dirs(),
+    )
+}
+
+/// The user shell PATH (with the process PATH fallback) is the default
+/// command authority (ADR 0007): a CLI the user can run from their terminal
+/// is found even when the LicoUp process PATH lacks it. The scan manifest
+/// dirs stay supplementary and are searched after the PATH dirs.
+fn find_binary_with_path_dirs(names: &[&str], path_dirs: &[PathBuf]) -> Option<PathBuf> {
+    if let Some(found) = find_binary_in_dirs(names, path_dirs) {
+        return Some(found);
+    }
+    find_binary_in_dirs(names, &binary_search_dirs())
 }
 
 pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<PathBuf> {
     if def.id != "cursor" {
         return find_binary(def.binary_names);
     }
-    find_cursor_binary_in_dirs(&binary_search_dirs(), params)
+    let path_dirs = crate::platform::user_shell_environment::search_path_dirs();
+    find_cursor_binary_in_dirs(&path_dirs, params)
+        .or_else(|| find_cursor_binary_in_dirs(&binary_search_dirs(), params))
 }
 
 fn find_cursor_binary_in_dirs(dirs: &[PathBuf], _params: &Value) -> Option<PathBuf> {
@@ -612,6 +627,35 @@ mod tests {
                 assert!(desktop_app_executable(agent).is_none());
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shell_path_dirs_are_searched_before_manifest_dirs() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let shell_dir = unique_temp_dir("shell-path-first");
+        let manifest_dir = unique_temp_dir("manifest-path-second");
+        let shell_binary = shell_dir.join("fixture-agent-cli");
+        fs::write(&shell_binary, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&shell_binary, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // A CLI present only on the user shell PATH is found, and it outranks
+        // the same name in the supplementary manifest dirs.
+        let found =
+            find_binary_with_path_dirs(&["fixture-agent-cli"], std::slice::from_ref(&shell_dir));
+        assert_eq!(found.as_deref(), Some(shell_binary.as_path()));
+
+        let manifest_binary = manifest_dir.join("fixture-agent-cli");
+        fs::write(&manifest_binary, "#!/bin/sh\n").unwrap();
+        let found = find_binary_in_dirs(
+            &["fixture-agent-cli"],
+            &[shell_dir.clone(), manifest_dir.clone()],
+        );
+        assert_eq!(found.as_deref(), Some(shell_binary.as_path()));
+        let found =
+            find_binary_in_dirs(&["fixture-agent-cli"], std::slice::from_ref(&manifest_dir));
+        assert_eq!(found.as_deref(), Some(manifest_binary.as_path()));
     }
 
     #[cfg(unix)]

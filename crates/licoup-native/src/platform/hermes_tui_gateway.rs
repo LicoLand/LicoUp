@@ -75,9 +75,12 @@ impl GatewayClient {
         max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
-        let command = connection
+        let mut command = connection
             .launch_hermes_tui_gateway_command()
             .map_err(|_| GatewayFailure::Start)?;
+        // The local ssh client observes the user shell environment (proxy,
+        // agent socket, PATH); `SendEnv=-*` keeps it from crossing the wire.
+        super::user_shell_environment::apply_to_command(&mut command);
         Self::connect_command(command, max_stdout_bytes, max_stderr_bytes)
     }
 

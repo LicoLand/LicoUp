@@ -100,6 +100,7 @@ impl LaunchSpec {
 
     pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
         let mut command = Command::new(&self.executable);
+        super::super::user_shell_environment::apply_to_command(&mut command);
         command
             .args(self.arguments())
             .current_dir(&self.cwd)

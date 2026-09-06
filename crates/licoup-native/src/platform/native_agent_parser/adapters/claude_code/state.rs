@@ -27,6 +27,11 @@ pub(in crate::platform) struct ClaudeCodeParser<'a> {
     active_message: Option<ClaudeMessageUnit>,
     visible_text: String,
     transcript_events: Vec<Value>,
+    /// A user-initiated cancel interrupt was successfully written for the
+    /// current turn. The CLI answers it with an is_error terminal result; the
+    /// marker distinguishes that interrupt-shaped reply from a genuine turn
+    /// failure.
+    cancel_requested: bool,
 }
 
 struct ClaudeMessageUnit {
@@ -55,6 +60,7 @@ impl<'a> ClaudeCodeParser<'a> {
             active_message: None,
             visible_text: String::new(),
             transcript_events: Vec::new(),
+            cancel_requested: false,
         }
     }
 
@@ -286,6 +292,18 @@ impl<'a> ClaudeCodeParser<'a> {
                     )
                     .with_session(Some(&session_id)));
             }
+            if self.cancel_requested {
+                // A user-initiated cancel is answered by the CLI with an
+                // interrupt-shaped is_error result; it is a cancellation,
+                // never a turn failure.
+                let mut failure = self.failure(
+                    "claude_code_turn_cancelled",
+                    "Claude Code turn was cancelled by the user.",
+                    "turn/cancelled",
+                );
+                failure.turn_status = Some("cancelled".to_string());
+                return Err(failure.with_session(Some(&session_id)));
+            }
             let mut failure = self.failure(
                 "claude_code_turn_failed",
                 "Claude Code reported that the requested turn failed.",
@@ -446,6 +464,10 @@ impl<'a> ClaudeCodeParser<'a> {
     fn allocate_message_unit(&mut self) -> String {
         self.next_message_unit += 1;
         self.next_message_unit.to_string()
+    }
+
+    pub(in crate::platform) fn mark_cancel_requested(&mut self) {
+        self.cancel_requested = true;
     }
 
     pub(in crate::platform) fn failure(
