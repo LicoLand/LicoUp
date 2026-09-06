@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_m
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_shell.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 
+/// The sole immutable entry point for the Dashboard mobile renderer.
 final LayoutSurfaceBundle dashboardMobileBundle = LayoutSurfaceBundle(
   profile: BuiltInLayoutSpec.dashboard,
   surface: LayoutRuntimeSurface.mobile,
@@ -17,25 +18,25 @@ final LayoutSurfaceBundle dashboardMobileBundle = LayoutSurfaceBundle(
     LayoutViewportClass.compact: LayoutSurfaceVariant(
       viewport: LayoutViewportClass.compact,
       shellBuilder: buildDashboardMobileCompactShell,
-      destinationBuilders: _dashboardMobileDestinationBuilders(),
+      destinationBuilders: _dashboardMobileDestinationBuilders,
     ),
     LayoutViewportClass.medium: LayoutSurfaceVariant(
       viewport: LayoutViewportClass.medium,
       shellBuilder: buildDashboardMobileMediumShell,
-      destinationBuilders: _dashboardMobileDestinationBuilders(),
+      destinationBuilders: _dashboardMobileDestinationBuilders,
     ),
   },
   previewBuilder: buildDashboardMobilePreview,
-  tokens: dashboardMobileTokens,
-  components: const DashboardMobileComponentKit(),
+  tokens: dashboardMobileVisualTokens,
+  components: dashboardMobileComponents,
   assetNamespace: 'layout-profiles/dashboard/mobile',
   restorationNamespace: dashboardMobileRestorationPrefix,
   stateNamespaces: BuiltInLayoutSpec.dashboardMobileStateNamespaces,
 );
 
-Map<ClientSection, LayoutDestinationBuilder>
-_dashboardMobileDestinationBuilders() => {
-  ClientSection.agents: buildDashboardAgentsDestination,
-  ClientSection.mobileRelay: buildDashboardPairingDestination,
-  ClientSection.settings: buildDashboardSettingsDestination,
+final Map<ClientSection, LayoutDestinationBuilder>
+_dashboardMobileDestinationBuilders = {
+  ClientSection.agents: buildDashboardMobileAgentsDestination,
+  ClientSection.mobileRelay: buildDashboardMobilePairingDestination,
+  ClientSection.settings: buildDashboardMobileSettingsDestination,
 };

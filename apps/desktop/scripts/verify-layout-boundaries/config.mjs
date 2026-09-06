@@ -39,5 +39,6 @@ export const NEUTRAL_LAYOUT_CONTRACTS = new Set([
   "apps/desktop/lib/src/frontend/layout/layout_scope.dart",
   "apps/desktop/lib/src/frontend/layout/layout_state_port.dart",
   "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
+  "apps/desktop/lib/src/frontend/layout/layout_value_builder.dart",
   "apps/desktop/lib/src/frontend/layout/layout_visual_tokens.dart",
 ]);

@@ -139,6 +139,65 @@ void main() {
     },
   );
 
+  test('legacy layout ids upgrade on load and round-trip on save', () async {
+    final file = await preferencesFile(portableData);
+    await file.writeAsString(
+      jsonEncode({
+        'schemaVersion': 1,
+        'layoutProfileId': 'messaging',
+        'appearancePresetId': 'default-system',
+        'localePreference': 'system',
+      }),
+    );
+    final repository = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+
+    final legacy = await repository.load();
+    expect(
+      legacy.preferences.layoutProfileId,
+      LayoutProfileId.parse('dashboard'),
+      reason: 'retired Default/messaging id resolves to the renamed profile',
+    );
+
+    // The migrated choice round-trips: the next save persists the canonical
+    // id and a later load reads it back unchanged.
+    final saved = await repository.setLayoutProfile(
+      LayoutProfileId.parse('dashboard'),
+    );
+    expect(saved.layoutProfileId, LayoutProfileId.parse('dashboard'));
+    final decoded = jsonDecode(await file.readAsString()) as Map;
+    expect(decoded['layoutProfileId'], 'dashboard');
+
+    final reloaded = await repository.load();
+    expect(
+      reloaded.preferences.layoutProfileId,
+      LayoutProfileId.parse('dashboard'),
+    );
+  });
+
+  test('canonical dashboard and unknown ids load without remapping', () async {
+    for (final id in ['dashboard', 'desktop', 'atlas']) {
+      final file = await preferencesFile(portableData);
+      await file.writeAsString(
+        jsonEncode({
+          'schemaVersion': 1,
+          'layoutProfileId': id,
+          'appearancePresetId': 'default-system',
+          'localePreference': 'system',
+        }),
+      );
+      final repository = FilePresentationPreferencesRepository(
+        portableData: portableData,
+        fallback: fallback,
+      );
+      final loaded = await repository.load();
+      expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse(id));
+      await file.delete();
+    }
+  });
+
   test(
     'write failure is bounded, cleans temp, and preserves destination',
     () async {
