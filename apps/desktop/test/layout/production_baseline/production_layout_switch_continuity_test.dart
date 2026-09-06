@@ -42,6 +42,9 @@ void main() {
       );
       expect(composer(), findsOneWidget);
       await tester.enterText(composer(), 'draft survives renderer replacement');
+      // The composer's draft-store echo is trailing-debounced; let the flush
+      // land before exercising renderer replacement.
+      await tester.pump(const Duration(milliseconds: 300));
 
       await tester.tap(find.byTooltip('Collapse conversation history'));
       await tester.pump();

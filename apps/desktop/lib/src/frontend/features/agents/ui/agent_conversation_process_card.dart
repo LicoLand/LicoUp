@@ -85,6 +85,12 @@ final class _ConversationProcessCardState
   @override
   void didUpdateWidget(covariant ConversationProcessCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      // A new turn starts on this run row: return to the collapsed default
+      // and forget the previous run's manual expansion (matches the
+      // messaging inline status row).
+      _expanded = false;
+    }
     if (oldWidget.active && !widget.active) {
       _sizeAnimationArmed = false;
     }
