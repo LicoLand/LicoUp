@@ -175,6 +175,13 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
         tester.widget<AnimatedSize>(cardSizeAnimation()).duration,
         const Duration(milliseconds: 200),
       );
+      expect(find.byKey(scrollKey), findsOneWidget);
+
+      // The next turn on the same run row (active false→true) resets to the
+      // collapsed default instead of carrying the earlier expansion.
+      await tester.pumpWidget(app(events(8), active: true));
+      await tester.pump();
+      expect(find.byKey(scrollKey), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
