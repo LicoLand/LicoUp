@@ -5,9 +5,9 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_connec
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_status_capsule_toast.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging details surface: runtime settings, capability disclosure,
@@ -338,7 +338,7 @@ class _MessagingDetailsCopyRow extends StatelessWidget {
     if (write == null) return;
     await write(value);
     if (!context.mounted) return;
-    showMessagingStatusCapsuleToast(context, message: copiedMessage);
+    showLicoToast(context, message: copiedMessage, kind: LicoToastKind.success);
   }
 
   @override
