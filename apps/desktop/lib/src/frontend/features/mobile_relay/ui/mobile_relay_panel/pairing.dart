@@ -1,42 +1,31 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/mobile_pairing_presentation.dart';
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/qr.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayPairingWorkspaceCard extends StatelessWidget {
   const MobileRelayPairingWorkspaceCard({
     super.key,
-    required this.controller,
+    required this.projection,
+    required this.intents,
     required this.stationBaseUrlController,
-    required this.presentation,
-    required this.onGenerate,
   });
 
-  final ClientController controller;
+  final MobileRelayProjection projection;
+  final IntentSink<MobileRelayIntent> intents;
   final TextEditingController stationBaseUrlController;
-  final MobilePairingPresentation? presentation;
-  final Future<void> Function() onGenerate;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final config = controller.mobileRelayConfig;
-    final inviteText = presentation?.inviteText.trim() ?? '';
-    final pairingCode = presentation?.pairingCode.trim() ?? '';
-    final expiresAt = config.lastPairingExpiresAt.trim().isNotEmpty
-        ? config.lastPairingExpiresAt
-        : (controller.mobileRelayActionResult?['expiresAt']?.toString() ?? '');
-    final station = canonicalMobileRelayStationOrigin(config.stationBaseUrl);
-    final stationConfigured = station != null;
+    final inviteText = projection.pairingInvite.trim();
+    final pairingCode = projection.pairingCode.trim();
 
     return Container(
       key: const Key('pairing-qr-workspace-card'),
@@ -50,17 +39,16 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final info = _MobileRelayPairingInfoPane(
-            controller: controller,
+            projection: projection,
+            intents: intents,
             stationBaseUrlController: stationBaseUrlController,
-            paired: config.paired,
             pairingCode: pairingCode,
-            expiresAt: expiresAt,
           );
           final qr = MobileRelayPairingQrFrame(
             inviteText: inviteText,
-            busy: controller.isMobileRelayBusy,
-            stationConfigured: stationConfigured,
-            onGenerate: onGenerate,
+            busy: projection.busy,
+            stationConfigured: projection.stationConfigured,
+            onGenerate: () async => intents.send(const CreateRelayPairing()),
           );
           if (constraints.maxWidth < 720) {
             return Column(
@@ -88,25 +76,22 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
 
 class _MobileRelayPairingInfoPane extends StatelessWidget {
   const _MobileRelayPairingInfoPane({
-    required this.controller,
+    required this.projection,
+    required this.intents,
     required this.stationBaseUrlController,
-    required this.paired,
     required this.pairingCode,
-    required this.expiresAt,
   });
 
-  final ClientController controller;
+  final MobileRelayProjection projection;
+  final IntentSink<MobileRelayIntent> intents;
   final TextEditingController stationBaseUrlController;
-  final bool paired;
   final String pairingCode;
-  final String expiresAt;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final config = controller.mobileRelayConfig;
-    final busy = controller.isMobileRelayBusy;
+    final busy = projection.busy;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,20 +112,23 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
           saveTooltip: strings.saveStation,
           onSave: busy
               ? null
-              : () => unawaited(
-                  _saveStation(controller, stationBaseUrlController),
+              : () => intents.send(
+                  ConfigureRelayStation(stationBaseUrlController.text),
                 ),
         ),
         const SizedBox(height: 16),
         MobileRelayPairingInfoRow(
           label: strings.status,
-          value: paired ? strings.paired : strings.waiting,
+          value: projection.paired ? strings.paired : strings.waiting,
         ),
         MobileRelayPairingInfoRow(
           label: strings.pairingId,
-          value: config.pairingId,
+          value: projection.pairingId,
         ),
-        MobileRelayPairingInfoRow(label: strings.expires, value: expiresAt),
+        MobileRelayPairingInfoRow(
+          label: strings.expires,
+          value: projection.pairingExpiresLabel,
+        ),
         if (pairingCode.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
@@ -189,9 +177,8 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
                   tooltip: strings.copyPairingCode,
                   icon: const Icon(Icons.copy_outlined),
                   color: colors.accent,
-                  onPressed: () => unawaited(
-                    _copyPairingCode(context, controller, strings, pairingCode),
-                  ),
+                  onPressed: () =>
+                      intents.send(CopyRelayPairingCode(pairingCode)),
                 ),
               ],
             ),
@@ -208,28 +195,4 @@ class MobileRelayPairingInfoRow extends EndpointStatusRow {
     required super.label,
     required super.value,
   });
-}
-
-Future<void> _saveStation(
-  ClientController controller,
-  TextEditingController stationBaseUrlController,
-) {
-  return controller.configureMobileRelayStation(
-    stationBaseUrl: stationBaseUrlController.text,
-  );
-}
-
-Future<void> _copyPairingCode(
-  BuildContext context,
-  ClientController controller,
-  LicoStrings strings,
-  String code,
-) async {
-  final copied = await controller.copyMobilePairingCode(code);
-  if (!copied || !context.mounted) {
-    return;
-  }
-  ScaffoldMessenger.of(context).showSnackBar(
-    appleGlassSnackBar(context: context, message: strings.pairingCodeCopied),
-  );
 }

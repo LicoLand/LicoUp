@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
+import 'package:licoup/src/contracts/user_home_directory.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 
 void main() {

@@ -1,33 +1,18 @@
-import 'package:flutter/widgets.dart';
 import 'package:licoup/src/application/controller/client_conversation_archive_bindings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('archive draft bindings own only local text-controller state', () {
+  test('archive draft bindings own only local semantic text state', () {
     final host = _ArchiveBindingsHost();
-    addTearDown(host.dispose);
 
     host.snapshotRootDraft = '/local/snapshots';
     host.archiveQueryDraft = 'local keyword';
     host.archiveDestinationDraft = '/local/archive';
 
-    expect(host.snapshotRootController.text, '/local/snapshots');
-    expect(host.archiveQueryController.text, 'local keyword');
-    expect(host.archiveDestinationController.text, '/local/archive');
+    expect(host.snapshotRootDraft, '/local/snapshots');
+    expect(host.archiveQueryDraft, 'local keyword');
+    expect(host.archiveDestinationDraft, '/local/archive');
   });
 }
 
-final class _ArchiveBindingsHost with ClientConversationArchiveBindings {
-  @override
-  final snapshotRootController = TextEditingController();
-  @override
-  final archiveQueryController = TextEditingController();
-  @override
-  final archiveDestinationController = TextEditingController();
-
-  void dispose() {
-    snapshotRootController.dispose();
-    archiveQueryController.dispose();
-    archiveDestinationController.dispose();
-  }
-}
+final class _ArchiveBindingsHost with ClientConversationArchiveBindings {}

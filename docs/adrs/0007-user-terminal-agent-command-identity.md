@@ -1,6 +1,6 @@
 # ADR-0007: User-terminal Agent command identity
 
-Status: accepted for implementation (2026-08-23); not current capability
+Status: accepted for implementation (2026-08-23); shared shell-environment snapshot implemented (2026-09-05), command-binding identity surfaces pending
 
 ## Context
 
@@ -92,6 +92,12 @@ depart from, inspect, or extend the terminal default.
 
 ## Implementation evidence
 
-None. This ADR records an approved product decision only. Current behavior
-continues to be reported by code, architecture, status, and compatibility
-authorities until a separately authorized implementation closes.
+- 2026-09-05: Decision 2's shared environment snapshot is implemented.
+  `crates/licoup-native/src/platform/user_shell_environment.rs` captures the
+  user's login-shell environment once per process (bounded, sentinel-framed,
+  process-environment fallback) and every conversation-execution launch site
+  starts from that snapshot before applying its own functional injections;
+  executable discovery consults the snapshot PATH before the scan manifest.
+  The command-binding model of decisions 1, 3, 5, and 6 (alias/function
+  capture, structured bindings, Agent Center candidate surfaces, launch
+  profiles) remains approved-but-unimplemented decision scope.

@@ -1,5 +1,5 @@
 import 'package:licoup/src/application/localization/client_application_strings.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -42,6 +42,7 @@ export const CLIENT_ARCHITECTURE_PHASE_IDS = Object.freeze([
   "platform.android-secure-mesh",
   "native.command-and-file-transport",
   "flutter.mobile-relay-bridges",
+  "flutter.presentation-boundary",
   "composition.client-root-and-shell",
   "native.target-readiness-reducer",
 ]);
@@ -83,6 +84,7 @@ const phasePlan = Object.freeze([
   (context, checks, state) => checks.checkMobileRelayBridges(context, {
     secureMeshMobileFfiSource: state.secureMeshMobileFfiSource,
   }),
+  (context, checks) => checks.checkPresentationBoundary(context),
   (context, checks, state) => checks.checkClientRootAndShell(context, {
     agentConversationServiceSource: state.agentConversationServiceSource,
     mobileRelayClientAdapterSource: state.mobileRelayClientAdapterSource,

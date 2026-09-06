@@ -79,9 +79,20 @@ final class FilePresentationPreferencesRepository
       if (decoded is! Map) {
         throw const FormatException('presentation_document_invalid');
       }
+      final document = Map<String, Object?>.from(decoded);
+      // Load-time legacy id upgrade: a document persisted before the
+      // dashboard/desktop rename keeps the user's layout choice by resolving
+      // the retired id to the renamed profile. The write path is untouched;
+      // the next save persists the canonical id naturally.
+      if (document['layoutProfileId'] is String) {
+        document['layoutProfileId'] =
+            PresentationPreferences.resolveLegacyLayoutProfileId(
+              document['layoutProfileId']! as String,
+            );
+      }
       return PresentationPreferencesLoadResult(
         preferences: PresentationPreferences.fromJson(
-          Map<String, Object?>.from(decoded),
+          document,
           fallback: _fallback,
         ),
       );

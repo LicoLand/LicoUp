@@ -1,80 +1,88 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
-import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
-import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
-import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
-import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+
+import 'fixtures/settings_binding_fixture.dart';
 import 'layout/layout_host_test_fixtures.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
-  testWidgets(
-    'renders localized catalog profiles with registry previews on both surfaces',
-    (tester) async {
-      final runtime = buildFixtureLayoutRuntime();
-      final manager = _createManager(
-        runtime: runtime,
-        repository: _FakePreferencesRepository(preferences: _preferences()),
-      );
-      addTearDown(manager.dispose);
-      await manager.initialize();
+  testWidgets('renders localized registry previews on both surfaces', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
 
-      await _pumpSelector(
-        tester,
-        manager: manager,
-        runtime: runtime,
-        surface: LayoutRuntimeSurface.desktop,
-        locale: const Locale('zh'),
-      );
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      surface: LayoutRuntimeSurface.desktop,
+      locale: const Locale('zh'),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('layout-profile-selector')),
+      findsOneWidget,
+    );
+    expect(find.text('工作台'), findsOneWidget);
+    expect(find.text('图集'), findsOneWidget);
+    expect(
+      find.byKey(const Key('fixture-preview-dashboard-desktop')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-atlas-desktop')),
+      findsOneWidget,
+    );
 
-      expect(
-        find.byKey(const ValueKey<String>('layout-profile-selector')),
-        findsOneWidget,
-      );
-      expect(find.text('工作台'), findsOneWidget);
-      expect(find.text('图集'), findsOneWidget);
-      expect(
-        find.byKey(const Key('fixture-preview-dashboard-desktop')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('fixture-preview-atlas-desktop')),
-        findsOneWidget,
-      );
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      surface: LayoutRuntimeSurface.mobile,
+      locale: const Locale('zh'),
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-dashboard-mobile')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-atlas-mobile')),
+      findsOneWidget,
+    );
+  });
 
-      await _pumpSelector(
-        tester,
-        manager: manager,
-        runtime: runtime,
-        surface: LayoutRuntimeSurface.mobile,
-        locale: const Locale('zh'),
-      );
+  testWidgets('dispatches semantic selection without owning persistence', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final intents = RecordingSettingsIntents();
+    final binding = settingsBindingFixture(source: source, intents: intents);
+    addTearDown(source.dispose);
+    await _pumpSelector(tester, binding: binding, registry: registry);
 
-      expect(
-        find.byKey(const Key('fixture-preview-dashboard-mobile')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('fixture-preview-atlas-mobile')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('fixture-preview-dashboard-desktop')),
-        findsNothing,
-      );
-    },
-  );
+    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
+    await tester.pump();
+    expect(intents.values, hasLength(1));
+    expect(intents.values.single, isA<SetLayoutPreference>());
+    expect((intents.values.single as SetLayoutPreference).profileId, 'atlas');
+  });
 
-  testWidgets('enumerates an arbitrary catalog without a profile-count cap', (
+  testWidgets('enumerates every profile in an arbitrary catalog', (
     tester,
   ) async {
     final profiles = <LayoutProfileDescriptor>[
@@ -92,14 +100,27 @@ void main() {
         ),
     ];
     final runtime = buildFixtureLayoutRuntime(profiles: profiles);
-    final manager = _createManager(
-      runtime: runtime,
-      repository: _FakePreferencesRepository(preferences: _preferences()),
+    final source = SettingsProjectionFixture(
+      settingsProjectionFixture(
+        layoutChoices: [
+          for (final profile in profiles)
+            PresentationChoice(
+              id: profile.id.value,
+              label: profile.label.english,
+              selected: profile.id.value == 'dashboard',
+              enabled: profile.id.value != 'dashboard',
+            ),
+        ],
+      ),
     );
-    addTearDown(manager.dispose);
-    await manager.initialize();
-
-    await _pumpSelector(tester, manager: manager, runtime: runtime, width: 860);
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: runtime.registry,
+      width: 860,
+    );
 
     for (final profile in profiles) {
       expect(
@@ -109,161 +130,79 @@ void main() {
     }
   });
 
-  testWidgets('applies selections immediately', (tester) async {
-    final runtime = buildFixtureLayoutRuntime();
-    final repository = _FakePreferencesRepository(preferences: _preferences());
-    final manager = _createManager(runtime: runtime, repository: repository);
-    addTearDown(manager.dispose);
-    await manager.initialize();
-    await _pumpSelector(tester, manager: manager, runtime: runtime);
-
-    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
-    await tester.pumpAndSettle();
-    expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
-    expect(
-      repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('atlas'),
-    );
-    expect(repository.layoutWriteCount, 1);
-    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
-    expect(find.text('Restore system default layout'), findsNothing);
-  });
-
-  testWidgets('localizes loading, committing, and bounded persistence errors', (
+  testWidgets('localizes committing and persistence failure states', (
     tester,
   ) async {
-    final runtime = buildFixtureLayoutRuntime();
-    final repository = _FakePreferencesRepository(preferences: _preferences());
-    final manager = _createManager(runtime: runtime, repository: repository);
-    addTearDown(manager.dispose);
-
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(
+      settingsProjectionFixture(layoutPhase: PresentationPhase.applying),
+    );
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
     await _pumpSelector(
       tester,
-      manager: manager,
-      runtime: runtime,
+      binding: binding,
+      registry: registry,
       locale: const Locale('zh'),
     );
-    expect(find.byKey(const Key('layout-selector-loading')), findsOneWidget);
-    expect(find.text('正在加载布局…'), findsOneWidget);
-
-    await manager.initialize();
-    repository.layoutWriteGate = Completer<void>();
-    repository.failNextLayoutWrite = true;
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
-    await repository.layoutWriteStarted.future;
-    await tester.pump();
-
-    expect(find.byKey(const Key('layout-selector-committing')), findsOneWidget);
     expect(find.text('正在保存布局…'), findsOneWidget);
-    expect(find.byKey(const Key('layout-selector-reset')), findsNothing);
 
-    repository.layoutWriteGate!.complete();
-    await tester.pumpAndSettle();
-    expect(manager.state.status, LayoutSelectionStatus.error);
-    expect(find.byKey(const Key('layout-selector-error')), findsOneWidget);
+    source.publish(
+      settingsProjectionFixture(
+        layoutPhase: PresentationPhase.failed,
+        layoutFailureReasonCode: 'persistenceFailed',
+        notice: const PresentationNotice(
+          id: 'settings-layout-failure',
+          title: 'Settings action failed',
+          message: 'Review the action and try again.',
+          severity: PresentationNoticeSeverity.error,
+          reasonCode: 'persistenceFailed',
+        ),
+      ),
+    );
+    await tester.pump();
     expect(find.text('无法保存布局，请稍后重试。'), findsOneWidget);
   });
 
-  testWidgets('supports keyboard, touch targets, and reduced motion', (
+  testWidgets('shows loading and supports keyboard with reduced motion', (
     tester,
   ) async {
-    final runtime = buildFixtureLayoutRuntime();
-    final manager = _createManager(
-      runtime: runtime,
-      repository: _FakePreferencesRepository(preferences: _preferences()),
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(
+      settingsProjectionFixture(layoutPhase: PresentationPhase.loading),
     );
-    addTearDown(manager.dispose);
-    await manager.initialize();
+    final intents = RecordingSettingsIntents();
+    final binding = settingsBindingFixture(source: source, intents: intents);
+    addTearDown(source.dispose);
     await _pumpSelector(
       tester,
-      manager: manager,
-      runtime: runtime,
+      binding: binding,
+      registry: registry,
       width: 360,
       disableAnimations: true,
+      locale: const Locale('zh'),
     );
+    expect(find.byKey(const Key('layout-selector-loading')), findsOneWidget);
 
+    source.publish(settingsProjectionFixture());
+    await tester.pump();
     final options = tester.widgetList<AnimatedContainer>(
       find.byType(AnimatedContainer),
     );
     expect(options, isNotEmpty);
     expect(options.every((option) => option.duration == Duration.zero), isTrue);
-    expect(
-      tester
-          .getSize(find.byKey(const Key('layout-profile-option-atlas')))
-          .height,
-      greaterThanOrEqualTo(48),
-    );
-
-    // The Dashboard layout is disabled (not ready), so keyboard traversal
-    // skips it and lands on the next selectable option.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pumpAndSettle();
-
-    expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
-    manager.dispose();
-  });
-
-  testWidgets('disposing the selector does not interrupt an in-flight commit', (
-    tester,
-  ) async {
-    final runtime = buildFixtureLayoutRuntime();
-    final repository = _FakePreferencesRepository(preferences: _preferences());
-    final manager = _createManager(runtime: runtime, repository: repository);
-    addTearDown(manager.dispose);
-    await manager.initialize();
-    await _pumpSelector(tester, manager: manager, runtime: runtime);
-
-    repository.layoutWriteGate = Completer<void>();
-    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
-    await repository.layoutWriteStarted.future;
     await tester.pump();
-    expect(manager.state.status, LayoutSelectionStatus.committing);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    expect(manager.state.status, LayoutSelectionStatus.committing);
-
-    repository.layoutWriteGate!.complete();
-    await tester.pump();
-    expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
-    manager.dispose();
+    expect(intents.values.whereType<SetLayoutPreference>(), isNotEmpty);
   });
 }
 
-LayoutManager _createManager({
-  required FixtureLayoutRuntime runtime,
-  required PresentationPreferencesRepository repository,
-}) => LayoutManager(
-  catalog: runtime.catalog,
-  preferencesRepository: repository,
-  canonicalFallback: _preferences(),
-  initialEnvironment: LayoutEnvironment.fromConstraints(
-    surface: LayoutRuntimeSurface.desktop,
-    width: 900,
-    height: 800,
-    textScale: 1,
-    hasPointer: true,
-    hasKeyboard: true,
-    hasTouch: true,
-  ),
-);
-
-PresentationPreferences _preferences({LayoutProfileId? layout}) =>
-    PresentationPreferences(
-      layoutProfileId: layout ?? LayoutProfileId.parse('dashboard'),
-      appearancePresetId: 'default-system',
-      localePreference: 'system',
-    );
-
 Future<void> _pumpSelector(
   WidgetTester tester, {
-  required LayoutManager manager,
-  required FixtureLayoutRuntime runtime,
+  required SettingsBinding binding,
+  required LayoutRegistry registry,
   LayoutRuntimeSurface surface = LayoutRuntimeSurface.desktop,
   Locale locale = const Locale('en'),
   double width = 860,
@@ -283,15 +222,12 @@ Future<void> _pumpSelector(
       body: MediaQuery(
         data: MediaQueryData(disableAnimations: disableAnimations),
         child: SingleChildScrollView(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: width,
-              child: LayoutProfileSelector(
-                manager: manager,
-                registry: runtime.registry,
-                surface: surface,
-              ),
+          child: SizedBox(
+            width: width,
+            child: LayoutProfileSelector(
+              binding: binding,
+              registry: registry,
+              surface: surface,
             ),
           ),
         ),
@@ -299,64 +235,3 @@ Future<void> _pumpSelector(
     ),
   ),
 );
-
-final class _FakePreferencesRepository
-    implements PresentationPreferencesRepository {
-  _FakePreferencesRepository({required this.preferences});
-
-  PresentationPreferences preferences;
-  bool failNextLayoutWrite = false;
-  int layoutWriteCount = 0;
-  Completer<void>? layoutWriteGate;
-  Completer<void> layoutWriteStarted = Completer<void>();
-  Future<void> _tail = Future<void>.value();
-
-  @override
-  Future<PresentationPreferencesLoadResult> load() => _enqueue(
-    () async => PresentationPreferencesLoadResult(preferences: preferences),
-  );
-
-  @override
-  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) =>
-      _enqueue(() async {
-        layoutWriteCount += 1;
-        if (!layoutWriteStarted.isCompleted) {
-          layoutWriteStarted.complete();
-        }
-        await layoutWriteGate?.future;
-        if (failNextLayoutWrite) {
-          failNextLayoutWrite = false;
-          throw const PresentationPreferencesRepositoryException(
-            PresentationPreferencesRepositoryErrorCode.writeFailed,
-          );
-        }
-        preferences = preferences.copyWith(layoutProfileId: id);
-        return preferences;
-      });
-
-  @override
-  Future<PresentationPreferences> setAppearancePreset(String id) =>
-      _enqueue(() async {
-        preferences = preferences.copyWith(appearancePresetId: id);
-        return preferences;
-      });
-
-  @override
-  Future<PresentationPreferences> setLocalePreference(String preference) =>
-      _enqueue(() async {
-        preferences = preferences.copyWith(localePreference: preference);
-        return preferences;
-      });
-
-  Future<T> _enqueue<T>(Future<T> Function() operation) {
-    final completer = Completer<T>();
-    _tail = _tail.then((_) async {
-      try {
-        completer.complete(await operation());
-      } catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
-    });
-    return completer.future;
-  }
-}

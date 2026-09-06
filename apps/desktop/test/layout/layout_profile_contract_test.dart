@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,22 +12,19 @@ void main() {
       LayoutProfileId.parse('dashboard'),
       LayoutProfileId.parse('dashboard'),
     );
+    expect(LayoutProfileId.parse('desktop'), LayoutProfileId.parse('desktop'));
     expect(
-      LayoutProfileId.parse('messaging'),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      [LayoutProfileId.parse('messaging'), LayoutProfileId.parse('dashboard')]
+      [LayoutProfileId.parse('desktop'), LayoutProfileId.parse('dashboard')]
         ..sort(),
-      [LayoutProfileId.parse('dashboard'), LayoutProfileId.parse('messaging')],
+      [LayoutProfileId.parse('dashboard'), LayoutProfileId.parse('desktop')],
     );
 
     for (final invalid in [
       'numeric-2',
       'legacy',
       'dashboard-v-two',
-      'messaging-compatibility',
-      'Messaging',
+      'desktop-compatibility',
+      'Desktop',
     ]) {
       Object? failure;
       try {
@@ -40,21 +37,6 @@ void main() {
     }
   });
 
-  test('platform preferred defaults map Default vs Dashboard fallback', () {
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.windows),
-      LayoutProfileId.parse('messaging'),
-    );
-    expect(
-      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.linux),
-      LayoutProfileId.parse('dashboard'),
-    );
-  });
-
   test('profile descriptor owns validated localized copy', () {
     final descriptor = LayoutProfileDescriptor(
       id: LayoutProfileId.parse('dashboard'),
@@ -63,7 +45,7 @@ void main() {
         english: 'Dashboard layout',
         chinese: '仪表盘布局',
       ),
-      styleIdentity: 'spacious-card-dashboard',
+      styleIdentity: 'dashboard-channel-chat',
       isDefault: true,
     );
 

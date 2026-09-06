@@ -12,14 +12,30 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
+import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+final class _ContactListOrderStore extends DashboardFeatureOrderStore {
+  const _ContactListOrderStore();
+
+  @override
+  Future<List<String>> load(Object portableData) async =>
+      DashboardFeatureOrder.defaultOrder;
+
+  @override
+  Future<void> save(Object portableData, List<String> order) async {}
+}
+
 void main() {
-  testWidgets('title bar sits above the search capsule', (tester) async {
+  testWidgets('traffic-light row sits above the search capsule', (
+    tester,
+  ) async {
     var searchCount = 0;
     await _pumpContacts(
       tester,
@@ -28,11 +44,21 @@ void main() {
     );
 
     final search = find.byKey(const Key('messaging-sidebar-search'));
-    final heading = find.byKey(const Key('messaging-contact-list-heading'));
+    final lightRow = find.byKey(
+      const Key('messaging-sidebar-traffic-light-row'),
+    );
+    final anchor = find.byKey(const Key('messaging-traffic-light-anchor'));
     expect(search, findsOneWidget);
+    expect(lightRow, findsOneWidget);
+    expect(anchor, findsOneWidget);
     expect(
-      tester.getTopLeft(heading).dy,
+      tester.getTopLeft(lightRow).dy,
       lessThan(tester.getTopLeft(search).dy),
+    );
+    // The heading text above the search capsule is gone.
+    expect(
+      find.byKey(const Key('messaging-contact-list-heading')),
+      findsNothing,
     );
     expect(
       find.byKey(const Key('messaging-conversation-list-back')),
@@ -42,9 +68,10 @@ void main() {
     final decoration = tester.widget<DecoratedBox>(
       find.descendant(of: search, matching: find.byType(DecoratedBox)),
     );
+    // The search capsule is a stadium: half its token height.
     expect(
       (decoration.decoration as BoxDecoration).borderRadius,
-      BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
+      BorderRadius.circular(MessagingDesktopMetrics.searchFieldHeight / 2),
     );
     final content = tester.widget<Row>(
       find.descendant(of: search, matching: find.byType(Row)),
@@ -171,7 +198,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('messaging-contact-list-heading')),
+        find.byKey(const Key('messaging-sidebar-traffic-light-row')),
         findsOneWidget,
       );
       expect(find.text('对话'), findsWidgets);
@@ -180,8 +207,8 @@ void main() {
       expect(find.text('Refactor list'), findsOneWidget);
       expect(find.byType(AgentBrandIcon), findsNothing);
 
-      final headingRect = tester.getRect(
-        find.byKey(const Key('messaging-contact-list-heading')),
+      final lightRowRect = tester.getRect(
+        find.byKey(const Key('messaging-sidebar-traffic-light-row')),
       );
       final searchRect = tester.getRect(
         find.byKey(const Key('messaging-sidebar-search')),
@@ -190,7 +217,7 @@ void main() {
         find.byKey(const Key('messaging-conversation-list-back')),
       );
       final todayRect = tester.getRect(find.text('今天'));
-      expect(headingRect.bottom, lessThanOrEqualTo(searchRect.top));
+      expect(lightRowRect.bottom, lessThanOrEqualTo(searchRect.top));
       expect(
         backRect.top - searchRect.bottom,
         MessagingDesktopMetrics.sidebarPrimaryControlGap,
@@ -220,7 +247,7 @@ void main() {
   );
 
   testWidgets(
-    'title and search stay pinned while contextual back sits below search',
+    'traffic-light row and search stay pinned while contextual back sits below search',
     (tester) async {
       final claude = _target('claude-code', 'Claude Code');
       await _pumpContacts(
@@ -245,14 +272,16 @@ void main() {
         locale: const Locale('zh'),
       );
 
-      final heading = find.byKey(const Key('messaging-contact-list-heading'));
+      final lightRow = find.byKey(
+        const Key('messaging-sidebar-traffic-light-row'),
+      );
       final search = find.byKey(const Key('messaging-sidebar-search'));
       final back = find.byKey(const Key('messaging-conversation-list-back'));
-      expect(heading, findsOneWidget);
+      expect(lightRow, findsOneWidget);
       expect(search, findsOneWidget);
       expect(back, findsOneWidget);
       expect(
-        tester.getTopLeft(heading).dy,
+        tester.getTopLeft(lightRow).dy,
         lessThan(tester.getTopLeft(search).dy),
       );
       expect(
@@ -260,7 +289,7 @@ void main() {
         lessThan(tester.getTopLeft(back).dy),
       );
 
-      final headingY = tester.getTopLeft(heading).dy;
+      final lightRowY = tester.getTopLeft(lightRow).dy;
       final searchY = tester.getTopLeft(search).dy;
       final backY = tester.getTopLeft(back).dy;
       final visibleRow = find.text('Thread 3');
@@ -269,7 +298,7 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -80));
       await tester.pump();
 
-      expect(tester.getTopLeft(heading).dy, headingY);
+      expect(tester.getTopLeft(lightRow).dy, lightRowY);
       expect(tester.getTopLeft(search).dy, searchY);
       expect(tester.getTopLeft(back).dy, backY);
       expect(tester.getTopLeft(visibleRow).dy, lessThan(visibleRowY));
@@ -470,7 +499,6 @@ void main() {
 
     final row = find.byKey(const Key('messaging-contact-claude-code'));
     expect(row, findsOneWidget);
-    expect(find.text('Conversations'), findsOneWidget);
     expect(
       find.descendant(of: row, matching: find.text('Claude Code')),
       findsOneWidget,
@@ -832,9 +860,7 @@ void main() {
     },
   );
 
-  testWidgets('bottom nav lists features, chats, communication, and settings', (
-    tester,
-  ) async {
+  testWidgets('bottom nav lists features, chats, and settings', (tester) async {
     await _pumpContacts(
       tester,
       sessionsByAgent: const {},
@@ -850,7 +876,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('messaging-sidebar-nav-communication')),
+      find.byKey(const Key('messaging-sidebar-nav-features')),
       findsOneWidget,
     );
     expect(
@@ -858,21 +884,34 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('messaging-sidebar-nav-skills')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const Key('messaging-sidebar-nav-settings')),
       findsOneWidget,
     );
-    expect(find.text('功能'), findsOneWidget);
-    expect(find.text('通信'), findsOneWidget);
-    expect(find.text('配对'), findsNothing);
-    expect(find.text('技能'), findsNothing);
-    expect(find.text('设置'), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-nav-communication')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('messaging-sidebar-nav-skills')), findsNothing);
+    final bottomNav = find.byKey(const Key('messaging-sidebar-bottom-nav'));
+    expect(
+      find.descendant(of: bottomNav, matching: find.text('功能')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: bottomNav, matching: find.text('对话')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: bottomNav, matching: find.text('设置')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: bottomNav, matching: find.text('通信')),
+      findsNothing,
+    );
     expect(
       tester
-          .getTopLeft(find.byKey(const Key('messaging-sidebar-nav-skills')))
+          .getTopLeft(find.byKey(const Key('messaging-sidebar-nav-features')))
           .dx,
       lessThan(
         tester
@@ -890,20 +929,6 @@ void main() {
           .dx,
       lessThan(
         tester
-            .getTopLeft(
-              find.byKey(const Key('messaging-sidebar-nav-communication')),
-            )
-            .dx,
-      ),
-    );
-    expect(
-      tester
-          .getTopLeft(
-            find.byKey(const Key('messaging-sidebar-nav-communication')),
-          )
-          .dx,
-      lessThan(
-        tester
             .getTopLeft(find.byKey(const Key('messaging-sidebar-nav-settings')))
             .dx,
       ),
@@ -912,7 +937,7 @@ void main() {
       tester
           .widget<Icon>(
             find.descendant(
-              of: find.byKey(const Key('messaging-sidebar-nav-skills')),
+              of: find.byKey(const Key('messaging-sidebar-nav-features')),
               matching: find.byType(Icon),
             ),
           )
@@ -1001,7 +1026,7 @@ void main() {
     );
     expect(label.style?.color, colors.textOnPrimary);
 
-    final skills = find.byKey(const Key('messaging-sidebar-nav-skills'));
+    final skills = find.byKey(const Key('messaging-sidebar-nav-features'));
     final skillsContainer = tester.widget<AnimatedContainer>(
       find.descendant(of: skills, matching: find.byType(AnimatedContainer)),
     );
@@ -1011,7 +1036,7 @@ void main() {
     );
   });
 
-  testWidgets('bottom nav maps the four tabs onto existing destinations', (
+  testWidgets('bottom nav maps the three tabs onto existing destinations', (
     tester,
   ) async {
     final selected = <ClientSection>[];
@@ -1023,20 +1048,15 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-sidebar-nav-communication')),
-    );
-    await tester.pump();
-    await tester.tap(
       find.byKey(const Key('messaging-sidebar-nav-conversations')),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-features')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
     await tester.pump();
 
     expect(selected, [
-      ClientSection.models,
       ClientSection.agents,
       ClientSection.pluginManagement,
       ClientSection.settings,
@@ -1051,7 +1071,7 @@ void main() {
       onSelectDestination: selected.add,
     );
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-skills')));
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-features')));
     await tester.pump();
 
     expect(selected, [ClientSection.agentHub]);
@@ -1136,41 +1156,44 @@ Future<void> _pumpContacts(
       home: Builder(
         builder: (context) => LayoutPaletteScope(
           palette: layoutPaletteFromColors(context.licoColors),
-          child: Scaffold(
-            body: SizedBox(
-              width: 320,
-              height: 600,
-              child: MessagingContactList(
-                targets:
-                    targets ??
-                    [
-                      _target('codex', 'Codex'),
-                      _target('claude-code', 'Claude Code'),
-                      _target('kimi-code', 'Kimi Code'),
-                    ],
-                sessionsByAgent: sessionsByAgent,
-                selectedAgentId: selectedAgentId,
-                activityFor: (_) => activity,
-                onSelectAgent: onSelectAgent ?? (_) {},
-                onNewConversation: onNewConversation ?? () {},
-                onSearch: onSearch,
-                onNewGroupConversation: onNewGroupConversation,
-                groupConversations: groupConversations,
-                selectedGroupConversationId: selectedGroupConversationId,
-                onSelectGroupConversation: onSelectGroupConversation,
-                onSetGroupConversationPinned: onSetGroupConversationPinned,
-                onArchiveGroupConversation: onArchiveGroupConversation,
-                isPinned: isPinned,
-                onTogglePinned: onTogglePinned,
-                showConversationList: showConversationList,
-                conversationListTargets: conversationListTargets,
-                selectedSessionId: selectedSessionId,
-                showConversationAgentIcons: showConversationAgentIcons,
-                onSelectSession: onSelectSession,
-                onBack: onBack,
-                onPrefetchSessions: onPrefetchSessions,
-                activeDestination: activeDestination,
-                onSelectDestination: onSelectDestination,
+          child: MessagingFeatureOrderScope(
+            orderStore: const _ContactListOrderStore(),
+            child: Scaffold(
+              body: SizedBox(
+                width: 320,
+                height: 600,
+                child: MessagingContactList(
+                  targets:
+                      targets ??
+                      [
+                        _target('codex', 'Codex'),
+                        _target('claude-code', 'Claude Code'),
+                        _target('kimi-code', 'Kimi Code'),
+                      ],
+                  sessionsByAgent: sessionsByAgent,
+                  selectedAgentId: selectedAgentId,
+                  activityFor: (_) => activity,
+                  onSelectAgent: onSelectAgent ?? (_) {},
+                  onNewConversation: onNewConversation ?? () {},
+                  onSearch: onSearch,
+                  onNewGroupConversation: onNewGroupConversation,
+                  groupConversations: groupConversations,
+                  selectedGroupConversationId: selectedGroupConversationId,
+                  onSelectGroupConversation: onSelectGroupConversation,
+                  onSetGroupConversationPinned: onSetGroupConversationPinned,
+                  onArchiveGroupConversation: onArchiveGroupConversation,
+                  isPinned: isPinned,
+                  onTogglePinned: onTogglePinned,
+                  showConversationList: showConversationList,
+                  conversationListTargets: conversationListTargets,
+                  selectedSessionId: selectedSessionId,
+                  showConversationAgentIcons: showConversationAgentIcons,
+                  onSelectSession: onSelectSession,
+                  onBack: onBack,
+                  onPrefetchSessions: onPrefetchSessions,
+                  activeDestination: activeDestination,
+                  onSelectDestination: onSelectDestination,
+                ),
               ),
             ),
           ),

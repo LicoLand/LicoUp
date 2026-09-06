@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
 
-abstract class SkillOperationController extends ChangeNotifier {
+abstract class SkillOperationController extends ApplicationStateOwner {
   SkillOperationController({required SkillHubStatusSink onStatus})
     : _onStatus = onStatus;
 
@@ -10,10 +11,8 @@ abstract class SkillOperationController extends ChangeNotifier {
   bool busy = false;
   String lastErrorCode = '';
 
-  @protected
   void reportStatus(SkillHubStatusUpdate update) => _onStatus(update);
 
-  @protected
   Future<void> runOperation({
     required String busyChinese,
     required String busyEnglish,
@@ -28,7 +27,7 @@ abstract class SkillOperationController extends ChangeNotifier {
     reportStatus(
       SkillHubStatusUpdate(chinese: busyChinese, english: busyEnglish),
     );
-    notifyListeners();
+    publishChange();
     try {
       await action();
     } catch (_) {
@@ -42,7 +41,7 @@ abstract class SkillOperationController extends ChangeNotifier {
       );
     } finally {
       busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 }

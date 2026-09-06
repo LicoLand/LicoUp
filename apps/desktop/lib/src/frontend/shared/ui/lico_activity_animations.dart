@@ -85,16 +85,26 @@ class _LicoTopEdgePulseState extends State<LicoTopEdgePulse>
     return Stack(
       children: [
         widget.child,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              key: const Key('lico-top-edge-pulse-paint'),
-              painter: _LicoTopEdgePulsePainter(
-                progress: _controller,
-                borderRadius: widget.borderRadius,
-                color: widget.color,
-                strokeWidth: widget.strokeWidth,
-                reduceMotion: reduceMotion,
+        // The pulse only ever paints the top hairline, so confine the ticking
+        // canvas to that strip: a full-size CustomPaint would invalidate the
+        // whole surface's layer on every animation frame. The repaint boundary
+        // keeps the strip's repaint out of the child's layer too.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: widget.strokeWidth,
+          child: RepaintBoundary(
+            child: IgnorePointer(
+              child: CustomPaint(
+                key: const Key('lico-top-edge-pulse-paint'),
+                painter: _LicoTopEdgePulsePainter(
+                  progress: _controller,
+                  borderRadius: widget.borderRadius,
+                  color: widget.color,
+                  strokeWidth: widget.strokeWidth,
+                  reduceMotion: reduceMotion,
+                ),
               ),
             ),
           ),
@@ -125,8 +135,19 @@ class _LicoTopEdgePulsePainter extends CustomPainter {
     final strip = Rect.fromLTWH(0, 0, size.width, strokeWidth);
     canvas.save();
     // Confine the line to the surface silhouette so it dies out around the
-    // top corner arcs instead of overhanging them.
-    canvas.clipRRect(borderRadius.toRRect(Offset.zero & size));
+    // top corner arcs instead of overhanging them. The canvas is only the
+    // top strip now; the top corner arcs of an RRect do not depend on its
+    // height (once the height clears twice the corner radius), so clipping
+    // with a rect tall enough reproduces the full-surface silhouette exactly.
+    final topRadius = borderRadius.topLeft.y > borderRadius.topRight.y
+        ? borderRadius.topLeft.y
+        : borderRadius.topRight.y;
+    final clipHeight = size.height < topRadius * 2
+        ? topRadius * 2
+        : size.height;
+    canvas.clipRRect(
+      borderRadius.toRRect(Offset.zero & Size(size.width, clipHeight)),
+    );
     if (reduceMotion) {
       canvas.drawRect(strip, Paint()..color = color.withValues(alpha: 0.72));
       canvas.restore();
@@ -216,15 +237,19 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
     final color =
         widget.color ??
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72);
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: RotationTransition(
-        turns: _controller,
-        child: CustomPaint(
-          painter: _LicoUpSpinnerPainter(
-            color: color,
-            strokeWidth: widget.strokeWidth,
+    // The rotation loops forever; its own repaint boundary keeps the
+    // repeating repaint from invalidating the surrounding row's layer.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: RotationTransition(
+          turns: _controller,
+          child: CustomPaint(
+            painter: _LicoUpSpinnerPainter(
+              color: color,
+              strokeWidth: widget.strokeWidth,
+            ),
           ),
         ),
       ),

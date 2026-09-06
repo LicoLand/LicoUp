@@ -80,6 +80,30 @@ runtime 也必须有一个 required runtime 绑定。`pass` 与 `join` 各取一
 `complete` 边；`choice` 以无 guard 的兜底边
 完成 `complete` 路由；`fork` 通过至少两条指向不同目标的无 guard `complete` 边扇出。
 
+每条转换还声明节点切换模式：`flow` 或 `callback`。缺少 `mode` 显式声明时默认
+`flow`；其他取值在校验时一律拒绝。fork 扇出边是结构性的，必须保持 `flow`。
+
+`flow` 边在源节点结算后直接进入目标。因为这条路径上没有主智能体介入，任何经
+flow 进入的状态——初始状态或任一 `flow` 边的目标——都不得留空其类型执行所需的
+关键字段：actor 状态必须声明 `binding`，workset 状态必须声明 `binding` 与 `workset`，
+script 状态必须声明 `runtime` 与 `entry`。留空的 flow 目标在导入与校验时以
+`workflow_flow_target_incomplete` 拒绝。
+
+`callback` 边则让 run 挂起：源状态结算完成，run 持久进入等待，主智能体——发起方
+Assistant membership——通过与效果输出相同的 Membership 作用域会话投影收到这个
+待决回调。只有主智能体的决策作为 run 输入到达后，run 才继续；回调请求会指明应答
+通道：导入的 run 走 `strategy.run.resume`，而经 Subagent MCP 驱动 Assistant run 图的
+主智能体搭乘同一次幂等的 `lico_assistant_workflow_execute` 调用。`advance` 进入声明的
+下一节点，`return` 重新进入已完成的节点，`terminate` 取消整个 run。决策按状态 id 与
+访问序位绑定唯一一次等待，重放或错位的决策都是陈旧的，不会结算任何东西。多个回调
+等待按进入顺序排队，并按同一顺序决策。只经 `callback` 边到达的目标可以把 actor
+binding 推迟到主智能体决策；如果效果真正执行时仍未声明，则走普通的失败兜底。
+
+失败兜底在两种模式下都成立。Assistant run 的效果或 drive 失败只结算一个 typed 终态
+结果回传发起方 Assistant turn。导入 run 的终态失败——failed、blocked 或 in-doubt——
+会作为一条 typed Membership 事件报告给所绑定 Conversation 指定的 Assistant
+Membership，由主智能体决断后续；越过这条边界的只有标识符级别的事实。
+
 Guard 路由必须让每个有界 payload 恰好选中一条边。一个状态可以声明一个任意 guard 加
 无 guard 兜底，或声明同一 payload 路径上规范值各不相同的多个 equality guard，同样
 必须有无 guard 兜底。混合 guard 路径、`exists` guard 与 equality guard 混用、以及
@@ -143,7 +167,8 @@ steer、resume、cancel、事件与安全边界行为仍准确遵循所选 adapt
 
 第一条发送仍是 Conversation Event。原生寻址在持久 conversation sidecar 上启动
 `strategy.run.start`（Graph 不拥有发送进程）。之后的发送仍是 Event：若 Membership
-上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume。叉掉胶囊只退出
+上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume——但回调等待只能由
+主智能体显式的 `advance` / `return` / `terminate` 决策来结算。叉掉胶囊只退出
 策略模式，不取消已经在跑的 run。
 
 `@mention` 只负责选出 Membership，与策略、Assistant、Subagent 共用同一套

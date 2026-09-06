@@ -27,10 +27,6 @@ export async function runImportCases(fixtureRoot, profiles, surfaces) {
       "package:licoup/src/application/features/example/controller_scope.dart",
     ],
     [
-      "layout_concrete_theme_import",
-      "package:licoup/src/frontend/shared/ui/theme.dart",
-    ],
-    [
       "layout_shared_feature_ui_import",
       "package:licoup/src/frontend/features/agents/agents_canvas.dart",
     ],

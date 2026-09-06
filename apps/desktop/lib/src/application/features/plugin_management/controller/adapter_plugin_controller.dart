@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -22,7 +22,7 @@ typedef AdapterPluginStatusSink =
 
 /// Serializes catalog refreshes and lifecycle mutations through one command
 /// lane so the UI never renders a result older than a preceding mutation.
-final class AdapterPluginController extends ChangeNotifier {
+final class AdapterPluginController extends ApplicationStateOwner {
   AdapterPluginController({
     required AgentCommandRunner runner,
     required AdapterPluginStatusSink onStatus,
@@ -106,7 +106,7 @@ final class AdapterPluginController extends ChangeNotifier {
       final output = await _runner.runCli(const ['adapter', 'catalog']);
       _catalog = AdapterPluginCatalog.fromJson(output);
       _lastErrorCode = '';
-      notifyListeners();
+      publishChange();
       return true;
     } on FormatException catch (error) {
       if (reportFailure) {
@@ -131,10 +131,10 @@ final class AdapterPluginController extends ChangeNotifier {
 
   Future<void> _enqueue(Future<void> Function() operation) {
     _pendingOperations += 1;
-    notifyListeners();
+    publishChange();
     final next = _tail.then((_) => operation()).whenComplete(() {
       _pendingOperations -= 1;
-      notifyListeners();
+      publishChange();
     });
     _tail = next.catchError((_) {});
     return next;
@@ -173,6 +173,6 @@ final class AdapterPluginController extends ChangeNotifier {
         errorCode: errorCode,
       ),
     );
-    notifyListeners();
+    publishChange();
   }
 }

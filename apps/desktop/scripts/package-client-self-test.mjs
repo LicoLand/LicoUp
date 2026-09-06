@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -25,7 +26,11 @@ import {
 } from "./package-client/cli-policy.mjs";
 import { readFileSync } from "node:fs";
 import { sha256File } from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
-import { retireStaleCleanBuildRuns } from "./package-client/source-staging.mjs";
+import {
+  prepareStagedFlutterSource,
+  retireStaleCleanBuildRuns,
+  stagedPresentationContractRoot,
+} from "./package-client/source-staging.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const packageScript = "apps/desktop/scripts/package-client.mjs";
@@ -203,6 +208,52 @@ try {
 } finally {
   rmSync(cleanupFixtureRoot, { recursive: true, force: true });
 }
+const sourceStageFixtureRoot = mkdtempSync(
+  path.join(os.tmpdir(), "lico-package-source-stage-"),
+);
+const previousCleanBuildRoot = process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+try {
+  process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = sourceStageFixtureRoot;
+  const stagedFlutterRoot = prepareStagedFlutterSource();
+  const stagedContractRoot = stagedPresentationContractRoot();
+  const stagedPackagesRoot = path.dirname(stagedContractRoot);
+  const stagedPackageEntries = readdirSync(stagedPackagesRoot, {
+    withFileTypes: true,
+  });
+  requireValue(
+    path.resolve(stagedFlutterRoot, "..", "..", "packages", "presentation_contract") ===
+      path.resolve(stagedContractRoot),
+    "presentation_contract_relative_resolution_changed",
+  );
+  requireValue(
+    existsSync(path.join(stagedContractRoot, "pubspec.yaml")) &&
+      existsSync(path.join(stagedContractRoot, "lib", "presentation_contract.dart")),
+    "presentation_contract_was_not_staged",
+  );
+  requireValue(
+    [
+      ".dart_tool",
+      ".flutter-plugins",
+      ".flutter-plugins-dependencies",
+      ".idea",
+      "build",
+    ].every((name) => !existsSync(path.join(stagedContractRoot, name))),
+    "presentation_contract_generated_state_was_staged",
+  );
+  requireValue(
+    stagedPackageEntries.length === 1 &&
+      stagedPackageEntries[0].isDirectory() &&
+      stagedPackageEntries[0].name === "presentation_contract",
+    "unrelated_packages_were_staged",
+  );
+} finally {
+  if (previousCleanBuildRoot === undefined) {
+    delete process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+  } else {
+    process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = previousCleanBuildRoot;
+  }
+  rmSync(sourceStageFixtureRoot, { recursive: true, force: true });
+}
 for (const field of ["skipFlutterBuild", "skipNativeBuild"]) {
   expectRejected(() => validateReleaseBuildPolicy({
     mode: "release",
@@ -315,11 +366,12 @@ requireValue(outputIsReferenceOnly(`${rejected.stdout}\n${rejected.stderr}`) &&
 
 console.log(JSON.stringify({
   ok: true,
-  caseCount: 31,
+  caseCount: 32,
   canonicalReleaseConfigRequired: true,
   releaseOverridesRejected: true,
   packagingSchemaClosed: true,
   packagingPathsContained: true,
+  presentationContractStaged: true,
   buildExecuted: false,
   privatePathsIncluded: false,
 }));

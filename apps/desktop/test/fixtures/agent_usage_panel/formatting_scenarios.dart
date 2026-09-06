@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'usage_agent_service_fakes.dart';
+import 'monitoring_binding_fixture.dart';
 import 'usage_panel_fixtures.dart';
 import '../client_controller/support/no_entry_hook_client_controller.dart';
 
@@ -19,22 +20,24 @@ void registerAgentUsageFormattingScenarios() {
       'codex',
       'opencode',
     ]);
-    addTearDown(controller.dispose);
+    final monitoring = MonitoringBindingFixture(controller);
+    addTearDown(() async {
+      await monitoring.close();
+      controller.dispose();
+    });
 
     await tester.pumpWidget(
       usageTestApp(
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
-        home: AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) {
-            return SizedBox(
-              width: 980,
-              height: 620,
-              child: AgentUsagePanel(controller: controller),
-            );
-          },
+        home: SizedBox(
+          width: 980,
+          height: 620,
+          child: AgentUsagePanel(
+            binding: monitoring.binding,
+            onExit: () => controller.selectSection(ClientSection.agents),
+          ),
         ),
       ),
     );
@@ -139,7 +142,10 @@ void registerAgentUsageFormattingScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(controller: controller),
+          child: AgentUsagePanel(
+            binding: monitoring.binding,
+            onExit: () => controller.selectSection(ClientSection.agents),
+          ),
         ),
       ),
     );

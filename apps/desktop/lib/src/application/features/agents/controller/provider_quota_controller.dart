@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/provider_quota_gateway.dart';
 import 'package:licoup/src/contracts/provider_quota_models.dart';
@@ -11,7 +11,7 @@ const Duration defaultProviderQuotaPollingInterval = Duration(minutes: 5);
 /// guard. Shaped on [AgentUsageController]: the composition root only
 /// projects this state, and the roster receives one immutable
 /// agent-id-keyed projection as plain state — the UI never merges Maps.
-final class ProviderQuotaController extends ChangeNotifier {
+final class ProviderQuotaController extends ApplicationStateOwner {
   ProviderQuotaController({required this.gateway});
 
   final ProviderQuotaGateway gateway;
@@ -31,7 +31,6 @@ final class ProviderQuotaController extends ChangeNotifier {
   Future<void>? _refreshFuture;
   bool _disposed = false;
 
-  @visibleForTesting
   int get pollingOwnerCount => _pollingOwners.length;
 
   void startPolling({Duration interval = defaultProviderQuotaPollingInterval}) {
@@ -108,7 +107,7 @@ final class ProviderQuotaController extends ChangeNotifier {
       // Retain the last projection; native marks it stale past its TTL.
       return;
     }
-    if (!_disposed) notifyListeners();
+    if (!_disposed) publishChange();
   }
 
   @override

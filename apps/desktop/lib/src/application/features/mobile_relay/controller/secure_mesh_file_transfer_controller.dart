@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
@@ -7,7 +8,7 @@ import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns the local file-sync draft, receive policy, and confirmation state.
-final class SecureMeshFileTransferController extends ChangeNotifier {
+final class SecureMeshFileTransferController extends ApplicationStateOwner {
   SecureMeshFileTransferController({
     required SecureMeshGateway gateway,
     required MobileRelayOperationGate operationGate,
@@ -37,37 +38,37 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
 
   void replaceRoute(Map<String, dynamic>? value) {
     _route = value == null ? null : SecureMeshPolicy.fileRouteProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceDestination(Map<String, dynamic>? value) {
     _destination = value == null
         ? null
         : SecureMeshPolicy.fileDestinationProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceConfirmation(Map<String, dynamic>? value) {
     _confirmation = value == null
         ? null
         : SecureMeshPolicy.fileConfirmationProjection(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceTransfers(List<SecureMeshFileSyncTransfer> value) {
     _transfers = List<SecureMeshFileSyncTransfer>.unmodifiable(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceDraft(SecureMeshFileSyncTransfer? value) {
     _draft = value;
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> evaluateRoute(Map<String, dynamic> manifest) async {
     if (!_operationGate.tryAcquire()) return;
     _report('正在评估 Secure Mesh 文件路由。', 'Evaluating the Secure Mesh file route.');
-    notifyListeners();
+    publishChange();
     try {
       _route = SecureMeshPolicy.fileRouteProjection(
         await _gateway.evaluateFileRoute(manifest),
@@ -85,7 +86,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -99,7 +100,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       '正在评估安全网格文件接收位置。',
       'Evaluating the Secure Mesh file receive destination.',
     );
-    notifyListeners();
+    publishChange();
     try {
       _destination = SecureMeshPolicy.fileDestinationProjection(
         await _gateway.evaluateFileReceiveDestination(
@@ -124,7 +125,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -142,7 +143,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
         'The file-sync source is invalid.',
         errorCode: 'secure_mesh_file_sync_source_invalid',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     final chunkSize = secureMeshFileSyncDefaultChunkSize.clamp(1, totalSize);
@@ -166,7 +167,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       '已选择文件 $normalizedName，请确认目标目录。',
       'Selected $normalizedName. Confirm the destination directory.',
     );
-    notifyListeners();
+    publishChange();
   }
 
   void setDestination(String destinationRoot) {
@@ -191,7 +192,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
         'Destination set. Ready to evaluate the file-sync transfer.',
       );
     }
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> prepareTransfer() async {
@@ -202,7 +203,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
         'Choose a file to sync first.',
         errorCode: 'secure_mesh_file_sync_draft_missing',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (current.destinationRoot.trim().isEmpty) {
@@ -211,7 +212,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
         'Confirm the destination directory first.',
         errorCode: 'secure_mesh_file_sync_destination_missing',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
@@ -223,7 +224,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       '正在评估 Secure Mesh 文件同步路由与接收确认策略。',
       'Evaluating Secure Mesh file-sync route and receive confirmation policy.',
     );
-    notifyListeners();
+    publishChange();
     try {
       final manifest = current.toManifest();
       final rawRoute = await _gateway.evaluateFileRoute(manifest);
@@ -301,7 +302,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -314,7 +315,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
         'No file-sync transfer is awaiting confirmation.',
         errorCode: 'secure_mesh_file_sync_confirmation_unavailable',
       );
-      notifyListeners();
+      publishChange();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
@@ -324,7 +325,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
           ? 'Confirming the file-sync write.'
           : 'Rejecting the file-sync write.',
     );
-    notifyListeners();
+    publishChange();
     try {
       final raw = await _gateway.evaluateFileReceiveConfirmation(
         manifest: current.toManifest(),
@@ -376,7 +377,7 @@ final class SecureMeshFileTransferController extends ChangeNotifier {
       );
     } finally {
       _operationGate.release();
-      notifyListeners();
+      publishChange();
     }
   }
 

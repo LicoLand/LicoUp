@@ -216,7 +216,7 @@ fn run_turn_loop(
     let mut observed_bytes = 0usize;
     let mut pending_approval: Option<(PendingApproval, Instant)> = None;
     loop {
-        if let Some(failure) = handle_control_requests(transport, &state) {
+        if let Some(failure) = handle_control_requests(transport, &mut state) {
             return (None, Some(failure), false);
         }
         if transport.stdin.check_health().is_err() {
@@ -380,7 +380,7 @@ fn run_turn_loop(
 
 fn handle_control_requests(
     transport: &mut PersistentTransport,
-    state: &ClaudeCodeParser<'_>,
+    state: &mut ClaudeCodeParser<'_>,
 ) -> Option<ProtocolFailure> {
     loop {
         match transport.control_receiver.try_recv() {
@@ -402,6 +402,11 @@ fn handle_control_requests(
                         "Claude Code stopped accepting an interrupt request.",
                         "turn/cancel",
                     ));
+                }
+                if written {
+                    // The CLI answers this interrupt with an is_error terminal
+                    // result; classify it as a user cancellation.
+                    state.mark_cancel_requested();
                 }
             }
             Ok(ControlRequest::Steer {

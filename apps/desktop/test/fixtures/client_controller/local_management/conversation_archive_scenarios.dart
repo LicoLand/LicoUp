@@ -84,7 +84,7 @@ void registerClientConversationArchiveScenarios() {
 
       controller.scannedTargets = [agentArchiveTarget()];
       controller.selectedConversationAgentId = 'claude-code';
-      controller.archiveDestinationController.text = 'test-data/native-archive';
+      controller.archiveDestinationDraft = 'test-data/native-archive';
 
       await controller.archiveSelectedConversationAgent();
 
@@ -195,11 +195,11 @@ void registerClientConversationArchiveScenarios() {
     addTearDown(controller.dispose);
 
     await controller.refreshConversationSnapshotRoot();
-    expect(controller.snapshotRootController.text, service.snapshotRootPath);
+    expect(controller.snapshotRootDraft, service.snapshotRootPath);
 
     await controller.setConversationSnapshotRoot('test-data/native-archive');
     expect(service.snapshotRootSetCalls, 1);
-    expect(controller.snapshotRootController.text, 'test-data/native-archive');
+    expect(controller.snapshotRootDraft, 'test-data/native-archive');
   });
 
   test('archive profile actions update controller health state', () async {

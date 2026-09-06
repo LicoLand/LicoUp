@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/services.dart';
 
 /// Channel name shared with `macos/Runner/MainFlutterWindow.swift`.
@@ -35,5 +37,30 @@ final class WindowChromeChannel {
     } on MissingPluginException {
       // No native window chrome is registered on this platform.
     }
+  }
+
+  /// Moves the macOS traffic lights into the layout-reported [rect] — window
+  /// logical points, y down from the window content's top-left. Passing null
+  /// restores the default 48pt top-band placement.
+  ///
+  /// The native window keeps the last reported rect, so shells can report on
+  /// every layout change without ordering guarantees against alignment.
+  Future<void> setTrafficLightAnchor(Rect? rect) async {
+    if (!Platform.isMacOS) {
+      return;
+    }
+    final List<double>? arguments = rect == null
+        ? null
+        : <double>[rect.left, rect.top, rect.width, rect.height];
+    try {
+      await _channel.invokeMethod<void>('setTrafficLightAnchor', arguments);
+    } on MissingPluginException {
+      // No native window chrome is registered on this platform.
+    }
+  }
+
+  /// Restores the default 48pt top-band traffic-light placement.
+  Future<void> clearTrafficLightAnchor() async {
+    await setTrafficLightAnchor(null);
   }
 }

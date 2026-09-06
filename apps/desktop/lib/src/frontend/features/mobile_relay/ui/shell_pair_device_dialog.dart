@@ -3,9 +3,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 
 typedef PairDeviceScannerPreviewBuilder =
     Widget Function(
@@ -16,12 +20,12 @@ typedef PairDeviceScannerPreviewBuilder =
 class PairDeviceDialog extends StatefulWidget {
   const PairDeviceDialog({
     super.key,
-    required this.onClaim,
+    required this.binding,
     this.scannerPreviewBuilder,
     this.scannerPreviewOverride,
   });
 
-  final Future<void> Function(String value) onClaim;
+  final MobileRelayBinding binding;
   final PairDeviceScannerPreviewBuilder? scannerPreviewBuilder;
   final Widget? scannerPreviewOverride;
 
@@ -72,241 +76,247 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
     final scanCaptionColor = _scanStatusError
         ? colors.error
         : (_submitting ? colors.primary : Colors.white);
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      backgroundColor: colors.background,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 430,
-          maxHeight: availableDialogHeight,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final heightBoundScanSize = (constraints.maxHeight - 158.0)
-                .clamp(170.0, 312.0)
-                .toDouble();
-            final scanSize = math.min(widthBoundScanSize, heightBoundScanSize);
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
-                    child: Row(
-                      children: [
-                        Icon(Icons.add_link_outlined, color: colors.accent),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            strings.pairDevice,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: strings.close,
-                          icon: const Icon(Icons.close_outlined),
-                          onPressed: _submitting
-                              ? null
-                              : () => Navigator.of(context).pop(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Center(
-                    child: SizedBox(
-                      width: scanSize,
-                      height: scanSize,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            widget.scannerPreviewBuilder?.call(
-                                  context,
-                                  _handleCapture,
-                                ) ??
-                                widget.scannerPreviewOverride ??
-                                const _ScannerErrorPanel(
-                                  message:
-                                      'QR scanning is available only in the mobile app.',
-                                ),
-                            IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: colors.primaryStrong,
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                            ),
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                color: Colors.black.withValues(alpha: 0.54),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const MinimalScanIcon(
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        scanCaption,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: scanCaptionColor,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            if (_submitting)
-                              ColoredBox(
-                                color: Colors.black.withValues(alpha: 0.32),
-                                child: const Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: colors.surfaceLow,
-                        border: Border.all(color: colors.line),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+    return EffectListener<MobileRelayEffect>(
+      source: widget.binding.effects,
+      onEffect: _handleEffect,
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        backgroundColor: colors.background,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 430,
+            maxHeight: availableDialogHeight,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final heightBoundScanSize = (constraints.maxHeight - 158.0)
+                  .clamp(170.0, 312.0)
+                  .toDouble();
+              final scanSize = math.min(
+                widthBoundScanSize,
+                heightBoundScanSize,
+              );
+              return SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
                       child: Row(
                         children: [
-                          const SizedBox(width: 14),
-                          Icon(
-                            Icons.vpn_key_outlined,
-                            color: colors.textMuted,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
+                          Icon(Icons.add_link_outlined, color: colors.accent),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child: TextField(
-                              controller: _tokenController,
-                              enabled: !_submitting,
-                              minLines: 1,
+                            child: Text(
+                              strings.pairDevice,
                               maxLines: 1,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) => _submitToken(),
-                              decoration: InputDecoration(
-                                hintText: strings.pairingInviteToken,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                isDense: true,
-                              ),
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
-                          Container(width: 1, height: 28, color: colors.line),
-                          SizedBox(
-                            width: 48,
-                            height: 44,
-                            child: IconButton(
-                              tooltip: strings.pairingInviteToken,
-                              onPressed: canSubmitToken ? _submitToken : null,
-                              icon: _submitting
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.check_outlined, size: 19),
-                            ),
+                          IconButton(
+                            tooltip: strings.close,
+                            icon: const Icon(Icons.close_outlined),
+                            onPressed: _submitting
+                                ? null
+                                : () => Navigator.of(context).pop(),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                    Center(
+                      child: SizedBox(
+                        width: scanSize,
+                        height: scanSize,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              widget.scannerPreviewBuilder?.call(
+                                    context,
+                                    _handleCapture,
+                                  ) ??
+                                  widget.scannerPreviewOverride ??
+                                  const _ScannerErrorPanel(
+                                    message:
+                                        'QR scanning is available only in the mobile app.',
+                                  ),
+                              IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: colors.primaryStrong,
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  color: Colors.black.withValues(alpha: 0.54),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const MinimalScanIcon(
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          scanCaption,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: scanCaptionColor,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_submitting)
+                                ColoredBox(
+                                  color: Colors.black.withValues(alpha: 0.32),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colors.surfaceLow,
+                          border: Border.all(color: colors.line),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 14),
+                            Icon(
+                              Icons.vpn_key_outlined,
+                              color: colors.textMuted,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _tokenController,
+                                enabled: !_submitting,
+                                minLines: 1,
+                                maxLines: 1,
+                                textInputAction: TextInputAction.done,
+                                onSubmitted: (_) => _submitToken(),
+                                decoration: InputDecoration(
+                                  hintText: strings.pairingInviteToken,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                            Container(width: 1, height: 28, color: colors.line),
+                            SizedBox(
+                              width: 48,
+                              height: 44,
+                              child: IconButton(
+                                tooltip: strings.pairingInviteToken,
+                                onPressed: canSubmitToken ? _submitToken : null,
+                                icon: _submitting
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.check_outlined,
+                                        size: 19,
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _handleCapture(String value) async {
-    await _submit(value);
-  }
+  Future<void> _handleCapture(String value) => _submit(value);
 
-  Future<void> _submitToken() async {
-    await _submit(_tokenController.text);
-  }
+  Future<void> _submitToken() => _submit(_tokenController.text);
 
   Future<void> _submit(String value) async {
     final trimmed = value.trim();
-    if (trimmed.isEmpty || _submitting) {
-      return;
-    }
+    if (trimmed.isEmpty || _submitting) return;
     setState(() {
       _submitting = true;
       _scanStatusError = false;
       _scanStatus = LicoStrings.of(context).pairingQrDetected;
     });
-    try {
-      await widget.onClaim(trimmed);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _submitting = false;
-        _scanStatusError = true;
-        _scanStatus = LicoStrings.of(context).pairingScanFailed;
-      });
-      return;
+    widget.binding.intents.send(ClaimRelayPairing(trimmed));
+  }
+
+  void _handleEffect(MobileRelayEffect effect) {
+    if (!mounted || !_submitting) return;
+    switch (effect) {
+      case RelayPairingClaimed():
+        setState(() {
+          _scanStatusError = false;
+          _scanStatus = LicoStrings.of(context).pairingScanSuccess;
+        });
+        unawaited(_closeAfterSuccess());
+      case RelayActionRejected(:final reasonCode):
+        setState(() {
+          _submitting = false;
+          _scanStatusError = true;
+          _scanStatus =
+              '${LicoStrings.of(context).pairingScanFailed} ($reasonCode)';
+        });
+      case RelayPairingReady() || RelayPairingCodeCopied():
+        break;
     }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _scanStatusError = false;
-      _scanStatus = LicoStrings.of(context).pairingScanSuccess;
-    });
+  }
+
+  Future<void> _closeAfterSuccess() async {
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop();
-    }
+    if (navigator.canPop()) navigator.pop();
   }
 }
 

@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -266,6 +266,7 @@ class _SwitcherConversationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
     final preview = conversationMessagePreviewText(session.preview);
     final project = historySessionProjectLabel(
       session.workingDirectory,
@@ -301,9 +302,12 @@ class _SwitcherConversationRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        session.title.trim().isEmpty
-                            ? session.id
-                            : session.title,
+                        historySessionDisplayTitle(
+                          session.title.trim().isEmpty
+                              ? session.id
+                              : session.title,
+                          fallback: strings.untitledConversation,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

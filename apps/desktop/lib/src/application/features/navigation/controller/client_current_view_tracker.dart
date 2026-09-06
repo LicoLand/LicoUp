@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 
@@ -8,7 +8,7 @@ import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 ///
 /// Production uses [instance]. The tracker serializes persistence so rapid
 /// navigation can never let an older asynchronous write replace a newer view.
-final class ClientCurrentViewTracker extends ChangeNotifier {
+final class ClientCurrentViewTracker extends ApplicationStateOwner {
   ClientCurrentViewTracker();
 
   static final ClientCurrentViewTracker instance = ClientCurrentViewTracker();
@@ -43,7 +43,7 @@ final class ClientCurrentViewTracker extends ChangeNotifier {
     _pendingDuringLoad = null;
     _current = pending ?? restored;
     _loaded = true;
-    notifyListeners();
+    publishChange();
     if (pending != null) _enqueueSave(store, portableData, pending);
   }
 
@@ -52,7 +52,7 @@ final class ClientCurrentViewTracker extends ChangeNotifier {
       _pendingDuringLoad = view;
       if (view != _current) {
         _current = view;
-        notifyListeners();
+        publishChange();
       }
       return;
     }
@@ -61,7 +61,7 @@ final class ClientCurrentViewTracker extends ChangeNotifier {
     final portableData = _portableData;
     if (store == null || portableData == null) return;
     _current = view;
-    notifyListeners();
+    publishChange();
     _enqueueSave(store, portableData, view);
   }
 

@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/mcp_adapter.dart';
 
 /// Owns one explicit preview/confirm transfer closure. Construction and state
 /// changes never issue MCP requests automatically.
-final class McpTransferController extends ChangeNotifier {
+final class McpTransferController extends ApplicationStateOwner {
   McpTransferController({required McpAdapterGateway gateway})
     : _gateway = gateway;
 
@@ -25,7 +25,7 @@ final class McpTransferController extends ChangeNotifier {
     _busy = true;
     _errorCode = '';
     _result = null;
-    notifyListeners();
+    publishChange();
     try {
       _preview = await _gateway.previewHttpTransfer(request);
       return true;
@@ -35,7 +35,7 @@ final class McpTransferController extends ChangeNotifier {
       return false;
     } finally {
       _busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -43,18 +43,18 @@ final class McpTransferController extends ChangeNotifier {
     final preview = _preview;
     if (preview == null) {
       _errorCode = 'mcp_transfer_preview_required';
-      notifyListeners();
+      publishChange();
       return false;
     }
     if (!confirmed) {
       _errorCode = 'mcp_transfer_confirmation_required';
-      notifyListeners();
+      publishChange();
       return false;
     }
     if (_busy) return false;
     _busy = true;
     _errorCode = '';
-    notifyListeners();
+    publishChange();
     try {
       _result = await _gateway.executeHttpTransfer(preview, confirmed: true);
       _preview = null;
@@ -68,7 +68,7 @@ final class McpTransferController extends ChangeNotifier {
       return false;
     } finally {
       _busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -77,6 +77,6 @@ final class McpTransferController extends ChangeNotifier {
     _preview = null;
     _result = null;
     _errorCode = '';
-    notifyListeners();
+    publishChange();
   }
 }

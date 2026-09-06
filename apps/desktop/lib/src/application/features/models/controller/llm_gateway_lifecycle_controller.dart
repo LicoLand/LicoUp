@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 
@@ -16,7 +17,7 @@ enum LlmGatewayNoticeKind { recovering, recoveryFailed }
 /// Production creates exactly one instance. Initialization starts the local
 /// service, one coalesced monitor observes it, and runtime faults are recovered
 /// automatically before a terminal notification is shown.
-final class LlmGatewayLifecycleController extends ChangeNotifier {
+final class LlmGatewayLifecycleController extends ApplicationStateOwner {
   LlmGatewayLifecycleController({
     required AgentCommandRunner agentService,
     required Future<Map<String, Object?>> Function() readSettings,
@@ -101,6 +102,40 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
   }
 
   Future<void> start() => restart();
+
+  /// Reads the current service state once without claiming that the Gateway
+  /// should be running or starting the application-wide recovery monitor.
+  Future<void> detect() async {
+    if (_disposed || _busy) return;
+    _port = await _settingsPort();
+    _setBusy(true);
+    try {
+      _applyReport(await _runService('status'));
+    } on Object {
+      _state = LlmGatewayRuntimeState.unknown;
+      _managed = false;
+      _lastReport = null;
+      _notify();
+      rethrow;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// Starts the service exactly once. Isolated presentation bindings use this
+  /// to preserve the explicit card action; the application lifecycle keeps its
+  /// recovery-aware [start] path.
+  Future<void> startOnce() async {
+    if (_disposed || _busy) return;
+    _port = await _settingsPort();
+    _expectedRunning = true;
+    _setBusy(true);
+    try {
+      _applyReport(await _runService('start'));
+    } finally {
+      _setBusy(false);
+    }
+  }
 
   Future<void> restart() async {
     if (_disposed) return;
@@ -349,7 +384,7 @@ final class LlmGatewayLifecycleController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (!_disposed) publishChange();
   }
 
   @override

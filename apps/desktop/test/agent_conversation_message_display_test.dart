@@ -34,4 +34,17 @@ Hidden detail.
       3,
     );
   });
+
+  test('display split is content-addressed and cached', () {
+    const data =
+        'Body.\n\n<additional_metadata>\nmeta\n</additional_metadata>\n';
+    final first = splitMessageDisplayBlocks(data);
+    final second = splitMessageDisplayBlocks(data);
+    expect(identical(first, second), isTrue);
+    expect(second.body, 'Body.');
+    expect(second.metadataBlocks, ['meta']);
+
+    final other = splitMessageDisplayBlocks('Other body.');
+    expect(identical(first, other), isFalse);
+  });
 }
