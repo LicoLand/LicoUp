@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -231,6 +232,43 @@ void main() {
   });
 
   testWidgets(
+    'plugin action completion surfaces the unified toast under a host',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = _CatalogAgentService();
+      final controller = ClientController(
+        agentService: service,
+        presentationPreferencesRepository: _PanelPreferencesRepository(),
+      );
+      addTearDown(controller.dispose);
+      await controller.adapterPluginController.refresh();
+      final feature = PluginManagementFeatureComposition(controller);
+      addTearDown(feature.dispose);
+      await _pumpBinding(
+        tester,
+        feature,
+        const Locale('en'),
+        withToastHost: true,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-adapter-install')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Adapter installed.'), findsOneWidget);
+      expect(find.byType(LicoToast), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Codex plugin preserves status-plan-confirm-install order and hides permit',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
@@ -339,8 +377,10 @@ Future<void> _pumpPanel(WidgetTester tester, {required Locale locale}) async {
 Future<void> _pumpBinding(
   WidgetTester tester,
   PluginManagementFeatureComposition feature,
-  Locale locale,
-) async {
+  Locale locale, {
+  bool withToastHost = false,
+}) async {
+  final panel = Scaffold(body: AdapterPluginPanel(binding: feature.binding));
   await tester.pumpWidget(
     MaterialApp(
       locale: locale,
@@ -353,7 +393,7 @@ Future<void> _pumpBinding(
       theme: buildLicoTheme(
         platformBrightness: Brightness.dark,
       ).copyWith(platform: TargetPlatform.macOS),
-      home: Scaffold(body: AdapterPluginPanel(binding: feature.binding)),
+      home: withToastHost ? LicoToastHost(child: panel) : panel,
     ),
   );
   await tester.pumpAndSettle();

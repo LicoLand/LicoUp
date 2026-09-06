@@ -216,8 +216,8 @@ class ClientController extends AgentConversationController
         this.runtimePlatformBridge.isMacos ||
             this.runtimePlatformBridge.isWindows ||
             this.runtimePlatformBridge.isMobileClientRuntime
-        ? LayoutProfileId.parse('messaging')
-        : LayoutProfileId.parse('dashboard');
+        ? LayoutProfileId.parse('dashboard')
+        : LayoutProfileId.parse('desktop');
     final fallbackPreferences = PresentationPreferences(
       layoutProfileId: preferredLayout,
       appearancePresetId: AppearancePresetIds.defaultSystem,

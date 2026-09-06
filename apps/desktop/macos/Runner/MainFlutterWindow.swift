@@ -5,6 +5,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// Must stay in sync with `AppleControlMetrics.topBarHeight` in Flutter.
   private let flutterTopBarHeight: CGFloat = 48
 
+  /// The traffic-light anchor rect most recently reported by the active
+  /// Flutter layout, in window logical points with y down from the window
+  /// content's top-left. nil (nothing reported yet, or cleared) keeps the
+  /// legacy 48pt top-band placement.
+  private var trafficLightAnchorRect: NSRect?
+
   /// Clears AppKit layer backgrounds so transparent Flutter pixels reveal
   /// the NSVisualEffectView beneath instead of the default black backing.
   private func applyTransparentLayer(to view: NSView) {
@@ -126,6 +132,22 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       case "toggleZoom":
         self.zoom(nil)
         result(nil)
+      case "setTrafficLightAnchor":
+        // A rect arrives as [x, y, width, height] in window logical points,
+        // y-down from the content top-left; nil (the Dart clear call)
+        // restores the legacy 48pt top-band placement.
+        if let values = call.arguments as? [NSNumber], values.count == 4 {
+          self.trafficLightAnchorRect = NSRect(
+            x: values[0].doubleValue,
+            y: values[1].doubleValue,
+            width: values[2].doubleValue,
+            height: values[3].doubleValue
+          )
+        } else {
+          self.trafficLightAnchorRect = nil
+        }
+        self.alignTrafficLightButtonsWithTabBar()
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -171,20 +193,38 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     buttonContainer.layoutSubtreeIfNeeded()
 
     let buttonHeight = closeButton.frame.height
-    // Equal top / bottom inset inside the Flutter-drawn top bar, and matching
-    // left inset so the close light sits with equal left/top/bottom spacing.
-    let inset = max((flutterTopBarHeight - buttonHeight) / 2.0, 0.0)
+    // The band the lights align within: the layout-reported anchor rect when
+    // one is available, otherwise today's full-width 48pt top band. Equal top
+    // / bottom inset inside the band, and matching left inset so the close
+    // light sits with equal left/top/bottom spacing.
+    let band: NSRect
+    if let trafficLightAnchorRect {
+      band = trafficLightAnchorRect
+    } else {
+      band = NSRect(
+        x: 0,
+        y: 0,
+        width: contentView.bounds.width,
+        height: flutterTopBarHeight
+      )
+    }
+    let inset = max((band.height - buttonHeight) / 2.0, 0.0)
 
-    // Map Flutter top-bar coordinates into the native traffic-light container.
-    // Centering only inside the short native titlebar container leaves the
-    // lights too high relative to the 48pt Flutter chrome.
+    // Map the Flutter band (y-down logical points from the content top-left)
+    // into the native traffic-light container. Centering only inside the
+    // short native titlebar container leaves the lights too high relative to
+    // the Flutter chrome.
     let desiredYInContent: CGFloat
     if contentView.isFlipped {
-      desiredYInContent = inset
+      desiredYInContent = band.minY + inset
     } else {
-      desiredYInContent = contentView.bounds.height - inset - buttonHeight
+      desiredYInContent =
+        contentView.bounds.height - band.minY - inset - buttonHeight
     }
-    let desiredOriginInContent = NSPoint(x: inset, y: desiredYInContent)
+    let desiredOriginInContent = NSPoint(
+      x: band.minX + inset,
+      y: desiredYInContent
+    )
     let originInContainer = buttonContainer.convert(
       desiredOriginInContent,
       from: contentView

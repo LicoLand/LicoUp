@@ -61,6 +61,9 @@ final class FixtureLayoutAgentsPresentation
   bool get showConversationSidebarControl => true;
 
   @override
+  bool get showSidebarBottomNav => true;
+
+  @override
   Widget frameWorkspace(
     BuildContext context, {
     required Key key,

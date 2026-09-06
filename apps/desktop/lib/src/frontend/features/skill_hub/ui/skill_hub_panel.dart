@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_effect.dart';
@@ -76,16 +77,16 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
         unawaited(_confirmRemoval(effect));
       case SkillRemovalCompleted():
         final displayName = _skillNames[effect.skillId] ?? effect.skillId;
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: Text(
-              LicoStrings.of(context).skillMovedToSystemTrash(displayName),
-            ),
-          ),
+        showLicoToast(
+          context,
+          message: LicoStrings.of(context).skillMovedToSystemTrash(displayName),
+          kind: LicoToastKind.success,
         );
       case SkillHubActionRejected():
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(LicoStrings.of(context).skillTrashFailed)),
+        showLicoToast(
+          context,
+          message: LicoStrings.of(context).skillTrashFailed,
+          kind: LicoToastKind.error,
         );
     }
   }

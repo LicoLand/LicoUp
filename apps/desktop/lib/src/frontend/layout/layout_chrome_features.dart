@@ -1,21 +1,28 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Feature-owned chrome content that layout profiles may host in their shell
-/// chrome without importing feature code: the conversation tab strip and the
-/// notification bell. Built by composition from semantic bindings and
-/// feature-widget factories; consumed through [LayoutChromeFeaturesScope].
-abstract interface class LayoutChromeFeatures {
-  /// The conversation pill-tab strip for the chrome band. Feature-owned;
-  /// reads its own state and handles its own scrolling.
-  Widget buildConversationTabs(BuildContext context);
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
-  /// The notification bell with activity badge and dropdown. Feature-owned.
-  Widget buildNotificationBell(BuildContext context);
+/// Feature-owned chrome content that layout profiles may host in their shell
+/// chrome without importing feature code: the Desktop dock composer and the
+/// chrome notification-notices exposure. Built by composition from semantic
+/// bindings and feature-widget factories; consumed through
+/// [LayoutChromeFeaturesScope].
+abstract interface class LayoutChromeFeatures {
+  /// The conversation message composer hosted by the Desktop dock capsule
+  /// while the conversation fullscreen app is active. Feature-owned; reads
+  /// its own projections and sends through the shared conversation intents.
+  Widget buildDockComposer(BuildContext context);
+
+  /// The chrome notification-notices exposure consumed by
+  /// [LicoToastNoticesListener] in desktop shells. Replaces the retired
+  /// notification bell: snapshots mirror the chrome projection's notices and
+  /// auto-reveal revisions without changing how notices are produced.
+  ValueListenable<LicoToastNoticesSnapshot> get notificationNotices;
 
   /// An auxiliary chrome panel owned by the active profile shell (for
   /// example the messaging profile page). When present, chrome features that
-  /// navigate elsewhere — opening a conversation from a tab or a
-  /// notification — set it to false so the panel closes. Profiles without
+  /// navigate elsewhere set it to false so the panel closes. Profiles without
   /// such a panel leave this null.
   ValueNotifier<bool>? get auxChromePanelOpen => null;
 }

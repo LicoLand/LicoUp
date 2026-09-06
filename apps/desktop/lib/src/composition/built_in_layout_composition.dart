@@ -6,10 +6,10 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/messaging_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_bundle.dart';
 import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/presentation/layout/semantic_destination_catalog.dart';
 
@@ -131,7 +131,7 @@ final class BuiltInLayoutComposition {
   }
 
   static List<LayoutDefinition> _builtInDefinitions() => <LayoutDefinition>[
-    LayoutDefinition([messagingDesktopBundle, messagingMobileBundle]),
     LayoutDefinition([dashboardDesktopBundle, dashboardMobileBundle]),
+    LayoutDefinition([desktopDesktopBundle, desktopMobileBundle]),
   ];
 }

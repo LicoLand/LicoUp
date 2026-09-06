@@ -560,39 +560,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   await enforceNormalDartLibraries(context);
   await enforceSplitTestLibraries(context);
   await enforceAgentUsageTimelineLibraries(context);
-  const dashboardChromeFacadePath =
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart";
-  const dashboardChromeLeaves = [
-    "dashboard_desktop_search.dart",
-    "dashboard_folder_sidebar.dart"
-  ];
-  const dashboardChromeRoot = path.posix.dirname(dashboardChromeFacadePath);
-  const dashboardChromeFacadeSource = await readText(dashboardChromeFacadePath);
-  const dashboardChromeExports = [...dashboardChromeFacadeSource.matchAll(
-    /^export '([^']+)';$/gmu
-  )].map((match) => match[1]);
-  assert(
-    sameSet(dashboardChromeExports, dashboardChromeLeaves) &&
-      !/^import /mu.test(dashboardChromeFacadeSource) &&
-      !/^(?:class|enum|typedef|mixin|extension) /mu.test(dashboardChromeFacadeSource),
-    "Dashboard desktop chrome root must remain an exact two-leaf export facade"
-  );
-  const dashboardChromeSources = {};
-  for (const leaf of dashboardChromeLeaves) {
-    const source = await readText(`${dashboardChromeRoot}/${leaf}`);
-    dashboardChromeSources[leaf] = source;
-    assert(
-      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
-        !source.includes("dashboard_desktop_chrome.dart"),
-      `${leaf} must remain an ordinary library without reverse facade coupling`
-    );
-  }
-  assert(
-    dashboardChromeSources["dashboard_desktop_search.dart"].includes("Autocomplete<_DashboardSearchItem>") &&
-      dashboardChromeSources["dashboard_folder_sidebar.dart"].includes("DashboardDesktopSearch") &&
-      dashboardChromeSources["dashboard_folder_sidebar.dart"].includes("DashboardFolderSidebar"),
-    "Dashboard folder sidebar and search leaves must retain separate interaction ownership"
-  );
   const conversationPaneFacadePath =
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart";
   const conversationPaneLeaves = [
