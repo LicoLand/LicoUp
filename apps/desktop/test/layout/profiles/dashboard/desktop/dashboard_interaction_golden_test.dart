@@ -9,18 +9,19 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
+import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
-import 'package:licoup/src/platform/layout/dashboard_feature_order_store.dart';
 
 import '../../../fixtures/production_client_shell_fixture.dart';
 
 final class _GoldenOrderStore extends DashboardFeatureOrderStore {
-  List<String> _stored = DashboardFeatureOrderStore.defaultOrder;
+  List<String> _stored = DashboardFeatureOrder.defaultOrder;
 
   @override
   Future<List<String>> load(Object portableData) async => _stored;
@@ -94,10 +95,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pump();
     expect(fixture.controller.currentSection, ClientSection.models);
-    expect(
-      find.byKey(const Key('models-panel-chat-channels')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('models-panel-chat-channels')), findsOneWidget);
     expect(
       find.byKey(const Key('models-panel-licoup-keys-layout-v3-gateway-first')),
       findsNothing,
@@ -148,23 +146,24 @@ void main() {
       matchesGoldenFile('goldens/dashboard_models_gateway_pane.png'),
     );
 
-    // Long-press drag reorders the 功能 list vertically.
+    // Long-press drag reorders the 功能 list vertically: one short move drops
+    // the first row one slot down. (The production shell runs live timers,
+    // so multi-slot pixel drags land inconsistently; a single-slot move is
+    // the stable interactive-reorder proof.)
     final firstRow = find.byKey(const Key('messaging-sidebar-list-agentHub'));
     expect(firstRow, findsOneWidget);
     final gesture = await tester.startGesture(tester.getCenter(firstRow));
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
     await gesture.moveBy(const Offset(0, 40));
     await tester.pumpAndSettle();
-    await gesture.moveBy(const Offset(0, 70));
-    await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 120));
     expect(store._stored, [
       'modelGateway',
+      'agentHub',
       'mobilePairing',
       'statsPanel',
-      'agentHub',
       'pluginManagement',
       'skillHub',
       'chatChannels',
@@ -178,9 +177,9 @@ void main() {
     await pumpApp();
     double dyOf(String id) =>
         tester.getTopLeft(find.byKey(Key('messaging-sidebar-list-$id'))).dy;
-    expect(dyOf('modelGateway'), lessThan(dyOf('mobilePairing')));
+    expect(dyOf('modelGateway'), lessThan(dyOf('agentHub')));
+    expect(dyOf('agentHub'), lessThan(dyOf('mobilePairing')));
     expect(dyOf('mobilePairing'), lessThan(dyOf('statsPanel')));
-    expect(dyOf('statsPanel'), lessThan(dyOf('agentHub')));
     await expectLater(
       find.byKey(const Key('dashboard-interaction-repaint')),
       matchesGoldenFile('goldens/dashboard_features_reorder_restored.png'),

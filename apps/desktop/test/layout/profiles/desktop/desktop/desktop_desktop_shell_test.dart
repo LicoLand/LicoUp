@@ -6,31 +6,31 @@ import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_controller.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 import 'desktop_desktop_test_harness.dart';
 
 void main() {
   late DesktopDesktopHarness harness;
-  late DesktopDockController dockController;
+  late DesktopDockModel dockModel;
 
   setUp(() {
     harness = DesktopDesktopHarness();
-    dockController = buildDesktopTestDockController();
+    dockModel = buildDesktopTestDockModel();
   });
 
   Future<void> pumpShell(
     WidgetTester tester, {
     ClientSection activeDestination = ClientSection.agents,
   }) async {
-    if (!dockController.ready) {
-      dockController.debugSeed(const []);
+    if (!dockModel.ready) {
+      dockModel.debugSeed(const []);
     }
     await pumpDesktopShell(
       tester,
       harness: harness,
-      dockController: dockController,
+      dockModel: dockModel,
       activeDestination: activeDestination,
     );
   }
@@ -68,7 +68,7 @@ void main() {
     );
     expect(settings.dx, lessThan(features.dx));
 
-    dockController.openApp(DesktopAppId.monitoring);
+    dockModel.openApp(DesktopAppId.monitoring);
     await tester.pump();
     final entry = tester.getTopLeft(
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
@@ -103,7 +103,7 @@ void main() {
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
       findsOneWidget,
     );
-    expect(dockController.isOpen(DesktopAppId.monitoring), isTrue);
+    expect(dockModel.isOpen(DesktopAppId.monitoring), isTrue);
     expect(
       find.byKey(const Key('desktop-floating-card-monitoring')),
       findsOneWidget,
@@ -171,7 +171,7 @@ void main() {
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
       findsNothing,
     );
-    expect(dockController.isOpen(DesktopAppId.monitoring), isFalse);
+    expect(dockModel.isOpen(DesktopAppId.monitoring), isFalse);
   });
 
   testWidgets(
@@ -212,7 +212,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
     await tester.pump();
-    expect(dockController.isOpen(DesktopAppId.monitoring), isTrue);
+    expect(dockModel.isOpen(DesktopAppId.monitoring), isTrue);
 
     await tester.tap(
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
@@ -220,7 +220,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(dockController.isOpen(DesktopAppId.monitoring), isFalse);
+    expect(dockModel.isOpen(DesktopAppId.monitoring), isFalse);
     expect(
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
       findsNothing,
@@ -230,14 +230,14 @@ void main() {
   testWidgets('dock icons reorder by long-press drag across gap targets', (
     tester,
   ) async {
-    dockController.debugSeed(const []);
-    dockController
+    dockModel.debugSeed(const []);
+    dockModel
       ..openApp(DesktopAppId.monitoring)
       ..openApp(DesktopAppId.skillHub);
     await pumpShell(tester);
 
     expect(
-      dockController.entries.map((entry) => entry.storageId).toList(),
+      dockModel.entries.map((entry) => entry.storageId).toList(),
       ['app:monitoring', 'app:skillHub', 'app:conversation'],
     );
 
@@ -256,7 +256,7 @@ void main() {
     await tester.pump();
 
     expect(
-      dockController.entries.map((entry) => entry.storageId).toList(),
+      dockModel.entries.map((entry) => entry.storageId).toList(),
       ['app:skillHub', 'app:monitoring', 'app:conversation'],
     );
   });
@@ -264,8 +264,8 @@ void main() {
   testWidgets('dropping one icon on another creates an openable folder', (
     tester,
   ) async {
-    dockController.debugSeed(const []);
-    dockController
+    dockModel.debugSeed(const []);
+    dockModel
       ..openApp(DesktopAppId.monitoring)
       ..openApp(DesktopAppId.skillHub);
     await pumpShell(tester);
@@ -286,15 +286,15 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(dockController.entries, hasLength(2));
+    expect(dockModel.entries, hasLength(2));
     final folder =
-        dockController.entries.first as DesktopDockFolderEntry;
+        dockModel.entries.first as DesktopDockFolderEntry;
     expect(folder.children, [
       DesktopAppId.monitoring,
       DesktopAppId.skillHub,
     ]);
     expect(
-      (dockController.entries.last as DesktopDockAppEntry).app,
+      (dockModel.entries.last as DesktopDockAppEntry).app,
       DesktopAppId.conversation,
     );
     expect(
@@ -335,7 +335,7 @@ void main() {
     );
 
     for (final app in desktopFloatingApps) {
-      dockController.openApp(app);
+      dockModel.openApp(app);
     }
     await tester.pump();
     // 485 fixed + 8 entry slots + trailing drop zone.
@@ -391,7 +391,7 @@ void main() {
     tester,
   ) async {
     await pumpShell(tester);
-    expect(dockController.isOpen(DesktopAppId.conversation), isTrue);
+    expect(dockModel.isOpen(DesktopAppId.conversation), isTrue);
     expect(
       find.byKey(const Key('desktop-dock-entry-app:conversation')),
       findsOneWidget,

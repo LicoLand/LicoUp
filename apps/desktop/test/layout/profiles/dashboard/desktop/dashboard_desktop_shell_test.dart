@@ -95,23 +95,19 @@ void main() {
         find.byKey(const Key('messaging-chrome-usage-button')),
         findsNothing,
       );
-      expect(
-        find.byKey(const Key('fixture-notification-bell')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('fixture-conversation-tabs')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('fixture-notification-bell')), findsNothing);
+      expect(find.byKey(const Key('fixture-conversation-tabs')), findsNothing);
       expect(
         find.byKey(const Key('dashboard-fake-content-agentHub')),
         findsOneWidget,
       );
-      final card = tester.widget<Container>(
+      final card = tester.widget<ClipRRect>(
         find.byKey(const Key('dashboard-desktop-main-card')),
       );
-      final cardDecoration = card.decoration! as BoxDecoration;
-      expect((cardDecoration.borderRadius! as BorderRadius).topLeft.x, 16);
+      expect(
+        card.borderRadius,
+        BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
+      );
       expect(card.clipBehavior, Clip.antiAlias);
       final cardRect = tester.getRect(
         find.byKey(const Key('dashboard-desktop-main-card')),
@@ -196,8 +192,65 @@ void main() {
     );
   });
 
-  testWidgets('monitoring is full-width with a shell light row and no '
-      'sidebar', (tester) async {
+  testWidgets('a late first visit to 对话 keeps the shared sidebar column '
+      'alive', (tester) async {
+    configureDashboardTestView(tester, const Size(1280, 700));
+    final harness = DashboardDesktopHarness();
+    final content = DashboardDesktopFixtureContent(harness);
+    Future<void> pumpShell(ClientSection active) => tester.pumpWidget(
+      DashboardDesktopTestShell(
+        environment: dashboardDesktopEnvironment(width: 1280, height: 700),
+        activeDestination: active,
+        content: content,
+        harness: harness,
+      ),
+    );
+    Element sidebarColumnElement() => tester.element(
+      find.byKey(const Key('messaging-sidebar-column'), skipOffstage: false),
+    );
+
+    // A restored session can land on a hosted destination without ever
+    // having mounted the agents pane.
+    await pumpShell(ClientSection.settings);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('dashboard-fake-content-settings')),
+      findsOneWidget,
+    );
+    final columnOnLand = sidebarColumnElement();
+
+    // Opening 对话 for the first time inserts the agents slot ahead of the
+    // shared column in the slot stack; keyed slots must keep the column (and
+    // every hosted pane inside it) mounted instead of remounting it.
+    await pumpShell(ClientSection.agents);
+    await tester.pump();
+    expect(
+      find.byKey(
+        const Key('dashboard-fake-content-agents'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(identical(columnOnLand, sidebarColumnElement()), isTrue);
+    // The settings pane stays mounted offstage behind the agents slot.
+    expect(
+      find.byKey(
+        const Key('dashboard-fake-content-settings'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+
+    // Switching back keeps both slots alive.
+    await pumpShell(ClientSection.settings);
+    await tester.pump();
+    expect(identical(columnOnLand, sidebarColumnElement()), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('monitoring keeps the shared sidebar column and search chrome', (
+    tester,
+  ) async {
     configureDashboardTestView(tester, const Size(1280, 700));
     final harness = DashboardDesktopHarness();
     await tester.pumpWidget(
@@ -217,31 +270,35 @@ void main() {
       LayoutAgentsStrategyScope.maybeOf(contentContext),
       const AgentsPresentationStrategy.console(),
     );
-    expect(find.byKey(const Key('messaging-sidebar-column')), findsNothing);
-    expect(find.byKey(const Key('messaging-sidebar-foundation')), findsNothing);
-    expect(find.byKey(const Key('messaging-sidebar-bottom-nav')), findsNothing);
+    // 统计面板 reuses the unified sidebar: feature list, search capsule,
+    // bottom nav, and the resize handle all stay put; its content fills the
+    // detail pane on the right.
+    expect(find.byKey(const Key('messaging-sidebar-column')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-foundation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-statsPanel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-bottom-nav')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('messaging-sidebar-resize-handle')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.byKey(const Key('dashboard-shell-traffic-light-row')),
-      findsOneWidget,
+      findsNothing,
     );
+    // The traffic-light anchor lives in the sidebar foundation row.
     expect(
       find.byKey(const Key('messaging-traffic-light-anchor')),
       findsOneWidget,
-    );
-    // Content clears the shell light row overlaying the main card top-left.
-    final cardRect = tester.getRect(
-      find.byKey(const Key('dashboard-desktop-main-card')),
-    );
-    final contentRect = tester.getRect(
-      find.byKey(const Key('dashboard-fake-content-monitoring')),
-    );
-    expect(
-      contentRect.top - cardRect.top,
-      closeTo(MessagingDesktopMetrics.trafficLightRowClearance, 0.6),
     );
     expect(tester.takeException(), isNull);
   });
@@ -346,10 +403,7 @@ void main() {
       find.byKey(const Key('messaging-sidebar-nav-communication')),
       findsNothing,
     );
-    expect(
-      find.byKey(const Key('messaging-sidebar-nav-skills')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('messaging-sidebar-nav-skills')), findsNothing);
     final bottomNav = find.byKey(const Key('messaging-sidebar-bottom-nav'));
     expect(
       find.descendant(of: bottomNav, matching: find.text('功能')),
@@ -445,7 +499,9 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: 'missing label $label');
     }
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-modelGateway')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-modelGateway')),
+    );
     await tester.pump();
     expect(harness.selections, [ClientSection.models]);
 
@@ -459,7 +515,9 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-chatChannels')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+    );
     await tester.pump();
     expect(harness.selections, [ClientSection.models, ClientSection.models]);
 
@@ -474,7 +532,9 @@ void main() {
     expect(pane, isA<LayoutTabState>());
     expect((pane! as LayoutTabState).index, 1);
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-modelGateway')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-modelGateway')),
+    );
     await tester.pump();
     pane = scopedState?.readIfDeclaredFor(
       ClientSection.models,
@@ -482,7 +542,9 @@ void main() {
     );
     expect((pane! as LayoutTabState).index, 0);
 
-    await tester.tap(find.byKey(const Key('messaging-sidebar-list-statsPanel')));
+    await tester.tap(
+      find.byKey(const Key('messaging-sidebar-list-statsPanel')),
+    );
     await tester.pump();
     expect(harness.selections.last, ClientSection.monitoring);
     expect(tester.takeException(), isNull);

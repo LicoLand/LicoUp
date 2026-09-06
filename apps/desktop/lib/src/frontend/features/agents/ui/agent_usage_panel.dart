@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
@@ -86,23 +88,35 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
 
   @override
   Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
     return ProjectionBuilder<MonitoringProjection, MonitoringProjection>(
       source: widget.binding.projection,
       select: (projection) => projection,
-      builder: (context, projection) => SingleChildScrollView(
-        primary: false,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-        child: AgentUsageCharts(
-          report: projection.report,
-          detectedAgentIds: {
-            for (final target in projection.detectedTargets)
-              if (target.status != 'not-detected') target.target,
-          },
-          windowDays: projection.historyDays,
-          windowBusy: projection.refreshing,
-          onWindowChanged: (days) =>
-              widget.binding.intents.send(SetMonitoringHistoryDays(days)),
-          onExit: widget.onExit,
+      // The standard feature-page structure: pane title bar (统计面板 +
+      // refresh) above, usage charts as the content body below.
+      builder: (context, projection) => LicoPaneScaffold(
+        title: strings.statsPanel,
+        refreshTooltip: strings.refreshUsage,
+        onRefresh: projection.refreshing
+            ? null
+            : () => widget.binding.intents.send(const RefreshMonitoring()),
+        refreshing: projection.refreshing,
+        refreshButtonKey: const Key('agent-usage-refresh'),
+        body: SingleChildScrollView(
+          primary: false,
+          padding: EdgeInsets.zero,
+          child: AgentUsageCharts(
+            report: projection.report,
+            detectedAgentIds: {
+              for (final target in projection.detectedTargets)
+                if (target.status != 'not-detected') target.target,
+            },
+            windowDays: projection.historyDays,
+            windowBusy: projection.refreshing,
+            onWindowChanged: (days) =>
+                widget.binding.intents.send(SetMonitoringHistoryDays(days)),
+            onExit: widget.onExit,
+          ),
         ),
       ),
     );

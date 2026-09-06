@@ -6,6 +6,7 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -57,6 +58,18 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
+      // Keep-alive contract: destination panes stay mounted across switches,
+      // so a round trip never re-runs initState (no repeated refresh intents
+      // or store reloads). Capture element identity now and re-check after
+      // the round trip below.
+      Element agentsElement() => tester.element(
+        find.byKey(
+          const Key('dashboard-desktop-destination-agents'),
+          skipOffstage: false,
+        ),
+      );
+      final agentsElementOnLand = agentsElement();
+
       // The 功能 bottom nav opens the features home (agent hub).
       await tester.tap(find.byKey(const Key('messaging-sidebar-nav-features')));
       await tester.pump(const Duration(milliseconds: 250));
@@ -74,9 +87,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
       expect(controller.currentSection, ClientSection.pluginManagement);
       expect(
-        find.byKey(
-          const Key('dashboard-desktop-destination-pluginManagement'),
-        ),
+        find.byKey(const Key('dashboard-desktop-destination-pluginManagement')),
         findsOneWidget,
       );
       expect(
@@ -86,9 +97,7 @@ void main() {
       );
 
       // 设置 opens settings.
-      await tester.tap(
-        find.byKey(const Key('messaging-sidebar-nav-settings')),
-      );
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
       await tester.pump(const Duration(milliseconds: 250));
       expect(controller.currentSection, ClientSection.settings);
       expect(
@@ -102,7 +111,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
       expect(controller.currentSection, ClientSection.agentHub);
 
-      // The stats row opens the full-width monitoring destination last.
+      // The stats row opens the monitoring destination, which keeps the
+      // unified sidebar like every other feature pane.
       await tester.tap(
         find.byKey(const Key('messaging-sidebar-list-statsPanel')),
       );
@@ -112,21 +122,91 @@ void main() {
         find.byKey(const Key('dashboard-desktop-destination-monitoring')),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      // Full-width destinations carry no sidebar; drive the section change
-      // through the same navigation the shell intents use, then finish on 设置.
-      controller.selectSection(ClientSection.agents);
+      // Every destination keeps the sidebar nav; switch straight to 对话 and
+      // finish on 设置.
+      await tester.tap(
+        find.byKey(const Key('messaging-sidebar-nav-conversations')),
+      );
       await tester.pump(const Duration(milliseconds: 250));
       expect(controller.currentSection, ClientSection.agents);
-      await tester.tap(
-        find.byKey(const Key('messaging-sidebar-nav-settings')),
-      );
+      await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
       await tester.pump(const Duration(milliseconds: 250));
       expect(controller.currentSection, ClientSection.settings);
       expect(tester.takeException(), isNull);
+
+      // The whole round trip (功能 → 插件 → 设置 → 统计 → 对话 → 设置) never
+      // remounted the agents pane.
+      expect(identical(agentsElementOnLand, agentsElement()), isTrue);
+      expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('settings scroll-spy keeps the sidebar selection in sync', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = ClientController(
+      agentService: _UiAgentService(),
+      presentationPreferencesRepository: _JourneyPreferencesRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.layoutManager.initialize();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: composedClientShell(controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<MessagingSettingsSectionList>(
+            find.byType(MessagingSettingsSectionList),
+          )
+          .selectedIndex,
+      0,
+    );
+
+    // One fast fling through the content: scroll notifications fire before
+    // the layout pass, so without the scroll-end reconcile the sidebar would
+    // stay on 通用. After the settle, the selection must follow the content.
+    await tester.drag(
+      find.byKey(const Key('settings-content-scroll')),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<MessagingSettingsSectionList>(
+            find.byType(MessagingSettingsSectionList),
+          )
+          .selectedIndex,
+      1,
+      reason: 'sidebar selection must follow the scrolled-to section (外观)',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('compact mobile user can navigate at 200% text scale', (
     tester,

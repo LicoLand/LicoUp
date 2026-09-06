@@ -12,27 +12,30 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
+import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/layout/dashboard_feature_order_store.dart';
 
 final class _ContactListOrderStore extends DashboardFeatureOrderStore {
   const _ContactListOrderStore();
 
   @override
   Future<List<String>> load(Object portableData) async =>
-      DashboardFeatureOrderStore.defaultOrder;
+      DashboardFeatureOrder.defaultOrder;
 
   @override
   Future<void> save(Object portableData, List<String> order) async {}
 }
 
 void main() {
-  testWidgets('traffic-light row sits above the search capsule', (tester) async {
+  testWidgets('traffic-light row sits above the search capsule', (
+    tester,
+  ) async {
     var searchCount = 0;
     await _pumpContacts(
       tester,
@@ -41,7 +44,9 @@ void main() {
     );
 
     final search = find.byKey(const Key('messaging-sidebar-search'));
-    final lightRow = find.byKey(const Key('messaging-sidebar-traffic-light-row'));
+    final lightRow = find.byKey(
+      const Key('messaging-sidebar-traffic-light-row'),
+    );
     final anchor = find.byKey(const Key('messaging-traffic-light-anchor'));
     expect(search, findsOneWidget);
     expect(lightRow, findsOneWidget);
@@ -63,9 +68,10 @@ void main() {
     final decoration = tester.widget<DecoratedBox>(
       find.descendant(of: search, matching: find.byType(DecoratedBox)),
     );
+    // The search capsule is a stadium: half its token height.
     expect(
       (decoration.decoration as BoxDecoration).borderRadius,
-      BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
+      BorderRadius.circular(MessagingDesktopMetrics.searchFieldHeight / 2),
     );
     final content = tester.widget<Row>(
       find.descendant(of: search, matching: find.byType(Row)),
@@ -854,9 +860,7 @@ void main() {
     },
   );
 
-  testWidgets('bottom nav lists features, chats, and settings', (
-    tester,
-  ) async {
+  testWidgets('bottom nav lists features, chats, and settings', (tester) async {
     await _pumpContacts(
       tester,
       sessionsByAgent: const {},
@@ -887,10 +891,7 @@ void main() {
       find.byKey(const Key('messaging-sidebar-nav-communication')),
       findsNothing,
     );
-    expect(
-      find.byKey(const Key('messaging-sidebar-nav-skills')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('messaging-sidebar-nav-skills')), findsNothing);
     final bottomNav = find.byKey(const Key('messaging-sidebar-bottom-nav'));
     expect(
       find.descendant(of: bottomNav, matching: find.text('功能')),

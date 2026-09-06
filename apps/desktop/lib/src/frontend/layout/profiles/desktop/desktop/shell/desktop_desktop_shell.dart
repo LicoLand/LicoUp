@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
@@ -18,11 +17,12 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_bar.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_controller.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_floating_card.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_launchpad.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
@@ -45,19 +45,19 @@ Widget buildDesktopDesktopExpandedShell(
 enum DesktopFullscreenApp { conversation, settings, hosted }
 
 final class DesktopDesktopShell extends StatefulWidget {
-  const DesktopDesktopShell({super.key, required this.data, this.dockController});
+  const DesktopDesktopShell({super.key, required this.data, this.dockModel});
 
   final LayoutShellBuildContext data;
 
-  /// Test seam; production shells own their controller.
-  final DesktopDockController? dockController;
+  /// Test seam; production shells own their model.
+  final DesktopDockModel? dockModel;
 
   @override
   State<DesktopDesktopShell> createState() => _DesktopDesktopShellState();
 }
 
 final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
-  late DesktopDockController _dock;
+  late DesktopDockModel _dock;
   late bool _ownsDock;
   final List<DesktopAppId> _floatingStack = <DesktopAppId>[];
   final Map<DesktopAppId, Rect> _floatingRects = <DesktopAppId, Rect>{};
@@ -70,8 +70,8 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   @override
   void initState() {
     super.initState();
-    _dock = widget.dockController ?? DesktopDockController();
-    _ownsDock = widget.dockController == null;
+    _dock = widget.dockModel ?? DesktopDockModel();
+    _ownsDock = widget.dockModel == null;
     _dock.addListener(_handleDockChanged);
     if (_dock.ready) {
       _restoreFloating();
@@ -83,7 +83,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   @override
   void didUpdateWidget(DesktopDesktopShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final next = widget.dockController;
+    final next = widget.dockModel;
     if (next != null && !identical(next, _dock)) {
       _dock.removeListener(_handleDockChanged);
       if (_ownsDock) _dock.dispose();

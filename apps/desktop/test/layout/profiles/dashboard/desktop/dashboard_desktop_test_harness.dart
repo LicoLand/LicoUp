@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
+import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
+import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
@@ -17,7 +19,6 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/layout/dashboard_feature_order_store.dart';
 
 import '../../../fixtures/layout_chrome_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
@@ -240,7 +241,7 @@ final class _InMemoryFeatureOrderStore extends DashboardFeatureOrderStore {
 
   @override
   Future<List<String>> load(Object portableData) async =>
-      DashboardFeatureOrderStore.defaultOrder;
+      DashboardFeatureOrder.defaultOrder;
 
   @override
   Future<void> save(Object portableData, List<String> order) async {}

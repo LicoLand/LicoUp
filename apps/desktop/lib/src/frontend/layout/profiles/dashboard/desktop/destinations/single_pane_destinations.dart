@@ -10,15 +10,7 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/das
 Widget buildDashboardMonitoringDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
-) => _framed(
-  data,
-  ClientSection.monitoring,
-  // Full-width destination: clear the shell traffic-light row that overlays
-  // the main card top-left.
-  pagePadding: const EdgeInsets.only(
-    top: MessagingDesktopMetrics.trafficLightRowClearance,
-  ),
-);
+) => _framed(data, ClientSection.monitoring);
 
 Widget buildDashboardSkillHubDestination(
   BuildContext context,

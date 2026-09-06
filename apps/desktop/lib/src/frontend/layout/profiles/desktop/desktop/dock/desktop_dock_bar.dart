@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_controller.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';

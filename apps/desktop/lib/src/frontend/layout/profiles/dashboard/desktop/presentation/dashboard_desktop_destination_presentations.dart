@@ -4,11 +4,12 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
-/// Destinations whose body sits flush on the shell [DashboardMainContentCard]
-/// glass wash. These use a transparent canvas so the card's veil shows through;
-/// they do not paint an opaque surface fill inside the card.
+/// Destinations whose body sits flush on the native window glass inside the
+/// chromeless main content region. These use a transparent canvas; they do
+/// not paint an opaque surface fill of their own.
 const Set<ClientSection> dashboardMainContentCardDestinations = <ClientSection>{
   ClientSection.agents,
   ClientSection.skillHub,
@@ -25,16 +26,16 @@ const LayoutAgentsPresentation dashboardDesktopAgentsPresentation =
 const LayoutSettingsPresentation dashboardDesktopSettingsPresentation =
     DashboardDesktopSettingsPresentation();
 
-/// Dashboard desktop Agents: Telegram-style framing — the shell main content
-/// card is the glass conversation surface; the list sits in a nested floating
-/// glass card; the chat pane is flush with that card. The list IS the
-/// sidebar, so no collapse controls are offered.
+/// Dashboard desktop Agents: the window glass itself is the conversation
+/// surface (the main content region is chromeless); the conversation list is
+/// the single floating glass card; the chat pane is flush with the window.
+/// The list IS the sidebar, so no collapse controls are offered.
 final class DashboardDesktopAgentsPresentation
     implements LayoutAgentsPresentation {
   const DashboardDesktopAgentsPresentation();
 
-  /// Transparent so the main content card's glass wash shows through as the
-  /// shared conversation background (list card floats above it).
+  /// Transparent so the native window glass is the shared conversation
+  /// background (the list card floats above it).
   @override
   Color canvasColor(LayoutPalette palette) => Colors.transparent;
 
@@ -101,7 +102,11 @@ final class DashboardDesktopAgentsPresentation
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
-          child: child,
+          child: GlassEdgeLight(
+            borderRadius: BorderRadius.circular(radius),
+            sheenExtent: 32,
+            child: child,
+          ),
         ),
       ),
     );
