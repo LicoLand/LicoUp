@@ -203,7 +203,10 @@ fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
     };
     assert_eq!(disposition, ControlDisposition::Accepted);
     let cancelled = run.join().unwrap();
-    assert_eq!(cancelled.error.unwrap().code, "claude_code_turn_failed");
+    let failure = cancelled.error.unwrap();
+    assert_eq!(failure.code, "claude_code_turn_cancelled");
+    assert_eq!(failure.stage, "turn/cancelled");
+    assert_eq!(cancelled.turn_status, "cancelled");
     let failed_history = super::super::conversation_lane::process_local_history(&json!({
         "agent": "claude-code",
         "sessionId": "fake-claude-session"
