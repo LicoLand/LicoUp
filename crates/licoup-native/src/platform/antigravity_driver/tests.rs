@@ -746,6 +746,10 @@ fn antigravity_effective_settings_match_executed_command() {
     };
     let launch =
         |fixture: &ArgvCapturingExecutable, workspace: &Path, params: &Value, session_id: &str| {
+            // Pin the row's argv-capture channel into the launch snapshot;
+            // the production shell snapshot would drop it.
+            let _pin =
+                crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
             execute(
                 fixture.executable_str(),
                 params,
@@ -1648,4 +1652,90 @@ fn authorize_reports_incomplete_when_login_does_not_finish() {
 fn authorize_missing_executable_is_a_typed_failure() {
     let result = authorize(Some("/definitely/missing/lico-antigravity-agy"));
     assert_eq!(result, Err("antigravity_authorize_unavailable"));
+}
+
+/// Both auth spawns (the authorization probe and the explicit vendor OAuth
+/// trigger) are CLI invocations of this adapter: they must observe the user
+/// shell environment, per the environment-equivalence invariant.
+#[cfg(unix)]
+#[test]
+fn auth_spawns_observe_the_user_shell_environment() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "lico-antigravity-auth-env-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let executable = root.join("fake-agy");
+    let env_capture = root.join("env.log");
+    let login_flag = root.join("login-complete.flag");
+    fs::write(
+        &executable,
+        format!(
+            r#"#!/bin/sh
+set -eu
+env > "{env_capture}"
+for arg in "$@"; do
+  case "$arg" in
+    models)
+      if [ -f "{login_flag}" ]; then
+        printf '%s\n' 'gemini-test-model'
+        exit 0
+      fi
+      printf '%s\n' 'Error: Please sign in to view available models.'
+      exit 1
+      ;;
+    --print=*)
+      : > "{login_flag}"
+      printf '%s\n' 'PONG'
+      exit 0
+      ;;
+  esac
+done
+exit 0
+"#,
+            env_capture = env_capture.display(),
+            login_flag = login_flag.display(),
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&executable).unwrap().permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&executable, permissions).unwrap();
+
+    // The auth spawns observe the pinned user shell snapshot, not the raw
+    // process environment.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[(
+        "LICO_TEST_SHELL_SNAPSHOT_MARKER",
+        "shell-snapshot-env",
+    )]);
+
+    // Phase 1: logged-in probe through ensure_authorized.
+    fs::write(&login_flag, b"").unwrap();
+    super::auth::ensure_authorized(executable.to_str().unwrap()).unwrap();
+    let observed = fs::read_to_string(&env_capture).unwrap();
+    assert!(
+        observed.contains("LICO_TEST_SHELL_SNAPSHOT_MARKER=shell-snapshot-env"),
+        "authorization probe must observe the shell snapshot: {observed}"
+    );
+    assert!(observed.contains("\nPATH=") || observed.starts_with("PATH="));
+
+    // Phase 2: logged-out authorize flow (probe fails, print turn runs,
+    // re-probe succeeds); every spawn sees the same snapshot.
+    let _ = fs::remove_file(&login_flag);
+    let _ = fs::remove_file(&env_capture);
+    let report = authorize(Some(executable.to_str().unwrap())).unwrap();
+    assert_eq!(report["authorized"], true);
+    let observed = fs::read_to_string(&env_capture).unwrap();
+    assert!(
+        observed.contains("LICO_TEST_SHELL_SNAPSHOT_MARKER=shell-snapshot-env"),
+        "authorize spawns must observe the shell snapshot: {observed}"
+    );
+
+    let _ = fs::remove_dir_all(&root);
 }

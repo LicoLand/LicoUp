@@ -350,6 +350,7 @@ fn spawn_transport(
     deadline: Option<Instant>,
 ) -> std::result::Result<ManagedTransport, ProtocolFailure> {
     let mut command = Command::new(&config.executable);
+    super::user_shell_environment::apply_to_command(&mut command);
     command
         .current_dir(&config.cwd)
         .env("DSH_CWD", &config.cwd)

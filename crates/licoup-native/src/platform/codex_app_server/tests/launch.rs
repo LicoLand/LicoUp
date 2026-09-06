@@ -1,6 +1,8 @@
-use crate::platform::codex_app_server::launch::{CodexLaunchSpec, apply_launch_environment};
+use crate::platform::codex_app_server::launch::{
+    CodexLaunchSpec, apply_launch_environment, apply_launch_environment_with_root,
+};
 use serde_json::json;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::process::Command;
 
@@ -56,5 +58,33 @@ fn launch_forwards_caller_context_and_inherits_the_portable_root() {
         command_environment(&command, "LICOUP_MCP_PARENT_DISPATCH_ID"),
         None
     );
+}
+
+#[test]
+fn launch_binds_only_the_live_process_portable_root() {
+    // Without a live process root the launch environment never binds
+    // `LICOUP_PORTABLE_DIR`, even when a captured shell value carries one.
+    let mut command = Command::new("codex-test");
+    apply_launch_environment_with_root(
+        &mut command,
+        Some(&json!({
+            "agentId": "codex",
+            "conversationId": "conversation:fixture",
+            "membershipId": "membership:codex"
+        })),
+        None,
+    );
     assert_eq!(command_environment(&command, "LICOUP_PORTABLE_DIR"), None);
+
+    // With a live process root the app-server keeps the exact sidecar value.
+    let mut command = Command::new("codex-test");
+    apply_launch_environment_with_root(
+        &mut command,
+        None,
+        Some(OsString::from("/portable/lico-up")),
+    );
+    assert_eq!(
+        command_environment(&command, "LICOUP_PORTABLE_DIR").as_deref(),
+        Some("/portable/lico-up")
+    );
 }
