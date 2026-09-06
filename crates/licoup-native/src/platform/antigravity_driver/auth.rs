@@ -52,6 +52,10 @@ pub(crate) fn authorize(executable: Option<&str>) -> Result<Value, &'static str>
         return Ok(authorize_report(true));
     }
     let mut command = Command::new(executable);
+    // The explicit vendor OAuth flow is a CLI invocation of this adapter: it
+    // observes the same user shell environment as a terminal launch (proxy,
+    // login state), per the environment-equivalence invariant.
+    super::super::user_shell_environment::apply_to_command(&mut command);
     command
         .arg(format!("--print={AUTHORIZE_PROMPT}"))
         .arg("--dangerously-skip-permissions")
@@ -85,6 +89,10 @@ enum AuthProbe {
 
 fn probe_authorization(executable: &str) -> AuthProbe {
     let mut command = Command::new(executable);
+    // The authorization probe is a CLI invocation of this adapter: it observes
+    // the same user shell environment as a terminal launch (proxy, login
+    // state), per the environment-equivalence invariant.
+    super::super::user_shell_environment::apply_to_command(&mut command);
     command
         .arg("models")
         .stdin(Stdio::null())

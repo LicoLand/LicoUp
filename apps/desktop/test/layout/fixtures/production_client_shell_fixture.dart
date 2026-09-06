@@ -8,7 +8,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -17,10 +17,13 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
-import 'package:licoup/src/frontend/shell/client_shell.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
+
+import '../../presentation/composed_client_shell_test_helper.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Deterministic, process-free production shell harness used only to freeze
 /// the current catalog renderers before ownership moves.
@@ -31,13 +34,20 @@ final class ProductionClientShellFixture {
     required this.size,
     required this.brightness,
     required this.appearancePresetId,
-  });
+    required Directory temporaryDataRoot,
+  }) : _temporaryDataRoot = temporaryDataRoot;
 
   final ClientController controller;
   final LayoutRuntimeSurface surface;
   final Size size;
   final Brightness brightness;
   final String appearancePresetId;
+  final Directory _temporaryDataRoot;
+  LayoutStatePort? _layoutStateStore;
+
+  LayoutStatePort get layoutStateStore =>
+      _layoutStateStore ??
+      (throw StateError('production_shell_fixture_not_composed'));
 
   static Future<ProductionClientShellFixture> create({
     required LayoutProfileId profileId,
@@ -46,7 +56,7 @@ final class ProductionClientShellFixture {
     required Size size,
     required Brightness brightness,
   }) async {
-    final composition = BuiltInLayoutComposition();
+    final layoutCatalog = createBuiltInLayoutCatalog();
     // The production baseline renders the out-of-box preference: the
     // system-following preset, which resolves per platform brightness.
     const appearancePresetId = 'default-system';
@@ -65,10 +75,18 @@ final class ProductionClientShellFixture {
       targets: targets,
       primaryTargetId: primaryTarget.target,
     );
+    final temporaryDataRoot = Directory.systemTemp.createTempSync(
+      'licoup-production-layout-',
+    );
+    final portableData = _FixturePortableDataRoot(
+      temporaryDataRoot,
+      mobileRuntimeOverride: surface == LayoutRuntimeSurface.mobile,
+    );
     final controller = ClientController(
+      portableData: portableData,
       agentService: agentService,
       conversationService: const _FixtureConversationService(),
-      layoutComposition: composition,
+      layoutCatalog: layoutCatalog,
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
           surface == LayoutRuntimeSurface.mobile,
@@ -121,7 +139,15 @@ final class ProductionClientShellFixture {
       size: size,
       brightness: brightness,
       appearancePresetId: appearancePresetId,
+      temporaryDataRoot: temporaryDataRoot,
     );
+  }
+
+  void dispose() {
+    controller.dispose();
+    if (_temporaryDataRoot.existsSync()) {
+      _temporaryDataRoot.deleteSync(recursive: true);
+    }
   }
 
   Widget buildApp({
@@ -168,12 +194,30 @@ final class ProductionClientShellFixture {
           explicitChildNodes: true,
           child: RepaintBoundary(
             key: repaintBoundaryKey,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(
+              controller,
+              onComposed: (composition) {
+                _layoutStateStore = composition.renderer.layoutStateStore;
+              },
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+final class _FixturePortableDataRoot extends PortableDataRoot {
+  _FixturePortableDataRoot(this.root, {required bool mobileRuntimeOverride})
+    : super(
+        dataDirectoryOverride: root,
+        mobileRuntimeOverride: mobileRuntimeOverride,
+      );
+
+  final Directory root;
+
+  @override
+  Future<Directory> dataDirectory() => Future.value(root);
 }
 
 final class InMemoryPresentationPreferencesRepository

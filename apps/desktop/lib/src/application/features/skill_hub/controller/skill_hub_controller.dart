@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
 import 'package:licoup/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
@@ -6,7 +7,7 @@ import 'package:licoup/src/contracts/skill_hub_preferences.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Owns the local Skill Hub catalog, pairing, and visual preferences.
-class SkillHubController extends ChangeNotifier {
+class SkillHubController extends ApplicationStateOwner {
   SkillHubController({
     required SkillHubGateway gateway,
     required SkillHubPreferencesRepository preferencesRepository,
@@ -50,12 +51,12 @@ class SkillHubController extends ChangeNotifier {
 
   void replacePairings(List<Map<String, dynamic>> value) {
     pairings = List.unmodifiable(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replaceSkills(List<Map<String, dynamic>> value) {
     skills = List.unmodifiable(value);
-    notifyListeners();
+    publishChange();
   }
 
   void removeSkillAtPath(String path) {
@@ -66,27 +67,27 @@ class SkillHubController extends ChangeNotifier {
         .toList(growable: false);
     if (remaining.length == skills.length) return;
     skills = List.unmodifiable(remaining);
-    notifyListeners();
+    publishChange();
   }
 
   void replacePreferences(SkillHubPreferences value) {
     preferences = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceActionResult(Map<String, dynamic>? value) {
     actionResult = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceBusy(bool value) {
     busy = value;
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> loadPreferences() async {
     preferences = await _preferencesRepository.load(_portableData);
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> refresh(
@@ -272,7 +273,7 @@ class SkillHubController extends ChangeNotifier {
       colorToken: (colorToken ?? current.colorToken).trim(),
     );
     preferences = preferences.withOverride(id, next);
-    notifyListeners();
+    publishChange();
     try {
       await _preferencesRepository.save(_portableData, preferences);
     } catch (_) {
@@ -284,7 +285,7 @@ class SkillHubController extends ChangeNotifier {
           errorCode: 'skill_hub_preferences_save_failed',
         ),
       );
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -302,7 +303,7 @@ class SkillHubController extends ChangeNotifier {
         SkillHubStatusUpdate(chinese: busyChinese, english: busyEnglish),
       );
     }
-    notifyListeners();
+    publishChange();
     try {
       await action();
     } catch (_) {
@@ -318,7 +319,7 @@ class SkillHubController extends ChangeNotifier {
       }
     } finally {
       busy = false;
-      notifyListeners();
+      publishChange();
     }
   }
 }

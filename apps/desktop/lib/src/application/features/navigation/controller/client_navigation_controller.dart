@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
@@ -14,7 +14,7 @@ final class ClientSectionHooks {
 
 /// Owns section aliasing, runtime-surface policy, and section lifecycle hooks.
 /// Feature-specific work is injected rather than coupled to ClientController.
-final class ClientNavigationController extends ChangeNotifier {
+final class ClientNavigationController extends ApplicationStateOwner {
   ClientNavigationController({
     required bool Function() isMobileRuntime,
     Map<ClientSection, ClientSectionHooks> hooks = const {},
@@ -34,7 +34,7 @@ final class ClientNavigationController extends ChangeNotifier {
     final next = resolve(value);
     if (_currentSection == next) return;
     _currentSection = next;
-    notifyListeners();
+    publishChange();
   }
 
   ClientSection resolve(ClientSection requested) {
@@ -49,7 +49,7 @@ final class ClientNavigationController extends ChangeNotifier {
     };
   }
 
-  bool select(ClientSection requested) {
+  bool select(ClientSection requested, {ApplicationCause? cause}) {
     final next = resolve(requested);
     if (next == _currentSection) {
       _hooks[next]?.onReselect?.call();
@@ -59,7 +59,7 @@ final class ClientNavigationController extends ChangeNotifier {
     _hooks[previous]?.onExit?.call();
     _currentSection = next;
     _hooks[next]?.onEnter?.call();
-    notifyListeners();
+    publishChange(cause);
     return true;
   }
 }

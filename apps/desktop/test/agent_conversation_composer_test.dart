@@ -8,7 +8,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_compos
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -139,6 +139,8 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '  fixture request  ');
     await tester.pump();
+    // The draft-store echo is trailing-debounced; let the flush land.
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
     await tester.pump();
 
@@ -769,6 +771,8 @@ void main() {
       find.byKey(const Key('agent-conversation-mention-claude-code')),
     );
     await tester.pump();
+    // The draft-store echo is trailing-debounced; let the flush land.
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(draft, 'ask @Claude Code ');
     expect(

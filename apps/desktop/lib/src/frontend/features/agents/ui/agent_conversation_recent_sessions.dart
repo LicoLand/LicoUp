@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -303,8 +304,12 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
     final session = widget.session;
-    final title = session.title.trim().isEmpty ? session.id : session.title;
+    final title = historySessionDisplayTitle(
+      session.title.trim().isEmpty ? session.id : session.title,
+      fallback: strings.untitledConversation,
+    );
     final preview = conversationMessagePreviewText(session.preview);
     final updatedLabel = conversationSessionRelativeUpdatedAtLabel(session);
     return Material(

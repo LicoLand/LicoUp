@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +25,28 @@ void main() {
     expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     manager.dispose();
   });
+
+  test(
+    'selectionChanges publishes status transitions without an id change',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(repository);
+      final events = <Object?>[];
+      final subscription = manager.selectionChanges.listen(events.add);
+
+      await manager.initialize();
+      await subscription.cancel();
+
+      // The stored preference is the default profile, so initialize leaves the
+      // effective id unchanged; the loading → stable transition must still
+      // reach selection-state subscribers or the shell layout projection never
+      // leaves the loading spinner.
+      expect(events, isNotEmpty);
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.effectiveId, LayoutProfileId.parse('dashboard'));
+      manager.dispose();
+    },
+  );
 
   test('selecting the committed profile stays stable without writes', () async {
     final repository = FakePreferencesRepository(preferences: preferences());
@@ -358,23 +379,26 @@ void main() {
         FakePreferencesRepository(preferences: preferences()),
       );
       await manager.initialize();
-      final reported = <FlutterErrorDetails>[];
-      final previousHandler = FlutterError.onError;
-      FlutterError.onError = reported.add;
-      addTearDown(() => FlutterError.onError = previousHandler);
+      final reported = <Object>[];
       var trailingNotifications = 0;
       Future<bool>? reentrantSelection;
 
-      manager.addListener((_) => throw StateError('listener_failed'));
-      manager.addListener((state) {
-        if (state.status == LayoutSelectionStatus.stable &&
+      manager.changes.listen((_) {
+        try {
+          throw StateError('listener_failed');
+        } catch (error) {
+          reported.add(error);
+        }
+      });
+      manager.changes.listen((_) {
+        if (manager.state.status == LayoutSelectionStatus.stable &&
             reentrantSelection == null) {
           reentrantSelection = manager.selectLayout(
             LayoutProfileId.parse('dashboard'),
           );
         }
       });
-      manager.addListener((_) => trailingNotifications += 1);
+      manager.changes.listen((_) => trailingNotifications += 1);
 
       expect(
         await manager.selectLayout(LayoutProfileId.parse('atlas')),
@@ -406,38 +430,15 @@ void main() {
     },
   );
 
-  test('resize updates only the surface-local variant state', () async {
+  test('layout preference state owns no viewport or surface fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(layout: LayoutProfileId.parse('atlas')),
     );
     final manager = createManager(repository);
     await manager.initialize();
 
-    manager.updateEnvironment(desktopEnvironment(width: 1400));
     expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
     expect(repository.layoutWriteCount, 0);
-    manager.dispose();
-  });
-
-  test('equivalent and silent environment updates do not notify', () async {
-    final manager = createManager(
-      FakePreferencesRepository(preferences: preferences()),
-    );
-    await manager.initialize();
-    var notifications = 0;
-    manager.addListener((_) => notifications += 1);
-
-    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isFalse);
-    expect(notifications, 0);
-    expect(
-      manager.updateEnvironment(desktopEnvironment(width: 1400), notify: false),
-      isTrue,
-    );
-    expect(manager.state.viewport, LayoutViewportClass.expanded);
-    expect(notifications, 0);
-    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isTrue);
-    expect(notifications, 1);
     manager.dispose();
   });
 }
@@ -452,7 +453,6 @@ LayoutManager createManager(
   canonicalFallback: preferences(),
   preferredDefaultId: preferredDefaultId,
   persistenceTimeout: persistenceTimeout ?? const Duration(seconds: 5),
-  initialEnvironment: desktopEnvironment(width: 800),
 );
 
 PresentationPreferences preferences({

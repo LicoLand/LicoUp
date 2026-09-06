@@ -2,7 +2,8 @@
 
 use super::{ConversationStore, StoreResult, new_id, now_ms, validate_identifier};
 use crate::{
-    ConversationDispatch, SubagentDispatchClaim, SubagentDispatchClaimState, SubagentMeshEdge,
+    ConversationDispatch, DispatchState, SubagentDispatchClaim, SubagentDispatchClaimState,
+    SubagentMeshEdge,
 };
 use anyhow::anyhow;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -420,6 +421,43 @@ fn reconcile_subagent_claims(
     Ok(())
 }
 
+/// Eager terminal writeback for one settled dispatch. When the canonical
+/// `conversation_dispatches` row reaches a terminal state, the lineage claim
+/// sharing the dispatch id moves to the matching claim state inside the same
+/// transaction, reusing the `reconcile_subagent_claims` state mapping. A
+/// missing claim or a transition that `valid_claim_transition` forbids is left
+/// to the lazy reconciler instead of failing the settlement.
+pub(super) fn writeback_subagent_claim_terminal(
+    transaction: &super::CountedTransaction<'_>,
+    dispatch_id: &str,
+    state: DispatchState,
+) -> StoreResult<()> {
+    let next = match state {
+        DispatchState::Completed => SubagentDispatchClaimState::Completed,
+        DispatchState::Failed => SubagentDispatchClaimState::Failed,
+        DispatchState::Cancelled => SubagentDispatchClaimState::Cancelled,
+        _ => return Ok(()),
+    };
+    let current: Option<String> = transaction
+        .query_row(
+            "SELECT state FROM subagent_dispatch_claims WHERE id=?1",
+            params![dispatch_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(current) = current else {
+        return Ok(());
+    };
+    if !valid_claim_transition(&current, next) {
+        return Ok(());
+    }
+    transaction.execute(
+        "UPDATE subagent_dispatch_claims SET state=?2, updated_at=?3 WHERE id=?1",
+        params![dispatch_id, next.as_str(), now_ms()],
+    )?;
+    Ok(())
+}
+
 fn valid_claim_transition(current: &str, next: SubagentDispatchClaimState) -> bool {
     use SubagentDispatchClaimState as State;
     matches!(
@@ -442,7 +480,6 @@ fn valid_claim_transition(current: &str, next: SubagentDispatchClaimState) -> bo
         )
     )
 }
-
 fn claim_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SubagentDispatchClaim> {
     let state: String = row.get(6)?;
     let state = match state.as_str() {
@@ -633,6 +670,220 @@ mod tests {
             store.subagent_claim(&claim.id).unwrap().unwrap().state,
             SubagentDispatchClaimState::Completed
         );
+    }
+
+    /// One claimed edge admitted to `running` with its canonical dispatch
+    /// prepared under the claim id, ready to settle through the terminal door.
+    fn running_dispatch(
+        store: &ConversationStore,
+        conversation: &str,
+        caller: &str,
+        target: &str,
+    ) -> (SubagentDispatchClaim, crate::ConversationRuntimeScope) {
+        let claim = store
+            .claim_subagent_dispatch(conversation, caller, target, None)
+            .unwrap();
+        store
+            .update_subagent_claim_state(&claim.id, SubagentDispatchClaimState::Running)
+            .unwrap();
+        let target_agent = store
+            .get(conversation)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .find(|candidate| candidate.id == target)
+            .and_then(|candidate| candidate.principal.agent_id)
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                &target_agent,
+                "native-target",
+                "synthetic input",
+                Some(conversation),
+                Some(target),
+                Some("subagent-mcp"),
+                Some(&claim.id),
+            )
+            .unwrap();
+        (claim, scope)
+    }
+
+    #[test]
+    fn finish_runtime_dispatch_settles_claim_in_the_same_transaction() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output":"done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+        // `subagent_claim` is a direct row read that never reconciles, so the
+        // terminal state must already be durable right after settlement.
+        assert_eq!(
+            store.subagent_claim(&claim.id).unwrap().unwrap().state,
+            SubagentDispatchClaimState::Completed
+        );
+        // The active edge is released without waiting for the next claim.
+        assert!(
+            store
+                .active_subagent_claim(&conversation, &membership[0], &membership[1])
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn finish_runtime_dispatch_maps_failed_and_cancelled_into_claim_terminal_states() {
+        let (store, conversation, membership) = fixture();
+        let (failed_claim, failed_scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+        store
+            .finish_runtime_dispatch(
+                &failed_scope,
+                &serde_json::json!({
+                    "ok": false,
+                    "error": {"code": "codex_usage_limit_exceeded"}
+                }),
+                crate::DispatchState::Failed,
+                Some("codex_usage_limit_exceeded"),
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .subagent_claim(&failed_claim.id)
+                .unwrap()
+                .unwrap()
+                .state,
+            SubagentDispatchClaimState::Failed
+        );
+
+        let (cancelled_claim, cancelled_scope) =
+            running_dispatch(&store, &conversation, &membership[1], &membership[2]);
+        store
+            .update_subagent_claim_state(
+                &cancelled_claim.id,
+                SubagentDispatchClaimState::CancelRequested,
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &cancelled_scope,
+                &serde_json::json!({"ok": false, "turnStatus": "cancelled"}),
+                crate::DispatchState::Cancelled,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .subagent_claim(&cancelled_claim.id)
+                .unwrap()
+                .unwrap()
+                .state,
+            SubagentDispatchClaimState::Cancelled
+        );
+    }
+
+    #[test]
+    fn finish_runtime_dispatch_skips_a_claim_transition_the_table_forbids() {
+        let (store, conversation, membership) = fixture();
+        let claim = store
+            .claim_subagent_dispatch(&conversation, &membership[0], &membership[1], None)
+            .unwrap();
+        let target_agent = store
+            .get(&conversation)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .find(|candidate| candidate.id == membership[1])
+            .and_then(|candidate| candidate.principal.agent_id)
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                &target_agent,
+                "native-cursor",
+                "synthetic input",
+                Some(&conversation),
+                Some(&membership[1]),
+                Some("subagent-mcp"),
+                Some(&claim.id),
+            )
+            .unwrap();
+        // The claim never reached `running` (the adapter receipt never
+        // arrived), so `claimed -> completed` is not in the transition table
+        // and the eager writeback must skip rather than fail the settlement.
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output":"done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            store.subagent_claim(&claim.id).unwrap().unwrap().state,
+            SubagentDispatchClaimState::Claimed
+        );
+        // The lazy reconciler still projects the canonical dispatch state on
+        // the next scoped read, so the edge is not stranded.
+        assert!(
+            store
+                .active_subagent_claim(&conversation, &membership[0], &membership[1])
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store.subagent_claim(&claim.id).unwrap().unwrap().state,
+            SubagentDispatchClaimState::Completed
+        );
+    }
+
+    /// Dual-delivery leg (a): the delegated turn's output lands in the shared
+    /// group Conversation Event/Part stream authored by the target Membership.
+    #[test]
+    fn settled_subagent_turn_output_lands_in_the_group_stream_authored_by_target() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.turn.accepted",
+                    "sessionId": "native-session-1",
+                    "turnId": "turn-1",
+                    "payload": {"status": "accepted", "lifecyclePrefix": ["submitted", "accepted"]}
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "delegated final answer"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+        let event = store
+            .page_events(&conversation, None, 50)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|candidate| candidate.id == scope.event_id)
+            .unwrap();
+        assert_eq!(
+            event.author_membership_id.as_deref(),
+            Some(membership[1].as_str())
+        );
+        assert_eq!(event.correlation_id.as_deref(), Some(claim.id.as_str()));
+        assert!(event.finalized);
+        assert!(event.parts.iter().any(|part| {
+            part.kind == crate::EventPartKind::Text && part.content == "delegated final answer"
+        }));
     }
 
     #[test]

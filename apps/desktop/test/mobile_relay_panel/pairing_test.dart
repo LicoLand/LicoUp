@@ -4,28 +4,30 @@ void main() {
   testWidgets('pairing workspace owns station and one-time code details', (
     tester,
   ) async {
-    final controller = mobileRelayPanelTestController();
     final stationBaseUrlController = TextEditingController(
       text: 'https://station.example.test',
     );
-    addTearDown(controller.dispose);
     addTearDown(stationBaseUrlController.dispose);
-    controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
-      stationBaseUrl: 'https://station.example.test',
+    final intents = RecordingMobileRelayIntents();
+    final projection = MobileRelayProjection(
+      peers: const [],
+      approvals: const [],
+      transfers: const [],
+      pairingCode: 'CODE-1',
+      pairingInvite: 'opaque-pairing-invite',
       pairingId: 'pair-1',
-      lastPairingExpiresAt: '2030-01-01T00:00:00Z',
+      pairingExpiresLabel: '2030-01-01T00:00:00Z',
+      stationLabel: 'https://station.example.test',
+      stationConfigured: true,
+      phase: PresentationPhase.ready,
     );
 
     await tester.pumpWidget(
       mobileRelayPanelTestApp(
         child: MobileRelayPairingWorkspaceCard(
-          controller: controller,
+          projection: projection,
+          intents: intents,
           stationBaseUrlController: stationBaseUrlController,
-          presentation: const MobilePairingPresentation(
-            pairingCode: 'CODE-1',
-            inviteText: 'opaque-pairing-invite',
-          ),
-          onGenerate: () async {},
         ),
       ),
     );
@@ -39,5 +41,6 @@ void main() {
     expect(find.text('pair-1'), findsOneWidget);
     expect(find.text('CODE-1'), findsOneWidget);
     expect(find.byTooltip('Copy Pairing Code'), findsOneWidget);
+    expect(intents.values, isEmpty);
   });
 }

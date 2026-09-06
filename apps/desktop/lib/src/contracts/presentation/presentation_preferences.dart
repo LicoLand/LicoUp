@@ -48,7 +48,7 @@ final class PresentationPreferences {
     final rawLocale = json['localePreference'];
     return PresentationPreferences(
       layoutProfileId: rawLayout is String && rawLayout.trim().isNotEmpty
-          ? LayoutProfileId.parse(rawLayout)
+          ? LayoutProfileId.parse(resolveLegacyLayoutProfileId(rawLayout))
           : fallback.layoutProfileId,
       appearancePresetId:
           rawAppearance is String && rawAppearance.trim().isNotEmpty
@@ -67,6 +67,28 @@ final class PresentationPreferences {
   });
 
   static const schemaVersion = 1;
+
+  /// Read-side one-time id aliases for documents persisted before the
+  /// dashboard/desktop profile rename.
+  ///
+  /// Only values the current write path can never produce are remapped, so a
+  /// canonical document always round-trips: the retired Default/messaging id
+  /// moves to the renamed dashboard profile. The former dashboard profile id
+  /// ('dashboard') is intentionally not aliased: after the rename it is the
+  /// canonical id of the new default profile, and remapping it to 'desktop'
+  /// would silently flip users who saved the current default. Legacy
+  /// old-dashboard documents are byte-identical to canonical default
+  /// documents, so they resolve to the current Dashboard default.
+  static const Map<String, String> legacyLayoutProfileIdAliases = {
+    'messaging': 'dashboard',
+  };
+
+  /// Resolves a persisted layout id to its canonical profile id, leaving
+  /// every non-retired value unchanged.
+  static String resolveLegacyLayoutProfileId(String raw) {
+    final normalized = raw.trim();
+    return legacyLayoutProfileIdAliases[normalized] ?? normalized;
+  }
 
   final LayoutProfileId layoutProfileId;
   final String appearancePresetId;

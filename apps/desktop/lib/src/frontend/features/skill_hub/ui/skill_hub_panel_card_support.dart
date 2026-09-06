@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
-import 'package:licoup/src/application/features/skill_hub/models/skill_category_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 
 class SkillCardTitle extends StatelessWidget {
   const SkillCardTitle({super.key, required this.title, required this.color});
@@ -20,19 +20,17 @@ class SkillCardTitle extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      softWrap: true,
-      style: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.bold,
-        color: color,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Text(
+    title,
+    maxLines: maxLines,
+    overflow: TextOverflow.ellipsis,
+    softWrap: true,
+    style: TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.bold,
+      color: color,
+    ),
+  );
 }
 
 class SkillCardDescription extends StatelessWidget {
@@ -51,84 +49,60 @@ class SkillCardDescription extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: reservedHeight,
-      width: double.infinity,
-      child: Text(
-        text,
-        maxLines: maxLines,
-        overflow: TextOverflow.ellipsis,
-        softWrap: true,
-        style: TextStyle(fontSize: fontSize, color: color, height: lineHeight),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    height: reservedHeight,
+    width: double.infinity,
+    child: Text(
+      text,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      softWrap: true,
+      style: TextStyle(fontSize: fontSize, color: color, height: lineHeight),
+    ),
+  );
 }
 
 class SkillCardHeader extends StatelessWidget {
   const SkillCardHeader({
     super.key,
-    required this.controller,
-    required this.skillId,
-    required this.title,
-    required this.description,
-    required this.isPublic,
-    required this.colors,
+    required this.skill,
+    required this.intents,
   });
 
-  final ClientController controller;
-  final String skillId;
-  final String title;
-  final String description;
-  final bool isPublic;
-  final LicoThemeColors colors;
+  final SkillProjectionItem skill;
+  final IntentSink<SkillHubIntent> intents;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final override = controller.skillHubPreferences.overrideFor(skillId);
-    final iconId = resolveSkillIconId(
-      skillId: skillId,
-      title: title,
-      description: description,
-      overrideIconId: override.iconId,
-    );
-    final colorToken = override.colorToken.trim().isEmpty
-        ? 'primary'
-        : override.colorToken.trim();
-    final iconColor = resolveSkillIconColor(colors, colorToken);
-
+    final iconColor = resolveSkillIconColor(colors, skill.colorToken);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         SkillCategoryIconBadge(
-          iconId: iconId,
+          iconId: skill.iconId,
           color: iconColor,
-          onTap: () {
-            showSkillIconPicker(
-              context: context,
-              controller: controller,
-              skillId: skillId,
-              title: title,
-              description: description,
-              currentIconId: iconId,
-              currentColorToken: colorToken,
-            );
-          },
+          onTap: () => showSkillIconPicker(
+            context: context,
+            intents: intents,
+            skillId: skill.id,
+            currentIconId: skill.iconId,
+            currentColorToken: skill.colorToken,
+          ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: (isPublic ? colors.success : colors.warning).withValues(
+            color: (skill.public ? colors.success : colors.warning).withValues(
               alpha: 0.15,
             ),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(
-            isPublic ? strings.publicLabel : strings.privateLabel,
+            skill.public ? strings.publicLabel : strings.privateLabel,
             style: TextStyle(
-              color: isPublic ? colors.success : colors.warning,
+              color: skill.public ? colors.success : colors.warning,
               fontSize: 10,
               fontWeight: FontWeight.bold,
             ),
@@ -140,64 +114,43 @@ class SkillCardHeader extends StatelessWidget {
 }
 
 class SkillCardFooter extends StatelessWidget {
-  const SkillCardFooter({
-    super.key,
-    required this.controller,
-    required this.loaderAgentIds,
-    required this.version,
-    required this.colors,
-    this.invocationCount = 0,
-  });
+  const SkillCardFooter({super.key, required this.skill});
 
-  final ClientController controller;
-  final List<String> loaderAgentIds;
-  final String version;
-  final LicoThemeColors colors;
-
-  /// All-time invocation count joined from the usage report; the affordance
-  /// stays hidden while the report is absent or the count is zero.
-  final int invocationCount;
+  final SkillProjectionItem skill;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
     return Container(
       height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
         border: Border(top: BorderSide(color: colors.line.withAlpha(40))),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           Expanded(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: loaderAgentIds.length,
+              itemCount: skill.agents.length,
               itemBuilder: (context, index) {
-                final agentId = canonicalSkillAgentId(loaderAgentIds[index]);
-                final matchingTarget = _skillLoaderTarget(
-                  controller.scannedTargets,
-                  agentId,
-                );
-                final label = skillLoaderAgentLabel(agentId);
+                final agent = skill.agents[index];
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: Tooltip(
-                    message: label,
+                    message: agent.label,
                     child: Center(
                       child: AgentBrandIcon(
-                        target:
-                            matchingTarget ??
-                            TargetCandidate(
-                              target: agentId,
-                              label: label,
-                              kind: 'cli',
-                              status: TargetCandidateStatus.detected,
-                              configured: true,
-                              confidence: 1,
-                              adapterStatus: 'implemented',
-                            ),
+                        target: TargetCandidate(
+                          target: agent.id,
+                          label: agent.label,
+                          kind: 'cli',
+                          status: TargetCandidateStatus.detected,
+                          configured: true,
+                          confidence: 1,
+                          adapterStatus: 'implemented',
+                        ),
                         size: 20,
                         iconSize: 14,
                       ),
@@ -207,17 +160,19 @@ class SkillCardFooter extends StatelessWidget {
               },
             ),
           ),
-          if (invocationCount > 0) ...[
+          if (skill.usageCount > 0) ...[
             Tooltip(
               key: const Key('skill-card-invocations'),
-              message: strings.skillInvocationsCount(invocationCount),
+              message: LicoStrings.of(
+                context,
+              ).skillInvocationsCount(skill.usageCount),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.bolt_rounded, size: 13, color: colors.textMuted),
                   const SizedBox(width: 3),
                   Text(
-                    formatAgentUsageNumber(invocationCount),
+                    formatAgentUsageNumber(skill.usageCount),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -229,9 +184,9 @@ class SkillCardFooter extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
-          if (version.isNotEmpty && version != 'local')
+          if (skill.version.isNotEmpty && skill.version != 'local')
             Text(
-              'v$version',
+              'v${skill.version}',
               style: TextStyle(fontSize: 11, color: colors.textMuted),
             ),
         ],
@@ -246,7 +201,6 @@ class SkillScanningPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -261,7 +215,7 @@ class SkillScanningPlaceholder extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            strings.scanning,
+            LicoStrings.of(context).scanning,
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -272,17 +226,4 @@ class SkillScanningPlaceholder extends StatelessWidget {
       ),
     );
   }
-}
-
-TargetCandidate? _skillLoaderTarget(
-  Iterable<TargetCandidate> targets,
-  String agentId,
-) {
-  for (final target in targets) {
-    if (canonicalSkillAgentId(target.target) == agentId ||
-        canonicalSkillAgentId(target.id) == agentId) {
-      return target;
-    }
-  }
-  return null;
 }

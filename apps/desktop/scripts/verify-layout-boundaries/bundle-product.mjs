@@ -57,12 +57,26 @@ export async function discoverImportedBundles({
     if (declarations.has(symbol)) {
       fail("layout_bundle_symbol_duplicate", importedPath);
     }
-    const profile = uniqueMatch(
-      source,
-      /\bid\s*:\s*LayoutProfileId\.parse\(\s*['"]([a-z]+(?:-[a-z]+)*)['"]\s*\)/gu,
-      "layout_bundle_profile_identity_invalid",
-      importedPath,
+    const explicitProfileMatches = [
+      ...source.matchAll(
+        /\bid\s*:\s*LayoutProfileId\.parse\(\s*['"]([a-z]+(?:-[a-z]+)*)['"]\s*\)/gu,
+      ),
+    ].map((match) => match[1]);
+    const semanticProfileMatches = [
+      ...source.matchAll(
+        /\bprofile\s*:\s*BuiltInLayoutSpec\.([a-z]+(?:[A-Z][a-z]*)*)/gu,
+      ),
+    ].map((match) =>
+      match[1].replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`),
     );
+    const profileMatches = new Set([
+      ...explicitProfileMatches,
+      ...semanticProfileMatches,
+    ]);
+    if (profileMatches.size !== 1) {
+      fail("layout_bundle_profile_identity_invalid", importedPath);
+    }
+    const [profile] = profileMatches;
     const surface = uniqueMatch(
       source,
       /\bsurface\s*:\s*LayoutRuntimeSurface\.([A-Za-z_]\w*)/gu,

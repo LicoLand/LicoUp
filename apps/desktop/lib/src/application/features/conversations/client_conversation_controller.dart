@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
@@ -12,7 +12,7 @@ import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/problem_codes/problem_codes.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
-final class ClientConversationController extends ChangeNotifier {
+final class ClientConversationController extends ApplicationStateOwner {
   ClientConversationController({
     required AgentCommandRunner runner,
     ClientConversationService service = const ClientConversationService(),
@@ -86,7 +86,7 @@ final class ClientConversationController extends ChangeNotifier {
     if (_disposed || (!_dispatchPending && _liveTurns.isEmpty)) return;
     _liveTurns = const [];
     _dispatchPending = false;
-    _notifyListeners();
+    _publishChange();
   }
 
   ClientConversation? get selectedConversation => _selectedConversation;
@@ -114,7 +114,7 @@ final class ClientConversationController extends ChangeNotifier {
       retryable: retryable,
       recovery: recovery,
     );
-    _notifyListeners();
+    _publishChange();
   }
 
   void _clearFailure() {
@@ -221,7 +221,7 @@ final class ClientConversationController extends ChangeNotifier {
       _applySelectedSnapshot(cached.conversation, cached.events);
     }
     if (changed) _onSelectionChanged?.call(normalized);
-    _notifyListeners();
+    _publishChange();
     if (cached != null) return;
     await _waitUntilIdle();
     if (_disposed || _selectedConversationId != normalized) return;
@@ -231,7 +231,7 @@ final class ClientConversationController extends ChangeNotifier {
         loadedWhileWaiting.conversation,
         loadedWhileWaiting.events,
       );
-      _notifyListeners();
+      _publishChange();
       return;
     }
     await _guard('open', _loadSelected);
@@ -240,13 +240,13 @@ final class ClientConversationController extends ChangeNotifier {
   void clearSelection() {
     if (_selectedConversationId.isEmpty) return;
     _clearSelection();
-    _notifyListeners();
+    _publishChange();
   }
 
   void updateDraft(String value) {
     if (_draft == value) return;
     _draft = value;
-    _notifyListeners();
+    _publishChange();
   }
 
   /// Reconciles background Agent discovery without changing group membership.
@@ -271,7 +271,7 @@ final class ClientConversationController extends ChangeNotifier {
       events: _events,
       availableLocalAgentIds: _availableConversationAgentIds,
     );
-    if (changed) _notifyListeners();
+    if (changed) _publishChange();
   }
 
   /// A Local-roster Agent discovered after group creation becomes a durable
@@ -538,7 +538,7 @@ final class ClientConversationController extends ChangeNotifier {
     }
     _sending = true;
     _clearFailure();
-    _notifyListeners();
+    _publishChange();
     try {
       final posted = await _service.execute(_runner, {
         'action': 'conversation.message.post',
@@ -560,7 +560,7 @@ final class ClientConversationController extends ChangeNotifier {
         throw const ClientConversationServiceFailure('invalid_response');
       }
       _draft = '';
-      _notifyListeners();
+      _publishChange();
       if (dispatch) {
         try {
           final dispatched = await _service.execute(_runner, {
@@ -623,7 +623,7 @@ final class ClientConversationController extends ChangeNotifier {
       return false;
     } finally {
       _sending = false;
-      _notifyListeners();
+      _publishChange();
     }
   }
 
@@ -886,7 +886,7 @@ final class ClientConversationController extends ChangeNotifier {
     if (_disposed || _selectedConversationId.isEmpty) return false;
     try {
       await _loadSelected();
-      if (!_disposed) _notifyListeners();
+      if (!_disposed) _publishChange();
       return !_disposed;
     } catch (_) {
       return false;
@@ -955,7 +955,7 @@ final class ClientConversationController extends ChangeNotifier {
     final loadingCompletion = Completer<void>();
     _loadingCompletion = loadingCompletion;
     _clearFailure();
-    _notifyListeners();
+    _publishChange();
     try {
       await operation();
       return true;
@@ -970,7 +970,7 @@ final class ClientConversationController extends ChangeNotifier {
       if (identical(_loadingCompletion, loadingCompletion)) {
         _loadingCompletion = null;
       }
-      _notifyListeners();
+      _publishChange();
     }
   }
 
@@ -986,8 +986,8 @@ final class ClientConversationController extends ChangeNotifier {
     if (changed) _onSelectionChanged?.call('');
   }
 
-  void _notifyListeners() {
-    if (!_disposed) notifyListeners();
+  void _publishChange() {
+    if (!_disposed) publishChange();
   }
 
   @override

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/settings/contracts/agent_resource_usage_gateway.dart';
 import 'package:licoup/src/contracts/agent_resource_usage_models.dart';
@@ -30,7 +30,7 @@ final class AgentResourceUsageSample {
 ///
 /// Samples are collected while a diagnostic surface is open; all history
 /// stays in memory and nothing is written to disk.
-final class AgentResourceUsageController extends ChangeNotifier {
+final class AgentResourceUsageController extends ApplicationStateOwner {
   AgentResourceUsageController({
     required this.gateway,
     DateTime Function()? now,
@@ -99,10 +99,10 @@ final class AgentResourceUsageController extends ChangeNotifier {
         }
         _appendSample(agent, at);
       }
-      notifyListeners();
+      publishChange();
     } catch (_) {
       _lastError = 'agent_resource_scan_failed';
-      notifyListeners();
+      publishChange();
     } finally {
       _scanning = false;
     }

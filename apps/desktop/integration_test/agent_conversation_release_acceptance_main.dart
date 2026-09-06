@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/client_app_composition.dart';
 
 import 'support/agent_conversation_product_fixture.dart';
 
@@ -19,7 +20,10 @@ void main() {
   final service = AcceptanceConversationService();
   final controller = createAcceptanceController(service);
   runApp(
-    LicoApp(controllerFactory: () => controller, initializeController: false),
+    LicoApp(
+      compositionFactory: () => ClientAppComposition(controller: controller),
+      initializeController: false,
+    ),
   );
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_runAcceptance(service, controller));

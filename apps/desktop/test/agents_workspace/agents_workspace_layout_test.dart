@@ -108,7 +108,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
           body: SizedBox(
             width: 540,
             height: 560,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -242,7 +242,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
             body: SizedBox(
               width: 500,
               height: 560,
-              child: AgentConversationWorkspace(
+              child: AgentConversationWorkspaceFixture(
                 controller: controller,
                 targets: controller.scannedTargets,
                 scanning: false,
@@ -315,7 +315,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
           body: SizedBox(
             width: 1000,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -386,7 +386,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
           body: SizedBox(
             width: 390,
             height: 760,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: const [],
               scanning: false,
@@ -443,7 +443,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
           body: SizedBox(
             width: 390,
             height: 760,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,

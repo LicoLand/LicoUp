@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:super_clipboard/super_clipboard.dart' as rich_clipboard;
 
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 
 /// Clipboard access at the platform boundary. Text keeps Flutter's native

@@ -6,8 +6,8 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_p
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging details surface: runtime settings, capability disclosure,
@@ -338,9 +338,7 @@ class _MessagingDetailsCopyRow extends StatelessWidget {
     if (write == null) return;
     await write(value);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      appleGlassSnackBar(context: context, message: copiedMessage),
-    );
+    showLicoToast(context, message: copiedMessage, kind: LicoToastKind.success);
   }
 
   @override

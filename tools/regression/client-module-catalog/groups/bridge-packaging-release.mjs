@@ -363,9 +363,11 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
   defineModule({
       id: "packaging.macos-install-contract",
       kind: "packaging",
-      summary: "Existing-runnable macOS installer validation, copy, exact launch, and stable-survival contract",
+      summary: "macOS install, replacement, uninstall, registration cleanup, and exact launch contract",
       inputs: [
         "tools/scripts/client-macos-install.mjs",
+        "tools/scripts/lib/macos-app-lifecycle.mjs",
+        "apps/desktop/scripts/package-client/macos/install.mjs",
         "tests/contract/client/client-macos-install.test.mjs",
       ],
       command: command(

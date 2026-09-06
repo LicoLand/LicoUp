@@ -1,12 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
-import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
-import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
@@ -27,19 +25,17 @@ void main() {
   });
 
   test(
-    'production wiring: messaging default switches to dashboard and back',
+    'production wiring: dashboard default switches to desktop and back',
     () async {
       final composition = BuiltInLayoutComposition();
       final catalog = composition.catalog;
-      // Mirror client_presentation_component_assembly.dart exactly.
-      final preferredLayout = LayoutProfileDefaults.preferredForPlatform(
-        defaultTargetPlatform,
-      );
-      expect(preferredLayout, LayoutProfileId.parse('messaging'));
+      // Mirror client_controller.dart exactly.
+      final preferredLayout = LayoutProfileId.parse('dashboard');
+      expect(preferredLayout, LayoutProfileId.parse('dashboard'));
       expect(
-        catalog.containsProfile(LayoutProfileId.parse('dashboard')),
+        catalog.containsProfile(LayoutProfileId.parse('desktop')),
         isTrue,
-        reason: 'dashboard profile must be registered in the built-in catalog',
+        reason: 'desktop profile must be registered in the built-in catalog',
       );
       expect(catalog.containsProfile(preferredLayout), isTrue);
 
@@ -52,50 +48,42 @@ void main() {
         portableData: PortableDataRoot(dataDirectoryOverride: temporaryRoot),
         fallback: fallback,
       );
-      // Seed the user's real on-disk state: messaging persisted.
-      await repository.setLayoutProfile(LayoutProfileId.parse('messaging'));
+      // Seed the user's real on-disk state: dashboard persisted.
+      await repository.setLayoutProfile(LayoutProfileId.parse('dashboard'));
 
       final manager = LayoutManager(
         catalog: catalog,
         preferencesRepository: repository,
         canonicalFallback: fallback,
         preferredDefaultId: preferredLayout,
-        initialEnvironment: LayoutEnvironment.fromConstraints(
-          surface: LayoutRuntimeSurface.desktop,
-          width: 1280,
-          height: 800,
-          textScale: 1,
-          hasPointer: true,
-          hasKeyboard: true,
-        ),
       );
       final transitions = <LayoutSelectionStatus>[];
-      manager.addListener((state) => transitions.add(state.status));
+      manager.changes.listen((_) => transitions.add(manager.state.status));
 
       await manager.initialize();
-      expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.committedId, LayoutProfileId.parse('messaging'));
-
-      expect(
-        await manager.selectLayout(LayoutProfileId.parse('dashboard')),
-        isTrue,
-        reason: 'first switch must commit, got ${manager.state}',
-      );
       expect(manager.state.status, LayoutSelectionStatus.stable);
       expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
 
       expect(
-        await manager.selectLayout(LayoutProfileId.parse('messaging')),
+        await manager.selectLayout(LayoutProfileId.parse('desktop')),
+        isTrue,
+        reason: 'first switch must commit, got ${manager.state}',
+      );
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.committedId, LayoutProfileId.parse('desktop'));
+
+      expect(
+        await manager.selectLayout(LayoutProfileId.parse('dashboard')),
         isTrue,
         reason: 'switching back must commit, got ${manager.state}',
       );
       expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.committedId, LayoutProfileId.parse('messaging'));
+      expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
 
       final loaded = await repository.load();
       expect(
         loaded.preferences.layoutProfileId,
-        LayoutProfileId.parse('messaging'),
+        LayoutProfileId.parse('dashboard'),
       );
       manager.dispose();
     },

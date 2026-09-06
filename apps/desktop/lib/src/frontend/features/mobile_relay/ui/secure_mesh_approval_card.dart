@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class SecureMeshApprovalCard extends StatelessWidget {
-  const SecureMeshApprovalCard({super.key, required this.controller});
+  const SecureMeshApprovalCard({
+    super.key,
+    required this.projection,
+    required this.intents,
+  });
 
-  final ClientController controller;
+  final MobileRelayProjection projection;
+  final IntentSink<MobileRelayIntent> intents;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final busy = controller.isMobileRelayBusy;
-    final inbox = controller.secureMeshApprovalInbox;
-    final pending = inbox
-        .where((item) => item.isPending)
+    final pending = projection.approvals
+        .where((item) => item.state == RelayApprovalState.pending)
         .toList(growable: false);
     return Container(
       key: const Key('secure-mesh-approval-card'),
@@ -45,9 +49,9 @@ class SecureMeshApprovalCard extends StatelessWidget {
               ),
               OutlinedButton(
                 key: const Key('secure-mesh-approval-refresh'),
-                onPressed: busy
+                onPressed: projection.busy
                     ? null
-                    : () => controller.refreshSecureMeshApprovalInbox(),
+                    : () => intents.send(const RefreshRelayApprovals()),
                 child: Text(strings.refresh),
               ),
             ],
@@ -70,7 +74,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
           for (final item in pending.take(8)) ...[
             const SizedBox(height: 10),
             Container(
-              key: Key('secure-mesh-approval-item-${item.pendingOperationId}'),
+              key: Key('secure-mesh-approval-item-${item.id}'),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(LicoRadius.floating),
@@ -79,14 +83,14 @@ class SecureMeshApprovalCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _InfoLine(label: strings.agent, value: item.requesterAgentId),
-                  _InfoLine(label: strings.risk, value: item.riskLevel),
-                  _InfoLine(label: strings.summary, value: item.displaySummary),
-                  _InfoLine(label: strings.expires, value: item.expiresAt),
-                  if (item.requestedTools.isNotEmpty)
+                  _InfoLine(label: strings.agent, value: item.requesterLabel),
+                  _InfoLine(label: strings.risk, value: item.capabilityLabel),
+                  _InfoLine(label: strings.summary, value: item.summary),
+                  _InfoLine(label: strings.expires, value: item.expiresLabel),
+                  if (item.requestedToolLabels.isNotEmpty)
                     _InfoLine(
                       label: strings.tools,
-                      value: item.requestedTools.join(', '),
+                      value: item.requestedToolLabels.join(', '),
                     ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -94,34 +98,20 @@ class SecureMeshApprovalCard extends StatelessWidget {
                     runSpacing: 10,
                     children: [
                       FilledButton(
-                        key: Key(
-                          'secure-mesh-approval-allow-${item.pendingOperationId}',
-                        ),
-                        onPressed:
-                            busy ||
-                                !controller.canResolveSecureMeshApproval(
-                                  item.pendingOperationId,
-                                )
+                        key: Key('secure-mesh-approval-allow-${item.id}'),
+                        onPressed: projection.busy || !item.resolvable
                             ? null
-                            : () => controller.resolveSecureMeshApproval(
-                                pendingOperationId: item.pendingOperationId,
-                                allow: true,
+                            : () => intents.send(
+                                ResolveRelayApproval(item.id, true),
                               ),
                         child: Text(strings.allow),
                       ),
                       OutlinedButton(
-                        key: Key(
-                          'secure-mesh-approval-deny-${item.pendingOperationId}',
-                        ),
-                        onPressed:
-                            busy ||
-                                !controller.canResolveSecureMeshApproval(
-                                  item.pendingOperationId,
-                                )
+                        key: Key('secure-mesh-approval-deny-${item.id}'),
+                        onPressed: projection.busy || !item.resolvable
                             ? null
-                            : () => controller.resolveSecureMeshApproval(
-                                pendingOperationId: item.pendingOperationId,
-                                allow: false,
+                            : () => intents.send(
+                                ResolveRelayApproval(item.id, false),
                               ),
                         child: Text(strings.deny),
                       ),
@@ -131,7 +121,9 @@ class SecureMeshApprovalCard extends StatelessWidget {
               ),
             ),
           ],
-          if (inbox.any((item) => !item.isPending)) ...[
+          if (projection.approvals.any(
+            (item) => item.state != RelayApprovalState.pending,
+          )) ...[
             const SizedBox(height: 16),
             Text(
               strings.remoteApprovalHistory,
@@ -141,14 +133,15 @@ class SecureMeshApprovalCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            for (final item in inbox.where((entry) => !entry.isPending).take(6))
+            for (final item
+                in projection.approvals
+                    .where((entry) => entry.state != RelayApprovalState.pending)
+                    .take(6))
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${item.requesterAgentId} · ${_statusLabel(strings, item)}',
-                  key: Key(
-                    'secure-mesh-approval-history-${item.pendingOperationId}',
-                  ),
+                  '${item.requesterLabel} · ${_statusLabel(strings, item)}',
+                  key: Key('secure-mesh-approval-history-${item.id}'),
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
@@ -160,15 +153,13 @@ class SecureMeshApprovalCard extends StatelessWidget {
     );
   }
 
-  String _statusLabel(LicoStrings strings, SecureMeshApprovalRequest item) {
-    return switch (item.status) {
-      SecureMeshApprovalStatus.pending => strings.remoteApprovalStatusPending,
-      SecureMeshApprovalStatus.resolved =>
-        item.decision == SecureMeshApprovalDecision.allow
-            ? strings.remoteApprovalStatusAllowed
-            : strings.remoteApprovalStatusDenied,
-      SecureMeshApprovalStatus.expired => strings.remoteApprovalStatusExpired,
-      SecureMeshApprovalStatus.failed => strings.remoteApprovalStatusFailed,
+  String _statusLabel(LicoStrings strings, RelayApprovalProjection item) {
+    return switch (item.state) {
+      RelayApprovalState.pending => strings.remoteApprovalStatusPending,
+      RelayApprovalState.allowed => strings.remoteApprovalStatusAllowed,
+      RelayApprovalState.denied => strings.remoteApprovalStatusDenied,
+      RelayApprovalState.expired => strings.remoteApprovalStatusExpired,
+      RelayApprovalState.failed => strings.remoteApprovalStatusFailed,
     };
   }
 }

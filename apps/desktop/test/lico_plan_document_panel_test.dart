@@ -43,7 +43,7 @@ Widget _app(PlanDocumentReader reader) => MaterialApp(
   home: SizedBox(
     width: 500,
     height: 400,
-    child: LicoPlanDocumentPanel(planPath: 'plan.md', reader: reader),
+    child: LicoPlanDocumentPanel(planPath: 'plan.md', loader: reader.read),
   ),
 );
 

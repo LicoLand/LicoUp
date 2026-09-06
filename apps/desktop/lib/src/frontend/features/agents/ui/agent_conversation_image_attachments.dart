@@ -1,29 +1,66 @@
+import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-class ConversationImageByteReaderScope extends InheritedWidget {
-  const ConversationImageByteReaderScope({
+typedef ConversationImageLoader =
+    Future<Uint8List?> Function({
+      required String localPath,
+      required String mediaType,
+    });
+
+/// Bounded content-addressed cache of decoded inline image bytes. Decoding
+/// base64 inside [State.build] (the previous behavior) reran the decode on
+/// every rebuild of a visible row; the decode now happens once per unique
+/// payload inside the state's read-sync path and is reused across rebuilds and
+/// across rows leaving and re-entering the viewport. Null entries record
+/// undecodable payloads so broken attachments do not decode repeatedly.
+final LinkedHashMap<String, Uint8List?> _inlineImageBytesCache =
+    LinkedHashMap();
+const int _inlineImageBytesCacheLimit = 24;
+
+Uint8List? _decodedInlineImageBytes(String dataBase64) {
+  if (_inlineImageBytesCache.containsKey(dataBase64)) {
+    final bytes = _inlineImageBytesCache.remove(dataBase64);
+    // Refresh recency: LRU eviction drops the least recently used entry.
+    _inlineImageBytesCache[dataBase64] = bytes;
+    return bytes;
+  }
+  Uint8List? bytes;
+  try {
+    bytes = base64Decode(dataBase64);
+  } on FormatException {
+    bytes = null;
+  }
+  if (_inlineImageBytesCache.length >= _inlineImageBytesCacheLimit) {
+    _inlineImageBytesCache.remove(_inlineImageBytesCache.keys.first);
+  }
+  _inlineImageBytesCache[dataBase64] = bytes;
+  return bytes;
+}
+
+class ConversationImageLoaderScope extends InheritedWidget {
+  const ConversationImageLoaderScope({
     super.key,
-    required this.reader,
+    required this.loader,
     required super.child,
   });
 
-  final ConversationImageByteReader reader;
+  final ConversationImageLoader loader;
 
-  static ConversationImageByteReader? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<ConversationImageByteReaderScope>()
-      ?.reader;
+  static ConversationImageLoader? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ConversationImageLoaderScope>()
+      ?.loader;
 
   @override
-  bool updateShouldNotify(ConversationImageByteReaderScope oldWidget) =>
-      !identical(reader, oldWidget.reader);
+  bool updateShouldNotify(ConversationImageLoaderScope oldWidget) =>
+      !identical(loader, oldWidget.loader);
 }
 
 /// Messaging-style rendering of a message's image attachments: bounded
@@ -85,7 +122,7 @@ class ConversationImageAttachmentFrame extends StatefulWidget {
 
 class _ConversationImageAttachmentFrameState
     extends State<ConversationImageAttachmentFrame> {
-  Future<ConversationImageReadResult>? _read;
+  Future<Uint8List?>? _read;
   Object? _readKey;
 
   AgentConversationImageAttachment get attachment => widget.attachment;
@@ -105,25 +142,32 @@ class _ConversationImageAttachmentFrameState
   }
 
   void _syncRead() {
-    final reader = ConversationImageByteReaderScope.maybeOf(context);
+    final loader = ConversationImageLoaderScope.maybeOf(context);
     final path = attachment.filePath.trim();
-    final key = (reader, path, attachment.mediaType);
+    final base64 = attachment.dataBase64;
+    final key = (loader, path, attachment.mediaType, base64);
     if (_readKey == key) return;
     _readKey = key;
-    _read = reader == null || path.isEmpty
-        ? null
-        : reader.read(localPath: path, mediaType: attachment.mediaType);
-  }
-
-  ImageProvider? _resolveProvider() {
-    if (attachment.dataBase64.isNotEmpty) {
-      try {
-        return MemoryImage(base64Decode(attachment.dataBase64));
-      } on FormatException {
-        return null;
+    // Inline base64 decodes outside the build path now; an undecodable inline
+    // payload keeps the legacy fallback to the file-backed loader.
+    if (base64.isNotEmpty) {
+      final bytes = _decodedInlineImageBytes(base64);
+      if (bytes != null) {
+        _read = SynchronousFuture<Uint8List?>(bytes);
+        return;
       }
     }
-    return null;
+    _read = _loadFileBytes(loader, path);
+  }
+
+  Future<Uint8List?>? _loadFileBytes(
+    ConversationImageLoader? loader,
+    String path,
+  ) {
+    if (loader == null || path.isEmpty) {
+      return null;
+    }
+    return loader(localPath: path, mediaType: attachment.mediaType);
   }
 
   @override
@@ -132,10 +176,6 @@ class _ConversationImageAttachmentFrameState
     final label = attachment.name.isEmpty
         ? strings.imageAttachment
         : attachment.name;
-    final inlineProvider = _resolveProvider();
-    if (inlineProvider != null) {
-      return _buildProvider(context, inlineProvider, label);
-    }
     final read = _read;
     if (read == null) {
       return ConversationImageUnavailablePlaceholder(
@@ -143,15 +183,14 @@ class _ConversationImageAttachmentFrameState
         label: label,
       );
     }
-    return FutureBuilder<ConversationImageReadResult>(
+    return FutureBuilder<Uint8List?>(
       future: read,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return ConversationImageLoadingPlaceholder(maxWidth: maxWidth);
         }
-        final result = snapshot.data;
-        final bytes = result?.bytes;
-        if (result == null || !result.succeeded || bytes == null) {
+        final bytes = snapshot.data;
+        if (bytes == null) {
           return ConversationImageUnavailablePlaceholder(
             maxWidth: maxWidth,
             label: label,
@@ -167,9 +206,19 @@ class _ConversationImageAttachmentFrameState
     ImageProvider provider,
     String label,
   ) {
+    // Bound the inline decode: full-size captures would otherwise decode and
+    // upload to the GPU at native resolution for a 340px frame. The tap-to-view
+    // dialog keeps the unbounded provider.
+    final inlineProvider = ResizeImage(
+      provider,
+      width: (maxWidth * MediaQuery.devicePixelRatioOf(context)).round().clamp(
+        1,
+        1 << 30,
+      ),
+    );
     final frame = _ConversationImageFrameDecoration(
       child: Image(
-        image: provider,
+        image: inlineProvider,
         fit: BoxFit.contain,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded || frame != null) {

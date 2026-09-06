@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { REQUIRED_FLUTTER_TOP_LEVEL_DIRS } from "../apps/desktop/scripts/client-architecture/checks/flutter/physical-layers-and-libraries.mjs";
 import { loadSecureMeshClientBoundaryConfig } from "./scripts/lib/secure-mesh-client-boundary-config.mjs";
 import { readSourceCheckBundle } from "./scripts/lib/source-check-bundle.mjs";
 
@@ -112,18 +113,8 @@ const forbiddenPublicDocumentContent = [
 const allowedContentPaths = new Set();
 const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
-const requiredFlutterPhysicalDirs = ["application", "frontend", "backend", "platform", "contracts"];
-// New vertical data-flow doctrine (M1 thin-shell restructure). These coexist
-// with the legacy physical dirs during the staged migration; the legacy set is
-// required, the new set is allowed.
-const allowedFlutterTopLevelDirs = new Set([
-  ...requiredFlutterPhysicalDirs,
-  "events",
-  "projections",
-  "display",
-  "protocol",
-  "shared",
-]);
+const requiredFlutterTopLevelDirs = REQUIRED_FLUTTER_TOP_LEVEL_DIRS;
+const allowedFlutterTopLevelDirs = new Set(requiredFlutterTopLevelDirs);
 const requiredFrontendFeatureDirs = [
   "agents",
   "mobile_relay",
@@ -422,7 +413,7 @@ function ruleAllowsToken(rule, relativePath, token) {
 
 async function enforceFlutterFeatureFirstLayout() {
   const topLevelDirs = await readImmediateDirectoryNames(flutterSrcRoot);
-  for (const requiredDir of requiredFlutterPhysicalDirs) {
+  for (const requiredDir of requiredFlutterTopLevelDirs) {
     if (!topLevelDirs.includes(requiredDir)) {
       addFailure("FLUTTER_REQUIRED_LAYER_MISSING", `${flutterSrcRoot}/${requiredDir}`, requiredDir);
     }

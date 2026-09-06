@@ -1,26 +1,26 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
 
 class MobileWidgetsPage extends StatefulWidget {
-  const MobileWidgetsPage({super.key, required this.controller});
+  const MobileWidgetsPage({super.key, required this.binding});
 
-  final ClientController controller;
+  final MonitoringBinding binding;
 
   @override
   State<MobileWidgetsPage> createState() => _MobileWidgetsPageState();
 }
 
 class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
-  ClientController get controller => widget.controller;
-
   @override
   void initState() {
     super.initState();
@@ -30,22 +30,24 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
   @override
   void didUpdateWidget(covariant MobileWidgetsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
+    if (!identical(oldWidget.binding, widget.binding)) {
       _queueUsageRefresh();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
+    return ProjectionBuilder<MonitoringProjection, MonitoringProjection>(
+      source: widget.binding.projection,
+      select: (projection) => projection,
+      builder: (context, projection) {
         final colors = context.licoColors;
         final strings = LicoStrings.of(context);
-        final report = controller.agentUsageReport;
-        final busy = controller.isScanningAgentUsage;
+        final report = projection.report;
+        final busy = projection.refreshing;
         return RefreshIndicator(
-          onRefresh: () => controller.scanAgentUsage(),
+          onRefresh: () async =>
+              widget.binding.intents.send(const RefreshMonitoring()),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -71,7 +73,9 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
                         tooltip: strings.refreshUsage,
                         onPressed: busy
                             ? null
-                            : () => unawaited(controller.scanAgentUsage()),
+                            : () => widget.binding.intents.send(
+                                const RefreshMonitoring(),
+                              ),
                         icon: busy
                             ? SizedBox(
                                 width: 20,
@@ -106,19 +110,10 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
 
   void _queueUsageRefresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          controller.agentUsageReport?.isFresh() == true ||
-          controller.isScanningAgentUsage) {
+      if (!mounted || widget.binding.projection.current.refreshing) {
         return;
       }
-      unawaited(() async {
-        if (controller.agentUsageReport == null) {
-          await controller.loadAgentUsageReports(limit: 10);
-        }
-        if (mounted && controller.agentUsageReport?.isFresh() != true) {
-          await controller.scanAgentUsage(forceRefresh: false);
-        }
-      }());
+      widget.binding.intents.send(const StartAutomaticMonitoring());
     });
   }
 }

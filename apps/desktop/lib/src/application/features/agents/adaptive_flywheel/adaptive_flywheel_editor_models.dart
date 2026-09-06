@@ -1,11 +1,8 @@
-import 'package:flutter/foundation.dart';
-
 /// One restored Adaptive Flywheel editor capsule.
 ///
 /// Strategy bindings persist one callable Agent, model, and reasoning effort
 /// per actor slot. The id keeps the original capsule interaction stable while
 /// the binding value remains owned by the native strategy store.
-@immutable
 final class DailyConversationAgentAssignment {
   const DailyConversationAgentAssignment({
     this.id = '',
