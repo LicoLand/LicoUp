@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 
-/// The complete styled component recipe for the Dashboard mobile profile.
-///
-/// The class is stateless by design: domain state and profile-local state stay
-/// in the parent ports and the profile-scoped state store respectively.
+const LayoutComponentKit dashboardMobileComponents =
+    DashboardMobileComponentKit();
+
 final class DashboardMobileComponentKit implements LayoutComponentKit {
   const DashboardMobileComponentKit();
 
@@ -22,68 +23,91 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required bool selected,
     required VoidCallback onPressed,
   }) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final baseLabelStyle = textTheme.labelLarge;
-    final labelStyle = baseLabelStyle?.copyWith(
-      color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
-      fontSize:
-          (baseLabelStyle.fontSize ?? 14) *
-          dashboardMobileTokens.typographyScale,
-      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-    );
-    final foreground = selected
-        ? colors.onPrimaryContainer
-        : colors.onSurfaceVariant;
-
+    final colors = context.layoutPalette;
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Semantics(
       key: key,
       button: true,
       selected: selected,
       label: label,
-      child: Material(
-        color: selected ? colors.primaryContainer : Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(
-            dashboardMobileTokens.cardRadius * 0.72,
-          ),
-          side: BorderSide(
-            color: selected
-                ? colors.primary.withValues(alpha: 0.24)
-                : colors.outlineVariant.withValues(alpha: 0.55),
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          mouseCursor: SystemMouseCursors.click,
-          focusColor: colors.primary.withValues(alpha: 0.14),
-          hoverColor: colors.primary.withValues(alpha: 0.08),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: dashboardMobileTokens.spacingUnit * 1.5,
-                vertical: dashboardMobileTokens.spacingUnit,
+      child: Tooltip(
+        message: label,
+        waitDuration: const Duration(milliseconds: 450),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(
+              DashboardMobileMetrics.controlRadius,
+            ),
+            focusColor: colors.primary.withAlpha(42),
+            hoverColor: colors.hoverOverlay,
+            child: AnimatedContainer(
+              duration: disableAnimations
+                  ? Duration.zero
+                  : const Duration(milliseconds: 110),
+              curve: Curves.easeOutCubic,
+              constraints: const BoxConstraints(
+                minWidth: DashboardMobileMetrics.touchTargetExtent,
+                minHeight: DashboardMobileMetrics.touchTargetExtent,
               ),
-              child: ExcludeSemantics(
-                child: Row(
-                  children: [
-                    IconTheme(
-                      data: IconThemeData(color: foreground, size: 22),
-                      child: icon,
-                    ),
-                    SizedBox(width: dashboardMobileTokens.spacingUnit),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: labelStyle,
-                      ),
-                    ),
-                  ],
+              decoration: BoxDecoration(
+                color: selected
+                    ? colors.primary.withAlpha(colors.isDark ? 52 : 34)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(
+                  DashboardMobileMetrics.controlRadius,
                 ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 96;
+                  final text = Text(
+                    label,
+                    maxLines: compact ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: compact ? TextAlign.center : TextAlign.start,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: selected ? colors.accent : colors.textMuted,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      fontSize: compact ? 9 : 11,
+                      height: 1.05,
+                      letterSpacing: 0.15,
+                    ),
+                  );
+                  if (compact) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconTheme(
+                          data: IconThemeData(
+                            size: 19,
+                            color: selected ? colors.accent : colors.textMuted,
+                          ),
+                          child: icon,
+                        ),
+                        const SizedBox(height: 3),
+                        Flexible(child: text),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      IconTheme(
+                        data: IconThemeData(
+                          size: 18,
+                          color: selected ? colors.accent : colors.textMuted,
+                        ),
+                        child: icon,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(child: text),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -99,27 +123,22 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     bool emphasized = false,
   }) {
-    final colors = Theme.of(context).colorScheme;
-    return Material(
+    final colors = context.layoutPalette;
+    return DecoratedBox(
       key: key,
-      color: emphasized
-          ? colors.surfaceContainerLowest
-          : colors.surfaceContainerLow,
-      elevation: emphasized ? dashboardMobileTokens.elevation : 0,
-      shadowColor: colors.shadow.withValues(alpha: 0.14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(dashboardMobileTokens.cardRadius),
-        side: BorderSide(
-          color: emphasized
-              ? colors.primary.withValues(alpha: 0.22)
-              : colors.outlineVariant.withValues(alpha: 0.62),
+      decoration: BoxDecoration(
+        color: emphasized ? colors.surfaceRaised : colors.surface,
+        border: Border(
+          left: BorderSide(
+            color: emphasized ? colors.primary : colors.line,
+            width: emphasized ? 3 : DashboardMobileMetrics.hairline,
+          ),
+          top: BorderSide(color: colors.line, width: 1),
+          right: BorderSide(color: colors.line, width: 1),
+          bottom: BorderSide(color: colors.line, width: 1),
         ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit * 2),
-        child: child,
-      ),
+      child: child,
     );
   }
 
@@ -130,36 +149,27 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     VoidCallback? onPressed,
   }) {
-    final colors = Theme.of(context).colorScheme;
-    final content = Padding(
-      padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit * 1.75),
-      child: child,
+    final colors = context.layoutPalette;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(DashboardMobileMetrics.controlRadius),
+      side: BorderSide(color: colors.line, width: 1),
     );
-
-    return Semantics(
+    return Material(
       key: key,
-      button: onPressed != null,
-      child: Material(
-        color: colors.surfaceContainer,
-        elevation: dashboardMobileTokens.elevation,
-        shadowColor: colors.shadow.withValues(alpha: 0.12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(
-            dashboardMobileTokens.cardRadius * 0.84,
-          ),
-          side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.5)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: onPressed == null
-            ? content
-            : InkWell(
+      color: colors.surfaceLow,
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: onPressed == null
+          ? child
+          : Semantics(
+              button: true,
+              child: InkWell(
                 onTap: onPressed,
-                mouseCursor: SystemMouseCursors.click,
-                focusColor: colors.primary.withValues(alpha: 0.12),
-                hoverColor: colors.primary.withValues(alpha: 0.06),
-                child: content,
+                focusColor: colors.primary.withAlpha(36),
+                hoverColor: colors.hoverOverlay,
+                child: child,
               ),
-      ),
+            ),
     );
   }
 
@@ -170,30 +180,22 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     String? semanticLabel,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     return Semantics(
       key: key,
       container: true,
       label: semanticLabel,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: colors.surfaceContainerLowest,
+          color: colors.background,
           borderRadius: BorderRadius.circular(
-            dashboardMobileTokens.cardRadius * 0.64,
+            DashboardMobileMetrics.controlRadius,
           ),
-          border: Border.all(
-            color: colors.outlineVariant.withValues(alpha: 0.72),
-          ),
+          border: Border.all(color: colors.line, width: 1),
         ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 52),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: dashboardMobileTokens.spacingUnit * 1.5,
-              vertical: dashboardMobileTokens.spacingUnit,
-            ),
-            child: child,
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          child: child,
         ),
       ),
     );
@@ -205,21 +207,20 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required Key key,
     required Widget child,
   }) {
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.layoutPalette;
     return Material(
       key: key,
-      color: colors.surfaceContainerHigh,
-      elevation: dashboardMobileTokens.elevation * 3,
-      shadowColor: colors.shadow.withValues(alpha: 0.18),
+      color: colors.surface,
+      elevation: 12,
+      shadowColor: Colors.black.withAlpha(72),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(dashboardMobileTokens.cardRadius),
-        side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.64)),
+        borderRadius: BorderRadius.circular(
+          DashboardMobileMetrics.compactRadius,
+        ),
+        side: BorderSide(color: colors.line, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.all(dashboardMobileTokens.spacingUnit * 2.5),
-        child: child,
-      ),
+      child: child,
     );
   }
 
@@ -230,39 +231,35 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     required bool attention,
   }) {
-    final colors = Theme.of(context).colorScheme;
-    final background = attention
-        ? colors.tertiaryContainer
-        : colors.secondaryContainer;
-    final foreground = attention
-        ? colors.onTertiaryContainer
-        : colors.onSecondaryContainer;
-    return Semantics(
+    final colors = context.layoutPalette;
+    return DecoratedBox(
       key: key,
-      liveRegion: attention,
-      container: true,
-      child: DefaultTextStyle.merge(
-        style: TextStyle(color: foreground, fontWeight: FontWeight.w600),
-        child: IconTheme.merge(
-          data: IconThemeData(color: foreground),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(
-                dashboardMobileTokens.cardRadius * 0.64,
-              ),
-              border: Border.all(color: foreground.withValues(alpha: 0.2)),
-            ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: dashboardMobileTokens.spacingUnit * 1.5,
-                vertical: dashboardMobileTokens.spacingUnit,
-              ),
-              child: child,
-            ),
+      decoration: BoxDecoration(
+        color: attention
+            ? colors.warning.withAlpha(colors.isDark ? 34 : 22)
+            : colors.surfaceLow,
+        border: Border(
+          left: BorderSide(
+            color: attention ? colors.warning : colors.accent,
+            width: 3,
           ),
+          bottom: BorderSide(color: colors.line, width: 1),
         ),
       ),
+      child: child,
     );
   }
+}
+
+IconData dashboardMobileDestinationIcon(ClientSection destination) {
+  return switch (destination) {
+    ClientSection.agents => Icons.chat_bubble_outline_rounded,
+    ClientSection.mobileRelay => Icons.link_outlined,
+    ClientSection.settings => Icons.tune_outlined,
+    ClientSection.monitoring => Icons.monitor_heart_outlined,
+    ClientSection.skillHub => Icons.extension_outlined,
+    ClientSection.pluginManagement => Icons.extension_outlined,
+    ClientSection.agentHub => Icons.auto_awesome_outlined,
+    ClientSection.models => Icons.key_outlined,
+  };
 }

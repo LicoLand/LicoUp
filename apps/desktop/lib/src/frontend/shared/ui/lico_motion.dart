@@ -50,6 +50,10 @@ abstract final class LicoMotion {
 
   /// The tooltip reveal delay. Shared so every icon-only control agrees.
   static const Duration tooltipWait = Duration(milliseconds: 400);
+
+  /// How long a floating toast stays visible by default. Not an animation,
+  /// but shared so every surface agrees on the dwell.
+  static const Duration toastDwell = Duration(milliseconds: 2500);
 }
 
 /// Resolves a motion duration against the platform's reduced-motion setting.

@@ -1,32 +1,28 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
-import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+
+typedef MobileAgentContentBuilder =
+    Widget Function(BuildContext context, AgentTargetProjection target);
 
 class MobileAgentConversation extends StatelessWidget {
   const MobileAgentConversation({
     super.key,
-    required this.controller,
-    required this.targets,
     required this.target,
+    required this.contentBuilder,
     required this.onBack,
     required this.onConfiguration,
+    this.iconBuilder,
   });
 
-  final ClientController controller;
-  final List<TargetCandidate> targets;
-  final TargetCandidate target;
+  final AgentTargetProjection target;
+  final MobileAgentContentBuilder contentBuilder;
   final VoidCallback onBack;
   final VoidCallback onConfiguration;
+  final MobileAgentIconBuilder? iconBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +30,11 @@ class MobileAgentConversation extends StatelessWidget {
       children: [
         _MobileAgentHeader(
           target: target,
-          title: agentConversationTargetDisplayName(target),
+          title: target.displayName,
           leadingTooltip: MaterialLocalizations.of(context).backButtonTooltip,
           leadingIcon: Icons.chevron_left_rounded,
           onLeading: onBack,
+          iconBuilder: iconBuilder,
           trailing: IconButton(
             key: const Key('mobile-agent-open-configuration'),
             tooltip: LicoStrings.of(context).settings,
@@ -45,16 +42,7 @@ class MobileAgentConversation extends StatelessWidget {
             icon: const Icon(Icons.tune_rounded),
           ),
         ),
-        Expanded(
-          child: AgentConversationWorkspace(
-            controller: controller,
-            targets: targets,
-            scanning: controller.isScanningTargets,
-            adding: controller.isAddingTarget,
-            onAddTarget: () {},
-            allowManualTargetActions: false,
-          ),
-        ),
+        Expanded(child: contentBuilder(context, target)),
       ],
     );
   }
@@ -63,117 +51,33 @@ class MobileAgentConversation extends StatelessWidget {
 class MobileAgentConfiguration extends StatelessWidget {
   const MobileAgentConfiguration({
     super.key,
-    required this.controller,
     required this.target,
+    required this.contentBuilder,
     required this.onBack,
+    this.iconBuilder,
   });
 
-  final ClientController controller;
-  final TargetCandidate target;
+  final AgentTargetProjection target;
+  final MobileAgentContentBuilder contentBuilder;
   final VoidCallback onBack;
+  final MobileAgentIconBuilder? iconBuilder;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final colors = context.licoColors;
-    final historyRoots = target.historyRoots;
     return Column(
       children: [
         _MobileAgentHeader(
           target: target,
-          title: strings.agentConfiguration,
+          title: LicoStrings.of(context).agentConfiguration,
           leadingTooltip: MaterialLocalizations.of(context).backButtonTooltip,
           leadingIcon: Icons.chevron_left_rounded,
           onLeading: onBack,
+          iconBuilder: iconBuilder,
         ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            children: [
-              MobileConfigRow(
-                icon: Icons.smart_toy_outlined,
-                label: strings.agent,
-                value: agentConversationTargetDisplayName(target),
-              ),
-              MobileConfigRow(
-                icon: target.configured
-                    ? Icons.check_circle_outline_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                label: strings.target,
-                value: target.configured
-                    ? strings.configured
-                    : strings.notConfigured,
-              ),
-              MobileConfigRow(
-                icon: Icons.category_outlined,
-                label: strings.protocol,
-                value: target.kind.trim().isEmpty
-                    ? target.adapterStatus
-                    : target.kind,
-              ),
-              DirectoryPathField(
-                title: strings.configPath,
-                label: strings.configPath,
-                path: target.configPath?.trim() ?? '',
-                icon: Icons.settings_applications_outlined,
-                readOnly: true,
-                showHeader: false,
-                compactBreakpoint: 360,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                onOpen: (path) => controller.openDirectoryPath(
-                  _directoryForMobilePath(path),
-                  caption: strings.configPath,
-                ),
-              ),
-              MobileConfigRow(
-                icon: Icons.terminal_outlined,
-                label: strings.binaryPath,
-                value: _displayValue(target.binaryPath, strings),
-              ),
-              MobileConfigRow(
-                icon: Icons.history_rounded,
-                label: strings.historyRoot,
-                value: historyRoots.isEmpty
-                    ? strings.unavailable
-                    : historyRoots.join('\n'),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      unawaited(controller.inspectTarget(target.target)),
-                  icon: const Icon(Icons.search_rounded, size: 18),
-                  label: Text(strings.inspect),
-                ),
-              ),
-              if (controller.displayStatusMessage.trim().isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  controller.displayStatusMessage,
-                  style: TextStyle(color: colors.textMuted, fontSize: 12),
-                ),
-              ],
-            ],
-          ),
-        ),
+        Expanded(child: contentBuilder(context, target)),
       ],
     );
   }
-
-  String _displayValue(String? value, LicoStrings strings) {
-    final trimmed = value?.trim();
-    return trimmed == null || trimmed.isEmpty ? strings.unavailable : trimmed;
-  }
-}
-
-String _directoryForMobilePath(String value) {
-  final trimmed = value.trim();
-  if (trimmed.isEmpty || trimmed == '-') {
-    return '';
-  }
-  final basename = p.basename(trimmed);
-  return basename.contains('.') ? p.dirname(trimmed) : trimmed;
 }
 
 class _MobileAgentHeader extends StatelessWidget {
@@ -183,14 +87,16 @@ class _MobileAgentHeader extends StatelessWidget {
     required this.leadingTooltip,
     required this.leadingIcon,
     required this.onLeading,
+    this.iconBuilder,
     this.trailing,
   });
 
-  final TargetCandidate target;
+  final AgentTargetProjection target;
   final String title;
   final String leadingTooltip;
   final IconData leadingIcon;
   final VoidCallback onLeading;
+  final MobileAgentIconBuilder? iconBuilder;
   final Widget? trailing;
 
   @override
@@ -210,13 +116,20 @@ class _MobileAgentHeader extends StatelessWidget {
               onPressed: onLeading,
               icon: Icon(leadingIcon),
             ),
-            AgentBrandIcon(
-              target: target,
-              selected: true,
-              detected: target.status != 'not-detected',
-              size: 36,
-              iconSize: 24,
-            ),
+            iconBuilder?.call(
+                  context,
+                  target,
+                  selected: true,
+                  size: 36,
+                  iconSize: 24,
+                ) ??
+                Icon(
+                  target.available
+                      ? Icons.smart_toy_outlined
+                      : Icons.extension_outlined,
+                  size: 24,
+                  color: target.available ? colors.text : colors.textMuted,
+                ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(

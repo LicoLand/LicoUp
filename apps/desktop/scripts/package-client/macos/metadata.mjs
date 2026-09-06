@@ -6,7 +6,6 @@ import {
   packageFailure,
 } from "../cli-policy.mjs";
 import {
-  bestEffortPackageCapture,
   runPackageProcess,
 } from "../process-runner.mjs";
 
@@ -40,13 +39,4 @@ export function updateMacosAppMetadata(bundle, options) {
       },
     );
   }
-}
-
-export function readMacosBundleIdentifier(appPath) {
-  const plistPath = path.join(appPath, "Contents", "Info.plist");
-  if (!existsSync(plistPath)) return "";
-  return bestEffortPackageCapture(
-    "/usr/libexec/PlistBuddy",
-    ["-c", "Print :CFBundleIdentifier", plistPath],
-  ).trim();
 }

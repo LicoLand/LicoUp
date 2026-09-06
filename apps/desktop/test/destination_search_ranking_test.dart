@@ -1,53 +1,40 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/features/agents/conversation/agent_conversation_search_index.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/features/agents/ui/destination_search_ranking.dart';
-import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
-import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
+import 'package:licoup/src/presentation/search/search_projection.dart';
+import 'package:licoup/src/projections/search/search_ranking.dart';
 
 void main() {
   final features = [
-    GlobalSearchFeatureEntry(
+    SearchCatalogEntry(
       id: 'section-skillHub',
       label: 'Skill Hub',
       keywords: const ['skill'],
-      icon: Icons.library_books_outlined,
-      run: () async {},
     ),
-    GlobalSearchFeatureEntry(
+    SearchCatalogEntry(
       id: 'section-settings',
       label: 'Settings',
       keywords: const ['setting'],
-      icon: Icons.settings_outlined,
-      run: () async {},
     ),
   ];
   final settings = [
-    GlobalSearchFeatureEntry(
+    SearchCatalogEntry(
       id: 'settings-appearance',
       label: 'Appearance',
       keywords: const ['appearance', 'theme'],
-      icon: Icons.palette_outlined,
-      run: () async {},
     ),
   ];
   final agents = [
-    GlobalSearchFeatureEntry(
+    SearchCatalogEntry(
       id: 'agent-codex',
       label: 'Codex',
       keywords: const ['codex'],
-      icon: Icons.psychology_outlined,
-      run: () async {},
     ),
   ];
   final plugins = [
-    GlobalSearchFeatureEntry(
+    SearchCatalogEntry(
       id: 'plugin-adapter-codex',
       label: 'Codex Plugin',
       keywords: const ['codex', 'plugin'],
-      icon: Icons.extension_outlined,
-      run: () async {},
     ),
   ];
   const skills = [
@@ -59,25 +46,21 @@ void main() {
     {'skillId': 'other', 'title': 'Other', 'description': 'Alpha notes'},
   ];
   final conversations = [
-    AgentConversationSearchHit(
-      document: AgentConversationSearchDocument(
-        agentId: 'codex',
-        sessionId: 's1',
-        title: 'Alpha topic',
-        content: 'body',
-      ),
-      score: 1,
-      titleMatched: true,
-      snippet: 'Alpha topic',
+    const SearchResultProjection(
+      id: 's1',
+      title: 'Alpha topic',
+      subtitle: 'Codex',
+      destination: ClientSection.agents,
+      resultKind: 'conversation',
     ),
   ];
 
-  DestinationSearchHits rank(
+  RankedSearchCatalog rank(
     ClientSection destination,
     String query, {
-    List<AgentConversationSearchHit> hits = const [],
+    List<SearchResultProjection> hits = const [],
   }) {
-    return rankDestinationSearch(
+    return rankSearchCatalog(
       destination: destination,
       query: query,
       features: features,
@@ -86,7 +69,7 @@ void main() {
       pluginFeatures: plugins,
       skills: skills,
       skillScore: (skill, needle) =>
-          skillHubSearchScore(skill, needle).toDouble(),
+          scoreSkillHubSearchEntry(skill, needle).toDouble(),
       conversations: hits,
     );
   }

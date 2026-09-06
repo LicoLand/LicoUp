@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_connec
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -28,10 +29,11 @@ class ConversationPaneHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final sessionTitle = state.session?.title.trim();
-    final headerTitle = sessionTitle == null || sessionTitle.isEmpty
-        ? agentConversationTargetDisplayName(state.target)
-        : sessionTitle;
+    final sessionTitle = state.session?.title ?? '';
+    final headerTitle = historySessionDisplayTitle(
+      sessionTitle,
+      fallback: agentConversationTargetDisplayName(state.target),
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final mobileClient = isMobileClientPlatform(context);

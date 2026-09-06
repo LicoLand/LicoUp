@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'usage_agent_service_fakes.dart';
+import 'monitoring_binding_fixture.dart';
 import 'usage_panel_fixtures.dart';
 
 void registerAgentUsageCacheScenarios() {
@@ -18,7 +19,11 @@ void registerAgentUsageCacheScenarios() {
           .toIso8601String(),
     );
     final controller = ClientController(agentService: service);
-    addTearDown(controller.dispose);
+    final monitoring = MonitoringBindingFixture(controller);
+    addTearDown(() async {
+      await monitoring.close();
+      controller.dispose();
+    });
 
     await tester.pumpWidget(
       usageTestApp(
@@ -28,7 +33,7 @@ void registerAgentUsageCacheScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(controller: controller),
+          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
         ),
       ),
     );
@@ -43,7 +48,11 @@ void registerAgentUsageCacheScenarios() {
     (tester) async {
       final service = DelayedStaleUsageAgentService();
       final controller = ClientController(agentService: service);
-      addTearDown(controller.dispose);
+      final monitoring = MonitoringBindingFixture(controller);
+      addTearDown(() async {
+        await monitoring.close();
+        controller.dispose();
+      });
 
       Widget panel() => usageTestApp(
         theme: buildLicoTheme(
@@ -52,7 +61,7 @@ void registerAgentUsageCacheScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(controller: controller),
+          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
         ),
       );
 

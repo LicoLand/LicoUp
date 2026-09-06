@@ -8,28 +8,30 @@ void main() {
     tester,
   ) async {
   final sv_code_1 = _synth('CODE-1');
-    final controller = mobileRelayPanelTestController();
     final stationBaseUrlController = TextEditingController(
       text: 'https://station.example.test',
     );
-    addTearDown(controller.dispose);
     addTearDown(stationBaseUrlController.dispose);
-    controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
-      stationBaseUrl: 'https://station.example.test',
+    final intents = RecordingMobileRelayIntents();
+    final projection = MobileRelayProjection(
+      peers: const [],
+      approvals: const [],
+      transfers: const [],
+      pairingCode: sv_code_1,
+      pairingInvite: 'opaque-pairing-invite',
       pairingId: 'pair-1',
-      lastPairingExpiresAt: '2030-01-01T00:00:00Z',
+      pairingExpiresLabel: '2030-01-01T00:00:00Z',
+      stationLabel: 'https://station.example.test',
+      stationConfigured: true,
+      phase: PresentationPhase.ready,
     );
 
     await tester.pumpWidget(
       mobileRelayPanelTestApp(
         child: MobileRelayPairingWorkspaceCard(
-          controller: controller,
+          projection: projection,
+          intents: intents,
           stationBaseUrlController: stationBaseUrlController,
-          presentation:  MobilePairingPresentation(
-            pairingCode: sv_code_1,
-            inviteText: 'opaque-pairing-invite',
-          ),
-          onGenerate: () async {},
         ),
       ),
     );
@@ -43,5 +45,6 @@ void main() {
     expect(find.text('pair-1'), findsOneWidget);
     expect(find.text(sv_code_1), findsOneWidget);
     expect(find.byTooltip('Copy Pairing Code'), findsOneWidget);
+    expect(intents.values, isEmpty);
   });
 }

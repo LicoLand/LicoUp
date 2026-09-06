@@ -1,32 +1,47 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/agents/archive/conversation_archive_job_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
+const String conversationArchiveAllSelection = 'all';
+const String conversationArchiveExactKeywordSelection = 'exact-keyword';
+
+final class ConversationArchiveActions {
+  const ConversationArchiveActions({
+    required this.initialQuery,
+    required this.destinationFor,
+    required this.archiveAll,
+    required this.archiveExactKeyword,
+  });
+
+  final String initialQuery;
+  final String Function(String selectionMode, String sourceAgentId)
+  destinationFor;
+  final void Function(String sourceAgentId, String destination) archiveAll;
+  final void Function(String query, String sourceAgentId, String destination)
+  archiveExactKeyword;
+}
+
 Future<void> showConversationArchiveDialog(
-  BuildContext context,
-  ClientController controller, {
-  String? sourceAgentId,
+  BuildContext context, {
+  required ConversationArchiveActions actions,
+  required String sourceAgentId,
 }) {
   return showDialog<void>(
     context: context,
     builder: (context) => _ConversationArchiveDialog(
-      controller: controller,
-      sourceAgentId: sourceAgentId ?? controller.selectedConversationAgentId,
+      actions: actions,
+      sourceAgentId: sourceAgentId,
     ),
   );
 }
 
 final class _ConversationArchiveDialog extends StatefulWidget {
   const _ConversationArchiveDialog({
-    required this.controller,
+    required this.actions,
     required this.sourceAgentId,
   });
 
-  final ClientController controller;
+  final ConversationArchiveActions actions;
   final String sourceAgentId;
 
   @override
@@ -42,9 +57,7 @@ final class _ConversationArchiveDialogState
   @override
   void initState() {
     super.initState();
-    _queryController = TextEditingController(
-      text: widget.controller.archiveQueryDraft,
-    );
+    _queryController = TextEditingController(text: widget.actions.initialQuery);
   }
 
   @override
@@ -58,9 +71,9 @@ final class _ConversationArchiveDialogState
     final strings = LicoStrings.of(context);
     final exact = _selectionMode == conversationArchiveExactKeywordSelection;
     final sourceAgentId = widget.sourceAgentId.trim();
-    final destination = widget.controller.conversationArchiveDestinationFor(
-      selectionMode: _selectionMode,
-      sourceAgentId: sourceAgentId,
+    final destination = widget.actions.destinationFor(
+      _selectionMode,
+      sourceAgentId,
     );
     final canSubmit =
         destination.isNotEmpty &&
@@ -121,23 +134,15 @@ final class _ConversationArchiveDialogState
           onPressed: canSubmit
               ? () {
                   final query = _queryController.text.trim();
-                  widget.controller.archiveQueryDraft = query;
                   Navigator.of(context).pop();
                   if (exact) {
-                    unawaited(
-                      widget.controller.archiveConversationExactKeyword(
-                        query: query,
-                        sourceAgentId: sourceAgentId,
-                        path: destination,
-                      ),
+                    widget.actions.archiveExactKeyword(
+                      query,
+                      sourceAgentId,
+                      destination,
                     );
                   } else {
-                    unawaited(
-                      widget.controller.archiveAllConversations(
-                        sourceAgentId: sourceAgentId,
-                        path: destination,
-                      ),
-                    );
+                    widget.actions.archiveAll(sourceAgentId, destination);
                   }
                 }
               : null,

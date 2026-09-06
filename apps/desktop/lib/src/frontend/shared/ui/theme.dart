@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_buttons.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';

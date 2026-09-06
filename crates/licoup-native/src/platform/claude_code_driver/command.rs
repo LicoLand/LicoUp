@@ -130,14 +130,18 @@ impl LaunchIdentity {
 
     pub(in crate::platform) fn spawn(&self) -> io::Result<SupervisedChild> {
         let mut command = Command::new(&self.executable);
+        super::super::user_shell_environment::apply_to_command(&mut command);
         command
             .args(self.args())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if let Some(path) =
-            executable_augmented_path(&self.executable, std::env::var_os("PATH").as_deref())
-        {
+        // The executable's own directory stays the PATH head on top of the
+        // user shell snapshot PATH, so sibling vendor tools keep resolving.
+        if let Some(path) = executable_augmented_path(
+            &self.executable,
+            super::super::user_shell_environment::get("PATH").map(OsStr::new),
+        ) {
             command.env("PATH", path);
         }
         if let Some(cwd) = self.cwd.as_ref() {

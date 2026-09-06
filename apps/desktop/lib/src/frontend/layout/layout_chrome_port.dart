@@ -46,7 +46,11 @@ final class LayoutChromeSnapshot {
   const LayoutChromeSnapshot({required this.status});
 
   const LayoutChromeSnapshot.empty()
-    : status = const LayoutChromeStatusSnapshot(message: '', caption: '');
+    : status = const LayoutChromeStatusSnapshot(
+        message: '',
+        caption: '',
+        errorCode: '',
+      );
 
   final LayoutChromeStatusSnapshot status;
 
@@ -64,10 +68,12 @@ final class LayoutChromeStatusSnapshot {
   const LayoutChromeStatusSnapshot({
     required this.message,
     required this.caption,
+    required this.errorCode,
   });
 
   final String message;
   final String caption;
+  final String errorCode;
 
   String get displayText => message.isEmpty ? caption : message;
 
@@ -76,8 +82,9 @@ final class LayoutChromeStatusSnapshot {
       identical(this, other) ||
       other is LayoutChromeStatusSnapshot &&
           message == other.message &&
-          caption == other.caption;
+          caption == other.caption &&
+          errorCode == other.errorCode;
 
   @override
-  int get hashCode => Object.hash(message, caption);
+  int get hashCode => Object.hash(message, caption, errorCode);
 }

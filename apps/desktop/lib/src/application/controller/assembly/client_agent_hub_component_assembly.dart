@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
-
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
@@ -14,8 +12,6 @@ final class ClientAgentHubComponentAssembly {
 
   late final AgentHubEnginePort engine;
   late final AgentHubCatalogController controller;
-
-  Iterable<ChangeNotifier> get listenables => [controller];
 
   void dispose() => controller.dispose();
 }

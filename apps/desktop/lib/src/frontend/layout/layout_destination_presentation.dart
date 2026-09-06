@@ -22,6 +22,13 @@ abstract interface class LayoutAgentsPresentation
   bool get showCollapsedSidebarControl;
   bool get showConversationSidebarControl;
 
+  /// Whether the conversation list card carries the Dashboard bottom
+  /// navigation row (功能/对话/设置). A profile whose own chrome already
+  /// provides that navigation (the Desktop dock with its pinned 设置/功能
+  /// icons and 对话 button) hides the row so the fullscreen-exclusive
+  /// conversation app stays free of duplicate navigation.
+  bool get showSidebarBottomNav;
+
   Widget frameWorkspace(
     BuildContext context, {
     required Key key,
@@ -111,3 +118,13 @@ final class LayoutDestinationPresentationScope extends InheritedWidget {
       !identical(oldWidget.agents, agents) ||
       !identical(oldWidget.settings, settings);
 }
+
+LayoutAgentsPresentation layoutAgentsPresentationOf(BuildContext context) =>
+    LayoutDestinationPresentationScope.agentsOf(context);
+
+LayoutAgentsPresentation? maybeLayoutAgentsPresentationOf(
+  BuildContext context,
+) => LayoutDestinationPresentationScope.maybeOf(context)?.agents;
+
+LayoutSettingsPresentation layoutSettingsPresentationOf(BuildContext context) =>
+    LayoutDestinationPresentationScope.settingsOf(context);

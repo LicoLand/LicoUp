@@ -78,10 +78,17 @@ pub(in crate::platform) fn which(name: &str) -> bool {
 }
 
 fn which_path(name: &str) -> Option<PathBuf> {
-    let Ok(path_var) = std::env::var("PATH") else {
-        return None;
-    };
-    std::env::split_paths(&path_var).find_map(|entry| {
+    // The user shell PATH (with the process PATH fallback) is searched so a
+    // CLI on the user's terminal PATH is found even when the LicoUp process
+    // PATH lacks it.
+    which_path_in_dirs(
+        name,
+        &crate::platform::user_shell_environment::search_path_dirs(),
+    )
+}
+
+pub(super) fn which_path_in_dirs(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter().find_map(|entry| {
         let candidate = entry.join(name);
         if candidate.is_file() {
             return Some(candidate);

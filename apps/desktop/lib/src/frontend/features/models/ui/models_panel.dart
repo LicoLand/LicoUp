@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/telegram_channel_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_value_builder.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
+import 'package:licoup/src/presentation/models/models_binding.dart';
+import 'package:licoup/src/presentation/models/models_intent.dart';
+import 'package:licoup/src/presentation/models/models_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 enum ModelsPanelPane { gateway, chatChannels }
 
@@ -16,64 +21,96 @@ ModelsPanelPane modelsPanelPaneOf(BuildContext context) {
   final tab = LayoutScope.maybeOf(
     context,
   )?.state.readIfDeclared(LayoutStateChannels.communicationSection);
-  if (tab is LayoutTabState && tab.index == 1) {
-    return ModelsPanelPane.chatChannels;
-  }
-  return ModelsPanelPane.gateway;
+  return tab is LayoutTabState && tab.index == 1
+      ? ModelsPanelPane.chatChannels
+      : ModelsPanelPane.gateway;
 }
 
-/// Models destination: the local LLM gateway, or the chat-channel pane that
-/// hosts Telegram. Telegram is no longer stacked under the gateway body.
 final class ModelsPanel extends StatelessWidget {
-  const ModelsPanel({
-    super.key,
-    required this.controller,
-    this.pane = ModelsPanelPane.gateway,
-  });
+  const ModelsPanel({super.key, required this.binding, this.pane});
 
-  final ClientController controller;
-  final ModelsPanelPane pane;
+  final ModelsBinding binding;
+
+  /// An explicit pane pin, or null to follow the shared pane channel and
+  /// re-resolve it on every layout-state change.
+  final ModelsPanelPane? pane;
 
   @override
   Widget build(BuildContext context) {
-    if (pane == ModelsPanelPane.chatChannels) {
-      return ListView(
-        key: const Key('models-panel-chat-channels'),
-        padding: MessagingDesktopMetrics.mainPanePadding,
-        children: [
-          TelegramChannelCard(
-            agentService: controller.agentService,
-            lifecycleController: controller.llmGatewayLifecycleController,
-          ),
-        ],
-      );
+    final pinned = pane;
+    if (pinned != null) {
+      return _buildFor(context, pinned);
     }
+    final state = LayoutScope.maybeOf(context)?.state;
+    return LayoutValuesBuilder(
+      state: state,
+      valuesOf: (context) => [modelsPanelPaneOf(context)],
+      builder: (context) => _buildFor(context, modelsPanelPaneOf(context)),
+    );
+  }
+
+  /// Both panes inherit the standard feature-page structure
+  /// ([LicoPaneScaffold]: title bar on top, content below); only the title,
+  /// refresh intent, and body cards differ per pane.
+  Widget _buildFor(BuildContext context, ModelsPanelPane resolvedPane) {
     final strings = LicoStrings.of(context);
-    return ListView(
-      // Release AOT keeps ValueKey/Key strings; use this as an install canary.
-      key: const Key('models-panel-licoup-keys-layout-v3-gateway-first'),
-      padding: MessagingDesktopMetrics.mainPanePadding,
-      children: [
-        Text(
-          strings.modelGateway,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 16),
-        LlmGatewayCard(
-          agentService: controller.agentService,
-          authorization: controller.llmVaultAuthorization,
-          readSettings: controller.agentWorkspaceReadSettingsState,
-          writeSettings: controller.agentWorkspaceWriteSettingsState,
-          lifecycleController: controller.llmGatewayLifecycleController,
-          belowDivider: LlmGatewayCredentialsCard(
-            agentService: controller.agentService,
-            authorization: controller.llmVaultAuthorization,
-            lifecycleController: controller.llmGatewayLifecycleController,
+    return ProjectionBuilder<ModelsProjection, ModelsProjection>(
+      source: binding.projection,
+      select: (projection) => projection,
+      builder: (context, projection) {
+        final refreshing = projection.phase == PresentationPhase.loading;
+        if (resolvedPane == ModelsPanelPane.chatChannels) {
+          return LicoPaneScaffold(
+            title: strings.chatChannels,
+            refreshTooltip: strings.refresh,
+            onRefresh: refreshing
+                ? null
+                : () => binding.intents.send(const RefreshTelegramChannel()),
+            refreshing: refreshing,
+            refreshButtonKey: const Key('models-chat-channels-refresh'),
+            body: ListView(
+              key: const Key('models-panel-chat-channels'),
+              padding: EdgeInsets.zero,
+              children: [
+                TelegramChannelCard(
+                  projection: projection.telegram,
+                  phase: projection.phase,
+                  notice: projection.notice,
+                  intents: binding.intents,
+                ),
+              ],
+            ),
+          );
+        }
+        return LicoPaneScaffold(
+          title: strings.modelGateway,
+          refreshTooltip: strings.refresh,
+          onRefresh: refreshing
+              ? null
+              : () => binding.intents.send(const RefreshGateway()),
+          refreshing: refreshing,
+          refreshButtonKey: const Key('models-gateway-refresh'),
+          body: ListView(
+            key: const Key('models-panel-licoup-keys-layout-v3-gateway-first'),
+            padding: EdgeInsets.zero,
+            children: [
+              LlmGatewayCard(
+                projection: projection.gateway,
+                phase: projection.phase,
+                notice: projection.notice,
+                intents: binding.intents,
+                belowDivider: LlmGatewayCredentialsCard(
+                  credentials: projection.credentials,
+                  gatewayRunning: projection.gateway.running,
+                  phase: projection.phase,
+                  notice: projection.notice,
+                  intents: binding.intents,
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

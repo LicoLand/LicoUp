@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:licoup/app.dart';
-import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/client_app_composition.dart';
 
 import 'support/agent_conversation_product_fixture.dart';
 
@@ -35,7 +36,8 @@ void main() {
 
       await tester.pumpWidget(
         LicoApp(
-          controllerFactory: () => controller,
+          compositionFactory: () =>
+              ClientAppComposition(controller: controller),
           initializeController: false,
         ),
       );

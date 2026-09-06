@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
 
 /// Tone for chrome-band notification-center rows.
 enum MessagingNotificationTone { info, warning, failure, success }
 
 /// One user-visible operation-feedback item in the top-right notification
 /// center. Uses a stable [id] so refreshes replace rather than duplicate.
-@immutable
 final class MessagingNotificationItem {
   const MessagingNotificationItem({
     required this.id,
@@ -32,7 +31,7 @@ final class MessagingNotificationItem {
 /// Design system: the top-right bell is the single destination for
 /// user-visible success / warning / failure after an action starts. Feature
 /// pages must not invent parallel snack bars for the same events.
-final class MessagingNotificationCenter extends ChangeNotifier {
+final class MessagingNotificationCenter extends ApplicationStateOwner {
   final Map<String, MessagingNotificationItem> _byId =
       <String, MessagingNotificationItem>{};
   int _revision = 0;
@@ -72,17 +71,17 @@ final class MessagingNotificationCenter extends ChangeNotifier {
       createdAt: DateTime.now().toUtc(),
     );
     _revision += 1;
-    notifyListeners();
+    publishChange();
   }
 
   void dismiss(String id) {
     if (_byId.remove(id.trim()) == null) return;
-    notifyListeners();
+    publishChange();
   }
 
   void clear() {
     if (_byId.isEmpty) return;
     _byId.clear();
-    notifyListeners();
+    publishChange();
   }
 }

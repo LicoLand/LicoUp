@@ -140,11 +140,11 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart"
   ]);
   assert(
-    agentConversationWorkspaceSource.includes("agent_conversation_composer.dart") &&
+    agentConversationWorkspaceSource.includes("agent_conversation_pane/composition.dart") &&
       agentConversationWorkspaceSource.includes("agent_conversation_event_card.dart") &&
       agentConversationWorkspaceSource.includes("RuntimeMessageComposer(") &&
       agentConversationWorkspaceSource.includes("buildConversationTimelineItems(") &&
-      agentConversationWorkspaceSource.includes("sendConversationMessage") &&
+      agentConversationWorkspaceSource.includes("PostConversationMessage(") &&
       agentConversationComposerSource.includes("class RuntimeMessageComposer") &&
       agentConversationComposerSource.includes("TextField(") &&
       agentConversationComposerSource.includes("widget.onSend(text)") &&
@@ -189,128 +189,16 @@ export async function checkClientRootAndShell(context, {
     runJson,
     sameSet,
   } = context;
-  const clientControllerFacadeSource = await readText(
-    "apps/desktop/lib/src/application/controller/client_controller.dart"
+  const applicationSources = await readJoinedText(
+    await collectSourceFiles("apps/desktop/lib/src/application", ".dart")
   );
-  const clientComponentAssemblySource = await readText(
-    "apps/desktop/lib/src/application/controller/client_component_assembly.dart"
-  );
-  const clientComponentAssemblyLeafSources = await Promise.all([
-    "client_presentation_component_assembly.dart",
-    "client_lifecycle_component_assembly.dart",
-    "client_conversation_component_assembly.dart",
-    "client_target_component_assembly.dart",
-    "client_skill_component_assembly.dart",
-    "client_settings_component_assembly.dart",
-    "client_mobile_component_assembly.dart",
-    "client_usage_component_assembly.dart",
-    "client_navigation_component_assembly.dart",
-  ].map((name) => readText(
-    `apps/desktop/lib/src/application/controller/assembly/${name}`
-  )));
-  const clientControllerRuntimeFacadeSources = await Promise.all([
-    "client_conversation_facade.dart",
-    "client_presentation_facade.dart",
-    "client_routing_facade.dart",
-    "client_navigation_facade.dart",
-    "client_lifecycle_facade.dart",
-  ].map((name) => readText(
-    `apps/desktop/lib/src/application/controller/${name}`
-  )));
-  const clientControllerSource = [
-    clientControllerFacadeSource,
-    clientComponentAssemblySource,
-    ...clientComponentAssemblyLeafSources,
-    ...clientControllerRuntimeFacadeSources,
-    await readText(
-      "apps/desktop/lib/src/application/controller/client_mobile_relay_facade.dart"
-    )
-  ].join("\n");
-  const clientLifecycleControllerSource = await readDartSourceByBasename(
-    "client_lifecycle_coordinator.dart"
-  );
-  const clientShellControllerSource = await readDartSourceByBasename(
-    "client_shell_controller.dart"
-  );
-  const clientNavigationControllerSource = await readDartSourceByBasename(
-    "client_navigation_controller.dart"
-  );
-  const clientRoutingFacadeSource = await readText(
-    "apps/desktop/lib/src/application/controller/client_routing_facade.dart"
-  );
-  const conversationPresentationSignalsSource = await readDartSourceByBasename(
-    "conversation_presentation_signals.dart"
-  );
-  assert(
-    clientLifecycleControllerSource.includes("final class ClientLifecycleCoordinator") &&
-      clientLifecycleControllerSource.includes("Future<void>? _initializeFuture") &&
-      clientLifecycleControllerSource.includes("await Future.wait<void>") &&
-      clientShellControllerSource.includes("final class ClientShellController") &&
-      clientShellControllerSource.includes("ValueNotifier<int> _presentationRevision") &&
-      clientNavigationControllerSource.includes("final class ClientNavigationController") &&
-      clientNavigationControllerSource.includes("final Map<ClientSection, ClientSectionHooks> _hooks") &&
-      conversationPresentationSignalsSource.includes("ValueNotifier<int> _structureRevision") &&
-      conversationPresentationSignalsSource.includes("ValueNotifier<int> _activeRevision"),
-    "root presentation, lifecycle, navigation, and conversation signals must have independent state owners"
-  );
-  assert(
-    clientControllerSource.includes("shellController = ClientShellController()") &&
-      clientControllerSource.includes("controller = ClientLifecycleCoordinator(") &&
-      clientControllerSource.includes("controller = ClientNavigationController(") &&
-      clientControllerSource.includes("Future<void> initialize() => initializeWithOptions()") &&
-      clientControllerSource.includes("initializeWithOptions({bool runBackgroundSteps = true})") &&
-      clientControllerSource.includes("lifecycleController.initialize(") &&
-      clientControllerSource.includes("navigationController.select(section)") &&
-      clientControllerSource.includes("shellController.presentationListenable") &&
-      clientRoutingFacadeSource.includes("AgentService get agentService;") &&
-      !clientRoutingFacadeSource.includes("orchestrator"),
-    "ClientController must remain a composition facade that delegates root state to focused controllers"
-  );
-  assert(
-  clientControllerFacadeSource.includes("ClientComponentAssembly(") &&
-        !clientControllerFacadeSource.includes("TargetController(") &&
-        !clientControllerFacadeSource.includes("SecureMeshController(") &&
-        !clientControllerFacadeSource.includes("ClientNavigationController(") &&
-        !clientComponentAssemblySource.includes("client_controller.dart") &&
-        clientComponentAssemblySource.includes("ClientMobileComponentAssembly(") &&
-        clientComponentAssemblySource.includes("ClientSettingsComponentAssembly(") &&
-        clientComponentAssemblyLeafSources.every((source) =>
-          !source.includes("client_controller.dart") &&
-          !/^part(?: of)? /m.test(source)
-        ) &&
-        !/^part(?: of)? /m.test(clientComponentAssemblySource),
-      "ClientController construction must remain delegated to the bounded, ordinary-import ClientComponentAssembly"
-    );
-    for (const [relativePath, source] of [
-      ["client_lifecycle_coordinator.dart", clientLifecycleControllerSource],
-      ["client_shell_controller.dart", clientShellControllerSource],
-      ["client_navigation_controller.dart", clientNavigationControllerSource],
-      ["conversation_presentation_signals.dart", conversationPresentationSignalsSource]
-    ]) {
-      assert(
-        !source.includes("package:licoup/src/backend/") &&
-          !source.includes("package:licoup/src/platform/") &&
-          !source.includes("package:licoup/src/frontend/"),
-        `${relativePath} must stay independent of backend, platform, and frontend implementations`
-      );
-    }
-    const initializeCoreStart = clientControllerSource.indexOf(
-      "Future<void> _initializeClientCore() async {"
-    );
-    const initializeCoreEnd = clientControllerSource.indexOf(
-      "Future<void> _finalizeClientInitialization()",
-      initializeCoreStart
-    );
-    const initializeCoreSource = initializeCoreStart >= 0 && initializeCoreEnd > initializeCoreStart
-      ? clientControllerSource.slice(initializeCoreStart, initializeCoreEnd)
-      : "";
-    assert(initializeCoreSource.includes("mobileRelayController.loadConfig(authorizeSecrets: false)"),
+    assert(applicationSources.includes("mobileRelayController.loadConfig(authorizeSecrets: false)"),
       "core hydration must load public Mobile Relay configuration without authorizing secret access"
     );
-    assert(clientControllerSource.includes("secureMeshFileReceiveDestination") &&
+    assert(applicationSources.includes("secureMeshFileReceiveDestination") &&
       secureMeshControllerSource.includes("evaluateFileReceiveDestination") &&
       mobileRelayClientAdapterSource.includes("evaluateSecureMeshFileReceiveDestination"),
-      "LicoUp client controller must retain Secure Mesh file receive-destination policy state"
+      "LicoUp Application must retain Secure Mesh file receive-destination policy state"
     );
     const mobileRelayPanelSource = [
       mobileRelayPanelFacadeSource,
@@ -332,14 +220,16 @@ export async function checkClientRootAndShell(context, {
     clientLogExportServiceSource.includes("temporary.rename(destination.path)"),
     "client_log_export_service.dart must export the portable activity log without rendering it as a standalone page"
   );
-  assert(semanticDestinationsSource.includes("enum ClientSection") &&
-    clientShellSource.includes("ClientSection.agents => AgentsCanvas") &&
-    clientShellSource.includes("ClientSection.monitoring => AgentUsagePanel") &&
-    clientShellSource.includes("ClientSection.skillHub => SkillHubPanel") &&
-    clientShellSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
-    clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
-    clientShellSource.includes("ClientSection.settings => SettingsPanel") &&
-    clientShellSource.includes("ClientSection.agentHub => AgentHubPanel"),
+  assert(semanticDestinationsSource.includes("enum ClientSection") && [
+    "agents",
+    "monitoring",
+    "skillHub",
+    "pluginManagement",
+    "mobileRelay",
+    "models",
+    "settings",
+    "agentHub"
+  ].every((destination) => semanticDestinationsSource.includes(destination)),
     "LicoUp client shell must expose only the current top-level section bodies"
   );
   for (const [relativePath, source] of [

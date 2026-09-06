@@ -2,28 +2,34 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
-import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 class SettingsLogExportTile extends StatelessWidget {
-  const SettingsLogExportTile({super.key, required this.controller});
+  const SettingsLogExportTile({
+    super.key,
+    required this.binding,
+    required this.projection,
+  });
 
-  final ClientController controller;
+  final SettingsBinding binding;
+  final SettingsProjection projection;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final exportedPath = controller.clientLogExportPath.trim();
+    final exportedPath = projection.clientLogExportPath.trim();
     final exportButton = FilledButton.tonalIcon(
-      onPressed: controller.isExportingClientLogs
+      onPressed: projection.exportingClientLogs
           ? null
           : () => unawaited(_chooseAndExport(context)),
-      icon: controller.isExportingClientLogs
+      icon: projection.exportingClientLogs
           ? const SizedBox(
               width: 16,
               height: 16,
@@ -40,10 +46,15 @@ class SettingsLogExportTile extends StatelessWidget {
         icon: Icons.file_download_outlined,
         readOnly: true,
         actions: [exportButton],
-        onOpen: (path) => controller.openDirectoryPath(
-          p.dirname(path),
-          caption: strings.clientLogs,
-        ),
+        onOpen: (_) {
+          binding.intents.send(
+            OpenSettingsDirectory(
+              SettingsDirectory.clientLogs,
+              caption: strings.clientLogs,
+            ),
+          );
+          return Future<void>.value();
+        },
       );
     }
     final subtitle = strings.exportLogsDescription.trim();
@@ -66,7 +77,7 @@ class SettingsLogExportTile extends StatelessWidget {
     if (location == null) {
       return;
     }
-    await controller.exportClientLogs(location.path);
+    binding.intents.send(ExportClientDiagnostics(location.path));
   }
 }
 

@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller_context.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_install_actions.dart';
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_lifecycle_actions.dart';
@@ -25,7 +26,7 @@ typedef OptionalCollaborationStatusSink =
 
 /// Inert façade over independent lifecycle, runner-trust, installation, and
 /// workflow controllers. Construction performs no native or network action.
-final class OptionalCollaborationController extends ChangeNotifier
+final class OptionalCollaborationController extends ApplicationStateOwner
     implements OptionalCollaborationControllerContext {
   OptionalCollaborationController({
     required OptionalCollaborationGateway gateway,
@@ -42,7 +43,7 @@ final class OptionalCollaborationController extends ChangeNotifier
     _lifecycle = OptionalCollaborationLifecycleActions(this);
     _runnerTrust = OptionalCollaborationRunnerTrustActions(this);
     _install = OptionalCollaborationInstallActions(this);
-    workflows.addListener(_forwardWorkflowChange);
+    _workflowSubscription = workflows.changes.listen((_) => publishChange());
   }
 
   final OptionalCollaborationGateway _gateway;
@@ -51,6 +52,7 @@ final class OptionalCollaborationController extends ChangeNotifier
   late final OptionalCollaborationLifecycleActions _lifecycle;
   late final OptionalCollaborationRunnerTrustActions _runnerTrust;
   late final OptionalCollaborationInstallActions _install;
+  late final StreamSubscription<ApplicationChange> _workflowSubscription;
 
   @override
   late final OptionalCollaborationWorkflowController workflows;
@@ -150,21 +152,21 @@ final class OptionalCollaborationController extends ChangeNotifier
     if (_busy || workflows.busy) return false;
     _busy = true;
     _errorCode = '';
-    notifyListeners();
+    publishChange();
     return true;
   }
 
   @override
   void endAction() {
     _busy = false;
-    notifyListeners();
+    publishChange();
   }
 
   @override
   bool rejectAction(String errorCode, String chinese, String english) {
     _errorCode = errorCode;
     reportAction(chinese, english, errorCode: errorCode);
-    notifyListeners();
+    publishChange();
     return false;
   }
 
@@ -197,11 +199,9 @@ final class OptionalCollaborationController extends ChangeNotifier
     await _onCatalogPurge?.call();
   }
 
-  void _forwardWorkflowChange() => notifyListeners();
-
   @override
   void dispose() {
-    workflows.removeListener(_forwardWorkflowChange);
+    unawaited(_workflowSubscription.cancel());
     workflows.dispose();
     super.dispose();
   }
