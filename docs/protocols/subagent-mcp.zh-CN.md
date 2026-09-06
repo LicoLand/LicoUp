@@ -44,6 +44,16 @@ Assistant 的准确活动 Agent Membership，才能读取排序后的 Membership
 所有者；MCP 服务不会创建第二套 scheduler、history 或 terminal output store。
 原生身份、路径、prompt 与 Agent output 不进入 Profile 或工作流回执。
 
+`lico_assistant_workflow_execute` 另有三个可选字段承载主智能体对 callback
+模式 Graph 边的决策：`decision`（`advance`、`return` 或 `terminate`）、
+`callbackStateId` 与 `callbackStateVisit`。当 Assistant run 的工作流结算到一条
+callback 边时，run 持久挂起而不进入声明的下一节点；execute 调用返回
+`callback_decision_required` 与待决回调列表，主智能体 Membership 同时收到一条指明
+此应答通道的 `strategy-callback-request` 会话事件。决策搭乘同一次幂等 execute
+调用——同一 Conversation、Membership、workflow、bindings、input 与幂等键——因此重放
+的决策是陈旧的，不会结算任何东西。`advance` 进入声明的下一节点，`return` 重新进入
+已完成节点，`terminate` 取消该 run。九工具目录保持不变。
+
 ## 权限与调用谱系
 
 每项效果都绑定到已认证 caller Membership，以及同一 Canonical Conversation

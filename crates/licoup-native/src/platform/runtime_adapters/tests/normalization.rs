@@ -85,7 +85,74 @@ fn codex_usage_limit_response_preserves_safe_resolution_contract() {
         response["error"]["recovery"],
         "select_available_model_or_wait_for_quota_reset"
     );
+    // The driver-provided exact recovery wins; the funnel still attaches the
+    // bounded root-cause class.
+    assert_eq!(response["error"]["rootCause"], "quota");
     assert_eq!(response["error"]["message"], "Codex usage limit exceeded.");
+}
+
+#[test]
+fn spawn_failure_response_carries_env_mismatch_root_cause_and_recovery() {
+    let failure = codex_app_server::model::ProtocolFailure::new(
+        "codex_app_server_start_failed",
+        "The Codex executable is not available.",
+        "process/start",
+    );
+    let response = execution_response(
+        RuntimeAdapter::Codex,
+        normalize_codex(codex_app_server::RunResult {
+            ok: false,
+            output: String::new(),
+            transitions: Vec::new(),
+            error: Some(failure),
+            session_id: String::new(),
+            thread_id: String::new(),
+            turn_id: String::new(),
+            turn_status: "failed".to_string(),
+            effective: codex_app_server::EffectiveSettings::default(),
+            status_code: None,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            started_at: "1".to_string(),
+        }),
+    );
+
+    assert_eq!(response["error"]["code"], "codex_app_server_start_failed");
+    assert_eq!(response["error"]["rootCause"], "env_mismatch");
+    assert_eq!(
+        response["error"]["recovery"],
+        "subagent_env_mismatch: LicoUp-launched CLI environment differs from user terminal"
+    );
+}
+
+#[test]
+fn unmatched_failure_response_carries_unknown_root_cause_with_review_hint() {
+    let failure = codex_app_server::model::ProtocolFailure::new(
+        "codex_final_message_missing",
+        "Codex completed the turn without a final agent message.",
+        "turn/completed",
+    );
+    let response = execution_response(
+        RuntimeAdapter::Codex,
+        normalize_codex(codex_app_server::RunResult {
+            ok: false,
+            output: String::new(),
+            transitions: Vec::new(),
+            error: Some(failure),
+            session_id: String::new(),
+            thread_id: String::new(),
+            turn_id: String::new(),
+            turn_status: "failed".to_string(),
+            effective: codex_app_server::EffectiveSettings::default(),
+            status_code: None,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            started_at: "1".to_string(),
+        }),
+    );
+
+    assert_eq!(response["error"]["rootCause"], "unknown");
+    assert_eq!(response["error"]["recovery"], "review_terminal_result");
 }
 
 #[test]
