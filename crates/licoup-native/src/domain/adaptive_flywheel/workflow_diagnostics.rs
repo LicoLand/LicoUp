@@ -17,7 +17,7 @@ use super::graph::{CompiledWorkflow, compile_workflow};
 use super::{
     BindingKind, GraphStateKind, MAX_ACTIVE_EFFECTS, MAX_BINDING_SLOTS, MAX_GRAPH_STATES,
     MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS, MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS,
-    TransitionEvent, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition,
+    TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition,
 };
 
 const MAX_DIAGNOSTICS: usize = 128;
@@ -700,7 +700,7 @@ fn validate_raw_transition(
     let Some(transition) = object(
         value,
         &path,
-        &["id", "from", "to", "event", "guard"],
+        &["id", "from", "to", "event", "mode", "guard"],
         &["id", "from", "to", "event"],
         diagnostics,
     ) else {
@@ -715,6 +715,14 @@ fn validate_raw_transition(
         &join(&path, "event"),
         true,
         &["complete", "success", "failure"],
+        diagnostics,
+    );
+    enum_string(
+        transition,
+        "mode",
+        &join(&path, "mode"),
+        false,
+        &["callback", "flow"],
         diagnostics,
     );
     if let Some(guard) = transition.get("guard")
@@ -1095,6 +1103,7 @@ fn collect_semantic_diagnostics(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_state_and_transition_diagnostics(
     definition: &WorkflowDefinition,
     binding_slots: &BTreeMap<&str, &super::ActorSlot>,
@@ -1105,6 +1114,13 @@ fn collect_state_and_transition_diagnostics(
     workset_counts: &BTreeMap<String, usize>,
     diagnostics: &mut Vec<PreflightDiagnostic>,
 ) {
+    let flow_entered: BTreeSet<&str> = definition
+        .transitions
+        .iter()
+        .filter(|transition| transition.mode == TransitionMode::Flow)
+        .map(|transition| transition.to.as_str())
+        .chain([definition.initial.as_str()])
+        .collect();
     let state_counts = counts(definition.states.iter().map(|state| state.id.as_str()));
     let mut states = BTreeMap::new();
     for (index, state) in definition.states.iter().enumerate() {
@@ -1169,6 +1185,7 @@ fn collect_state_and_transition_diagnostics(
             runtime_counts,
             worksets,
             workset_counts,
+            &flow_entered,
             diagnostics,
         );
     }
@@ -1251,6 +1268,23 @@ fn collect_state_and_transition_diagnostics(
             );
             valid = false;
         }
+        // Fork fan-out is structural; a fork branch edge must stay `flow`.
+        if transition.mode != TransitionMode::Flow
+            && states
+                .get(transition.from.as_str())
+                .is_some_and(|state_index| {
+                    definition.states[*state_index].kind == GraphStateKind::Fork
+                })
+        {
+            semantic_error(
+                diagnostics,
+                Code::WorkflowTransitionModeInvalid,
+                &format!("{path}/mode"),
+                Recovery::CorrectRouting,
+                Expected::ValidRouting,
+            );
+            valid = false;
+        }
         if valid {
             valid_transitions.push(index);
         } else if states.contains_key(transition.from.as_str()) {
@@ -1290,6 +1324,7 @@ fn collect_state_and_transition_diagnostics(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_state_field_diagnostics(
     state: &super::GraphState,
     path: &str,
@@ -1299,26 +1334,42 @@ fn collect_state_field_diagnostics(
     runtime_counts: &BTreeMap<String, usize>,
     worksets: &BTreeSet<&str>,
     workset_counts: &BTreeMap<String, usize>,
+    flow_entered: &BTreeSet<&str>,
     diagnostics: &mut Vec<PreflightDiagnostic>,
 ) {
     let forbidden = |values: &[bool]| values.iter().any(|value| *value);
     match state.kind {
         GraphStateKind::Actor => {
-            let binding_invalid = match state.binding.as_deref() {
-                Some(id) => match binding_slots.get(id) {
-                    Some(slot) => slot.kind != BindingKind::Actor || !slot.required,
-                    None => !binding_counts.contains_key(id),
-                },
-                None => true,
-            };
-            if binding_invalid {
-                semantic_error(
-                    diagnostics,
-                    Code::WorkflowActorBindingInvalid,
-                    &format!("{path}/binding"),
-                    Recovery::CorrectReference,
-                    Expected::ExistingReference,
-                );
+            match state.binding.as_deref() {
+                Some(id) => {
+                    let binding_invalid = match binding_slots.get(id) {
+                        Some(slot) => slot.kind != BindingKind::Actor || !slot.required,
+                        None => !binding_counts.contains_key(id),
+                    };
+                    if binding_invalid {
+                        semantic_error(
+                            diagnostics,
+                            Code::WorkflowActorBindingInvalid,
+                            &format!("{path}/binding"),
+                            Recovery::CorrectReference,
+                            Expected::ExistingReference,
+                        );
+                    }
+                }
+                // Flow-mode targets execute without a master decision, so a
+                // flow-entered actor state may not leave its binding empty.
+                None if flow_entered.contains(state.id.as_str()) => {
+                    let mut value = diagnostic(
+                        Code::WorkflowFlowTargetIncomplete,
+                        Stage::WorkflowCompile,
+                        Some(&format!("{path}/binding")),
+                        Recovery::AddRequiredField,
+                    );
+                    value.expected = Some(Expected::ExistingReference);
+                    value.actual_kind = Some(ActualKind::Missing);
+                    push(diagnostics, value);
+                }
+                None => {}
             }
             if forbidden(&[
                 state.runtime.is_some(),
@@ -2198,5 +2249,100 @@ mod tests {
     #[test]
     fn valid_value_compiles_through_the_shared_entrypoint() {
         assert!(compile_workflow_value(&valid_workflow()).is_ok());
+    }
+
+    #[test]
+    fn transition_mode_is_enum_checked_and_defaults_to_flow() {
+        let mut value = valid_workflow();
+        value["transitions"][0]["mode"] = json!("callback");
+        let validation = validate_workflow_value(&value);
+        assert!(
+            validation.diagnostics.is_empty(),
+            "callback mode is valid: {:?}",
+            validation.diagnostics
+        );
+        assert_eq!(
+            validation.definition.unwrap().transitions[0].mode,
+            super::TransitionMode::Callback
+        );
+
+        let mut invalid = valid_workflow();
+        invalid["transitions"][0]["mode"] = json!("warp");
+        let validation = validate_workflow_value(&invalid);
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .any(
+                    |diagnostic| diagnostic.code == Code::WorkflowFieldValueInvalid
+                        && diagnostic.path.as_deref() == Some("/transitions/0/mode")
+                ),
+            "unknown mode is a field-value diagnostic: {:?}",
+            validation.diagnostics
+        );
+    }
+
+    #[test]
+    fn flow_mode_targets_may_not_leave_key_fields_empty() {
+        let mut value = valid_workflow();
+        value["states"].as_array_mut().unwrap().insert(
+            1,
+            json!({"id": "review", "kind": "actor", "label": "Review"}),
+        );
+        value["transitions"] = json!([
+            {"id": "to-review", "from": "run", "to": "review", "event": "success", "mode": "flow"},
+            {"id": "reviewed", "from": "review", "to": "done", "event": "success"},
+            {"id": "review-failed", "from": "review", "to": "failed", "event": "failure"},
+            {"id": "failed", "from": "run", "to": "failed", "event": "failure"}
+        ]);
+        let validation = validate_workflow_value(&value);
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .any(
+                    |diagnostic| diagnostic.code == Code::WorkflowFlowTargetIncomplete
+                        && diagnostic.path.as_deref() == Some("/states/1/binding")
+                ),
+            "flow target with empty binding states the rule: {:?}",
+            validation.diagnostics
+        );
+        assert!(
+            compile_workflow_value(&value)
+                .unwrap_err()
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == Code::WorkflowFlowTargetIncomplete)
+        );
+
+        // The same shape is valid when every edge into the target is a
+        // callback: the master decision stands between the states.
+        value["transitions"][0]["mode"] = json!("callback");
+        let validation = validate_workflow_value(&value);
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != Code::WorkflowFlowTargetIncomplete),
+            "callback-only targets may defer the binding: {:?}",
+            validation.diagnostics
+        );
+        assert!(compile_workflow_value(&value).is_ok());
+    }
+
+    #[test]
+    fn fork_branch_edges_reject_callback_mode() {
+        let mut value = valid_workflow();
+        value["transitions"][0]["mode"] = json!("flow");
+        value["transitions"][1]["mode"] = json!("callback");
+        let validation = validate_workflow_value(&value);
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != Code::WorkflowTransitionModeInvalid),
+            "non-fork callback edges are valid: {:?}",
+            validation.diagnostics
+        );
     }
 }

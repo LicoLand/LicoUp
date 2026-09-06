@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -9,15 +9,17 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   @override
   ConversationPresentationSignals get conversationPresentationSignals;
 
-  ValueListenable<int> get conversationStructureListenable =>
-      conversationPresentationSignals.structureListenable;
-  ValueListenable<int> get activeConversationListenable =>
-      conversationPresentationSignals.activeListenable;
-  ValueListenable<int> get liveConversationListenable =>
-      conversationPresentationSignals.liveListenable;
+  Stream<ApplicationChange> get conversationStructureChanges =>
+      conversationPresentationSignals.structureChanges;
+  Stream<ApplicationChange> get activeConversationChanges =>
+      conversationPresentationSignals.activeChanges;
+  Stream<ApplicationChange> get liveConversationChanges =>
+      conversationPresentationSignals.liveChanges;
+  Stream<ApplicationChange> get conversationTabActivityChanges =>
+      conversationPresentationSignals.tabActivityChanges;
 
   void notifyClientStateChanged() {
-    if (!lifecycleProjection.disposed) notifyListeners();
+    if (!lifecycleProjection.disposed) publishChange();
   }
 
   void notifyConversationStructureChanged({bool activeChanged = true}) {
@@ -32,6 +34,10 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
 
   void notifyLiveConversationChanged() {
     conversationPresentationSignals.notifyLiveChanged();
+  }
+
+  void notifyConversationTabActivityChanged() {
+    conversationPresentationSignals.notifyTabActivityChanged();
   }
 
   @override
@@ -49,4 +55,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   @override
   void agentWorkspaceNotifyLiveConversationChanged() =>
       notifyLiveConversationChanged();
+
+  @override
+  void agentWorkspaceNotifyConversationTabActivityChanged() =>
+      notifyConversationTabActivityChanged();
 }

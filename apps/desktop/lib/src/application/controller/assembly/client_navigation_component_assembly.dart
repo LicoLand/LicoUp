@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
+import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
@@ -13,8 +13,8 @@ typedef ClientInterfaceEntryHookTaskMap =
 final class ClientNavigationComponentAssembly {
   ClientNavigationComponentAssembly({
     required bool Function() isMobileRuntime,
-    required VoidCallback onEnterMonitoring,
-    required VoidCallback onExitMonitoring,
+    required ApplicationCallback onEnterMonitoring,
+    required ApplicationCallback onExitMonitoring,
     required ClientInterfaceEntryHookTaskMap entryHookTasks,
     required ClientLifecycleReportSink onEntryHookReport,
   }) : controller = ClientNavigationController(
@@ -34,8 +34,6 @@ final class ClientNavigationComponentAssembly {
 
   final ClientNavigationController controller;
   late final ClientInterfaceEntryHookController entryHookController;
-
-  Iterable<ChangeNotifier> get listenables => [controller];
 
   void dispose() {
     entryHookController.dispose();

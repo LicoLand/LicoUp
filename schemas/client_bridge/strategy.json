@@ -51,6 +51,15 @@
     "fail",
     "blocked"
   ],
+  "transitionModes": [
+    "callback",
+    "flow"
+  ],
+  "callbackDecisions": [
+    "advance",
+    "return",
+    "terminate"
+  ],
   "runStatuses": [
     "pending",
     "authorization-required",
@@ -151,6 +160,8 @@
     "workflow_guard_invalid",
     "workflow_guard_ambiguous",
     "workflow_routing_invalid",
+    "workflow_transition_mode_invalid",
+    "workflow_flow_target_incomplete",
     "workflow_topology_invalid",
     "workflow_state_unreachable",
     "workflow_terminal_unreachable",

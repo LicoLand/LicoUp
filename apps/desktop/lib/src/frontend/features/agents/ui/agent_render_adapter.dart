@@ -1,11 +1,10 @@
 import 'package:flutter/services.dart';
 
-import 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart';
-import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
+import 'package:licoup/src/frontend/features/agents/data/agent_render_adapter_asset_source.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 
-export 'package:licoup/src/application/features/agents/conversation/agent_render_adapter_asset_source.dart'
-    show AssetAgentRenderAdapterJsonSource;
+export 'package:licoup/src/frontend/features/agents/data/agent_render_adapter_asset_source.dart'
+    show AgentRenderAdapterJsonLoader, AssetAgentRenderAdapterJsonSource;
 
 enum AgentAssistantLayout { document, bubble }
 
@@ -194,13 +193,14 @@ class AgentUserBubbleStyle {
 class AgentRenderAdapterRegistry {
   AgentRenderAdapterRegistry({
     AssetBundle? assetBundle,
-    AgentRenderAdapterJsonSource? jsonSource,
-  }) : _jsonSource =
-           jsonSource ?? AssetAgentRenderAdapterJsonSource(assetBundle);
+    AgentRenderAdapterJsonLoader? loadJson,
+  }) : _loadJson =
+           loadJson ??
+           AssetAgentRenderAdapterJsonSource(assetBundle).loadAdapterJson;
 
   static AgentRenderAdapterRegistry instance = AgentRenderAdapterRegistry();
 
-  final AgentRenderAdapterJsonSource _jsonSource;
+  final AgentRenderAdapterJsonLoader _loadJson;
   Future<List<AgentRenderAdapter>>? _cachedAdapters;
 
   Future<AgentRenderAdapter> resolve({
@@ -233,7 +233,7 @@ class AgentRenderAdapterRegistry {
 
   Future<List<AgentRenderAdapter>> _loadAdapters() async {
     final adapters = <AgentRenderAdapter>[];
-    for (final json in await _jsonSource.loadAdapterJson()) {
+    for (final json in await _loadJson()) {
       try {
         adapters.add(AgentRenderAdapter.fromJson(json));
       } catch (_) {

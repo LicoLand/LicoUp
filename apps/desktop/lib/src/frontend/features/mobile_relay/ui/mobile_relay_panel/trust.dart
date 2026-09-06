@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayTrustVerificationCard extends StatelessWidget {
   const MobileRelayTrustVerificationCard({
@@ -13,7 +13,7 @@ class MobileRelayTrustVerificationCard extends StatelessWidget {
     required this.colors,
   });
 
-  final MobileRelayTrustPresentation presentation;
+  final RelayTrustProjection presentation;
   final LicoThemeColors colors;
 
   @override

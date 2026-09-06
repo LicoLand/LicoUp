@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'dart:async';
 
+import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -22,6 +23,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   final ConversationStateHolder conversationStateHolder =
       ConversationStateHolder();
   bool _liveRevisionBridgeAttached = false;
+  StreamSubscription<ApplicationChange>? _liveProjectionSubscription;
 
   ConversationScopeProjection conversationProjectionFor(String scopeKey) =>
       conversationStateHolder.projectionFor(scopeKey);
@@ -61,7 +63,9 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     // is never stale relative to the holder publish that triggered it.
     if (!_liveRevisionBridgeAttached) {
       _liveRevisionBridgeAttached = true;
-      conversationStateHolder.addListener(_syncLiveMirrorsAndNotify);
+      _liveProjectionSubscription = conversationStateHolder.changes.listen(
+        (_) => _syncLiveMirrorsAndNotify(),
+      );
     }
     // Transitional mirrors remain for non-rendering acceptance probes and
     // readback persistence. Rendering reads [conversationStateHolder]
@@ -81,10 +85,14 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     agentWorkspaceNotifyLiveConversationChanged();
   }
 
+  void disposeConversationLiveProjection() {
+    unawaited(_liveProjectionSubscription?.cancel());
+    _liveProjectionSubscription = null;
+  }
+
   /// Legacy fixture seam. Production code has no call site; release builds do
   /// not execute the debug-only seed. Stream rendering always enters through
   /// [conversationApplyDelta].
-  @visibleForTesting
   void conversationStartLiveProjection({
     required String scopeKey,
     required String turnId,
@@ -105,7 +113,6 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     }());
   }
 
-  @visibleForTesting
   void conversationUpsertLiveReply({
     required String scopeKey,
     required String turnId,
@@ -121,7 +128,6 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     }());
   }
 
-  @visibleForTesting
   void conversationUpsertLiveLifecycle({
     required String scopeKey,
     required String turnId,

@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
+import 'package:licoup/src/application/state/application_signal.dart';
 
-import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/application/composition/adaptive_flywheel_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_agent_hub_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
@@ -15,8 +14,10 @@ import 'package:licoup/src/application/controller/assembly/client_settings_compo
 import 'package:licoup/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_target_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_usage_component_assembly.dart';
+import 'package:licoup/src/application/controller/appearance_preference_owner.dart';
+import 'package:licoup/src/application/controller/functional_status_runtime.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
-import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/controller/locale_preference_owner.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
@@ -24,6 +25,7 @@ import 'package:licoup/src/application/features/catalog_convergence/controller/c
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/provider_quota_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
+import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
@@ -38,6 +40,7 @@ import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_c
 import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_usage_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
+import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/backend/features/agents/services/adaptive_flywheel_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
@@ -47,7 +50,6 @@ import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_prefere
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
-import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
@@ -91,32 +93,28 @@ final class ClientComponentAssembly {
       Map<String, dynamic>? pairingStatus,
     })
     discoverMobileTargets,
-    required VoidCallback onTargetsSettled,
-    required VoidCallback selectDefaultConversationAgent,
-    required VoidCallback onEnterMonitoring,
-    required VoidCallback onExitMonitoring,
-    required VoidCallback notifyStateChanged,
+    required ApplicationCallback onTargetsSettled,
+    required ApplicationCallback selectDefaultConversationAgent,
+    required ApplicationCallback onEnterMonitoring,
+    required ApplicationCallback onExitMonitoring,
     required ClientInterfaceEntryHookTaskMap entryHookTasks,
+    required LayoutCatalog layoutCatalog,
+    required LayoutManager layoutManager,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
     SkillHubLocalCatalogSource? skillHubLocalCatalogSource,
     OptionalCollaborationGateway? optionalCollaborationGateway,
-    BuiltInLayoutComposition? layoutComposition,
-    LayoutManager? layoutManager,
-    PresentationPreferencesRepository? presentationPreferencesRepository,
     CatalogConvergenceGateway? catalogConvergenceGateway,
-  }) : _notifyStateChanged = notifyStateChanged {
+  }) {
     adaptiveFlywheelGateway = AdaptiveFlywheelGatewayAdapter(
       service: const AdaptiveFlywheelService(),
       runner: agentService,
     );
     presentation = ClientPresentationComponentAssembly(
-      portableData: portableData,
-      layoutComposition: layoutComposition,
+      layoutCatalog: layoutCatalog,
       layoutManager: layoutManager,
-      presentationPreferencesRepository: presentationPreferencesRepository,
     );
     lifecycle = ClientLifecycleComponentAssembly(reportStatus: _reportStatus);
     catalogConvergence = ClientCatalogConvergenceComponentAssembly(
@@ -159,9 +157,10 @@ final class ClientComponentAssembly {
       clientUpdateService: clientUpdateService,
       clientLogExportService: clientLogExportService,
       runtimePlatformBridge: runtimePlatformBridge,
-      directoryCaption: () => shellController.strings.directory,
+      directoryCaption: () => ClientApplicationStrings.forPreference(
+        localePreferenceOwner.preference,
+      ).directory,
       reportStatus: _reportStatus,
-      notifyStateChanged: notifyStateChanged,
       optionalCollaborationGateway: optionalCollaborationGateway,
       onCatalogPurge: catalogConvergenceController.disable,
     );
@@ -204,14 +203,10 @@ final class ClientComponentAssembly {
       onExitMonitoring: onExitMonitoring,
       entryHookTasks: entryHookTasks,
       onEntryHookReport: (report) =>
-          shellController.replaceLastError(report.code),
+          functionalStatusRuntime.replaceLastError(report.code),
     );
-    for (final component in _listenedComponents) {
-      component.addListener(_notifyStateChanged);
-    }
   }
 
-  final VoidCallback _notifyStateChanged;
   late final AdaptiveFlywheelGateway adaptiveFlywheelGateway;
   late final ClientPresentationComponentAssembly presentation;
   late final ClientLifecycleComponentAssembly lifecycle;
@@ -227,7 +222,12 @@ final class ClientComponentAssembly {
   late final ClientAgentHubComponentAssembly agentHub;
   late final ClientNavigationComponentAssembly navigation;
 
-  ClientShellController get shellController => presentation.shellController;
+  AppearancePreferenceOwner get appearancePreferenceOwner =>
+      presentation.appearancePreferenceOwner;
+  LocalePreferenceOwner get localePreferenceOwner =>
+      presentation.localePreferenceOwner;
+  FunctionalStatusRuntime get functionalStatusRuntime =>
+      presentation.functionalStatusRuntime;
   ClientLifecycleCoordinator get lifecycleController => lifecycle.controller;
   CatalogConvergenceController get catalogConvergenceController =>
       catalogConvergence.controller;
@@ -255,8 +255,7 @@ final class ClientComponentAssembly {
       mobile.homeLayoutController;
   MobileRelayController get mobileRelayController => mobile.relayController;
   SecureMeshController get secureMeshController => mobile.secureMeshController;
-  BuiltInLayoutComposition get layoutComposition =>
-      presentation.layoutComposition;
+  LayoutCatalog get layoutCatalog => presentation.layoutCatalog;
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
   ProviderQuotaController get providerQuotaController =>
@@ -267,42 +266,24 @@ final class ClientComponentAssembly {
   ClientInterfaceEntryHookController get interfaceEntryHookController =>
       navigation.entryHookController;
 
-  List<ChangeNotifier> get _listenedComponents => [
-    ...presentation.listenables,
-    ...lifecycle.listenables,
-    ...catalogConvergence.listenables,
-    ...target.listenables,
-    ...skill.listenables,
-    ...settings.listenables,
-    ...pluginManagement.listenables,
-    ...mobile.listenables,
-    ...usage.listenables,
-    ...providerQuota.listenables,
-    ...agentHub.listenables,
-    ...navigation.listenables,
-  ];
-
   void _reportStatus({
     required String chinese,
     required String english,
     required String caption,
     String errorCode = '',
   }) {
-    shellController.replaceLastError(errorCode);
+    functionalStatusRuntime.replaceLastError(errorCode);
     if (chinese.isNotEmpty || english.isNotEmpty) {
-      shellController.setLocalizedStatus(
+      functionalStatusRuntime.setLocalized(
         chinese,
         english,
-        caption: shellController.statusCaption,
+        caption: functionalStatusRuntime.caption,
       );
     }
-    shellController.replaceStatusCaption(caption);
+    functionalStatusRuntime.replaceCaption(caption);
   }
 
   void dispose() {
-    for (final component in _listenedComponents.reversed) {
-      component.removeListener(_notifyStateChanged);
-    }
     navigation.dispose();
     agentHub.dispose();
     usage.dispose();

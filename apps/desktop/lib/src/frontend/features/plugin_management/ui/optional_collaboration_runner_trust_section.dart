@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/presentation/plugin_management/optional_collaboration_presentation_actions.dart';
 import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 
 final class OptionalCollaborationRunnerTrustSection extends StatefulWidget {
@@ -12,7 +12,7 @@ final class OptionalCollaborationRunnerTrustSection extends StatefulWidget {
     required this.isChinese,
   });
 
-  final OptionalCollaborationController controller;
+  final OptionalCollaborationPresentationActions controller;
   final OptionalCollaborationRuntimeState state;
   final bool busy;
   final bool isChinese;

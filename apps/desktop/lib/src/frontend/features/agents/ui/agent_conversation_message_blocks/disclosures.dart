@@ -19,6 +19,7 @@ class AgentConversationMessageContent extends StatelessWidget {
     required this.borderColor,
     required this.renderStyle,
     this.images = const [],
+    this.isStreaming = false,
   });
 
   final String data;
@@ -28,6 +29,13 @@ class AgentConversationMessageContent extends StatelessWidget {
   final Color blockBackground;
   final Color borderColor;
   final MessageMarkdownStyle renderStyle;
+
+  /// Whether the body is a partially written streamed reply. Streamed bodies
+  /// render complete Markdown blocks with final styling and the still-growing
+  /// tail in a quiet in-progress presentation; the default keeps the exact
+  /// finalized rendering. Callers that cannot know the live state leave this
+  /// false.
+  final bool isStreaming;
 
   /// Typed image attachments rendered below the message body (local-only).
   final List<AgentConversationImageAttachment> images;
@@ -63,6 +71,7 @@ class AgentConversationMessageContent extends StatelessWidget {
             blockBackground: blockBackground,
             borderColor: borderColor,
             renderStyle: renderStyle,
+            isStreaming: isStreaming,
           ),
         if (hasRecommendedPlugins) ...[
           if (hasBody) SizedBox(height: renderStyle.blockSpacing),

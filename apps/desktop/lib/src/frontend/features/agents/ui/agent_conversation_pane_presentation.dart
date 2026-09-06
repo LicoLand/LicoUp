@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/plan_document_reader.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/data/plan_document_loader.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
@@ -43,7 +43,7 @@ final class AgentConversationPaneState {
     this.showLicoProfileCapsule = false,
     this.selectedLicoProfile = 'base',
     this.planDocumentPath = '',
-    this.planDocumentReader = const UnavailablePlanDocumentReader(),
+    this.planDocumentLoader = unavailablePlanDocumentLoader,
     Map<String, String> participantConversationIds = const {},
     Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles =
         const {},
@@ -103,7 +103,7 @@ final class AgentConversationPaneState {
   final bool showLicoProfileCapsule;
   final String selectedLicoProfile;
   final String planDocumentPath;
-  final PlanDocumentReader planDocumentReader;
+  final PlanDocumentLoader planDocumentLoader;
 
   /// Agent id → that agent's conversation id for bubble hover metadata.
   final Map<String, String> participantConversationIds;

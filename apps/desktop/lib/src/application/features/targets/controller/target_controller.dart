@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+
 import 'package:licoup/src/application/features/targets/controller/target_scan_coordinator.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/application/features/targets/policy/target_scan_reducer.dart';
@@ -25,7 +26,7 @@ class TargetStatusUpdate {
 
 /// Owns target discovery, incremental scheduling, target tools and tab order.
 /// It deliberately knows nothing about ClientController or UI navigation.
-class TargetController extends ChangeNotifier {
+class TargetController extends ApplicationStateOwner {
   TargetController({
     required TargetManagementGateway gateway,
     required TargetSnapshotRepository snapshotRepository,
@@ -96,28 +97,28 @@ class TargetController extends ChangeNotifier {
     _targets = List.unmodifiable(value);
     _cachedTargetIds.clear();
     _cachedTargetsNeedRefresh = false;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceTabOrder(List<String> value) {
     _tabOrder = List.unmodifiable(value);
-    notifyListeners();
+    publishChange();
   }
 
   void replacePinnedConversationTargetIds(List<String> value) {
     _pinnedIds = List.unmodifiable(value);
     _pinsInitialized = true;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceInspection(Map<String, dynamic>? value) {
     inspection = value;
-    notifyListeners();
+    publishChange();
   }
 
   void replaceSnapshotRestoreResult(Map<String, dynamic>? value) {
     snapshotRestoreResult = value;
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> loadTabOrder() async {
@@ -126,7 +127,7 @@ class TargetController extends ChangeNotifier {
     _pinsInitialized = await _tabOrderRepository.hasCustomPinnedIds(
       _portableData,
     );
-    notifyListeners();
+    publishChange();
   }
 
   bool isConversationTargetPinned(String targetId) {
@@ -150,7 +151,7 @@ class TargetController extends ChangeNotifier {
     }
     _pinnedIds = List.unmodifiable(current);
     _pinsInitialized = true;
-    notifyListeners();
+    publishChange();
     try {
       await _tabOrderRepository.savePinned(_portableData, _pinnedIds);
     } catch (_) {
@@ -163,7 +164,7 @@ class TargetController extends ChangeNotifier {
           errorCode: 'target_pin_save_failed',
         ),
       );
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -177,7 +178,7 @@ class TargetController extends ChangeNotifier {
       ..addAll(cached.map((target) => target.target));
     _cachedTargetsNeedRefresh = _cachedTargetIds.isNotEmpty;
     _onTargetsSettled();
-    notifyListeners();
+    publishChange();
   }
 
   Future<void> scan({
@@ -249,7 +250,7 @@ class TargetController extends ChangeNotifier {
           english: 'Scanning target adapters.',
         ),
       );
-      notifyListeners();
+      publishChange();
     } else if (reportErrors) {
       _lastErrorCode = '';
     }
@@ -276,7 +277,7 @@ class TargetController extends ChangeNotifier {
             ..addAll(cached.map((target) => target.target));
           _cachedTargetsNeedRefresh = _cachedTargetIds.isNotEmpty;
           _onTargetsSettled();
-          notifyListeners();
+          publishChange();
         }
       }
       final ids = TargetPolicy.incrementalScanIds(
@@ -356,7 +357,7 @@ class TargetController extends ChangeNotifier {
       if (_isCurrentScan(generation)) {
         _refreshing = false;
         if (showProgress) isScanning = false;
-        notifyListeners();
+        publishChange();
       }
       if (identical(_refreshCompletion, refreshCompletion)) {
         _refreshCompletion = null;
@@ -472,7 +473,7 @@ class TargetController extends ChangeNotifier {
     if (_sameTargets(_targets, reduction.targets)) return;
     _targets = reduction.targets;
     _onTargetsSettled();
-    notifyListeners();
+    publishChange();
     await _persistCache();
   }
 
@@ -488,14 +489,14 @@ class TargetController extends ChangeNotifier {
       return;
     }
     _nativeModelCatalogInFlightIds.add(targetId);
-    notifyListeners();
+    publishChange();
     unawaited(
       _revalidateConversationRuntimeBinding(
         targetId,
         enableAgentCliModelLookup: true,
       ).whenComplete(() {
         _nativeModelCatalogInFlightIds.remove(targetId);
-        if (!_disposed) notifyListeners();
+        if (!_disposed) publishChange();
       }),
     );
   }
@@ -525,7 +526,7 @@ class TargetController extends ChangeNotifier {
       if (!_sameTargets(_targets, next)) {
         _targets = next;
         _onTargetsSettled();
-        notifyListeners();
+        publishChange();
         await _persistCache();
       }
       return candidate.canRelayRuntime;
@@ -539,7 +540,7 @@ class TargetController extends ChangeNotifier {
             errorCode: 'target_scan_failed',
           ),
         );
-        notifyListeners();
+        publishChange();
       }
       return false;
     }
@@ -628,7 +629,7 @@ class TargetController extends ChangeNotifier {
         english: 'Adding $id manual target.',
       ),
     );
-    notifyListeners();
+    publishChange();
     try {
       await _gateway.addTarget(
         target: id,
@@ -658,7 +659,7 @@ class TargetController extends ChangeNotifier {
       );
     } finally {
       isAdding = false;
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -725,14 +726,14 @@ class TargetController extends ChangeNotifier {
   }) async {
     _lastErrorCode = '';
     _onStatus(busy);
-    notifyListeners();
+    publishChange();
     try {
       await action();
     } catch (_) {
       _lastErrorCode = failure.errorCode;
       _onStatus(failure);
     } finally {
-      notifyListeners();
+      publishChange();
     }
   }
 
@@ -759,7 +760,7 @@ class TargetController extends ChangeNotifier {
     );
     if (next == null) return;
     _tabOrder = next;
-    notifyListeners();
+    publishChange();
     try {
       await _tabOrderRepository.save(_portableData, _tabOrder);
     } catch (_) {
@@ -772,7 +773,7 @@ class TargetController extends ChangeNotifier {
           errorCode: 'target_tab_order_save_failed',
         ),
       );
-      notifyListeners();
+      publishChange();
     }
   }
 

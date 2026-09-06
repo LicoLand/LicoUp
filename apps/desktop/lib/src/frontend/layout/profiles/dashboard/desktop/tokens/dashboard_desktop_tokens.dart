@@ -1,13 +1,19 @@
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
-/// Palette-independent values for the flush three-pane desktop Dashboard.
+export 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart'
+    show MessagingDesktopMetrics;
+
+/// Geometry for the Dashboard desktop presentation: a transparent shell on
+/// native frosted glass, one rounded main content card holding the navigation
+/// sidebar (traffic lights at its top-left), and (in Agents) a floating
+/// conversation-list card on a shared chat canvas.
 final LayoutVisualTokens dashboardDesktopTokens = LayoutVisualTokens(
-  spacingUnit: 8,
-  density: 1,
-  cardRadius: 12,
+  spacingUnit: 6,
+  density: 0.92,
+  cardRadius: 10,
   elevation: 0,
-  navigationExtent: 216,
-  contentMaxWidth: 1480,
-  typographyScale: 1,
-  motionDuration: const Duration(milliseconds: 220),
+  navigationExtent: 68,
+  contentMaxWidth: 1600,
+  typographyScale: 0.95,
+  motionDuration: const Duration(milliseconds: 150),
 );

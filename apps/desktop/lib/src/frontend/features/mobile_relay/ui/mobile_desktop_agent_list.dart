@@ -1,32 +1,31 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/controller/client_controller.dart';
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 final class MobileDesktopAgentList extends StatelessWidget {
   const MobileDesktopAgentList({
     super.key,
-    required this.controller,
     required this.device,
     required this.targets,
+    required this.scanning,
     required this.onBack,
     required this.onRefresh,
     required this.onSelect,
+    this.iconBuilder,
   });
 
-  final ClientController controller;
-  final MobileRelayPairedDevice device;
-  final List<TargetCandidate> targets;
+  final RelayPeerProjection device;
+  final List<AgentTargetProjection> targets;
+  final bool scanning;
   final VoidCallback onBack;
-  final Future<void> Function() onRefresh;
-  final ValueChanged<TargetCandidate> onSelect;
+  final VoidCallback onRefresh;
+  final ValueChanged<AgentTargetProjection> onSelect;
+  final MobileAgentIconBuilder? iconBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +68,7 @@ final class MobileDesktopAgentList extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        device.label,
+                        device.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
@@ -80,8 +79,8 @@ final class MobileDesktopAgentList extends StatelessWidget {
                 IconButton(
                   key: const Key('mobile-desktop-agents-refresh'),
                   tooltip: strings.refreshAgents,
-                  onPressed: () => unawaited(onRefresh()),
-                  icon: controller.isScanningTargets
+                  onPressed: scanning ? null : onRefresh,
+                  icon: scanning
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -94,7 +93,10 @@ final class MobileDesktopAgentList extends StatelessWidget {
         ),
         Expanded(
           child: targets.isEmpty
-              ? _MobileDesktopEmptyState(onRefresh: onRefresh)
+              ? _MobileDesktopEmptyState(
+                  scanning: scanning,
+                  onRefresh: onRefresh,
+                )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(8, 10, 8, 14),
                   itemCount: targets.length,
@@ -105,6 +107,7 @@ final class MobileDesktopAgentList extends StatelessWidget {
                       target: target,
                       subtitle: strings.secureRelay,
                       onTap: () => onSelect(target),
+                      iconBuilder: iconBuilder,
                     );
                   },
                 ),
@@ -115,9 +118,13 @@ final class MobileDesktopAgentList extends StatelessWidget {
 }
 
 final class _MobileDesktopEmptyState extends StatelessWidget {
-  const _MobileDesktopEmptyState({required this.onRefresh});
+  const _MobileDesktopEmptyState({
+    required this.scanning,
+    required this.onRefresh,
+  });
 
-  final Future<void> Function() onRefresh;
+  final bool scanning;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +155,7 @@ final class _MobileDesktopEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: () => unawaited(onRefresh()),
+              onPressed: scanning ? null : onRefresh,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text(strings.refreshAgents),
             ),
@@ -164,17 +171,19 @@ final class _MobileDesktopAgentListItem extends StatelessWidget {
     required this.target,
     required this.subtitle,
     required this.onTap,
+    this.iconBuilder,
   });
 
-  final TargetCandidate target;
+  final AgentTargetProjection target;
   final String subtitle;
   final VoidCallback onTap;
+  final MobileAgentIconBuilder? iconBuilder;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Material(
-      key: Key('mobile-desktop-agent-${target.target}'),
+      key: Key('mobile-desktop-agent-${target.id}'),
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(LicoRadius.chip),
@@ -183,20 +192,27 @@ final class _MobileDesktopAgentListItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
           child: Row(
             children: [
-              AgentBrandIcon(
-                target: target,
-                selected: true,
-                detected: target.status != 'not-detected',
-                size: 48,
-                iconSize: 32,
-              ),
+              iconBuilder?.call(
+                    context,
+                    target,
+                    selected: true,
+                    size: 48,
+                    iconSize: 32,
+                  ) ??
+                  Icon(
+                    target.available
+                        ? Icons.smart_toy_outlined
+                        : Icons.extension_outlined,
+                    size: 32,
+                    color: target.available ? colors.text : colors.textMuted,
+                  ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      target.label,
+                      target.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

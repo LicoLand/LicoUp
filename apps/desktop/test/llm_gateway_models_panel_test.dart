@@ -7,8 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';
+import 'package:licoup/src/presentation/models/models_projection.dart';
+
+import 'fixtures/models_renderer_binding_fixture.dart';
 
 const _zhDelegates = [
   GlobalMaterialLocalizations.delegate,
@@ -698,6 +702,13 @@ Future<void> _pumpCredentials(
   LlmVaultAuthorization? authorization,
   LlmGatewayLifecycleController? lifecycleController,
 }) async {
+  final feature = ModelsRendererBindingFixture(
+    runner: runner,
+    authorization: authorization,
+    lifecycle: lifecycleController,
+  );
+  addTearDown(feature.dispose);
+  await feature.refreshCredentials();
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('zh'),
@@ -705,10 +716,16 @@ Future<void> _pumpCredentials(
       localizationsDelegates: _zhDelegates,
       home: Scaffold(
         body: SingleChildScrollView(
-          child: LlmGatewayCredentialsCard(
-            agentService: runner,
-            authorization: authorization ?? LlmVaultAuthorization(),
-            lifecycleController: lifecycleController,
+          child: ProjectionBuilder<ModelsProjection, ModelsProjection>(
+            source: feature.binding.projection,
+            select: (projection) => projection,
+            builder: (context, projection) => LlmGatewayCredentialsCard(
+              credentials: projection.credentials,
+              gatewayRunning: projection.gateway.running,
+              phase: projection.phase,
+              notice: projection.notice,
+              intents: feature.binding.intents,
+            ),
           ),
         ),
       ),
@@ -724,6 +741,15 @@ Future<void> _pumpGateway(
   LlmVaultAuthorization? authorization,
   LlmGatewayLifecycleController? lifecycleController,
 }) async {
+  final feature = ModelsRendererBindingFixture(
+    runner: runner,
+    authorization: authorization,
+    lifecycle: lifecycleController,
+    readSettings: settings.read,
+    writeSettings: settings.write,
+  );
+  addTearDown(feature.dispose);
+  await feature.initializeGateway();
   await tester.pumpWidget(
     MaterialApp(
       locale: locale,
@@ -731,12 +757,15 @@ Future<void> _pumpGateway(
       localizationsDelegates: _zhDelegates,
       home: Scaffold(
         body: SingleChildScrollView(
-          child: LlmGatewayCard(
-            agentService: runner,
-            authorization: authorization ?? LlmVaultAuthorization(),
-            readSettings: settings.read,
-            writeSettings: settings.write,
-            lifecycleController: lifecycleController,
+          child: ProjectionBuilder<ModelsProjection, ModelsProjection>(
+            source: feature.binding.projection,
+            select: (projection) => projection,
+            builder: (context, projection) => LlmGatewayCard(
+              projection: projection.gateway,
+              phase: projection.phase,
+              notice: projection.notice,
+              intents: feature.binding.intents,
+            ),
           ),
         ),
       ),

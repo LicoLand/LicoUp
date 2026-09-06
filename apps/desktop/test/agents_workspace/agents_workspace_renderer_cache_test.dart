@@ -62,7 +62,7 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
           body: SizedBox(
             width: 820,
             height: 700,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,

@@ -1,6 +1,6 @@
 use super::model::{NormalizedEffectiveSettings, NormalizedExecution, NormalizedFailure};
 use super::params::timestamp;
-use super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
+use super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter, root_cause};
 use crate::platform::{
     acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server,
     deepseek_harness_driver, hermes_driver, lico_agent_driver, openclaw_driver, pi_driver,
@@ -48,6 +48,7 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         .ok
         .then_some(verified_native_session_id)
         .filter(|value| !value.trim().is_empty());
+    let status_code = execution.status_code;
     let error = execution.error.as_ref().map(|failure| {
         let mut error = json!({
             "code": failure.code,
@@ -68,6 +69,20 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         }
         if let Some(recovery) = failure.recovery.as_deref() {
             error["recovery"] = json!(recovery);
+        }
+        // Every terminal failure carries its bounded root-cause class; a
+        // driver-provided exact recovery wins over the class hint.
+        let root_cause = root_cause::classify_root_cause(&root_cause::FailureEvidence {
+            code: &failure.code,
+            stage: &failure.stage,
+            message: &failure.message,
+            turn_status: failure.turn_status.as_deref(),
+            status_code,
+            output_tail: None,
+        });
+        error["rootCause"] = json!(root_cause.as_str());
+        if failure.recovery.is_none() {
+            error["recovery"] = json!(root_cause.recovery());
         }
         error
     });

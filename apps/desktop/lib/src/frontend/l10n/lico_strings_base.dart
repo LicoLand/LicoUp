@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 
-import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 class LicoStrings {
@@ -81,6 +81,7 @@ class LicoStrings {
   String get medium => isChinese ? '中' : 'Medium';
   String get low => isChinese ? '低' : 'Low';
   String get skillHub => isChinese ? '技能中心' : 'Skill Hub';
+  String get skillHubNav => isChinese ? '技能一览' : 'Skills';
   String get pluginManagement => isChinese ? '插件管理' : 'Plugin Management';
   String get agentHub => isChinese ? '智能体中心' : 'Agent Hub';
   String get mobileRelay => isChinese ? '移动中转' : 'Mobile Relay';

@@ -68,7 +68,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
             body: SizedBox(
               width: 720,
               height: 360,
-              child: AgentConversationWorkspace(
+              child: AgentConversationWorkspaceFixture(
                 controller: controller,
                 targets: controller.scannedTargets,
                 scanning: false,
@@ -218,7 +218,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
               body: SizedBox(
                 width: 720,
                 height: 520,
-                child: AgentConversationWorkspace(
+                child: AgentConversationWorkspaceFixture(
                   controller: controller,
                   targets: controller.scannedTargets,
                   scanning: false,
@@ -308,7 +308,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
           body: SizedBox(
             width: 760,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -366,7 +366,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
           body: SizedBox(
             width: 900,
             height: 520,
-            child: AgentConversationWorkspace(
+            child: AgentConversationWorkspaceFixture(
               controller: controller,
               targets: controller.scannedTargets,
               scanning: false,
@@ -432,7 +432,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
             body: SizedBox(
               width: 900,
               height: 520,
-              child: AgentConversationWorkspace(
+              child: AgentConversationWorkspaceFixture(
                 controller: controller,
                 targets: controller.scannedTargets,
                 scanning: false,

@@ -21,6 +21,8 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
+import 'fixtures/adaptive_flywheel/adaptive_flywheel_binding_fixture.dart';
+
 void main() {
   test('generated workflow diagnostics close fields and scalar bounds', () {
     final failure = AdaptiveFlywheelFailure.fromJson({
@@ -172,8 +174,12 @@ void main() {
       _target('codex', callable: true),
       _target('unadapted', callable: false),
     ];
-    addTearDown(clientController.dispose);
-    addTearDown(agentService.dispose);
+    final bindings = AdaptiveFlywheelBindingFixture(clientController);
+    addTearDown(() async {
+      await bindings.close();
+      clientController.dispose();
+      await agentService.dispose();
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -188,8 +194,11 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () =>
-                  showAdaptiveFlywheelDialog(context, clientController),
+              onPressed: () => showAdaptiveFlywheelDialog(
+                context,
+                agents: bindings.agents,
+                conversation: bindings.conversation,
+              ),
               child: const Text('open'),
             ),
           ),
@@ -267,8 +276,12 @@ void main() {
       persistentStdioRpcEnabled: false,
     );
     final clientController = ClientController(agentService: agentService);
-    addTearDown(clientController.dispose);
-    addTearDown(agentService.dispose);
+    final bindings = AdaptiveFlywheelBindingFixture(clientController);
+    addTearDown(() async {
+      await bindings.close();
+      clientController.dispose();
+      await agentService.dispose();
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -283,8 +296,11 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () =>
-                  showAdaptiveFlywheelDialog(context, clientController),
+              onPressed: () => showAdaptiveFlywheelDialog(
+                context,
+                agents: bindings.agents,
+                conversation: bindings.conversation,
+              ),
               child: const Text('open'),
             ),
           ),
@@ -325,8 +341,12 @@ void main() {
       );
       final clientController = ClientController(agentService: agentService);
       clientController.scannedTargets = [_target('codex', callable: true)];
-      addTearDown(clientController.dispose);
-      addTearDown(agentService.dispose);
+      final bindings = AdaptiveFlywheelBindingFixture(clientController);
+      addTearDown(() async {
+        await bindings.close();
+        clientController.dispose();
+        await agentService.dispose();
+      });
       await clientController.clientConversationController.initialize();
       await clientController.clientConversationController.selectConversation(
         'conversation:group',
@@ -345,8 +365,11 @@ void main() {
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
-                onPressed: () =>
-                    showAdaptiveFlywheelDialog(context, clientController),
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                ),
                 child: const Text('open'),
               ),
             ),
@@ -431,8 +454,12 @@ void main() {
       persistentStdioRpcEnabled: false,
     );
     final clientController = ClientController(agentService: agentService);
-    addTearDown(clientController.dispose);
-    addTearDown(agentService.dispose);
+    final bindings = AdaptiveFlywheelBindingFixture(clientController);
+    addTearDown(() async {
+      await bindings.close();
+      clientController.dispose();
+      await agentService.dispose();
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -449,7 +476,8 @@ void main() {
             builder: (context) => TextButton(
               onPressed: () => showAdaptiveFlywheelDialog(
                 context,
-                clientController,
+                agents: bindings.agents,
+                conversation: bindings.conversation,
                 initialRevision: 'revision-b',
               ),
               child: const Text('open'),

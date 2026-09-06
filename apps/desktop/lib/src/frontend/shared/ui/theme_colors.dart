@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+
+import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 
 /// Semantic colors resolved from an appearance preset.
 ///

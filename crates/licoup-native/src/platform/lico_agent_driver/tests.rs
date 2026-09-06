@@ -103,6 +103,8 @@ fn readiness_handshake_hang_fails_bounded() {
         std::env::set_var("LICO_FAKE_LICO_AGENT_HANG", "1");
         std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let started = Instant::now();
     let result = execute_with_production_bound(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
@@ -144,6 +146,8 @@ fn rejected_readiness_handshake_fails_before_prompt() {
         std::env::set_var("LICO_FAKE_LICO_AGENT_REJECT", "1");
         std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = execute_with(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
         std::env::remove_var("LICO_FAKE_LICO_AGENT_REJECT");
@@ -230,6 +234,9 @@ fn resume_requires_persisted_header_and_observed_native_identity() {
     unsafe {
         std::env::set_var("LICO_FAKE_SESSION_ID", uuid::Uuid::new_v4().to_string());
     }
+    // Re-pin the launch snapshot so the fixture observes the drifted
+    // session-id steering through its environment.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let mismatch = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -266,6 +273,8 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
         std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
         std::env::set_var("LICO_FAKE_OUTPUT", "complete synthetic output");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let bounded = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -281,6 +290,9 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
         std::env::remove_var("LICO_FAKE_OUTPUT");
         std::env::set_var("LICO_FAKE_PERSIST_FAIL", "1");
     }
+    // Re-pin: the persistence-failure steering replaced the output steering.
+    drop(_pin);
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let persistence = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),
@@ -321,6 +333,8 @@ fn omitted_output_bound_is_complete_and_sustained_stderr_cannot_deadlock() {
         std::env::set_var("LICO_FAKE_OUTPUT", &expected);
         std::env::set_var("LICO_FAKE_STDERR_BYTES", "262144");
     }
+    // Pin the fixture steering channel into the launch snapshot explicitly.
+    let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
         &json!({"model": "test-gateway-model"}),

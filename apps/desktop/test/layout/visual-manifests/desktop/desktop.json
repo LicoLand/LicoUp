@@ -1,0 +1,121 @@
+{
+  "schema": "licomesh.layout-visual-manifest",
+  "schemaVersion": 2,
+  "profile": "desktop",
+  "surface": "desktop",
+  "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/desktop_desktop.dart",
+  "sourceRoots": [
+    "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop",
+    "apps/desktop/test/goldens/layout/desktop/desktop",
+    "apps/desktop/test/layout/profiles/desktop/desktop"
+  ],
+  "authorityEntries": [
+    {
+      "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
+      "digest": "sha256:3fa6299268214ef4789a9d410487657c42ebd38078e330b8dd21d1168d79f8e8"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
+      "digest": "sha256:fa4911a579e1a03f858da9989b520591f1ed79fbec205552cfd140f9beeae480"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
+      "digest": "sha256:1c7e128f8320b7c2b8d709fc86b1df60f1f15e3f7d47d81e81f679e4e184a863"
+    }
+  ],
+  "entries": [
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/components/desktop_desktop_component_kit.dart",
+      "digest": "sha256:9cff6c2161e3aa46b1cf705971bcdd82dbd9550a90e6e8eb0f7b3c5adaf8c939"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart",
+      "digest": "sha256:ce9a0fab9e54b364848e55acceab86572ad0ee4f2e68674713c4842868c55b7c"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/desktop_desktop.dart",
+      "digest": "sha256:b00915d4ef86688b108aa395268a6f3e1f3499adc14ec7f8c01e72d7c98a2e43"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart",
+      "digest": "sha256:f8ca1f07de7ccddefe18383bd20236e45c79d2c4ee9a736495b55691fa003edf"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart",
+      "digest": "sha256:c82e42a732cd1310228af3e53a830d0c9fff8edf07e6b55b3fb1ad25729dd20c"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/destinations/desktop_desktop_destination_builders.dart",
+      "digest": "sha256:8f17d071e188f00242cb3638c4f268c7678830dd1786469bce9b15e80c43e7f5"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/destinations/desktop_destination_frame.dart",
+      "digest": "sha256:f6932554204c1a5d81c5c0e0ef29891b1f6d3440a8eef1579882935c8291f8c9"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_bar.dart",
+      "digest": "sha256:963e2b38346f81023357630db135914f2e0bedf286f68f441bb2303b34b75f17"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart",
+      "digest": "sha256:aba387042aa89d609f682c3fd440954f52318499dae9358c28ed258c2c086431"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_floating_card.dart",
+      "digest": "sha256:80c19eb7989bc573e33898dc419b6e0ead40b7558f700c1f0245ca7d145f8d13"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_launchpad.dart",
+      "digest": "sha256:005c5ea515a0129ae80bfcec54d8d64cef2b20bf151b8d7b096a29f5f652d7bb"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/presentation/desktop_desktop_destination_presentations.dart",
+      "digest": "sha256:c8405cbda0a6d1e13ecec35938d3404d1bbbcd3a2813f5d77ede7f350e1b606b"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/preview/desktop_desktop_preview.dart",
+      "digest": "sha256:4c6ee0ca0dbdf21f48fc574ed51877d624caaad2fcc2bf0fa3b026590de0504a"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/settings/desktop_settings_app.dart",
+      "digest": "sha256:142202f64441415a0b7ef4499796e2978db96adf3bdb03a7c804f83185590272"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/shell/desktop_desktop_shell.dart",
+      "digest": "sha256:e5423ac3c9dc2f4d629b162daeb2d7294111a6e04e6c4dfc9a73470390810a22"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart",
+      "digest": "sha256:c4faac3cc0a51068ad146fad94bb885fab3fb5c0542747d9c88cdc88b80cb70c"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart",
+      "digest": "sha256:62fbb47f2e633a1cd7d50dddafd3a2afba85f4a43852c6c7b8734d7b27ca9a9b"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/desktop/desktop/production-baseline/agents.png",
+      "digest": "sha256:3b328f69789d4ca0ac3bb9347aecc630c4a2553bc9588b4185aa965f8810c9f9"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/desktop/desktop/production-baseline/settings.png",
+      "digest": "sha256:c8bd4df0bc44a359f96ef49e23d36776fde11ce2ffcb3860eb000044d1713b72"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_desktop_bundle_test.dart",
+      "digest": "sha256:0830e988ae90ba29acc9e17dbe21be93403a4ae25fb9cba8fa87a01b624fb797"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_desktop_shell_test.dart",
+      "digest": "sha256:b6cfb10fa02094dea5ec2df9005d25867f77089483967479383aac63a038ba19"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_desktop_test_harness.dart",
+      "digest": "sha256:341d8673c04460a807c324a28afb68169ce067ee38f49f95d36e10e8b95fca2c"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/desktop/desktop/desktop_dock_model_test.dart",
+      "digest": "sha256:ca56ced90d5112ec7533a95ad440b11fe735b7ca046631d1dfeffc35519bdd0c"
+    }
+  ],
+  "manifestDigest": "sha256:7b9be25d5681498f971a847d77d1776b9a45de5ba93259c48ff380224fc4ebbe"
+}

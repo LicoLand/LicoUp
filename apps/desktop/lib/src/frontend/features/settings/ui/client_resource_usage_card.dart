@@ -1,26 +1,22 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/application/features/settings/controller/agent_resource_usage_controller.dart';
-import 'package:licoup/src/application/features/settings/controller/client_resource_usage_controller.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/settings/ui/resource_usage_shared.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 class ClientResourceUsageCard extends StatefulWidget {
   const ClientResourceUsageCard({
     super.key,
-    this.controller,
-    this.agentController,
+    required this.binding,
     this.totalMemoryBytes,
   });
 
-  /// Injectable for tests; when null the card owns a live probe-backed
-  /// controller for the current platform.
-  final ClientResourceUsageController? controller;
-
-  /// Optional shared agent sampler so the ring can include running agents.
-  final AgentResourceUsageController? agentController;
+  final SettingsBinding binding;
 
   /// Injectable machine capacity for tests; defaults to a live platform read.
   final int? totalMemoryBytes;
@@ -31,31 +27,46 @@ class ClientResourceUsageCard extends StatefulWidget {
 }
 
 class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
-  ClientResourceUsageController? _ownedController;
-
-  ClientResourceUsageController get _controller =>
-      widget.controller ??
-      (_ownedController ??= createClientResourceUsageController());
-
   @override
   void initState() {
     super.initState();
-    _controller.start();
-    widget.agentController?.start();
+    widget.binding.intents.send(const StartSettingsResourceUsage());
+  }
+
+  @override
+  void didUpdateWidget(ClientResourceUsageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.binding, widget.binding)) {
+      oldWidget.binding.intents.send(const StopSettingsResourceUsage());
+      widget.binding.intents.send(const StartSettingsResourceUsage());
+    }
   }
 
   @override
   void dispose() {
-    _ownedController?.dispose();
+    widget.binding.intents.send(const StopSettingsResourceUsage());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    return ProjectionBuilder<
+      SettingsResourceUsageProjection,
+      SettingsResourceUsageProjection
+    >(
+      source: widget.binding.resourceUsage,
+      select: _resourceIdentity,
+      builder: _buildSnapshot,
+    );
+  }
+
+  Widget _buildSnapshot(
+    BuildContext context,
+    SettingsResourceUsageProjection snapshot,
+  ) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    final controller = _controller;
-    if (!controller.supported) {
+    if (!snapshot.supported) {
       return ListTile(
         leading: Icon(
           Icons.monitor_heart_outlined,
@@ -65,83 +76,71 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
         subtitle: Text(strings.resourceUsageUnsupported),
       );
     }
-    final agentController = widget.agentController;
-    final listenables = <Listenable>[controller];
-    if (agentController != null) {
-      listenables.add(agentController);
-    }
-    return ListenableBuilder(
-      listenable: Listenable.merge(listenables),
-      builder: (context, _) {
-        final latest = controller.samples.isEmpty
-            ? null
-            : controller.samples.last;
-        final totalMemoryBytes =
-            widget.totalMemoryBytes ?? controller.totalMemoryBytes;
-        final segments = _buildSegments(
-          strings: strings,
-          colors: colors,
-          clientRssBytes: latest?.rssBytes ?? 0,
-          agentController: agentController,
-        );
-        final trackedBytes = segments.fold<int>(
-          0,
-          (sum, segment) => sum + segment.bytes,
-        );
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-            LicoContentSpacing.item,
-            LicoContentSpacing.compact,
-            LicoContentSpacing.item,
-            LicoContentSpacing.item,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    final totalMemoryBytes =
+        widget.totalMemoryBytes ?? snapshot.totalMemoryBytes;
+    final segments = _buildSegments(
+      strings: strings,
+      colors: colors,
+      clientRssBytes: snapshot.clientRssBytes,
+      agentRssBytes: snapshot.agentRssBytes,
+    );
+    final trackedBytes = segments.fold<int>(
+      0,
+      (sum, segment) => sum + segment.bytes,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        LicoContentSpacing.item,
+        LicoContentSpacing.compact,
+        LicoContentSpacing.item,
+        LicoContentSpacing.item,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.monitor_heart_outlined,
-                    size: 18,
-                    color: colors.textSecondary,
-                  ),
-                  const SizedBox(width: LicoContentSpacing.compact),
-                  Expanded(
-                    child: Text(
-                      strings.resourceUsage,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: colors.text,
-                      ),
-                    ),
-                  ),
-                ],
+              Icon(
+                Icons.monitor_heart_outlined,
+                size: 18,
+                color: colors.textSecondary,
               ),
-              const SizedBox(height: LicoContentSpacing.item),
-              if (totalMemoryBytes == null || totalMemoryBytes <= 0)
-                Text(
-                  latest == null
-                      ? strings.memoryUsage
-                      : '${strings.appTitle}  ${formatMemoryCapacity(latest.rssBytes)}',
+              const SizedBox(width: LicoContentSpacing.compact),
+              Expanded(
+                child: Text(
+                  strings.resourceUsage,
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
                     color: colors.text,
                   ),
-                )
-              else
-                _MemoryRingBlock(
-                  segments: segments,
-                  totalMemoryBytes: totalMemoryBytes,
-                  trackedBytes: trackedBytes,
-                  colors: colors,
-                  strings: strings,
                 ),
+              ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: LicoContentSpacing.item),
+          if (totalMemoryBytes == null || totalMemoryBytes <= 0)
+            Text(
+              snapshot.clientRssBytes <= 0
+                  ? strings.memoryUsage
+                  : '${strings.appTitle}  '
+                        '${formatMemoryCapacity(snapshot.clientRssBytes)}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colors.text,
+              ),
+            )
+          else
+            _MemoryRingBlock(
+              segments: segments,
+              totalMemoryBytes: totalMemoryBytes,
+              trackedBytes: trackedBytes,
+              colors: colors,
+              strings: strings,
+            ),
+        ],
+      ),
     );
   }
 
@@ -149,7 +148,7 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
     required LicoStrings strings,
     required LicoThemeColors colors,
     required int clientRssBytes,
-    required AgentResourceUsageController? agentController,
+    required Map<String, int> agentRssBytes,
   }) {
     final palette = memoryUsageSegmentPalette(colors);
     final segments = <MemoryUsageRingSegment>[
@@ -160,19 +159,15 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
         color: palette.first,
       ),
     ];
-    if (agentController == null) {
-      return segments;
-    }
-    final latestByAgent = agentController.latestByAgent;
-    final targets = latestByAgent.keys.toList()..sort();
+    final targets = agentRssBytes.keys.toList()..sort();
     for (var index = 0; index < targets.length; index += 1) {
       final target = targets[index];
-      final sample = latestByAgent[target]!;
+      final rssBytes = agentRssBytes[target]!;
       segments.add(
         MemoryUsageRingSegment(
           id: target,
           label: _agentDisplayLabel(target),
-          bytes: sample.rssBytes < 0 ? 0 : sample.rssBytes,
+          bytes: rssBytes < 0 ? 0 : rssBytes,
           color: palette[(index + 1) % palette.length],
         ),
       );
@@ -180,6 +175,10 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
     return segments;
   }
 }
+
+SettingsResourceUsageProjection _resourceIdentity(
+  SettingsResourceUsageProjection value,
+) => value;
 
 class _MemoryRingBlock extends StatelessWidget {
   const _MemoryRingBlock({

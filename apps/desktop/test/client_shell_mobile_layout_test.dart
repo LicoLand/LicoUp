@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
@@ -19,14 +20,19 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
-import 'package:licoup/src/frontend/shell/client_shell.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
 import 'package:licoup/src/frontend/layout/layout_host.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'presentation/composed_client_shell_test_helper.dart';
 
 void main() {
   testWidgets('mobile runtime keeps the phone shell under a desktop theme', (
@@ -48,7 +54,6 @@ void main() {
     addTearDown(controller.dispose);
     controller.currentSection = ClientSection.agents;
     controller.scannedTargets = _targets;
-    controller.scannedTargets = _targets;
     await controller.layoutManager.initialize().timeout(
       const Duration(seconds: 5),
     );
@@ -67,14 +72,14 @@ void main() {
         home: SizedBox(
           width: 390,
           height: 844,
-          child: ClientShell(controller: controller),
+          child: composedClientShell(controller),
         ),
       ),
     );
 
     await tester.pump();
     expect(
-      find.byKey(const Key('dashboard-mobile-compact-navigation-trigger')),
+      find.byKey(const Key('dashboard-mobile-menu-button')),
       findsOneWidget,
     );
     expect(
@@ -87,12 +92,16 @@ void main() {
     tester,
   ) async {
     final controller = ClientController(
+      portableData: _testPortableData(),
+      presentationPreferencesRepository:
+          _TestPresentationPreferencesRepository(),
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
     controller.currentSection = ClientSection.agents;
+    await controller.layoutManager.initialize();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -108,7 +117,7 @@ void main() {
         home: SizedBox(
           width: 390,
           height: 844,
-          child: Material(child: MobileAgentsHome(controller: controller)),
+          child: composedClientShell(controller),
         ),
       ),
     );
@@ -171,7 +180,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -229,7 +238,9 @@ void main() {
       final controller = ClientController(
         portableData: _testPortableData(),
         presentationPreferencesRepository:
-            _TestPresentationPreferencesRepository(),
+            _TestPresentationPreferencesRepository(
+              layoutProfileId: LayoutProfileId.parse('desktop'),
+            ),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
         mobileClientRuntimePlatformOverride: true,
       );
@@ -251,7 +262,7 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -259,7 +270,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('dashboard-mobile-medium-contextual-navigation')),
+        find.byKey(const Key('desktop-mobile-medium-contextual-navigation')),
         findsOneWidget,
       );
       expect(find.byTooltip('Pair Device'), findsNothing);
@@ -271,6 +282,8 @@ void main() {
   testWidgets('pair device dialog fits above the soft keyboard', (
     tester,
   ) async {
+    final relay = _PairDeviceBindingHarness();
+    addTearDown(relay.dispose);
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('zh'),
@@ -292,8 +305,8 @@ void main() {
             width: 390,
             height: 844,
             child: PairDeviceDialog(
+              binding: relay.binding,
               scannerPreviewOverride: const ColoredBox(color: Colors.black),
-              onClaim: (_) async {},
             ),
           ),
         ),
@@ -312,8 +325,8 @@ void main() {
     tester,
   ) async {
     const invite = 'licoup://pair?invite=test-token';
-    final claims = <String>[];
-    final claimGate = Completer<void>();
+    final relay = _PairDeviceBindingHarness();
+    addTearDown(relay.dispose);
     late Future<void> Function(String value) submitCapture;
 
     await tester.pumpWidget(
@@ -332,13 +345,10 @@ void main() {
           width: 390,
           height: 844,
           child: PairDeviceDialog(
+            binding: relay.binding,
             scannerPreviewBuilder: (context, onDetect) {
               submitCapture = onDetect;
               return const ColoredBox(color: Colors.black);
-            },
-            onClaim: (value) async {
-              claims.add(value);
-              await claimGate.future;
             },
           ),
         ),
@@ -349,10 +359,12 @@ void main() {
     final detectFuture = submitCapture(invite);
     await tester.pump();
 
-    expect(claims, [invite]);
+    expect(relay.intents.values, hasLength(1));
+    expect(relay.intents.values.single, isA<ClaimRelayPairing>());
+    expect((relay.intents.values.single as ClaimRelayPairing).invite, invite);
     expect(find.text('已识别二维码，正在配对...'), findsOneWidget);
 
-    claimGate.complete();
+    relay.effects.add(const RelayPairingClaimed());
     await tester.pump(const Duration(milliseconds: 360));
     await detectFuture;
     await tester.pump();
@@ -407,7 +419,7 @@ void main() {
         home: SizedBox(
           width: 390,
           height: 844,
-          child: ClientShell(controller: controller),
+          child: composedClientShell(controller),
         ),
       ),
     );
@@ -422,13 +434,13 @@ void main() {
     expect(find.byKey(const Key('mobile-desktop-agent-codex')), findsOneWidget);
 
     expect(
-      find.byKey(const Key('dashboard-mobile-compact-navigation-trigger')),
+      find.byKey(const Key('dashboard-mobile-menu-button')),
       findsOneWidget,
     );
   });
 
   testWidgets(
-    'mobile dashboard profile renders Mobile Relay through restored selection',
+    'mobile desktop profile renders Mobile Relay through restored selection',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -438,7 +450,9 @@ void main() {
       final controller = ClientController(
         portableData: _testPortableData(),
         presentationPreferencesRepository:
-            _TestPresentationPreferencesRepository(),
+            _TestPresentationPreferencesRepository(
+              layoutProfileId: LayoutProfileId.parse('desktop'),
+            ),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
         conversationService: const _NoopConversationService(),
         mobileRelayService: _SecureAgentRelayService(),
@@ -462,7 +476,122 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(controller.currentSection, ClientSection.mobileRelay);
+      expect(
+        tester.widget<LayoutHost>(find.byType(LayoutHost)).destination,
+        ClientSection.mobileRelay,
+      );
+      expect(find.byType(MobileRelayPanel), findsOneWidget);
+      expect(find.byType(AgentsCanvas), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'mobile desktop profile navigates to Mobile Relay through destination navigation',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(
+              layoutProfileId: LayoutProfileId.parse('desktop'),
+            ),
+        agentService: _NoopAgentService(scanTargetsResponse: const []),
+        conversationService: const _NoopConversationService(),
+        mobileRelayService: _SecureAgentRelayService(),
+        mobileClientRuntimePlatformOverride: true,
+      );
+      addTearDown(controller.dispose);
+      controller.currentSection = ClientSection.agents;
+      await controller.layoutManager.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.android),
+          home: SizedBox(
+            width: 390,
+            height: 844,
+            child: composedClientShell(controller),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(
+        find.byKey(const Key('desktop-mobile-compact-navigation-trigger')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('desktop-mobile-compact-navigation-mobileRelay')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.currentSection, ClientSection.mobileRelay);
+      expect(
+        tester.widget<LayoutHost>(find.byType(LayoutHost)).destination,
+        ClientSection.mobileRelay,
+      );
+      expect(find.byType(MobileRelayPanel), findsOneWidget);
+      expect(find.byType(AgentsCanvas), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'mobile dashboard profile renders Mobile Relay through restored selection',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(
+              layoutProfileId: LayoutProfileId.parse('dashboard'),
+            ),
+        agentService: _NoopAgentService(scanTargetsResponse: const []),
+        conversationService: const _NoopConversationService(),
+        mobileRelayService: _SecureAgentRelayService(),
+        mobileClientRuntimePlatformOverride: true,
+      );
+      addTearDown(controller.dispose);
+      controller.currentSection = ClientSection.mobileRelay;
+      await controller.layoutManager.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.android),
+          home: SizedBox(
+            width: 390,
+            height: 844,
+            child: composedClientShell(controller),
           ),
         ),
       );
@@ -489,7 +618,9 @@ void main() {
       final controller = ClientController(
         portableData: _testPortableData(),
         presentationPreferencesRepository:
-            _TestPresentationPreferencesRepository(),
+            _TestPresentationPreferencesRepository(
+              layoutProfileId: LayoutProfileId.parse('dashboard'),
+            ),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
         conversationService: const _NoopConversationService(),
         mobileRelayService: _SecureAgentRelayService(),
@@ -513,15 +644,13 @@ void main() {
           home: SizedBox(
             width: 390,
             height: 844,
-            child: ClientShell(controller: controller),
+            child: composedClientShell(controller),
           ),
         ),
       );
       await tester.pump();
 
-      await tester.tap(
-        find.byKey(const Key('dashboard-mobile-compact-navigation-trigger')),
-      );
+      await tester.tap(find.byKey(const Key('dashboard-mobile-menu-button')));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
@@ -539,121 +668,73 @@ void main() {
       expect(find.byType(AgentsCanvas), findsNothing);
     },
   );
+}
 
-  testWidgets(
-    'mobile messaging profile renders Mobile Relay through restored selection',
-    (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+final class _PairDeviceBindingHarness {
+  _PairDeviceBindingHarness()
+    : projection = _StaticMobileRelayProjection(),
+      intents = _RecordingMobileRelayIntents(),
+      effects = _MobileRelayEffects() {
+    binding = MobileRelayBinding(
+      projection: projection,
+      intents: intents,
+      effects: effects,
+    );
+  }
 
-      final controller = ClientController(
-        portableData: _testPortableData(),
-        presentationPreferencesRepository:
-            _TestPresentationPreferencesRepository(
-              layoutProfileId: LayoutProfileId.parse('messaging'),
-            ),
-        agentService: _NoopAgentService(scanTargetsResponse: const []),
-        conversationService: const _NoopConversationService(),
-        mobileRelayService: _SecureAgentRelayService(),
-        mobileClientRuntimePlatformOverride: true,
+  final _StaticMobileRelayProjection projection;
+  final _RecordingMobileRelayIntents intents;
+  final _MobileRelayEffects effects;
+  late final MobileRelayBinding binding;
+
+  Future<void> dispose() async {
+    await projection.dispose();
+    await effects.dispose();
+  }
+}
+
+final class _StaticMobileRelayProjection
+    implements ProjectionSource<MobileRelayProjection> {
+  final StreamController<ProjectionUpdate<MobileRelayProjection>> _changes =
+      StreamController<ProjectionUpdate<MobileRelayProjection>>.broadcast(
+        sync: true,
       );
-      addTearDown(controller.dispose);
-      controller.currentSection = ClientSection.mobileRelay;
-      await controller.layoutManager.initialize();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(
-            platformBrightness: Brightness.dark,
-          ).copyWith(platform: TargetPlatform.android),
-          home: SizedBox(
-            width: 390,
-            height: 844,
-            child: ClientShell(controller: controller),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(controller.currentSection, ClientSection.mobileRelay);
-      expect(
-        tester.widget<LayoutHost>(find.byType(LayoutHost)).destination,
-        ClientSection.mobileRelay,
-      );
-      expect(find.byType(MobileRelayPanel), findsOneWidget);
-      expect(find.byType(AgentsCanvas), findsNothing);
-    },
+  @override
+  final MobileRelayProjection current = MobileRelayProjection(
+    peers: const [],
+    approvals: const [],
+    transfers: const [],
+    pairingCode: '',
+    stationLabel: '',
+    phase: PresentationPhase.ready,
   );
 
-  testWidgets(
-    'mobile messaging profile navigates to Mobile Relay through destination navigation',
-    (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  @override
+  Stream<ProjectionUpdate<MobileRelayProjection>> get changes =>
+      _changes.stream;
 
-      final controller = ClientController(
-        portableData: _testPortableData(),
-        presentationPreferencesRepository:
-            _TestPresentationPreferencesRepository(
-              layoutProfileId: LayoutProfileId.parse('messaging'),
-            ),
-        agentService: _NoopAgentService(scanTargetsResponse: const []),
-        conversationService: const _NoopConversationService(),
-        mobileRelayService: _SecureAgentRelayService(),
-        mobileClientRuntimePlatformOverride: true,
-      );
-      addTearDown(controller.dispose);
-      controller.currentSection = ClientSection.agents;
-      await controller.layoutManager.initialize();
+  Future<void> dispose() => _changes.close();
+}
 
-      await tester.pumpWidget(
-        MaterialApp(
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(
-            platformBrightness: Brightness.dark,
-          ).copyWith(platform: TargetPlatform.android),
-          home: SizedBox(
-            width: 390,
-            height: 844,
-            child: ClientShell(controller: controller),
-          ),
-        ),
-      );
-      await tester.pump();
+final class _RecordingMobileRelayIntents
+    implements IntentSink<MobileRelayIntent> {
+  final List<MobileRelayIntent> values = [];
 
-      await tester.tap(find.byKey(const Key('messaging-mobile-menu-button')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(
-          const Key('messaging-mobile-compact-navigation-mobileRelay'),
-        ),
-      );
-      await tester.pumpAndSettle();
+  @override
+  void send(MobileRelayIntent intent) => values.add(intent);
+}
 
-      expect(controller.currentSection, ClientSection.mobileRelay);
-      expect(
-        tester.widget<LayoutHost>(find.byType(LayoutHost)).destination,
-        ClientSection.mobileRelay,
-      );
-      expect(find.byType(MobileRelayPanel), findsOneWidget);
-      expect(find.byType(AgentsCanvas), findsNothing);
-    },
-  );
+final class _MobileRelayEffects implements EffectSource<MobileRelayEffect> {
+  final StreamController<MobileRelayEffect> _effects =
+      StreamController<MobileRelayEffect>.broadcast(sync: true);
+
+  @override
+  Stream<MobileRelayEffect> get effects => _effects.stream;
+
+  void add(MobileRelayEffect effect) => _effects.add(effect);
+
+  Future<void> dispose() => _effects.close();
 }
 
 PortableDataRoot _testPortableData() {

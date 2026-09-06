@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import {
+  prepareStagedFlutterSource,
+  stagedPresentationContractRoot,
+} from "../../../../apps/desktop/scripts/package-client/source-staging.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -43,6 +50,63 @@ async function sources() {
     ),
   );
 }
+
+test("clean Flutter staging closes the pure presentation package boundary", async () => {
+  const cleanBuildRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), "lico-package-client-stage-"),
+  );
+  const previousCleanBuildRoot = process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+  try {
+    process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = cleanBuildRoot;
+    const stagedFlutterRoot = prepareStagedFlutterSource();
+    const stagedContractRoot = stagedPresentationContractRoot();
+    const expectedContractRoot = path.resolve(
+      stagedFlutterRoot,
+      "..",
+      "..",
+      "packages",
+      "presentation_contract",
+    );
+    assert.equal(stagedContractRoot, expectedContractRoot);
+    assert.equal(
+      await fileExists(path.join(stagedContractRoot, "pubspec.yaml")),
+      true,
+    );
+    assert.equal(
+      await fileExists(
+        path.join(stagedContractRoot, "lib", "presentation_contract.dart"),
+      ),
+      true,
+    );
+    for (const generatedState of [
+      ".dart_tool",
+      ".flutter-plugins",
+      ".flutter-plugins-dependencies",
+      ".idea",
+      "build",
+    ]) {
+      assert.equal(
+        await fileExists(path.join(stagedContractRoot, generatedState)),
+        false,
+        generatedState,
+      );
+    }
+    const stagedPackages = await fs.readdir(path.dirname(stagedContractRoot), {
+      withFileTypes: true,
+    });
+    assert.deepEqual(
+      stagedPackages.map((entry) => `${entry.name}:${entry.isDirectory()}`).sort(),
+      ["presentation_contract:true"],
+    );
+  } finally {
+    if (previousCleanBuildRoot === undefined) {
+      delete process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;
+    } else {
+      process.env.LICO_CLIENT_CLEAN_BUILD_ROOT = previousCleanBuildRoot;
+    }
+    await fs.rm(cleanBuildRoot, { recursive: true, force: true });
+  }
+});
 
 test("package client facade preserves exactly the six existing named exports", async () => {
   const module = await import(
@@ -265,4 +329,13 @@ function findImportCycle(source) {
     if (cycle) return cycle;
   }
   return null;
+}
+
+async function fileExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
