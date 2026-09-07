@@ -1,7 +1,7 @@
 //! Per-agent installed-version probes. Missing agents stay blank; never "unknown".
 
 use super::argv::{self, ArgvKind};
-use super::contract::{AgentRecipe, FIRST_BATCH_IDS, InstallChannel};
+use super::contract::{AgentRecipe, InstallChannel};
 use super::version;
 use serde_json::Value;
 use std::path::Path;
@@ -196,9 +196,6 @@ fn reject_unknown(value: String) -> String {
 }
 
 pub(crate) fn injected_probe(params: &Value, agent_id: &str) -> Option<String> {
-    if !FIRST_BATCH_IDS.contains(&agent_id) {
-        return None;
-    }
     params
         .get("versionProbes")
         .and_then(Value::as_object)

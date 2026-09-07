@@ -277,6 +277,8 @@ pub(super) fn model_catalog_for_target(
     build_model_catalog(entries, sources, diagnostics, default_model)
 }
 
+pub(super) use builtin::{BUILTIN_FALLBACK_SOURCE, builtin_cold_start_catalog};
+
 pub(super) fn empty_model_catalog(status: &str, source: &str) -> Value {
     json!({
         "schemaVersion": 1,

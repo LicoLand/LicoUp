@@ -133,6 +133,7 @@ detection = [
   { oses = ["linux"], path = "{xdg_config}/Cursor" },
 ]
 history = [
+  { path = "{home}/.cursor/agents", kind = "cursor-agents" },
   { path = "{home}/.cursor/chats", kind = "cursor-cli-chats" },
   { path = "{home}/.cursor/projects", kind = "cursor-cli-projects" },
   { path = "{home}/Library/Application Support/Cursor/User/workspaceStorage", kind = "cursor-workspace-storage" },
@@ -171,6 +172,7 @@ binaries = [
 ]
 config = [{ path = "{home}/.codex/config.toml" }]
 history = [
+  { path = "{home}/.codex/agents", kind = "codex-agents" },
   { path = "{home}/.codex/history.jsonl", kind = "codex-prompt-history" },
   { path = "{home}/.codex/session_index.jsonl", kind = "codex-session-index" },
   { path = "{home}/.codex/sessions", kind = "codex-session-store" },
@@ -195,6 +197,7 @@ config = [
 ]
 detection = [{ path = "{home}/.claude" }]
 history = [
+  { path = "{home}/.claude/agents", kind = "claude-agents" },
   { path = "{home}/.claude/projects", kind = "claude-project-transcripts" },
 ]
 
@@ -207,6 +210,9 @@ config = [
 ]
 history = [
   { path = "{home}/.config/opencode", kind = "opencode-config" },
+  { path = "{home}/.config/opencode/agents", kind = "opencode-agents" },
+  { path = "{xdg_config}/opencode/agents", kind = "opencode-agents" },
+  { path = "{appdata}/opencode/agents", kind = "opencode-agents" },
   { path = "{home}/.local/share/opencode", kind = "opencode-data" },
   { path = "{appdata}/opencode", kind = "opencode-appdata" },
   { path = "{xdg_data}/opencode", kind = "opencode-data" },
@@ -317,6 +323,28 @@ detection = [
 ]
 history = [
   { path = "{home}/.kimi-code/sessions", kind = "kimi-code-session-store" },
+]
+
+[[agents]]
+id = "grok"
+config = [{ path = "{home}/.grok/config.toml" }]
+detection = [
+  { path = "{home}/.grok/config.toml" },
+  { path = "{home}/.grok" },
+]
+history = [
+  { path = "{home}/.grok", kind = "grok-home" },
+]
+
+[[agents]]
+id = "command-code"
+config = [{ path = "{home}/.command-code/config.toml" }]
+detection = [
+  { path = "{home}/.command-code/config.toml" },
+  { path = "{home}/.command-code" },
+]
+history = [
+  { path = "{home}/.command-code", kind = "command-code-home" },
 ]
 
 [[agents]]

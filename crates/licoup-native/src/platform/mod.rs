@@ -13,6 +13,7 @@ mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;
+pub(crate) mod generic_cli_driver;
 mod hermes_driver;
 pub(crate) mod hermes_tui_gateway;
 mod hermes_tui_gateway_driver;
@@ -45,6 +46,7 @@ pub(crate) mod virtual_machine;
 
 pub mod antigravity_subagent_mcp_manager;
 pub mod catalog_cache_store;
+pub mod claude_code_subagent_mcp_manager;
 pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;

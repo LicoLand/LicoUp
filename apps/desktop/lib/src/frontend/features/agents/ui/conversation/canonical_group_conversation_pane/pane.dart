@@ -120,11 +120,16 @@ class _CanonicalGroupConversationPaneState
       conversation.assistantMembership != null;
 
   void _toggleAssistant(ClientConversation conversation) {
+    final nextActive = !_assistantActive(conversation);
     setState(() {
-      _assistantActiveByConversation[conversation.id] = !_assistantActive(
-        conversation,
-      );
+      _assistantActiveByConversation[conversation.id] = nextActive;
     });
+    if (nextActive) return;
+    final assistantId = conversation.assistantMembership?.id.trim() ?? '';
+    if (assistantId.isEmpty) return;
+    widget.conversation.intents.send(
+      InterruptConversationTurn(conversation.id, assistantId),
+    );
   }
 
   TargetCandidate? _assistantTarget(
@@ -226,7 +231,8 @@ class _CanonicalGroupConversationPaneState
 
   List<AgentConversationMessage> get _timelineMessages {
     final parts = <List<AgentConversationMessage>>[
-      for (final membership in widget.turns.memberships) membership.messages,
+      for (final membership in widget.turns.memberships)
+        canonicalGroupLiveTurnMessages(membership.messages),
     ];
     final cachedParts = _cachedLiveParts;
     final cachedMessages = _cachedLiveMessages;

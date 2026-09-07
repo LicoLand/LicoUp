@@ -131,8 +131,16 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
           );
           return;
         }
+        final conversation =
+            _controller.clientConversationController.selectedConversation;
+        final conversationId = conversation != null && conversation.group
+            ? conversation.id
+            : '';
         _run(
-          () => _adaptiveFlywheel.importPackage(path.trim()),
+          () => _adaptiveFlywheel.importPackage(
+            path.trim(),
+            conversationId: conversationId,
+          ),
           trace,
           reasonCode: 'adaptive_flywheel_import_failed',
         );

@@ -123,6 +123,130 @@ void main() {
     },
   );
 
+  test(
+    'agent events keep assistant text when a user-role runtime frame is mixed in',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Lico',
+        'archived': false,
+        'isGroup': true,
+        'revision': 4,
+        'createdAtUnixMs': 1,
+        'updatedAtUnixMs': 20,
+        'eventCount': 2,
+        'assistantMembershipId': 'membership:claude',
+        'memberships': [
+          _membership(
+            id: 'membership:owner',
+            principalId: 'human:local',
+            kind: 'human',
+            label: 'Local User',
+            access: 'owner',
+          ),
+          _membership(
+            id: 'membership:claude',
+            principalId: 'agent:claude-code',
+            kind: 'agent',
+            label: 'Claude Code',
+            agentId: 'claude-code',
+          ),
+        ],
+      });
+      final events = [
+        ClientConversationEvent.fromJson({
+          'id': 'event:user',
+          'conversationId': conversation.id,
+          'sequence': 1,
+          'authorMembershipId': 'membership:owner',
+          'kind': 'message',
+          'createdAtUnixMs': 10,
+          'finalized': true,
+          'parts': [_part('part:user', 0, 'text', 'follow up')],
+        }),
+        ClientConversationEvent.fromJson({
+          'id': 'event:agent',
+          'conversationId': conversation.id,
+          'sequence': 2,
+          'authorMembershipId': 'membership:claude',
+          'kind': 'message',
+          'createdAtUnixMs': 11,
+          'finalized': true,
+          'correlationId': 'dispatch:claude',
+          'parts': [
+            _part('part:text', 0, 'text', 'visible reply'),
+            _part(
+              'part:replay',
+              1,
+              'metadata',
+              '{"event":"agent.message.chunk","payload":{"text":"visible reply"}}',
+            ),
+            _part(
+              'part:user-delta',
+              2,
+              'metadata',
+              '{"event":"conversation.user.message","payload":{"text":"follow up","role":"user"}}',
+            ),
+          ],
+        }),
+      ];
+
+      final session = canonicalGroupConversationSession(
+        conversation,
+        events,
+        LicoStrings.forLocale(const Locale('en')),
+      );
+      final thread = session.messages
+          .where((message) => message.isDefaultThreadVisible)
+          .toList();
+      expect(thread, hasLength(2));
+      expect(thread[0].role, 'user');
+      expect(thread[0].text, 'follow up');
+      expect(thread[1].role, 'assistant');
+      expect(thread[1].text, 'visible reply');
+      expect(thread[1].participantAgentId, 'claude-code');
+      expect(
+        session.messages.any(
+          (message) => message.text.contains('conversation.user.message'),
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test('group live turns drop user-role deltas owned by Canonical Events', () {
+    final live = canonicalGroupLiveTurnMessages([
+      const AgentConversationMessage(
+        id: 'live-user',
+        role: 'user',
+        text: 'follow up',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      ),
+      const AgentConversationMessage(
+        id: 'live-assistant',
+        role: 'assistant',
+        text: 'visible reply',
+        createdAt: '2026-01-01T00:00:01.000Z',
+        participantAgentId: 'claude-code',
+      ),
+    ]);
+    expect(live, hasLength(1));
+    expect(live.single.id, 'live-assistant');
+    final agentOnly = [
+      const AgentConversationMessage(
+        id: 'live-assistant',
+        role: 'assistant',
+        text: 'visible reply',
+        createdAt: '2026-01-01T00:00:01.000Z',
+        participantAgentId: 'claude-code',
+      ),
+    ];
+    expect(
+      identical(canonicalGroupLiveTurnMessages(agentOnly), agentOnly),
+      isTrue,
+    );
+  });
+
   test('posted image parts project as typed message attachments', () {
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',

@@ -375,6 +375,44 @@ void main() {
       'Bash',
     ]);
   });
+
+  test(
+    'merge cache returns the same list instance when identity is unchanged',
+    () {
+      final persisted = [
+        _message('native-user', 'user', 'hello'),
+        _message('native-assistant', 'assistant', 'world'),
+      ];
+      final live = [
+        _message('live-user', 'user', 'hello'),
+        _message('live-assistant', 'assistant', 'world'),
+      ];
+
+      final first = mergeConversationReadbackAndLiveMessages(persisted, live);
+      final second = mergeConversationReadbackAndLiveMessages(
+        List<AgentConversationMessage>.of(persisted),
+        List<AgentConversationMessage>.of(live),
+      );
+
+      expect(identical(first, second), isTrue);
+
+      final grownLive = [
+        live[0],
+        _message('live-assistant', 'assistant', 'world!'),
+      ];
+      final rematched = mergeConversationReadbackAndLiveMessages(
+        persisted,
+        grownLive,
+      );
+      expect(identical(rematched, first), isFalse);
+      expect(rematched.map((message) => message.id), [
+        'native-user',
+        'native-assistant',
+        'live-user',
+        'live-assistant',
+      ]);
+    },
+  );
 }
 
 AgentConversationMessage _structured(String id, String cardType, String text) =>

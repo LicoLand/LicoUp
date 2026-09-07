@@ -560,7 +560,13 @@ final class ClientConversationController extends ApplicationStateOwner {
         throw const ClientConversationServiceFailure('invalid_response');
       }
       _draft = '';
-      _publishChange();
+      try {
+        await _loadSelected();
+        _publishChange();
+      } catch (_) {
+        // The Message Event is already durable. A readback failure must not
+        // skip dispatch; the post-dispatch reload still reconciles.
+      }
       if (dispatch) {
         try {
           final dispatched = await _service.execute(_runner, {

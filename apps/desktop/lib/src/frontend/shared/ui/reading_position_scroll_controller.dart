@@ -65,6 +65,16 @@ class _ReadingPositionScrollPosition extends ScrollPositionWithSingleContext {
   /// Returns true once after a far-end append was announced.
   final bool Function() consumeSuppression;
 
+  /// Pointer-driven scroll (drag, hold, or fling). Layout-time correction
+  /// must not move pixels while one of these owns the gesture.
+  bool get _userIsScrolling {
+    final current = activity;
+    if (current == null) {
+      return false;
+    }
+    return current.isScrolling || current is HoldScrollActivity;
+  }
+
   @override
   bool correctForNewDimensions(
     ScrollMetrics oldPosition,
@@ -77,7 +87,12 @@ class _ReadingPositionScrollPosition extends ScrollPositionWithSingleContext {
       // was armed, regardless of where the reader sits, so a stale flag can
       // never eat a later near-end correction.
       final suppressed = consumeSuppression();
-      if (!suppressed && pixels > _atNewestThreshold) {
+      // Hold the visible rows while content appends at the newest end and
+      // the reader is parked away from that edge. At-newest uses reverse
+      // pinning. A live drag or fling owns the pixels; correcting
+      // mid-gesture fights the pointer and feels like bounce.
+      final holdingAwayFromNewest = pixels > _atNewestThreshold;
+      if (!suppressed && holdingAwayFromNewest && !_userIsScrolling) {
         final held = clampDouble(
           pixels + extentDelta,
           newPosition.minScrollExtent,
