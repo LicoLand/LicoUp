@@ -31,7 +31,7 @@ authority.
   [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
 - [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
-- [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.md)
+- [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.zh-CN.md)
 - [Security and data boundaries](architecture/SECURITY-AND-DATA-BOUNDARY.md) · [安全架构与数据边界](architecture/SECURITY-AND-DATA-BOUNDARY.zh-CN.md)
 
 ## Functionality
@@ -77,7 +77,6 @@ authority.
   [兼容性](COMPATIBILITY.zh-CN.md)
 - [Release packages](RELEASE-PACKAGES.md) ·
   [发布包结构](RELEASE-PACKAGES.zh-CN.md)
-- [Entity configuration layout](ENTITY-CONFIG-LAYOUT.md)
 
 `COMPATIBILITY.md` and its localization are generated projections. Their source
 catalogs and update commands are stated in those files.
