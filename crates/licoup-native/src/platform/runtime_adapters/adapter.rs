@@ -120,19 +120,19 @@ impl RuntimeAdapter {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Antigravity => "Antigravity - CLI",
-            Self::ClaudeCode => "Claude Code - CLI",
-            Self::Codex => "ChatGPT - Desktop",
-            Self::Copilot => "GitHub Copilot - CLI",
-            Self::Cursor => "Cursor - IDE",
-            Self::Hermes => "Hermes Agent - CLI",
-            Self::KiloCode => "Kilo Code - CLI",
-            Self::KimiCode => "Kimi Code - CLI",
-            Self::OpenClaw => "OpenClaw - CLI",
-            Self::OpenCode => "OpenCode - CLI",
-            Self::Pi => "Pi Agent - CLI",
-            Self::LicoAgent => "Lico Agent - CLI",
-            Self::DeepSeekHarness => "DeepSeek Harness - SDK",
+            Self::Antigravity => "Antigravity CLI",
+            Self::ClaudeCode => "Claude Code CLI",
+            Self::Codex => "Codex CLI",
+            Self::Copilot => "GitHub Copilot CLI",
+            Self::Cursor => "Cursor CLI",
+            Self::Hermes => "Hermes Agent CLI",
+            Self::KiloCode => "Kilo Code CLI",
+            Self::KimiCode => "Kimi Code CLI",
+            Self::OpenClaw => "OpenClaw CLI",
+            Self::OpenCode => "OpenCode CLI",
+            Self::Pi => "Pi Agent CLI",
+            Self::LicoAgent => "Lico Agent CLI",
+            Self::DeepSeekHarness => "DeepSeek Harness",
         }
     }
 

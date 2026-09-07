@@ -126,7 +126,7 @@ fn cursor_detection_keeps_desktop_state_and_acp_cli_candidates_separate() {
         None
     );
     let cursor = target_def("cursor").unwrap();
-    assert_eq!(cursor.label, "Cursor - IDE");
+    assert_eq!(cursor.label, "Cursor CLI");
     assert_eq!(cursor.binary_names, &["cursor-agent", "cursor"]);
     assert!(!cursor.process_names.contains(&"agent"));
     assert!(cursor.process_names.contains(&"cursor"));
@@ -158,14 +158,14 @@ fn kimi_code_target_uses_official_cli_home_and_binary() {
     );
 
     let target = target_def("kimi-code").unwrap();
-    assert_eq!(target.label, "Kimi Code - CLI");
+    assert_eq!(target.label, "Kimi Code CLI");
     assert_eq!(target.kind, "cli");
     assert_eq!(target.binary_names, &["kimi"]);
     assert!(!target.process_names.contains(&"com.moonshot.kimi"));
     assert!(target_uses_running_process_detection("kimi-code"));
 
     let desktop = target_def("kimi").unwrap();
-    assert_eq!(desktop.label, "Kimi - Desktop");
+    assert_eq!(desktop.label, "Kimi Desktop");
     assert_eq!(desktop.kind, "desktop-agent");
     assert!(desktop.binary_names.is_empty());
     assert!(desktop.process_names.contains(&"com.moonshot.kimi"));

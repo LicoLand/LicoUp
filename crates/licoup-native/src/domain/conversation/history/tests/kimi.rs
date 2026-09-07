@@ -56,7 +56,7 @@ fn kimi_code_wire_usage_records_preserve_model_and_exact_token_fields() {
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0]["adapterId"], "kimi-code");
-    assert_eq!(sessions[0]["adapterLabel"], "Kimi Code - CLI");
+    assert_eq!(sessions[0]["adapterLabel"], "Kimi Code CLI");
     assert_eq!(sessions[0]["nativeSessionId"], "session-1");
 
     let messages = sessions[0]["messages"].as_array().unwrap();
@@ -265,7 +265,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0]["adapterId"], "kimi-code");
-    assert_eq!(sessions[0]["adapterLabel"], "Kimi Code - CLI");
+    assert_eq!(sessions[0]["adapterLabel"], "Kimi Code CLI");
     assert_eq!(sessions[0]["nativeSessionId"], "native-session-42");
     assert_eq!(sessions[0]["workingDirectory"], "/workspace/kimi-project");
 

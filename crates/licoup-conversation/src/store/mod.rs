@@ -42,7 +42,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-const CURRENT_SCHEMA_VERSION: &str = "11";
+const CURRENT_SCHEMA_VERSION: &str = "12";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -142,7 +142,8 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
               'completed','failed','cancelled'
             )),
             created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
+            updated_at INTEGER NOT NULL,
+            watchdog_deadline_unix_ms INTEGER
           );
           CREATE UNIQUE INDEX IF NOT EXISTS subagent_dispatch_claims_active_edge
             ON subagent_dispatch_claims(conversation_id, caller_membership_id, target_membership_id)
@@ -790,28 +791,33 @@ impl ConversationStore {
                     let membership_id: Option<String> = transaction
                         .query_row(
                             "SELECT m.id FROM memberships m JOIN principals p ON p.id=m.principal_id
-                             WHERE m.conversation_id=?1 AND m.status='active'
-                               AND p.kind='agent' AND p.agent_id=?2 LIMIT 1",
+                             WHERE m.conversation_id=?1
+                               AND p.kind='agent' AND p.agent_id=?2
+                             ORDER BY CASE m.status WHEN 'active' THEN 0 ELSE 1 END,
+                                      m.joined_at DESC, m.id DESC
+                             LIMIT 1",
                             params![conversation_id, agent_id],
                             |row| row.get(0),
                         )
                         .optional()?;
-                    let membership_id = membership_id.unwrap_or_else(|| new_id("membership"));
-                    let membership_exists: Option<i64> = transaction
-                        .query_row(
-                            "SELECT 1 FROM memberships WHERE id=?1",
+                    let membership_id = if let Some(membership_id) = membership_id {
+                        transaction.execute(
+                            "UPDATE memberships
+                             SET status='active', left_at=NULL
+                             WHERE id=?1 AND status='left'",
                             params![membership_id],
-                            |row| row.get(0),
-                        )
-                        .optional()?;
-                    if membership_exists.is_none() {
+                        )?;
+                        membership_id
+                    } else {
+                        let membership_id = new_id("membership");
                         transaction.execute(
                             "INSERT INTO memberships(
                                id, conversation_id, principal_id, access, status, joined_at, left_at
                              ) VALUES (?1, ?2, ?3, 'member', 'active', ?4, NULL)",
                             params![membership_id, conversation_id, agent_principal.id, now],
                         )?;
-                    }
+                        membership_id
+                    };
                     if !session_id.trim().is_empty() {
                         transaction.execute(
                             "INSERT INTO migration_provenance(source_kind, source_identity, conversation_id)
@@ -909,6 +915,12 @@ impl ConversationStore {
     ) -> StoreResult<()> {
         if cursor == 0 || cursor > i64::MAX as u64 {
             return Err(anyhow!("runtime_cursor_invalid"));
+        }
+        // Human speech is already one Canonical Message Event. The live
+        // observer may still emit this delta, but it must never become Parts
+        // on the agent-authored turn Event.
+        if runtime_frame_is_user_speech(frame) {
+            return Ok(());
         }
         let encoded = serde_json::to_string(frame)?;
         let parts = runtime_frame_parts(&encoded);
@@ -1891,28 +1903,48 @@ impl ConversationStore {
         validate_identifier(conversation_id, "conversation_id")?;
         validate_identifier(&principal.id, "principal_id")?;
         validate_required_text(&principal.display_name, "principal_display_name")?;
-        let membership_id = new_id("membership");
         let now = now_ms();
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             ensure_conversation(&transaction, conversation_id)?;
             upsert_principal(&transaction, &principal)?;
-            let existing: Option<String> = transaction
+            let existing_active: Option<String> = transaction
                 .query_row(
                     "SELECT id FROM memberships WHERE conversation_id=?1 AND principal_id=?2 AND status='active'",
                     params![conversation_id, principal.id],
                     |row| row.get(0),
                 )
                 .optional()?;
-            if existing.is_some() {
+            if existing_active.is_some() {
                 return Err(anyhow!("membership_already_active"));
             }
-            transaction.execute(
-                "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
-                 VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
-                params![membership_id, conversation_id, principal.id, enum_wire(access)?, now],
-            )?;
+            let existing_left: Option<String> = transaction
+                .query_row(
+                    "SELECT id FROM memberships
+                     WHERE conversation_id=?1 AND principal_id=?2 AND status='left'
+                     ORDER BY joined_at DESC, id DESC LIMIT 1",
+                    params![conversation_id, principal.id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let membership_id = if let Some(membership_id) = existing_left {
+                transaction.execute(
+                    "UPDATE memberships
+                     SET status='active', left_at=NULL, access=?2
+                     WHERE id=?1",
+                    params![membership_id, enum_wire(access)?],
+                )?;
+                membership_id
+            } else {
+                let membership_id = new_id("membership");
+                transaction.execute(
+                    "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
+                     VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
+                    params![membership_id, conversation_id, principal.id, enum_wire(access)?, now],
+                )?;
+                membership_id
+            };
             if principal.kind == PrincipalKind::Agent {
                 ensure_membership_profile_default(&transaction, &membership_id, now)?;
             }
@@ -3183,7 +3215,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3244,6 +3276,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     if current_schema_version == "10" {
         migrate_subagent_mcp_inbound_v11(connection)?;
     }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "11" {
+        migrate_membership_convergence_v12(connection)?;
+    }
     ensure_column(
         connection,
         "conversations",
@@ -3280,6 +3320,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "CREATE INDEX IF NOT EXISTS conversations_pinned_updated_idx
          ON conversations(pinned DESC, updated_at DESC, id DESC);",
     )?;
+    ensure_converged_membership_index(connection)?;
     ensure_column(
         connection,
         "runtime_bindings",
@@ -3287,6 +3328,12 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "TEXT",
     )?;
     ensure_column(connection, "runtime_bindings", "working_directory", "TEXT")?;
+    ensure_column(
+        connection,
+        "subagent_dispatch_claims",
+        "watchdog_deadline_unix_ms",
+        "INTEGER",
+    )?;
     ensure_search_index(connection)?;
     Ok(())
 }
@@ -3582,6 +3629,220 @@ fn migrate_subagent_mcp_inbound_v11(connection: &mut Connection) -> StoreResult<
     Ok(())
 }
 
+/// Version 12 keeps one Membership row per (conversation, principal). Join and
+/// leave flip that row's status; leftover left rows from earlier churn are
+/// retargeted onto the surviving id and deleted.
+fn migrate_membership_convergence_v12(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    converge_duplicate_memberships(&transaction, None)?;
+    ensure_converged_membership_index(&transaction)?;
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '12')
+         ON CONFLICT(key) DO UPDATE SET value='12'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+fn ensure_converged_membership_index(connection: &Connection) -> StoreResult<()> {
+    connection.execute_batch(
+        "DROP INDEX IF EXISTS memberships_active_unique;
+         CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique
+           ON memberships(conversation_id, principal_id);",
+    )?;
+    Ok(())
+}
+
+fn converge_duplicate_memberships(
+    connection: &Connection,
+    conversation_id: Option<&str>,
+) -> StoreResult<()> {
+    let mut groups: Vec<(String, String)> = Vec::new();
+    {
+        let mut statement = if conversation_id.is_some() {
+            connection.prepare(
+                "SELECT conversation_id, principal_id FROM memberships
+                 WHERE conversation_id=?1
+                 GROUP BY conversation_id, principal_id
+                 HAVING COUNT(*) > 1",
+            )?
+        } else {
+            connection.prepare(
+                "SELECT conversation_id, principal_id FROM memberships
+                 GROUP BY conversation_id, principal_id
+                 HAVING COUNT(*) > 1",
+            )?
+        };
+        if let Some(conversation_id) = conversation_id {
+            let rows = statement.query_map(params![conversation_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                groups.push(row?);
+            }
+        } else {
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                groups.push(row?);
+            }
+        }
+    }
+    for (conversation_id, principal_id) in groups {
+        retarget_duplicate_membership_group(connection, &conversation_id, &principal_id)?;
+    }
+    Ok(())
+}
+
+fn retarget_duplicate_membership_group(
+    connection: &Connection,
+    conversation_id: &str,
+    principal_id: &str,
+) -> StoreResult<()> {
+    let mut statement = connection.prepare(
+        "SELECT id, status, joined_at FROM memberships
+         WHERE conversation_id=?1 AND principal_id=?2
+         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,
+                  joined_at DESC, id DESC",
+    )?;
+    let rows = statement.query_map(params![conversation_id, principal_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut ids = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    let Some((survivor, _, _)) = ids.first().cloned() else {
+        return Ok(());
+    };
+    for (discarded, _, _) in ids.drain(1..) {
+        retarget_membership_id(connection, &discarded, &survivor)?;
+        connection.execute("DELETE FROM memberships WHERE id=?1", params![discarded])?;
+    }
+    Ok(())
+}
+
+fn retarget_membership_id(connection: &Connection, from: &str, to: &str) -> StoreResult<()> {
+    if from == to {
+        return Ok(());
+    }
+    connection.execute(
+        "UPDATE events SET author_membership_id=?2 WHERE author_membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE conversations SET assistant_membership_id=?2 WHERE assistant_membership_id=?1",
+        params![from, to],
+    )?;
+    let survivor_has_profile: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM membership_profiles WHERE membership_id=?1",
+            params![to],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if survivor_has_profile.is_some() {
+        connection.execute(
+            "DELETE FROM membership_profiles WHERE membership_id=?1",
+            params![from],
+        )?;
+    } else {
+        connection.execute(
+            "UPDATE membership_profiles SET membership_id=?2 WHERE membership_id=?1",
+            params![from, to],
+        )?;
+    }
+    connection.execute(
+        "DELETE FROM runtime_bindings
+         WHERE membership_id=?1 AND (conversation_id, lane) IN (
+           SELECT conversation_id, lane FROM runtime_bindings WHERE membership_id=?2
+         )",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE runtime_bindings SET membership_id=?2 WHERE membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "DELETE FROM direct_turns
+         WHERE membership_id=?1 AND source_event_id IN (
+           SELECT source_event_id FROM direct_turns WHERE membership_id=?2
+         )",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE direct_turns SET membership_id=?2 WHERE membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE conversation_dispatches SET membership_id=?2 WHERE membership_id=?1",
+        params![from, to],
+    )?;
+    const ACTIVE_CLAIM: &str = "'claimed','running','cancel-requested','reconciliation-required'";
+    connection.execute(
+        &format!(
+            "UPDATE subagent_dispatch_claims SET parent_dispatch_id=NULL
+             WHERE parent_dispatch_id IN (
+               SELECT id FROM subagent_dispatch_claims discarded
+               WHERE (discarded.caller_membership_id=?1 OR discarded.target_membership_id=?1)
+                 AND discarded.state IN ({ACTIVE_CLAIM})
+                 AND EXISTS (
+                   SELECT 1 FROM subagent_dispatch_claims kept
+                   WHERE kept.conversation_id=discarded.conversation_id
+                     AND kept.caller_membership_id=CASE
+                       WHEN discarded.caller_membership_id=?1 THEN ?2
+                       ELSE discarded.caller_membership_id END
+                     AND kept.target_membership_id=CASE
+                       WHEN discarded.target_membership_id=?1 THEN ?2
+                       ELSE discarded.target_membership_id END
+                     AND kept.state IN ({ACTIVE_CLAIM})
+                 )
+             )"
+        ),
+        params![from, to],
+    )?;
+    connection.execute(
+        &format!(
+            "DELETE FROM subagent_dispatch_claims
+             WHERE (caller_membership_id=?1 OR target_membership_id=?1)
+               AND state IN ({ACTIVE_CLAIM})
+               AND EXISTS (
+                 SELECT 1 FROM subagent_dispatch_claims kept
+                 WHERE kept.conversation_id=subagent_dispatch_claims.conversation_id
+                   AND kept.caller_membership_id=CASE
+                     WHEN subagent_dispatch_claims.caller_membership_id=?1 THEN ?2
+                     ELSE subagent_dispatch_claims.caller_membership_id END
+                   AND kept.target_membership_id=CASE
+                     WHEN subagent_dispatch_claims.target_membership_id=?1 THEN ?2
+                     ELSE subagent_dispatch_claims.target_membership_id END
+                   AND kept.state IN ({ACTIVE_CLAIM})
+               )"
+        ),
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE subagent_dispatch_claims SET caller_membership_id=?2 WHERE caller_membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE subagent_dispatch_claims SET target_membership_id=?2 WHERE target_membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE subagent_mcp_inbound SET caller_membership_id=?2 WHERE caller_membership_id=?1",
+        params![from, to],
+    )?;
+    connection.execute(
+        "UPDATE subagent_mcp_inbound SET target_membership_id=?2 WHERE target_membership_id=?1",
+        params![from, to],
+    )?;
+    Ok(())
+}
+
 fn normalize_reserved_group_after_legacy_import(connection: &mut Connection) -> StoreResult<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     normalize_reserved_group(&transaction)?;
@@ -3872,6 +4133,8 @@ fn normalize_reserved_group(connection: &Connection) -> StoreResult<()> {
             continue;
         }
     }
+
+    converge_duplicate_memberships(connection, Some(&conversation_id))?;
 
     let mut sequence = 0i64;
     let mut statement = connection
@@ -4758,6 +5021,10 @@ fn runtime_source_identity(
     };
     validate_identifier(&identity, "runtime_source_identity")?;
     Ok(identity)
+}
+
+fn runtime_frame_is_user_speech(frame: &Value) -> bool {
+    frame.get("event").and_then(Value::as_str) == Some(crate::projection::USER_MESSAGE_EVENT_KIND)
 }
 
 fn runtime_frame_parts(encoded: &str) -> Vec<NewEventPart> {
@@ -6492,23 +6759,24 @@ mod tests {
             (
                 "memberships",
                 "SELECT id, conversation_id, principal_id, access, status, joined_at, left_at
-                 FROM memberships WHERE conversation_id=?1",
+                 FROM memberships WHERE conversation_id=?1 ORDER BY id",
             ),
             (
                 "events",
                 "SELECT id, conversation_id, sequence, author_membership_id, kind, causation_id,
                  correlation_id, created_at, finalized
-                 FROM events WHERE conversation_id=?1",
+                 FROM events WHERE conversation_id=?1 ORDER BY sequence, id",
             ),
             (
                 "event_parts",
                 "SELECT id, event_id, ordinal, kind, content, created_at FROM event_parts
-                 WHERE event_id IN (SELECT id FROM events WHERE conversation_id=?1)",
+                 WHERE event_id IN (SELECT id FROM events WHERE conversation_id=?1)
+                 ORDER BY event_id, ordinal, id",
             ),
             (
                 "event_search",
                 "SELECT event_id, conversation_id, content FROM event_search
-                 WHERE conversation_id=?1",
+                 WHERE conversation_id=?1 ORDER BY event_id",
             ),
         ];
         for (table, sql) in queries {
@@ -6595,7 +6863,7 @@ mod tests {
         let custom_before = snapshot_group(&root, "custom-group");
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -6742,7 +7010,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -6774,7 +7042,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -6802,7 +7070,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -6993,6 +7261,212 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn user_message_projection_does_not_mix_into_agent_event() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let agent = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let human = conversation.memberships[0].id.clone();
+        let user_event = store
+            .post_message_with_attachments(
+                &conversation.id,
+                Some(&human),
+                "follow up",
+                None,
+                &[],
+                &[],
+            )
+            .unwrap()
+            .0;
+        let scope = store
+            .prepare_runtime_dispatch(
+                "one",
+                "",
+                "follow up",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some(&user_event.id),
+                None,
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                1,
+                &serde_json::json!({
+                    "event": "agent.message.chunk",
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {"messageUnit": "1", "text": "Reply"}
+                }),
+            )
+            .unwrap();
+        store
+            .append_runtime_frame(
+                &scope,
+                2,
+                &serde_json::json!({
+                    "event": crate::projection::USER_MESSAGE_EVENT_KIND,
+                    "sessionId": "session-1",
+                    "turnId": "turn-1",
+                    "payload": {
+                        "text": "follow up",
+                        "role": "user",
+                        "lifecyclePrefix": ["submitted"]
+                    }
+                }),
+            )
+            .unwrap();
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "Reply"}),
+                DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        let events = store
+            .page_events(&conversation.id, None, 50)
+            .unwrap()
+            .events;
+        let user = events
+            .iter()
+            .find(|event| event.id == user_event.id)
+            .unwrap();
+        let assistant = events
+            .iter()
+            .find(|event| event.id == scope.event_id)
+            .unwrap();
+        assert_eq!(user.author_membership_id.as_deref(), Some(human.as_str()));
+        assert!(user.finalized);
+        assert_eq!(user.parts[0].kind, EventPartKind::Text);
+        assert_eq!(user.parts[0].content, "follow up");
+        assert_eq!(
+            assistant.author_membership_id.as_deref(),
+            Some(agent.id.as_str())
+        );
+        assert!(assistant.finalized);
+        let assistant_text: String = assistant
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Text)
+            .map(|part| part.content.as_str())
+            .collect();
+        assert_eq!(assistant_text, "Reply");
+        assert!(assistant.parts.iter().all(|part| {
+            !part
+                .content
+                .contains(crate::projection::USER_MESSAGE_EVENT_KIND)
+                && part.content != "follow up"
+        }));
+    }
+
+    #[test]
+    fn rejoining_member_reuses_the_left_membership_id() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let principal = Principal {
+            id: "agent:one".into(),
+            kind: PrincipalKind::Agent,
+            display_name: "One".into(),
+            agent_id: Some("one".into()),
+            created_at_unix_ms: 1,
+        };
+        let first = store
+            .add_member(
+                &conversation.id,
+                principal.clone(),
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        store.leave_member(&conversation.id, &first.id).unwrap();
+        let second = store
+            .add_member(&conversation.id, principal, MembershipAccess::Member)
+            .unwrap();
+        assert_eq!(second.id, first.id);
+        assert_eq!(second.status, MembershipStatus::Active);
+        assert_eq!(second.left_at_unix_ms, None);
+        let matching = store
+            .get(&conversation.id)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .filter(|membership| membership.principal.id == "agent:one")
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].id, first.id);
+    }
+
+    #[test]
+    fn v12_collapses_duplicate_left_and_active_memberships() {
+        let root = std::env::temp_dir().join(format!("lico-conv-v12-{}", Uuid::new_v4()));
+        path_security::ensure_private_dir(&root).unwrap();
+        let store = ConversationStore::open(&root).unwrap();
+        let conversation = store.create_conversation("Project", owner()).unwrap();
+        let conversation_id = conversation.id.clone();
+        let agent = store
+            .add_member(
+                &conversation_id,
+                Principal {
+                    id: "agent:one".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "One".into(),
+                    agent_id: Some("one".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let leftover_id = format!("membership:{}", Uuid::new_v4());
+        store
+            .with_connection(|connection| {
+                connection.execute("UPDATE schema_meta SET value='11' WHERE key='version'", [])?;
+                connection.execute_batch(
+                    "DROP INDEX IF EXISTS memberships_principal_unique;
+                     CREATE UNIQUE INDEX IF NOT EXISTS memberships_active_unique
+                       ON memberships(conversation_id, principal_id)
+                       WHERE status='active';",
+                )?;
+                connection.execute(
+                    "INSERT INTO memberships(
+                       id, conversation_id, principal_id, access, status, joined_at, left_at
+                     ) VALUES (?1, ?2, 'agent:one', 'member', 'left', 1, 2)",
+                    params![leftover_id, conversation_id],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        drop(store);
+
+        assert!(ConversationStore::open(&root).is_err());
+        let migrated = ConversationStore::open_for_migration(&root).unwrap();
+        assert_eq!(schema_version(&root), "12");
+        let matching = migrated
+            .get(&conversation_id)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .filter(|membership| membership.principal.id == "agent:one")
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].id, agent.id);
+        assert_eq!(matching[0].status, MembershipStatus::Active);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -7554,7 +8028,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -7564,7 +8038,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "11");
+        assert_eq!(schema_version(&root), "12");
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

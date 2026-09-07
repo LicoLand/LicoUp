@@ -586,11 +586,6 @@ fn consume_turn_stream(
                                 "Cursor Agent CLI returned a different conversation than the one requested.",
                                 "turn/read",
                             ),
-                            CursorParseFailure::TextSnapshotDiverged => (
-                                "cursor_cli_text_snapshot_diverged",
-                                "Cursor Agent CLI returned a divergent assistant snapshot.",
-                                "turn/read",
-                            ),
                             CursorParseFailure::PromptAcknowledgementMissing => (
                                 "cursor_cli_prompt_acknowledgement_missing",
                                 "Cursor Agent CLI produced output before acknowledging the exact prompt.",

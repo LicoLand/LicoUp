@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "kimi-code",
-  "displayName": "Kimi Code - CLI",
+  "displayName": "Kimi Code CLI",
   "match": {
     "agentIds": ["kimi-code"],
     "sourceClients": ["kimi-code"],

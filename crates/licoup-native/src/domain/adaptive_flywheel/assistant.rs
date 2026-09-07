@@ -947,6 +947,7 @@ mod tests {
             price_input_usd_per_million_tokens: Some(1.0),
             price_output_usd_per_million_tokens: Some(2.0),
             intelligence_score: Some(8),
+            task_tags: Vec::new(),
             reliability_class: Some("verified".to_owned()),
             latency_class: Some(1),
             authority: vec![

@@ -2,7 +2,8 @@
 
 use crate::domain::integration_state::IntegrationState;
 use crate::platform::{
-    antigravity_subagent_mcp_manager, codex_plugin_manager, cursor_subagent_mcp_manager,
+    antigravity_subagent_mcp_manager, claude_code_subagent_mcp_manager, codex_plugin_manager,
+    cursor_subagent_mcp_manager,
 };
 use std::path::Path;
 
@@ -110,7 +111,7 @@ pub fn status(
                 IntegrationState::Unavailable => SubagentMcpEnsureState::Unavailable,
             }
         }
-        "cursor" => {
+        "cursor" | "claude-code" => {
             if binary_path.is_none() {
                 return SubagentMcpEnsureState::Unavailable;
             }
@@ -120,11 +121,15 @@ pub fn status(
             let Some(path) = owned else {
                 return SubagentMcpEnsureState::Unavailable;
             };
-            let state = match config_path {
-                Some(explicit) => {
+            let state = match (agent_id, config_path) {
+                ("cursor", Some(explicit)) => {
                     cursor_subagent_mcp_manager::status_with_config_path(&path, explicit)
                 }
-                None => cursor_subagent_mcp_manager::status(&path),
+                ("cursor", None) => cursor_subagent_mcp_manager::status(&path),
+                (_, Some(explicit)) => {
+                    claude_code_subagent_mcp_manager::status_with_config_path(&path, explicit)
+                }
+                _ => claude_code_subagent_mcp_manager::status(&path),
             };
             match state {
                 IntegrationState::Ready => SubagentMcpEnsureState::Ready,
@@ -193,7 +198,7 @@ pub fn plan(
                 requires_confirmation: true,
             })
         }
-        "cursor" => {
+        "cursor" | "claude-code" => {
             if binary_path.is_none_or(|path| !path.is_file()) {
                 return Err(SubagentMcpEnsureError::InvalidBinary);
             }
@@ -201,13 +206,17 @@ pub fn plan(
                 .map(Path::to_path_buf)
                 .or_else(antigravity_subagent_mcp_manager::default_mcp_binary_path)
                 .ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan = match config_path {
-                Some(explicit) => {
+            let plan = match (agent_id, config_path) {
+                ("cursor", Some(explicit)) => {
                     cursor_subagent_mcp_manager::plan_with_config_path(&path, explicit)
                 }
-                None => cursor_subagent_mcp_manager::plan(&path),
+                ("cursor", None) => cursor_subagent_mcp_manager::plan(&path),
+                (_, Some(explicit)) => {
+                    claude_code_subagent_mcp_manager::plan_with_config_path(&path, explicit)
+                }
+                _ => claude_code_subagent_mcp_manager::plan(&path),
             }
-            .map_err(map_cursor_error)?;
+            .map_err(map_registration_error)?;
             Ok(SubagentMcpEnsurePlan {
                 agent_id: agent_id.to_owned(),
                 digest: plan.digest().to_owned(),
@@ -279,7 +288,7 @@ pub fn install(
                 receipt.plugin_ready_for_new_conversations,
             ))
         }
-        "cursor" => {
+        "cursor" | "claude-code" => {
             if binary_path.is_none_or(|path| !path.is_file()) {
                 return Err(SubagentMcpEnsureError::InvalidBinary);
             }
@@ -287,17 +296,37 @@ pub fn install(
                 .map(Path::to_path_buf)
                 .or_else(antigravity_subagent_mcp_manager::default_mcp_binary_path)
                 .ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan = match config_path {
-                Some(explicit) => {
+            let (plan, install_cursor) = match (agent_id, config_path) {
+                ("cursor", Some(explicit)) => (
                     cursor_subagent_mcp_manager::plan_with_config_path(&path, explicit)
-                }
-                None => cursor_subagent_mcp_manager::plan(&path),
-            }
-            .map_err(map_cursor_error)?;
+                        .map_err(map_registration_error)?,
+                    true,
+                ),
+                ("cursor", None) => (
+                    cursor_subagent_mcp_manager::plan(&path).map_err(map_registration_error)?,
+                    true,
+                ),
+                (_, Some(explicit)) => (
+                    claude_code_subagent_mcp_manager::plan_with_config_path(&path, explicit)
+                        .map_err(map_registration_error)?,
+                    false,
+                ),
+                _ => (
+                    claude_code_subagent_mcp_manager::plan(&path)
+                        .map_err(map_registration_error)?,
+                    false,
+                ),
+            };
             let mut permit = plan
                 .approve(confirmed, confirmation)
-                .map_err(map_cursor_error)?;
-            cursor_subagent_mcp_manager::install(&plan, &mut permit).map_err(map_cursor_error)?;
+                .map_err(map_registration_error)?;
+            if install_cursor {
+                cursor_subagent_mcp_manager::install(&plan, &mut permit)
+                    .map_err(map_registration_error)?;
+            } else {
+                claude_code_subagent_mcp_manager::install(&plan, &mut permit)
+                    .map_err(map_registration_error)?;
+            }
             Ok((true, true))
         }
         _ => Err(SubagentMcpEnsureError::Unsupported),
@@ -333,7 +362,7 @@ fn map_antigravity_error(
     }
 }
 
-fn map_cursor_error(
+fn map_registration_error(
     error: cursor_subagent_mcp_manager::CursorSubagentMcpError,
 ) -> SubagentMcpEnsureError {
     use crate::platform::provider_mcp_registration::RegistrationError::*;

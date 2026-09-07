@@ -626,7 +626,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               'messaging-participant-flow-${widget.sessionKey}',
             ),
             reverse: true,
-            scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+            scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
               LicoContentSpacing.item + widget.topOverlayInset,

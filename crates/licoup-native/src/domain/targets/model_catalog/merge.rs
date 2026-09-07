@@ -205,7 +205,7 @@ pub(super) fn build_model_catalog(
 }
 
 pub(super) fn model_catalog_entry_json(entry: ModelCatalogEntry) -> Value {
-    json!({
+    let mut object = json!({
         "name": entry.name,
         "displayName": entry.display_name,
         "providerId": entry.provider_id.unwrap_or_default(),
@@ -213,5 +213,12 @@ pub(super) fn model_catalog_entry_json(entry: ModelCatalogEntry) -> Value {
         "providerInferred": entry.provider_inferred,
         "sources": entry.sources.into_iter().collect::<Vec<_>>(),
         "reasoningEfforts": entry.reasoning_efforts.into_iter().collect::<Vec<_>>(),
-    })
+    });
+    if let Some(map) = object.as_object_mut() {
+        crate::domain::agent_intelligence_catalog::attach_allowlisted_model_fields(
+            &entry.name,
+            map,
+        );
+    }
+    object
 }
