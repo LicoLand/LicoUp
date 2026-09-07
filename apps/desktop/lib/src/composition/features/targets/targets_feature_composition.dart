@@ -25,6 +25,8 @@ const _manualTargetOptions = <ManualTargetOptionProjection>[
   ManualTargetOptionProjection(id: 'kilo-code', label: 'Kilo Code'),
   ManualTargetOptionProjection(id: 'kimi', label: 'Kimi'),
   ManualTargetOptionProjection(id: 'kimi-code', label: 'Kimi Code'),
+  ManualTargetOptionProjection(id: 'grok', label: 'Grok'),
+  ManualTargetOptionProjection(id: 'command-code', label: 'Command Code'),
   ManualTargetOptionProjection(
     id: 'openclaw',
     label: 'OpenClaw',

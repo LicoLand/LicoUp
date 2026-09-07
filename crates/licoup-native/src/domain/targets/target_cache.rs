@@ -1,11 +1,13 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
-use serde_json::Map;
+use serde_json::{Map, Value};
 
 use super::catalog::TargetCandidate;
+use super::model_catalog::{BUILTIN_FALLBACK_SOURCE, builtin_cold_start_catalog};
 use crate::platform::client_state::{
     ClientStateStore, TARGET_DISCOVERY_CACHE_SCHEMA as CACHE_SCHEMA, TargetRouteRecord,
 };
@@ -14,10 +16,17 @@ pub(super) fn persist_discovery_cache(
     store: &ClientStateStore,
     candidates: &[TargetCandidate],
 ) -> Result<()> {
+    let archived = archived_model_catalogs(store);
     let cached_at = now_epoch_seconds();
     let records = candidates
         .iter()
-        .filter_map(|candidate| cache_record(candidate, cached_at))
+        .filter_map(|candidate| {
+            cache_record(
+                candidate,
+                cached_at,
+                archived.get(candidate.target.as_str()),
+            )
+        })
         .collect::<Vec<_>>();
     store.write_target_routes(&records)
 }
@@ -39,9 +48,20 @@ pub(super) fn upsert_discovery_cache_many(
         .collect::<std::collections::BTreeSet<_>>();
     let cached_at = now_epoch_seconds();
     store.update_target_routes(|records| {
+        let archived = records
+            .iter()
+            .filter_map(|record| {
+                persisted_scan_catalog(record.extension.get("modelCatalog"))
+                    .map(|catalog| (record.target.clone(), catalog))
+            })
+            .collect::<BTreeMap<_, _>>();
         records.retain(|record| !selected.contains(record.target.as_str()));
         for &candidate in candidates {
-            if let Some(record) = cache_record(candidate, cached_at) {
+            if let Some(record) = cache_record(
+                candidate,
+                cached_at,
+                archived.get(candidate.target.as_str()),
+            ) {
                 records.push(record);
             }
         }
@@ -62,7 +82,34 @@ pub(super) fn cached_runtime_executable(store: &ClientStateStore, target: &str) 
     fs::canonicalize(path).ok()
 }
 
-fn cache_record(candidate: &TargetCandidate, cached_at: u64) -> Option<TargetRouteRecord> {
+pub(super) fn hydrate_model_catalogs(store: &ClientStateStore, candidates: &mut [TargetCandidate]) {
+    for candidate in candidates {
+        hydrate_model_catalog(store, candidate);
+    }
+}
+
+pub(super) fn hydrate_model_catalog(store: &ClientStateStore, candidate: &mut TargetCandidate) {
+    if model_catalog_has_models(candidate.model_catalog.as_ref()) {
+        return;
+    }
+    if let Ok(Some(record)) = store.target_route(&candidate.target)
+        && let Some(archived) = persisted_scan_catalog(record.extension.get("modelCatalog"))
+    {
+        candidate.model_catalog = Some(archived);
+        return;
+    }
+    if candidate_is_detected(candidate)
+        && let Some(fallback) = builtin_cold_start_catalog(&candidate.target)
+    {
+        candidate.model_catalog = Some(fallback);
+    }
+}
+
+fn cache_record(
+    candidate: &TargetCandidate,
+    cached_at: u64,
+    archived_catalog: Option<&Value>,
+) -> Option<TargetRouteRecord> {
     if candidate.location != "local" {
         return None;
     }
@@ -72,6 +119,12 @@ fn cache_record(candidate: &TargetCandidate, cached_at: u64) -> Option<TargetRou
         .flatten();
     if binary_path.is_none() && config_path.is_none() {
         return None;
+    }
+    let mut extension = Map::new();
+    if let Some(catalog) =
+        persistable_model_catalog(candidate.model_catalog.as_ref(), archived_catalog)
+    {
+        extension.insert("modelCatalog".to_string(), catalog);
     }
     Some(TargetRouteRecord {
         schema_version: CACHE_SCHEMA.to_string(),
@@ -87,8 +140,61 @@ fn cache_record(candidate: &TargetCandidate, cached_at: u64) -> Option<TargetRou
             .iter()
             .any(|action| action == "runtime.message.send"),
         cached_at_epoch_seconds: cached_at,
-        extension: Map::new(),
+        extension,
     })
+}
+
+fn archived_model_catalogs(store: &ClientStateStore) -> BTreeMap<String, Value> {
+    store
+        .read_target_routes()
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|record| {
+            persisted_scan_catalog(record.extension.get("modelCatalog"))
+                .map(|catalog| (record.target, catalog))
+        })
+        .collect()
+}
+
+fn persistable_model_catalog(live: Option<&Value>, archived: Option<&Value>) -> Option<Value> {
+    persisted_scan_catalog(live).or_else(|| archived.cloned())
+}
+
+fn persisted_scan_catalog(catalog: Option<&Value>) -> Option<Value> {
+    let catalog = catalog?;
+    if !model_catalog_has_models(Some(catalog)) || is_builtin_fallback(catalog) {
+        return None;
+    }
+    Some(catalog.clone())
+}
+
+fn model_catalog_has_models(catalog: Option<&Value>) -> bool {
+    catalog
+        .and_then(|value| value.get("models"))
+        .and_then(Value::as_array)
+        .is_some_and(|models| !models.is_empty())
+}
+
+fn is_builtin_fallback(catalog: &Value) -> bool {
+    catalog
+        .get("sources")
+        .and_then(Value::as_array)
+        .is_some_and(|sources| {
+            !sources.is_empty()
+                && sources
+                    .iter()
+                    .all(|source| source.as_str() == Some(BUILTIN_FALLBACK_SOURCE))
+        })
+}
+
+fn candidate_is_detected(candidate: &TargetCandidate) -> bool {
+    candidate.configured
+        || candidate.manual
+        || matches!(
+            candidate.status.as_str(),
+            "detected" | "configured" | "available"
+        )
 }
 
 fn now_epoch_seconds() -> u64 {
@@ -164,12 +270,18 @@ mod tests {
             },
             supported_actions: vec!["runtime.message.send".to_string()],
             scan_source: Some("executable-path".to_string()),
-            model_catalog: Some(json!({ "mustNotBeCached": true })),
+            model_catalog: Some(json!({
+                "schemaVersion": 1,
+                "status": "available",
+                "sources": ["antigravity-cli"],
+                "models": [{ "name": "gemini-3" }],
+                "diagnostics": []
+            })),
         }
     }
 
     #[test]
-    fn cache_keeps_only_quick_start_route_fields() {
+    fn cache_persists_scanned_model_catalog_and_drops_ephemeral_fields() {
         let root = std::env::temp_dir().join(format!("lico-target-cache-{}", uuid::Uuid::new_v4()));
         let store = ClientStateStore::new(root.clone()).unwrap();
         persist_discovery_cache(
@@ -185,8 +297,99 @@ mod tests {
         assert_eq!(item["schemaVersion"], CACHE_SCHEMA);
         assert!(item.get("detail").is_none());
         assert!(item.get("historyRoots").is_none());
-        assert!(item.get("modelCatalog").is_none());
+        assert_eq!(item["modelCatalog"]["models"][0]["name"], "gemini-3");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn empty_upsert_preserves_archived_model_catalog() {
+        let dir = temp_test_dir("preserve-archive");
+        let store = ClientStateStore::new(dir.join("client-state")).unwrap();
+        let first = candidate(Some(dir.join("codex").to_string_lossy().into_owned()), None);
+        persist_discovery_cache(&store, &[first]).unwrap();
+
+        let mut empty = candidate(Some(dir.join("codex").to_string_lossy().into_owned()), None);
+        empty.model_catalog = Some(json!({
+            "schemaVersion": 1,
+            "status": "empty",
+            "sources": ["antigravity-cli"],
+            "models": [],
+            "diagnostics": []
+        }));
+        upsert_discovery_cache(&store, &empty).unwrap();
+
+        let route = store.target_route("codex").unwrap().unwrap();
+        assert_eq!(
+            route.extension.get("modelCatalog").unwrap()["models"][0]["name"],
+            "gemini-3"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hydrate_restores_archive_and_skips_builtin_when_archive_exists() {
+        let dir = temp_test_dir("hydrate-archive");
+        let store = ClientStateStore::new(dir.join("client-state")).unwrap();
+        let mut archived = candidate(
+            Some(dir.join("antigravity").to_string_lossy().into_owned()),
+            None,
+        );
+        archived.target = "antigravity".to_string();
+        archived.id = Some("antigravity".to_string());
+        persist_discovery_cache(&store, &[archived]).unwrap();
+
+        let mut live = candidate(
+            Some(dir.join("antigravity").to_string_lossy().into_owned()),
+            None,
+        );
+        live.target = "antigravity".to_string();
+        live.id = Some("antigravity".to_string());
+        live.status = "detected".to_string();
+        live.model_catalog = Some(json!({
+            "schemaVersion": 1,
+            "status": "empty",
+            "sources": ["antigravity-cli"],
+            "models": [],
+            "diagnostics": []
+        }));
+        hydrate_model_catalog(&store, &mut live);
+        let catalog = live.model_catalog.as_ref().unwrap();
+        assert_eq!(catalog["models"][0]["name"], "gemini-3");
+        assert_ne!(
+            catalog["sources"]
+                .as_array()
+                .and_then(|sources| sources.first())
+                .and_then(Value::as_str),
+            Some(BUILTIN_FALLBACK_SOURCE)
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hydrate_uses_builtin_only_when_detected_and_no_archive() {
+        let dir = temp_test_dir("hydrate-builtin");
+        let store = ClientStateStore::new(dir.join("client-state")).unwrap();
+        let mut live = candidate(Some(dir.join("codex").to_string_lossy().into_owned()), None);
+        live.status = "detected".to_string();
+        live.model_catalog = Some(json!({
+            "schemaVersion": 1,
+            "status": "empty",
+            "sources": ["config"],
+            "models": [],
+            "diagnostics": []
+        }));
+        hydrate_model_catalog(&store, &mut live);
+        let catalog = live.model_catalog.as_ref().unwrap();
+        assert!(
+            catalog["models"]
+                .as_array()
+                .is_some_and(|models| !models.is_empty())
+        );
+        assert_eq!(catalog["sources"], json!([BUILTIN_FALLBACK_SOURCE]));
+        persist_discovery_cache(&store, std::slice::from_ref(&live)).unwrap();
+        let route = store.target_route("codex").unwrap().unwrap();
+        assert!(route.extension.get("modelCatalog").is_none());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

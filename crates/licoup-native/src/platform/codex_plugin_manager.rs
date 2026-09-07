@@ -119,6 +119,7 @@ pub fn status(codex_executable: &Path) -> IntegrationState {
         return IntegrationState::Unavailable;
     };
     let mut command = Command::new(codex_executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command.args(["plugin", "list", "--json"]);
     let Ok(result) =
         run_bounded_command_output(&mut command, STATUS_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES)
@@ -263,6 +264,7 @@ fn run_codex<'a>(
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<bool, CodexPluginInstallError> {
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command.args(args);
     let result =
         run_bounded_command_output(&mut command, INSTALL_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES)
@@ -278,6 +280,7 @@ fn run_codex_json<'a>(
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<serde_json::Value, CodexPluginInstallError> {
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command.args(args);
     let result =
         run_bounded_command_output(&mut command, INSTALL_TIMEOUT, MAX_COMMAND_OUTPUT_BYTES)

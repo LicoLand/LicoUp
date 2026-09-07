@@ -20,25 +20,19 @@ const _agentIconAssets = <String, String>{
   'kilo-code': 'assets/agent-icons/kilo-code.svg',
   'cursor': 'assets/agent-icons/cursor.svg',
   'deepseek-harness': 'assets/agent-icons/deepseek-harness.svg',
-  'hermes': 'assets/agent-icons/hermes.svg',
-  // Theme-aware lettermarks (no app-icon background).
+  'hermes': 'assets/agent-icons/hermes.png',
   'kimi': 'assets/agent-icons/kimi-light.svg',
   'kimi-code': 'assets/agent-icons/kimi-light.svg',
   'pi': 'assets/agent-icons/pi.svg',
+  'grok': 'assets/agent-icons/grok.svg',
+  'command-code': 'assets/agent-icons/command-code.svg',
 };
 
 const _agentIconDarkAssets = <String, String>{
   'codex': 'assets/agent-icons/codex-dark.svg',
   'kimi': 'assets/agent-icons/kimi-dark.svg',
   'kimi-code': 'assets/agent-icons/kimi-dark.svg',
-};
-
-/// Mono marks that ship as `currentColor` and need a theme-aware brand fill.
-const _agentIconTintKeys = <String>{
-  'cursor',
-  'hermes',
-  'opencode',
-  'lico-agent',
+  'opencode': 'assets/agent-icons/opencode-dark.svg',
 };
 
 class AgentBrandIcon extends StatelessWidget {
@@ -91,14 +85,6 @@ class AgentBrandIcon extends StatelessWidget {
                 width: iconSize,
                 height: iconSize,
                 fit: BoxFit.contain,
-                colorFilter: key != null && _agentIconTintKeys.contains(key)
-                    ? ColorFilter.mode(
-                        brightness == Brightness.dark
-                            ? Colors.white
-                            : const Color(0xFF111111),
-                        BlendMode.srcIn,
-                      )
-                    : null,
                 semanticsLabel:
                     agentProductDisplayName(target.target) ?? target.label,
               )

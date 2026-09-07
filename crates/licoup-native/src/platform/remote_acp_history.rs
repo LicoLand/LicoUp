@@ -651,8 +651,8 @@ fn unsigned_param(params: &Value, key: &str) -> Option<usize> {
 
 fn adapter_label(target: &str) -> &'static str {
     match target {
-        "openclaw" => "OpenClaw - CLI",
-        "hermes" => "Hermes Agent - CLI",
+        "openclaw" => "OpenClaw CLI",
+        "hermes" => "Hermes Agent CLI",
         _ => "Native agent",
     }
 }

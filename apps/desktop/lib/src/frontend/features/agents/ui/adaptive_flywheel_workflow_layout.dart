@@ -168,6 +168,7 @@ final class AdaptiveFlywheelWorkflowRoute {
     required this.label,
     required this.points,
     required this.labelAnchor,
+    this.callback = false,
   });
 
   final String from;
@@ -175,6 +176,7 @@ final class AdaptiveFlywheelWorkflowRoute {
   final String label;
   final List<Offset> points;
   Offset labelAnchor;
+  final bool callback;
 }
 
 bool _isExceptionKind(String kind) => kind == 'blocked' || kind == 'fail';
@@ -328,6 +330,7 @@ List<_BundledEdge> _bundleEdges(
         from: entry.key.$1,
         to: entry.key.$2,
         label: _bundleLabel(entry.value),
+        callback: entry.value.any((edge) => edge.callback),
       ),
   ];
 }
@@ -335,11 +338,13 @@ List<_BundledEdge> _bundleEdges(
 String _bundleLabel(List<AdaptiveFlywheelGraphEdgeProjection> edges) {
   final parts = <String>[];
   for (final edge in edges) {
-    final caption = edge.guardLabel.isEmpty
+    final mode = edge.callback ? 'callback' : 'flow';
+    final detail = edge.guardLabel.isEmpty
         ? edge.event
         : (edge.event.isEmpty
               ? edge.guardLabel
               : '${edge.event} · ${edge.guardLabel}');
+    final caption = detail.isEmpty ? mode : '$mode · $detail';
     if (caption.isNotEmpty && !parts.contains(caption)) {
       parts.add(caption);
     }
@@ -562,6 +567,7 @@ List<AdaptiveFlywheelWorkflowRoute> _routeEdges({
         label: item.bundle.label,
         points: points,
         labelAnchor: _labelAnchor(points),
+        callback: item.bundle.callback,
       ),
     );
   }
@@ -619,11 +625,13 @@ final class _BundledEdge {
     required this.from,
     required this.to,
     required this.label,
+    this.callback = false,
   });
 
   final String from;
   final String to;
   final String label;
+  final bool callback;
 }
 
 enum _RouteKind { forward, down, back, column, loop }

@@ -1,7 +1,8 @@
 use super::super::*;
 use super::support::portable_params;
+use crate::domain::agent_catalog;
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_PARTIAL, FIRST_BATCH_IDS, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    ADAPTATION_PARTIAL, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
@@ -30,12 +31,15 @@ fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
     assert_eq!(catalog["scanGeneration"], 7);
     assert_eq!(catalog["pluginManagementBoundary"], "adapter-plugins-only");
     let cards = catalog["cards"].as_array().unwrap();
-    assert_eq!(cards.len(), FIRST_BATCH_IDS.len());
+    assert_catalog_membership(cards);
     let ids = cards
         .iter()
         .map(|card| card["id"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(ids, FIRST_BATCH_IDS);
+    assert!(ids.contains(&"codex"));
+    assert!(ids.contains(&"kimi-code"));
+    assert!(ids.contains(&"grok"));
+    assert!(ids.contains(&"command-code"));
     let antigravity = cards
         .iter()
         .find(|card| card["id"] == "antigravity")
@@ -68,12 +72,19 @@ fn catalog_joins_one_discovery_snapshot_onto_supported_cards() {
     for card in cards {
         assert!(card.get("binaryPath").is_none());
         assert!(card.get("configPath").is_none());
+        let label = card["label"].as_str().unwrap();
+        assert!(!label.contains(" - "));
+        assert!(!label.contains('–'));
         let summary = card["summary"].as_str().unwrap();
         assert!(!summary.is_empty());
         assert!(!summary.to_lowercase().contains("rank"));
-        assert!(card["homepage"].as_str().unwrap().starts_with("https://"));
         assert_eq!(card["channelKind"], "");
         assert!(card["installChannels"].as_array().unwrap().is_empty());
+        let homepage = card["homepage"].as_str().unwrap();
+        if homepage.is_empty() {
+            continue;
+        }
+        assert!(homepage.starts_with("https://"));
     }
     assert_eq!(codex["homepage"], "https://developers.openai.com/codex");
     assert_eq!(codex["version"], "");
@@ -307,7 +318,7 @@ fn catalog_without_live_lookup_is_a_static_card_template() {
         .remove("discoveryCandidates");
     let catalog = catalog(&params).unwrap();
     let cards = catalog["cards"].as_array().unwrap();
-    assert_eq!(cards.len(), FIRST_BATCH_IDS.len());
+    assert_catalog_membership(cards);
     for item in cards {
         assert_eq!(item["installedVersion"], "");
         assert_eq!(item["latestVersion"], "");
@@ -339,5 +350,103 @@ fn catalog_rejects_unknown_agent_id() {
     let mut params = portable_params("unknown-id").1;
     params["agentId"] = serde_json::json!("not-an-agent");
     let error = catalog(&params).unwrap_err();
-    assert!(error.to_string().contains("recipe_not_found"));
+    assert!(error.to_string().contains("agent_not_found"));
+}
+
+#[test]
+fn catalog_accepts_kimi_code_without_an_install_recipe() {
+    let mut params = portable_params("kimi-code-card").1;
+    params["agentId"] = serde_json::json!("kimi-code");
+    params["discoveryCandidates"] = serde_json::json!([{
+        "target": "kimi-code",
+        "status": "detected",
+        "present": true,
+        "location": "local"
+    }]);
+    let catalog = catalog(&params).unwrap();
+    let cards = catalog["cards"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["id"], "kimi-code");
+    assert_eq!(cards[0]["label"], "Kimi Code CLI");
+    assert!(!cards[0]["label"].as_str().unwrap().contains('-'));
+    assert_eq!(cards[0]["present"], true);
+    assert_eq!(cards[0]["primaryAction"], "open");
+    assert_eq!(cards[0]["installable"], false);
+}
+
+#[test]
+fn catalog_rejects_scan_only_agents_without_a_runtime_lane() {
+    let mut params = portable_params("unsupported-id").1;
+    params["agentId"] = serde_json::json!("workbuddy");
+    let error = catalog(&params).unwrap_err();
+    assert!(error.to_string().contains("agent_not_found"));
+}
+
+#[test]
+fn catalog_projects_discovered_grok_and_command_code() {
+    let mut params = portable_params("extra-discovery").1;
+    params["discoveryCandidates"] = serde_json::json!([
+        {
+            "target": "grok",
+            "status": "detected",
+            "present": true,
+            "location": "local"
+        },
+        {
+            "target": "command-code",
+            "status": "detected",
+            "present": true,
+            "location": "local"
+        },
+        {
+            "target": "custom-local-agent",
+            "status": "detected",
+            "present": true,
+            "location": "local"
+        }
+    ]);
+    let catalog = catalog(&params).unwrap();
+    let cards = catalog["cards"].as_array().unwrap();
+    assert_catalog_membership(cards);
+    let grok = card(&catalog, "grok");
+    assert_eq!(grok["present"], true);
+    assert_eq!(grok["primaryAction"], "open");
+    let command_code = card(&catalog, "command-code");
+    assert_eq!(command_code["present"], true);
+    assert_eq!(command_code["primaryAction"], "open");
+    assert!(
+        catalog["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["id"] != "custom-local-agent")
+    );
+}
+
+fn assert_catalog_membership(cards: &[serde_json::Value]) {
+    let ids = cards
+        .iter()
+        .map(|card| card["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    for entry in agent_catalog::entries() {
+        if entry.has_adapter {
+            assert!(
+                ids.contains(&entry.id.as_str()),
+                "hub catalog missing supported {}",
+                entry.id
+            );
+        } else {
+            assert!(
+                !ids.contains(&entry.id.as_str()),
+                "hub catalog leaked unsupported {}",
+                entry.id
+            );
+        }
+    }
+    assert!(!ids.contains(&"code"));
+    assert!(!ids.contains(&"workbuddy"));
+    assert!(!ids.contains(&"codebuddy"));
+    assert!(!ids.contains(&"trae-work"));
+    assert!(!ids.contains(&"trae-agent"));
+    assert!(!ids.contains(&"custom-local-agent"));
 }

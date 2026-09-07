@@ -110,11 +110,37 @@ impl StrategyService {
 
     /// Execute one bridge action. Errors are converted to bounded typed facts;
     /// raw paths, process output and adapter errors never cross this boundary.
+    /// Conversation-bound package import failures use the same master-agent
+    /// callback event as an imported run terminal: one schema, no second
+    /// protocol.
     pub fn execute(&self, request: Value) -> Result<Value> {
+        let conversation_id = request
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let action = request
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
         match self.execute_inner(request) {
             Ok(result) => Ok(json!({"ok": true, "result": result})),
             Err(error) => {
                 let projected = error_projection(&error);
+                let message = error.to_string();
+                let settled_start = message.contains("strategy_run_start_failed")
+                    || message.contains("strategy_actor_dispatch_failed");
+                if matches!(
+                    action.as_str(),
+                    "strategy.package.prepare-import" | "strategy.package.commit-import"
+                ) || (action == "strategy.run.start" && !settled_start)
+                {
+                    if let Some(conversation_id) = conversation_id.as_deref() {
+                        let _ = self.report_imported_lifecycle_failure(conversation_id, &projected);
+                    }
+                }
                 Ok(json!({"ok": false, "error": projected}))
             }
         }
@@ -1088,11 +1114,14 @@ impl StrategyService {
         let assistant_owned = snapshot.assistant_membership_id.is_some();
         let entry = match self.register_entry_turn(snapshot) {
             Ok(entry) => entry,
-            Err(error) if assistant_owned => {
-                self.settle_assistant_start_failure(snapshot, &error.to_string())?;
-                return Ok(None);
+            Err(error) => {
+                self.settle_start_failure(snapshot, &error.to_string())?;
+                return if assistant_owned {
+                    Ok(None)
+                } else {
+                    Err(error)
+                };
             }
-            Err(error) => return Err(error),
         };
         let projection = entry
             .as_ref()
@@ -1104,12 +1133,12 @@ impl StrategyService {
             .spawn(move || {
                 let _reservation = reservation;
                 if service.drive_run(&run_id, entry).is_err() {
-                    let _ = service.settle_assistant_drive_failure(&run_id);
+                    let _ = service.settle_drive_failure(&run_id);
                 }
             });
         if spawned.is_err() {
+            self.settle_start_failure(snapshot, "strategy_run_start_failed")?;
             if assistant_owned {
-                self.settle_assistant_start_failure(snapshot, "strategy_run_start_failed")?;
                 return Ok(None);
             }
             return Err(anyhow!("strategy_run_start_failed"));
@@ -1117,12 +1146,12 @@ impl StrategyService {
         Ok(projection)
     }
 
-    fn settle_assistant_start_failure(&self, snapshot: &RunSnapshot, message: &str) -> Result<()> {
+    fn settle_start_failure(&self, snapshot: &RunSnapshot, message: &str) -> Result<()> {
         let Some(command) = snapshot.commands.values().find(|command| {
             matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
                 && command.status == CommandStatus::Pending
         }) else {
-            return self.settle_assistant_drive_failure(&snapshot.run_id);
+            return self.settle_drive_failure(&snapshot.run_id);
         };
         let (class, code) = classify_effect_error(message);
         let updated = self.store.apply_event(
@@ -1134,7 +1163,13 @@ impl StrategyService {
                 code: code.to_owned(),
             },
         )?;
-        self.record_graph_usage(&updated, None)
+        self.record_graph_usage(&updated, None)?;
+        // Assistant-owned runs return the typed outcome on execute. Imported
+        // runs owe the same settlement to the Conversation's master agent.
+        if updated.assistant_membership_id.is_none() {
+            let _ = self.report_master_gates(Some(snapshot), &updated);
+        }
+        Ok(())
     }
 
     fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
@@ -1347,9 +1382,9 @@ impl StrategyService {
         Ok(())
     }
 
-    fn settle_assistant_drive_failure(&self, run_id: &str) -> Result<()> {
+    fn settle_drive_failure(&self, run_id: &str) -> Result<()> {
         let snapshot = self.store.run(run_id)?;
-        if snapshot.assistant_membership_id.is_none() || assistant_run_terminal(snapshot.status) {
+        if assistant_run_terminal(snapshot.status) {
             return Ok(());
         }
         let updated = self.store.apply_event(
@@ -1358,7 +1393,11 @@ impl StrategyService {
                 code: "assistant_drive_outcome_unknown".to_owned(),
             },
         )?;
-        self.record_graph_usage(&updated, None)
+        self.record_graph_usage(&updated, None)?;
+        if updated.assistant_membership_id.is_none() {
+            let _ = self.report_master_gates(Some(&snapshot), &updated);
+        }
+        Ok(())
     }
 
     fn recover_expired_commands(&self, run_id: &str) -> Result<()> {
@@ -1678,13 +1717,81 @@ impl StrategyService {
         if newly_parked.is_empty() && !failure_terminal {
             return Ok(());
         }
+        let answer_channel = if after.assistant_membership_id.is_some() {
+            "lico_assistant_workflow_execute"
+        } else {
+            "strategy.run.resume"
+        };
+        for pending in newly_parked {
+            self.append_master_report(
+                conversation_id,
+                after.assistant_membership_id.as_deref(),
+                Some(&after.run_id),
+                json!({
+                    "kind": "strategy-callback-request",
+                    "schema": "licoup.adaptive-flywheel.callback.v1",
+                    "runId": after.run_id,
+                    "stateId": pending.state_id,
+                    "stateVisit": pending.state_visit,
+                    "transitionId": pending.transition_id,
+                    "event": pending.event.as_str(),
+                    "target": pending.target,
+                    "decisions": ["advance", "return", "terminate"],
+                    "answerChannel": answer_channel,
+                    "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
+                }),
+            )?;
+        }
+        if failure_terminal {
+            self.append_master_report(
+                conversation_id,
+                after.assistant_membership_id.as_deref(),
+                Some(&after.run_id),
+                json!({
+                    "kind": "strategy-terminal-outcome",
+                    "schema": "licoup.adaptive-flywheel.callback.v1",
+                    "runId": after.run_id,
+                    "status": wire_enum(after.status)?,
+                    "diagnostic": after.diagnostic_code,
+                }),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Package prepare/commit never create a run. When the caller binds a
+    /// Conversation, the same terminal-outcome event reports the typed
+    /// failure to that Conversation's designated Assistant Membership.
+    fn report_imported_lifecycle_failure(
+        &self,
+        conversation_id: &str,
+        projected: &Value,
+    ) -> Result<()> {
+        self.append_master_report(
+            conversation_id,
+            None,
+            None,
+            json!({
+                "kind": "strategy-terminal-outcome",
+                "schema": "licoup.adaptive-flywheel.callback.v1",
+                "status": "failed",
+                "diagnostic": projected.get("code").cloned().unwrap_or(Value::Null),
+                "stage": projected.get("stage").cloned().unwrap_or(Value::Null),
+            }),
+        )
+    }
+
+    fn append_master_report(
+        &self,
+        conversation_id: &str,
+        preferred_master_id: Option<&str>,
+        causation_id: Option<&str>,
+        part: Value,
+    ) -> Result<()> {
         let store =
             crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
         let conversation = store.get(conversation_id)?;
-        let master_id = after
-            .assistant_membership_id
-            .as_deref()
-            .or(conversation.assistant_membership_id.as_deref());
+        let master_id = preferred_master_id.or(conversation.assistant_membership_id.as_deref());
         let Some(master) = master_id
             .and_then(|master_id| {
                 conversation.memberships.iter().find(|membership| {
@@ -1697,64 +1804,19 @@ impl StrategyService {
         else {
             return Ok(());
         };
-        // MCP-resident masters answer through the same idempotent execute
-        // call; the desktop surface answers imported runs through
-        // `strategy.run.resume`. Both carry the same decision triple.
-        let answer_channel = if after.assistant_membership_id.is_some() {
-            "lico_assistant_workflow_execute"
-        } else {
-            "strategy.run.resume"
-        };
-        for pending in newly_parked {
-            let part = json!({
-                "kind": "strategy-callback-request",
-                "schema": "licoup.adaptive-flywheel.callback.v1",
-                "runId": after.run_id,
-                "stateId": pending.state_id,
-                "stateVisit": pending.state_visit,
-                "transitionId": pending.transition_id,
-                "event": pending.event.as_str(),
-                "target": pending.target,
-                "decisions": ["advance", "return", "terminate"],
-                "answerChannel": answer_channel,
-                "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
-            });
-            store.append_event(
-                conversation_id,
-                Some(&master),
-                crate::domain::client_conversation::EventKind::Message,
-                &[crate::domain::client_conversation::NewEventPart {
-                    id: String::new(),
-                    kind: crate::domain::client_conversation::EventPartKind::Metadata,
-                    content: part.to_string(),
-                }],
-                None,
-                Some(&after.run_id),
-                true,
-            )?;
-        }
-        if failure_terminal {
-            let part = json!({
-                "kind": "strategy-terminal-outcome",
-                "schema": "licoup.adaptive-flywheel.callback.v1",
-                "runId": after.run_id,
-                "status": wire_enum(after.status)?,
-                "diagnostic": after.diagnostic_code,
-            });
-            store.append_event(
-                conversation_id,
-                Some(&master),
-                crate::domain::client_conversation::EventKind::Message,
-                &[crate::domain::client_conversation::NewEventPart {
-                    id: String::new(),
-                    kind: crate::domain::client_conversation::EventPartKind::Metadata,
-                    content: part.to_string(),
-                }],
-                None,
-                Some(&after.run_id),
-                true,
-            )?;
-        }
+        store.append_event(
+            conversation_id,
+            Some(&master),
+            crate::domain::client_conversation::EventKind::Message,
+            &[crate::domain::client_conversation::NewEventPart {
+                id: String::new(),
+                kind: crate::domain::client_conversation::EventPartKind::Metadata,
+                content: part.to_string(),
+            }],
+            None,
+            causation_id,
+            true,
+        )?;
         Ok(())
     }
 
@@ -2146,8 +2208,15 @@ fn binding_for<'a>(
 
 fn ensure_allowed_fields(action: &str, object: &Map<String, Value>) -> Result<()> {
     let allowed: &[&str] = match action {
-        "strategy.package.prepare-import" => &["action", "sourcePath", "selectionToken"],
-        "strategy.package.commit-import" => &["action", "preparationId", "expectedRevisionDigest"],
+        "strategy.package.prepare-import" => {
+            &["action", "sourcePath", "selectionToken", "conversationId"]
+        }
+        "strategy.package.commit-import" => &[
+            "action",
+            "preparationId",
+            "expectedRevisionDigest",
+            "conversationId",
+        ],
         "strategy.definition.list" | "strategy.runtime.discover" | "strategy.runtime.list" => {
             &["action"]
         }
@@ -4027,12 +4096,12 @@ mod tests {
     #[test]
     fn entry_open_failure_is_a_real_typed_start_failure() {
         let root = root();
-        let (_conversation_store, conversation_id, membership_id) =
+        let (conversation_store, conversation_id, membership_id) =
             conversation_bound_fixture(&root);
         let (store, revision) = authorized_entry_store(&root, &membership_id);
         let service = StrategyService::from_parts(
             root.clone(),
-            store,
+            store.clone(),
             StrategyPackageImporter::open(&root).unwrap(),
         )
         .with_actor_turn_port(ActorTurnPort {
@@ -4053,6 +4122,21 @@ mod tests {
         assert_eq!(response["ok"], false);
         assert_eq!(response["error"]["code"], "strategy_run_start_failed");
         assert_eq!(response["error"]["stage"], "strategy/start");
+        let run_id = store
+            .run_id_by_idempotency_key("start-open-failure")
+            .unwrap()
+            .expect("imported start failure keeps the admitted run");
+        let snapshot = store.run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Failed);
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-terminal-outcome",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
         drop(service);
         remove_root(root);
     }
@@ -4395,6 +4479,149 @@ mod tests {
         assert_eq!(report["runId"], json!(run_id));
         assert_eq!(report["status"], json!("failed"));
         remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn imported_prepare_import_failure_reports_the_master() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        );
+        let response = service
+            .execute(json!({
+                "action": "strategy.package.prepare-import",
+                "sourcePath": root.join("absent.zip").to_string_lossy(),
+                "selectionToken": "selection-missing",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "package_unavailable");
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-terminal-outcome",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(
+            report["schema"],
+            json!("licoup.adaptive-flywheel.callback.v1")
+        );
+        assert_eq!(report["status"], json!("failed"));
+        assert_eq!(report["diagnostic"], json!("package_unavailable"));
+        assert_eq!(report["stage"], json!("package/read"));
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn imported_commit_import_failure_reports_the_master() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        );
+        let response = service
+            .execute(json!({
+                "action": "strategy.package.commit-import",
+                "preparationId": "prep-missing",
+                "expectedRevisionDigest": "0".repeat(64),
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "preparation_not_found");
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-terminal-outcome",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(
+            report["schema"],
+            json!("licoup.adaptive-flywheel.callback.v1")
+        );
+        assert_eq!(report["status"], json!("failed"));
+        assert_eq!(report["diagnostic"], json!("preparation_not_found"));
+        assert_eq!(report["stage"], json!("package/commit"));
+        drop(service);
+        remove_root(root);
+    }
+
+    #[test]
+    fn imported_run_admission_failure_reports_the_master() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(|_| panic!("admission failure must not open a turn")),
+            run: Arc::new(|_, _| panic!("admission failure must not run")),
+            abandon: Arc::new(|_| {}),
+        });
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": "0".repeat(64),
+                "input": {"message": "hi"},
+                "idempotencyKey": "start-missing-revision",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "definition_not_found");
+        let report_event = wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-terminal-outcome",
+        );
+        assert_eq!(
+            report_event.author_membership_id.as_deref(),
+            Some(membership_id.as_str())
+        );
+        let part = report_event
+            .parts
+            .iter()
+            .find(|part| part.kind == crate::domain::client_conversation::EventPartKind::Metadata)
+            .unwrap();
+        let report: Value = serde_json::from_str(&part.content).unwrap();
+        assert_eq!(
+            report["schema"],
+            json!("licoup.adaptive-flywheel.callback.v1")
+        );
+        assert_eq!(report["status"], json!("failed"));
+        assert_eq!(report["diagnostic"], json!("definition_not_found"));
+        drop(service);
+        remove_root(root);
     }
 
     #[test]

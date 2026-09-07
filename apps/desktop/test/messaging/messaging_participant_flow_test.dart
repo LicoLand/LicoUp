@@ -19,6 +19,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -455,6 +456,64 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('copying a message shows a LicoToast, not a SnackBar', (
+    tester,
+  ) async {
+    final chronological = [
+      _messageItem('k1', 'assistant', 'agent reply', _at(10, 0)),
+    ];
+    final copied = <String>[];
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: LicoToastHost(
+          child: Scaffold(
+            body: SizedBox(
+              width: 800,
+              height: 600,
+              child: MessagingParticipantFlow(
+                items: chronological.reversed.toList(),
+                adapter: AgentRenderAdapter.fallback(),
+                target: TargetCandidate(
+                  target: 'codex',
+                  label: 'Codex',
+                  kind: 'cli',
+                  status: 'detected',
+                  configured: true,
+                  confidence: 1,
+                  adapterStatus: 'implemented',
+                ),
+                onCopyText: (text) async => copied.add(text),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('messaging-message-copy-action')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(copied, ['agent reply']);
+    expect(find.text('Message copied'), findsOneWidget);
+    expect(find.byType(LicoToast), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('group headers omit timestamps', (tester) async {
     final messageAt = DateTime(2026, 7, 20, 18, 58);

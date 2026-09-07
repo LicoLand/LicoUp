@@ -1,22 +1,28 @@
 use super::super::*;
 use crate::domain::agent_hub::argv::{self, ArgvKind};
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, FIRST_BATCH_IDS,
-    PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID,
+    ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, PARTIAL_ADAPTATION_ID,
+    PENDING_ADAPTATION_ID,
 };
 use crate::domain::agent_hub::recipes::{manifest, parse_agent_toml, parse_manifest};
 use crate::domain::agent_hub::selector;
-use serde_json::json;
 
 #[test]
-fn first_batch_recipes_load_with_fixed_ids_and_adaptation_tags() {
+fn install_recipes_load_with_unique_ids_and_adaptation_tags() {
     let registry = registry().unwrap();
     let ids = registry
         .agents
         .iter()
         .map(|agent| agent.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(ids, FIRST_BATCH_IDS);
+    let unique = ids
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), ids.len());
+    assert!(ids.contains(&"codex"));
+    assert!(ids.contains(&"antigravity"));
+    assert!(ids.contains(&"deepseek-harness"));
     for agent in &registry.agents {
         if agent.id == PARTIAL_ADAPTATION_ID {
             assert_eq!(agent.adaptation, ADAPTATION_PARTIAL);
@@ -324,5 +330,5 @@ fn contract_surface_keeps_plugin_management_out_of_hub() {
     let surface = contract_surface();
     assert_eq!(surface["pluginManagementBoundary"], "adapter-plugins-only");
     assert_eq!(surface["hostScope"], "desktop");
-    assert_eq!(surface["firstBatchIds"], json!(FIRST_BATCH_IDS));
+    assert!(surface.get("firstBatchIds").is_none());
 }

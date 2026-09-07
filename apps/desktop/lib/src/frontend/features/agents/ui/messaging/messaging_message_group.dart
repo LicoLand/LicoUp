@@ -176,19 +176,21 @@ class MessagingMessageGroup extends StatelessWidget {
         ),
         const SizedBox(height: LicoContentSpacing.compact),
         for (var index = 0; index < messages.length; index++) ...[
-          _MessagingGroupMessageRow(
+          RepaintBoundary(
             key: ValueKey<String>(
               'messaging-group-message-${messages[index].id}-${messages[index].createdAt}',
             ),
-            message: messages[index],
-            adapter: adapter,
-            authorIsUser: authorIsUser,
-            agentKey: bubbleGlowKey,
-            conversationId: conversationId,
-            isStreaming: streamingMessageIds.contains(messages[index].id),
-            onCopyText: onCopyText,
-            onRetryMessage: onRetryMessage,
-            onDeleteMessage: onDeleteMessage,
+            child: _MessagingGroupMessageRow(
+              message: messages[index],
+              adapter: adapter,
+              authorIsUser: authorIsUser,
+              agentKey: bubbleGlowKey,
+              conversationId: conversationId,
+              isStreaming: streamingMessageIds.contains(messages[index].id),
+              onCopyText: onCopyText,
+              onRetryMessage: onRetryMessage,
+              onDeleteMessage: onDeleteMessage,
+            ),
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
@@ -221,7 +223,6 @@ class MessagingMessageGroup extends StatelessWidget {
 
 class _MessagingGroupMessageRow extends StatefulWidget {
   const _MessagingGroupMessageRow({
-    super.key,
     required this.message,
     required this.adapter,
     required this.authorIsUser,
