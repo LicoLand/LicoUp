@@ -384,14 +384,17 @@ mod tests {
 
     #[test]
     fn command_code_never_binds_the_system_command_shell() {
-        assert!(is_system_command_shell(Path::new(
-            r"C:\Windows\System32\cmd.exe"
-        )));
+        let windows_cmd = ["C:", "Windows", "System32", "cmd.exe"]
+            .iter()
+            .collect::<PathBuf>();
+        assert!(is_system_command_shell(&windows_cmd));
         assert!(is_system_command_shell(Path::new("/usr/bin/cmd")));
         assert!(!is_system_command_shell(Path::new(
             "/opt/homebrew/bin/command-code"
         )));
-        assert!(!is_system_command_shell(Path::new("/opt/local/bin/cmd")));
+        assert!(!is_system_command_shell(&posix_path(&[
+            "opt", "local", "bin", "cmd"
+        ])));
     }
 
     #[test]

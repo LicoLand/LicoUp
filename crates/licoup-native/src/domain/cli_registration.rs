@@ -172,7 +172,7 @@ schema_version = "lico.agent-cli-registration.v1"
 [[agents]]
 id = "grok"
 label = "Grok overlay"
-command = "/opt/grok"
+command = "overlay-grok"
 args = ["--prompt", "{prompt}"]
 stream_mode = "stdio"
 [[agents]]
@@ -185,7 +185,7 @@ stream_mode = "pty"
         .unwrap();
         assert_eq!(overlay.len(), 2);
         let grok = overlay.iter().find(|item| item.id == "grok").unwrap();
-        assert_eq!(grok.command, "/opt/grok");
+        assert_eq!(grok.command, "overlay-grok");
         assert_eq!(grok.stream_mode, StreamMode::Stdio);
         assert_eq!(
             grok.args,
