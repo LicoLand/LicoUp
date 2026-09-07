@@ -66,7 +66,7 @@ authority.
 ## Platforms
 
 - [macOS direct-distribution compliance](platforms/MACOS-DIRECT-DISTRIBUTION.md) ·
-  [macOS 站外直发合规清单](platforms/MACOS-DIRECT-DISTRIBUTION.zh-CN.md)
+  [macOS 站外直发合规清单](platforms/MACOS-DIRECT-DISTRIBUTION.md)
 
 ## Operations and configuration
 
@@ -77,6 +77,7 @@ authority.
   [兼容性](COMPATIBILITY.zh-CN.md)
 - [Release packages](RELEASE-PACKAGES.md) ·
   [发布包结构](RELEASE-PACKAGES.zh-CN.md)
+- [Entity configuration layout](ENTITY-CONFIG-LAYOUT.md)
 
 `COMPATIBILITY.md` and its localization are generated projections. Their source
 catalogs and update commands are stated in those files.
