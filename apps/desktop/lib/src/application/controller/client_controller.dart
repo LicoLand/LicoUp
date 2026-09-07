@@ -33,6 +33,8 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/agent_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
+import 'package:licoup/src/application/features/conversations/client_memory_diagnostic_journal.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
 import 'package:licoup/src/presentation/layout/layout_catalog.dart';
@@ -91,6 +93,7 @@ import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';
 import 'package:licoup/src/platform/storage/client_log_export_service.dart';
+import 'package:licoup/src/platform/storage/client_memory_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/llm_gateway_diagnostic_log.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
@@ -292,9 +295,13 @@ class ClientController extends AgentConversationController
       catalogConvergenceGateway: catalogConvergenceGateway,
     );
     messagingNotificationCenter = MessagingNotificationCenter();
+    clientMemoryDiagnosticJournal = ClientMemoryDiagnosticJournal(
+      sink: ClientMemoryDiagnosticLog(portableData: this.portableData),
+    );
     clientConversationController = ClientConversationController(
       runner: this.agentService,
       onSelectionChanged: recordCurrentGroupConversationView,
+      memoryJournal: clientMemoryDiagnosticJournal,
     );
     _clientConversationControllerReady = true;
     clientConversationController.syncAvailableConversationAgents(
@@ -343,7 +350,14 @@ class ClientController extends AgentConversationController
   late final MessagingNotificationCenter messagingNotificationCenter;
   @override
   late final ClientConversationController clientConversationController;
+  late final ClientMemoryDiagnosticJournal clientMemoryDiagnosticJournal;
   bool _clientConversationControllerReady = false;
+
+  @override
+  void observeClientMemory(ClientMemoryDiagnosticObservation observation) {
+    clientMemoryDiagnosticJournal.observe(observation);
+  }
+
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
@@ -472,6 +486,7 @@ class ClientController extends AgentConversationController
     llmGatewayLifecycleController.dispose();
     messagingNotificationCenter.dispose();
     clientConversationController.dispose();
+    clientMemoryDiagnosticJournal.dispose();
     llmVaultAuthorization.dispose();
     _components.dispose();
     super.dispose();
