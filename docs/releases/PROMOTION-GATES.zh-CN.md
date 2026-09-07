@@ -15,6 +15,9 @@
 要求各自入站路径拥有的聚合检查。三段都使用 merge commit。发布切分期间不得改动
 Rulesets、Required Check 名称或默认分支。
 
+发布工具改动还需运行本地变更计划选中的独立 `client:gate:release-policy` 通道。
+这项本地检查不会向 `Client required` CI 聚合增加作业。
+
 预览或推进固定晋升链：
 
 ```sh
@@ -23,8 +26,13 @@ npm run client:promotion -- advance --head nightly --base stable
 npm run client:promotion -- advance --head stable --base release
 ```
 
-晋升命令复用同一路径上已打开的 Pull Request，把检查绑定到精确 Head，并在首次拓扑
-错误或检查失败时停止。`nightly` 继续接收下一批普通改动；一份快照切分后，不得把
+`plan` 只读。`advance` 和 `train` 会在需要时推送源分支，创建或复用每个晋升 Pull Request，
+等待其必需检查并合并。当前任务必须授权所选晋升路径或完整流程的实际效果；最后一次
+`stable` → `release` 合并还会自动发布源码 Release。仅源码晋升与策略检查不依赖 Apple
+发布凭据。`stable` 门禁仍执行现有的本地 macOS 构建与安装；Apple 二进制发布仍是需要单独明确授权的操作。
+
+会更改外部状态的晋升命令把检查绑定到精确 Head，并在首次拓扑错误或检查失败时停止。
+`nightly` 继续接收下一批普通改动；一份快照切分后，不得把
 更晚的 `nightly` 再并入同一轮正在进行的公开发布。
 
 ## macOS 本地安装
