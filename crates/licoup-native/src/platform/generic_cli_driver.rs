@@ -340,6 +340,7 @@ mod tests {
     use super::*;
     use crate::domain::cli_registration::{CliRegistration, StreamMode};
     use serde_json::json;
+    use std::path::{PathBuf, MAIN_SEPARATOR};
 
     fn echo_registration() -> CliRegistration {
         CliRegistration {
@@ -395,10 +396,11 @@ mod tests {
 
     #[test]
     fn missing_absolute_command_is_unavailable() {
+        let missing = PathBuf::from(MAIN_SEPARATOR.to_string()).join("missing-licoup-generic-cli");
         let registration = CliRegistration {
             id: "missing-fixture".to_owned(),
             label: "Missing".to_owned(),
-            command: "/tmp/licoup-missing-generic-cli".to_owned(),
+            command: missing.to_string_lossy().into_owned(),
             args: Vec::new(),
             stream_mode: StreamMode::Stdio,
         };
