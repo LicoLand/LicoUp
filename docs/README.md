@@ -66,7 +66,7 @@ authority.
 ## Platforms
 
 - [macOS direct-distribution compliance](platforms/MACOS-DIRECT-DISTRIBUTION.md) ·
-  [macOS 站外直发合规清单](platforms/MACOS-DIRECT-DISTRIBUTION.md)
+  [macOS 站外直发合规清单](platforms/MACOS-DIRECT-DISTRIBUTION.zh-CN.md)
 
 ## Operations and configuration
 
