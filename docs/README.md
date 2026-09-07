@@ -24,13 +24,14 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
+- [Continuous Assistant target architecture](architecture/CONTINUOUS-ASSISTANT.md) · [持续 Assistant 目标架构](architecture/CONTINUOUS-ASSISTANT.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 - [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
   [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
 - [Agent adapters and runtime architecture](architecture/AGENT-ADAPTERS-ARCHITECTURE.md) · [智能体适配器架构规范](architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
-- [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.zh-CN.md)
+- [Rust infrastructure and boundary layer](architecture/RUST-INFRASTRUCTURE-LAYER.md) · [Rust 基础设施与对外交互层规范](architecture/RUST-INFRASTRUCTURE-LAYER.md)
 - [Security and data boundaries](architecture/SECURITY-AND-DATA-BOUNDARY.md) · [安全架构与数据边界](architecture/SECURITY-AND-DATA-BOUNDARY.zh-CN.md)
 
 ## Functionality
@@ -95,6 +96,7 @@ catalogs and update commands are stated in those files.
 - [ADR 0007: User-terminal Agent command identity](adrs/0007-user-terminal-agent-command-identity.md)
 - [ADR 0008: Native Agent parser and conversation integrity](adrs/0008-native-agent-parser-and-conversation-integrity.md)
 - [ADR 0009: Single Source of Truth Documentation Architecture and Domain Indexing](adrs/0009-single-source-of-truth-documentation-architecture.md) · [中文版](adrs/0009-single-source-of-truth-documentation-architecture.zh-CN.md)
+- [ADR 0010: Continuous Assistant, Matters and Goal Follow-through](adrs/0010-continuous-assistant.md) · [中文版](adrs/0010-continuous-assistant.zh-CN.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,
