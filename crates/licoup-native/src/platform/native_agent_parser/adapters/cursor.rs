@@ -113,7 +113,6 @@ pub(in crate::platform) struct CursorOutcome {
 pub(in crate::platform) enum CursorParseFailure {
     InvalidJson,
     IdentityMismatch,
-    TextSnapshotDiverged,
     PromptAcknowledgementMissing,
     PromptAcknowledgementMismatch,
     TurnFailed(CursorFailureKind),
@@ -248,17 +247,17 @@ impl NativeLineParser for CursorParser {
             if let Some(text) = assistant_text(&message) {
                 // Current Cursor stream-json marks partial deltas with a
                 // timestamp and then emits one timestamp-free cumulative
-                // assistant snapshot before the result frame.
+                // assistant snapshot before the result frame. A rewritten
+                // snapshot is not a failed turn: keep the already-emitted
+                // reply so a later result frame can still complete.
                 let form = if message.get("timestamp_ms").is_some() {
                     TextForm::Delta(&text)
                 } else {
                     TextForm::Cumulative(&text)
                 };
-                let suffix = self
-                    .text
-                    .observe("assistant", form)
-                    .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
-                if !suffix.is_empty() {
+                if let Ok(suffix) = self.text.observe("assistant", form)
+                    && !suffix.is_empty()
+                {
                     effects.push(CursorEffect::Text {
                         session_id: self.observed_session.clone(),
                         turn_id: self.turn_id.clone(),
@@ -268,15 +267,14 @@ impl NativeLineParser for CursorParser {
             }
         }
         if let Some(result) = terminal {
-            // The successful result text is cumulative terminal authority:
-            // reconcile it against every streamed fragment in one unit. The
-            // reconciler appends a missing suffix, accepts an exact repeat
-            // (emitting nothing), and rejects true divergence.
-            let suffix = self
+            // Prefer an extending result suffix. When Cursor's result
+            // rendering diverges from streamed assistant text, the live
+            // reply stays the turn output instead of failing a finished job.
+            if let Ok(suffix) = self
                 .text
                 .observe("assistant", TextForm::Cumulative(&result))
-                .map_err(|_| CursorParseFailure::TextSnapshotDiverged)?;
-            if !suffix.is_empty() {
+                && !suffix.is_empty()
+            {
                 effects.push(CursorEffect::Text {
                     session_id: self.observed_session.clone(),
                     turn_id: self.turn_id.clone(),

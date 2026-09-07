@@ -1,15 +1,15 @@
-//! Desktop Agent Hub projection. Consumes one target-discovery snapshot.
+//! Desktop Agent Hub projection. Cards follow the single AgentCatalog.
 
 use super::capabilities::capabilities_from_params;
-use super::contract::{
-    AgentRecipe, DiscoveryFact, FIRST_BATCH_IDS, HOST_SCOPE, ManifestAgent, OWNERSHIP_NONE,
-};
+use super::contract::{AgentRecipe, DiscoveryFact, HOST_SCOPE, ManifestAgent, OWNERSHIP_NONE};
 use super::ownership::{self, store_from_params};
 use super::package_versions::{self, ChannelVersions};
 use super::recipes;
 use super::selector;
 use super::version;
 use super::version_check;
+use crate::domain::agent_catalog::{self, AgentCatalogEntry};
+use crate::domain::targets::normalize_target;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
@@ -17,7 +17,8 @@ pub fn catalog(params: &Value) -> Result<Value> {
     let store = store_from_params(params)?;
     let capabilities = capabilities_from_params(params)?;
     let warehouse = recipes::warehouse()?;
-    let requested = requested_agent_id(params, &warehouse.manifest.agents)?;
+    let members = agent_catalog::supported_membership(agent_catalog::extra_ids_from_params(params));
+    let requested = requested_agent_id(params, &members)?;
     let facts = discovery_facts(params, requested.as_deref())?;
     let ownerships = ownership::load(&store)?;
     let live_lookup = requested.is_some() && params.get("discoveryCandidates").is_none();
@@ -26,22 +27,37 @@ pub fn catalog(params: &Value) -> Result<Value> {
         .unwrap_or_default();
     let cards = match requested.as_deref() {
         Some(id) => {
-            let agent = recipes::agent_recipe(&warehouse.registry, id)?;
-            vec![project_recipe_card(
-                agent,
+            let entry = members
+                .iter()
+                .find(|entry| entry.id == id)
+                .ok_or_else(|| anyhow!("agent_not_found"))?;
+            vec![project_member_card(
+                entry,
+                &warehouse,
                 &facts,
                 &ownerships,
                 &capabilities,
                 live_lookup,
                 &package_roots,
                 params,
+                true,
             )]
         }
-        None => warehouse
-            .manifest
-            .agents
+        None => members
             .iter()
-            .map(|agent| project_manifest_card(agent, &facts, &ownerships, params))
+            .map(|entry| {
+                project_member_card(
+                    entry,
+                    &warehouse,
+                    &facts,
+                    &ownerships,
+                    &capabilities,
+                    false,
+                    &[],
+                    params,
+                    false,
+                )
+            })
             .collect::<Vec<_>>(),
     };
     Ok(json!({
@@ -56,6 +72,42 @@ pub fn catalog(params: &Value) -> Result<Value> {
         "pluginManagementBoundary": warehouse.manifest.plugin_management_boundary,
         "cards": cards
     }))
+}
+
+fn project_member_card(
+    entry: &AgentCatalogEntry,
+    warehouse: &recipes::Warehouse,
+    facts: &[DiscoveryFact],
+    ownerships: &[super::contract::InstallOwnership],
+    capabilities: &super::contract::PlatformInstallCapabilities,
+    live_lookup: bool,
+    package_roots: &[std::path::PathBuf],
+    params: &Value,
+    requested: bool,
+) -> Value {
+    if requested {
+        if let Ok(agent) = recipes::agent_recipe(&warehouse.registry, &entry.id) {
+            return project_recipe_card(
+                agent,
+                facts,
+                ownerships,
+                capabilities,
+                live_lookup,
+                package_roots,
+                params,
+            );
+        }
+        return project_registry_card(entry, facts, ownerships, params);
+    }
+    if let Some(agent) = warehouse
+        .manifest
+        .agents
+        .iter()
+        .find(|agent| agent.id == entry.id)
+    {
+        return project_manifest_card(agent, facts, ownerships, params);
+    }
+    project_registry_card(entry, facts, ownerships, params)
 }
 
 fn project_manifest_card(
@@ -190,6 +242,60 @@ fn project_recipe_card(
     )
 }
 
+fn project_registry_card(
+    entry: &AgentCatalogEntry,
+    facts: &[DiscoveryFact],
+    ownerships: &[super::contract::InstallOwnership],
+    params: &Value,
+) -> Value {
+    let fact = facts.iter().find(|item| item.agent_id == entry.id);
+    let present = fact.map(|item| item.present).unwrap_or(false);
+    let record = ownerships.iter().find(|item| item.agent_id == entry.id);
+    let ownership = ownership::resolve_ownership(record, present);
+    let metadata = package_versions::from_params(params, &entry.id);
+    let probed = if present {
+        version_check::injected_probe(params, &entry.id)
+            .map(|raw| version_check::parse_output(&entry.id, &raw, ""))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let installed_version =
+        installed_version_of(present, probed.as_str(), fact, &metadata, "", record);
+    let latest_version = first_concrete([
+        fact.map(|item| item.latest_version.as_str()).unwrap_or(""),
+        metadata.latest.as_str(),
+        "",
+    ]);
+    card_json(
+        entry.id.as_str(),
+        entry.label.as_str(),
+        if entry.has_adapter {
+            ""
+        } else {
+            "pending-evaluation"
+        },
+        "",
+        "",
+        entry.summary.as_str(),
+        "",
+        &["local".to_string()],
+        false,
+        present,
+        fact,
+        ownership,
+        record,
+        None,
+        None,
+        String::new(),
+        primary_action(ownership, record.is_some(), false, false),
+        false,
+        installed_version,
+        latest_version,
+        Vec::new(),
+    )
+}
+
 fn card_json(
     id: &str,
     label: &str,
@@ -286,18 +392,18 @@ fn installed_version_of(
     }
 }
 
-fn requested_agent_id(params: &Value, agents: &[ManifestAgent]) -> Result<Option<String>> {
+fn requested_agent_id(params: &Value, members: &[AgentCatalogEntry]) -> Result<Option<String>> {
     let Some(id) = params
         .get("agentId")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
+        .map(normalize_target)
     else {
         return Ok(None);
     };
-    if !agents.iter().any(|agent| agent.id == id) {
-        return Err(anyhow!("recipe_not_found"));
+    if !members.iter().any(|entry| entry.id == id) {
+        return Err(anyhow!("agent_not_found"));
     }
     Ok(Some(id))
 }
@@ -351,7 +457,8 @@ fn fact_from_value(item: &Value) -> Option<DiscoveryFact> {
         .get("target")
         .or_else(|| item.get("agentId"))
         .and_then(Value::as_str)
-        .filter(|value| FIRST_BATCH_IDS.contains(value))?;
+        .map(normalize_target)
+        .filter(|value| !value.is_empty())?;
     let present = item.get("present").and_then(Value::as_bool) == Some(true)
         || item
             .get("status")
@@ -364,7 +471,7 @@ fn fact_from_value(item: &Value) -> Option<DiscoveryFact> {
             .and_then(Value::as_str)
             .is_some_and(|value| !value.trim().is_empty());
     Some(DiscoveryFact {
-        agent_id: agent_id.to_string(),
+        agent_id,
         present,
         location: item
             .get("location")

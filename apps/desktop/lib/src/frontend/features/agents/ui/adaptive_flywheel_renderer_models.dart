@@ -139,6 +139,44 @@ String agentOrchestrationModelDisplayName(
   return normalized;
 }
 
+/// Picker label that renders allowlisted catalog facts already on the model
+/// catalog row. Flutter does not copy a second intelligence table.
+String agentOrchestrationModelPickerLabel(
+  TargetCandidate target,
+  String modelName,
+) {
+  final display = agentOrchestrationModelDisplayName(target, modelName);
+  final annotation = agentOrchestrationModelCatalogAnnotation(
+    target,
+    modelName,
+  );
+  return annotation.isEmpty ? display : '$display · $annotation';
+}
+
+String agentOrchestrationModelCatalogAnnotation(
+  TargetCandidate target,
+  String modelName,
+) {
+  for (final entry in _modelEntries(target.modelCatalog)) {
+    if (!_modelNames(entry).contains(modelName.trim())) continue;
+    final parts = <String>[];
+    final score =
+        entry['codingScore'] ??
+        entry['intelligenceIndex'] ??
+        entry['coding_score'];
+    if (score is num) parts.add(score.toString());
+    final tags = entry['taskTags'] ?? entry['task_tags'];
+    if (tags is Iterable) {
+      for (final tag in tags) {
+        final value = tag.toString().trim();
+        if (value.isNotEmpty && !parts.contains(value)) parts.add(value);
+      }
+    }
+    return parts.join(' · ');
+  }
+  return '';
+}
+
 List<String> agentOrchestrationReasoningEffortsFor(TargetCandidate target) =>
     _dedupe([
       for (final entry in _modelEntries(target.modelCatalog))

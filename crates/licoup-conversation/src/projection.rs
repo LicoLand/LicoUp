@@ -10,6 +10,12 @@
 
 use serde_json::{Value, json};
 
+/// Stream-level event kind for the submitted-user-message projection.
+///
+/// This is a live observer delta. It is never a Canonical Conversation Event
+/// Part: human speech is already one Message Event, and agent turns must not
+/// accumulate that projection onto the agent-authored Event.
+pub const USER_MESSAGE_EVENT_KIND: &str = "conversation.user.message";
 /// Payload key for the submitted user text.
 pub const PAYLOAD_USER_TEXT: &str = "text";
 /// Payload key for the participant role of the submitted user message.

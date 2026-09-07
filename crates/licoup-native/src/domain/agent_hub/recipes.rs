@@ -3,8 +3,8 @@
 use super::argv::{self, ArgvKind};
 use super::contract::{
     ADAPTATION_DEEP, ADAPTATION_PARTIAL, ADAPTATION_PENDING, AgentHubManifest, AgentRecipe,
-    AgentTomlDocument, FIRST_BATCH_IDS, HOST_SCOPE, ManifestAgent, PARTIAL_ADAPTATION_ID,
-    PENDING_ADAPTATION_ID, PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
+    AgentTomlDocument, HOST_SCOPE, ManifestAgent, PARTIAL_ADAPTATION_ID, PENDING_ADAPTATION_ID,
+    PLUGIN_MANAGEMENT_BOUNDARY, RecipeRegistryDocument, SCHEMA_VERSION,
 };
 use anyhow::{Result, anyhow, ensure};
 use std::sync::OnceLock;
@@ -142,17 +142,13 @@ fn validate_manifest(document: &AgentHubManifest) -> Result<()> {
         document.plugin_management_boundary == PLUGIN_MANAGEMENT_BOUNDARY,
         "agent hub must not own adapter plugin lifecycle"
     );
-    ensure!(
-        document.agents.len() == FIRST_BATCH_IDS.len(),
-        "catalog recipe count must match the supported target list"
-    );
-    for (index, expected_id) in FIRST_BATCH_IDS.iter().enumerate() {
-        ensure!(
-            document.agents[index].id == *expected_id,
-            "first-batch recipe order is fixed"
-        );
-    }
+    let mut seen = std::collections::BTreeSet::new();
     for agent in &document.agents {
+        ensure!(
+            seen.insert(agent.id.as_str()),
+            "duplicate install recipe id {}",
+            agent.id
+        );
         let expected_adaptation = if agent.id == PARTIAL_ADAPTATION_ID {
             ADAPTATION_PARTIAL
         } else if agent.id == PENDING_ADAPTATION_ID {

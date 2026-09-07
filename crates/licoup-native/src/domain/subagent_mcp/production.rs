@@ -1,5 +1,5 @@
 use super::{
-    CallerContext, ConversationHostPort, McpApplicationError, ReadOnlyTargetPort,
+    CALLER_PROVIDERS, CallerContext, ConversationHostPort, McpApplicationError, ReadOnlyTargetPort,
     SubagentMcpApplication, TargetMembership, permanent,
 };
 use crate::domain::client_conversation::{Conversation, MembershipStatus, PrincipalKind};
@@ -223,6 +223,31 @@ impl ConversationHostPort for NativeConversationHost {
         })
     }
 
+    fn target_membership_by_agent(
+        &self,
+        conversation_id: &str,
+        agent: &str,
+    ) -> Result<TargetMembership, McpApplicationError> {
+        let conversation = self.conversation(conversation_id)?;
+        let matches = conversation
+            .memberships
+            .iter()
+            .filter(|membership| {
+                membership.status == MembershipStatus::Active
+                    && membership.principal.kind == PrincipalKind::Agent
+                    && membership.principal.agent_id.as_deref() == Some(agent)
+            })
+            .map(|membership| membership.id.clone())
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [membership_id] => self.target_membership(conversation_id, membership_id),
+            _ => Err(retryable(
+                "subagent_target_seat_missing",
+                "conversation/authorize",
+            )),
+        }
+    }
+
     fn claim_dispatch(
         &self,
         conversation_id: &str,
@@ -329,8 +354,9 @@ struct NativeReadOnlyTargets;
 
 impl ReadOnlyTargetPort for NativeReadOnlyTargets {
     fn list(&self) -> Result<Value, McpApplicationError> {
-        let targets = ["codex", "cursor", "antigravity"]
-            .into_iter()
+        let targets = CALLER_PROVIDERS
+            .iter()
+            .copied()
             .map(|provider| {
                 crate::domain::targets::inspect_target_read_only(provider)
                     .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
@@ -358,7 +384,7 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
 
 fn project_target(target: &Value) -> Option<Value> {
     let agent_id = target.get("target").and_then(Value::as_str)?;
-    if !matches!(agent_id, "codex" | "cursor" | "antigravity") {
+    if !CALLER_PROVIDERS.contains(&agent_id) {
         return None;
     }
     Some(json!({
@@ -366,6 +392,10 @@ fn project_target(target: &Value) -> Option<Value> {
         "status": target.get("status").and_then(Value::as_str).unwrap_or("unknown"),
         "conversationDriver": target.pointer("/adapterCapabilities/conversationDriver").and_then(Value::as_str).unwrap_or("unavailable"),
         "conversationReadiness": target.pointer("/adapterCapabilities/conversationReadiness").and_then(Value::as_str).unwrap_or("unverified"),
+        "intelligenceCatalog": crate::domain::agent_intelligence_catalog::project_harness_catalog(agent_id, 8),
+        "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
+            &crate::domain::dispatch_timeout_policy::load_or_default(),
+        ),
     }))
 }
 
@@ -522,7 +552,9 @@ mod tests {
                 "agentId",
                 "conversationDriver",
                 "conversationReadiness",
-                "status"
+                "intelligenceCatalog",
+                "status",
+                "timeoutPolicy"
             ])
         );
         let wire = projected.to_string();

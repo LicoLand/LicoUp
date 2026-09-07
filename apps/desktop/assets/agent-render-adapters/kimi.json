@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "kimi",
-  "displayName": "Kimi - Desktop",
+  "displayName": "Kimi Desktop",
   "match": {
     "agentIds": ["kimi"],
     "sourceClients": ["kimi"],

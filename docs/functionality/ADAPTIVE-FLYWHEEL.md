@@ -142,10 +142,11 @@ the effect runs, the ordinary failure fallback applies.
 
 The failure fallback holds under both modes. An Assistant-run effect or drive
 failure settles one typed terminal outcome back to the originating Assistant
-turn. For an imported run, the terminal failure outcome — failed, blocked, or
-in-doubt — is reported to the bound Conversation's designated Assistant
-Membership as a typed Membership event, so the master agent decides what
-happens next; only identifier-level facts cross that seam.
+turn. For an imported strategy, prepare-import, commit-import, run admission,
+and the terminal run outcome — failed, blocked, or in-doubt — are reported to
+the bound Conversation's designated Assistant Membership as the same typed
+Membership event (`licoup.adaptive-flywheel.callback.v1`), so the master
+agent decides what happens next; only identifier-level facts cross that seam.
 
 Guard routing must select exactly one edge for every bounded payload. A state
 may declare one arbitrary guard with an unguarded fallback, or multiple
