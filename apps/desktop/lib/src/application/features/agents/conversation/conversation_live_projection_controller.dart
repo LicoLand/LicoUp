@@ -4,6 +4,7 @@ import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
@@ -24,6 +25,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       ConversationStateHolder();
   bool _liveRevisionBridgeAttached = false;
   StreamSubscription<ApplicationChange>? _liveProjectionSubscription;
+  int _memoryLiveTurnCount = 0;
 
   ConversationScopeProjection conversationProjectionFor(String scopeKey) =>
       conversationStateHolder.projectionFor(scopeKey);
@@ -82,7 +84,31 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       for (final scopeKey in conversationStateHolder.scopeKeys)
         scopeKey: conversationStateHolder.messagesFor(scopeKey),
     };
+    _observeWorkspaceMemory();
     agentWorkspaceNotifyLiveConversationChanged();
+  }
+
+  void _observeWorkspaceMemory() {
+    var liveMessageCount = 0;
+    for (final messages in liveConversationMessagesByScope.values) {
+      liveMessageCount += messages.length;
+    }
+    final liveTurnCount = conversationStateHolder.scopeKeys.length;
+    final event = liveTurnCount > 0 && _memoryLiveTurnCount == 0
+        ? ClientMemoryDiagnosticEvent.liveTurnOpened
+        : liveTurnCount == 0 && _memoryLiveTurnCount > 0
+        ? ClientMemoryDiagnosticEvent.liveTurnClosed
+        : ClientMemoryDiagnosticEvent.sample;
+    _memoryLiveTurnCount = liveTurnCount;
+    observeClientMemory(
+      ClientMemoryDiagnosticObservation(
+        event: event,
+        surface: ClientMemoryDiagnosticSurface.workspace,
+        liveTurnCount: liveTurnCount,
+        liveMessageCount: liveMessageCount,
+        livePartCount: liveMessageCount,
+      ),
+    );
   }
 
   void disposeConversationLiveProjection() {

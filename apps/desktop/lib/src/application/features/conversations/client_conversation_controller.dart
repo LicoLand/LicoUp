@@ -5,7 +5,9 @@ import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
+import 'package:licoup/src/application/features/conversations/client_memory_diagnostic_journal.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
@@ -17,13 +19,16 @@ final class ClientConversationController extends ApplicationStateOwner {
     required AgentCommandRunner runner,
     ClientConversationService service = const ClientConversationService(),
     void Function(String conversationId)? onSelectionChanged,
+    ClientMemoryDiagnosticJournal? memoryJournal,
   }) : _runner = runner,
        _service = service,
-       _onSelectionChanged = onSelectionChanged;
+       _onSelectionChanged = onSelectionChanged,
+       _memoryJournal = memoryJournal;
 
   final AgentCommandRunner _runner;
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
+  final ClientMemoryDiagnosticJournal? _memoryJournal;
 
   bool _initialized = false;
   bool _disposed = false;
@@ -52,6 +57,8 @@ final class ClientConversationController extends ApplicationStateOwner {
   final ClientConversationRecentParticipants _recentParticipants =
       ClientConversationRecentParticipants();
   List<String> _availableConversationAgentIds = const [];
+  bool _memoryConversationOpen = false;
+  int _memoryLiveTurnCount = 0;
 
   bool get loading => _loading;
   bool get sending => _sending;
@@ -993,13 +1000,56 @@ final class ClientConversationController extends ApplicationStateOwner {
   }
 
   void _publishChange() {
-    if (!_disposed) publishChange();
+    if (_disposed) return;
+    _observeMemory();
+    publishChange();
+  }
+
+  void _observeMemory() {
+    final journal = _memoryJournal;
+    if (journal == null) return;
+    final open = _selectedConversationId.isNotEmpty;
+    final liveTurnCount = _liveTurns.length;
+    ClientMemoryDiagnosticEvent event;
+    if (open && !_memoryConversationOpen) {
+      event = ClientMemoryDiagnosticEvent.conversationOpened;
+    } else if (!open && _memoryConversationOpen) {
+      event = ClientMemoryDiagnosticEvent.conversationClosed;
+    } else if (open && liveTurnCount > 0 && _memoryLiveTurnCount == 0) {
+      event = ClientMemoryDiagnosticEvent.liveTurnOpened;
+    } else if (open && liveTurnCount == 0 && _memoryLiveTurnCount > 0) {
+      event = ClientMemoryDiagnosticEvent.liveTurnClosed;
+    } else if (open) {
+      event = ClientMemoryDiagnosticEvent.sample;
+    } else {
+      _memoryConversationOpen = false;
+      _memoryLiveTurnCount = 0;
+      return;
+    }
+    _memoryConversationOpen = open;
+    _memoryLiveTurnCount = liveTurnCount;
+    journal.observe(
+      ClientMemoryDiagnosticObservation(
+        event: event,
+        surface: ClientMemoryDiagnosticSurface.canonical,
+        eventCount: _selectedConversation?.eventCount ?? 0,
+        loadedEventCount: _events.length,
+        liveTurnCount: liveTurnCount,
+        livePartCount: _livePartCount(_liveTurns),
+        cachedConversationCount: _conversationCache.length,
+      ),
+    );
   }
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    if (_memoryConversationOpen) {
+      _selectedConversationId = '';
+      _liveTurns = const [];
+      _observeMemory();
+    }
     super.dispose();
   }
 }
@@ -1066,4 +1116,13 @@ List<Map<String, dynamic>> _postedLiveTurns(Object? posted) {
     for (final turn in turns)
       if (turn is Map) Map<String, dynamic>.from(turn),
   ];
+}
+
+int _livePartCount(List<Map<String, dynamic>> turns) {
+  var count = 0;
+  for (final turn in turns) {
+    final parts = turn['parts'];
+    count += parts is List ? parts.length : 1;
+  }
+  return count;
 }
