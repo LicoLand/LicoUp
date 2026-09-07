@@ -9,6 +9,20 @@ use serde_json::{Value, json};
 
 pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedExecution) -> Value {
     debug_assert_eq!(execution.driver_id, adapter.driver_id());
+    execution_response_named(
+        adapter.id(),
+        adapter.label(),
+        adapter.driver_id(),
+        execution,
+    )
+}
+
+pub(super) fn execution_response_named(
+    adapter_id: &str,
+    adapter_label: &str,
+    driver_id: &str,
+    execution: NormalizedExecution,
+) -> Value {
     // Vendor frames have already crossed their isolated parser. Downstream
     // receives only the parser-produced closed transition vocabulary.
     let transitions = execution
@@ -39,7 +53,8 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
             ) || transition.get("stage").and_then(Value::as_str) == Some("completed")
         })
         .cloned();
-    let verified_native_session_id = if adapter == RuntimeAdapter::Codex {
+    debug_assert_eq!(execution.driver_id, driver_id);
+    let verified_native_session_id = if adapter_id == "codex" {
         execution.thread_id.clone()
     } else {
         execution.session_id.clone()
@@ -120,11 +135,11 @@ pub(super) fn execution_response(adapter: RuntimeAdapter, execution: NormalizedE
         "ok": execution.ok,
         "schemaVersion": RUNTIME_SCHEMA_VERSION,
         "mode": "runtime-adapter",
-        "adapterId": adapter.id(),
-        "adapterLabel": adapter.label(),
-        "driverId": adapter.driver_id(),
+        "adapterId": adapter_id,
+        "adapterLabel": adapter_label,
+        "driverId": driver_id,
         "runtimeProtocol": execution.runtime_protocol,
-        "agentId": adapter.id(),
+        "agentId": adapter_id,
         "nativeSessionId": native_session_id,
         "sessionId": native_session_id,
         "threadId": execution.thread_id,

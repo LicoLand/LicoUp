@@ -181,7 +181,10 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
         .cloned()
         .collect::<Vec<_>>();
     token_holders.sort();
-    assert_eq!(token_holders, ["antigravity", "codex", "cursor"]);
+    assert_eq!(
+        token_holders,
+        ["antigravity", "claude-code", "codex", "cursor"]
+    );
 
     let frames = connector_session(&root, "antigravity");
     let frames = frames.as_array().expect("frame list");

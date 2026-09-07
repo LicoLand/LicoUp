@@ -200,6 +200,9 @@ AgentConversationSession canonicalGroupConversationSession(
     }
 
     for (final eventPart in event.parts) {
+      if (_isCanonicalRuntimeReplayPart(eventPart)) {
+        continue;
+      }
       if (eventPart.kind == ConversationEventPartKind.image) {
         final attachment = _canonicalGroupImageAttachment(eventPart);
         if (attachment != null) {
@@ -315,6 +318,37 @@ AgentConversationSession canonicalGroupConversationSession(
     sourceMessageCount: conversation.eventCount,
     historyTruncated: conversation.eventCount > events.length,
   );
+}
+
+/// Live PersistentTurn frames may still carry the submitted-user-message
+/// delta. Canonical Events already own human speech, so group live turns
+/// keep only agent content. When the live list has no user rows, the same
+/// instance is returned so the pane's identity cache still holds.
+List<AgentConversationMessage> canonicalGroupLiveTurnMessages(
+  List<AgentConversationMessage> live,
+) {
+  final hasUser = live.any(
+    (message) => message.role.trim().toLowerCase() == 'user',
+  );
+  if (!hasUser) return live;
+  return [
+    for (final message in live)
+      if (message.role.trim().toLowerCase() != 'user') message,
+  ];
+}
+
+/// Legacy mixed-turn Events stored the submitted-user-message observer
+/// delta as a metadata Part on the agent Event. It is not a visible Part.
+bool _isCanonicalRuntimeReplayPart(ClientConversationEventPart part) {
+  if (part.kind != ConversationEventPartKind.metadata) return false;
+  try {
+    final decoded = jsonDecode(part.content);
+    if (decoded is! Map) return false;
+    return (decoded['event'] ?? '').toString().trim() ==
+        'conversation.user.message';
+  } catch (_) {
+    return false;
+  }
 }
 
 bool _isFailureDiagnosticPart(ClientConversationEventPart part) {

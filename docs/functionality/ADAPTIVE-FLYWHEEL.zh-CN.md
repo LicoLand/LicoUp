@@ -100,9 +100,10 @@ Assistant membership——通过与效果输出相同的 Membership 作用域会
 binding 推迟到主智能体决策；如果效果真正执行时仍未声明，则走普通的失败兜底。
 
 失败兜底在两种模式下都成立。Assistant run 的效果或 drive 失败只结算一个 typed 终态
-结果回传发起方 Assistant turn。导入 run 的终态失败——failed、blocked 或 in-doubt——
-会作为一条 typed Membership 事件报告给所绑定 Conversation 指定的 Assistant
-Membership，由主智能体决断后续；越过这条边界的只有标识符级别的事实。
+结果回传发起方 Assistant turn。导入策略的 prepare-import、commit-import、run 准入
+以及终态失败——failed、blocked 或 in-doubt——会作为同一条 typed Membership 事件
+（`licoup.adaptive-flywheel.callback.v1`）报告给所绑定 Conversation 指定的
+Assistant Membership，由主智能体决断后续；越过这条边界的只有标识符级别的事实。
 
 Guard 路由必须让每个有界 payload 恰好选中一条边。一个状态可以声明一个任意 guard 加
 无 guard 兜底，或声明同一 payload 路径上规范值各不相同的多个 equality guard，同样

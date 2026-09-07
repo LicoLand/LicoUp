@@ -6,7 +6,8 @@ use super::processes::ScanContext;
 use super::scan_merge::{scan_target_read_only_with_manual, scan_target_with_manual};
 use super::support::{client_state_store, client_state_store_read_only};
 use super::target_cache::{
-    persist_discovery_cache, upsert_discovery_cache, upsert_discovery_cache_many,
+    hydrate_model_catalog, hydrate_model_catalogs, persist_discovery_cache, upsert_discovery_cache,
+    upsert_discovery_cache_many,
 };
 use super::virtual_machine_discovery::{AutomaticVmTarget, discover_virtual_machine_targets};
 use crate::platform::client_state::ClientStateStore;
@@ -102,6 +103,12 @@ pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) 
             .ok();
             Ok((target_id, candidate))
         })?;
+        let mut outcomes = outcomes;
+        for (_, candidate) in outcomes.iter_mut() {
+            if let Some(candidate) = candidate.as_mut() {
+                hydrate_model_catalog(store, candidate);
+            }
+        }
         let successful = outcomes
             .iter()
             .filter_map(|(_, candidate)| candidate.as_ref())
@@ -133,7 +140,7 @@ pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) 
             "results": results,
         }));
     }
-    let candidates = run_bounded_target_probes(probes, concurrency, |mut probe| {
+    let mut candidates = run_bounded_target_probes(probes, concurrency, |mut probe| {
         scan_target_with_manual(
             &probe.def,
             probe.manual.as_ref(),
@@ -142,6 +149,7 @@ pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) 
             probe.params.as_ref(),
         )
     })?;
+    hydrate_model_catalogs(store, &mut candidates);
     persist_discovery_cache(store, &candidates)?;
     let mut scan_scopes = vec![
         "application-store",
@@ -257,7 +265,7 @@ fn inspect_target_inner(params: &Value, read_only: bool) -> Result<Value> {
     let manual = manual_targets.iter().find(|item| item.target == def.id);
     let automatic_vm = discover_virtual_machine_targets(params, &[def.id]);
     let mut scan_context = ScanContext::from_params(params);
-    let candidate = if read_only {
+    let mut candidate = if read_only {
         scan_target_read_only_with_manual(
             &def,
             manual,
@@ -275,6 +283,7 @@ fn inspect_target_inner(params: &Value, read_only: bool) -> Result<Value> {
         )?
     };
     if !read_only {
+        hydrate_model_catalog(&store, &mut candidate);
         upsert_discovery_cache(&store, &candidate)?;
     }
     let target = if read_only {

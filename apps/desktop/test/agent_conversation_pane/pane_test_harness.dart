@@ -58,6 +58,7 @@ AgentConversationPaneActions paneTestActions({
   VoidCallback? onUnblockSend,
   ValueChanged<String>? onModelChanged,
   Future<bool> Function(String)? onSend,
+  Future<void> Function(String)? onCopyText,
   VoidCallback? onNewConversation,
 }) => AgentConversationPaneActions(
   onModelChanged: onModelChanged ?? (_) {},
@@ -68,6 +69,7 @@ AgentConversationPaneActions paneTestActions({
   onNewConversation: onNewConversation,
   onUnblockSend: onUnblockSend,
   onChooseWorkingDirectory: onChooseWorkingDirectory,
+  onCopyText: onCopyText,
 );
 
 ConversationPaneHeader paneTestHeader({

@@ -155,6 +155,65 @@ void main() {
       'guard': {'path': 'context.route', 'equals': 'complex'},
     });
     expect(edge.guardLabel, 'route=complex');
+    expect(edge.mode, 'flow');
+    expect(edge.callback, isFalse);
+  });
+
+  test('declares callback and flow modes on the routed caption', () {
+    final callback = AdaptiveFlywheelGraphEdge.fromJson({
+      'from': 'review',
+      'to': 'done',
+      'event': 'success',
+      'mode': 'callback',
+    });
+    expect(callback.mode, 'callback');
+    expect(callback.callback, isTrue);
+
+    final layout = AdaptiveFlywheelWorkflowLayout.build(
+      states: const [
+        AdaptiveFlywheelGraphStateProjection(
+          id: 'review',
+          kind: 'actor',
+          label: 'Review',
+        ),
+        AdaptiveFlywheelGraphStateProjection(
+          id: 'done',
+          kind: 'succeed',
+          label: 'Done',
+        ),
+        AdaptiveFlywheelGraphStateProjection(
+          id: 'failed',
+          kind: 'fail',
+          label: 'Failed',
+        ),
+      ],
+      edges: [
+        AdaptiveFlywheelGraphEdgeProjection(
+          from: 'review',
+          to: 'done',
+          event: 'success',
+          mode: 'callback',
+          guardLabel: '',
+        ),
+        const AdaptiveFlywheelGraphEdgeProjection(
+          from: 'review',
+          to: 'failed',
+          event: 'failure',
+          guardLabel: '',
+        ),
+      ],
+      initialState: 'review',
+    );
+    final callbackRoute = layout.routes.singleWhere(
+      (route) => route.from == 'review' && route.to == 'done',
+    );
+    final flowRoute = layout.routes.singleWhere(
+      (route) => route.from == 'review' && route.to == 'failed',
+    );
+    expect(callbackRoute.callback, isTrue);
+    expect(callbackRoute.label, 'callback · success');
+    expect(flowRoute.callback, isFalse);
+    expect(flowRoute.label, 'flow · failure');
   });
 
   testWidgets('renders blocked below the happy-path nodes', (tester) async {
