@@ -44,6 +44,28 @@ federation, recovery, notary, and multi-device goals are delivered. Those
 goals become current capability only after their owning implementation and
 verification close.
 
+## Continuous collaboration destination
+
+The User should be able to keep working with the same visible Assistant without
+managing provider sessions, resetting conversations, selecting a coding or Goal
+mode, or manually moving information into a memory interface. The Assistant
+understands when an exchange is a question, exploration, a commitment or a
+return to earlier work. It brings professional capabilities into that exchange
+when needed; software development is one form of work among many.
+
+Changing the subject should not contaminate unrelated work or discard an
+unfinished commitment. Returning later should restore relevant agreements,
+evidence and progress without requiring the User to repeat the background.
+The User remains free to create, organize and separate Conversations; a stable
+Assistant experience never merges private and shared visibility scopes.
+
+Automatic organization removes management effort, not control. Real participants,
+work provenance, resource use and external destinations remain inspectable.
+Required approvals, User corrections, explicit Assistant designation and
+native-Agent capabilities remain part of the experience. Continuous collaboration
+mechanisms and adoption boundaries belong to the accepted
+[Continuous Assistant architecture](docs/architecture/CONTINUOUS-ASSISTANT.md).
+
 ## Agent command identity
 
 Without an explicit Agent Center override, LicoUp must select the same Agent
@@ -58,7 +80,7 @@ launch binding instead of silently discarding User configuration.
 The Agent Center shows the observed command binding and every additional
 candidate. An explicit User selection of a command or version replaces the
 observed default. User-configured environment variables, arguments, and Hooks
-then extend that selected launch profile with visible, deterministic
+then extend the selected launch profile with visible, deterministic
 precedence. A manifest-discovered or LicoUp-managed runtime may be offered when
 the command-line environment has no matching command, but it must never be
 presented as the User's terminal choice.
