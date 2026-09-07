@@ -340,7 +340,7 @@ mod tests {
     use super::*;
     use crate::domain::cli_registration::{CliRegistration, StreamMode};
     use serde_json::json;
-    use std::path::{PathBuf, MAIN_SEPARATOR};
+    use std::path::{MAIN_SEPARATOR, PathBuf};
 
     fn echo_registration() -> CliRegistration {
         CliRegistration {
