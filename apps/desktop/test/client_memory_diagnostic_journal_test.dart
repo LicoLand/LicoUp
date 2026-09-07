@@ -34,7 +34,7 @@ final class _RssProbe implements ClientResourceUsageProbe {
 }
 
 void main() {
-  test('open conversation starts sampling and writes RSS plus counts', () {
+  test('open conversation writes RSS plus counts', () {
     final sink = _CollectingSink();
     final journal = ClientMemoryDiagnosticJournal(
       sink: sink,
@@ -110,7 +110,7 @@ void main() {
     expect(sink.records.last.liveMessageCount, 6);
   });
 
-  test('closing the conversation stops the sampler', () {
+  test('closing the conversation ends sampling', () {
     final sink = _CollectingSink();
     final journal = ClientMemoryDiagnosticJournal(
       sink: sink,
