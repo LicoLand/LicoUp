@@ -11,9 +11,9 @@ export 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 export 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
-/// Every dispatch opts out of a turn deadline (timeoutMs 0): the agent runs
-/// until the turn completes, however long that takes.
-const _unboundedDispatchTimeoutMs = 0;
+/// Desktop still sends timeoutMs 0. Native treats that as "use the writable
+/// policy default" unless the caller sets timeoutUnbounded.
+const _policyDefaultDispatchTimeoutMs = 0;
 
 Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   final acceptanceMode = bind.acceptanceMode.trim();
@@ -22,7 +22,7 @@ Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   }
   return {
     'acceptanceMode': acceptanceMode,
-    'timeoutMs': _unboundedDispatchTimeoutMs,
+    'timeoutMs': _policyDefaultDispatchTimeoutMs,
   };
 }
 
@@ -679,7 +679,7 @@ class AgentConversationService implements AgentConversationLane {
       'agent': agentId,
       'text': text,
       'streamEvents': true,
-      'timeoutMs': _unboundedDispatchTimeoutMs,
+      'timeoutMs': _policyDefaultDispatchTimeoutMs,
       if (attachments.isNotEmpty)
         'attachments': [
           for (final attachment in attachments) attachment.toJson(),

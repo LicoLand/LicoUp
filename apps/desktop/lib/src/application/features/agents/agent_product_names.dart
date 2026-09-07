@@ -23,6 +23,8 @@ String? agentProductDisplayName(String value) {
     'kilo' || 'kilo-code' => 'Kilo Code',
     'kimi' => 'Kimi',
     'kimi-code' => 'Kimi Code',
+    'grok' || 'xai-grok' => 'Grok',
+    'command-code' || 'cmdc' => 'Command Code',
     'codebuddy' => 'CodeBuddy',
     'trae' || 'trae-agent' => 'Trae Agent',
     'trae-work' => 'Trae Work',
@@ -46,7 +48,10 @@ String agentProductLabel(String value) {
   return value
       .trim()
       .replaceFirst(
-        RegExp(r'\s*-\s*(?:desktop|cli|ide|plugin)\s*$', caseSensitive: false),
+        RegExp(
+          r'(?:\s*[-–—]\s*|\s+)(?:desktop|cli|ide|plugin|sdk)(?:\s+runtime)?\s*$',
+          caseSensitive: false,
+        ),
         '',
       )
       .trim();

@@ -196,7 +196,7 @@ fn caller_provider(
         return Err(());
     }
     let provider = argument.or(environment).ok_or(())?;
-    if !matches!(provider, "codex" | "cursor" | "antigravity") {
+    if !licoup_native::domain::subagent_mcp::CALLER_PROVIDERS.contains(&provider) {
         return Err(());
     }
     Ok(provider.to_owned())
@@ -220,6 +220,10 @@ mod tests {
             caller_provider(["--caller".into(), "cursor".into()], Some("codex".into())).is_err()
         );
         assert!(caller_provider(["--caller".into(), "other".into()], None).is_err());
+        assert_eq!(
+            caller_provider(["--caller".into(), "claude-code".into()], None).unwrap(),
+            "claude-code"
+        );
     }
 
     #[test]

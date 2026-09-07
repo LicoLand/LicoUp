@@ -470,6 +470,10 @@ impl<'a> ClaudeCodeParser<'a> {
         self.cancel_requested = true;
     }
 
+    pub(in crate::platform) fn cancel_was_requested(&self) -> bool {
+        self.cancel_requested
+    }
+
     pub(in crate::platform) fn failure(
         &self,
         code: &'static str,

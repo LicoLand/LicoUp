@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/settings/ui/resource_usage_shared.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -316,10 +317,5 @@ class _SegmentLegendRow extends StatelessWidget {
 }
 
 String _agentDisplayLabel(String target) {
-  return switch (target) {
-    'claude-code' => 'Claude Code',
-    'kimi-code' => 'Kimi Code',
-    'kilo-code' => 'Kilo Code',
-    _ => target,
-  };
+  return agentProductLabel(target);
 }

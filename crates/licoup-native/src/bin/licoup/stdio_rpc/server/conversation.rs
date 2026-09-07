@@ -36,13 +36,12 @@ struct PersistentConversationRuntimeInner {
     cache_budget: usize,
     /// Fired-once guard for subagent caller callbacks, keyed by claim id. One
     /// completion signal per claim is the contract: terminal settlement and
-    /// the timeout watchdog race here and the loser stays silent. In-memory
-    /// v1: a host restart may re-fire the timeout callback for a claim whose
-    /// state is still non-terminal.
+    /// the timeout watchdog race here and the loser stays silent. Deadlines
+    /// are durable on the claim; host boot re-arms the in-memory watcher.
     subagent_callback_fired: Mutex<BTreeSet<String>>,
     /// Watchdog deadlines (claim/dispatch id → fire-at) for claimed subagent
-    /// dispatches carrying an explicit `timeoutMs`. One watcher thread wakes
-    /// at the earliest registered deadline.
+    /// dispatches after the writable timeout policy resolves. One watcher
+    /// thread wakes at the earliest registered deadline.
     subagent_watchdog: Mutex<BTreeMap<String, Instant>>,
     subagent_watchdog_changed: Condvar,
     subagent_watchdog_spawned: AtomicBool,
@@ -91,7 +90,7 @@ impl PersistentConversationRuntime {
     }
 
     fn with_cache_budget(store: ConversationStore, cache_budget: usize) -> Self {
-        Self {
+        let runtime = Self {
             inner: Arc::new(PersistentConversationRuntimeInner {
                 turns: Mutex::new(HashMap::new()),
                 turns_changed: Condvar::new(),
@@ -103,7 +102,9 @@ impl PersistentConversationRuntime {
                 subagent_watchdog_changed: Condvar::new(),
                 subagent_watchdog_spawned: AtomicBool::new(false),
             }),
-        }
+        };
+        runtime.rearm_persisted_watchdogs();
+        runtime
     }
 
     pub(crate) fn client_connected(&self) {
@@ -184,18 +185,24 @@ impl PersistentConversationRuntime {
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
         self.inner.turns_changed.notify_all();
-        // A dispatch carrying an explicit `timeoutMs` and backed by a durable
-        // subagent claim gets a watchdog deadline: when the delegated turn
-        // has not settled by then, the caller still receives one callback
-        // carrying the current claim state. Ordinary (unclaimed) dispatches
-        // never register.
-        let timeout_ms = params.get("timeoutMs").and_then(Value::as_u64).unwrap_or(0);
+        // A claimed dispatch gets a watchdog after the writable timeout
+        // policy resolves (`timeoutMs` 0/omitted uses the policy; only
+        // timeoutUnbounded keeps the turn without a deadline). Ordinary
+        // (unclaimed) dispatches never register.
+        let timeout_ms =
+            licoup_native::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
+                .unwrap_or(0);
         if timeout_ms > 0
             && matches!(
                 self.inner.store.subagent_claim(&scope.dispatch_id),
                 Ok(Some(_))
             )
         {
+            let deadline_unix_ms = unix_now_ms().saturating_add(timeout_ms as i64);
+            let _ = self
+                .inner
+                .store
+                .set_subagent_watchdog_deadline(&scope.dispatch_id, deadline_unix_ms);
             self.register_subagent_watchdog(
                 scope.dispatch_id.clone(),
                 Duration::from_millis(timeout_ms),
@@ -766,6 +773,17 @@ impl PersistentConversationRuntime {
         Ok(())
     }
 
+    fn rearm_persisted_watchdogs(&self) {
+        let Ok(pending) = self.inner.store.pending_subagent_watchdogs() else {
+            return;
+        };
+        let now = unix_now_ms();
+        for (dispatch_id, deadline_unix_ms) in pending {
+            let remaining_ms = u64::try_from(deadline_unix_ms.saturating_sub(now)).unwrap_or(0);
+            self.register_subagent_watchdog(dispatch_id, Duration::from_millis(remaining_ms));
+        }
+    }
+
     /// Register one watchdog deadline for a claimed subagent dispatch and
     /// start the single watcher thread on first use. The watcher is lazily
     /// spawned so a runtime that never hosts a claimed dispatch never carries
@@ -878,6 +896,7 @@ impl PersistentConversationRuntime {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .remove(&claim.id);
+        let _ = self.inner.store.clear_subagent_watchdog_deadline(&claim.id);
         self.dispatch_subagent_callback(&claim, state.as_str(), Some(terminal_payload));
     }
 
@@ -941,6 +960,7 @@ fn direct_turn_params(
         "agent": context.agent_id,
         "text": delivery.text,
         "streamEvents": true,
+        // 0 means "use the writable policy default", not unbounded.
         "timeoutMs": 0,
         "conversationId": context.turn.conversation_id,
         "membershipId": context.turn.membership_id,
@@ -1436,6 +1456,13 @@ pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()
     }
 }
 
+fn unix_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 fn join_until(workers: &mut Vec<std::thread::JoinHandle<()>>, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
@@ -1567,6 +1594,42 @@ mod tests {
             "exact user-authored text"
         );
         assert!(ordinary_params.get("privateInstructions").is_none());
+    }
+
+    #[test]
+    fn direct_turn_params_pass_profile_reasoning_effort() {
+        let context = DirectTurnExecutionContext {
+            turn: DirectTurn {
+                id: "turn:synthetic".to_owned(),
+                conversation_id: "conversation:synthetic".to_owned(),
+                source_event_id: "event:synthetic".to_owned(),
+                membership_id: "membership:agent".to_owned(),
+                state: TurnState::Claimed,
+                ordinal: 0,
+            },
+            agent_id: "claude-code".to_owned(),
+            source_content: "exact user-authored text".to_owned(),
+            source_attachments: Vec::new(),
+            is_assistant: false,
+            preferred_model: Some("opus-5".to_owned()),
+            preferred_reasoning_effort: Some("xhigh".to_owned()),
+            runtime_session_id: None,
+            runtime_conversation_path: None,
+            working_directory: None,
+        };
+        let params = direct_turn_params(&context).unwrap();
+        assert_eq!(params["model"], "opus-5");
+        assert_eq!(params["reasoningEffort"], "xhigh");
+        assert_eq!(params["timeoutMs"], 0);
+        assert!(params.get("timeoutUnbounded").is_none());
+
+        let empty = DirectTurnExecutionContext {
+            preferred_model: None,
+            preferred_reasoning_effort: None,
+            ..context
+        };
+        let empty_params = direct_turn_params(&empty).unwrap();
+        assert!(empty_params.get("reasoningEffort").is_none());
     }
 
     #[test]
@@ -2042,7 +2105,7 @@ mod tests {
             .begin(&json!({
                 "agent": "target-agent",
                 "text": "delegated prompt",
-                "timeoutMs": 80,
+                "timeoutMs": 1_000,
                 "conversationId": fixture.conversation_id.as_str(),
                 "membershipId": fixture.target_membership.as_str(),
                 "causationId": "subagent-mcp",
@@ -2105,7 +2168,7 @@ mod tests {
             .begin(&json!({
                 "agent": "synthetic",
                 "text": "synthetic prompt",
-                "timeoutMs": 80,
+                "timeoutMs": 1_000,
             }))
             .unwrap();
         std::thread::sleep(Duration::from_millis(300));
@@ -2434,5 +2497,59 @@ mod tests {
         release.send(()).unwrap();
         joined_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         host.join().unwrap();
+    }
+
+    #[test]
+    fn host_boot_rearms_persisted_watchdog_deadlines() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let owner = Principal {
+            id: "human:owner".into(),
+            kind: PrincipalKind::Human,
+            display_name: "Owner".into(),
+            agent_id: None,
+            created_at_unix_ms: 1,
+        };
+        let conversation = store.create_conversation("Project", owner).unwrap();
+        let caller = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:codex".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Codex".into(),
+                    agent_id: Some("codex".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let target = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:cursor".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Cursor".into(),
+                    agent_id: Some("cursor".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let claim = store
+            .claim_subagent_dispatch(&conversation.id, &caller.id, &target.id, None)
+            .unwrap();
+        store
+            .set_subagent_watchdog_deadline(&claim.id, unix_now_ms() + 60_000)
+            .unwrap();
+
+        let runtime = PersistentConversationRuntime::with_cache_budget(store, 1024);
+        let armed = runtime
+            .inner
+            .subagent_watchdog
+            .lock()
+            .unwrap()
+            .contains_key(&claim.id);
+        assert!(armed);
     }
 }

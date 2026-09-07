@@ -272,6 +272,13 @@ impl ConversationService {
                     .membership_profile(required_string(object, "membershipId")?)?;
                 Ok(serde_json::to_value(profile)?)
             }
+            "conversation.profile.native_roles" => Ok(json!({
+                "ok": true,
+                "roles": crate::domain::native_roles::list()
+                    .into_iter()
+                    .map(|role| role.public_projection())
+                    .collect::<Vec<_>>(),
+            })),
             "conversation.profile.candidates" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let filters: super::CandidateFilters = serde_json::from_value(
@@ -286,7 +293,30 @@ impl ConversationService {
                 Ok(json!({
                     "candidates": serde_json::to_value(&candidates)?,
                     "routeReceipt": route_receipt(conversation_id, &candidates),
+                    "timeoutPolicy": crate::domain::dispatch_timeout_policy::policy_envelope(
+                        &crate::domain::dispatch_timeout_policy::load_or_default(),
+                    ),
                 }))
+            }
+            "timeout.policy.get" => {
+                let mut envelope = crate::domain::dispatch_timeout_policy::policy_envelope(
+                    &crate::domain::dispatch_timeout_policy::load_or_default(),
+                );
+                envelope["ok"] = json!(true);
+                Ok(envelope)
+            }
+            "timeout.policy.set" => {
+                let policy = serde_json::from_value(
+                    object
+                        .get("policy")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let stored = crate::domain::dispatch_timeout_policy::store(&policy)
+                    .map_err(anyhow::Error::msg)?;
+                let mut envelope = crate::domain::dispatch_timeout_policy::policy_envelope(&stored);
+                envelope["ok"] = json!(true);
+                Ok(envelope)
             }
             "conversation.list" => Ok(serde_json::to_value(
                 self.store.list(
@@ -387,19 +417,33 @@ impl ConversationService {
                 Ok(json!({"ok": true}))
             }
             "conversation.membership.add" => {
-                let principal = principal_from_value(
-                    object
-                        .get("principal")
-                        .ok_or_else(|| anyhow!("invalid_request"))?,
-                )?;
                 let access: MembershipAccess = serde_json::from_value(
                     object
                         .get("access")
                         .cloned()
                         .unwrap_or_else(|| json!("member")),
                 )?;
+                let conversation_id = required_string(object, "conversationId")?;
+                if let Some(native_role_id) = object
+                    .get("nativeRoleId")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    return self.admit_native_role(
+                        conversation_id,
+                        required_string(object, "ownerMembershipId")?,
+                        native_role_id,
+                        access,
+                    );
+                }
+                let principal = principal_from_value(
+                    object
+                        .get("principal")
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
                 Ok(serde_json::to_value(self.store.add_member(
-                    required_string(object, "conversationId")?,
+                    conversation_id,
                     principal,
                     access,
                 )?)?)
@@ -1003,6 +1047,33 @@ impl ConversationService {
             .collect()
     }
 
+    fn admit_native_role(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+        native_role_id: &str,
+        access: MembershipAccess,
+    ) -> Result<Value> {
+        let role = crate::domain::native_roles::find(native_role_id)
+            .ok_or_else(|| anyhow!("native_role_not_found"))?;
+        let principal = Principal {
+            id: role.principal_id(),
+            kind: PrincipalKind::Agent,
+            display_name: role.name.clone(),
+            agent_id: Some(role.host_agent_id.clone()),
+            created_at_unix_ms: 0,
+        };
+        let membership = self.store.add_member(conversation_id, principal, access)?;
+        self.store.set_membership_profile(
+            conversation_id,
+            &membership.id,
+            owner_membership_id,
+            0,
+            &role.profile_intent_update(),
+        )?;
+        Ok(serde_json::to_value(membership)?)
+    }
+
     fn run_direct_turn(
         &self,
         sender: &Arc<NativeTurnSender>,
@@ -1014,12 +1085,28 @@ impl ConversationService {
                 live: None,
             });
         };
+        let profile = self.store.membership_profile(&context.turn.membership_id)?;
+        let native_role = profile.as_ref().and_then(|intent| {
+            crate::domain::native_roles::role_from_skill_refs(&intent.skill_references)
+        });
+        let mut guidance = String::new();
+        if let Some(assistant) = context.private_instructions() {
+            guidance.push_str(assistant);
+        }
+        if let Some(role) = native_role.as_ref()
+            && !role.instructions.trim().is_empty()
+        {
+            if !guidance.is_empty() {
+                guidance.push_str("\n\n");
+            }
+            guidance.push_str(&role.instructions);
+        }
         // User-authored Event text stays exact. Generated guidance follows the
         // adapter's declared ephemeral policy and never enters Event/Part.
         let delivery = crate::platform::runtime_adapters::compose_generated_instruction_delivery(
             &context.agent_id,
             &context.source_content,
-            context.private_instructions(),
+            (!guidance.is_empty()).then_some(guidance.as_str()),
         )
         .map_err(anyhow::Error::msg)?;
         let mut params = json!({
@@ -1034,6 +1121,9 @@ impl ConversationService {
         });
         if let (Some(field), Some(guidance)) = (delivery.field, delivery.guidance) {
             params[field] = json!(guidance);
+        }
+        if let Some(role) = native_role.as_ref() {
+            params["runtimeAgent"] = json!(role.slug);
         }
         if !context.source_attachments.is_empty() {
             params["attachments"] = dispatch_attachments_param(&context.source_attachments);
@@ -1189,6 +1279,8 @@ pub(crate) fn route_receipt(
             "inputPriceUsdPerMillionTokens": snapshot.price_input_usd_per_million_tokens,
             "outputPriceUsdPerMillionTokens": snapshot.price_output_usd_per_million_tokens,
             "codingScore": snapshot.intelligence_score,
+            "taskTags": snapshot.task_tags,
+            "intelligence": snapshot.model.as_deref().and_then(crate::domain::agent_intelligence_catalog::project_allowlisted_model),
             "reliabilityClass": snapshot.reliability_class,
             "latencyClass": snapshot.latency_class,
             "authority": snapshot.authority,
@@ -1398,7 +1490,10 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "intent",
         ],
         "conversation.profile.get" => &["action", "membershipId"],
+        "conversation.profile.native_roles" => &["action"],
         "conversation.profile.candidates" => &["action", "conversationId", "filters"],
+        "timeout.policy.get" => &["action"],
+        "timeout.policy.set" => &["action", "policy"],
         "conversation.list" => &["action", "includeArchived"],
         "conversation.get" => &["action", "conversationId"],
         "conversation.events.page" => &["action", "conversationId", "afterSequence", "limit"],
@@ -1428,7 +1523,14 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.dispatch.after-post" => &["action", "conversationId", "eventId"],
         "conversation.event.part.append" => &["action", "eventId", "part"],
         "conversation.event.finalize" => &["action", "eventId"],
-        "conversation.membership.add" => &["action", "conversationId", "principal", "access"],
+        "conversation.membership.add" => &[
+            "action",
+            "conversationId",
+            "principal",
+            "access",
+            "nativeRoleId",
+            "ownerMembershipId",
+        ],
         "conversation.membership.access.set" => {
             &["action", "conversationId", "membershipId", "access"]
         }
@@ -3535,6 +3637,8 @@ mod tests {
             }))
             .unwrap();
         assert_eq!(candidates["candidates"].as_array().unwrap().len(), 2);
+        assert!(candidates["timeoutPolicy"]["policy"]["defaultTimeoutMs"].is_number());
+        assert!(candidates["timeoutPolicy"]["minTimeoutMs"].is_number());
         assert_eq!(
             candidates["routeReceipt"]["rankedMembershipIds"]
                 .as_array()
@@ -3796,5 +3900,90 @@ mod tests {
         assert!(!wire.contains(&conversation_id));
         assert!(!wire.contains(&caller));
         assert!(!wire.contains(&target));
+    }
+
+    #[test]
+    fn native_role_membership_maps_profile_and_is_addressable() {
+        let _roles = crate::domain::native_roles::install_test_roles(vec![
+            crate::domain::native_roles::NativeRole {
+                id: "native-role:opencode/reviewer".to_owned(),
+                host_agent_id: "opencode".to_owned(),
+                slug: "reviewer".to_owned(),
+                name: "Reviewer".to_owned(),
+                instructions: "Review only the requested files.".to_owned(),
+                preferred_model: Some("anthropic/claude-sonnet-4".to_owned()),
+                preferred_reasoning_effort: Some("high".to_owned()),
+            },
+        ]);
+        let listed = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .execute(json!({"action": "conversation.profile.native_roles"}))
+            .unwrap();
+        assert_eq!(listed["roles"][0]["id"], "native-role:opencode/reviewer");
+        assert!(listed["roles"][0].get("instructions").is_none());
+        assert_eq!(listed["roles"][0]["hasInstructions"], true);
+
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = Arc::clone(&calls);
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            move |params| {
+                captured.lock().unwrap().push(params.clone());
+                Ok(accepted_receipt(params))
+            },
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        let added = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "nativeRoleId": "native-role:opencode/reviewer",
+                "access": "member",
+            }))
+            .unwrap();
+        assert_eq!(added["principal"]["id"], "agent:opencode:reviewer");
+        assert_eq!(added["principal"]["agentId"], "opencode");
+        assert_eq!(added["principal"]["displayName"], "Reviewer");
+        let membership_id = added["id"].as_str().unwrap().to_owned();
+        let profile = service
+            .execute(json!({
+                "action": "conversation.profile.get",
+                "membershipId": membership_id,
+            }))
+            .unwrap();
+        assert_eq!(profile["preferredModel"], "anthropic/claude-sonnet-4");
+        assert_eq!(profile["preferredReasoningEffort"], "high");
+        assert!(
+            profile["skillReferences"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|skill| skill == "native-role:opencode/reviewer")
+        );
+        let encoded = profile.to_string();
+        assert!(!encoded.contains("Review only the requested files."));
+
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@Reviewer please check the patch",
+            }),
+        );
+        assert_eq!(posted["directTurns"].as_array().unwrap().len(), 1);
+        assert_eq!(posted["turns"][0]["membershipId"], membership_id);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["agentId"], "opencode");
+        assert_eq!(calls[0]["model"], "anthropic/claude-sonnet-4");
+        assert_eq!(calls[0]["reasoningEffort"], "high");
+        assert_eq!(calls[0]["runtimeAgent"], "reviewer");
+        assert_eq!(
+            calls[0]["privateInstructions"],
+            "Review only the requested files."
+        );
+        assert_eq!(calls[0]["text"], "@Reviewer please check the patch");
     }
 }

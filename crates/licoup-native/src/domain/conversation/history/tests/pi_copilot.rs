@@ -25,7 +25,7 @@ fn pi_session_jsonl_history_preserves_native_session_and_roles() {
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0]["adapterId"], "pi");
-    assert_eq!(sessions[0]["adapterLabel"], "Pi Agent - CLI");
+    assert_eq!(sessions[0]["adapterLabel"], "Pi Agent CLI");
     assert_eq!(sessions[0]["nativeSessionId"], "pi-native-session");
     assert_eq!(sessions[0]["title"], "Pi fixture");
     let messages = sessions[0]["messages"].as_array().unwrap();

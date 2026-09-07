@@ -31,12 +31,17 @@ final class AdaptiveFlywheelController extends ApplicationStateOwner {
     await _inspectSelectedOrClear();
   });
 
-  Future<void> importPackage(String path) => _guard(() async {
+  Future<void> importPackage(
+    String path, {
+    String conversationId = '',
+  }) => _guard(() async {
+    final boundConversation = conversationId.trim();
     final prepared = adaptiveFlywheelStringMap(
       await _gateway.execute({
         'action': 'strategy.package.prepare-import',
         'sourcePath': path,
         'selectionToken': 'selection-${DateTime.now().microsecondsSinceEpoch}',
+        if (boundConversation.isNotEmpty) 'conversationId': boundConversation,
       }),
     );
     final committed = adaptiveFlywheelStringMap(
@@ -44,6 +49,7 @@ final class AdaptiveFlywheelController extends ApplicationStateOwner {
         'action': 'strategy.package.commit-import',
         'preparationId': prepared['preparationId'],
         'expectedRevisionDigest': prepared['revisionDigest'],
+        if (boundConversation.isNotEmpty) 'conversationId': boundConversation,
       }),
     );
     _selectedRevision = (committed['revisionDigest'] ?? '').toString();
