@@ -4,38 +4,36 @@ import 'dart:io';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/platform/client_resource_usage_probe.dart';
 
-const Duration clientMemoryDiagnosticSamplingInterval = Duration(seconds: 15);
 const int clientMemoryDiagnosticRssStepBytes = 32 * 1024 * 1024;
 
-/// Samples process RSS while a conversation is open and persists counts.
+/// Persists RSS and live-turn counts while a conversation is open.
 ///
-/// Sampling starts on the first open-conversation observation and stops when
-/// the surface closes. It does not run at cold start.
+/// Writes on open, close, live-turn edges, and when RSS steps by 32 MiB.
+/// It does not start a periodic timer, so widget tests can dispose the
+/// tree without a leftover sampler.
 final class ClientMemoryDiagnosticJournal {
   ClientMemoryDiagnosticJournal({
     required ClientMemoryDiagnosticSink sink,
     ClientResourceUsageProbe? probe,
     DateTime Function()? now,
     int Function()? maxRssBytes,
-    Duration interval = clientMemoryDiagnosticSamplingInterval,
   }) : _sink = sink,
        _probe = probe ?? createClientResourceUsageProbe(),
        _now = now ?? DateTime.now,
-       _maxRssBytes = maxRssBytes ?? _currentMaxRss,
-       _interval = interval;
+       _maxRssBytes = maxRssBytes ?? _currentMaxRss;
 
   final ClientMemoryDiagnosticSink _sink;
   final ClientResourceUsageProbe? _probe;
   final DateTime Function() _now;
   final int Function() _maxRssBytes;
-  final Duration _interval;
 
-  Timer? _timer;
   ClientMemoryDiagnosticObservation? _latest;
   int _lastWrittenRssBytes = 0;
   bool _disposed = false;
 
-  bool get isSampling => _timer != null;
+  bool get isSampling =>
+      _latest != null &&
+      _latest!.event != ClientMemoryDiagnosticEvent.conversationClosed;
 
   void observe(ClientMemoryDiagnosticObservation observation) {
     if (_disposed) return;
@@ -44,54 +42,15 @@ final class ClientMemoryDiagnosticJournal {
       case ClientMemoryDiagnosticEvent.conversationOpened:
       case ClientMemoryDiagnosticEvent.liveTurnOpened:
       case ClientMemoryDiagnosticEvent.liveTurnClosed:
-        _write(observation);
-        _ensureTimer();
       case ClientMemoryDiagnosticEvent.conversationClosed:
         _write(observation);
-        _stopTimer();
       case ClientMemoryDiagnosticEvent.sample:
-        _ensureTimer();
         _writeIfRssStepped(observation);
     }
   }
 
   void dispose() {
     _disposed = true;
-    _stopTimer();
-  }
-
-  void _ensureTimer() {
-    if (_disposed || _timer != null) return;
-    _timer = Timer.periodic(_interval, (_) => _sample());
-  }
-
-  void _stopTimer() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  void _sample() {
-    final latest = _latest;
-    if (_disposed || latest == null) {
-      _stopTimer();
-      return;
-    }
-    if (latest.event == ClientMemoryDiagnosticEvent.conversationClosed) {
-      _stopTimer();
-      return;
-    }
-    _write(
-      ClientMemoryDiagnosticObservation(
-        event: ClientMemoryDiagnosticEvent.sample,
-        surface: latest.surface,
-        eventCount: latest.eventCount,
-        loadedEventCount: latest.loadedEventCount,
-        liveTurnCount: latest.liveTurnCount,
-        livePartCount: latest.livePartCount,
-        liveMessageCount: latest.liveMessageCount,
-        cachedConversationCount: latest.cachedConversationCount,
-      ),
-    );
   }
 
   void _writeIfRssStepped(ClientMemoryDiagnosticObservation observation) {
