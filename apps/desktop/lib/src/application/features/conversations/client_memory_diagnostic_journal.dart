@@ -4,9 +4,6 @@ import 'dart:io';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/platform/client_resource_usage_probe.dart';
 
-export 'package:licoup/src/contracts/client_memory_diagnostics.dart'
-    show ClientMemoryDiagnosticObservation;
-
 const Duration clientMemoryDiagnosticSamplingInterval = Duration(seconds: 15);
 const int clientMemoryDiagnosticRssStepBytes = 32 * 1024 * 1024;
 
