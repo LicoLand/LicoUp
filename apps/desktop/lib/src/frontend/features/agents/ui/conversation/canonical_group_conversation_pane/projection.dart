@@ -231,7 +231,22 @@ AgentConversationSession canonicalGroupConversationSession(
         insideMessageUnit = true;
         continue;
       }
-      final presentation = _canonicalGroupPartPresentation(eventPart);
+      var presentation = _canonicalGroupPartPresentation(eventPart);
+      if (presentation.cardType == 'continuity-task-card') {
+        try {
+          final decoded = jsonDecode(presentation.text);
+          if (decoded is Map) {
+            decoded['sequence'] = event.sequence;
+            presentation = (
+              cardType: presentation.cardType,
+              cardTitle: presentation.cardTitle,
+              text: jsonEncode(decoded),
+            );
+          }
+        } on Object {
+          // Keep the stored part text when the metadata is not an object.
+        }
+      }
       if (!insideMessageUnit && presentation.cardType != 'lifecycle') {
         flushText();
       }
@@ -406,6 +421,26 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
       cardTitle: 'lifecycle.$lifecycleStage',
       text: lifecycleStage,
     );
+  }
+  if (eventPart.kind == ConversationEventPartKind.metadata) {
+    try {
+      final decoded = jsonDecode(eventPart.content);
+      if (decoded is Map) {
+        final goalId = (decoded['goalId'] ?? '').toString().trim();
+        final childId = (decoded['childConversationId'] ?? '')
+            .toString()
+            .trim();
+        if (goalId.isNotEmpty && childId.isNotEmpty) {
+          return (
+            cardType: 'continuity-task-card',
+            cardTitle: goalId,
+            text: eventPart.content,
+          );
+        }
+      }
+    } on Object {
+      // Keep the generic metadata card when the part is not a task card.
+    }
   }
   final cardType = switch (eventPart.kind) {
     ConversationEventPartKind.text => '',

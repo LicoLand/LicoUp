@@ -85,6 +85,7 @@ import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.
 import 'package:licoup/src/platform/documents/plan_document_reader.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
@@ -159,6 +160,8 @@ class ClientController extends AgentConversationController
     Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
     LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
     ApplicationDiagnosticSink? applicationDiagnosticSink,
+    AgentCommandRunner? conversationCommandRunner,
+    Duration? pendingNoticePollInterval,
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
            agentService ??
@@ -299,9 +302,10 @@ class ClientController extends AgentConversationController
       sink: ClientMemoryDiagnosticLog(portableData: this.portableData),
     );
     clientConversationController = ClientConversationController(
-      runner: this.agentService,
+      runner: conversationCommandRunner ?? this.agentService,
       onSelectionChanged: recordCurrentGroupConversationView,
       memoryJournal: clientMemoryDiagnosticJournal,
+      pendingNoticePollInterval: pendingNoticePollInterval,
     );
     _clientConversationControllerReady = true;
     clientConversationController.syncAvailableConversationAgents(

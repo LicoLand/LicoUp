@@ -333,6 +333,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     return LicoToastHost(
       child: LicoToastNoticesListener(
         notices: features.notificationNotices,
+        onActivate: features.activateOperationNotice,
         child: content,
       ),
     );

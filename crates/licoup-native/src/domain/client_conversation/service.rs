@@ -2,11 +2,16 @@ use super::{
     ConversationStore, DirectTurn, ImageAttachment, ImageAttachmentReference, MembershipAccess,
     MembershipStatus, NewEventPart, Principal, PrincipalKind,
 };
+use crate::domain::assistant_continuity::ContinuityHost;
+use crate::domain::assistant_continuity::cognition::{
+    CompleteAdmittedTurn, apply_admitted_runtime_fields,
+};
 use crate::platform::runtime_adapters::{
     MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
     attachment_media_type_supported,
 };
 use anyhow::{Result, anyhow};
+use licoup_conversation::continuity::ContinuityReadPort;
 use serde_json::{Value, json};
 use std::{
     fmt,
@@ -26,6 +31,71 @@ type TurnSteer = dyn Fn(&Value) -> std::result::Result<Value, crate::platform::r
     + Sync;
 type StrategyExecute = dyn Fn(Value) -> Result<Value> + Send + Sync;
 
+/// Persistent host ports attached by the production conversation binder.
+pub struct PersistentRuntimePorts {
+    start_background: Arc<NativeTurnSender>,
+    active: Arc<ActiveTurnsLookup>,
+    steer: Arc<TurnSteer>,
+    complete_admitted_turn: Arc<CompleteAdmittedTurn>,
+    strategy: Arc<StrategyExecute>,
+    cancel: Option<Arc<TurnSteer>>,
+}
+
+impl PersistentRuntimePorts {
+    pub fn new(
+        start_background: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+        active: impl Fn(&str) -> Value + Send + Sync + 'static,
+        steer: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+        complete_admitted_turn: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+        strategy: impl Fn(Value) -> Result<Value> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            start_background: Arc::new(start_background),
+            active: Arc::new(active),
+            steer: Arc::new(steer),
+            complete_admitted_turn: Arc::new(complete_admitted_turn),
+            strategy: Arc::new(strategy),
+            cancel: None,
+        }
+    }
+
+    pub fn with_cancel(
+        mut self,
+        cancel: impl Fn(
+            &Value,
+        ) -> std::result::Result<
+            Value,
+            crate::platform::runtime_adapters::RuntimeAdapterError,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.cancel = Some(Arc::new(cancel));
+        self
+    }
+}
+
 /// Upper bound on direct turns dispatched to native runtimes in parallel.
 /// Each worker is an independent runtime call; state leases are held only
 /// around short local transactions, never across the runtime call itself.
@@ -40,6 +110,8 @@ struct HostRuntimePorts {
     native_turn_sender: Option<Arc<NativeTurnSender>>,
     active_turns: Option<Arc<ActiveTurnsLookup>>,
     steer_turn: Option<Arc<TurnSteer>>,
+    cancel_turn: Option<Arc<TurnSteer>>,
+    complete_admitted_turn: Option<Arc<CompleteAdmittedTurn>>,
     strategy_execute: Option<Arc<StrategyExecute>>,
 }
 
@@ -50,6 +122,7 @@ struct HostRuntimePorts {
 pub struct ConversationService {
     store: ConversationStore,
     host: HostRuntimePorts,
+    continuity: Option<Arc<ContinuityHost>>,
 }
 
 impl fmt::Debug for ConversationService {
@@ -61,21 +134,87 @@ impl fmt::Debug for ConversationService {
     }
 }
 
+fn drain_json(drain: &crate::domain::assistant_continuity::host::WakeDrain) -> Value {
+    json!({
+        "consumed": drain.consumed,
+        "reconciled": drain.reconciled,
+        "replayed": drain.replayed,
+        "waiting": drain.waiting,
+        "reevaluated": drain.reevaluated,
+        "preserved": drain.preserved,
+        "noOps": drain.no_ops.iter().map(|(id, reason)| json!({
+            "logicalWakeId": id,
+            "reason": reason,
+        })).collect::<Vec<_>>(),
+    })
+}
+
 impl ConversationService {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let store = ConversationStore::open(portable_root)?;
         store.ensure_default_local_group()?;
+        let continuity = ContinuityHost::attach(store.clone())?;
         Ok(Self {
             store,
             host: HostRuntimePorts::default(),
+            continuity: Some(continuity),
         })
     }
 
     pub fn from_store(store: ConversationStore) -> Self {
+        let continuity = ContinuityHost::attach(store.clone()).ok();
         Self {
             store,
             host: HostRuntimePorts::default(),
+            continuity,
         }
+    }
+
+    pub fn continuity(&self) -> Option<&Arc<ContinuityHost>> {
+        self.continuity.as_ref()
+    }
+
+    pub fn claim_continuity_owner(&self) -> Result<()> {
+        let Some(continuity) = &self.continuity else {
+            return Ok(());
+        };
+        continuity
+            .claim_continuity_owner()
+            .map_err(|err| anyhow!(format!("{:?}", err.code)))
+    }
+
+    pub fn drain_continuity(&self, conversation_id: &str) -> Result<Value> {
+        let Some(continuity) = &self.continuity else {
+            return Ok(json!({ "consumed": [], "reconciled": [], "replayed": 0 }));
+        };
+        let drain = continuity
+            .drain_wakes(conversation_id)
+            .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+        Ok(drain_json(&drain))
+    }
+
+    pub fn attend_due(&self) -> Result<Value> {
+        let Some(continuity) = &self.continuity else {
+            return Ok(json!({ "consumed": [], "reconciled": [], "replayed": 0 }));
+        };
+        let drain = continuity
+            .attend_due()
+            .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+        Ok(drain_json(&drain))
+    }
+
+    pub fn after_runtime_settlement(
+        &self,
+        conversation_id: &str,
+        payload: &Value,
+    ) -> Result<Value> {
+        let Some(continuity) = &self.continuity else {
+            return Ok(json!({ "consumed": [], "reconciled": [], "replayed": 0 }));
+        };
+        let drain = continuity
+            .after_runtime_settlement(conversation_id, payload)
+            .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+        Ok(drain_json(&drain))
     }
 
     /// Route native Agent work through a process-owned coordinator while
@@ -123,6 +262,28 @@ impl ConversationService {
         strategy_execute: impl Fn(Value) -> Result<Value> + Send + Sync + 'static,
     ) -> Self {
         self.host.strategy_execute = Some(Arc::new(strategy_execute));
+        self
+    }
+
+    /// Production composition binder. The persistent host calls this same
+    /// function; tests inject only the final complete-turn effect.
+    pub fn bind_conversation_runtime(mut self, ports: PersistentRuntimePorts) -> Self {
+        let start = Arc::clone(&ports.start_background);
+        let steer = Arc::clone(&ports.steer);
+        let cancel = ports.cancel.clone();
+        self.host.native_turn_sender = Some(Arc::clone(&start));
+        self.host.active_turns = Some(ports.active);
+        self.host.steer_turn = Some(Arc::clone(&steer));
+        self.host.cancel_turn = cancel.clone();
+        self.host.complete_admitted_turn = Some(Arc::clone(&ports.complete_admitted_turn));
+        self.host.strategy_execute = Some(ports.strategy);
+        if let Some(host) = self.continuity.as_ref() {
+            host.bind_work_turn_start(start);
+            host.bind_persistent_cognition(ports.complete_admitted_turn);
+            if let Some(cancel) = cancel {
+                host.bind_work_turn_control(steer, cancel);
+            }
+        }
         self
     }
 
@@ -318,17 +479,28 @@ impl ConversationService {
                 envelope["ok"] = json!(true);
                 Ok(envelope)
             }
-            "conversation.list" => Ok(serde_json::to_value(
-                self.store.list(
-                    object
-                        .get("includeArchived")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                )?,
-            )?),
-            "conversation.get" => Ok(serde_json::to_value(
-                self.store.get(required_string(object, "conversationId")?)?,
-            )?),
+            "conversation.list" => {
+                let mut listed = serde_json::to_value(
+                    self.store.list(
+                        object
+                            .get("includeArchived")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    )?,
+                )?;
+                if let Some(continuity) = &self.continuity {
+                    continuity.annotate_list(&mut listed);
+                }
+                Ok(listed)
+            }
+            "conversation.get" => {
+                let conversation_id = required_string(object, "conversationId")?;
+                let mut value = serde_json::to_value(self.store.get(conversation_id)?)?;
+                if let Some(continuity) = &self.continuity {
+                    continuity.enrich_get(&mut value, conversation_id);
+                }
+                Ok(value)
+            }
             "conversation.events.page" => Ok(serde_json::to_value(self.store.page_events(
                 required_string(object, "conversationId")?,
                 object.get("afterSequence").and_then(Value::as_i64),
@@ -579,6 +751,20 @@ impl ConversationService {
                     })
                 }))
             }
+            "apply-interpretation"
+            | "correct-association"
+            | "revise-agreement"
+            | "propose-criterion-change"
+            | "pause-goal"
+            | "resume-goal"
+            | "request-cancel"
+            | "accept-evidence"
+            | "close-goal"
+            | "replace-assistant"
+            | "admit-task-child"
+            | "list-pending-completion-notices"
+            | "ack-completion-notices"
+            | "resolve-completion-notice" => self.execute_continuity_command(action, object),
             _ => Err(anyhow!("unsupported_action")),
         }
     }
@@ -599,12 +785,225 @@ impl ConversationService {
             &[],
             attachments,
         )?;
+        let mut ingress = json!(null);
+        if let Some(continuity) = &self.continuity {
+            if continuity.uses_scripted_cognition() {
+                ingress = match continuity.after_user_event(conversation_id, &event.id) {
+                    Ok(outcome) => json!({
+                        "committed": outcome.committed,
+                        "abstained": outcome.abstained,
+                        "childConversationId": outcome.child_conversation_id,
+                        "receiptRevision": outcome.receipt_revision,
+                        "invocationCount": outcome.invocation_count,
+                        "unavailable": outcome.unavailable,
+                    }),
+                    Err(err) => json!({
+                        "committed": false,
+                        "abstained": true,
+                        "error": format!("{:?}", err.code),
+                    }),
+                };
+            }
+        }
         Ok(json!({
             "event": {"id": event.id, "state": "finalized"},
             "directTurns": [],
             "turns": [],
             "dispatchPending": false,
+            "continuityIngress": ingress,
+            "continuityDrain": json!(null),
         }))
+    }
+
+    fn execute_continuity_command(
+        &self,
+        action: &str,
+        object: &serde_json::Map<String, Value>,
+    ) -> Result<Value> {
+        let Some(continuity) = &self.continuity else {
+            return Err(anyhow!("unsupported_action"));
+        };
+        let conversation_id = required_string(object, "conversationId")?;
+        match action {
+            "apply-interpretation" | "correct-association" | "propose-criterion-change" => {
+                let proposal = serde_json::from_value(
+                    object
+                        .get("proposal")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let receipt = continuity
+                    .commit_fresh(proposal)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "revision": receipt.revision,
+                    "conversationId": receipt.conversation_id,
+                }))
+            }
+            "pause-goal" => {
+                let progress = continuity
+                    .pause_goal(conversation_id, required_string(object, "goalId")?)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(serde_json::to_value(progress)?)
+            }
+            "resume-goal" => {
+                let progress = continuity
+                    .resume_goal(conversation_id, required_string(object, "goalId")?)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(serde_json::to_value(progress)?)
+            }
+            "request-cancel" => {
+                let progress = continuity
+                    .request_cancel(conversation_id, required_string(object, "goalId")?)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(serde_json::to_value(progress)?)
+            }
+            "close-goal" => {
+                let transition = serde_json::from_value(
+                    object
+                        .get("transition")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let progress = serde_json::from_value(
+                    object
+                        .get("progress")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let notice = continuity
+                    .accept_goal_completion(conversation_id, &transition, &progress)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                let mut result = json!({
+                    "ok": true,
+                    "accepted": notice.is_some(),
+                    "notificationId": notice.as_ref().map(|item| item.notification_id.clone()),
+                    "goalId": notice.as_ref().map(|item| item.goal_id.clone()),
+                    "parentConversationId": conversation_id,
+                });
+                if let Some(item) = &notice {
+                    if let Ok(relation) = self.store.relation_for_goal(&item.goal_id) {
+                        result["childConversationId"] = json!(relation.child_conversation_id);
+                        result["cardEventId"] = json!(relation.card_anchor.event_id);
+                        result["cardSequence"] = json!(relation.card_anchor.sequence);
+                    }
+                }
+                Ok(result)
+            }
+            "list-pending-completion-notices" => {
+                let notices = continuity
+                    .list_pending_completion_notices(
+                        conversation_id,
+                        required_string(object, "ownerMembershipId")?,
+                    )
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({ "pendingCompletionNotices": notices }))
+            }
+            "ack-completion-notices" => {
+                let ids = object
+                    .get("notificationIds")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| anyhow!("invalid_request"))?
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>();
+                let acknowledged = continuity
+                    .ack_completion_notices(
+                        conversation_id,
+                        required_string(object, "ownerMembershipId")?,
+                        &ids,
+                    )
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({ "acknowledgedNotificationIds": acknowledged }))
+            }
+            "resolve-completion-notice" => continuity
+                .resolve_completion_notice(
+                    conversation_id,
+                    required_string(object, "ownerMembershipId")?,
+                    required_string(object, "notificationId")?,
+                )
+                .map_err(|err| anyhow!(format!("{:?}", err.code))),
+            "admit-task-child" => {
+                let admission = object
+                    .get("admission")
+                    .cloned()
+                    .ok_or_else(|| anyhow!("invalid_request"))?;
+                let proposal = serde_json::from_value(json!({
+                    "envelope": {
+                        "conversationId": conversation_id,
+                        "sourceEventRefs": [],
+                        "observedRevision": 0,
+                        "designationEpoch": 0,
+                        "requestId": format!("request:admit-task-child:{conversation_id}"),
+                    },
+                    "matterAssociations": [],
+                    "speechAct": "delegation",
+                    "commitmentProposals": [],
+                    "agreementProposals": [],
+                    "capabilityNeeds": [],
+                    "uncertaintyReasons": [],
+                    "requestedReads": [],
+                    "taskChildAdmission": admission,
+                }))?;
+                let receipt = continuity
+                    .commit_fresh(proposal)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "revision": receipt.revision,
+                }))
+            }
+            "revise-agreement" => {
+                let agreement = serde_json::from_value(
+                    object
+                        .get("agreement")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let stored = continuity
+                    .revise_agreement(conversation_id, agreement)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "agreementId": stored.id,
+                    "effectiveRevision": stored.effective_revision,
+                    "revocationGeneration": stored.revocation_generation,
+                }))
+            }
+            "accept-evidence" => {
+                let goal_id = required_string(object, "goalId")?;
+                let evidence = serde_json::from_value(
+                    object
+                        .get("evidence")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("invalid_request"))?,
+                )?;
+                let progress = continuity
+                    .accept_evidence(conversation_id, goal_id, evidence)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "goalId": progress.goal_id,
+                    "revision": progress.revision,
+                    "lifecycle": progress.lifecycle,
+                    "evidenceCount": progress.criterion_evidence_refs.len(),
+                }))
+            }
+            "replace-assistant" => {
+                let membership_id = required_string(object, "membershipId")?;
+                let revision = continuity
+                    .replace_assistant(conversation_id, membership_id)
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "membershipId": membership_id,
+                    "revision": revision,
+                }))
+            }
+            _ => Err(anyhow!("unsupported_action")),
+        }
     }
 
     /// Active Agent Memberships of one Conversation paired with their
@@ -666,6 +1065,18 @@ impl ConversationService {
                     .iter()
                     .any(|turn| turn.membership_id == **membership_id)
             })
+            .filter(|membership_id| {
+                self.store
+                    .direct_turn_for_source(conversation_id, event_id, membership_id)
+                    .ok()
+                    .flatten()
+                    .is_none()
+            })
+            .filter(|membership_id| {
+                !self.continuity.as_ref().is_some_and(|host| {
+                    host.ingress_already_executed(conversation_id, event_id, membership_id)
+                })
+            })
             .cloned()
             .collect::<Vec<_>>();
         let pending_turns = if start_ids.is_empty() {
@@ -684,6 +1095,16 @@ impl ConversationService {
                     .iter()
                     .find(|candidate| candidate.membership_id == *membership_id)
                 {
+                    if self
+                        .store
+                        .direct_turn_for_source(conversation_id, event_id, membership_id)
+                        .ok()
+                        .flatten()
+                        .is_some()
+                    {
+                        merge_live_turn(&mut live_turns, turn.to_json());
+                        continue;
+                    }
                     match self.steer_active_turn(turn, &content) {
                         SteerDisposition::Accepted => {}
                         SteerDisposition::QueueAtBoundary => {
@@ -843,6 +1264,25 @@ impl ConversationService {
     }
 
     fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> SteerDisposition {
+        if let Some(host) = self.continuity.as_ref() {
+            match host.steer_admitted_child_follow_up(
+                &turn.conversation_id,
+                &turn.membership_id,
+                &turn.turn_handle,
+                text,
+            ) {
+                crate::domain::assistant_continuity::host::ChildControlDisposition::Ordinary => {}
+                crate::domain::assistant_continuity::host::ChildControlDisposition::Accepted => {
+                    return SteerDisposition::Accepted;
+                }
+                crate::domain::assistant_continuity::host::ChildControlDisposition::Unavailable => {
+                    return SteerDisposition::QueueAtBoundary;
+                }
+                crate::domain::assistant_continuity::host::ChildControlDisposition::Conflict => {
+                    return SteerDisposition::Unknown;
+                }
+            }
+        }
         let Some(steer_turn) = self.host.steer_turn.as_ref() else {
             return SteerDisposition::Unknown;
         };
@@ -1101,6 +1541,22 @@ impl ConversationService {
             }
             guidance.push_str(&role.instructions);
         }
+        if let Some(host) = self.continuity.as_ref()
+            && context.is_assistant
+        {
+            if let Ok(extra) = host.compose_ingress_guidance(
+                &context.turn.conversation_id,
+                &context.turn.membership_id,
+                &context.turn.source_event_id,
+            ) {
+                if !extra.trim().is_empty() {
+                    if !guidance.is_empty() {
+                        guidance.push_str("\n\n");
+                    }
+                    guidance.push_str(&extra);
+                }
+            }
+        }
         // User-authored Event text stays exact. Generated guidance follows the
         // adapter's declared ephemeral policy and never enters Event/Part.
         let delivery = crate::platform::runtime_adapters::compose_generated_instruction_delivery(
@@ -1119,30 +1575,25 @@ impl ConversationService {
             "causationId": context.turn.source_event_id,
             "dispatchId": context.turn.id,
         });
+        if self.continuity.is_some() && context.is_assistant {
+            params["continuityKind"] =
+                json!(crate::domain::assistant_continuity::execution::CONTINUITY_KIND_USER_POSTED);
+        }
         if let (Some(field), Some(guidance)) = (delivery.field, delivery.guidance) {
             params[field] = json!(guidance);
         }
         if let Some(role) = native_role.as_ref() {
             params["runtimeAgent"] = json!(role.slug);
         }
-        if !context.source_attachments.is_empty() {
-            params["attachments"] = dispatch_attachments_param(&context.source_attachments);
-        }
-        if let Some(session_id) = context.runtime_session_id.as_deref() {
-            params["sessionId"] = json!(session_id);
-        }
-        if let Some(source_path) = context.runtime_conversation_path.as_deref() {
-            params["sourcePath"] = json!(source_path);
-        }
-        if let Some(working_directory) = context.working_directory.as_deref() {
-            params["workingDirectory"] = json!(working_directory);
-        }
-        if let Some(model) = context.preferred_model.as_deref() {
-            params["model"] = json!(model);
-        }
-        if let Some(reasoning_effort) = context.preferred_reasoning_effort.as_deref() {
-            params["reasoningEffort"] = json!(reasoning_effort);
-        }
+        apply_admitted_runtime_fields(
+            &mut params,
+            &self.store,
+            &context.turn.conversation_id,
+            &context.turn.membership_id,
+            profile.as_ref(),
+            (!context.source_attachments.is_empty())
+                .then(|| dispatch_attachments_param(&context.source_attachments)),
+        );
         #[cfg(test)]
         self.store.counters().begin_turn();
         let dispatched = sender(&params);
@@ -1567,6 +2018,28 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "outcome",
         ],
         "conversation.subagent.binding.get" => &["action", "conversationId", "membershipId"],
+        "apply-interpretation" | "correct-association" | "propose-criterion-change" => {
+            &["action", "conversationId", "proposal"]
+        }
+        "pause-goal" | "resume-goal" | "request-cancel" => &["action", "conversationId", "goalId"],
+        "close-goal" => &["action", "conversationId", "transition", "progress"],
+        "list-pending-completion-notices" => &["action", "conversationId", "ownerMembershipId"],
+        "ack-completion-notices" => &[
+            "action",
+            "conversationId",
+            "ownerMembershipId",
+            "notificationIds",
+        ],
+        "resolve-completion-notice" => &[
+            "action",
+            "conversationId",
+            "ownerMembershipId",
+            "notificationId",
+        ],
+        "admit-task-child" => &["action", "conversationId", "admission"],
+        "revise-agreement" => &["action", "conversationId", "agreement"],
+        "accept-evidence" => &["action", "conversationId", "goalId", "evidence"],
+        "replace-assistant" => &["action", "conversationId", "membershipId"],
         _ => return Err(anyhow!("unsupported_action")),
     };
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {

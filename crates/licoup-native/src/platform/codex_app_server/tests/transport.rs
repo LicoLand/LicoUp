@@ -1,5 +1,5 @@
 use crate::platform::codex_app_server::{
-    active_control::{ControlDisposition, steer},
+    active_control::{ControlDisposition, interrupt, steer},
     execute,
 };
 use serde_json::json;
@@ -119,6 +119,85 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
     assert_eq!(result.output, "fake child guided answer");
     assert_eq!(result.session_id, "fake-steer-thread");
     assert_eq!(result.turn_id, "fake-steer-turn");
+
+    let _ = test_fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn fake_child_keeps_the_turn_active_after_steer_so_interrupt_is_observable() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("fake_codex_app_server.rs");
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!("lico-codex-cancel-{suffix}"));
+    test_fs::create_dir_all(&temp_dir).unwrap();
+    let executable = temp_dir.join(format!("fake-codex{}", std::env::consts::EXE_SUFFIX));
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let compile = TestCommand::new(rustc)
+        .arg("--edition=2024")
+        .arg(&fixture)
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .expect("fake Codex fixture should compile with the active Rust toolchain");
+    assert!(compile.success());
+    let mut steer_marker = executable.clone();
+    steer_marker.set_extension("steer-mode");
+    test_fs::write(&steer_marker, b"").unwrap();
+    let mut cancel_marker = executable.clone();
+    cancel_marker.set_extension("cancel-mode");
+    test_fs::write(&cancel_marker, b"").unwrap();
+    let mut interrupt_path = executable.clone();
+    interrupt_path.set_extension("interrupt.json");
+    let _ = test_fs::remove_file(&interrupt_path);
+
+    let executable_text = executable.to_string_lossy().to_string();
+    let cwd = temp_dir.clone();
+    let run = std::thread::spawn(move || {
+        execute(
+            &executable_text,
+            &json!({"model": "fake-cancel"}),
+            "fake-codex-steer-prompt",
+            "",
+            Some(&cwd),
+            10_000,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let steered = loop {
+        let disposition = steer(
+            "fake-steer-thread",
+            "fake-steer-turn",
+            "fake-codex-steer-guidance",
+        );
+        if disposition == ControlDisposition::Accepted || std::time::Instant::now() >= deadline {
+            break disposition;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert_eq!(steered, ControlDisposition::Accepted);
+    assert_eq!(
+        interrupt("fake-steer-thread"),
+        ControlDisposition::Accepted,
+        "live Codex interrupt must be Accepted after steer keeps the turn active"
+    );
+    let result = run.join().unwrap();
+    assert_eq!(result.session_id, "fake-steer-thread");
+    assert_eq!(result.turn_id, "fake-steer-turn");
+    assert_eq!(result.turn_status, "cancelled");
+    let interrupt = serde_json::from_str::<serde_json::Value>(
+        &test_fs::read_to_string(&interrupt_path).expect("native interrupt receipt"),
+    )
+    .unwrap();
+    assert_eq!(interrupt["method"], "turn/interrupt");
+    assert_eq!(interrupt["threadId"], "fake-steer-thread");
+    assert_eq!(interrupt["turnId"], "fake-steer-turn");
 
     let _ = test_fs::remove_dir_all(temp_dir);
 }

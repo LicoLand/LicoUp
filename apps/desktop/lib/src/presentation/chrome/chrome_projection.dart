@@ -6,6 +6,45 @@ import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 enum ChromeGatewayNoticeKind { recovering, recoveryFailed }
 
+final class ChromeCompletionNoticeTarget {
+  const ChromeCompletionNoticeTarget({
+    required this.notificationId,
+    required this.parentConversationId,
+    required this.childConversationId,
+    required this.goalId,
+    required this.cardEventId,
+    required this.cardSequence,
+  });
+
+  final String notificationId;
+  final String parentConversationId;
+  final String childConversationId;
+  final String goalId;
+  final String cardEventId;
+  final int cardSequence;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChromeCompletionNoticeTarget &&
+          other.notificationId == notificationId &&
+          other.parentConversationId == parentConversationId &&
+          other.childConversationId == childConversationId &&
+          other.goalId == goalId &&
+          other.cardEventId == cardEventId &&
+          other.cardSequence == cardSequence;
+
+  @override
+  int get hashCode => Object.hash(
+    notificationId,
+    parentConversationId,
+    childConversationId,
+    goalId,
+    cardEventId,
+    cardSequence,
+  );
+}
+
 final class ChromeGatewayNotificationProjection {
   const ChromeGatewayNotificationProjection({
     required this.kind,
@@ -40,6 +79,7 @@ final class ChromeOperationNotificationProjection {
     required this.messageEnglish,
     required this.severity,
     this.reasonCode = '',
+    this.completionTarget,
   });
 
   final String id;
@@ -47,6 +87,7 @@ final class ChromeOperationNotificationProjection {
   final String messageEnglish;
   final PresentationNoticeSeverity severity;
   final String reasonCode;
+  final ChromeCompletionNoticeTarget? completionTarget;
 
   @override
   bool operator ==(Object other) =>
@@ -56,11 +97,18 @@ final class ChromeOperationNotificationProjection {
           other.messageChinese == messageChinese &&
           other.messageEnglish == messageEnglish &&
           other.severity == severity &&
-          other.reasonCode == reasonCode;
+          other.reasonCode == reasonCode &&
+          other.completionTarget == completionTarget;
 
   @override
-  int get hashCode =>
-      Object.hash(id, messageChinese, messageEnglish, severity, reasonCode);
+  int get hashCode => Object.hash(
+    id,
+    messageChinese,
+    messageEnglish,
+    severity,
+    reasonCode,
+    completionTarget,
+  );
 }
 
 final class ChromeAgentNotificationProjection {

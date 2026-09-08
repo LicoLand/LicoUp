@@ -452,6 +452,10 @@ void main() {
       expect(intent['preferredModel'], 'gpt-5');
       expect(intent['preferredReasoningEffort'], 'high');
       expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsNothing);
+      await tester.runAsync(() async {
+        await bindings.close();
+        await clientController.close();
+      });
     },
   );
 
@@ -601,12 +605,12 @@ final class _StrategyRunner
     String stdinText,
   ) async {
     if (args.first == 'conversation') {
-      expect(args, ['conversation', 'execute', '--stdin-json', 'true']);
+      expectSync(args, ['conversation', 'execute', '--stdin-json', 'true']);
       final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
       conversationRequests.add(request);
       return {'ok': true, 'result': _conversationResult(request)};
     }
-    expect(args, ['strategy', 'execute', '--stdin-json', 'true']);
+    expectSync(args, ['strategy', 'execute', '--stdin-json', 'true']);
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
     actions.add(action);

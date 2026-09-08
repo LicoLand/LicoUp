@@ -102,6 +102,9 @@ final class DesktopDesktopFixtureChromeFeatures
 
   final DesktopDesktopHarness harness;
 
+  @override
+  void activateOperationNotice(notice) {}
+
   final ValueNotifier<LicoToastNoticesSnapshot> _notices =
       ValueNotifier<LicoToastNoticesSnapshot>(const LicoToastNoticesSnapshot());
 
