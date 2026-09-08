@@ -172,8 +172,8 @@ fn fake_child_keeps_the_turn_active_after_steer_so_interrupt_is_observable() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let steered = loop {
         let disposition = steer(
-            "fake-steer-thread",
-            "fake-steer-turn",
+            "fake-cancel-thread",
+            "fake-cancel-turn",
             "fake-codex-steer-guidance",
         );
         if disposition == ControlDisposition::Accepted || std::time::Instant::now() >= deadline {
@@ -183,21 +183,21 @@ fn fake_child_keeps_the_turn_active_after_steer_so_interrupt_is_observable() {
     };
     assert_eq!(steered, ControlDisposition::Accepted);
     assert_eq!(
-        interrupt("fake-steer-thread"),
+        interrupt("fake-cancel-thread"),
         ControlDisposition::Accepted,
         "live Codex interrupt must be Accepted after steer keeps the turn active"
     );
     let result = run.join().unwrap();
-    assert_eq!(result.session_id, "fake-steer-thread");
-    assert_eq!(result.turn_id, "fake-steer-turn");
+    assert_eq!(result.session_id, "fake-cancel-thread");
+    assert_eq!(result.turn_id, "fake-cancel-turn");
     assert_eq!(result.turn_status, "cancelled");
     let interrupt = serde_json::from_str::<serde_json::Value>(
         &test_fs::read_to_string(&interrupt_path).expect("native interrupt receipt"),
     )
     .unwrap();
     assert_eq!(interrupt["method"], "turn/interrupt");
-    assert_eq!(interrupt["threadId"], "fake-steer-thread");
-    assert_eq!(interrupt["turnId"], "fake-steer-turn");
+    assert_eq!(interrupt["threadId"], "fake-cancel-thread");
+    assert_eq!(interrupt["turnId"], "fake-cancel-turn");
 
     let _ = test_fs::remove_dir_all(temp_dir);
 }
