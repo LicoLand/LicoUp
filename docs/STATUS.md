@@ -15,7 +15,8 @@ adapter support details remain authoritative in
 | --- | --- | --- |
 | Human-agent secure conversation | approved destination | People and visible agents share one endpoint-controlled conversation experience. |
 | Local-agent client | current first stage | The currently evidenced product stage focuses on local and explicitly configured agent conversations. |
-| Human messaging, federation, recovery, notary, and multi-device history | planned | These remain product intent until independently implemented and verified. |
+| Provider-managed trusted history and history recovery | approved destination | Provider-managed cloud history is readable by default after provider authorization; client-side encryption is explicit opt-in, recovery covers retained available objects, and identity recovery remains separate. |
+| Human messaging, federation, identity recovery, and multi-device continuity | planned | These remain product intent until independently implemented and verified. |
 | Lico Arc endpoint Protocol Line | required future boundary | Stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile belong to a named Lico Arc Protocol Line. No Published Protocol Line is currently supported. |
 | Lico Arc station-facing protocol | current candidate boundary | Lico Arc Protocol is the sole station-facing outer protocol; the current adapter pins the candidate `licoarc.relay.v1` line. |
 | Official network | planned convenience | It may become a replaceable default only after separate release and operation evidence exists. It receives no trust privilege. |
@@ -29,7 +30,8 @@ adapter support details remain authoritative in
 | Assistant workflow and Subagent MCP | implemented in source | Four closed Assistant tools expose Profile ranking plus execute/inspect/cancel for assistant-temporary workflows. The MCP-bound Agent must be the active designated Assistant Membership. Execute performs local preflight, returns ordered privacy-safe diagnostics with stable stages and request pointers, freezes exact Membership bindings and a route receipt before effects, and returns dynamic failure once without implicit retry. Direct `lico_subagent_*` operations remain separate; the persistent Conversation host is the sole run, turn, and transcript owner. |
 | Assistant adaptation and target loading | implemented in source, release evidence unverified | Group Automatic adaptation addresses the designated Assistant through the same Membership-scoped native lane as one-to-one chat. Adaptive Flywheel roles and Assistant model catalogs use one selected-target Rust batch with bounded discovery concurrency. DeepSeek Harness is packaged through its official SDK JSON-RPC carrier with only its declared native capabilities; readiness remains unverified. |
 | Gateway Runtime (LLM + Communication Channel) | implemented in source | Single `lico-gateway` process hosts the LLM Gateway loopback layer and the Telegram Communication Channel (paired DMs, `/agent` `/session`, conversation lane). Verified readiness changes use partial hot-reload via `gateway inventory reload` / `inventory.sock` (new ready agents admitted; bindings/sessions preserved; no process restart). `llm-gateway` CLI remains an alias for lifecycle. DM-only channel; not verified against a live BotFather bot in release evidence. |
-| Skill, history, backup, and usage surfaces | implemented in source | Local client modules exist for these first-stage workflows. |
+| Skill, local-agent history, backup, and usage surfaces | implemented in source | Local client modules exist for these first-stage workflows. |
+| Trusted history and recovery core | tested provider-neutral core | The core covers provider authorization, the default-readable history path without a recovery-key call, explicit client-encryption opt-in, recovery of all retained available objects, unavailable-object handling, Station exclusion, and separation from identity recovery. Cloud login, vendor adapter, live sync, and UI wiring are not present. |
 | Complete Lico Arc endpoint Protocol Line | not implemented | LicoUp currently has no Lico Arc-owned Pairwise Protection, Generic Message, Reliable Exchange, negotiation, or Transport Profile to execute. The candidate outer-envelope adapter below is not that complete endpoint line. |
 | Endpoint protection | preview implementation pending direct retirement | Secure Client Mesh currently executes the client-specific `licomesh.*` endpoint profile for pairing, authenticated encryption, freshness and replay handling, and endpoint-authenticated results. It is not a Lico Arc Profile, carries no future interoperability promise, and is to be retired directly when a complete pinned Lico Arc Protocol Line replaces it. |
 | Lico Arc outer envelope | candidate adapter implemented | The native core emits and strictly decodes the closed five-field `licoarc.relay.v1` envelope; its encrypted carrier binds the complete outer routing context as authenticated data. |
@@ -45,6 +47,12 @@ hosted operation.
 
 - The generated compatibility matrix is the current platform and adapter
   support projection.
+- The trusted history and recovery core is tested in a provider-neutral
+  harness. Its default-readable path does not call a recovery key. It has no
+  cloud login, vendor adapter, live sync, or UI wiring, so those integrations
+  have no current verification claim. Identity preparation and atomic commit
+  are exercised through a strict synthetic caller-owned port; no LicoArc SDK
+  or runtime identity-recovery adapter is wired.
 - Peer encryption and mobile relay remain `preview`; the matrix does not claim
   physical-device, biometric, hardware-custody, or released-platform evidence.
 - Current `licomesh.*` endpoint evidence verifies only that preview
@@ -91,6 +99,10 @@ GitHub Release, and store channel is an independent claim.
 - The current Secure Client Mesh endpoint profile has no future compatibility
   commitment and is not a supported substitute for a pinned Lico Arc Protocol
   Line.
+- Provider-managed history has no current cloud-provider support claim beyond
+  the provider-neutral core. History recovery does not bypass provider access
+  or recreate unavailable objects, and it makes no mandatory notary or
+  endpoint-evidence promise.
 - No current support claim exists for a Published Lico Arc Protocol Line, a
   released BadTower station, or an official network.
 

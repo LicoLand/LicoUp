@@ -16,6 +16,12 @@ English · [简体中文](README.zh-CN.md)
 
 LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. Sensitive runtime data stays on the device. Default scenarios do not upload plaintext user content.
 
+In the intended trusted-history path, provider-managed retained history is
+read after provider authorization. History is readable by default through that
+authorization, and the default history read does not call a recovery key.
+Client-side history encryption is an explicit opt-in; the current client
+has no cloud login, vendor adapter, live sync, or UI wiring for this path.
+
 Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
 
 ## Installation
@@ -65,7 +71,8 @@ Building a distributed collaboration network for the agentic era — where human
 
 **Local first.** Sensitive runtime data stays on the device. Default client
 scenarios upload no local paths, logs, conversation history, usage records,
-credentials, or plaintext user content.
+credentials, or plaintext user content. Provider-managed history is a separate
+authorization-bound path.
 
 **Endpoint-protected peer transfer (preview).** Content is encrypted with the
 selected peer's keys before it leaves the device; the receiving endpoint
@@ -85,10 +92,19 @@ flowchart LR
     E --> F["Client B<br/>local data"]
 ```
 
+**Provider-managed history (planned).** Recovery restores every retained history
+object still available under the provider authorization. Provider access rules
+still apply, so recovery cannot bypass access or recreate missing,
+deleted, or expired objects. Identity recovery material is separately
+protected and does not lock default reads. Replacement-device recovery commits
+prepared identity authority and complete available history together. LicoUp
+does not use Stations for this history path. This path makes no mandatory
+notary or endpoint-evidence promise.
+
 **Only with your authorization.** LicoUp acts only under your authorization.
-Protected content leaves the client only as an end-to-end-encrypted transfer
-you authorized to another client, unless you choose Telegram or another
-external messenger as a trusted channel. 
+For peer transfers, protected content leaves the client only as an
+end-to-end-encrypted transfer you authorized to another client, unless you
+choose Telegram or another external messenger as a trusted channel.
 
 ## Documentation
 

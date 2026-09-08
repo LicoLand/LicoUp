@@ -1066,6 +1066,22 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         unawaited(controller.archiveConversation(conversationId));
       case RestoreConversation(:final conversationId):
         unawaited(controller.restoreArchived(conversationId));
+      case ExecuteContinuousAssistantCommand(
+        :final conversationId,
+        :final command,
+        :final goalId,
+      ):
+        unawaited(
+          controller.executeContinuityCommand(
+            conversationId: conversationId,
+            command: ContinuityCommand.fromWire(command),
+            goalId: goalId,
+          ),
+        );
+      case ActivateContinuityCompletionNotice(:final notificationId):
+        unawaited(
+          controller.activateCompletionNotice(notificationId: notificationId),
+        );
       case BackupAllNativeConversations() ||
           BackupNativeConversationsByExactKeyword():
         break;

@@ -824,6 +824,7 @@ class _AgentConversationWorkspaceState
         CanonicalGroupConversationSidebar(
           conversations: canonical.groupConversations,
           selectedConversationId: canonical.conversationId,
+          highlightedChildConversationId: canonical.conversationId,
           onSelect: selectGroup,
           onCreate: createGroup,
         ),
