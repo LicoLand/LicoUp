@@ -128,6 +128,7 @@ final class _DashboardDesktopShellState extends State<_DashboardDesktopShell> {
     return LicoToastHost(
       child: LicoToastNoticesListener(
         notices: features.notificationNotices,
+        onActivate: features.activateOperationNotice,
         child: content,
       ),
     );

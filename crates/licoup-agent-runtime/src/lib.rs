@@ -10,6 +10,7 @@ use serde_json::Value;
 use std::fmt;
 
 pub mod protocol_selector;
+pub mod work_context;
 
 /// Providers supported by the client-owned Subagent Mesh. The value is an
 /// opaque catalog identifier, never a command, path, endpoint, or account.

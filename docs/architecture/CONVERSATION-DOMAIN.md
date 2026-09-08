@@ -266,7 +266,8 @@ As a vertical slice, Conversation defines concrete components and duties across 
 - **L2 Interaction Routing (`native_agent_interaction`)**:
   - Manages tool approval tokens and fail-closed settlements.
 - **Rust Infrastructure Backing**:
-  - `ConversationStore` (SQLite WAL): Exclusive persistence for chat history and EventParts.
+  - `ConversationStore` (SQLite WAL): Exclusive persistence for canonical Conversation history and EventParts.
+  - `ProviderHistoryAccess` (provider-neutral core boundary): Reads provider-managed retained history only through provider authorization and projects it into the client without replacing the canonical store.
   - `DynamicConfig`: Runtime loading of scan manifests and agent configurations.
   - `SecretCustody`: Unified session key derivation and credential management.
   - `NetworkTransport` & `PTY/TTY`: Streaming HTTP connections and virtual console pipes.
@@ -294,7 +295,7 @@ Frontend-backend interaction strictly follows **Bidirectional Binding** and Sing
 |:---|:---|:---|
 | **Presentation Layer**<br>(Flutter Views & Controllers) | 1. Captures user inputs, gestures, and form interactions;<br>2. Debounces and locks interactive UI state (`_sending = true`, clearing drafts);<br>3. Packs user actions into typed Dart request envelopes;<br>4. Listens to Observer streams to update the process blackboard and chat bubbles;<br>5. Renders sanitized summaries and one-time interactive approval cards. | **State Mirror Invariant**: Serves as a pure rendering mirror of the backend state machine. Updates UI solely from authoritative stream facts; does not maintain local SQLite duplicates, and never fabricates or infers lifecycle facts. |
 | **Contract Layer**<br>(Bridging Protocols) | 1. Encodes and decodes bidirectional structured JSON-RPC method frames;<br>2. Manages cross-process (stdio) and cross-language (FFI) memory safety boundaries;<br>3. Provides typed error protection for timeouts and disconnections. | **Stateless Channel Invariant**: Serves as a pure, stateless transport channel passing typed requests and streams without hosting stateful domain logic. |
-| **Domain & Infrastructure Layer**<br>(Rust Functional Core & Infra) | 1. Exclusive persistence authority (sole reader/writer of SQLite/WAL);<br>2. Exclusive dispatch admission authority (resolves `@mention`, group strategy, and memberships);<br>3. Exclusive completion arbiter (L1 normalization and terminal verdict);<br>4. Exclusive process lifecycle supervisor (startup, input pipes, Grace Period ladder, SIGTERM/KILL);<br>5. Exclusive interaction routing (one-time scoped token generation and fail-closed settlement). | **Fact Authority Invariant**: Operates as the system's sole authoritative fact source. Every event exposed to the frontend is backed by an immutable persisted record; strictly enforces Exact Resume session identity invariants. |
+| **Domain & Infrastructure Layer**<br>(Rust Functional Core & Infra) | 1. Exclusive persistence authority for canonical Conversation facts (sole reader/writer of SQLite/WAL);<br>2. Exclusive dispatch admission authority (resolves `@mention`, group strategy, and memberships);<br>3. Exclusive completion arbiter (L1 normalization and terminal verdict);<br>4. Exclusive process lifecycle supervisor (startup, input pipes, Grace Period ladder, SIGTERM/KILL);<br>5. Exclusive interaction routing (one-time scoped token generation and fail-closed settlement). | **Fact Authority Invariant**: Operates as the system's sole authoritative source for canonical Conversation facts. Provider-managed history remains an authorized external source and is never silently merged into that authority; every canonical event exposed to the frontend is backed by an immutable persisted record; Exact Resume session identity invariants remain enforced. |
 
 ---
 
@@ -626,3 +627,41 @@ sequenceDiagram
    - Rust core preserves in-flight progress; reopening the view with `conversationId` and the last watermark replays all subsequent `EventParts` cleanly.
 2. **No Frontend Guesswork**:
    - Network dropouts, crashes, or timeouts must be explicitly diagnosed and committed by Rust L1/L3 as typed error codes. Flutter strictly renders localized messages matching those codes.
+
+---
+
+## 12. Trusted History and Recovery Boundary
+
+Canonical Conversation history remains owned by LicoUp's local
+`ConversationStore`. Provider-managed cloud history is a separate retained
+object source and may be projected into the conversation experience only after
+provider authorization.
+
+The boundary is fixed as follows:
+
+1. Provider authorization makes retained provider-managed history readable by
+   default. The default history read does not call a recovery key.
+2. Client-side encryption for provider-managed history is an explicit opt-in.
+   It does not silently change the default readable path.
+3. History recovery restores all retained objects still available under the
+   authorization. Provider access rules continue to apply; recovery cannot
+   bypass access or recreate missing, deleted, expired, or otherwise unavailable
+   objects.
+4. Identity recovery material is authenticated separately and never locks
+   default reads. Replacement-device recovery prepares identity authority and
+   complete available history for one atomic caller-owned commit; identity
+   material alone does not recreate absent history.
+5. LicoUp does not route or store this history through a Station. Malicious
+   Stations remain outside the history path, which makes no mandatory notary
+   or endpoint-evidence promise.
+
+```mermaid
+flowchart LR
+    U["User"] --> A["Provider authorization"]
+    A --> H["Provider-managed retained history"]
+    H --> L["LicoUp local projection"]
+    R["History recovery"] --> H
+    E["Explicit client encryption"] -.-> H
+    I["Identity recovery"] -.-> K["Endpoint identity and keys"]
+    S["Malicious Station<br/>transport only"]
+```

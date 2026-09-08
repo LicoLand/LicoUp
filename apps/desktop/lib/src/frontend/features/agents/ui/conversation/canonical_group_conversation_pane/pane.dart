@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/reveal.dart';
@@ -81,10 +82,21 @@ class _CanonicalGroupConversationPaneState
   @override
   void initState() {
     super.initState();
-    widget.conversation.intents.send(
-      const SetCanonicalConversationSurfaceAttached(true),
-    );
-    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
+    _scheduleSurfaceRefresh(attach: true);
+  }
+
+  void _scheduleSurfaceRefresh({bool attach = false}) {
+    final conversation = widget.conversation;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(conversation, widget.conversation)) return;
+      if (attach) {
+        conversation.intents.send(
+          const SetCanonicalConversationSurfaceAttached(true),
+        );
+      }
+      // Refresh publishes projections, so it must follow the mounting frame.
+      conversation.intents.send(const RefreshCanonicalAssistantProfile());
+    });
   }
 
   @override
@@ -94,15 +106,10 @@ class _CanonicalGroupConversationPaneState
       oldWidget.conversation.intents.send(
         const SetCanonicalConversationSurfaceAttached(false),
       );
-      widget.conversation.intents.send(
-        const SetCanonicalConversationSurfaceAttached(true),
-      );
-    }
-    if (oldWidget.canonical.conversation?.assistantMembershipId !=
+      _scheduleSurfaceRefresh(attach: true);
+    } else if (oldWidget.canonical.conversation?.assistantMembershipId !=
         widget.canonical.conversation?.assistantMembershipId) {
-      widget.conversation.intents.send(
-        const RefreshCanonicalAssistantProfile(),
-      );
+      _scheduleSurfaceRefresh();
     }
   }
 
@@ -646,10 +653,27 @@ class _CanonicalGroupConversationPaneState
             ],
           );
 
+    final scopedBody = ContinuousAssistantHostScope(
+      conversationId: conversation.id,
+      progressByGoalId: continuousAssistantProgressByGoalId(
+        widget.canonical.taskViews,
+      ),
+      onCommand: (intent) => widget.conversation.intents.send(
+        ExecuteContinuousAssistantCommand(
+          conversationId: conversation.id,
+          command: intent.command.wireName,
+          goalId: intent.goalId,
+        ),
+      ),
+      onOpenChild: (childId) => widget.conversation.intents.send(
+        SelectCanonicalConversation(childId),
+      ),
+      child: conversationBody,
+    );
     final body = Stack(
       fit: StackFit.expand,
       children: [
-        conversationBody,
+        scopedBody,
         if ((canonical.notice?.reasonCode ?? '').isNotEmpty)
           Align(
             alignment: Alignment.topCenter,
