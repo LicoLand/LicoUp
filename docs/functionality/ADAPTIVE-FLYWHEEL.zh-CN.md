@@ -5,7 +5,8 @@
 Adaptive Flywheel 是 LicoUp 的本地策略目录与 Graph 执行运行时。策略是用户导入的
 JSON 状态机 Graph，外加每个 actor 槽的有序候选链。一次运行是一次性流水线、带
 分支的工作流，还是带回边的 Agent Loop，完全由 Graph 决定；引擎不会根据策略名称
-推断拓扑，也不附带任何内置策略。
+推断拓扑，也不附带内置的可执行 Graph。Assistant 可以另行发现内置的创作策略与
+推荐模型预设。
 
 ## 策略来源
 
@@ -20,8 +21,29 @@ scripts/
 `workflow.json` 必须位于包根目录，辅助文件只允许放在 `scripts/` 下。导入会先准备
 并校验归档，再提交一个不可变版本。已提交版本不依赖原 ZIP，也不依赖它原来的本机路径。
 
-引擎不会自动注册包、预留策略身份，也不会把厂商 Agent 编制写进产品树。中性槽位
-标识如 `entry`、`worker-a` 是有效的；个人 Agent 编制只存在于用户导入的配置中。
+引擎不会自动注册包或预留策略身份。中性槽位标识如 `entry`、`worker-a` 是有效的。
+实际 Agent 绑定属于用户配置；建议性的模型预设不会绑定槽位或改变执行规则。
+
+## 内置 Assistant 策略
+
+只读工具 `lico_assistant_workflow_policy` 接收 `{}` 时列出策略摘要，接收
+`{"policyId":"better-plan"}` 时返回完整指导与结构化模型预设。Assistant 按需发现、
+采用策略，然后通过现有工具推进工作；不增加预设选择界面、全局自动绑定或预装 Graph。
+
+Better Plan 由强模型 Designer 设计，Worker 执行有明确边界的工作，由保持干净上下文
+的 Reviewer 独立终审并修复范围内问题。Assistant 维护用户意图、选择任务组织方式、
+诊断反复返工并负责闭环。多个 Reviewer 的独立意见是可选组织方式；有序候选回退
+不表示并行审计或共识投票。
+
+内置[策略](../../crates/licoup-native/resources/workflow-policies/better-plan/SKILL.md)与
+[模型预设](../../crates/licoup-native/resources/workflow-policies/better-plan/model-presets.json)
+属于产品资产。预设使用语义模型名称并保留有序思考强度偏好，包括前端专用路由。
+具体模型标识、支持的思考强度、就绪状态与权限仍以当前 Agent 目录和 Membership
+Profile 为准。这些建议不会更换已指定的 Assistant，也不保证对应模型已经安装。
+
+协议无关的策略读取入口不持有 run 状态、绑定或调度器；读取指导没有执行副作用。
+将策略用于 Assistant 临时 run 时，仍遵守下文的失败与准入行为；Assistant 先核实
+失败后的实际状态，再判断是否以及如何采用后续候选。
 
 ## Graph 与执行
 

@@ -155,6 +155,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "flutter.layer.platform-storage",
   "rust.domain.mcp-adapter",
   "rust.domain.adaptive-flywheel",
+  "rust.domain.subagent-mcp",
   "rust.domain.agent-intelligence-catalog",
   "rust.domain.agent-resource-usage",
   "rust.domain.lico-agent",
