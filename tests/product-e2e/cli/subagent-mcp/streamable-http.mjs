@@ -1,6 +1,6 @@
 export const MCP_PROTOCOL_REVISION = "2025-06-18";
 export const MCP_SERVER_NAME = "lico-up-subagents";
-export const MCP_SERVER_VERSION = "0.11.0";
+export const MCP_SERVER_VERSION = "0.12.0";
 export const DISCOVERY_SCHEMA = "licoup.subagent-mcp.discovery.v1";
 const DISCOVERY_PROVIDERS = Object.freeze(["antigravity", "codex", "cursor"]);
 export const FROZEN_TOOL_NAMES = Object.freeze([
@@ -13,6 +13,7 @@ export const FROZEN_TOOL_NAMES = Object.freeze([
   "lico_subagent_delegate",
   "lico_subagent_continue",
   "lico_subagent_cancel",
+  "lico_assistant_workflow_policy",
 ]);
 
 export function admitDiscoveryDocument(value) {

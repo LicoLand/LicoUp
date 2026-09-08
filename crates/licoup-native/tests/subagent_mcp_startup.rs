@@ -4,7 +4,7 @@
 //! desktop client marker) must start the persistent conversation host and the
 //! supervised Subagent MCP service before any conversation action: private
 //! discovery appears under the client state root, and a connector session
-//! negotiates the exact protocol revision and ordered nine-tool catalog. When
+//! negotiates the exact protocol revision and ordered tool catalog. When
 //! the owning client disappears, the host shuts down and removes discovery.
 
 use serde_json::{Value, json};
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 const CLI_BIN: &str = env!("CARGO_BIN_EXE_licoup-cli");
 const CONNECTOR_BIN: &str = env!("CARGO_BIN_EXE_lico-subagent-mcp");
 
-const FROZEN_TOOLS: [&str; 9] = [
+const FROZEN_TOOLS: [&str; 10] = [
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
     "lico_assistant_workflow_inspect",
@@ -26,6 +26,7 @@ const FROZEN_TOOLS: [&str; 9] = [
     "lico_subagent_delegate",
     "lico_subagent_continue",
     "lico_subagent_cancel",
+    "lico_assistant_workflow_policy",
 ];
 
 fn temp_root(tag: &str) -> PathBuf {
@@ -207,7 +208,7 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
         initialize
             .pointer("/serverInfo/version")
             .and_then(Value::as_str),
-        Some("0.11.0")
+        Some("0.12.0")
     );
     let tools = frames
         .iter()
@@ -218,7 +219,7 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
         .iter()
         .filter_map(|tool| tool.get("name").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    assert_eq!(tools, FROZEN_TOOLS, "exact ordered nine-tool catalog");
+    assert_eq!(tools, FROZEN_TOOLS, "exact ordered tool catalog");
     let _ = std::fs::remove_dir_all(&root);
 }
 
