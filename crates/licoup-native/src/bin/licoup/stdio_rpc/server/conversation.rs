@@ -3611,7 +3611,7 @@ mod tests {
         while Instant::now() < deadline {
             if runtime
                 .inspect_turn(&dispatch_id)
-                .is_some_and(|(_, turn_id)| turn_id == "fake-steer-turn")
+                .is_some_and(|(_, turn_id)| turn_id == "fake-cancel-turn")
             {
                 break;
             }
@@ -3621,7 +3621,7 @@ mod tests {
             runtime
                 .inspect_turn(&dispatch_id)
                 .map(|(_, turn_id)| turn_id),
-            Some("fake-steer-turn".into()),
+            Some("fake-cancel-turn".into()),
             "live native turn must bind before control"
         );
         assert_eq!(start_count.load(Ordering::SeqCst), 1);
@@ -3736,8 +3736,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(interrupt["method"], "turn/interrupt");
-        assert_eq!(interrupt["threadId"], "fake-steer-thread");
-        assert_eq!(interrupt["turnId"], "fake-steer-turn");
+        assert_eq!(interrupt["threadId"], "fake-cancel-thread");
+        assert_eq!(interrupt["turnId"], "fake-cancel-turn");
         let _ = std::fs::remove_file(steer_mode);
         let _ = std::fs::remove_file(cancel_mode);
         let _ = std::fs::remove_file(interrupt_path);

@@ -29,6 +29,13 @@ fn main() {
                 path.is_file()
             })
             .unwrap_or(false);
+    let (thread_id, turn_id) = if steering_mode && cancel_mode {
+        ("fake-cancel-thread", "fake-cancel-turn")
+    } else if steering_mode {
+        ("fake-steer-thread", "fake-steer-turn")
+    } else {
+        ("fake-thread", "fake-turn")
+    };
     let chunk_mode = std::env::current_exe()
         .map(|mut path| {
             path.set_extension("chunk-mode");
@@ -92,11 +99,6 @@ fn main() {
                 &format!(r#"{{"id":{request_id},"result":{{"thread":{{"id":"{thread_id}"}}}}}}"#),
             );
         } else if line.contains("\"method\":\"thread/start\"") {
-            let thread_id = if steering_mode {
-                "fake-steer-thread"
-            } else {
-                "fake-thread"
-            };
             send(
                 &mut stdout,
                 &format!(
@@ -114,11 +116,6 @@ fn main() {
                 .lock()
                 .write_all(&vec![b'x'; 128 * 1024])
                 .unwrap();
-            let turn_id = if steering_mode {
-                "fake-steer-turn"
-            } else {
-                "fake-turn"
-            };
             send(
                 &mut stdout,
                 &format!(
@@ -160,8 +157,8 @@ fn main() {
         } else if line.contains("\"method\":\"turn/steer\"") {
             if !awaiting_steer
                 || !line.contains(STEER_GUIDANCE)
-                || !line.contains("\"threadId\":\"fake-steer-thread\"")
-                || !line.contains("\"expectedTurnId\":\"fake-steer-turn\"")
+                || json_string_field(&line, "threadId").as_deref() != Some(thread_id)
+                || json_string_field(&line, "expectedTurnId").as_deref() != Some(turn_id)
             {
                 std::process::exit(5);
             }
@@ -177,14 +174,17 @@ fn main() {
             }
             send(
                 &mut stdout,
-                r#"{"method":"turn/completed","params":{"threadId":"fake-steer-thread","turn":{"id":"fake-steer-turn","items":[{"id":"fake-agent-message","type":"agentMessage","text":"fake child guided answer"}],"status":"completed"}}}"#,
+                &format!(
+                    r#"{{"method":"turn/completed","params":{{"threadId":"{thread_id}","turn":{{"id":"{turn_id}","items":[{{"id":"fake-agent-message","type":"agentMessage","text":"fake child guided answer"}}],"status":"completed"}}}}}}"#
+                ),
             );
             awaiting_steer = false;
         } else if line.contains("\"method\":\"turn/interrupt\"") {
             if !steering_mode {
                 std::process::exit(7);
             }
-            let Some(request_id) = json_string_field(&line, "id").or_else(|| json_request_id(&line))
+            let Some(request_id) =
+                json_string_field(&line, "id").or_else(|| json_request_id(&line))
             else {
                 std::process::exit(8);
             };
@@ -194,10 +194,10 @@ fn main() {
             );
             if cancel_mode {
                 let thread_id =
-                    json_string_field(&line, "threadId").unwrap_or_else(|| "fake-steer-thread".into());
+                    json_string_field(&line, "threadId").unwrap_or_else(|| thread_id.into());
                 let turn_id = json_string_field(&line, "turnId")
                     .or_else(|| json_string_field(&line, "expectedTurnId"))
-                    .unwrap_or_else(|| "fake-steer-turn".into());
+                    .unwrap_or_else(|| turn_id.into());
                 if let Ok(mut path) = std::env::current_exe() {
                     path.set_extension("interrupt.json");
                     let _ = fs::write(
@@ -292,7 +292,10 @@ fn split_after_escape(bytes: &[u8], hint: usize) -> usize {
 }
 
 fn value_is_char_boundary(bytes: &[u8], index: usize) -> bool {
-    index == bytes.len() || bytes.get(index).is_some_and(|byte| (byte & 0b1100_0000) != 0b1000_0000)
+    index == bytes.len()
+        || bytes
+            .get(index)
+            .is_some_and(|byte| (byte & 0b1100_0000) != 0b1000_0000)
 }
 
 fn json_string(value: &str) -> String {
