@@ -11,7 +11,7 @@
 | 工作流 | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | Graph 执行权威 |
 | 当前证据 | [STATUS.zh-CN.md](../STATUS.zh-CN.md) | 实现、验证和支持事实 |
 
-**状态：已采纳的目标设计，2026-09-07。** 本文约束后续实现，不声明功能已经实现或获得兼容性证据。既有回合、Graph、安全与发布契约继续由各自领域拥有。
+**状态：已采纳的目标设计，2026-09-07；子群聊修订 2026-09-08。** 本文约束后续实现，不声明功能已经实现或获得兼容性证据。既有回合、Graph、安全与发布契约继续由各自领域拥有。2026-09-08 修订取代先前“单一可见 Conversation”展示：获准的长程工作使用一个规范子 Conversation 加上主时间线卡片。
 
 ## 1. 目的
 
@@ -35,10 +35,14 @@
 | 工作上下文 | Matter、Membership 与原生执行 Session 之间的私有版本化绑定 | 既有运行时绑定属主 |
 | 跟进事项 | 重新检查未解决 Goal 的持久原因 | Conversation 宿主，复用既有派发 |
 | 职责资格证据 | 对某个候选承担指定职责的版本化评估 | Agent 能力评估属主 |
+| 任务会话关系 | 将持久 Goal 绑定到一个父 Conversation、一个规范子 Conversation 和一张父卡片锚点 | Conversation 连续性状态 |
+| 父卡片锚点 | 任务卡片占据的原始父 Event/Part 序号 | Conversation 连续性状态 |
+| 父上下文授权 | 面向指定子会话接收方的、有作用域的父 SourceRef 授权 | Conversation 连续性状态 |
+| 目标完成转换 | 已验收的 Goal 生命周期变化及既有通知身份 | Conversation 连续性状态 |
 
 角色不是隐藏的 Agent Principal。被委派者仍是显式准入的 Membership。更换模型、原生 Session 或专家，不会静默更改指定 Assistant。用户明确替换 Assistant 时推进指定代际，使旧决策认领失效，同时保留输出来源。未完成 Goal 继续归属该角色；在途操作保留原 Membership、代际和效果身份用于对账。
 
-规范 Event 只保存一次。事项关联可以是多对多，指向消息片段或 Part；一条复合消息可以更新多个事项。重新分类追加修订，不重写用户原文。Matter 不是第二套 Conversation、权限捷径或隐藏历史。首个交付在 Conversation 内工作；跨 Conversation 引用必须满足双方作用域的明确准入。
+规范 Event 只保存一次。事项关联可以是多对多，指向消息片段或 Part；一条复合消息可以更新多个事项。重新分类追加修订，不重写用户原文。Matter 不是第二套 Conversation、权限捷径或隐藏历史。普通聊天留在父 Conversation，不强制创建子会话。获准的持久长程工作自动获得该父会话下的一个真实规范子 Conversation，并带有已准入 Membership 与真实 Event/Part/PersistentTurn 历史。父会话只在原 Event 序号保留一张任务卡片。首个交付属于拥有该 Event 的 Conversation。父子关系不扩大数据、参与者或模型权限。任务需要的父上下文只能通过已准入、指明接收方和准确 SourceRef 的 ParentContextGrant 进入子会话。
 
 ## 3. 职责分离
 
@@ -133,7 +137,7 @@ Goal 记录来源意图、版本化预期结果、验收条件、范围、负责
 
 外层目标循环判断还欠什么；内层沿用 PersistentTurn 或 Adaptive Flywheel 执行一次有界工作。全部工作经过现有派发、权限、资源与效果门。原生 Agent 的目标循环可以实现其中一段，但不是用户 Goal 的验收权威。
 
-闭环要求所有必需条件具有当前有效证据、符合约定验收方式，且不存在可能推翻结果的未决操作。可机械验证条件使用确定性判据；主观条件使用约定评估者或用户验收。执行者自报、Graph 终止、送达回执或摘要都不能单独关闭目标。
+闭环要求所有必需条件具有当前有效证据、符合约定验收方式，且不存在可能推翻结果的未决操作。可机械验证条件使用确定性判据；主观条件使用约定评估者或用户验收。执行者自报、Graph 终止、送达回执、Worker 退出、审阅回合或 PersistentTurn 结算都不能单独关闭目标或发出 GoalCompletionTransition。已验收闭环只就地更新原父卡片，并通过稳定 `notificationId` 发出一条既有系统通知。不抢焦点、不追加替代完成消息是该转换的不变量，不是可配置导线字段。重试、复审和重启沿用同一 Goal、子 Conversation 与卡片身份。卡片保持原 Event/Part 与序号，`partId` 属于该身份。
 
 进展依据是新增有效证据、减少不确定性、满足条件或解除阻塞。连续工作没有上述变化时，按有界策略调整路线、升级或暂停。重试、费用和工作量计入资源边界，不依赖无限“继续”提示词。持续维护目标形成有界评估区间或实例，而不是永久运行的回合。
 
@@ -165,14 +169,30 @@ Goal 记录来源意图、版本化预期结果、验收条件、范围、负责
 
 自动理解可以在当前委托内组织本地状态，不授予外部访问。每次模型调用、上下文披露、专家变更与工具效果都走适用的准入和审批路径。新接收方、扩大的内容或实质范围变更，不能仅凭目标、定时器、安装或旧审批获得授权。
 
-没有强制的目标／编码／知识模式选择器。会话可呈现简洁的事项或目标摘要：进展、下一责任方、等待原因与证据。用户经自然对话或无障碍控件纠正关联、调整约束、暂停或取消。检查详情保留真实参与者、来源和费用。不能以无缝为由跳过必要审批。
+没有强制的目标／编码／知识模式选择器，也没有需求提交表单。用户继续普通聊天。当 Assistant 接纳持久长程工作时，产品在父会话二级列表创建一个规范子 Conversation，并在创建该任务的 Event 序号留下一张主时间线卡片。协调者、Worker、Reviewer 以真实作者身份在子会话交流。进展与已验收完成只更新同一张卡片，不得重新插入、置顶或移动后续消息。A、B 两个子任务保持不同序号；后完成者不能改变先创建卡片的顺序。用户经自然对话或无障碍控件纠正关联、调整约束、暂停或取消。检查详情保留真实参与者、来源和费用。不能以无缝为由跳过必要审批。
 
 Flutter 渲染 Rust 投影，不从文字、静默、动画或观察者连接推断生命周期。分类和知识整理不在 Flutter 运行。按能力保持长工作期间的前台响应，宿主不可用时不声称仍在工作。
 
 ## 12. 验证与采纳
 
-验收覆盖持续、交错的协作，而非孤立提示词。必需场景包括非编码委托、编码作为一类能力、探索不接管、复合事项、返回旧话题、作用域纠正、迟到证据、主观验收、取消、崩溃恢复、未知效果、角色替换、原生记忆隔离、权限变化、缓存失效、知识不可用、数据删除及模型退化。
+验收覆盖持续、交错的协作，而非孤立提示词。必需场景包括非编码委托、编码作为一类能力、探索不接管、复合事项、返回旧话题、作用域纠正、迟到证据、主观验收、取消、崩溃恢复、未知效果、角色替换、原生记忆隔离、权限变化、缓存失效、知识不可用、数据删除、模型退化、A/B 子会话乱序完成、真实 Worker/Reviewer 作者与隔离、稳定重开／重试／重启，以及不抢焦点的单条既有系统完成通知。
 
 确定性测试证明状态、权限、隔离和幂等不变量；模型评估测量理解与成本路由；原生对照在相同获准运行时、环境与任务下比较集成适配和直接使用。隔离环境证明与获准真实证明保持独立；支持状态只由对应兼容性证据提升。
 
 先冻结契约，再以独立写入职责实现各切片，接入既有宿主，最后依据测得资格启用自动化。旧 Conversation 迁移不编造目标、不改作者、不自动执行。回退可停止新理解，同时保留目标状态、审计与明确恢复。计划、原始评估与执行报告仍在仓库忽略目录中；设计本身不改变发布状态。
+
+## 13. 已冻结的机器契约（不是已上线能力）
+
+闭合字段集位于 `schemas/client_bridge/conversation.json#continuousAssistant`。
+Rust 与 Dart 投影由该嵌入字段生成。过渡端口返回带 `effectClass=none` 的
+`unsupported_capability`。本节不声明已启用自动化、原生能力或发布证据。
+
+| 公开生成类型 | 私有端口／叶模块 |
+|:---|:---|
+| Matter、Agreement、GoalContract、GoalProgress、InterpretationProposal、ContextManifest、WorkContext、Wake、QualificationRecord、TaskConversationRelation、ParentCardAnchor、ParentContextGrant、ParentGrantBasis、ContextCompositionRequest、GoalCompletionTransition、TaskChildAdmission | ContinuityRead/Commit、Interpretation、ContextComposition、NativeWorkContext、GoalEvaluation、FollowUp、Qualification、DiscoveredKnowledge |
+| WriteEnvelope、SourceRef、Utf8ByteSpan、ContinuityFailure | M1 叶：`continuity`、`assistant_continuity/{cognition,context}`、`work_context` + `work_context_ports`、`qualification`、`frontend/features/continuous_assistant` |
+
+`ContinuityReadPort` 按接收 Membership 分页列出 Goal→子会话关系与已准入父授权，不是第二套 Conversation 列表或调度器。`ContextCompositionPort::compose_authorized` 是唯一必实现的组合方法，接受指明当前接收方与撤销代际的 `ContextCompositionRequest`；M1 经读端口取回授权。不存在环境两参数 `compose`。子 Conversation 仍是普通规范会话，通过既有 `conversation.create`、Membership 与 Event 动作创建。父卡片身份是指向既有 message Event 与 metadata Part 的 `ParentCardAnchor`，不新增 Event 种类。完成通知复用既有通知中心条目 `id`。`subagent_dispatch_claims` 仍是同一 Conversation 内的派发谱系，不是父子 Conversation 关系。已在本文对“单一可见 Conversation”展示做一次性迁移；不设永久删除字符串门禁。
+
+已安装 MCP 目录仍是现有 9 个工具。旧 Conversation 派发仍走现有动作。
+`designation_epoch` 是指定 Assistant Membership 的版本事实，不是新 Principal。`admit-task-child` 是长程工作的内部连续性命令，不是用户需求表单。

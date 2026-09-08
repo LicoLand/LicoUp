@@ -281,6 +281,12 @@ AgentConversationMessageKind agentConversationMessageKindFor({
       _errorConversationSemantic(normalizedRole)) {
     return AgentConversationMessageKind.error;
   }
+  if (normalizedCard == 'continuity-task-card') {
+    if (normalizedRole == 'user' || normalizedRole == 'human') {
+      return AgentConversationMessageKind.user;
+    }
+    return AgentConversationMessageKind.assistant;
+  }
   if (hasProviderCardType) {
     // A non-empty presentation type is provider/runtime-owned structured
     // data. Unknown types fail closed as events instead of inheriting an

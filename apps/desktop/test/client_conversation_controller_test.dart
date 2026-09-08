@@ -529,6 +529,7 @@ void main() {
     expect(await controller.postMessage('hi'), isTrue);
     final actions = runner.requests
         .map((request) => request['action'])
+        .where((action) => action != 'list-pending-completion-notices')
         .toList();
     expect(actions, [
       'conversation.message.post',

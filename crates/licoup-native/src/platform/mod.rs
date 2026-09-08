@@ -43,6 +43,7 @@ mod turn_event_emit;
 pub(crate) mod user_presence;
 pub mod user_shell_environment;
 pub(crate) mod virtual_machine;
+pub mod work_context_ports;
 
 pub mod antigravity_subagent_mcp_manager;
 pub mod catalog_cache_store;

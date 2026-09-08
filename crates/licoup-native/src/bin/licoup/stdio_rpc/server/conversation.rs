@@ -1,5 +1,11 @@
 use super::super::*;
 use anyhow::anyhow;
+use licoup_conversation::continuity::{
+    ASSISTANT_TURN_INVALID_ERROR, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN,
+    apply_admitted_validation_failure_facts, project_admitted_known_text_fields,
+    public_admitted_output, redact_live_runtime_event,
+};
+use licoup_native::domain::assistant_continuity::execution::CONTINUITY_KIND_USER_POSTED;
 use licoup_native::domain::client_conversation::{
     ConversationRuntimeScope, ConversationStore, DispatchState, SubagentDispatchClaim,
     SubagentDispatchClaimState,
@@ -45,6 +51,8 @@ struct PersistentConversationRuntimeInner {
     subagent_watchdog: Mutex<BTreeMap<String, Instant>>,
     subagent_watchdog_changed: Condvar,
     subagent_watchdog_spawned: AtomicBool,
+    settlement_hook: Mutex<Option<Arc<dyn Fn(&str, &Value) -> Result<(), String> + Send + Sync>>>,
+    live_turn_observer: Mutex<Option<Arc<dyn Fn(&str, &str, &str, &str) + Send + Sync>>>,
 }
 
 pub(super) struct PersistentTurn {
@@ -61,6 +69,8 @@ pub(super) struct PersistentTurn {
     /// terminal settlement. Weak so a finished turn never keeps the runtime
     /// alive.
     runtime: Weak<PersistentConversationRuntimeInner>,
+    continuity_kind: Option<String>,
+    admitted_assistant_turn: bool,
 }
 
 #[derive(Default)]
@@ -84,6 +94,30 @@ struct PersistentTerminal {
     payload: Value,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PersistentTurnAdmission {
+    Public,
+    Host,
+}
+
+impl PersistentTurnAdmission {
+    fn continuity_kind(self, params: &Value) -> Option<String> {
+        match self {
+            Self::Public => None,
+            Self::Host => params
+                .get("continuityKind")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned),
+        }
+    }
+
+    fn admits_assistant_turn(self, params: &Value) -> bool {
+        self.continuity_kind(params).as_deref() == Some(CONTINUITY_KIND_USER_POSTED)
+    }
+}
+
 impl PersistentConversationRuntime {
     pub(crate) fn new(store: ConversationStore) -> Self {
         Self::with_cache_budget(store, DEFAULT_TURN_CACHE_BYTES)
@@ -101,6 +135,8 @@ impl PersistentConversationRuntime {
                 subagent_watchdog: Mutex::new(BTreeMap::new()),
                 subagent_watchdog_changed: Condvar::new(),
                 subagent_watchdog_spawned: AtomicBool::new(false),
+                settlement_hook: Mutex::new(None),
+                live_turn_observer: Mutex::new(None),
             }),
         };
         runtime.rearm_persisted_watchdogs();
@@ -115,6 +151,36 @@ impl PersistentConversationRuntime {
         self.inner.clients.fetch_sub(1, Ordering::AcqRel);
     }
 
+    pub(crate) fn set_settlement_hook(
+        &self,
+        hook: impl Fn(&str, &Value) -> Result<(), String> + Send + Sync + 'static,
+    ) {
+        *self
+            .inner
+            .settlement_hook
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::new(hook));
+    }
+
+    pub(crate) fn set_live_turn_observer(
+        &self,
+        observer: impl Fn(&str, &str, &str, &str) + Send + Sync + 'static,
+    ) {
+        *self
+            .inner
+            .live_turn_observer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::new(observer));
+    }
+
+    pub(crate) fn inspect_turn(&self, handle: &str) -> Option<(String, String)> {
+        let turn = self.turn(handle)?;
+        Some((
+            turn.session_id.lock().ok()?.clone(),
+            turn.turn_id.lock().ok()?.clone(),
+        ))
+    }
+
     pub(crate) fn idle(&self) -> bool {
         self.inner.clients.load(Ordering::Acquire) == 0
             && self.inner.turns.lock().is_ok_and(|turns| {
@@ -127,6 +193,14 @@ impl PersistentConversationRuntime {
     }
 
     fn begin(&self, params: &Value) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
+        self.begin_with(params, PersistentTurnAdmission::Public)
+    }
+
+    fn begin_with(
+        &self,
+        params: &Value,
+        admission: PersistentTurnAdmission,
+    ) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
         let agent_id = params
             .get("agent")
             .or_else(|| params.get("agentId"))
@@ -171,6 +245,14 @@ impl PersistentConversationRuntime {
                 params.get("dispatchId").and_then(Value::as_str),
             )
             .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
+        let continuity_kind = admission.continuity_kind(params);
+        let admitted_assistant_turn = admission.admits_assistant_turn(params);
+        if admitted_assistant_turn {
+            self.inner
+                .store
+                .admit_runtime_response_mode(&scope, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN)
+                .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
+        }
         let turn = Arc::new(PersistentTurn {
             scope: scope.clone(),
             agent_id: agent_id.to_owned(),
@@ -182,6 +264,8 @@ impl PersistentConversationRuntime {
             store: self.inner.store.clone(),
             cache_budget: self.inner.cache_budget,
             runtime: Arc::downgrade(&self.inner),
+            continuity_kind,
+            admitted_assistant_turn,
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
         self.inner.turns_changed.notify_all();
@@ -213,6 +297,53 @@ impl PersistentConversationRuntime {
 
     fn turn(&self, handle: &str) -> Option<Arc<PersistentTurn>> {
         self.inner.turns.lock().ok()?.get(handle).cloned()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn live_message_texts(&self, handle: &str) -> Vec<String> {
+        let Some(turn) = self.turn(handle) else {
+            return Vec::new();
+        };
+        let Ok(state) = turn.state.lock() else {
+            return Vec::new();
+        };
+        state
+            .cache
+            .iter()
+            .filter_map(|frame| {
+                let kind = frame.event.get("event").and_then(Value::as_str)?;
+                if kind != "agent.message.chunk" && kind != "agent.message.completed" {
+                    return None;
+                }
+                frame
+                    .event
+                    .pointer("/payload/text")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn evict_turn_cache(&self, handle: &str) {
+        if let Some(turn) = self.turn(handle)
+            && let Ok(mut state) = turn.state.lock()
+        {
+            state.cache.clear();
+            state.cache_bytes = 0;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn public_terminal(&self, handle: &str) -> Option<(bool, Value)> {
+        let turn = self.turn(handle)?;
+        let terminal = stored_public_terminal(&turn)?;
+        Some((terminal.ok, terminal.payload))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn turn_high_water(&self, handle: &str) -> Option<u64> {
+        Some(self.turn(handle)?.state.lock().ok()?.high_water)
     }
 
     pub(super) fn scoped_control_params(
@@ -304,19 +435,22 @@ impl PersistentConversationRuntime {
             turn.cancel_requested.store(true, Ordering::Release);
             return None;
         }
-        let response = match licoup_native::platform::dispatch_lane_operation(
-            "cancel",
-            &json!({
-                "agent": turn.agent_id.as_str(),
-                "sessionId": session_id,
-            }),
-        ) {
-            Ok(response) => response,
-            Err(_) => {
-                turn.cancel_requested.store(true, Ordering::Release);
-                return None;
-            }
-        };
+        let turn_id = turn.turn_id.lock().ok()?.clone();
+        let mut cancel_params = json!({
+            "agent": turn.agent_id.as_str(),
+            "sessionId": session_id,
+        });
+        if !turn_id.is_empty() {
+            cancel_params["turnId"] = json!(turn_id);
+        }
+        let response =
+            match licoup_native::platform::dispatch_lane_operation("cancel", &cancel_params) {
+                Ok(response) => response,
+                Err(_) => {
+                    turn.cancel_requested.store(true, Ordering::Release);
+                    return None;
+                }
+            };
         if response.get("ok").and_then(Value::as_bool) == Some(true) {
             return Some(response);
         }
@@ -334,7 +468,22 @@ impl PersistentConversationRuntime {
         &self,
         params: &Value,
     ) -> std::result::Result<String, RuntimeAdapterError> {
-        let turn = self.begin_accepted(params)?;
+        self.open_turn_with(params, PersistentTurnAdmission::Public)
+    }
+
+    pub(crate) fn open_admitted_turn(
+        &self,
+        params: &Value,
+    ) -> std::result::Result<String, RuntimeAdapterError> {
+        self.open_turn_with(params, PersistentTurnAdmission::Host)
+    }
+
+    fn open_turn_with(
+        &self,
+        params: &Value,
+        admission: PersistentTurnAdmission,
+    ) -> std::result::Result<String, RuntimeAdapterError> {
+        let turn = self.begin_accepted(params, admission)?;
         Ok(turn.scope.dispatch_id.clone())
     }
 
@@ -390,7 +539,24 @@ impl PersistentConversationRuntime {
         params: &Value,
         portable_data_dir: Option<PathBuf>,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let handle = self.open_turn(params)?;
+        self.start_background_with(params, portable_data_dir, PersistentTurnAdmission::Public)
+    }
+
+    pub(crate) fn start_admitted_background(
+        &self,
+        params: &Value,
+        portable_data_dir: Option<PathBuf>,
+    ) -> std::result::Result<Value, RuntimeAdapterError> {
+        self.start_background_with(params, portable_data_dir, PersistentTurnAdmission::Host)
+    }
+
+    fn start_background_with(
+        &self,
+        params: &Value,
+        portable_data_dir: Option<PathBuf>,
+        admission: PersistentTurnAdmission,
+    ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let handle = self.open_turn_with(params, admission)?;
         let Some(turn) = self.turn(&handle) else {
             self.abandon_turn(&handle);
             return Err(RuntimeAdapterError::ConversationDispatchFailed);
@@ -430,9 +596,10 @@ impl PersistentConversationRuntime {
     fn begin_accepted(
         &self,
         params: &Value,
+        admission: PersistentTurnAdmission,
     ) -> std::result::Result<Arc<PersistentTurn>, RuntimeAdapterError> {
         let turn = self
-            .begin(params)
+            .begin_with(params, admission)
             .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
         if Self::record_event(
             &turn,
@@ -644,8 +811,35 @@ impl PersistentConversationRuntime {
         }
         if let Some(turn_id) = event.get("turnId").and_then(Value::as_str) {
             if !turn_id.trim().is_empty() {
-                *turn.turn_id.lock().expect("turn id lock") = turn_id.trim().to_owned();
+                let bound = turn_id.trim().to_owned();
+                *turn.turn_id.lock().expect("turn id lock") = bound.clone();
+                if let Some(inner) = turn.runtime.upgrade() {
+                    if let Some(observer) = inner
+                        .live_turn_observer
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.clone())
+                    {
+                        observer(
+                            &turn.scope.conversation_id,
+                            &turn.scope.membership_id,
+                            &turn.scope.dispatch_id,
+                            &bound,
+                        );
+                    }
+                }
             }
+        }
+        if !ConversationStore::runtime_frame_commits_cursor(&event) {
+            // User-speech is already a Canonical Message Event. Live observers
+            // may still see the delta, but it must not occupy a replay cursor.
+            let live_event = if turn.admitted_assistant_turn {
+                redact_live_runtime_event(&event)
+            } else {
+                event
+            };
+            let _ = Self::attempt_deferred_cancel(turn);
+            return Ok(live_event);
         }
         // Serialize cursor allocation through canonical persistence and the
         // disposable cache update. Computing the cursor under a short lock and
@@ -669,13 +863,18 @@ impl PersistentConversationRuntime {
         let session_id = turn.session_id.lock().expect("turn session lock").clone();
         turn.store
             .bind_runtime_session(&turn.scope, &turn.agent_id, &session_id, None, None)?;
-        let encoded_bytes = serde_json::to_vec(&event)?.len();
+        let live_event = if turn.admitted_assistant_turn {
+            redact_live_runtime_event(&event)
+        } else {
+            event.clone()
+        };
+        let encoded_bytes = serde_json::to_vec(&live_event)?.len();
         state.high_water = cursor;
         state.cache_bytes = state.cache_bytes.saturating_add(encoded_bytes);
         state.cache.push_back(CachedFrame {
             cursor,
             encoded_bytes,
-            event: event.clone(),
+            event: live_event.clone(),
         });
         while state.cache_bytes > turn.cache_budget {
             let Some(evicted) = state.cache.pop_front() else {
@@ -686,7 +885,7 @@ impl PersistentConversationRuntime {
         turn.changed.notify_all();
         drop(state);
         let _ = Self::attempt_deferred_cancel(turn);
-        Ok(event)
+        Ok(live_event)
     }
 
     fn finish(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) -> Result<()> {
@@ -754,21 +953,88 @@ impl PersistentConversationRuntime {
                     .and_then(Value::as_str),
             )?;
         }
-        turn.store
-            .finish_runtime_dispatch(&turn.scope, &terminal.payload, state, error_code)?;
-        let callback_payload = terminal.payload.clone();
-        persistent_state.terminal = Some(terminal);
+        let persisted_state = turn.store.finish_runtime_dispatch(
+            &turn.scope,
+            &terminal.payload,
+            state,
+            error_code,
+        )?;
+        let mut callback_payload = terminal.payload.clone();
+        if persisted_state != state {
+            callback_payload["ok"] = json!(false);
+            callback_payload["turnStatus"] = json!("failed");
+            callback_payload["code"] = json!(ASSISTANT_TURN_INVALID_ERROR);
+            callback_payload["error"] = json!({
+                "code": ASSISTANT_TURN_INVALID_ERROR,
+                "stage": "conversation/dispatch",
+                "turnStatus": "failed",
+            });
+        }
+        if callback_payload
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            callback_payload["conversationId"] = json!(turn.scope.conversation_id);
+        }
+        if callback_payload
+            .get("membershipId")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            callback_payload["membershipId"] = json!(turn.scope.membership_id);
+        }
+        if callback_payload
+            .get("causationId")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            callback_payload["causationId"] = json!(turn.scope.event_id);
+        }
+        if callback_payload
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            callback_payload["dispatchId"] = json!(turn.scope.dispatch_id);
+        }
+        if callback_payload
+            .get("continuityKind")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            if let Some(kind) = turn.continuity_kind.as_deref() {
+                callback_payload["continuityKind"] = json!(kind);
+            }
+        }
+        persistent_state.terminal = Some(public_persistent_terminal(
+            &terminal,
+            state,
+            persisted_state,
+            turn.admitted_assistant_turn,
+        ));
         turn.changed.notify_all();
         drop(persistent_state);
         // The delegated PersistentTurn settled: deliver the single completion
         // signal to the caller membership. Turns without a durable subagent
         // claim — including every callback turn — never trigger a callback.
         if let Some(inner) = turn.runtime.upgrade() {
-            PersistentConversationRuntime { inner }.notify_subagent_terminal(
+            PersistentConversationRuntime {
+                inner: inner.clone(),
+            }
+            .notify_subagent_terminal(
                 &turn.scope.dispatch_id,
-                state,
+                persisted_state,
                 &callback_payload,
             );
+            if let Some(hook) = inner
+                .settlement_hook
+                .lock()
+                .ok()
+                .and_then(|guard| guard.clone())
+            {
+                let _ = hook(&turn.scope.conversation_id, &callback_payload);
+            }
         }
         Ok(())
     }
@@ -1106,12 +1372,22 @@ fn replay_turn<W: Write>(
                     .cloned()
                     .collect::<Vec<_>>()
             } else {
-                turn.store.runtime_frames_after(
-                    &turn.scope,
-                    cursor,
-                    captured_high_water,
-                    REPLAY_PAGE_SIZE,
-                )?
+                turn.store
+                    .runtime_frames_after(
+                        &turn.scope,
+                        cursor,
+                        captured_high_water,
+                        REPLAY_PAGE_SIZE,
+                    )?
+                    .into_iter()
+                    .map(|event| {
+                        if turn.admitted_assistant_turn {
+                            redact_live_runtime_event(&event)
+                        } else {
+                            event
+                        }
+                    })
+                    .collect()
             };
             if frames.is_empty() {
                 return Err(anyhow!("canonical_replay_gap"));
@@ -1302,13 +1578,26 @@ where
                 }
             }
             if observer_connected.load(Ordering::Acquire) {
-                write_stdio_rpc_terminal_success(
-                    writer,
-                    request_id,
-                    workflow_id,
-                    terminal_sequence,
-                    value,
-                )
+                if let Some(public) = persistent_turn
+                    .as_ref()
+                    .and_then(|turn| stored_public_terminal(turn))
+                {
+                    write_persistent_terminal(
+                        writer,
+                        request_id,
+                        workflow_id,
+                        terminal_sequence,
+                        &public,
+                    )
+                } else {
+                    write_stdio_rpc_terminal_success(
+                        writer,
+                        request_id,
+                        workflow_id,
+                        terminal_sequence,
+                        value,
+                    )
+                }
             } else {
                 Ok(())
             }
@@ -1371,6 +1660,51 @@ fn finish_error<W: Write>(
         write_stdio_rpc_terminal_error(writer, request_id, workflow_id, sequence, &error)
     } else {
         Ok(())
+    }
+}
+
+fn stored_public_terminal(turn: &Arc<PersistentTurn>) -> Option<PersistentTerminal> {
+    turn.state.lock().ok()?.terminal.clone()
+}
+
+fn public_persistent_terminal(
+    original: &PersistentTerminal,
+    recorded_state: DispatchState,
+    persisted_state: DispatchState,
+    admitted_assistant_turn: bool,
+) -> PersistentTerminal {
+    if !admitted_assistant_turn {
+        return original.clone();
+    }
+    let mut payload = original.payload.clone();
+    match persisted_state {
+        DispatchState::Failed => {
+            if recorded_state == DispatchState::Completed {
+                apply_admitted_validation_failure_facts(&mut payload);
+            } else {
+                payload["ok"] = json!(false);
+            }
+            project_admitted_known_text_fields(&mut payload, "");
+            PersistentTerminal { ok: false, payload }
+        }
+        DispatchState::Completed => {
+            let reply = payload
+                .get("output")
+                .and_then(Value::as_str)
+                .and_then(public_admitted_output)
+                .unwrap_or_default();
+            project_admitted_known_text_fields(&mut payload, &reply);
+            payload["ok"] = json!(true);
+            PersistentTerminal { ok: true, payload }
+        }
+        DispatchState::Cancelled => {
+            project_admitted_known_text_fields(&mut payload, "");
+            PersistentTerminal {
+                ok: original.ok,
+                payload,
+            }
+        }
+        _ => original.clone(),
     }
 }
 
@@ -1493,17 +1827,92 @@ pub(super) fn reap_finished(workers: &mut Vec<std::thread::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use licoup_conversation::continuity::{
+        ASSISTANT_TURN_INVALID_ERROR, ContinuityAssistantTurnResponse,
+        ContinuityCommitmentProposal, ContinuityFollowThroughKind,
+        ContinuityInterpretationProposal, ContinuityMatterSubject, ContinuityReadPort,
+        ContinuitySpeechAct, ContinuityTaskChildAdmission, ContinuityWriteEnvelope,
+        TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, settlement_applied,
+    };
     use licoup_native::domain::client_conversation::{
         ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
-        ImageAttachment, ImageAttachmentReference, MembershipAccess, Principal, PrincipalKind,
-        SubagentDispatchClaimState, TurnState,
+        ImageAttachment, ImageAttachmentReference, MembershipAccess, PersistentRuntimePorts,
+        Principal, PrincipalKind, SubagentDispatchClaimState, TurnState,
     };
+    use serde_json::{Value, json};
+
+    static FAKE_CODEX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn runtime(cache_budget: usize) -> PersistentConversationRuntime {
         PersistentConversationRuntime::with_cache_budget(
             ConversationStore::open_in_memory().unwrap(),
             cache_budget,
         )
+    }
+
+    fn decode_replay_frames(writer: &Arc<Mutex<Vec<u8>>>) -> Vec<Value> {
+        String::from_utf8(writer.lock().unwrap().clone())
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect()
+    }
+
+    fn assert_contiguous_store_fallback_replay<'a>(
+        frames: &'a [Value],
+        high_water: u64,
+    ) -> &'a Value {
+        assert!(
+            high_water > 0,
+            "store-fallback from cursor 0 must have real nonterminal frames"
+        );
+        assert!(
+            frames.len() as u64 >= high_water + 1,
+            "replay must deliver the committed range then a terminal: {frames:?}"
+        );
+        let terminal = frames
+            .last()
+            .expect("replay must end with a terminal frame");
+        assert_eq!(
+            terminal.get("kind").and_then(Value::as_str),
+            Some("terminal"),
+            "{terminal}"
+        );
+        let event_frames = &frames[..frames.len() - 1];
+        assert_eq!(
+            event_frames.len() as u64,
+            high_water,
+            "replay must deliver every committed cursor through high_water: {frames:?}"
+        );
+        let cursors: Vec<u64> = event_frames
+            .iter()
+            .map(|frame| {
+                frame
+                    .pointer("/event/cursor")
+                    .and_then(Value::as_u64)
+                    .expect("committed replay frame must carry a cursor")
+            })
+            .collect();
+        assert_eq!(
+            cursors,
+            (1..=high_water).collect::<Vec<_>>(),
+            "replay cursors must be contiguous through high_water"
+        );
+        terminal
+    }
+
+    fn public_terminal_code(payload: &Value) -> Option<&str> {
+        payload
+            .get("code")
+            .and_then(Value::as_str)
+            .or_else(|| payload.pointer("/error/code").and_then(Value::as_str))
+    }
+
+    fn public_terminal_stage(payload: &Value) -> Option<&str> {
+        payload
+            .get("stage")
+            .and_then(Value::as_str)
+            .or_else(|| payload.pointer("/error/stage").and_then(Value::as_str))
     }
 
     /// A boundary-queued continuation of a post with image attachments must
@@ -1712,6 +2121,64 @@ mod tests {
                 .iter()
                 .all(|part| !part.content.contains("turnHandle"))
         );
+    }
+
+    #[test]
+    fn record_event_does_not_advance_cursor_for_user_speech_frames() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let turn = runtime
+            .begin(&json!({
+                "agent": "synthetic",
+                "sessionId": "session-1",
+                "text": "synthetic prompt"
+            }))
+            .unwrap();
+        PersistentConversationRuntime::record_event(
+            &turn,
+            json!({
+                "event": licoup_conversation::projection::USER_MESSAGE_EVENT_KIND,
+                "sessionId": "session-1",
+                "turnId": "native-turn-1",
+                "payload": {"text": "follow up", "role": "user"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            turn.state.lock().unwrap().high_water,
+            0,
+            "user-speech must not occupy a replay cursor"
+        );
+        PersistentConversationRuntime::record_event(
+            &turn,
+            json!({
+                "event": "agent.message.chunk",
+                "sessionId": "session-1",
+                "turnId": "native-turn-1",
+                "payload": {"ordinal": 1, "text": "Reply"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(turn.state.lock().unwrap().high_water, 1);
+        let frames = turn
+            .store
+            .runtime_frames_after(&turn.scope, 0, 1, 8)
+            .unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["cursor"], 1);
+        assert_eq!(frames[0]["event"], "agent.message.chunk");
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: true,
+                payload: json!({"ok": true, "output": "Reply"}),
+            },
+        )
+        .unwrap();
+        runtime.evict_turn_cache(&turn.scope.dispatch_id);
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        replay_turn(&writer, "request-user-speech", "workflow-1", &turn, 0).unwrap();
+        let replayed = decode_replay_frames(&writer);
+        assert_contiguous_store_fallback_replay(&replayed, 1);
     }
 
     #[test]
@@ -2551,5 +3018,1607 @@ mod tests {
             .unwrap()
             .contains_key(&claim.id);
         assert!(armed);
+    }
+
+    fn compile_fake_codex() -> std::path::PathBuf {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("fake_codex_app_server.rs");
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!("lico-ca-c2-fake-codex-{suffix}"));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let executable = temp_dir.join(format!("fake-codex{}", std::env::consts::EXE_SUFFIX));
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+        let compile = Command::new(rustc)
+            .arg("--edition=2024")
+            .arg(&fixture)
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .expect("fake Codex fixture should compile");
+        assert!(compile.success(), "fake Codex fixture failed to compile");
+        executable
+    }
+
+    fn with_test_executable(params: &Value, executable: &std::path::Path) -> Value {
+        let mut value = params.clone();
+        if let Some(object) = value.as_object_mut() {
+            let path = json!(executable.to_string_lossy());
+            object.insert("executable".to_owned(), path.clone());
+            object.insert("binary".to_owned(), path);
+        }
+        value
+    }
+
+    fn visible_text(store: &ConversationStore, conversation_id: &str, event_id: &str) -> String {
+        store
+            .event(conversation_id, event_id)
+            .unwrap()
+            .unwrap()
+            .parts
+            .iter()
+            .filter(|part| part.kind == EventPartKind::Text)
+            .map(|part| part.content.as_str())
+            .collect()
+    }
+
+    fn question_proposal_json(conversation_id: &str) -> String {
+        serde_json::to_string(&ContinuityInterpretationProposal {
+            envelope: ContinuityWriteEnvelope {
+                conversation_id: conversation_id.to_owned(),
+                source_event_refs: Vec::new(),
+                observed_revision: 0,
+                designation_epoch: 0,
+                request_id: "request:question".into(),
+            },
+            matter_associations: Vec::new(),
+            speech_act: ContinuitySpeechAct::Question,
+            commitment_proposals: Vec::new(),
+            agreement_proposals: Vec::new(),
+            capability_needs: Vec::new(),
+            uncertainty_reasons: Vec::new(),
+            requested_reads: Vec::new(),
+            task_child_admission: None,
+        })
+        .unwrap()
+    }
+
+    fn assistant_envelope_json(reply: &str, proposal_json: &str) -> String {
+        let proposal: ContinuityInterpretationProposal =
+            serde_json::from_str(proposal_json).unwrap();
+        serde_json::to_string(&ContinuityAssistantTurnResponse {
+            reply_text: reply.to_owned(),
+            interpretation_proposal: proposal,
+        })
+        .unwrap()
+    }
+
+    fn create_designated_group(
+        service: &ConversationService,
+        title: &str,
+    ) -> (String, String, String) {
+        let group = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": title,
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:codex",
+                        "kind": "agent",
+                        "displayName": "Codex",
+                        "agentId": "codex"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let conversation_id = group["id"].as_str().unwrap().to_owned();
+        let owner = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "human")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let agent = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "agent")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner,
+                "expectedRevision": revision,
+                "membershipId": agent,
+            }))
+            .unwrap();
+        (conversation_id, owner, agent)
+    }
+
+    fn bind_fake_codex_parent_runtime(
+        store: ConversationStore,
+        executable: std::path::PathBuf,
+        start_kinds: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> (
+        PersistentConversationRuntime,
+        ConversationService,
+        std::sync::mpsc::Receiver<(String, Value)>,
+    ) {
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let send_runtime = runtime.clone();
+        let send_executable = executable;
+        let start_kinds_for_send = start_kinds;
+        let service = ConversationService::from_store(store).bind_conversation_runtime(
+            PersistentRuntimePorts::new(
+                move |params: &Value| {
+                    let kind = params
+                        .get("continuityKind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    start_kinds_for_send
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner())
+                        .push(kind.clone());
+                    let params = with_test_executable(params, &send_executable);
+                    if kind == "child-work" {
+                        Ok(json!({
+                            "ok": true,
+                            "accepted": true,
+                            "turnHandle": "turn:child-stub",
+                        }))
+                    } else {
+                        send_runtime.start_admitted_background(&params, None)
+                    }
+                },
+                |_conversation_id: &str| json!([]),
+                |_params: &Value| Ok(json!({ "ok": true })),
+                |_params: &Value| Ok(json!({ "ok": true, "output": "" })),
+                |_request: Value| Ok(json!({})),
+            ),
+        );
+        let hooked = service.clone();
+        runtime.set_settlement_hook(move |conversation_id, payload| {
+            let result = hooked
+                .after_runtime_settlement(conversation_id, payload)
+                .map(|_| ())
+                .map_err(|err| err.to_string());
+            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
+            result
+        });
+        (runtime, service, rx)
+    }
+
+    fn typed_child_proposal_json(conversation_id: &str) -> String {
+        serde_json::to_string(&ContinuityInterpretationProposal {
+            envelope: ContinuityWriteEnvelope {
+                conversation_id: conversation_id.to_owned(),
+                source_event_refs: Vec::new(),
+                observed_revision: 0,
+                designation_epoch: 0,
+                request_id: "request:goal:matter:notes".into(),
+            },
+            matter_associations: Vec::new(),
+            speech_act: ContinuitySpeechAct::Delegation,
+            commitment_proposals: vec![ContinuityCommitmentProposal {
+                matter_id: Some("matter:notes".into()),
+                subject: ContinuityMatterSubject::New,
+                expected_result: "Prepare notes".into(),
+                criteria: Vec::new(),
+                create_goal: true,
+            }],
+            agreement_proposals: Vec::new(),
+            capability_needs: Vec::new(),
+            uncertainty_reasons: Vec::new(),
+            requested_reads: Vec::new(),
+            task_child_admission: Some(ContinuityTaskChildAdmission {
+                goal_id: "goal:matter:notes".into(),
+                parent_conversation_id: conversation_id.to_owned(),
+                speech_act: ContinuitySpeechAct::Delegation,
+                follow_through_kind: ContinuityFollowThroughKind::Durable,
+                observed_child_conversation_id: None,
+                observed_card_anchor: None,
+                request_id: "request:admit:goal:matter:notes".into(),
+            }),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn persistent_turn_child_work_finishes_through_fake_lowest_codex() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, "VERTICAL-CHILD-RECEIPT").unwrap();
+
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let service = ConversationService::from_store(store);
+        let send_runtime = runtime.clone();
+        let send_executable = executable.clone();
+        let service = service.bind_conversation_runtime(PersistentRuntimePorts::new(
+            move |params: &Value| {
+                let params = with_test_executable(params, &send_executable);
+                if params.get("continuityKind").and_then(Value::as_str) == Some("child-work") {
+                    send_runtime.start_admitted_background(&params, None)
+                } else {
+                    Ok(json!({
+                        "ok": true,
+                        "accepted": true,
+                        "turnHandle": "turn:parent",
+                    }))
+                }
+            },
+            |_conversation_id: &str| json!([]),
+            |_params: &Value| Ok(json!({ "ok": true })),
+            move |params: &Value| {
+                let conversation_id = params
+                    .get("conversationId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                Ok(json!({
+                    "ok": true,
+                    "output": typed_child_proposal_json(conversation_id),
+                }))
+            },
+            |_request: Value| Ok(json!({})),
+        ));
+        let hooked = service.clone();
+        runtime.set_settlement_hook(move |conversation_id, payload| {
+            let result = hooked
+                .after_runtime_settlement(conversation_id, payload)
+                .map(|_| ())
+                .map_err(|err| err.to_string());
+            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
+            result
+        });
+
+        let group = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Vertical parent",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:codex",
+                        "kind": "agent",
+                        "displayName": "Codex",
+                        "agentId": "codex"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let conversation_id = group["id"].as_str().unwrap().to_owned();
+        let owner = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "human")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let agent = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "agent")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner,
+                "expectedRevision": revision,
+                "membershipId": agent,
+            }))
+            .unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "prepare notes for the trip",
+            }))
+            .unwrap();
+        let event_id = posted["event"]["id"].as_str().unwrap().to_owned();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+            }))
+            .unwrap();
+        service
+            .after_runtime_settlement(
+                &conversation_id,
+                &json!({
+                    "output": assistant_envelope_json(
+                        "I'll prepare the notes in a child conversation.",
+                        &typed_child_proposal_json(&conversation_id),
+                    ),
+                    "membershipId": agent,
+                    "causationId": event_id,
+                    "dispatchId": "dispatch:parent-vertical",
+                }),
+            )
+            .unwrap();
+        let relation = service
+            .store()
+            .list_child_relations(&conversation_id, None, 8)
+            .unwrap()
+            .remove(0);
+        let child_id = relation.child_conversation_id.clone();
+        let child_member = service
+            .store()
+            .get(&child_id)
+            .unwrap()
+            .assistant_membership_id
+            .expect("child assistant");
+        let (settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("fake Codex finish must invoke the settlement hook");
+        assert_eq!(settled_conversation, child_id);
+        let dispatch_id = settled_payload
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .expect("finish must stamp dispatchId");
+        assert!(settlement_applied(service.store(), &child_id, dispatch_id).unwrap());
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&child_id, dispatch_id)
+            .unwrap()
+            .expect("canonical child turn event");
+        assert_eq!(
+            event.author_membership_id.as_deref(),
+            Some(child_member.as_str())
+        );
+        assert_eq!(event.correlation_id.as_deref(), Some(dispatch_id));
+        let duplicates = service
+            .store()
+            .page_events(&child_id, None, 50)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|item| item.correlation_id.as_deref() == Some(dispatch_id))
+            .count();
+        assert_eq!(duplicates, 1, "finish must reuse the admitted turn Event");
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn persistent_turn_child_work_steers_live_codex_turn_and_rejects_stale_handles() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let mut steer_mode = executable.clone();
+        steer_mode.set_extension("steer-mode");
+        std::fs::write(&steer_mode, "1").unwrap();
+        let mut cancel_mode = executable.clone();
+        cancel_mode.set_extension("cancel-mode");
+        std::fs::write(&cancel_mode, "1").unwrap();
+        let mut interrupt_path = executable.clone();
+        interrupt_path.set_extension("interrupt.json");
+        let _ = std::fs::remove_file(&interrupt_path);
+
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let start_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let service = ConversationService::from_store(store.clone());
+        let send_runtime = runtime.clone();
+        let active_runtime = runtime.clone();
+        let steer_runtime = runtime.clone();
+        let cancel_runtime = runtime.clone();
+        let inspect_runtime = runtime.clone();
+        let start_count_for_send = start_count.clone();
+        let send_executable = executable.clone();
+        let steer_executable = executable.clone();
+        let cancel_executable = executable.clone();
+        let service = service.bind_conversation_runtime(
+            PersistentRuntimePorts::new(
+                move |params: &Value| {
+                    let params = with_test_executable(params, &send_executable);
+                    if params.get("continuityKind").and_then(Value::as_str) == Some("child-work") {
+                        start_count_for_send.fetch_add(1, Ordering::SeqCst);
+                        send_runtime.start_admitted_background(&params, None)
+                    } else {
+                        Ok(json!({
+                            "ok": true,
+                            "accepted": true,
+                            "turnHandle": "turn:parent",
+                        }))
+                    }
+                },
+                move |conversation_id: &str| {
+                    active_runtime.active(&json!({ "conversationId": conversation_id }))
+                },
+                move |params: &Value| {
+                    steer_runtime.steer_sync(&with_test_executable(params, &steer_executable))
+                },
+                move |params: &Value| {
+                    let conversation_id = params
+                        .get("conversationId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    Ok(json!({
+                        "ok": true,
+                        "output": typed_child_proposal_json_with_result(
+                            conversation_id,
+                            "fake-codex-steer-prompt",
+                        ),
+                    }))
+                },
+                |_request: Value| Ok(json!({})),
+            )
+            .with_cancel(move |params: &Value| {
+                cancel_runtime
+                    .request_cancel(&with_test_executable(params, &cancel_executable))
+                    .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+            }),
+        );
+        if let Some(host) = service.continuity().cloned() {
+            let observer_host = host.clone();
+            runtime.set_live_turn_observer(
+                move |conversation_id, membership_id, dispatch_id, native| {
+                    observer_host.update_live_native_turn(
+                        conversation_id,
+                        membership_id,
+                        dispatch_id,
+                        native,
+                    );
+                },
+            );
+            host.bind_work_turn_inspect(std::sync::Arc::new(move |handle| {
+                inspect_runtime.inspect_turn(handle)
+            }));
+        }
+
+        let group = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Vertical steer parent",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:codex",
+                        "kind": "agent",
+                        "displayName": "Codex",
+                        "agentId": "codex"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let conversation_id = group["id"].as_str().unwrap().to_owned();
+        let owner = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "human")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let agent = group["memberships"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "agent")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner,
+                "expectedRevision": revision,
+                "membershipId": agent,
+            }))
+            .unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "prepare notes for the trip",
+            }))
+            .unwrap();
+        let event_id = posted["event"]["id"].as_str().unwrap().to_owned();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+            }))
+            .unwrap();
+        service
+            .after_runtime_settlement(
+                &conversation_id,
+                &json!({
+                    "output": assistant_envelope_json(
+                        "I'll prepare the notes in a child conversation.",
+                        &typed_child_proposal_json_with_result(
+                            &conversation_id,
+                            "fake-codex-steer-prompt",
+                        ),
+                    ),
+                    "membershipId": agent,
+                    "causationId": event_id,
+                    "dispatchId": "dispatch:parent-vertical-steer",
+                }),
+            )
+            .unwrap();
+        let relation = service
+            .store()
+            .list_child_relations(&conversation_id, None, 8)
+            .unwrap()
+            .remove(0);
+        let child_id = relation.child_conversation_id.clone();
+        let child_member = service
+            .store()
+            .get(&child_id)
+            .unwrap()
+            .assistant_membership_id
+            .expect("child assistant");
+        service.claim_continuity_owner().unwrap();
+        let _ = service.attend_due().unwrap();
+        let accepted = licoup_conversation::continuity::read_child_work_accepted(
+            service.store(),
+            &conversation_id,
+            &relation.goal_id,
+            1,
+        )
+        .unwrap()
+        .expect("accepted child work");
+        let dispatch_id = accepted
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .expect("accepted dispatch")
+            .to_owned();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            if runtime
+                .inspect_turn(&dispatch_id)
+                .is_some_and(|(_, turn_id)| turn_id == "fake-steer-turn")
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            runtime
+                .inspect_turn(&dispatch_id)
+                .map(|(_, turn_id)| turn_id),
+            Some("fake-steer-turn".into()),
+            "live native turn must bind before control"
+        );
+        assert_eq!(start_count.load(Ordering::SeqCst), 1);
+        let send_runtime = runtime.clone();
+        let active_runtime = runtime.clone();
+        let steer_runtime = runtime.clone();
+        let cancel_runtime = runtime.clone();
+        let inspect_runtime = runtime.clone();
+        let start_count_for_reopen = start_count.clone();
+        let service = ConversationService::from_store(store).bind_conversation_runtime(
+            PersistentRuntimePorts::new(
+                move |params: &Value| {
+                    if params.get("continuityKind").and_then(Value::as_str) == Some("child-work") {
+                        start_count_for_reopen.fetch_add(1, Ordering::SeqCst);
+                        send_runtime.start_admitted_background(params, None)
+                    } else {
+                        Ok(json!({
+                            "ok": true,
+                            "accepted": true,
+                            "turnHandle": "turn:parent",
+                        }))
+                    }
+                },
+                move |conversation_id: &str| {
+                    active_runtime.active(&json!({ "conversationId": conversation_id }))
+                },
+                move |params: &Value| steer_runtime.steer_sync(params),
+                move |params: &Value| {
+                    let conversation_id = params
+                        .get("conversationId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    Ok(json!({
+                        "ok": true,
+                        "output": typed_child_proposal_json_with_result(
+                            conversation_id,
+                            "fake-codex-steer-prompt",
+                        ),
+                    }))
+                },
+                |_request: Value| Ok(json!({})),
+            )
+            .with_cancel(move |params: &Value| {
+                cancel_runtime
+                    .request_cancel(params)
+                    .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+            }),
+        );
+        if let Some(host) = service.continuity().cloned() {
+            let observer_host = host.clone();
+            runtime.set_live_turn_observer(
+                move |conversation_id, membership_id, dispatch_id, native| {
+                    observer_host.update_live_native_turn(
+                        conversation_id,
+                        membership_id,
+                        dispatch_id,
+                        native,
+                    );
+                },
+            );
+            host.bind_work_turn_inspect(std::sync::Arc::new(move |handle| {
+                inspect_runtime.inspect_turn(handle)
+            }));
+        }
+        service.claim_continuity_owner().unwrap();
+        let _ = service.attend_due().unwrap();
+        assert_eq!(
+            start_count.load(Ordering::SeqCst),
+            1,
+            "reopened host must restore the started PersistentTurn without a second start"
+        );
+        let host = service.continuity().cloned().unwrap();
+        assert_eq!(
+            host.steer_admitted_child_follow_up(
+                &child_id,
+                &child_member,
+                "turn:stale-other",
+                "fake-codex-steer-guidance",
+            ),
+            licoup_native::domain::assistant_continuity::ChildControlDisposition::Conflict
+        );
+        assert_eq!(
+            host.cancel_admitted_child_turn(&conversation_id, &agent, &dispatch_id),
+            licoup_native::domain::assistant_continuity::ChildControlDisposition::Ordinary
+        );
+        assert!(
+            !interrupt_path.exists(),
+            "wrong-scope control must not interrupt the live native turn"
+        );
+        assert_eq!(
+            host.steer_admitted_child_follow_up(
+                &child_id,
+                &child_member,
+                &dispatch_id,
+                "fake-codex-steer-guidance",
+            ),
+            licoup_native::domain::assistant_continuity::ChildControlDisposition::Accepted,
+            "reopened live PersistentTurn must accept the admitted steer"
+        );
+        let cancel = host.cancel_admitted_child_turn(&child_id, &child_member, &dispatch_id);
+        assert_eq!(
+            cancel,
+            licoup_native::domain::assistant_continuity::ChildControlDisposition::Accepted,
+            "live Codex cancel must be Accepted on the admitted PersistentTurn owner"
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && !interrupt_path.exists() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let interrupt = serde_json::from_str::<Value>(
+            &std::fs::read_to_string(&interrupt_path).expect("native interrupt receipt"),
+        )
+        .unwrap();
+        assert_eq!(interrupt["method"], "turn/interrupt");
+        assert_eq!(interrupt["threadId"], "fake-steer-thread");
+        assert_eq!(interrupt["turnId"], "fake-steer-turn");
+        let _ = std::fs::remove_file(steer_mode);
+        let _ = std::fs::remove_file(cancel_mode);
+        let _ = std::fs::remove_file(interrupt_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn ordinary_question_produces_readable_reply_through_fake_codex() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("ordinary-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let reply = "标准正态分布的均值为 0，方差为 1。";
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds.clone());
+        let (conversation_id, owner, agent) =
+            create_designated_group(&service, "Ordinary question");
+        let envelope = assistant_envelope_json(reply, &question_proposal_json(&conversation_id));
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, &envelope).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "解释一下正态分布。",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("ordinary fake Codex finish must settle");
+        assert_eq!(settled_conversation, conversation_id);
+        assert_ne!(
+            settled_payload.get("ok").and_then(Value::as_bool),
+            Some(false)
+        );
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
+            .unwrap()
+            .expect("parent turn event");
+        assert_eq!(event.author_membership_id.as_deref(), Some(agent.as_str()));
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            reply
+        );
+        assert_eq!(
+            service
+                .store()
+                .runtime_response_mode(
+                    &licoup_native::domain::client_conversation::ConversationRuntimeScope {
+                        dispatch_id: dispatch_id.to_owned(),
+                        conversation_id: conversation_id.clone(),
+                        membership_id: event.author_membership_id.clone().unwrap_or_default(),
+                        event_id: event.id.clone(),
+                    }
+                )
+                .unwrap()
+                .as_deref(),
+            Some(TRUSTED_RESPONSE_MODE_ASSISTANT_TURN),
+            "authorized after-post must record the internal admitted response mode"
+        );
+        assert!(!visible_text(service.store(), &conversation_id, &event.id).contains("speechAct"));
+        assert!(
+            service
+                .store()
+                .list_child_relations(&conversation_id, None, 8)
+                .unwrap()
+                .is_empty()
+        );
+        let kinds = start_kinds
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone();
+        assert_eq!(kinds, vec!["user-posted".to_owned()]);
+        let handle = dispatch_id.to_owned();
+        for text in runtime.live_message_texts(&handle) {
+            assert!(
+                !text.contains("interpretationProposal") && !text.contains("speechAct"),
+                "live payload must not publish the private envelope: {text}"
+            );
+        }
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn durable_delegation_applies_private_proposal_once_through_fake_codex() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("delegation-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let reply = "我会在子对话里准备讲义，先把资料边界说清楚。";
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds.clone());
+        let (conversation_id, owner, agent) =
+            create_designated_group(&service, "Durable delegation");
+        let envelope = assistant_envelope_json(reply, &typed_child_proposal_json(&conversation_id));
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, &envelope).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "帮我筹备团队分享。",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("delegation fake Codex finish must settle");
+        assert_eq!(settled_conversation, conversation_id);
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
+            .unwrap()
+            .expect("parent turn event");
+        assert_eq!(event.author_membership_id.as_deref(), Some(agent.as_str()));
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            reply
+        );
+        let relations = service
+            .store()
+            .list_child_relations(&conversation_id, None, 8)
+            .unwrap();
+        assert_eq!(relations.len(), 1, "exactly one child card");
+        let kinds = start_kinds
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone();
+        assert_eq!(
+            kinds.iter().filter(|kind| *kind == "user-posted").count(),
+            1
+        );
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn chunked_envelope_never_publishes_private_text_and_reopens() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let mut chunk_mode = executable.clone();
+        chunk_mode.set_extension("chunk-mode");
+        std::fs::write(&chunk_mode, "1").unwrap();
+        let store_root = executable.parent().unwrap().join("chunk-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let reply = "He said \"use {\\\"ok\\\":true}\" then 均值 0.";
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
+        let (conversation_id, owner, _agent) =
+            create_designated_group(&service, "Chunked envelope");
+        let envelope = assistant_envelope_json(reply, &question_proposal_json(&conversation_id));
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, &envelope).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "stream the envelope",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (_settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("chunked fake Codex finish must settle");
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
+            .unwrap()
+            .expect("parent turn event");
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            reply
+        );
+        for text in runtime.live_message_texts(dispatch_id) {
+            assert!(
+                !text.contains("interpretationProposal"),
+                "streamed live text leaked private envelope: {text}"
+            );
+            assert!(text.is_empty() || text == reply);
+        }
+        runtime.evict_turn_cache(dispatch_id);
+        let frames = service
+            .store()
+            .runtime_frames_after(
+                &licoup_native::domain::client_conversation::ConversationRuntimeScope {
+                    dispatch_id: dispatch_id.to_owned(),
+                    conversation_id: conversation_id.clone(),
+                    membership_id: event.author_membership_id.clone().unwrap_or_default(),
+                    event_id: event.id.clone(),
+                },
+                0,
+                i64::MAX as u64,
+                64,
+            )
+            .unwrap();
+        for frame in frames {
+            let redacted = redact_live_runtime_event(&frame);
+            if let Some(text) = redacted.pointer("/payload/text").and_then(Value::as_str) {
+                assert!(
+                    !text.contains("interpretationProposal"),
+                    "store-fallback replay must redact private envelope"
+                );
+            }
+        }
+        drop(service);
+        drop(runtime);
+        let reopened = ConversationStore::open(&store_root).unwrap();
+        assert_eq!(visible_text(&reopened, &conversation_id, &event.id), reply);
+        assert!(!visible_text(&reopened, &conversation_id, &event.id).contains("speechAct"));
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_file(chunk_mode);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn unadmitted_fake_codex_preserves_proposal_looking_json() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let exact = r#"{"speechAct":"question","envelope":{"conversationId":"conversation:one"},"commitmentProposals":[]} trailing prose stays."#;
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, exact).unwrap();
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let send_runtime = runtime.clone();
+        let send_executable = executable.clone();
+        let service = ConversationService::from_store(store).bind_conversation_runtime(
+            PersistentRuntimePorts::new(
+                move |params: &Value| {
+                    send_runtime
+                        .start_background(&with_test_executable(params, &send_executable), None)
+                },
+                |_conversation_id: &str| json!([]),
+                |_params: &Value| Ok(json!({ "ok": true })),
+                |_params: &Value| Ok(json!({ "ok": true, "output": "" })),
+                |_request: Value| Ok(json!({})),
+            ),
+        );
+        runtime.set_settlement_hook(move |conversation_id, payload| {
+            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
+            Ok(())
+        });
+        let (conversation_id, _owner, agent) = create_designated_group(&service, "Unadmitted chat");
+        let started = runtime
+            .start_background(
+                &with_test_executable(
+                    &json!({
+                        "agent": "codex",
+                        "agentId": "codex",
+                        "text": "print json",
+                        "streamEvents": true,
+                        "conversationId": conversation_id,
+                        "membershipId": agent,
+                    }),
+                    &executable,
+                ),
+                None,
+            )
+            .unwrap();
+        let (_settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("unadmitted fake Codex finish must settle");
+        let dispatch_id = settled_payload
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .or_else(|| started["turnHandle"].as_str())
+            .expect("dispatchId");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
+            .unwrap()
+            .expect("unadmitted turn event");
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            exact
+        );
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn malformed_admitted_fake_codex_output_is_failed_not_silence() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("malformed-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
+        let (conversation_id, owner, _agent) =
+            create_designated_group(&service, "Malformed envelope");
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "this should fail honestly",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("malformed fake Codex finish must settle");
+        assert_eq!(settled_conversation, conversation_id);
+        assert_eq!(
+            settled_payload.get("ok").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            settled_payload.get("code").and_then(Value::as_str),
+            Some(ASSISTANT_TURN_INVALID_ERROR)
+        );
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
+            .unwrap()
+            .expect("failed turn event");
+        assert!(
+            visible_text(service.store(), &conversation_id, &event.id).is_empty(),
+            "malformed admitted output must not become Completed silence text"
+        );
+        assert!(event.parts.iter().any(|part| {
+            part.kind == EventPartKind::Diagnostic
+                && part.content.contains(ASSISTANT_TURN_INVALID_ERROR)
+        }));
+        assert!(
+            service
+                .store()
+                .list_child_relations(&conversation_id, None, 8)
+                .unwrap()
+                .is_empty(),
+            "turn failure is not Goal acceptance"
+        );
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn admitted_fake_codex_public_terminal_and_evicted_replay_use_reply_only() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("public-terminal-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let reply = "公开回复只保留 replyText。";
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
+        let (conversation_id, owner, _agent) = create_designated_group(&service, "Public terminal");
+        let envelope = assistant_envelope_json(reply, &question_proposal_json(&conversation_id));
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, &envelope).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "ask for a public reply",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (_settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("admitted fake Codex finish must settle");
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        assert!(
+            settled_payload
+                .get("output")
+                .and_then(Value::as_str)
+                .is_some_and(|output| output.contains("interpretationProposal")),
+            "private host settlement must retain the typed proposal exactly once"
+        );
+        let (ok, public_payload) = runtime
+            .public_terminal(dispatch_id)
+            .expect("finish must store the public terminal");
+        assert!(
+            ok,
+            "successful admitted public terminal must be ok: {public_payload}"
+        );
+        assert_eq!(
+            public_payload.get("output").and_then(Value::as_str),
+            Some(reply),
+            "public terminal output must be replyText only: {public_payload}"
+        );
+        assert!(
+            !public_payload
+                .to_string()
+                .contains("interpretationProposal"),
+            "public terminal must not leak the private proposal: {public_payload}"
+        );
+
+        runtime.evict_turn_cache(dispatch_id);
+        let turn = runtime
+            .turn(dispatch_id)
+            .expect("turn remains after eviction");
+        let high_water = runtime
+            .turn_high_water(dispatch_id)
+            .expect("successful admitted turn keeps high_water");
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        replay_turn(&writer, "attach-public", "workflow-public", &turn, 0).unwrap();
+        let frames = decode_replay_frames(&writer);
+        let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
+        assert_eq!(terminal["ok"], true, "{terminal}");
+        assert_eq!(
+            terminal["result"]["output"].as_str(),
+            Some(reply),
+            "store-fallback attach must write the public reply: {terminal}"
+        );
+        assert!(
+            !terminal.to_string().contains("interpretationProposal"),
+            "evicted attach/replay must not leak the private envelope: {terminal}"
+        );
+        for frame in &frames {
+            if let Some(text) = frame
+                .pointer("/payload/text")
+                .or_else(|| frame.pointer("/event/payload/text"))
+                .and_then(Value::as_str)
+            {
+                assert!(
+                    !text.contains("interpretationProposal"),
+                    "store-fallback replay frames must stay public: {frame}"
+                );
+            }
+        }
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn malformed_admitted_public_terminal_is_failed_after_fake_codex() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("public-failed-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
+        let (conversation_id, owner, _agent) =
+            create_designated_group(&service, "Public failed terminal");
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "this should fail publicly",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (_settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("malformed fake Codex finish must settle");
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let (ok, public_payload) = runtime
+            .public_terminal(dispatch_id)
+            .expect("failed admitted finish must store a public terminal");
+        assert!(
+            !ok,
+            "malformed admitted public terminal must not be ok=true: {public_payload}"
+        );
+        assert_eq!(
+            public_payload.get("code").and_then(Value::as_str),
+            Some(ASSISTANT_TURN_INVALID_ERROR)
+        );
+        assert!(
+            !public_payload
+                .to_string()
+                .contains("interpretationProposal"),
+            "failed public terminal must not leak the private proposal: {public_payload}"
+        );
+        runtime.evict_turn_cache(dispatch_id);
+        let turn = runtime.turn(dispatch_id).expect("failed turn remains");
+        let high_water = runtime
+            .turn_high_water(dispatch_id)
+            .expect("failed turn keeps its high-water after eviction");
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        replay_turn(&writer, "attach-failed", "workflow-failed", &turn, 0).unwrap();
+        let frames = decode_replay_frames(&writer);
+        let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
+        assert_eq!(terminal["ok"], false, "{terminal}");
+        assert_eq!(
+            public_terminal_code(&terminal["error"]),
+            Some(ASSISTANT_TURN_INVALID_ERROR),
+            "malformed admitted attach must keep the validation code: {terminal}"
+        );
+        assert!(
+            !terminal.to_string().contains("interpretationProposal"),
+            "failed attach terminal must stay public: {terminal}"
+        );
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn admitted_native_failed_fake_codex_public_terminal_preserves_code_from_zero() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("native-failed-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let store = ConversationStore::open(&store_root).unwrap();
+        let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (runtime, service, rx) =
+            bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
+        let (conversation_id, owner, _agent) =
+            create_designated_group(&service, "Native failed terminal");
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "this should fail natively",
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": posted["event"]["id"],
+            }))
+            .unwrap();
+        let (_settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("native fake Codex failure must settle");
+        let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
+        let (ok, public_payload) = runtime
+            .public_terminal(dispatch_id)
+            .expect("native failed finish must store a public terminal");
+        assert!(
+            !ok,
+            "native failed public terminal must not be ok=true: {public_payload}"
+        );
+        let code = public_terminal_code(&public_payload).expect("native failure keeps a code");
+        assert_ne!(
+            code, ASSISTANT_TURN_INVALID_ERROR,
+            "genuine native failure must not be rewritten as envelope validation: {public_payload}"
+        );
+        assert!(
+            !code.is_empty(),
+            "native failure must keep its code: {public_payload}"
+        );
+        assert!(
+            public_terminal_stage(&public_payload).is_some_and(|stage| !stage.is_empty()),
+            "native failure must keep its stage: {public_payload}"
+        );
+        runtime.evict_turn_cache(dispatch_id);
+        let turn = runtime.turn(dispatch_id).expect("failed turn remains");
+        let high_water = runtime
+            .turn_high_water(dispatch_id)
+            .expect("native failed turn keeps high_water");
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        replay_turn(&writer, "attach-native-failed", "workflow-native", &turn, 0).unwrap();
+        let frames = decode_replay_frames(&writer);
+        let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
+        assert_eq!(terminal["ok"], false, "{terminal}");
+        assert_eq!(
+            public_terminal_code(&terminal["error"]),
+            Some(code),
+            "evicted native-failed attach must keep the same native code: {terminal}"
+        );
+        let _ = runtime;
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn admitted_cancelled_fragmented_known_text_fields_stay_public_after_replay() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let turn = runtime
+            .begin_with(
+                &json!({
+                    "agent": "synthetic",
+                    "sessionId": "session-cancel",
+                    "text": "cancel while streaming",
+                    "continuityKind": "user-posted",
+                }),
+                PersistentTurnAdmission::Host,
+            )
+            .unwrap();
+        assert!(
+            turn.admitted_assistant_turn,
+            "cancelled proof must use the admitted writer"
+        );
+        PersistentConversationRuntime::record_event(
+            &turn,
+            json!({
+                "event": "agent.message.chunk",
+                "sessionId": "session-cancel",
+                "turnId": "native-turn-cancel",
+                "payload": {
+                    "text": "{\"replyText\":\"partial\",\"interpretationProposal\":"
+                }
+            }),
+        )
+        .unwrap();
+        PersistentConversationRuntime::finish(
+            &turn,
+            PersistentTerminal {
+                ok: false,
+                payload: json!({
+                    "ok": false,
+                    "turnStatus": "cancelled",
+                    "output": "{\"replyText\":\"partial\",\"interpretationProposal\":",
+                    "events": [
+                        {
+                            "kind": "text",
+                            "text": "{\"replyText\":\"partial\",\"interpretationProposal\":"
+                        },
+                        {
+                            "kind": "tool",
+                            "name": "read",
+                            "text": "keep-tool-fact"
+                        }
+                    ],
+                    "terminalTransition": {
+                        "kind": "text",
+                        "text": "{\"interpretationProposal\":"
+                    },
+                    "author": "agent:codex",
+                    "evidence": [{"kind": "artifact", "id": "art:1"}]
+                }),
+            },
+        )
+        .unwrap();
+        let (ok, public_payload) = runtime
+            .public_terminal(&turn.scope.dispatch_id)
+            .expect("cancelled finish must store a public terminal");
+        assert!(
+            !ok,
+            "cancelled public terminal stays non-ok: {public_payload}"
+        );
+        assert_eq!(
+            public_payload.get("turnStatus").and_then(Value::as_str),
+            Some("cancelled"),
+            "{public_payload}"
+        );
+        assert_ne!(
+            public_terminal_code(&public_payload),
+            Some(ASSISTANT_TURN_INVALID_ERROR)
+        );
+        assert_eq!(
+            public_payload.get("output").and_then(Value::as_str),
+            Some("")
+        );
+        assert_eq!(public_payload["events"][0]["text"], "");
+        assert_eq!(public_payload["events"][1]["text"], "keep-tool-fact");
+        assert_eq!(public_payload["terminalTransition"]["text"], "");
+        assert_eq!(public_payload["author"], "agent:codex");
+        assert_eq!(public_payload["evidence"][0]["id"], "art:1");
+        runtime.evict_turn_cache(&turn.scope.dispatch_id);
+        let high_water = runtime
+            .turn_high_water(&turn.scope.dispatch_id)
+            .expect("cancelled turn keeps high_water");
+        let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        replay_turn(&writer, "attach-cancelled", "workflow-cancelled", &turn, 0).unwrap();
+        let frames = decode_replay_frames(&writer);
+        let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
+        assert_eq!(terminal["ok"], false, "{terminal}");
+        assert_eq!(
+            terminal["error"]["turnStatus"].as_str(),
+            Some("cancelled"),
+            "{terminal}"
+        );
+        assert_eq!(terminal["error"]["output"].as_str(), Some(""));
+        assert_eq!(terminal["error"]["events"][0]["text"], "");
+        assert_eq!(terminal["error"]["events"][1]["text"], "keep-tool-fact");
+        assert_eq!(terminal["error"]["terminalTransition"]["text"], "");
+        assert!(
+            !terminal.to_string().contains("interpretationProposal"),
+            "cancelled attach must not leak envelope fragments: {terminal}"
+        );
+    }
+
+    #[test]
+    fn forged_public_rpc_continuity_kind_does_not_admit_response_mode() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let store_root = executable.parent().unwrap().join("forged-rpc-store");
+        std::fs::create_dir_all(&store_root).unwrap();
+        let reply = "forged flag must stay ordinary";
+        let store = ConversationStore::open(&store_root).unwrap();
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        runtime.set_settlement_hook(move |conversation_id, payload| {
+            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
+            Ok(())
+        });
+        let service = ConversationService::from_store(store);
+        let (conversation_id, _owner, agent) =
+            create_designated_group(&service, "Forged public RPC");
+        let envelope = assistant_envelope_json(reply, &question_proposal_json(&conversation_id));
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, &envelope).unwrap();
+        let params = with_test_executable(
+            &json!({
+                "agent": "codex",
+                "agentId": "codex",
+                "text": "print envelope",
+                "streamEvents": true,
+                "conversationId": conversation_id,
+                "membershipId": agent,
+                "continuityKind": "user-posted",
+            }),
+            &executable,
+        );
+        let input = {
+            let mut bytes = Vec::new();
+            serde_json::to_writer(
+                &mut bytes,
+                &json!({
+                    "protocol": STDIO_RPC_PROTOCOL,
+                    "id": "forged-dispatch",
+                    "workflowId": "forged-workflow",
+                    "method": "agent.conversation.dispatch",
+                    "params": params,
+                }),
+            )
+            .unwrap();
+            bytes.push(b'\n');
+            serde_json::to_writer(
+                &mut bytes,
+                &json!({
+                    "protocol": STDIO_RPC_PROTOCOL,
+                    "id": "forged-shutdown",
+                    "workflowId": "forged-workflow",
+                    "method": "shutdown",
+                }),
+            )
+            .unwrap();
+            bytes.push(b'\n');
+            std::io::Cursor::new(bytes)
+        };
+        let output = super::super::serve_stdio_rpc_with_persistent_conversation(
+            input,
+            Vec::new(),
+            |_, _| -> anyhow::Result<_> {
+                panic!("public conversation dispatch must not fall back to execute")
+            },
+            runtime.clone(),
+            service.clone(),
+        )
+        .unwrap();
+        let frames = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let dispatch = frames
+            .iter()
+            .find(|frame| frame["id"] == "forged-dispatch")
+            .expect("public dispatch frame");
+        assert_eq!(dispatch["ok"], true, "{dispatch}");
+        let handle = dispatch["result"]["turnHandle"]
+            .as_str()
+            .expect("public dispatch receipt");
+        let (_settled_conversation, _settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("forged public dispatch must still settle through fake Codex");
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&conversation_id, handle)
+            .unwrap()
+            .expect("forged public turn event");
+        let scope = licoup_native::domain::client_conversation::ConversationRuntimeScope {
+            dispatch_id: handle.to_owned(),
+            conversation_id: conversation_id.clone(),
+            membership_id: event.author_membership_id.clone().unwrap_or_default(),
+            event_id: event.id.clone(),
+        };
+        assert_eq!(
+            service.store().runtime_response_mode(&scope).unwrap(),
+            None,
+            "public RPC continuityKind must not admit the private response mode"
+        );
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            envelope,
+            "forged public admission must remain ordinary pass-through"
+        );
+        let _ = runtime;
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    fn typed_child_proposal_json_with_result(
+        conversation_id: &str,
+        expected_result: &str,
+    ) -> String {
+        let mut proposal = serde_json::from_str::<ContinuityInterpretationProposal>(
+            &typed_child_proposal_json(conversation_id),
+        )
+        .unwrap();
+        if let Some(commitment) = proposal.commitment_proposals.first_mut() {
+            commitment.expected_result = expected_result.to_owned();
+        }
+        serde_json::to_string(&proposal).unwrap()
     }
 }
