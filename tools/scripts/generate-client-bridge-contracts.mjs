@@ -399,7 +399,845 @@ function readConversationSchema(family) {
   ) {
     fail(`unsupported active bridge schema: ${family.schema}`);
   }
+  schema.continuousAssistant = readContinuousAssistant(schema, family.schema);
   return schema;
+}
+
+const CONTINUITY_GENERATED_RS =
+  "crates/licoup-conversation/src/continuity/generated.rs";
+const RUNTIME_WORK_CONTEXT_GENERATED_RS =
+  "crates/licoup-agent-runtime/src/work_context/generated.rs";
+const RUNTIME_NEEDED_ENUMS = Object.freeze([
+  "CapabilitySupport",
+  "FailureCode",
+  "FailureStage",
+  "EffectClass",
+  "RecoveryClass",
+  "DecisionLayer",
+]);
+
+function continuityTypeName(name) {
+  return name.startsWith("Continuity") ? name : `Continuity${name}`;
+}
+
+function rustSnake(name) {
+  return name.replace(/[A-Z]/g, (character, index) =>
+    index === 0 ? character.toLowerCase() : `_${character.toLowerCase()}`,
+  );
+}
+
+function uniqueStrings(values, pattern, label) {
+  if (
+    !Array.isArray(values) ||
+    values.length === 0 ||
+    new Set(values).size !== values.length ||
+    values.some((value) => typeof value !== "string" || !pattern.test(value))
+  ) {
+    fail(`invalid continuity ${label}`);
+  }
+  return values;
+}
+
+function parseContinuityFieldType(raw) {
+  if (typeof raw !== "string") fail("invalid continuity field type");
+  if (raw.startsWith("optional:")) {
+    return { optional: true, ...parseContinuityFieldType(raw.slice(9)) };
+  }
+  if (raw.startsWith("array:")) {
+    return { array: true, ...parseContinuityFieldType(raw.slice(6)) };
+  }
+  if (raw.startsWith("enum:")) return { kind: "enum", name: raw.slice(5) };
+  if (raw.startsWith("struct:")) return { kind: "struct", name: raw.slice(7) };
+  if (raw.startsWith("union:")) return { kind: "union", name: raw.slice(6) };
+  if (
+    raw === "id" ||
+    raw === "label" ||
+    raw === "reason" ||
+    raw === "digest" ||
+    raw === "string" ||
+    raw === "i64" ||
+    raw === "u64" ||
+    raw === "bool"
+  ) {
+    return { kind: raw };
+  }
+  fail(`unsupported continuity field type: ${raw}`);
+}
+
+function rustContinuityInner(type) {
+  switch (type.kind) {
+    case "id":
+    case "label":
+    case "reason":
+    case "digest":
+    case "string":
+      return "String";
+    case "i64":
+      return "i64";
+    case "u64":
+      return "u64";
+    case "bool":
+      return "bool";
+    case "enum":
+    case "struct":
+    case "union":
+      return continuityTypeName(type.name);
+    default:
+      fail(`unsupported continuity rust type: ${type.kind}`);
+  }
+}
+
+function rustContinuityType(type) {
+  const inner = rustContinuityInner(type);
+  if (type.array) return `Vec<${inner}>`;
+  if (type.optional) return `Option<${inner}>`;
+  return inner;
+}
+
+function dartContinuityInner(type) {
+  switch (type.kind) {
+    case "id":
+    case "label":
+    case "reason":
+    case "digest":
+    case "string":
+      return "String";
+    case "i64":
+    case "u64":
+      return "int";
+    case "bool":
+      return "bool";
+    case "enum":
+    case "struct":
+    case "union":
+      return continuityTypeName(type.name);
+    default:
+      fail(`unsupported continuity dart type: ${type.kind}`);
+  }
+}
+
+function dartContinuityType(type) {
+  const inner = dartContinuityInner(type);
+  if (type.array) return `List<${inner}>`;
+  if (type.optional) return `${inner}?`;
+  return inner;
+}
+
+function readContinuousAssistant(schema, schemaPath) {
+  if (!isRecord(schema.continuousAssistant)) {
+    fail("conversation schema must include continuousAssistant");
+  }
+  const continuity = schema.continuousAssistant;
+  const kebab = /^[a-z][a-z0-9-]*$/u;
+  const snake = /^[a-z][a-z0-9_]*$/u;
+  const stage = /^continuity\/[a-z][a-z0-9-]*$/u;
+  const typeName = /^[A-Z][A-Za-z0-9]*$/u;
+  if (
+    !isRecord(continuity) ||
+    continuity.schemaId !== "lico.continuous-assistant.v1" ||
+    continuity.version !== 1 ||
+    continuity.spanEncoding !== "utf8-byte-range" ||
+    continuity.maxPageSize !== 50 ||
+    continuity.maxOrientationItems !== 32 ||
+    continuity.maxRefs !== 64 ||
+    continuity.maxIdBytes !== 128 ||
+    continuity.maxLabelBytes !== 256 ||
+    continuity.maxReasonBytes !== 128 ||
+    continuity.maxDigestBytes !== 128
+  ) {
+    fail(`unsupported continuous assistant schema in ${schemaPath}`);
+  }
+  uniqueStrings(continuity.decisionLayers, kebab, "decisionLayers");
+  uniqueStrings(continuity.effectClasses, kebab, "effectClasses");
+  uniqueStrings(continuity.commands, kebab, "commands");
+  uniqueStrings(continuity.ports, kebab, "ports");
+  uniqueStrings(continuity.m1Leaves, kebab, "m1Leaves");
+  uniqueStrings(continuity.failureCodes, snake, "failureCodes");
+  uniqueStrings(continuity.recoveryClasses, snake, "recoveryClasses");
+  uniqueStrings(continuity.failureStages, stage, "failureStages");
+  if (
+    !isRecord(continuity.enums) ||
+    !isRecord(continuity.structs) ||
+    !isRecord(continuity.unions)
+  ) {
+    fail(`invalid continuous assistant type tables in ${schemaPath}`);
+  }
+  if (
+    JSON.stringify(continuity.enums.FailureCode) !==
+      JSON.stringify(continuity.failureCodes) ||
+    JSON.stringify(continuity.enums.FailureStage) !==
+      JSON.stringify(continuity.failureStages) ||
+    JSON.stringify(continuity.enums.RecoveryClass) !==
+      JSON.stringify(continuity.recoveryClasses) ||
+    JSON.stringify(continuity.enums.EffectClass) !==
+      JSON.stringify(continuity.effectClasses) ||
+    JSON.stringify(continuity.enums.DecisionLayer) !==
+      JSON.stringify(continuity.decisionLayers)
+  ) {
+    fail("continuous assistant closed lists must match enum tables");
+  }
+  for (const [name, values] of Object.entries(continuity.enums)) {
+    if (!typeName.test(name)) fail(`invalid continuity enum name: ${name}`);
+    uniqueStrings(
+      values,
+      name === "FailureStage" ? stage : name.endsWith("Code") || name.endsWith("Class")
+        ? snake
+        : kebab,
+      `enum ${name}`,
+    );
+  }
+  for (const [name, definition] of Object.entries(continuity.structs)) {
+    if (!typeName.test(name) || !isRecord(definition) || !Array.isArray(definition.fields)) {
+      fail(`invalid continuity struct: ${name}`);
+    }
+    const fieldNames = new Set();
+    for (const field of definition.fields) {
+      if (
+        !isRecord(field) ||
+        typeof field.name !== "string" ||
+        !/^[a-z][A-Za-z0-9]*$/u.test(field.name) ||
+        fieldNames.has(field.name)
+      ) {
+        fail(`invalid continuity field on ${name}`);
+      }
+      fieldNames.add(field.name);
+      parseContinuityFieldType(field.type);
+    }
+  }
+  for (const [name, definition] of Object.entries(continuity.unions)) {
+    if (
+      !typeName.test(name) ||
+      !isRecord(definition) ||
+      definition.tag !== "kind" ||
+      !isRecord(definition.variants)
+    ) {
+      fail(`invalid continuity union: ${name}`);
+    }
+    for (const [variant, fields] of Object.entries(definition.variants)) {
+      if (!kebab.test(variant) || !Array.isArray(fields)) {
+        fail(`invalid continuity union variant: ${name}.${variant}`);
+      }
+      for (const field of fields) {
+        if (!isRecord(field) || typeof field.name !== "string") {
+          fail(`invalid continuity union field: ${name}.${variant}`);
+        }
+        parseContinuityFieldType(field.type);
+      }
+    }
+  }
+  return continuity;
+}
+
+function rustContinuityField(field, visibility = "pub ") {
+  const type = parseContinuityFieldType(field.type);
+  const rustName = rustSnake(field.name);
+  const rustType = rustContinuityType(type);
+  const lines = [];
+  if (type.optional) {
+    lines.push('    #[serde(default, skip_serializing_if = "Option::is_none")]');
+  }
+  if (rustName !== field.name) {
+    lines.push(`    #[serde(rename = ${JSON.stringify(field.name)})]`);
+  }
+  lines.push(`    ${visibility}${rustName}: ${rustType},`);
+  return lines.join("\n");
+}
+
+function rustContinuityStruct(name, definition) {
+  return `#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ${continuityTypeName(name)} {
+${definition.fields.map((field) => rustContinuityField(field)).join("\n")}
+}
+`;
+}
+
+function rustContinuityUnion(name, definition) {
+  const variants = Object.entries(definition.variants).map(([wire, fields]) => {
+    const variantName = pascal(wire);
+    if (fields.length === 0) {
+      return `    #[serde(rename = ${JSON.stringify(wire)})]\n    ${variantName},`;
+    }
+    const body = fields.map((field) => rustContinuityField(field, "")).join("\n");
+    return `    #[serde(rename = ${JSON.stringify(wire)})]\n    ${variantName} {\n${body}\n    },`;
+  });
+  return `#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum ${continuityTypeName(name)} {
+${variants.join("\n")}
+}
+`;
+}
+
+function requireContinuityStruct(continuity, name) {
+  const definition = continuity.structs?.[name];
+  if (!isRecord(definition) || !Array.isArray(definition.fields)) {
+    fail(`continuity generation missing struct: ${name}`);
+  }
+  return definition;
+}
+
+function requireContinuityEnum(continuity, name) {
+  const values = continuity.enums?.[name];
+  if (!Array.isArray(values) || values.length === 0) {
+    fail(`continuity generation missing enum: ${name}`);
+  }
+  return values;
+}
+
+function describeContinuityFieldType(raw) {
+  const type = parseContinuityFieldType(raw);
+  let text = type.kind === "enum" || type.kind === "struct" || type.kind === "union"
+    ? `${type.kind}:${type.name}`
+    : type.kind;
+  if (type.array) text = `array:${text}`;
+  if (type.optional) text = `optional:${text}`;
+  return text;
+}
+
+function rustProposalResponseContract(continuity) {
+  const response = requireContinuityStruct(continuity, "AssistantTurnResponse");
+  const proposal = requireContinuityStruct(continuity, "InterpretationProposal");
+  const envelope = requireContinuityStruct(continuity, "WriteEnvelope");
+  const sourceRef = requireContinuityStruct(continuity, "SourceRef");
+  const span = requireContinuityStruct(continuity, "Utf8ByteSpan");
+  const association = requireContinuityStruct(continuity, "MatterAssociation");
+  const commitment = requireContinuityStruct(continuity, "CommitmentProposal");
+  const criterion = requireContinuityStruct(continuity, "Criterion");
+  const agreement = requireContinuityStruct(continuity, "AgreementProposal");
+  const admission = requireContinuityStruct(continuity, "TaskChildAdmission");
+  const speechActs = requireContinuityEnum(continuity, "SpeechAct");
+  const subjects = requireContinuityEnum(continuity, "MatterSubject");
+  const followThrough = requireContinuityEnum(continuity, "FollowThroughKind");
+  const ownerKinds = requireContinuityEnum(continuity, "SourceOwnerKind");
+  const validity = requireContinuityEnum(continuity, "SourceValidity");
+  const scopes = requireContinuityEnum(continuity, "VisibilityScope");
+  const oracleKinds = requireContinuityEnum(continuity, "OracleKind");
+  const agreementScopes = requireContinuityEnum(continuity, "AgreementScope");
+  const agreementOrigins = requireContinuityEnum(continuity, "AgreementOrigin");
+  if (!speechActs.includes("delegation")) {
+    fail("proposal response contract requires speechAct delegation");
+  }
+  if (!subjects.includes("new")) {
+    fail("proposal response contract requires subject new");
+  }
+  if (!followThrough.includes("durable")) {
+    fail("proposal response contract requires followThroughKind durable");
+  }
+  const fieldLine = (field) =>
+    `${field.name}: ${describeContinuityFieldType(field.type)}`;
+  const exampleSource = {
+    ownerKind: "event",
+    opaqueId: "AUTHORIZED_SOURCE_OPAQUE_ID",
+    sourceRevision: 1,
+    digest:
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    visibilityScope: "conversation",
+    validity: "current",
+  };
+  const example = {
+    envelope: {
+      conversationId: "HOST_OWNED_CONVERSATION_ID",
+      sourceEventRefs: [exampleSource],
+      observedRevision: 0,
+      designationEpoch: 0,
+      requestId: "HOST_OWNED_REQUEST_ID",
+    },
+    matterAssociations: [],
+    speechAct: "delegation",
+    commitmentProposals: [
+      {
+        matterId: "matter:notes",
+        subject: "new",
+        expectedResult: "Prepare notes",
+        criteria: [
+          {
+            id: "criterion:notes-done",
+            descriptionRef: exampleSource,
+            required: true,
+            oracleKind: "user",
+            artifactVersionRule: "exact-source",
+            freshnessRule: "current",
+            evaluatorPolicy: "user-acceptance",
+          },
+        ],
+        createGoal: true,
+      },
+    ],
+    agreementProposals: [],
+    capabilityNeeds: [],
+    uncertaintyReasons: [],
+    requestedReads: [],
+    taskChildAdmission: {
+      goalId: "goal:notes",
+      parentConversationId: "HOST_OWNED_CONVERSATION_ID",
+      speechAct: "delegation",
+      followThroughKind: "durable",
+      requestId: "request:admit:notes",
+    },
+  };
+  const requestedReadsExample = {
+    ...example,
+    speechAct: "reference",
+    commitmentProposals: [],
+    taskChildAdmission: undefined,
+    requestedReads: [exampleSource],
+  };
+  delete requestedReadsExample.taskChildAdmission;
+  const responseExample = {
+    replyText:
+      "I'll prepare the notes in a child conversation and keep this reply readable.",
+    interpretationProposal: example,
+  };
+  const requestedReadsResponseExample = {
+    replyText: "I need one authorized source again before I can continue.",
+    interpretationProposal: requestedReadsExample,
+  };
+  const contract = [
+    "Respond with one JSON object matching ContinuityAssistantTurnResponse.",
+    "replyText is the ordinary user-facing reply and must be nonempty usable prose. interpretationProposal is the one private typed proposal. Do not emit a second object, delimiter, or any prose outside this JSON.",
+    "The host restamps envelope.conversationId, envelope.sourceEventRefs, envelope.observedRevision, envelope.designationEpoch, envelope.requestId, and taskChildAdmission.parentConversationId from the current authorized assembly. Model-supplied envelope and parent values are not trusted.",
+    "Every required array must be present, including when empty. Do not copy these instructions into user-authored Event or Part text. Private proposal bytes must not appear as the user-facing reply.",
+    "",
+    "Required AssistantTurnResponse fields:",
+    ...response.fields.map((field) => `- ${fieldLine(field)}`),
+    "",
+    "Required InterpretationProposal fields:",
+    ...proposal.fields.map((field) => `- ${fieldLine(field)}`),
+    "",
+    "WriteEnvelope fields (host-owned, restamped):",
+    ...envelope.fields.map((field) => `- ${fieldLine(field)}`),
+    "",
+    "SourceRef fields. Copy authorized objects verbatim; do not invent ids, revisions, digests, or scopes:",
+    ...sourceRef.fields.map((field) => `- ${fieldLine(field)}`),
+    `Utf8ByteSpan: ${span.fields.map(fieldLine).join("; ")}.`,
+    `ownerKind: ${ownerKinds.join("|")}.`,
+    `validity: ${validity.join("|")}.`,
+    `visibilityScope: ${scopes.join("|")}.`,
+    "",
+    "Nested required shapes:",
+    `MatterAssociation: ${association.fields.map(fieldLine).join("; ")}.`,
+    `CommitmentProposal: ${commitment.fields.map(fieldLine).join("; ")}.`,
+    `Criterion: ${criterion.fields.map(fieldLine).join("; ")}.`,
+    `AgreementProposal: ${agreement.fields.map(fieldLine).join("; ")}.`,
+    `TaskChildAdmission: ${admission.fields.map(fieldLine).join("; ")}.`,
+    "",
+    `speechAct: ${speechActs.join("|")}.`,
+    `subject: ${subjects.join("|")}.`,
+    `followThroughKind: ${followThrough.join("|")}.`,
+    `oracleKind: ${oracleKinds.join("|")}.`,
+    `agreement scope: ${agreementScopes.join("|")}; origin: ${agreementOrigins.join("|")}.`,
+    "",
+    "Durable delegation with taskChildAdmission. requestedReads stays [] unless a further authorized read is needed:",
+    JSON.stringify(responseExample, null, 2),
+    "",
+    "Conditional requestedReads: emit this shape only when a selected authorized source must be read again. Leave requestedReads [] otherwise. This is not a compulsory extra hop and is not an abstain-only contract:",
+    JSON.stringify(requestedReadsResponseExample, null, 2),
+  ].join("\n");
+  return `pub const PROPOSAL_RESPONSE_CONTRACT: &str = ${JSON.stringify(contract)};
+pub const PROPOSAL_RESPONSE_DELEGATION_EXAMPLE: &str = ${JSON.stringify(JSON.stringify(example))};
+`;
+}
+
+function rustContinuityTypes(continuity) {
+  const enums = Object.entries(continuity.enums)
+    .map(([name, values]) => rustEnum(continuityTypeName(name), values))
+    .join("\n");
+  const structs = Object.entries(continuity.structs)
+    .map(([name, definition]) => rustContinuityStruct(name, definition))
+    .join("\n");
+  const unions = Object.entries(continuity.unions)
+    .map(([name, definition]) => rustContinuityUnion(name, definition))
+    .join("\n");
+  return `
+pub const CONTINUITY_BRIDGE_SCHEMA_VERSION: &str = ${JSON.stringify(continuity.schemaId)};
+pub const CONTINUITY_SPAN_ENCODING: &str = ${JSON.stringify(continuity.spanEncoding)};
+pub const CONTINUITY_MAX_PAGE_SIZE: usize = ${continuity.maxPageSize};
+pub const CONTINUITY_MAX_ORIENTATION_ITEMS: usize = ${continuity.maxOrientationItems};
+pub const CONTINUITY_MAX_REFS: usize = ${continuity.maxRefs};
+pub const CONTINUITY_MAX_ID_BYTES: usize = ${continuity.maxIdBytes};
+pub const CONTINUITY_MAX_LABEL_BYTES: usize = ${continuity.maxLabelBytes};
+pub const CONTINUITY_MAX_REASON_BYTES: usize = ${continuity.maxReasonBytes};
+pub const CONTINUITY_MAX_DIGEST_BYTES: usize = ${continuity.maxDigestBytes};
+${rustProposalResponseContract(continuity)}
+${enums}
+${rustEnum("ContinuityCommand", continuity.commands)}
+${rustEnum("ContinuityPort", continuity.ports)}
+${structs}
+${unions}
+pub fn parse_continuity_value<T: for<'de> Deserialize<'de>>(
+    value: &Value,
+) -> Result<T, ContinuityFailure> {
+    serde_json::from_value(value.clone()).map_err(|_| ContinuityFailure {
+        code: ContinuityFailureCode::InvalidRequest,
+        stage: ContinuityFailureStage::ContinuityParse,
+        recovery: ContinuityRecoveryClass::CorrectRequest,
+        effect_class: ContinuityEffectClass::None,
+        decision_layer: ContinuityDecisionLayer::Admission,
+        retryable: false,
+    })
+}
+`;
+}
+
+function rustContinuityModule(continuity, schemaPath) {
+  return `// @generated by ${schemaPath}; do not edit.
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+${rustContinuityTypes(continuity)}
+`;
+}
+
+function rustRuntimeWorkContextModule(continuity, schemaPath) {
+  for (const name of RUNTIME_NEEDED_ENUMS) {
+    if (!Array.isArray(continuity.enums?.[name])) {
+      fail(`runtime work-context generation missing enum: ${name}`);
+    }
+  }
+  if (!isRecord(continuity.structs?.NativeCapabilitySnapshot)) {
+    fail("runtime work-context generation missing NativeCapabilitySnapshot");
+  }
+  if (!isRecord(continuity.structs?.ContinuityFailure)) {
+    fail("runtime work-context generation missing ContinuityFailure");
+  }
+  const enums = RUNTIME_NEEDED_ENUMS.map((name) =>
+    rustEnum(continuityTypeName(name), continuity.enums[name]),
+  ).join("\n");
+  return `// @generated by ${schemaPath}#continuousAssistant; do not edit.
+use serde::{Deserialize, Serialize};
+
+${enums}
+${rustContinuityStruct(
+    "NativeCapabilitySnapshot",
+    continuity.structs.NativeCapabilitySnapshot,
+  )}
+${rustContinuityStruct("ContinuityFailure", continuity.structs.ContinuityFailure)}
+`;
+}
+
+function dartRequiredEnumParse(typeName, expression) {
+  return `(() {
+      final parsed = ${typeName}.fromWire(${expression});
+      if (parsed == ${typeName}.unrecognized) {
+        throw const ContinuityContractException(
+          ContinuityFailureCode.invalidRequest,
+        );
+      }
+      return parsed;
+    })()`;
+}
+
+function dartContinuityEnum(name, values) {
+  const entries = values.map((value) => {
+    const member = pascal(value);
+    const rawCamelMember = member[0].toLowerCase() + member.slice(1);
+    const camelMember = DART_RESERVED_WORDS.has(rawCamelMember)
+      ? `${rawCamelMember}Value`
+      : rawCamelMember;
+    const line = `  ${camelMember}(${JSON.stringify(value)}),`;
+    return line.length <= 80
+      ? line
+      : `  ${camelMember}(\n    ${JSON.stringify(value)},\n  ),`;
+  });
+  const condition =
+    `      if (candidate != ${name}.unrecognized && candidate.wireName == value) {`;
+  const formattedCondition = condition.length <= 80
+    ? condition
+    : `      if (candidate != ${name}.unrecognized &&\n          candidate.wireName == value) {`;
+  return `enum ${name} {
+${entries.join("\n")}
+  unrecognized('');
+
+  const ${name}(this.wireName);
+  final String wireName;
+
+  static ${name} fromWire(Object? value) {
+    if (value is! String) return ${name}.unrecognized;
+    for (final candidate in ${name}.values) {
+${formattedCondition}
+        return candidate;
+      }
+    }
+    return ${name}.unrecognized;
+  }
+}
+`;
+}
+
+function dartParseExpression(type, expression) {
+  if (type.array) {
+    const inner = { ...type, array: false };
+    return `_continuityList(${expression})
+            .map((item) => ${dartParseExpression(inner, "item")})
+            .toList(growable: false)`;
+  }
+  switch (type.kind) {
+    case "id":
+    case "label":
+    case "reason":
+    case "digest":
+    case "string":
+      return `_continuityString(${expression})`;
+    case "i64":
+    case "u64":
+      return `_continuityInt(${expression})`;
+    case "bool":
+      return `_continuityBool(${expression})`;
+    case "enum":
+      return dartRequiredEnumParse(continuityTypeName(type.name), expression);
+    case "struct":
+    case "union":
+      return `${continuityTypeName(type.name)}.parse(${expression})`;
+    default:
+      fail(`unsupported continuity dart parse: ${type.kind}`);
+  }
+}
+
+function dartFieldParse(field) {
+  const type = parseContinuityFieldType(field.type);
+  const read = `json[${JSON.stringify(field.name)}]`;
+  if (type.optional) {
+    return `${field.name}: json.containsKey(${JSON.stringify(field.name)}) && ${read} != null ? ${dartParseExpression({ ...type, optional: false }, read)} : null`;
+  }
+  return `${field.name}: ${dartParseExpression(type, read)}`;
+}
+
+function dartFieldToJson(field) {
+  const type = parseContinuityFieldType(field.type);
+  const value = field.name;
+  if (type.optional) {
+    return `    if (${value} != null) {\n      json[${JSON.stringify(field.name)}] = ${dartToJsonExpression({ ...type, optional: false }, `${value}!`)};\n    }`;
+  }
+  return `    json[${JSON.stringify(field.name)}] = ${dartToJsonExpression(type, value)};`;
+}
+
+function dartToJsonExpression(type, expression) {
+  if (type.array) {
+    const inner = { ...type, array: false };
+    return `${expression}.map((item) => ${dartToJsonExpression(inner, "item")}).toList(growable: false)`;
+  }
+  switch (type.kind) {
+    case "id":
+    case "label":
+    case "reason":
+    case "digest":
+    case "string":
+    case "i64":
+    case "u64":
+    case "bool":
+      return expression;
+    case "enum":
+      return `${expression}.wireName`;
+    case "struct":
+    case "union":
+      return `${expression}.toJson()`;
+    default:
+      fail(`unsupported continuity dart emit: ${type.kind}`);
+  }
+}
+
+function dartContinuityStruct(name, definition) {
+  const typeName = continuityTypeName(name);
+  const allowed = definition.fields.map((field) => field.name);
+  return `final class ${typeName} {
+  const ${typeName}({
+${definition.fields
+  .map((field) => {
+    const type = parseContinuityFieldType(field.type);
+    return type.optional
+      ? `    this.${field.name},`
+      : `    required this.${field.name},`;
+  })
+  .join("\n")}
+  });
+
+  factory ${typeName}.parse(Object? value) {
+    if (value is! Map) {
+      throw const ContinuityContractException(
+        ContinuityFailureCode.invalidRequest,
+      );
+    }
+    final json = Map<Object?, Object?>.from(value);
+    _continuityRejectUnknownKeys(json, const {${allowed.map((key) => JSON.stringify(key)).join(", ")}});
+    return ${typeName}(
+${definition.fields.map((field) => `      ${dartFieldParse(field)},`).join("\n")}
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{};
+${definition.fields.map((field) => dartFieldToJson(field)).join("\n")}
+    return json;
+  }
+
+${definition.fields
+  .map((field) => {
+    const type = parseContinuityFieldType(field.type);
+    return `  final ${dartContinuityType(type)} ${field.name};`;
+  })
+  .join("\n")}
+}
+`;
+}
+
+function dartContinuityUnion(name, definition) {
+  const typeName = continuityTypeName(name);
+  const variants = Object.entries(definition.variants);
+  const factories = variants
+    .map(([wire, fields]) => {
+      const variantName = pascal(wire);
+      const className = `${typeName}${variantName}`;
+      const params = fields
+        .map((field) => {
+          const type = parseContinuityFieldType(field.type);
+          return type.optional
+            ? `    this.${field.name},`
+            : `    required this.${field.name},`;
+        })
+        .join("\n");
+      const members = fields
+        .map((field) => {
+          const type = parseContinuityFieldType(field.type);
+          return `  final ${dartContinuityType(type)} ${field.name};`;
+        })
+        .join("\n");
+      const allowed = ["kind", ...fields.map((field) => field.name)];
+      return `final class ${className} extends ${typeName} {
+  const ${className}({
+${params}
+  });
+
+  factory ${className}.parse(Map<Object?, Object?> json) {
+    _continuityRejectUnknownKeys(json, const {${allowed.map((key) => JSON.stringify(key)).join(", ")}});
+    return ${className}(
+${fields.map((field) => `      ${dartFieldParse(field)},`).join("\n")}
+    );
+  }
+
+  @override
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{'kind': ${JSON.stringify(wire)}};
+${fields.map((field) => dartFieldToJson(field)).join("\n")}
+    return json;
+  }
+
+${members}
+}
+`;
+    })
+    .join("\n");
+  const parseCases = variants
+    .map(([wire, ,]) => {
+      const variantName = pascal(wire);
+      return `      case ${JSON.stringify(wire)}:\n        return ${typeName}${variantName}.parse(json);`;
+    })
+    .join("\n");
+  return `sealed class ${typeName} {
+  const ${typeName}();
+
+  factory ${typeName}.parse(Object? value) {
+    if (value is! Map) {
+      throw const ContinuityContractException(
+        ContinuityFailureCode.invalidRequest,
+      );
+    }
+    final json = Map<Object?, Object?>.from(value);
+    switch (json['kind']) {
+${parseCases}
+      default:
+        throw const ContinuityContractException(
+          ContinuityFailureCode.invalidRequest,
+        );
+    }
+  }
+
+  Map<String, Object?> toJson();
+}
+
+${factories}`;
+}
+
+function dartContinuityTypes(continuity) {
+  const enums = Object.entries(continuity.enums)
+    .map(([name, values]) => dartContinuityEnum(continuityTypeName(name), values))
+    .join("\n");
+  const structs = Object.entries(continuity.structs)
+    .map(([name, definition]) => dartContinuityStruct(name, definition))
+    .join("\n");
+  const unions = Object.entries(continuity.unions)
+    .map(([name, definition]) => dartContinuityUnion(name, definition))
+    .join("\n");
+  return `
+const String continuityBridgeSchemaVersion = ${JSON.stringify(continuity.schemaId)};
+const String continuitySpanEncoding = ${JSON.stringify(continuity.spanEncoding)};
+const int continuityMaxPageSize = ${continuity.maxPageSize};
+const int continuityMaxOrientationItems = ${continuity.maxOrientationItems};
+const int continuityMaxRefs = ${continuity.maxRefs};
+const int continuityMaxIdBytes = ${continuity.maxIdBytes};
+const int continuityMaxLabelBytes = ${continuity.maxLabelBytes};
+const int continuityMaxReasonBytes = ${continuity.maxReasonBytes};
+const int continuityMaxDigestBytes = ${continuity.maxDigestBytes};
+
+${enums}
+${dartContinuityEnum("ContinuityCommand", continuity.commands)}
+${dartContinuityEnum("ContinuityPort", continuity.ports)}
+
+final class ContinuityContractException implements Exception {
+  const ContinuityContractException(this.code);
+  final ContinuityFailureCode code;
+}
+
+void _continuityRejectUnknownKeys(
+  Map<Object?, Object?> json,
+  Set<String> allowed,
+) {
+  for (final key in json.keys) {
+    if (key is! String || !allowed.contains(key)) {
+      throw const ContinuityContractException(
+        ContinuityFailureCode.invalidRequest,
+      );
+    }
+  }
+}
+
+String _continuityString(Object? value) {
+  if (value is String) return value;
+  throw const ContinuityContractException(ContinuityFailureCode.invalidRequest);
+}
+
+int _continuityInt(Object? value) {
+  if (value is int) return value;
+  throw const ContinuityContractException(ContinuityFailureCode.invalidRequest);
+}
+
+bool _continuityBool(Object? value) {
+  if (value is bool) return value;
+  throw const ContinuityContractException(ContinuityFailureCode.invalidRequest);
+}
+
+List<Object?> _continuityList(Object? value) {
+  if (value is List) return List<Object?>.from(value);
+  throw const ContinuityContractException(ContinuityFailureCode.invalidRequest);
+}
+
+bool continuityUtf8SpanIsValid(String text, int startByte, int endByte) {
+  final bytes = utf8.encode(text);
+  if (startByte < 0 || endByte < startByte || endByte > bytes.length) {
+    return false;
+  }
+  return _continuityUtf8Boundary(bytes, startByte) &&
+      _continuityUtf8Boundary(bytes, endByte);
+}
+
+bool _continuityUtf8Boundary(List<int> bytes, int index) {
+  if (index == 0 || index == bytes.length) return true;
+  return (bytes[index] & 0xc0) != 0x80;
+}
+
+${structs}
+${unions}
+`;
 }
 
 function rustConversationOutput(schema, schemaPath) {
@@ -414,6 +1252,7 @@ function rustConversationOutput(schema, schemaPath) {
   ];
   return `// @generated by ${schemaPath}; do not edit.
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 ${enums.map(([name, values]) => rustEnum(name, values)).join("\n")}
 
@@ -428,6 +1267,7 @@ pub struct ConversationAction {
 }
 
 ${rustEnum("ConversationActionKind", schema.actions)}
+${rustContinuityTypes(schema.continuousAssistant)}
 `;
 }
 
@@ -443,11 +1283,14 @@ function dartConversationOutput(schema, schemaPath) {
     ["ConversationActionKind", schema.actions],
   ];
   return `// @generated by ${schemaPath}; do not edit.
+import 'dart:convert';
+
 ${enums.map(([name, values]) => dartEnum(name, values)).join("\n")}
 const String conversationBridgeSchemaVersion = 'lico.conversation.v1';
 const int conversationBridgeMaxRequestBytes = ${schema.maxRequestBytes};
 const int conversationBridgeDefaultEventPageSize = ${schema.defaultEventPageSize};
 const int conversationBridgeMaxEventPageSize = ${schema.maxEventPageSize};
+${dartContinuityTypes(schema.continuousAssistant)}
 `;
 }
 
@@ -1798,7 +2641,7 @@ function renderFamily(family) {
       const schema = readConversationSchema(family);
       return [
         formatRust(rustConversationOutput(schema, family.schema)),
-        dartConversationOutput(schema, family.schema),
+        formatDart(dartConversationOutput(schema, family.schema), family.dartOutput),
       ];
     }
     case "strategy": {
@@ -1821,6 +2664,20 @@ function formatRust(source) {
   });
   if (result.status !== 0 || typeof result.stdout !== "string") {
     fail("rustfmt rejected generated bridge output");
+  }
+  return result.stdout;
+}
+
+function formatDart(source, outputPath) {
+  const result = spawnSync("dart", [
+    "format", "--output=show", "--summary=none", `--stdin-name=${outputPath}`,
+  ], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    input: source,
+  });
+  if (result.status !== 0 || typeof result.stdout !== "string") {
+    fail("dart format rejected generated bridge output");
   }
   return result.stdout;
 }
@@ -1889,6 +2746,30 @@ function main() {
     for (const [relativePath, content] of outputs) {
       const diagnostic = reconcileOutput(relativePath, content, checkOnly);
       if (diagnostic) diagnostics.push(diagnostic);
+    }
+    if (family.id === "conversation") {
+      const schema = readConversationSchema(family);
+      const extraOutputs = [
+        [
+          CONTINUITY_GENERATED_RS,
+          formatRust(
+            rustContinuityModule(schema.continuousAssistant, family.schema),
+          ),
+        ],
+        [
+          RUNTIME_WORK_CONTEXT_GENERATED_RS,
+          formatRust(
+            rustRuntimeWorkContextModule(
+              schema.continuousAssistant,
+              family.schema,
+            ),
+          ),
+        ],
+      ];
+      for (const [relativePath, content] of extraOutputs) {
+        const diagnostic = reconcileOutput(relativePath, content, checkOnly);
+        if (diagnostic) diagnostics.push(diagnostic);
+      }
     }
   }
   if (diagnostics.length > 0) fail(diagnostics.join("\n"));

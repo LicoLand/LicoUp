@@ -5,6 +5,24 @@ enum MessagingNotificationTone { info, warning, failure, success }
 
 /// One user-visible operation-feedback item in the top-right notification
 /// center. Uses a stable [id] so refreshes replace rather than duplicate.
+final class ContinuityCompletionNoticeTarget {
+  const ContinuityCompletionNoticeTarget({
+    required this.notificationId,
+    required this.parentConversationId,
+    required this.childConversationId,
+    required this.goalId,
+    required this.cardEventId,
+    required this.cardSequence,
+  });
+
+  final String notificationId;
+  final String parentConversationId;
+  final String childConversationId;
+  final String goalId;
+  final String cardEventId;
+  final int cardSequence;
+}
+
 final class MessagingNotificationItem {
   const MessagingNotificationItem({
     required this.id,
@@ -13,6 +31,7 @@ final class MessagingNotificationItem {
     required this.tone,
     required this.createdAt,
     this.code = '',
+    this.completionTarget,
   });
 
   final String id;
@@ -21,6 +40,7 @@ final class MessagingNotificationItem {
   final MessagingNotificationTone tone;
   final String code;
   final DateTime createdAt;
+  final ContinuityCompletionNoticeTarget? completionTarget;
 
   String messageForLocale({required bool chinese}) =>
       chinese ? messageChinese : messageEnglish;
@@ -59,6 +79,7 @@ final class MessagingNotificationCenter extends ApplicationStateOwner {
     required String messageEnglish,
     MessagingNotificationTone tone = MessagingNotificationTone.info,
     String code = '',
+    ContinuityCompletionNoticeTarget? completionTarget,
   }) {
     final key = id.trim();
     if (key.isEmpty) return;
@@ -69,6 +90,7 @@ final class MessagingNotificationCenter extends ApplicationStateOwner {
       tone: tone,
       code: code.trim(),
       createdAt: DateTime.now().toUtc(),
+      completionTarget: completionTarget,
     );
     _revision += 1;
     publishChange();

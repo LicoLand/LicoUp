@@ -101,6 +101,18 @@ final class ChromeProjectionProducer
             messageEnglish: item.messageEnglish,
             severity: _severity(item.tone),
             reasonCode: item.code,
+            completionTarget: item.completionTarget == null
+                ? null
+                : ChromeCompletionNoticeTarget(
+                    notificationId: item.completionTarget!.notificationId,
+                    parentConversationId:
+                        item.completionTarget!.parentConversationId,
+                    childConversationId:
+                        item.completionTarget!.childConversationId,
+                    goalId: item.completionTarget!.goalId,
+                    cardEventId: item.completionTarget!.cardEventId,
+                    cardSequence: item.completionTarget!.cardSequence,
+                  ),
           ),
       ],
       agentNotifications: [

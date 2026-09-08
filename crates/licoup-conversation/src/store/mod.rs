@@ -21,12 +21,14 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+mod continuity_seam;
 mod conversations;
 mod dispatches;
 mod events;
 mod path_security;
 mod recovery;
 
+pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
 pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
 pub use events::EventRepository;
@@ -904,6 +906,84 @@ impl ConversationStore {
         })
     }
 
+    /// Record the host-admitted response mode for this actual PersistentTurn.
+    /// Model JSON and caller flags cannot set this marker.
+    pub fn admit_runtime_response_mode(
+        &self,
+        scope: &ConversationRuntimeScope,
+        mode: &str,
+    ) -> StoreResult<()> {
+        let mode = mode.trim();
+        if mode.is_empty() {
+            return Err(anyhow!("runtime_response_mode_invalid"));
+        }
+        let content = crate::continuity::trusted_response_mode_metadata(mode);
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let exists: Option<i64> = transaction
+                .query_row(
+                    "SELECT 1 FROM events
+                     WHERE id=?1 AND conversation_id=?2 AND correlation_id=?3
+                       AND author_membership_id=?4 AND finalized=0",
+                    params![
+                        scope.event_id,
+                        scope.conversation_id,
+                        scope.dispatch_id,
+                        scope.membership_id,
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                return Err(anyhow!("runtime_dispatch_not_active"));
+            }
+            let already = load_trusted_response_mode(&transaction, &scope.event_id)?;
+            if already.as_deref() == Some(mode) {
+                transaction.commit()?;
+                return Ok(());
+            }
+            if already.is_some() {
+                return Err(anyhow!("runtime_response_mode_conflict"));
+            }
+            let ordinal: i64 = transaction.query_row(
+                "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",
+                params![scope.event_id],
+                |row| row.get(0),
+            )?;
+            insert_runtime_event_part(
+                &transaction,
+                &scope.conversation_id,
+                &scope.event_id,
+                ordinal,
+                &NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Metadata,
+                    content,
+                },
+                None,
+                now,
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    pub fn runtime_response_mode(
+        &self,
+        scope: &ConversationRuntimeScope,
+    ) -> StoreResult<Option<String>> {
+        self.with_connection(|connection| load_trusted_response_mode(connection, &scope.event_id))
+    }
+
+    /// Replay cursors are allocated only for frames this store actually
+    /// persists. User-speech is already a Canonical Message Event and must
+    /// not occupy a runtime cursor.
+    pub fn runtime_frame_commits_cursor(frame: &Value) -> bool {
+        !runtime_frame_is_user_speech(frame)
+    }
+
     /// Commit one replayable frame before it is published to any observer.
     /// Large frames are split across canonical metadata parts while preserving
     /// one runtime cursor.
@@ -961,6 +1041,7 @@ impl ConversationStore {
                 params![scope.event_id],
                 |row| row.get(0),
             )?;
+            let trusted_mode = load_trusted_response_mode(&transaction, &scope.event_id)?;
             let completed_snapshot = frame.get("event").and_then(Value::as_str)
                 == Some("agent.message.completed");
             let message_unit_marker = frame
@@ -968,7 +1049,7 @@ impl ConversationStore {
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
                 .map(|value| serde_json::json!({"messageUnit": value}).to_string());
-            for mut part in runtime_semantic_parts(frame) {
+            for mut part in runtime_semantic_parts(frame, trusted_mode.as_deref()) {
                 if completed_snapshot && part.kind == EventPartKind::Text {
                     let visible_text: String = if let Some(marker) = message_unit_marker.as_deref() {
                         transaction.query_row(
@@ -1119,7 +1200,7 @@ impl ConversationStore {
         terminal: &Value,
         state: DispatchState,
         error_code: Option<&str>,
-    ) -> StoreResult<()> {
+    ) -> StoreResult<DispatchState> {
         if !matches!(
             state,
             DispatchState::Completed | DispatchState::Failed | DispatchState::Cancelled
@@ -1153,13 +1234,38 @@ impl ConversationStore {
             if finalized != Some(0) {
                 return Err(anyhow!("runtime_dispatch_not_active"));
             }
+            let trusted_mode = load_trusted_response_mode(&transaction, &scope.event_id)?;
+            let envelope_mode =
+                crate::continuity::is_assistant_turn_response_mode(trusted_mode.as_deref());
+            let terminal_output = terminal
+                .get("output")
+                .and_then(Value::as_str)
+                .filter(|output| !output.is_empty());
+            let envelope_published = if envelope_mode && state == DispatchState::Completed {
+                terminal_output.and_then(crate::continuity::published_envelope)
+            } else {
+                None
+            };
+            let envelope_invalid =
+                envelope_mode && state == DispatchState::Completed && envelope_published.is_none();
+            let persisted_state = if envelope_invalid {
+                DispatchState::Failed
+            } else {
+                state
+            };
+            let persisted_error = if envelope_invalid {
+                Some(crate::continuity::ASSISTANT_TURN_INVALID_ERROR.to_owned())
+            } else {
+                error_code.map(str::to_owned)
+            };
+            let error_code = persisted_error.as_deref();
             let changed = transaction.execute(
                 "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4,
                    runtime_conversation_path=COALESCE(?5, runtime_conversation_path)
                  WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
                 params![
                     scope.dispatch_id,
-                    enum_wire(state)?,
+                    enum_wire(persisted_state)?,
                     error_code,
                     now,
                     runtime_conversation_path,
@@ -1171,8 +1277,12 @@ impl ConversationStore {
             // A dispatch id claimed through the Subagent MCP door is also the
             // lineage claim id; settle that claim in the same transaction so
             // the claims table never lingers `running` past the turn.
-            dispatches::writeback_subagent_claim_terminal(&transaction, &scope.dispatch_id, state)?;
-            let direct_turn_state = match state {
+            dispatches::writeback_subagent_claim_terminal(
+                &transaction,
+                &scope.dispatch_id,
+                persisted_state,
+            )?;
+            let direct_turn_state = match persisted_state {
                 DispatchState::Completed => TurnState::Succeeded,
                 DispatchState::Cancelled => TurnState::Cancelled,
                 DispatchState::Failed => TurnState::Failed,
@@ -1201,20 +1311,16 @@ impl ConversationStore {
                 params![scope.event_id],
                 |row| row.get(0),
             )?;
-            if state == DispatchState::Completed {
-                if let Some(output) = terminal
-                    .get("output")
-                    .and_then(Value::as_str)
-                    .filter(|output| !output.is_empty())
-                {
+            if persisted_state == DispatchState::Completed {
+                if let Some((reply, proposal)) = envelope_published.as_ref() {
                     let missing_suffix = if visible_text.is_empty() {
-                        Some(output)
+                        Some(reply.as_str())
                     } else {
-                        output
+                        reply
                             .strip_prefix(&visible_text)
                             .filter(|suffix| !suffix.is_empty())
                     };
-                    if let Some(missing_suffix) = missing_suffix {
+                    if let Some(text) = missing_suffix {
                         insert_runtime_event_part(
                             &transaction,
                             &scope.conversation_id,
@@ -1223,7 +1329,53 @@ impl ConversationStore {
                             &NewEventPart {
                                 id: String::new(),
                                 kind: EventPartKind::Text,
-                                content: missing_suffix.to_owned(),
+                                content: text.to_owned(),
+                            },
+                            None,
+                            now,
+                        )?;
+                        ordinal += 1;
+                    }
+                    let proposal_exists: bool = transaction.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM event_parts
+                         WHERE event_id=?1 AND kind='metadata' AND content=?2)",
+                        params![scope.event_id, proposal],
+                        |row| row.get(0),
+                    )?;
+                    if !proposal_exists {
+                        insert_runtime_event_part(
+                            &transaction,
+                            &scope.conversation_id,
+                            &scope.event_id,
+                            ordinal,
+                            &NewEventPart {
+                                id: String::new(),
+                                kind: EventPartKind::Metadata,
+                                content: proposal.clone(),
+                            },
+                            None,
+                            now,
+                        )?;
+                        ordinal += 1;
+                    }
+                } else if let Some(output) = terminal_output {
+                    let missing_suffix = if visible_text.is_empty() {
+                        Some(output)
+                    } else {
+                        output
+                            .strip_prefix(&visible_text)
+                            .filter(|suffix| !suffix.is_empty())
+                    };
+                    if let Some(text) = missing_suffix {
+                        insert_runtime_event_part(
+                            &transaction,
+                            &scope.conversation_id,
+                            &scope.event_id,
+                            ordinal,
+                            &NewEventPart {
+                                id: String::new(),
+                                kind: EventPartKind::Text,
+                                content: text.to_owned(),
                             },
                             None,
                             now,
@@ -1258,7 +1410,7 @@ impl ConversationStore {
                     ordinal += 1;
                 }
             }
-            if state == DispatchState::Completed {
+            if persisted_state == DispatchState::Completed {
                 for stage in [
                     "submitted",
                     "accepted",
@@ -1292,7 +1444,8 @@ impl ConversationStore {
                     ordinal += 1;
                 }
             } else {
-                let lifecycle = serde_json::json!({"lifecycle": enum_wire(state)?}).to_string();
+                let lifecycle =
+                    serde_json::json!({"lifecycle": enum_wire(persisted_state)?}).to_string();
                 insert_runtime_event_part(
                     &transaction,
                     &scope.conversation_id,
@@ -1313,7 +1466,7 @@ impl ConversationStore {
             )?;
             bump_revision(&transaction, &scope.conversation_id, now)?;
             transaction.commit()?;
-            Ok(())
+            Ok(persisted_state)
         })
     }
 
@@ -2283,6 +2436,80 @@ impl ConversationStore {
         })
     }
 
+    /// Load one Event by identity after proving it belongs to the Conversation.
+    pub fn event(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+    ) -> StoreResult<Option<ConversationEvent>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(event_id, "event_id")?;
+        self.with_connection(|connection| {
+            let owner: Option<String> = connection
+                .query_row(
+                    "SELECT conversation_id FROM events WHERE id=?1",
+                    params![event_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(owner) = owner else {
+                return Ok(None);
+            };
+            if owner != conversation_id {
+                return Err(anyhow!("mention_event_mismatch"));
+            }
+            Ok(Some(event_by_id(connection, event_id)?))
+        })
+    }
+
+    /// Exact image attachment refs for one Event owned by the Conversation.
+    pub fn image_attachments_for_event(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+    ) -> StoreResult<Vec<ImageAttachmentReference>> {
+        if self.event(conversation_id, event_id)?.is_none() {
+            return Ok(Vec::new());
+        }
+        self.with_connection(|connection| image_attachments_for_event(connection, event_id))
+    }
+
+    /// Exact image attachment for one Part on an Event owned by the Conversation.
+    pub fn image_attachment_for_part(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+        part_id: &str,
+    ) -> StoreResult<Option<ImageAttachmentReference>> {
+        if self.event(conversation_id, event_id)?.is_none() {
+            return Ok(None);
+        }
+        self.with_connection(|connection| image_attachment_for_part(connection, event_id, part_id))
+    }
+
+    pub fn event_sequence(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+    ) -> StoreResult<Option<i64>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(event_id, "event_id")?;
+        self.with_connection(|connection| {
+            let row: Option<(String, i64)> = connection
+                .query_row(
+                    "SELECT conversation_id, sequence FROM events WHERE id=?1",
+                    params![event_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            match row {
+                Some((owner, sequence)) if owner == conversation_id => Ok(Some(sequence)),
+                Some(_) => Err(anyhow!("mention_event_mismatch")),
+                None => Ok(None),
+            }
+        })
+    }
+
     /// Delete one local owner's posted message and its complete derived turn
     /// subtree. Active work is never interrupted by deletion; the caller can
     /// retry or delete only after every addressed turn has settled.
@@ -2427,6 +2654,29 @@ impl ConversationStore {
             )?;
             transaction.commit()?;
             Ok(turns)
+        })
+    }
+
+    pub fn direct_turn_for_source(
+        &self,
+        conversation_id: &str,
+        source_event_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<Option<DirectTurn>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(source_event_id, "event_id")?;
+        validate_identifier(membership_id, "membership_id")?;
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT id, conversation_id, source_event_id, membership_id, state, ordinal
+                     FROM direct_turns
+                     WHERE conversation_id=?1 AND source_event_id=?2 AND membership_id=?3",
+                    params![conversation_id, source_event_id, membership_id],
+                    direct_turn_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
         })
     }
 
@@ -2837,6 +3087,61 @@ impl ConversationStore {
                 )
                 .optional()
                 .map_err(Into::into)
+        })
+    }
+
+    /// Latest send dispatch for one Membership. Ordinary send bookkeeping only;
+    /// child-work recovery uses the persisted operation identity, not this scan.
+    pub fn latest_send_dispatch(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<Option<ConversationDispatch>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(membership_id, "membership_id")?;
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT id, conversation_id, membership_id, operation, state, session_mode,
+                       runtime_conversation_path, error_code, created_at, updated_at
+                     FROM conversation_dispatches
+                     WHERE conversation_id=?1 AND membership_id=?2 AND operation='send'
+                     ORDER BY created_at DESC, id DESC LIMIT 1",
+                    params![conversation_id, membership_id],
+                    dispatch_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Canonical agent-authored turn Event for one dispatch identity.
+    /// Correlation plus author Membership is the existing unit; this does not
+    /// invent a second transcript.
+    pub fn agent_turn_event_for_dispatch(
+        &self,
+        conversation_id: &str,
+        dispatch_id: &str,
+    ) -> StoreResult<Option<ConversationEvent>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(dispatch_id, "dispatch_id")?;
+        self.with_connection(|connection| {
+            let event_id: Option<String> = connection
+                .query_row(
+                    "SELECT e.id FROM events e
+                     JOIN conversation_dispatches d ON d.id=e.correlation_id
+                     WHERE e.conversation_id=?1 AND e.correlation_id=?2
+                       AND e.author_membership_id=d.membership_id
+                       AND e.kind='message'
+                     ORDER BY e.sequence DESC LIMIT 1",
+                    params![conversation_id, dispatch_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match event_id {
+                Some(id) => event_by_id(connection, &id).map(Some),
+                None => Ok(None),
+            }
         })
     }
 
@@ -4655,6 +4960,30 @@ fn image_attachments_for_event(
     Ok(references)
 }
 
+fn image_attachment_for_part(
+    connection: &impl CountedSqlite,
+    event_id: &str,
+    part_id: &str,
+) -> StoreResult<Option<ImageAttachmentReference>> {
+    let row: Option<(String, String)> = connection
+        .query_row(
+            "SELECT id, content FROM event_parts
+             WHERE event_id=?1 AND id=?2 AND kind='image' AND runtime_cursor IS NULL",
+            params![event_id, part_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((part_id, content)) = row else {
+        return Ok(None);
+    };
+    Ok(
+        ImageAttachment::from_part_content(&content).map(|attachment| ImageAttachmentReference {
+            part_id,
+            attachment,
+        }),
+    )
+}
+
 fn upsert_principal(connection: &impl CountedSqlite, principal: &Principal) -> StoreResult<()> {
     let kind = enum_wire(principal.kind)?;
     let existing_kind: Option<String> = connection
@@ -5027,6 +5356,23 @@ fn runtime_frame_is_user_speech(frame: &Value) -> bool {
     frame.get("event").and_then(Value::as_str) == Some(crate::projection::USER_MESSAGE_EVENT_KIND)
 }
 
+fn load_trusted_response_mode(
+    connection: &impl CountedSqlite,
+    event_id: &str,
+) -> StoreResult<Option<String>> {
+    let mut statement = connection.prepare(
+        "SELECT content FROM event_parts WHERE event_id=?1 AND kind='metadata' ORDER BY ordinal",
+    )?;
+    let rows = statement.query_map(params![event_id], |row| row.get::<_, String>(0))?;
+    for row in rows {
+        let content = row?;
+        if let Some(mode) = crate::continuity::trusted_response_mode_from_metadata(&content) {
+            return Ok(Some(mode));
+        }
+    }
+    Ok(None)
+}
+
 fn runtime_frame_parts(encoded: &str) -> Vec<NewEventPart> {
     const CHUNK_BYTES: usize = 512 * 1024;
     if encoded.is_empty() {
@@ -5053,7 +5399,7 @@ fn runtime_frame_parts(encoded: &str) -> Vec<NewEventPart> {
     parts
 }
 
-fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
+fn runtime_semantic_parts(frame: &Value, trusted_mode: Option<&str>) -> Vec<NewEventPart> {
     let event = frame
         .get("event")
         .and_then(Value::as_str)
@@ -5087,7 +5433,17 @@ fn runtime_semantic_parts(frame: &Value) -> Vec<NewEventPart> {
         "agent.message.chunk" | "agent.message.completed" => {
             let mut parts = Vec::new();
             if let Some(value) = text {
-                parts.push((EventPartKind::Text, value.to_owned()));
+                if crate::continuity::is_assistant_turn_response_mode(trusted_mode) {
+                    if event == "agent.message.completed"
+                        && let Some((reply, proposal)) =
+                            crate::continuity::published_envelope(value)
+                    {
+                        parts.push((EventPartKind::Text, reply));
+                        parts.push((EventPartKind::Metadata, proposal));
+                    }
+                } else {
+                    parts.push((EventPartKind::Text, value.to_owned()));
+                }
             }
             parts
         }
@@ -6342,6 +6698,47 @@ mod tests {
         assert_eq!(
             store.dispatch_record(&dispatch.id).unwrap(),
             Some(dispatch.clone())
+        );
+        assert!(
+            store
+                .latest_send_dispatch(&conversation.id, &agent.id)
+                .unwrap()
+                .is_none(),
+            "workflow dispatch is not a send turn"
+        );
+        let scope = store
+            .prepare_runtime_dispatch(
+                "workflow-read",
+                "",
+                "admitted turn text",
+                Some(&conversation.id),
+                Some(&agent.id),
+                Some("event:cause"),
+                None,
+            )
+            .unwrap();
+        let send = store
+            .latest_send_dispatch(&conversation.id, &agent.id)
+            .unwrap()
+            .expect("send dispatch");
+        assert_eq!(send.id, scope.dispatch_id);
+        let event = store
+            .agent_turn_event_for_dispatch(&conversation.id, &scope.dispatch_id)
+            .unwrap()
+            .expect("agent turn event");
+        assert_eq!(
+            event.author_membership_id.as_deref(),
+            Some(agent.id.as_str())
+        );
+        assert_eq!(
+            event.correlation_id.as_deref(),
+            Some(scope.dispatch_id.as_str())
+        );
+        assert!(
+            store
+                .agent_turn_event_for_dispatch(&conversation.id, "dispatch:missing")
+                .unwrap()
+                .is_none()
         );
         store
             .update_dispatch(&dispatch.id, DispatchState::Completed, None, None)

@@ -1,0 +1,45 @@
+{
+  "schema": "licoup.continuity.qualification-economy-draft/v1",
+  "evidenceClass": "synthetic",
+  "liveQualified": false,
+  "unknownModelId": "synthetic-model-no-owner-price",
+  "pairs": [
+    {
+      "family": "family:econ:0",
+      "candidate": {
+        "measuredFullCost": 0.80,
+        "serialLatencyMs": 120,
+        "correctionCount": 1,
+        "acceptedOutcome": true,
+        "nativeSuccess": true
+      },
+      "baseline": {
+        "measuredFullCost": 1.00,
+        "serialLatencyMs": 80,
+        "correctionCount": 1,
+        "acceptedOutcome": true
+      }
+    },
+    {
+      "family": "family:econ:1",
+      "candidate": {
+        "measuredFullCost": 0.70,
+        "serialLatencyMs": 200,
+        "correctionCount": 0,
+        "acceptedOutcome": true,
+        "nativeSuccess": true
+      },
+      "baseline": {
+        "measuredFullCost": 1.10,
+        "serialLatencyMs": 90,
+        "correctionCount": 2,
+        "acceptedOutcome": true
+      }
+    }
+  ],
+  "unknownPriceCase": {
+    "inputTokens": 1000,
+    "outputTokens": 500,
+    "modelId": "synthetic-model-no-owner-price"
+  }
+}

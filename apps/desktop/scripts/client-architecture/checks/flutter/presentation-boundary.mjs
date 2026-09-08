@@ -261,13 +261,41 @@ function withoutDartDirectives(source) {
   );
 }
 
-function isSemanticValueContract(source) {
+function declaredValueEnums(source) {
+  return new Set([...maskDartNonCode(source).matchAll(
+    /\benum\s+([A-Z][A-Za-z0-9_]*)\b/gu,
+  )].map((match) => match[1]));
+}
+
+function declaredNominalTypes(source) {
+  return [...maskDartNonCode(source).matchAll(
+    /\b(?:abstract\s+interface\s+class|abstract\s+class|mixin\s+class|base\s+class|final\s+class|sealed\s+class|interface\s+class|class|mixin|typedef)\s+([A-Z][A-Za-z0-9_]*)\b/gu,
+  )].map((match) => match[1]);
+}
+
+const operationalBoundaryName =
+  /(?:Reader|Source|Port|Gateway|Repository|Service)$/u;
+
+export function isSemanticValueContract(source) {
   const masked = maskDartNonCode(source);
-  return !importsFrom(source).some((specifier) =>
-    specifier === "dart:io" || specifier.startsWith("dart:io ")) &&
-    !/\b(?:Future|Stream)(?:Or)?\s*</u.test(masked) &&
-    !/\b(?:abstract\s+interface\s+class|abstract\s+class)\b/u.test(masked) &&
-    !/\b[A-Z][A-Za-z0-9_]*(?:Reader|Source|Port|Gateway|Repository|Service)\b/u.test(masked);
+  const valueEnums = declaredValueEnums(source);
+  if (importsFrom(source).some((specifier) =>
+    specifier === "dart:io" || specifier.startsWith("dart:io "))) {
+    return false;
+  }
+  if (/\b(?:Future|Stream)(?:Or)?\s*</u.test(masked)) return false;
+  if (/\b(?:abstract\s+interface\s+class|abstract\s+class)\b/u.test(masked)) {
+    return false;
+  }
+  if (declaredNominalTypes(source).some((name) => operationalBoundaryName.test(name))) {
+    return false;
+  }
+  for (const match of masked.matchAll(
+    /\b([A-Z][A-Za-z0-9_]*(?:Reader|Source|Port|Gateway|Repository|Service))\b/gu,
+  )) {
+    if (!valueEnums.has(match[1])) return false;
+  }
+  return true;
 }
 
 function rendererPublicSemanticContracts(sourceByPath) {
