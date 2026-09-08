@@ -1,5 +1,6 @@
 use super::*;
 use licoup_native::domain::client_conversation::ConversationService;
+use licoup_native::platform::runtime_adapters::RuntimeAdapterError;
 use std::collections::VecDeque;
 
 const MAX_CONVERSATION_SERVICE_ROOTS: usize = 4;
@@ -79,10 +80,9 @@ where
     let mut conversation_workers = Vec::new();
     let mut conversation_services = ConversationServices::default();
     if let Some(service) = initial_conversation_service {
-        let service = match conversation_runtime.as_ref() {
-            Some(runtime) => bind_conversation_runtime(service, runtime, None),
-            None => service,
-        };
+        // The host (or test) already bound this instance. Re-binding here
+        // would replace a typed admitted/held cognition port with the
+        // generic public binder and hide the actual listener owner.
         conversation_services.entries.push_back((None, service));
     }
     loop {
@@ -687,7 +687,7 @@ fn conversation_service(
 /// pre-opened host service and lazily opened portable-root services must be
 /// indistinguishable; otherwise requests without an explicit portable root
 /// can persist a message but fail before reaching the selected Agent.
-fn bind_conversation_runtime(
+pub(crate) fn bind_conversation_runtime(
     service: ConversationService,
     runtime: &PersistentConversationRuntime,
     portable_data_dir: Option<PathBuf>,
@@ -696,6 +696,10 @@ fn bind_conversation_runtime(
     let send_dir = portable_data_dir.clone();
     let active_runtime = runtime.clone();
     let steer_runtime = runtime.clone();
+    let cancel_runtime = runtime.clone();
+    let inspect_runtime = runtime.clone();
+    let complete_runtime = runtime.clone();
+    let complete_dir = portable_data_dir.clone();
     let actor_runtime = runtime.clone();
     let actor_dir = portable_data_dir;
     let strategy_root = service
@@ -704,18 +708,46 @@ fn bind_conversation_runtime(
         .parent()
         .expect("Conversation database always has a parent")
         .to_path_buf();
-    service
-        .with_native_turn_sender(move |params| {
-            send_runtime.start_background(params, send_dir.clone())
-        })
-        .with_active_turns(move |conversation_id| {
-            active_runtime.active(&json!({ "conversationId": conversation_id }))
-        })
-        .with_steer_turn(move |params| steer_runtime.steer_sync(params))
-        .with_strategy_execute(move |request| {
-            let port = conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
-            licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
-                .with_actor_turn_port(port)
-                .execute(request)
-        })
+    let bound = service.bind_conversation_runtime(
+        licoup_native::domain::client_conversation::PersistentRuntimePorts::new(
+            move |params| send_runtime.start_admitted_background(params, send_dir.clone()),
+            move |conversation_id| {
+                active_runtime.active(&json!({ "conversationId": conversation_id }))
+            },
+            move |params| steer_runtime.steer_sync(params),
+            move |params| {
+                let handle = complete_runtime.open_admitted_turn(params)?;
+                complete_runtime.run_open_turn(&handle, params, complete_dir.clone())
+            },
+            move |request| {
+                let port =
+                    conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
+                licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
+                    .with_actor_turn_port(port)
+                    .execute(request)
+            },
+        )
+        .with_cancel(move |params| {
+            cancel_runtime
+                .request_cancel(params)
+                .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }),
+    );
+    if let Some(host) = bound.continuity().cloned() {
+        let observer_host = host.clone();
+        runtime.set_live_turn_observer(
+            move |conversation_id, membership_id, dispatch_id, native_turn_id| {
+                observer_host.update_live_native_turn(
+                    conversation_id,
+                    membership_id,
+                    dispatch_id,
+                    native_turn_id,
+                );
+            },
+        );
+        host.bind_work_turn_inspect(std::sync::Arc::new(move |handle| {
+            inspect_runtime.inspect_turn(handle)
+        }));
+    }
+    bound
 }

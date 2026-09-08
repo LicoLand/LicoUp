@@ -1,5 +1,7 @@
 //! Current, network-free model intelligence facts owned by LicoUp.
 
+pub mod qualification;
+
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::{

@@ -81,6 +81,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::client_conversation::"),
     }),
   defineModule({
+      id: "rust.domain.trusted-history-recovery",
+      kind: "rust-domain",
+      summary: "Provider-authorized retained history with default readable storage, opt-in encryption, and atomic complete recovery",
+      inputs: [
+        "crates/licoup-native/src/domain/history_backup/**",
+        "crates/licoup-native/src/domain/conversation/history_backup_catalog.rs",
+      ],
+      command: rustLayer("domain::history_backup::"),
+    }),
+  defineModule({
       id: "rust.domain.mcp-adapter",
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",

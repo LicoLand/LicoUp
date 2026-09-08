@@ -162,6 +162,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.domain.llm-gateway",
   "rust.domain.model-planning",
   "rust.domain.client-conversations",
+  "rust.domain.trusted-history-recovery",
   "rust.domain.secure-mesh-command-runtime",
   "rust.domain.agent-hub",
   "rust.domain.client-authority-registry",

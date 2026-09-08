@@ -87,6 +87,7 @@ void main() {
         ),
         findsOneWidget,
       );
+      controller.dispose();
     },
   );
 
@@ -141,6 +142,7 @@ void main() {
         ),
         findsOneWidget,
       );
+      controller.dispose();
     },
   );
 
@@ -213,6 +215,8 @@ void main() {
       findsOneWidget,
     );
     expect(_dotColor(tester, 'paused'), colors.textMuted);
+    unconfiguredController.dispose();
+    controller.dispose();
   });
 
   testWidgets('working fixture pulses green with the working-alone label', (
@@ -273,6 +277,7 @@ void main() {
       find.ancestor(of: dot, matching: find.byType(Opacity)),
       findsWidgets,
     );
+    controller.dispose();
   });
 
   testWidgets(
@@ -346,6 +351,7 @@ void main() {
         find.byKey(const Key('canonical-group-assistant-status-working')),
         findsOneWidget,
       );
+      controller.dispose();
     },
   );
 
@@ -400,6 +406,7 @@ void main() {
       findsOneWidget,
     );
     expect(_dotColor(tester, 'waiting'), colors.accent);
+    controller.dispose();
   });
 
   testWidgets('usage-limit failure keeps identity and shows safe recovery', (
@@ -456,6 +463,7 @@ void main() {
       find.textContaining('Choose another available model'),
       findsOneWidget,
     );
+    controller.dispose();
   });
 
   testWidgets(
@@ -558,6 +566,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(menu, findsNothing);
       expect(tester.getRect(field), fieldRect);
+      controller.dispose();
     },
   );
 
@@ -668,6 +677,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    controller.dispose();
   });
 
   testWidgets(
@@ -731,6 +741,7 @@ void main() {
         controller.selectedConversation?.assistantMembership?.principal.agentId,
         originalAgentId,
       );
+      controller.dispose();
     },
   );
 
@@ -800,6 +811,7 @@ void main() {
     expect(controller.failureCode, 'assistant_turn_active');
     expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
     expect(runner.assistantMembershipId, 'membership:codex');
+    controller.dispose();
   });
 
   testWidgets(
@@ -895,6 +907,7 @@ void main() {
       // The composer scope cleared after the successful send.
       expect(staged, isEmpty);
       expect(_flowMessagesWithImages(tester), isEmpty);
+      controller.dispose();
     },
   );
 
@@ -988,6 +1001,7 @@ void main() {
 
       expect(staged, isEmpty);
       expect(_flowMessagesWithImages(tester), isEmpty);
+      controller.dispose();
     },
   );
 }

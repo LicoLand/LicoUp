@@ -11,10 +11,13 @@
 | Workflows | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Graph execution authority |
 | Current evidence | [STATUS.md](../STATUS.md) | Implemented and verified capability |
 
-**Status: accepted target design, 2026-09-07.** This document specifies the next
-architecture; it is not implementation or compatibility evidence. Normative
-words below apply to the target. Existing turn, Graph, security and release
-contracts remain authoritative in their respective domains.
+**Status: accepted target design, 2026-09-07; child-conversation amendment
+2026-09-08.** This document specifies the next architecture; it is not
+implementation or compatibility evidence. Normative words below apply to the
+target. Existing turn, Graph, security and release contracts remain
+authoritative in their respective domains. The 2026-09-08 amendment replaces
+the earlier single-visible-Conversation presentation: admitted durable work
+uses one Canonical child Conversation plus a parent timeline card.
 
 ## 1. Purpose
 
@@ -45,6 +48,10 @@ the meanings in [CONTEXT.md](../../CONTEXT.md).
 | Work context | A private, versioned binding of a Matter and Membership to a native execution session | Existing runtime-binding owner |
 | Follow-up | A durable reason to reconsider an unresolved Goal | Conversation host, using existing dispatch |
 | Qualification evidence | Version-bound evaluation of a candidate for a specific responsibility | Agent intelligence evaluation owner |
+| Task conversation relation | Durable Goal identity bound to one parent Conversation, one child Canonical Conversation and one parent card anchor | Conversation continuity state |
+| Parent card anchor | The original parent Event/Part sequence occupied by the task card | Conversation continuity state |
+| Parent context grant | Explicit scoped parent SourceRefs for one named child recipient | Conversation continuity state |
+| Goal completion transition | Accepted Goal lifecycle change plus the existing-notification identity | Conversation continuity state |
 
 The role is not a hidden Agent Principal. Delegates remain explicit admitted
 Memberships. Switching a model, native session or expert does not silently
@@ -57,8 +64,14 @@ Canonical Events are stored once. Matter associations may be many-to-many and
 may refer to message spans or parts. A compound message may update several
 Matters. Reclassification appends a revision; it does not rewrite the original
 User Event. Matters are not secondary Conversations, ACL bypasses or hidden
-transcripts. The first delivery is Conversation-scoped. Cross-Conversation
-references require explicit admission under both scopes.
+transcripts. Ordinary chat stays on the parent Conversation and does not force
+a child. Admitted durable follow-through automatically receives one real
+Canonical child Conversation under that parent, with admitted Memberships and
+true Event/Part/PersistentTurn history. The parent keeps one task card at the
+original Event sequence. The first delivery is scoped to the Conversation that
+owns the Event. A parent/child relation does not widen data, participant or
+model rights. Task-relevant parent context enters a child only through an
+admitted ParentContextGrant that names the recipient and the exact SourceRefs.
 
 ## 3. Separation of responsibilities
 
@@ -261,7 +274,14 @@ Closure requires current evidence for every required condition, the agreed
 acceptance method, and no unresolved operation that can invalidate the result.
 Machine-checkable conditions use deterministic oracles. Subjective conditions
 use the agreed evaluator or User acceptance. An executor's self-report, Graph
-termination, delivery receipt or summary alone cannot close a Goal.
+termination, delivery receipt, worker exit, reviewer turn or PersistentTurn
+settlement alone cannot close a Goal or emit a GoalCompletionTransition.
+Accepted closure updates the original parent card in place and publishes one
+existing-system notification keyed by a stable `notificationId`. No-focus and
+no-replacement-message are invariants of that transition, not wire flags.
+Retry, review and restart reuse the same Goal, child Conversation and card
+identities. The card remains the historical Event/Part at its original
+sequence; `partId` is part of that identity.
 
 Measure progress by new accepted evidence, reduced uncertainty, satisfied
 conditions or resolved blockers. Repeated work without such change triggers a
@@ -343,12 +363,18 @@ expert change and tool effect uses the already applicable admission and approval
 path. A new recipient, expanded content or consequential scope change cannot
 inherit authorization merely from a Goal, timer, installation or old approval.
 
-There is no compulsory Goal/coding/knowledge mode selector. The conversation
-surface may show unobtrusive Matter or Goal summaries with current progress,
-next responsible party, waiting reason and evidence. The User can correct an
-association, change a constraint, pause or cancel through ordinary dialogue or
-accessible controls. Inspectable details retain actual actors, provenance and
-spending. Do not suppress required approvals in the name of seamlessness.
+There is no compulsory Goal/coding/knowledge mode selector and no
+demand-submission form. The User continues ordinary chat. When the Assistant
+admits durable long-running work, the product creates one child Canonical
+Conversation in the parent's second-level sidebar list and one parent timeline
+card fixed at the creating Event's sequence. Coordinator, worker and reviewer
+Members converse in that child with real authorship. Progress and accepted
+completion update the same card; they do not reinsert it, pin it or move later
+messages. Two children A and B keep distinct sequences; later completion
+cannot change earlier card order. The User can correct an association, change
+a constraint, pause or cancel through ordinary dialogue or accessible
+controls. Inspectable details retain actual actors, provenance and spending.
+Do not suppress required approvals in the name of seamlessness.
 
 Render projections from Rust. Do not reconstruct lifecycle from prose, silence,
 spinners or observer attachment. Context classification and knowledge maintenance
@@ -362,7 +388,10 @@ Mandatory classes are non-coding delegation, coding-as-one-capability,
 exploration without takeover, multi-Matter messages, topic return, scoped
 correction, delayed evidence, subjective acceptance, cancellation, crash recovery,
 unknown effects, role replacement, native memory isolation, permission changes,
-cache expiry, unavailable knowledge, data deletion and model regression.
+cache expiry, unavailable knowledge, data deletion, model regression, A/B child
+order with out-of-order completion, true worker/reviewer authorship and
+isolation, stable reopen/retry/restart, and a single existing-system completion
+notice without focus steal.
 
 Deterministic tests prove state, authority, isolation and idempotency invariants.
 Model evaluations measure understanding and economical routing. Native parity
@@ -377,3 +406,36 @@ rewritten authorship or automatic effects. Feature rollback can stop new
 interpretation while preserving Goal state, auditability and explicit recovery.
 Local plans, raw evaluations and execution reports stay in the repository's ignored
 plan/report locations. The design does not itself change release status.
+
+## 13. Frozen machine contract (not live capability)
+
+The closed field set lives in
+`schemas/client_bridge/conversation.json#continuousAssistant`. Rust and Dart
+projections are generated from that embed. Temporary ports return typed
+`unsupported_capability` with `effectClass=none`. This section does not claim
+enabled automation, native capability, or release evidence.
+
+| Public generated types | Private ports / leaves |
+|:---|:---|
+| Matter, Agreement, GoalContract, GoalProgress, InterpretationProposal, ContextManifest, WorkContext, Wake, QualificationRecord, TaskConversationRelation, ParentCardAnchor, ParentContextGrant, ParentGrantBasis, ContextCompositionRequest, GoalCompletionTransition, TaskChildAdmission | ContinuityRead/Commit, Interpretation, ContextComposition, NativeWorkContext, GoalEvaluation, FollowUp, Qualification, DiscoveredKnowledge |
+| WriteEnvelope, SourceRef, Utf8ByteSpan, ContinuityFailure | M1 leaves: `continuity`, `assistant_continuity/{cognition,context}`, `work_context` + `work_context_ports`, `qualification`, `frontend/features/continuous_assistant` |
+
+`ContinuityReadPort` pages Goal→child relations and admitted parent grants by
+recipient membership. It is not a second Conversation list or scheduler.
+`ContextCompositionPort::compose_authorized` is the sole required composition
+method. It takes a `ContextCompositionRequest` naming the current recipient
+and revocation generation; M1 retrieves grants through the read port. There
+is no ambient two-argument `compose`.
+Child Conversations remain ordinary Canonical Conversation records created
+through existing `conversation.create` / membership / Event actions. The parent
+card identity is a `ParentCardAnchor` onto an existing message Event and
+metadata Part; no new Event kind is added. Completion notices reuse the
+existing notification-center item `id`. `subagent_dispatch_claims` stays an
+intra-Conversation dispatch lineage and is not the parent/child Conversation
+relation. A one-time scan retired the single-visible-Conversation presentation
+in these owned documents; there is no permanent removed-string gate.
+
+The installed MCP catalog remains the existing nine tools. Old Conversation
+dispatch stays on its current actions. `designation_epoch` is a version fact on
+the designated Assistant Membership, not a new Principal. `admit-task-child`
+is an internal continuity command for durable work, not a User demand form.

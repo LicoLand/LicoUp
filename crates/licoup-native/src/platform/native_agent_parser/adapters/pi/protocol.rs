@@ -510,6 +510,21 @@ impl PiProtocol {
                         "session/switch",
                     ))];
                 }
+                if self.config.prompt.trim().is_empty() {
+                    let session_id = active_session_id.to_owned();
+                    self.phase = ProtocolPhase::Finished;
+                    return vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
+                        output: String::new(),
+                        session_id,
+                        turn_id: self.config.turn_id.clone(),
+                        turn_status: if self.config.is_resume() {
+                            "resumed".to_owned()
+                        } else {
+                            "started".to_owned()
+                        },
+                        effective: self.effective.clone(),
+                    }))];
+                }
                 vec![ProtocolEffect::Send(self.next_configuration_request())]
             }
             ProtocolPhase::AwaitAvailableModels if command == "get_available_models" => {
