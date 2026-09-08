@@ -7,11 +7,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/resources/workflow-policies/**",
         "crates/licoup-native/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
       command: rustLayer("domain::adaptive_flywheel::"),
+    }),
+  defineModule({
+      id: "rust.domain.subagent-mcp",
+      kind: "rust-domain",
+      summary: "Authenticated Assistant and Subagent MCP application, policy discovery, and exact Membership delegation",
+      inputs: [
+        "crates/licoup-native/src/domain/subagent_mcp/**",
+        "crates/licoup-native/src/domain/adaptive_flywheel/policy.rs",
+        "crates/licoup-native/resources/workflow-policies/**",
+      ],
+      command: rustLayer("domain::subagent_mcp::"),
     }),
   defineModule({
       id: "rust.domain.agent-intelligence-catalog",

@@ -145,7 +145,7 @@ impl SubagentMcpSupervisor {
     }
 
     /// Health is the real contract, not thread liveness: one authenticated
-    /// initialize plus the exact ordered nine-tool catalog. The probe identity
+    /// initialize plus the exact ordered tool catalog. The probe identity
     /// never leaves the process and the probe session is closed afterwards.
     fn health_probe(&self) -> bool {
         let initialize = McpMessage::request(
@@ -1312,7 +1312,7 @@ mod tests {
                 .pointer("/result/tools")
                 .and_then(Value::as_array)
                 .map(Vec::len),
-            Some(9)
+            Some(crate::domain::subagent_mcp::TOOL_NAMES.len())
         );
         connector_close_session(&discovery, session.as_deref().unwrap()).unwrap();
         let body = encode_http_body(&list, MAX_MCP_FRAME_BYTES).unwrap();

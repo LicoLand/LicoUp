@@ -10,7 +10,7 @@ Conversation store 共同组成。公开契约冻结在
 ## 公共契约
 
 - 主协议修订：`2025-06-18`；兼容入站修订：`2025-11-25`
-- 服务器：`lico-up-subagents` `0.11.0`
+- 服务器：`lico-up-subagents` `0.12.0`
 - 传输：桌面客户端托管的已认证回环 Streamable HTTP 服务
 - 供应商入口：不含工具定义的轻量 stdio connector
 - 本 Mesh 供应商：Codex、Cursor、Antigravity
@@ -26,9 +26,26 @@ Conversation store 共同组成。公开契约冻结在
 7. `lico_subagent_delegate`
 8. `lico_subagent_continue`
 9. `lico_subagent_cancel`
+10. `lico_assistant_workflow_policy`
 
 所有输入 schema 都是封闭的。connector 不含目录与供应商逻辑；每个 stdio
 帧只执行一次 HTTP 尝试。
+
+## 内置工作流策略发现
+
+`lico_assistant_workflow_policy` 是只读的发现与读取工具。已认证 caller 可传入
+`{}` 获取 `policies` 摘要数组，再传入 `{"policyId":"better-plan"}` 获取选中
+策略的 `id`、`name`、`version`、`description`、`instructions` 与 `modelPresets`。
+未知 id 返回 `workflow_policy_not_found`，阶段为 `workflow-policy/read`。
+可选 id 必须是有界非空字符串；额外参数会被拒绝。
+
+内置 Better Plan 描述 Designer、Worker 和独立 Reviewer 的职责。模型预设声明
+`schemaVersion: 1`，包含
+`assistant`、`candidateUse` 与有序 `roles`；每个角色的有序 `candidates` 包含
+`modelName` 和 `reasoningEffort`。名称是语义建议，执行前须结合当前 Agent 目录
+与 Profile 解析。读取策略不要求 Conversation Membership，不创建 run、不改变
+绑定，也不赋予执行权限，由 Assistant 判断何时采用。参见
+[内置策略](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md#内置-assistant-策略)。
 
 ## Assistant Profile 与临时工作流
 
@@ -52,7 +69,7 @@ callback 边时，run 持久挂起而不进入声明的下一节点；execute �
 此应答通道的 `strategy-callback-request` 会话事件。决策搭乘同一次幂等 execute
 调用——同一 Conversation、Membership、workflow、bindings、input 与幂等键——因此重放
 的决策是陈旧的，不会结算任何东西。`advance` 进入声明的下一节点，`return` 重新进入
-已完成节点，`terminate` 取消该 run。九工具目录保持不变。
+已完成节点，`terminate` 取消该 run。
 
 ## 权限与调用谱系
 
