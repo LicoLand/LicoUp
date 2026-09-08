@@ -116,7 +116,7 @@ flowchart LR
 ```
 
 `core::mcp` is framing only. `SubagentMcpApplication` owns the frozen inbound
-revision and nine-tool semantics. `McpCallerIntegration` and
+revision and tool-catalog semantics. `McpCallerIntegration` and
 `SubagentRuntimeAdapter` are the sole provider ports. Caller identity and
 server-owned parent lineage enter through authenticated request context, never
 tool arguments. A durable active-edge claim is committed before adapter work.
