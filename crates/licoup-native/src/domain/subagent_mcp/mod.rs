@@ -7,6 +7,7 @@
 use crate::core::mcp::{
     McpApplication, McpApplicationError, McpServerDefinition, McpToolCallContext,
 };
+use crate::domain::adaptive_flywheel::{builtin_workflow_policies, builtin_workflow_policy};
 use licoup_agent_adapters::AdapterRegistry;
 use licoup_agent_runtime::{
     AdapterFailure, DurableNativeBinding, ProviderId, RuntimeDispatchReceipt, RuntimeTransition,
@@ -26,7 +27,7 @@ pub use production::production_application;
 pub const PROTOCOL_REVISION: &str = "2025-06-18";
 pub const COMPATIBLE_PROTOCOL_REVISIONS: &[&str] = &["2025-11-25"];
 pub const SERVER_NAME: &str = "lico-up-subagents";
-pub const SERVER_VERSION: &str = "0.11.0";
+pub const SERVER_VERSION: &str = "0.12.0";
 pub const MAX_MCP_FRAME_BYTES: usize = 64 * 1024;
 pub const MAX_PROMPT_BYTES: usize = 48 * 1024;
 pub const MAX_ID_BYTES: usize = 256;
@@ -52,6 +53,7 @@ pub const TOOL_NAMES: &[&str] = &[
     "lico_subagent_delegate",
     "lico_subagent_continue",
     "lico_subagent_cancel",
+    "lico_assistant_workflow_policy",
 ];
 
 pub fn server_definition() -> McpServerDefinition {
@@ -541,6 +543,12 @@ impl McpApplication for SubagentMcpApplication {
                 arguments,
             ),
             "lico_subagents_list" => self.targets.list(),
+            "lico_assistant_workflow_policy" => match optional_text(arguments, "policyId") {
+                None => Ok(json!({"policies": builtin_workflow_policies()})),
+                Some(id) => builtin_workflow_policy(&id)
+                    .map(|policy| json!(policy))
+                    .ok_or_else(|| permanent("workflow_policy_not_found", "workflow-policy/read")),
+            },
             "lico_subagent_probe" => self.probe(arguments),
             "lico_subagent_delegate" | "lico_subagent_continue" | "lico_subagent_cancel" => {
                 let result = match name {
@@ -787,7 +795,21 @@ pub fn tool_catalog() -> Vec<Value> {
             ],
             &[],
         ),
+        workflow_policy_tool(),
     ]
+}
+
+fn workflow_policy_tool() -> Value {
+    let mut definition = tool(
+        "lico_assistant_workflow_policy",
+        &[("policyId", bounded_string(MAX_ID_BYTES))],
+        &[],
+    );
+    definition["description"] = json!(
+        "Discover built-in development workflow policies and recommended model presets. Omit policyId to list summaries; pass a listed id such as better-plan to read its instructions and ordered model preferences. Read-only guidance for the Assistant; execute work through existing tools."
+    );
+    definition["annotations"] = json!({"readOnlyHint": true});
+    definition
 }
 
 fn dispatch_tool(name: &'static str) -> Value {
