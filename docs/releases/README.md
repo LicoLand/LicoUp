@@ -7,7 +7,16 @@
 
 ## Next release
 
-No release is currently planned.
+- Version: `0.2.0`
+- Classification: `minor`
+- Status: `ready`
+- Target date: `2026-09-10`
+- Integration branch: `nightly`
+- Progress: `1/1` accepted (`100%`)
+
+| ID | Type | Feature | Status | Risk | Pull request | Depends on | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| continuous-assistant | capability | Durable Continuous Assistant child conversations and adoption controls | accepted | medium | [PR](https://github.com/LicoLand/LicoUp/pull/275) | — | FINAL-REGRESSION-4-report.json: 78/78 static compatibility and continuity scenarios passed.<br>FINAL-SOURCE-COVERAGE.json: 24/24 source and architecture checks passed.<br>PR #275 required checks and macOS build/install/stable-launch verification passed. |
 
 ## Release history
 
