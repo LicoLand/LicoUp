@@ -74,7 +74,7 @@
     "client:native:smoke:runtime-data": "node tests/smoke/native-client-smoke.mjs --runtime-data",
     "client:native:smoke:policy:self-test": "node tests/smoke/native-client-smoke-policy-self-test.mjs",
     "client:native:smoke:windows": "node tests/smoke/windows-native-smoke.mjs",
-    "client:contract:bundles:test": "node --test \"tests/contract/client/**/*.test.mjs\"",
+    "client:contract:bundles:test": "node tools/scripts/client-contract-bundles.mjs",
     "client:contracts:test": "node tests/contract/client/contracts-client.test.mjs",
     "client:verify:architecture": "node apps/desktop/scripts/verify-client-architecture.mjs",
     "client:verify:local-data-egress-boundary": "node --test tests/contract/client/local-data-egress-boundary.test.mjs",

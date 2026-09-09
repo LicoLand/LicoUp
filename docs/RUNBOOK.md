@@ -5,7 +5,10 @@
 This runbook contains repository-root operational entry points. `package.json`
 is authoritative for command definitions, the regression catalog under
 `tools/regression/` owns module selection, and platform packaging scripts under
-`apps/desktop/scripts/` own package behavior.
+`apps/desktop/scripts/` own package behavior. Continuous Assistant operator
+behavior is in [`functionality/USER-GUIDE.md`](functionality/USER-GUIDE.md);
+the owning specification is
+[`architecture/CONTINUOUS-ASSISTANT.md`](architecture/CONTINUOUS-ASSISTANT.md).
 
 ## Prepare a development checkout
 
@@ -250,6 +253,28 @@ npm run repo:local-info-hygiene
 Formal documents state only implemented and verified behavior. Requirements,
 future design, progress, checkpoints, raw audit output, and unverified
 conclusions remain local plan or report material.
+
+### Continuous Assistant collection Unknown
+
+A collection claim is `NotExecuted` until the producer is about to make the
+first native invocation, then it becomes `Unknown`. `Unknown` is not proof
+that no execution occurred. A later retry of the same session returns
+reconciliation and must not dispatch again.
+
+To continue after `Unknown`, the owner re-admits a new evaluation session.
+The existing evidence identity still blocks a second commit for the same
+candidate. Pre-invoke failures stay `NotExecuted` and release the claim.
+A missing runtime (or other corpus-independent cause) may retry on the
+same session after the cause is fixed. A missing or changed corpus requires
+a new owner-issued evaluation session bound to that corpus; restoring the
+exact original corpus permits the original session to retry.
+
+语料收集 claim 在首次原生调用前转为 `Unknown`。`Unknown` 不能证明尚未执行。
+同一会话再次收集只返回对账，不会重派。继续工作时由 owner 重新准入新会话；
+已有证据身份仍阻止二次提交。调用前失败保持 `NotExecuted` 并释放 claim。
+缺少运行时（或其他与语料无关的原因）修复后可在同一会话重试。缺少或已变更
+的语料需要 owner 签发绑定该语料的新评估会话；恢复完全相同的原始语料后，
+原会话才可以重试。
 
 ### Promote an author README update
 

@@ -2436,6 +2436,42 @@ impl ConversationStore {
         })
     }
 
+    /// The stored text of one posted Event Part, validated to belong to the
+    /// Conversation and that Event. Image parts read back as empty text so a
+    /// Part-scoped SourceRef cannot widen to another Part's content.
+    pub fn posted_event_part_text(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+        part_id: &str,
+    ) -> StoreResult<String> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(event_id, "event_id")?;
+        validate_identifier(part_id, "part_id")?;
+        self.with_connection(|connection| {
+            let row: Option<(String, String, String)> = connection
+                .query_row(
+                    "SELECT e.conversation_id, ep.kind, ep.content
+                     FROM events e
+                     JOIN event_parts ep ON ep.event_id=e.id
+                     WHERE e.id=?1 AND ep.id=?2 AND ep.runtime_cursor IS NULL",
+                    params![event_id, part_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+            let (owner, kind, content) =
+                row.ok_or_else(|| anyhow!("conversation_event_not_found"))?;
+            if owner != conversation_id {
+                return Err(anyhow!("mention_event_mismatch"));
+            }
+            match kind.as_str() {
+                "text" | "reasoning" => Ok(content),
+                "image" => Ok(String::new()),
+                _ => Err(anyhow!("conversation_event_not_found")),
+            }
+        })
+    }
+
     /// Load one Event by identity after proving it belongs to the Conversation.
     pub fn event(
         &self,
@@ -6094,6 +6130,70 @@ mod tests {
                 .posted_event_text(&conversation.id, &event.id)
                 .unwrap(),
             ""
+        );
+        assert_eq!(
+            store
+                .posted_event_part_text(&conversation.id, &event.id, &event.parts[0].id)
+                .unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn posted_event_part_text_reads_only_the_named_part() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Parts", owner()).unwrap();
+        let owner = conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.access == MembershipAccess::Owner)
+            .unwrap()
+            .id
+            .clone();
+        let event = store
+            .append_event(
+                &conversation.id,
+                Some(&owner),
+                EventKind::Message,
+                &[
+                    NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: "FIRST-PART-ONLY".into(),
+                    },
+                    NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: "SIBLING-PART-SECRET".into(),
+                    },
+                ],
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .posted_event_text(&conversation.id, &event.id)
+                .unwrap(),
+            "FIRST-PART-ONLY"
+        );
+        assert_eq!(
+            store
+                .posted_event_part_text(&conversation.id, &event.id, &event.parts[0].id)
+                .unwrap(),
+            "FIRST-PART-ONLY"
+        );
+        assert_eq!(
+            store
+                .posted_event_part_text(&conversation.id, &event.id, &event.parts[1].id)
+                .unwrap(),
+            "SIBLING-PART-SECRET"
+        );
+        assert!(
+            store
+                .posted_event_part_text(&conversation.id, &event.id, "part:missing")
+                .is_err()
         );
     }
 

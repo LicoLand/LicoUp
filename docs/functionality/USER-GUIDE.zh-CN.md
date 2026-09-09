@@ -105,6 +105,23 @@ DeepSeek Harness 通过官方 SDK JSON-RPC runtime carrier 纳入适配目标。
 准确 session 连续性、结构化流式事件与显式 model 选择；发布 readiness 仍为 unverified，
 且本通道不声明 cancel、活动 prompt steer、历史回读、reasoning override 或多模态输入。
 
+## 在普通聊天中继续工作
+
+普通聊天留在当前对话。当 Assistant 接纳需要持续跟进的工作时，LicoUp 会在父会话
+二级列表打开一个子对话，并在原来的父消息上保留一张任务卡片。子对话里的人和
+智能体保持各自作者身份。父卡片不增加执行者徽章。
+
+你可以暂停目标、取消准确操作、关闭观察者或删除对话，这些动作互不相同。关闭
+采用策略只会阻止新的自动理解与派发，不会抹掉目标、历史或仍需恢复的未知工作。
+即使采用策略默认开启，offline 与 admitted-shadow 阶段也不会自动跟进。扩展覆盖
+表示多个不同的合格职责，而不是同一职责的两条身份。归档对话或失去 owner
+后，新的自动跟进会立即停止。来源枚举
+标签本身不是授权。父资料只有在该接收方已获准的授权范围内才会进入子对话。
+
+真实或付费模型的资格在另外授权评估之前保持未知。本客户端不宣称已完成 live
+验证、完整发布或手机后台常驻。规范见
+[持续 Assistant](../architecture/CONTINUOUS-ASSISTANT.zh-CN.md)。
+
 ## 连接虚拟机内的 OpenClaw 或 Hermes
 
 此桌面流程面向用户自己控制的虚拟机。请先在虚拟机内安装并配置 OpenClaw 或 Hermes；

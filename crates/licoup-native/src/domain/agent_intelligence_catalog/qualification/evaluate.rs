@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::economy::{EconomicReport, evaluate_economy};
 use super::evidence::{
-    EvidenceBundle, EvidenceClass, ObservationPolarity, QualificationObservation,
+    EvidenceBundle, EvidenceClass, LiveProvenance, ObservationPolarity, QualificationObservation,
 };
 use super::policy::QualificationPolicy;
 use super::wilson::one_sided_wilson_upper;
@@ -215,8 +215,12 @@ pub fn evaluate_bundle(
     reasons.sort();
     reasons.dedup();
     let policy_pass = reasons.is_empty();
-    let result =
-        result_from_assessment(policy_pass, bundle.evidence_class, all_families.is_empty());
+    let result = result_from_assessment(
+        policy_pass,
+        bundle.evidence_class,
+        all_families.is_empty(),
+        bundle.provenance.as_ref(),
+    );
     let economy = evaluate_economy(
         &heldout
             .iter()
@@ -250,6 +254,7 @@ pub fn result_from_assessment(
     policy_pass: bool,
     evidence_class: EvidenceClass,
     zero_samples: bool,
+    provenance: Option<&LiveProvenance>,
 ) -> ContinuityQualificationResult {
     if zero_samples {
         return ContinuityQualificationResult::Unknown;
@@ -260,7 +265,10 @@ pub fn result_from_assessment(
     if evidence_class != EvidenceClass::LiveAuthorized {
         return ContinuityQualificationResult::Unknown;
     }
-    ContinuityQualificationResult::Qualified
+    if provenance.is_some_and(LiveProvenance::is_stored_authority) {
+        return ContinuityQualificationResult::Qualified;
+    }
+    ContinuityQualificationResult::Unknown
 }
 
 pub fn apply_assessment(

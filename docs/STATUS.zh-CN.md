@@ -36,6 +36,7 @@
 | 退役客户端专用通讯站 API | 已移除 | 不保留原客户端专用通讯站信封/API、`/api/secure-mesh/v1` 路由、服务会话 scope、配置、夹具或兼容面。这里的移除不包括上方仍在使用的 `licomesh.*` 端点预览。 |
 | BadTower 候选互操作 | 已在本机验证 | 直接 Lico Arc adapter 已通过实际 BadTower 候选完成两套全新端点场景；这不是产品发布或可信集成。 |
 | 官方网络默认值 | 未配置 | 客户端当前没有官方网络默认通讯站入口。 |
+| 持续 Assistant | 源码中已实现；真实模型资格仍为 unknown | 普通聊天留在父规范 Conversation。获准的持久工作使用一个子 Conversation，并在创建 Event 序号保留一张父时间线卡片；父卡片执行者徽章不存在。宿主私有的持久采用策略（`offline` → `admitted_shadow` → `qualified_low_risk` → `expanded`）写在既有 continuity schema 中。真实 owner 可通过既有可信 conversation 用例启用或禁用；禁用只阻止新的自动理解/派发，并保留 Goal、历史、在途责任、未知效果和人工恢复。live 证据必须经过已准入的评价会话，并绑定到 owner 准入的带版本语料。宿主生产器遍历该语料，对未标注用例输入调用已绑定的获准 PersistentTurn，用私有期望动作对类型化输出评分，并把收集回执绑定到整条观测。会话与候选 `datasetVersion` 携带数据集 id 和实际语料摘要。语料缺失、为空或版本不匹配时，在任何原生调用之前以类型化错误失败。收集 claim 在第一次原生调用之前转为 Unknown：调用前失败仍为可重试的 NotExecuted；调用后失败保持 Unknown（不能证明尚未执行），重试返回对账。Owner 重新准入新会话以对账；已有证据身份仍阻止二次提交。未绑定运行时保持不可用，hermetic observer 仅用于测试。生产路径不会生成配方分数。重载会重新校验会话、owner、收集回执与撤销。归档或 owner 失效会在同一进程内拒绝下一次自动准入。`expanded` 表示不同合格职责的覆盖，不是原始行数；合成导入不计为 admitted。TestEvidence 不能提升真实模型资格。即使采用默认开启，offline 与 admitted-shadow 也不会自动派发。本机制的源码交付已完成；真实或付费模型资格仍为 unknown。这不是发布声明，也不是手机常驻。 |
 
 源码存在不等于已经验证、发布、支持或正在运营。
 

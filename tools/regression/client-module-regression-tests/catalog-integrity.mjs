@@ -101,7 +101,14 @@ test("catalog commands reference existing dedicated scripts and test targets", a
       } else {
         const packageIndex = moduleCommand.args.indexOf("-p");
         assert.equal(packageIndex >= 0, true);
-        assert.equal(moduleCommand.args[packageIndex + 1], "licoup-native");
+        const crate = moduleCommand.args[packageIndex + 1];
+        assert.equal(
+          crate === "licoup-native" ||
+            (crate === "licoup-conversation" &&
+              module.id === "rust.domain.conversation-continuity-store"),
+          true,
+          `${module.id} cargo package ${crate} is not a catalog crate`,
+        );
       }
     }
   }
@@ -508,7 +515,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
     ["conversation-ownership.mjs", 6],
     ["flutter-selection.mjs", 4],
     ["platform-driver-ownership.mjs", 20],
-    ["runner-safety.mjs", 14],
+    ["runner-safety.mjs", 16],
     ["rust-selection.mjs", 11],
     ["secure-mesh-ownership.mjs", 17],
   ]);
@@ -530,7 +537,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 88);
+  assert.equal(registeredNames.size, 90);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

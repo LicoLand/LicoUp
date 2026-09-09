@@ -43,6 +43,8 @@ jobs:
             build/crates/licoup-native/target
           key: ${{ runner.os }}-cargo-client-regression-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-client-regression-
+      - name: Fetch locked Cargo dependencies
+        run: node tools/scripts/cargo-client.mjs fetch --locked
       - name: Install Linux native test dependencies
         run: |
           sudo apt-get update
@@ -70,7 +72,7 @@ jobs:
           retention-days: 14
 
   contract-bundles:
-    name: Contract source-bundle tests (Node tier)
+    name: Node-only contract source-bundle tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
