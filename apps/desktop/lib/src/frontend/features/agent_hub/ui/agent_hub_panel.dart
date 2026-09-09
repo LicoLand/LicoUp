@@ -26,9 +26,6 @@ import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 const double _hubCardInset = LicoContentSpacing.compact;
 const double _hubCardHorizontalInset = LicoContentSpacing.item;
-const double _hubListEdgeInset = LicoContentSpacing.compact;
-const double _hubListSummaryHorizontalInset =
-    LicoContentSpacing.compact + LicoContentSpacing.inline;
 const double _hubCardMaxWidth = 200;
 const double _hubListIconSize = 44;
 const double _hubListIconGlyphSize = 24;
@@ -572,9 +569,9 @@ final class _AgentHubRecipeCard extends StatelessWidget {
                     Padding(
                       key: Key('agent-hub-header-${recipe.id}'),
                       padding: const EdgeInsets.fromLTRB(
-                        _hubListEdgeInset,
+                        _hubCardHorizontalInset,
                         _hubCardInset,
-                        _hubListEdgeInset,
+                        _hubCardHorizontalInset,
                         0,
                       ),
                       child: SizedBox(
@@ -607,7 +604,7 @@ final class _AgentHubRecipeCard extends StatelessWidget {
                     const SizedBox(height: _hubTitleToSummaryGap),
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: _hubListSummaryHorizontalInset,
+                        horizontal: _hubCardHorizontalInset,
                       ),
                       child: SizedBox(
                         height: _hubListSummaryHeight,

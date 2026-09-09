@@ -34,7 +34,39 @@ Algorithms are combined only when they have distinct roles and validated composi
 
 The client probes platform capabilities and selects system secure storage when available, otherwise explicitly falling back to ephemeral in-memory storage. Private key custody and local Provider selection remain LicoUp responsibilities; wire-observable profiles and negotiation belong to the fixed Lico Arc Protocol Line.
 
-## 4. Data Boundaries and Rules
+## 4. Provider-Managed History and Recovery
+
+Provider-managed cloud history is a separate source from the local Canonical
+Conversation store. After provider authorization, retained history is readable
+by default; the default history read does not call a recovery key. Client-side
+encryption for this history is an explicit opt-in and is not silently enabled
+by the default path.
+
+History recovery restores every retained object that the authorized provider
+still makes available. Provider access rules continue to apply, so recovery cannot
+bypass access or recreate objects that are missing, deleted, expired, or
+otherwise unavailable. Identity recovery material is separately authenticated
+and never locks default history reads. Replacement-device recovery prepares
+identity authority and the complete available history before one atomic
+caller-owned commit; identity material cannot restore missing history.
+
+LicoUp never routes this history through or stores it at a Station; malicious
+Stations remain outside the history path. This path makes no mandatory notary
+or endpoint attestation/evidence promise; any evidence LicoUp shows remains
+local and scoped to the operation that produced it.
+
+```mermaid
+flowchart LR
+    U["User"] --> A["Provider authorization"]
+    A --> H["Provider-managed retained history"]
+    H --> L["LicoUp local projection"]
+    R["History recovery"] --> H
+    E["Explicit client encryption"] -.-> H
+    I["Identity recovery"] -.->|separate flow| K["Endpoint identity and keys"]
+    S["Malicious Station<br/>transport only"]
+```
+
+## 5. Data Boundaries and Rules
 
 ```mermaid
 sequenceDiagram
@@ -49,10 +81,10 @@ sequenceDiagram
 ```
 
 The client strictly adheres to these data boundaries:
-- **Data Locality**: Local paths, logs, history, usage records, credentials, and raw runtime data stay on-device.
+- **Data Locality**: Local paths, logs, canonical history, local projections, usage records, credentials, and raw runtime data stay on-device. Provider-managed history remains with its authorized provider; LicoUp does not use a Station as its storage.
 - **Plaintext Control**: Default scenarios never send sensitive runtime data or user content in plaintext to servers.
 - **Controlled Disclosure**: External MCP requests contain only exact text and files shown in one-shot user confirmations.
 - **Ciphertext in Transit**: Content leaving the client without explicit external service confirmation must be encrypted for the designated peer.
 - **Encrypt-then-Send, Verify-then-Use**: Senders encrypt before network transmission; receivers authenticate and verify freshness/anti-replay before consumption.
-- **Zero-Trust Stations**: Compatible stations are outside the trusted boundary. Private keys and approval policies stay entirely with endpoints.
+- **Zero-Trust Stations**: Compatible stations are outside the trusted boundary and outside LicoUp's history path. Private keys and approval policies stay entirely with endpoints.
 - **Safe Summaries**: Logs and reports retain only security summaries, never raw user content or secret keys.

@@ -15,7 +15,9 @@ import {
   collectRustToolchainNativeMetrics,
   decorateRustToolchainCommand,
   isRustToolchainCommand,
+  resolveRustLibtestThreads,
 } from "./client-regression-toolchain-stats/rust.mjs";
+import { withTestProcessLoopbackProxyExemption } from "../scripts/client-toolchain-env.mjs";
 import {
   createClientRegressionReport,
   writeClientRegressionReport,
@@ -139,13 +141,16 @@ function relativeReporterPath(repoRoot, commandCwd) {
   return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
-function prepareToolchainCommand(batch, { repoRoot }) {
+function prepareToolchainCommand(batch, { repoRoot, environment = process.env } = {}) {
   if (isRustToolchainCommand(batch.command)) {
     const stdout = createTailCollector(2 * 1024 * 1024);
     const stderr = createTailCollector(2 * 1024 * 1024);
     const decorated = decorateRustToolchainCommand(batch.command, {
       cargoJobs: batch.internalConcurrency,
-      libtestThreads: batch.internalConcurrency,
+      libtestThreads: resolveRustLibtestThreads({
+        internalConcurrency: batch.internalConcurrency,
+        environment,
+      }),
     });
     return Object.freeze({
       command: decorated.command,
@@ -258,11 +263,12 @@ function commandMetrics({ durationMs, processTree, toolchain, toolchainId }) {
 
 export async function runClientRegressionCommand(batch, {
   repoRoot,
+  environment = process.env,
   leaseFactory = acquireTestArtifactLease,
   spawnImpl = spawn,
   metricsAdapter = defaultProcessTreeMetricsAdapter(),
 } = {}) {
-  const prepared = prepareToolchainCommand(batch, { repoRoot });
+  const prepared = prepareToolchainCommand(batch, { repoRoot, environment });
   const { program, args, cwd, timeoutMs } = prepared.command;
   const executable = program === "node" ? process.execPath : program;
   const lease = program === "cargo"
@@ -290,7 +296,7 @@ export async function runClientRegressionCommand(batch, {
         child = spawnImpl(executable, [...args], {
           cwd: containedWorkingDirectory(repoRoot, cwd),
           env: {
-            ...process.env,
+            ...withTestProcessLoopbackProxyExemption(environment),
             ...prepared.environment,
             ...(lease ? { CARGO_TARGET_DIR: lease.targetPath } : {}),
           },

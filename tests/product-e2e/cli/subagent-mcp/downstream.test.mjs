@@ -227,7 +227,7 @@ test("direct client initializes, lists, and sends exactly one authenticated dele
     exchanges.push({ method: request.method, body, headers: request.headers, redirect: request.redirect });
     if (request.method === "DELETE") return new Response(null, { status: 204 });
     const result = body.method === "initialize"
-      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.11.0" } }
+      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.12.0" } }
       : body.method === "tools/list"
         ? { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) }
         : {
@@ -275,7 +275,7 @@ test("direct client preserves a safe structured target failure without retry", a
     const body = JSON.parse(request.body);
     if (body.method === "tools/call") toolCalls += 1;
     const result = body.method === "initialize"
-      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.11.0" } }
+      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.12.0" } }
       : body.method === "tools/list"
         ? { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) }
         : {
@@ -346,7 +346,7 @@ test("every MCP response must return the stable session and JSON media type", as
         else delete headers["content-type"];
       }
       const result = body.method === "initialize"
-        ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.11.0" } }
+        ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.12.0" } }
         : { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) };
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }), {
         status: 200, headers,

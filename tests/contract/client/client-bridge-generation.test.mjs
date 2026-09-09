@@ -118,6 +118,8 @@ function copyRepoSubset(root, destination) {
     generatorPath,
     packagePath,
     "tools/templates/client_bridge",
+    "crates/licoup-conversation/src/continuity/generated.rs",
+    "crates/licoup-agent-runtime/src/work_context/generated.rs",
     ...manifest.families.flatMap((family) => [
       family.schema,
       family.rustOutput,
@@ -365,6 +367,32 @@ test("4) manifest mutation and tracked artifacts produce bounded failures in che
       "missing active output",
       runGenerator(mutated, ["--check"]),
       /missing|not found|ENOENT|open|write/i,
+    );
+  }
+
+  // missing required continuity domain generated output
+  {
+    const mutated = makeScratch(base);
+    await fs.unlink(
+      path.join(mutated, "crates/licoup-conversation/src/continuity/generated.rs"),
+    );
+    failWithPattern(
+      "missing required domain generated output",
+      runGenerator(mutated, ["--check"]),
+      /stale generated output: crates\/licoup-conversation\/src\/continuity\/generated\.rs/,
+    );
+  }
+
+  // missing required runtime work-context generated output
+  {
+    const mutated = makeScratch(base);
+    await fs.unlink(
+      path.join(mutated, "crates/licoup-agent-runtime/src/work_context/generated.rs"),
+    );
+    failWithPattern(
+      "missing required runtime generated output",
+      runGenerator(mutated, ["--check"]),
+      /stale generated output: crates\/licoup-agent-runtime\/src\/work_context\/generated\.rs/,
     );
   }
 });

@@ -1,6 +1,7 @@
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 import '../agent_conversation_pane/pane_test_harness.dart';
 
@@ -185,6 +186,47 @@ void main() {
     await tester.tap(chip);
     await tester.pump();
     expect(chooseCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('copying the conversation id shows a LicoToast, not a SnackBar', (
+    tester,
+  ) async {
+    const session = AgentConversationSession(
+      id: 'session-1',
+      agentId: 'codex',
+      title: 'Focused session',
+      createdAt: '2026-07-16T08:30:00',
+      updatedAt: '2026-07-16T09:00:00',
+      messages: [],
+      workingDirectory: '/work/project-alpha',
+      messageCount: 5,
+      sourceClient: 'licoup',
+    );
+    final copied = <String>[];
+    await tester.pumpWidget(
+      paneTestApp(
+        LicoToastHost(
+          child: MessagingDetailsPanel(
+            state: _panelState(session: session),
+            actions: paneTestActions(
+              onCopyText: (text) async => copied.add(text),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const Key('messaging-details-conversation-id')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(copied, ['session-1']);
+    expect(find.text('Conversation ID copied'), findsOneWidget);
+    expect(find.byType(LicoToast), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

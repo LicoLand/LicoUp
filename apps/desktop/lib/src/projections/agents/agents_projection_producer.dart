@@ -276,6 +276,7 @@ final class AgentsProjectionProducer
             from: edge.from,
             to: edge.to,
             event: edge.event,
+            mode: edge.mode,
             guardLabel: edge.guardLabel,
           ),
       ],

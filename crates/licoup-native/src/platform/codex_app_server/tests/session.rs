@@ -46,6 +46,19 @@ fn complete_current_turn(protocol: &mut CodexParser, thread_id: &str) {
 }
 
 #[test]
+fn empty_prompt_resume_completes_without_starting_a_turn() {
+    let mut protocol = CodexParser::new(config(json!({}), "", "exact-thread"));
+    let messages = sent_messages(initialize(&mut protocol));
+    assert_eq!(messages[1]["method"], "thread/resume");
+    assert_eq!(messages[1]["params"]["threadId"], "exact-thread");
+    let outcome = completed_outcome(protocol.handle_message(thread_open_response("exact-thread")));
+    assert_eq!(outcome.session_id, "exact-thread");
+    assert_eq!(outcome.thread_id, "exact-thread");
+    assert_eq!(outcome.turn_status, "resumed");
+    assert!(outcome.turn_id.is_empty());
+}
+
+#[test]
 fn new_thread_sends_prompt_only_in_turn_start_stdio_message() {
     let prompt = "private prompt that must not enter argv";
     let mut protocol = CodexParser::new(config(

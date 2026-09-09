@@ -58,11 +58,49 @@ function innerToolchain(args) {
   return null;
 }
 
+const BRIDGE_FORMAT_CONTRACT_FILES = Object.freeze([
+  "tests/contract/client/client-bridge-generation.test.mjs",
+  "tests/contract/client/continuous-assistant-contract.test.mjs",
+]);
+const RUST_SDK_CONTRACT_FILES = Object.freeze([
+  ...BRIDGE_FORMAT_CONTRACT_FILES,
+  "tests/contract/client/continuous-assistant-integration.test.mjs",
+  "tests/contract/client/continuous-assistant-scenarios.test.mjs",
+  "tests/contract/client/continuous-assistant-evaluation.test.mjs",
+  "tests/contract/client/continuous-assistant-adoption.test.mjs",
+]);
+const FLUTTER_SDK_CONTRACT_FILES = Object.freeze([
+  "tests/contract/client/continuous-assistant-ux.test.mjs",
+]);
+
+function normalizeContractFile(file) {
+  return String(file).replaceAll("\\", "/");
+}
+
+export function nodeTestFileToolchain(file) {
+  const normalized = normalizeContractFile(file);
+  if (FLUTTER_SDK_CONTRACT_FILES.includes(normalized)) return "flutter";
+  if (RUST_SDK_CONTRACT_FILES.includes(normalized)) return "rust";
+  return "node-test";
+}
+
+function nodeTestFiles(args) {
+  return args.slice(1).filter((value) => !String(value).startsWith("-") && String(value).endsWith(".mjs"));
+}
+
 export function regressionToolchain(command) {
   if (command.program === "cargo") return "rust";
   const nested = innerToolchain(command.args);
   if (nested) return nested;
-  if (command.program === "node" && command.args[0] === "--test") return "node-test";
+  if (command.program === "node" && command.args[0] === "--test") {
+    const files = nodeTestFiles(command.args);
+    const toolchains = [...new Set(files.map(nodeTestFileToolchain))];
+    if (toolchains.length === 1) return toolchains[0];
+    if (toolchains.some((toolchain) => toolchain !== "node-test")) {
+      throw new Error("mixed node-test and SDK-owned contract files in one command");
+    }
+    return "node-test";
+  }
   if (command.program === "node") return "node";
   throw new Error("client regression command has no toolchain");
 }
@@ -90,6 +128,18 @@ function wrapperResources(command) {
     // may consult Flutter Doctor while resolving Java. Charge every shared
     // toolchain resource instead of disguising it as a pure Node leaf.
     return ["cargo-target", "flutter-cache", "gradle-cache"];
+  }
+  if (command.program === "node" && command.args[0] === "--test") {
+    const resources = [];
+    for (const file of nodeTestFiles(command.args)) {
+      const toolchain = nodeTestFileToolchain(file);
+      if (toolchain === "rust") resources.push("cargo-target");
+      if (toolchain === "flutter") resources.push("flutter-cache");
+      if (BRIDGE_FORMAT_CONTRACT_FILES.includes(normalizeContractFile(file))) {
+        resources.push("flutter-cache");
+      }
+    }
+    return resources;
   }
   return [];
 }

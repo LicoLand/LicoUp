@@ -323,6 +323,7 @@ fn app_server_rate_limits(executable: &Path) -> Result<Value, QuotaFetchError> {
     request.push(b'\n');
 
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command
         .arg("app-server")
         .arg("--stdio")

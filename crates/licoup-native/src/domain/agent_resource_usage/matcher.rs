@@ -82,6 +82,8 @@ fn target_process_names(target: &str) -> &'static [&'static str] {
         "codex" => &["codex", "codex.exe"],
         "cursor" => &["Cursor", "Cursor.exe"],
         "kimi" | "kimi-code" => &["kimi", "kimi.exe"],
+        "grok" => &["grok", "grok.exe", "xai-grok-pager", "xai-grok-pager.exe"],
+        "command-code" => &["command-code", "command-code.exe", "cmdc", "cmdc.exe"],
         "kilo-code" => &["kilo", "kilo-code", "kilo-code.exe"],
         "pi" => &["pi", "pi.exe"],
         "code" => &["code", "code.exe"],

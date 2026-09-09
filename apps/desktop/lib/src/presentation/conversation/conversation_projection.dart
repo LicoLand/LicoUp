@@ -273,6 +273,7 @@ final class CanonicalConversationProjection {
     required this.hasEarlier,
     required this.phase,
     this.notice,
+    Iterable<Map<String, dynamic>> taskViews = const <Map<String, dynamic>>[],
   }) : events = immutablePresentationList(events),
        canonicalEvents = immutablePresentationList(canonicalEvents),
        recentParticipantAgentIds = immutablePresentationList(
@@ -284,7 +285,8 @@ final class CanonicalConversationProjection {
        ),
        quotaSnapshots = Map<String, ProviderQuotaSnapshot>.unmodifiable(
          quotaSnapshots,
-       );
+       ),
+       taskViews = List<Map<String, dynamic>>.unmodifiable(taskViews);
 
   final String conversationId;
   final List<CanonicalConversationEventProjection> events;
@@ -306,6 +308,7 @@ final class CanonicalConversationProjection {
   final bool hasEarlier;
   final PresentationPhase phase;
   final PresentationNotice? notice;
+  final List<Map<String, dynamic>> taskViews;
 
   @override
   bool operator ==(Object other) =>
@@ -335,7 +338,8 @@ final class CanonicalConversationProjection {
           other.dispatchPending == dispatchPending &&
           other.hasEarlier == hasEarlier &&
           other.phase == phase &&
-          other.notice == notice;
+          other.notice == notice &&
+          samePresentationList(other.taskViews, taskViews);
 
   @override
   int get hashCode => Object.hashAll([
@@ -362,6 +366,7 @@ final class CanonicalConversationProjection {
     hasEarlier,
     phase,
     notice,
+    Object.hashAll(taskViews),
   ]);
 }
 

@@ -519,28 +519,28 @@ void main() {
     expect(controller.liveTurns, isEmpty);
   });
 
-  test(
-    'one catalog and timeline refresh runs after dispatch returns',
-    () async {
-      final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-      runner.requests.clear();
+  test('posted user message is loaded before dispatch starts', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+    runner.requests.clear();
 
-      expect(await controller.postMessage('hi'), isTrue);
-      final actions = runner.requests
-          .map((request) => request['action'])
-          .toList();
-      expect(actions, [
-        'conversation.message.post',
-        'conversation.dispatch.after-post',
-        'conversation.list',
-        'conversation.get',
-        'conversation.events.page',
-      ]);
-    },
-  );
+    expect(await controller.postMessage('hi'), isTrue);
+    final actions = runner.requests
+        .map((request) => request['action'])
+        .where((action) => action != 'list-pending-completion-notices')
+        .toList();
+    expect(actions, [
+      'conversation.message.post',
+      'conversation.get',
+      'conversation.events.page',
+      'conversation.dispatch.after-post',
+      'conversation.list',
+      'conversation.get',
+      'conversation.events.page',
+    ]);
+  });
 
   test(
     'failed message retry reposts its content then deletes the settled attempt',

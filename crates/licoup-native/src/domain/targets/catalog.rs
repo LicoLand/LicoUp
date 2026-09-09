@@ -5,13 +5,13 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 #[derive(Clone, Debug)]
-pub(super) struct TargetDef {
-    pub(super) id: &'static str,
-    pub(super) label: &'static str,
-    pub(super) kind: &'static str,
-    pub(super) config_hint: &'static str,
-    pub(super) binary_names: &'static [&'static str],
-    pub(super) process_names: &'static [&'static str],
+pub(crate) struct TargetDef {
+    pub(crate) id: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) kind: &'static str,
+    pub(crate) config_hint: &'static str,
+    pub(crate) binary_names: &'static [&'static str],
+    pub(crate) process_names: &'static [&'static str],
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -130,11 +130,11 @@ pub(super) fn adapter_capabilities_for(target: &str) -> AdapterCapabilities {
     capabilities
 }
 
-pub(super) fn target_defs() -> Vec<TargetDef> {
+pub(crate) fn target_defs() -> Vec<TargetDef> {
     vec![
         TargetDef {
             id: "openclaw",
-            label: "OpenClaw - CLI",
+            label: "OpenClaw CLI",
             kind: "vm-cli",
             config_hint: "OpenClaw runtime configuration",
             binary_names: &["openclaw"],
@@ -142,7 +142,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "claude-code",
-            label: "Claude Code - CLI",
+            label: "Claude Code CLI",
             kind: "cli",
             config_hint: "Claude Code runtime configuration",
             binary_names: &["claude"],
@@ -150,7 +150,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "codex",
-            label: "ChatGPT Codex - CLI",
+            label: "Codex CLI",
             kind: "cli",
             config_hint: "Codex runtime configuration",
             binary_names: &["codex"],
@@ -158,7 +158,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "code",
-            label: "Visual Studio Code - IDE",
+            label: "Visual Studio Code IDE",
             kind: "desktop-agent",
             config_hint: "VS Code workspace and global storage",
             binary_names: &["code", "code-insiders"],
@@ -166,7 +166,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "antigravity",
-            label: "Antigravity - CLI",
+            label: "Antigravity CLI",
             kind: "cli",
             config_hint: "Antigravity runtime configuration",
             binary_names: &["agy", "antigravity"],
@@ -174,7 +174,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "opencode",
-            label: "OpenCode - CLI",
+            label: "OpenCode CLI",
             kind: "cli",
             config_hint: "OpenCode runtime configuration",
             binary_names: &["opencode"],
@@ -182,7 +182,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "copilot",
-            label: "GitHub Copilot - CLI",
+            label: "GitHub Copilot CLI",
             kind: "cli",
             config_hint: "Copilot runtime configuration",
             binary_names: &["copilot"],
@@ -190,7 +190,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "kilo-code",
-            label: "Kilo Code - CLI",
+            label: "Kilo Code CLI",
             kind: "cli",
             config_hint: "Kilo Code runtime configuration",
             binary_names: &["kilo", "kilocode"],
@@ -205,7 +205,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "cursor",
-            label: "Cursor - IDE",
+            label: "Cursor CLI",
             kind: "desktop-agent",
             config_hint: "Cursor runtime configuration and desktop history",
             binary_names: &["cursor-agent", "cursor"],
@@ -213,7 +213,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "hermes",
-            label: "Hermes Agent - CLI",
+            label: "Hermes Agent CLI",
             kind: "vm-cli",
             config_hint: "Hermes Agent runtime configuration",
             binary_names: &["hermes"],
@@ -221,7 +221,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "kimi",
-            label: "Kimi - Desktop",
+            label: "Kimi Desktop",
             kind: "desktop-agent",
             config_hint: "Kimi desktop application data",
             binary_names: &[],
@@ -229,15 +229,31 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "kimi-code",
-            label: "Kimi Code - CLI",
+            label: "Kimi Code CLI",
             kind: "cli",
             config_hint: "Kimi Code CLI configuration and sessions",
             binary_names: &["kimi"],
             process_names: &["kimi.exe", "kimi", "kimi-code.exe", "kimi-code"],
         },
         TargetDef {
+            id: "grok",
+            label: "Grok CLI",
+            kind: "cli",
+            config_hint: "Grok CLI configuration",
+            binary_names: &["grok", "xai-grok-pager"],
+            process_names: &["grok.exe", "grok", "xai-grok-pager.exe", "xai-grok-pager"],
+        },
+        TargetDef {
+            id: "command-code",
+            label: "Command Code CLI",
+            kind: "cli",
+            config_hint: "Command Code CLI configuration",
+            binary_names: &["command-code", "cmdc", "cmd"],
+            process_names: &["command-code.exe", "command-code", "cmdc.exe", "cmdc"],
+        },
+        TargetDef {
             id: "pi",
-            label: "Pi Agent - CLI",
+            label: "Pi Agent CLI",
             kind: "cli",
             config_hint: "Pi Coding Agent CLI configuration and sessions",
             binary_names: &["pi"],
@@ -245,7 +261,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "deepseek-harness",
-            label: "DeepSeek Harness - SDK Runtime",
+            label: "DeepSeek Harness",
             kind: "cli",
             config_hint: "DeepSeek Harness SDK JSON-RPC runtime configuration",
             binary_names: &["dsh"],
@@ -253,7 +269,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "lico-agent",
-            label: "Lico Agent - CLI",
+            label: "Lico Agent CLI",
             kind: "cli",
             config_hint: "LicoUp first-party Agent sessions",
             binary_names: &["lico-agent"],
@@ -261,7 +277,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "workbuddy",
-            label: "WorkBuddy - Desktop",
+            label: "WorkBuddy Desktop",
             kind: "desktop-agent",
             config_hint: "WorkBuddy desktop application data",
             binary_names: &[],
@@ -269,7 +285,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "codebuddy",
-            label: "CodeBuddy - CLI",
+            label: "CodeBuddy CLI",
             kind: "cli",
             config_hint: "CodeBuddy CLI configuration and sessions",
             binary_names: &["codebuddy"],
@@ -277,7 +293,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "trae-work",
-            label: "Trae Work - Desktop",
+            label: "Trae Work Desktop",
             kind: "desktop-agent",
             config_hint: "Trae Work desktop application data",
             binary_names: &[],
@@ -285,7 +301,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
         },
         TargetDef {
             id: "trae-agent",
-            label: "Trae Agent - CLI",
+            label: "Trae Agent CLI",
             kind: "cli",
             config_hint: "Trae Agent CLI configuration and trajectories",
             binary_names: &["trae-cli"],
@@ -294,7 +310,7 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
     ]
 }
 
-pub(super) fn target_def(target: &str) -> Result<TargetDef> {
+pub(crate) fn target_def(target: &str) -> Result<TargetDef> {
     let normalized = normalize_target(target);
     target_defs()
         .into_iter()
@@ -302,13 +318,15 @@ pub(super) fn target_def(target: &str) -> Result<TargetDef> {
         .ok_or_else(|| anyhow!("Unsupported target adapter: {}", target))
 }
 
-pub(super) fn normalize_target(value: &str) -> String {
+pub(crate) fn normalize_target(value: &str) -> String {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" | "claude_code" | "claudecode" => "claude-code".to_string(),
         "kilo" | "kilo_code" | "kilocode" => "kilo-code".to_string(),
         "vscode" | "vs-code" | "vs_code" => "code".to_string(),
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
+        "grok-cli" | "grok_cli" | "xai-grok" | "xai-grok-pager" => "grok".to_string(),
+        "cmdc" | "command_code" | "commandcode" => "command-code".to_string(),
         "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
         "dsh" | "deepseek_harness" => "deepseek-harness".to_string(),
         "lico" | "lico_agent" => "lico-agent".to_string(),
@@ -334,6 +352,8 @@ mod tests {
         assert_eq!(ids.len(), defs.len());
         assert_eq!(normalize_target("vscode"), "code");
         assert_eq!(normalize_target("kimi_code"), "kimi-code");
+        assert_eq!(normalize_target("xai-grok-pager"), "grok");
+        assert_eq!(normalize_target("cmdc"), "command-code");
         assert_eq!(normalize_target("workbuddy-cli"), "codebuddy");
         assert_eq!(normalize_target("trae-cli"), "trae-agent");
         assert_eq!(normalize_target("dsh"), "deepseek-harness");

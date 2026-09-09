@@ -206,6 +206,86 @@ void main() {
     expect(find.byType(ConversationProcessOperationList), findsNothing);
   });
 
+  testWidgets(
+    'stream updates while working do not re-expand or collapse the card',
+    (tester) async {
+      Future<void> pumpRow({
+        required List<AgentConversationMessage> events,
+        required bool active,
+      }) => tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              height: 400,
+              child: MessagingProcessStatusRow(
+                events: events,
+                adapter: AgentRenderAdapter.fallback(),
+                detailsBuilder: buildAgentConversationEventDetails,
+                active: active,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final first = [_event('e1', _at(10, 1, 0))];
+      await pumpRow(events: first, active: true);
+      await tester.pump();
+      expect(find.byType(ConversationProcessOperationList), findsNothing);
+      expect(
+        tester
+            .widget<LicoTopEdgePulse>(
+              find.byKey(const Key('messaging-process-status-active')),
+            )
+            .enabled,
+        isTrue,
+      );
+
+      // A streamed follow-up event is not a new turn: stay collapsed.
+      await pumpRow(
+        events: [...first, _event('e2', _at(10, 1, 2))],
+        active: true,
+      );
+      await tester.pump();
+      expect(find.byType(ConversationProcessOperationList), findsNothing);
+      expect(
+        tester
+            .widget<LicoTopEdgePulse>(
+              find.byKey(const Key('messaging-process-status-active')),
+            )
+            .enabled,
+        isTrue,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('messaging-process-status-toggle')),
+      );
+      await tester.pump();
+      expect(find.byType(ConversationProcessOperationList), findsOneWidget);
+
+      // Another stream publish keeps the user's expanded choice.
+      await pumpRow(
+        events: [
+          ...first,
+          _event('e2', _at(10, 1, 2)),
+          _event('e3', _at(10, 1, 4)),
+        ],
+        active: true,
+      );
+      await tester.pump();
+      expect(find.byType(ConversationProcessOperationList), findsOneWidget);
+    },
+  );
+
   testWidgets('a new active turn resets an expanded card to collapsed', (
     tester,
   ) async {
