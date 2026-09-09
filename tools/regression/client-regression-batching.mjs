@@ -167,7 +167,7 @@ export function planClientRegressionBatches(selected, {
   for (const module of selected) {
     if (consumed.has(module.id)) continue;
     const nodeShape = nodeTestShape(module);
-    if (nodeShape) {
+    if (nodeShape && module.regression.toolchain === "node-test") {
       const key = `${module.regression.stage}:${nodeShape.key}`;
       const group = nodeGroups.get(key) || [];
       group.push(module);

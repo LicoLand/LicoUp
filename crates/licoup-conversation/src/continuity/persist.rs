@@ -1,13 +1,14 @@
 use super::admission::{admit_page_limit, admit_parent_context_grant, admit_task_relation};
 use super::error::{continuity_failure, sql_failure};
 use super::generated::{
-    ContinuityAgreement, ContinuityEffectClass, ContinuityEvidenceRef, ContinuityFailure,
-    ContinuityFailureCode, ContinuityFailureStage, ContinuityFollowThroughKind,
+    ContinuityAgreement, ContinuityCandidateIdentity, ContinuityEffectClass, ContinuityEvidenceRef,
+    ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage, ContinuityFollowThroughKind,
     ContinuityGoalCompletionTransition, ContinuityGoalContract, ContinuityGoalControl,
     ContinuityGoalLifecycle, ContinuityGoalProgress, ContinuityMatter, ContinuityMatterAssociation,
     ContinuityMatterStatus, ContinuityNextAttention, ContinuityParentContextGrant,
-    ContinuityParentGrantBasis, ContinuitySourceRef, ContinuityTaskConversationRelation,
-    ContinuityTaskListingKind, ContinuityWake, ContinuityWriteEnvelope,
+    ContinuityParentGrantBasis, ContinuityParentGrantStatus, ContinuitySourceRef,
+    ContinuityTaskConversationRelation, ContinuityTaskListingKind, ContinuityWake,
+    ContinuityWriteEnvelope,
 };
 use super::hooks::{ContinuityEffectStatus, continuity_now_ms};
 use crate::continuity::ports::ContinuityCommitReceipt;
@@ -16,6 +17,7 @@ use rusqlite::OptionalExtension;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -672,6 +674,19 @@ pub fn record_effect(
     Ok(status)
 }
 
+pub fn delete_effect_if_status(
+    unit: &ContinuityUnitOfWork<'_>,
+    logical_effect_id: &str,
+    status: ContinuityEffectStatus,
+) -> Result<(), ContinuityFailure> {
+    unit.execute(
+        "DELETE FROM continuity_effects WHERE logical_effect_id=?1 AND status=?2",
+        rusqlite::params![logical_effect_id, status.as_str()],
+    )
+    .map_err(sql_failure)?;
+    Ok(())
+}
+
 pub fn load_effect(
     unit: &ContinuityUnitOfWork<'_>,
     logical_effect_id: &str,
@@ -742,9 +757,86 @@ pub fn increment_revocation(
             rusqlite::params![conversation_id, opaque_id, generation, deleted as i64],
         )
         .map_err(sql_failure)?;
+        revoke_parent_grants_covering_opaque(unit, conversation_id, opaque_id)?;
     }
     invalidate_derived(unit, conversation_id)?;
     Ok(generation)
+}
+
+fn revoke_parent_grants_covering_opaque(
+    unit: &ContinuityUnitOfWork<'_>,
+    source_conversation_id: &str,
+    opaque_id: &str,
+) -> Result<(), ContinuityFailure> {
+    let mut after: Option<String> = None;
+    loop {
+        let page = list_child_relations(
+            unit,
+            source_conversation_id,
+            after.as_deref(),
+            PENDING_OBLIGATION_PAGE_SIZE,
+        )?;
+        let page_len = page.len();
+        after = page
+            .last()
+            .map(|relation| relation.card_anchor.sequence.to_string());
+        for relation in page {
+            let Some(recipient) =
+                child_recipient_membership(unit, &relation.child_conversation_id)?
+            else {
+                continue;
+            };
+            revoke_admitted_recipient_grants(
+                unit,
+                source_conversation_id,
+                &relation.child_conversation_id,
+                &recipient,
+                |source| source.opaque_id == opaque_id,
+            )?;
+        }
+        if page_len < PENDING_OBLIGATION_PAGE_SIZE as usize {
+            break;
+        }
+    }
+    Ok(())
+}
+
+pub fn revoke_admitted_recipient_grants(
+    unit: &ContinuityUnitOfWork<'_>,
+    source_conversation_id: &str,
+    recipient_conversation_id: &str,
+    recipient_membership_id: &str,
+    mut covers: impl FnMut(&ContinuitySourceRef) -> bool,
+) -> Result<(), ContinuityFailure> {
+    let mut after: Option<String> = None;
+    loop {
+        let page = list_parent_grants(
+            unit,
+            recipient_conversation_id,
+            recipient_membership_id,
+            after.as_deref(),
+            PENDING_OBLIGATION_PAGE_SIZE,
+        )?;
+        let page_len = page.len();
+        after = page.last().map(|grant| grant.grant_id.clone());
+        for grant in page {
+            if grant.source_conversation_id != source_conversation_id
+                || grant.status != ContinuityParentGrantStatus::Admitted
+            {
+                continue;
+            }
+            if !grant.source_refs.iter().any(&mut covers) {
+                continue;
+            }
+            let mut revoked = grant;
+            revoked.status = ContinuityParentGrantStatus::Revoked;
+            upsert_grant(unit, &revoked)?;
+        }
+        if page_len < PENDING_OBLIGATION_PAGE_SIZE as usize {
+            break;
+        }
+    }
+    Ok(())
 }
 
 pub fn source_is_revoked(
@@ -1223,6 +1315,41 @@ pub fn due_from_trigger(trigger_ref: &str) -> Option<i64> {
         .and_then(|value| value.parse().ok())
 }
 
+pub const ADOPTION_ENABLED_KEY: &str = "adoption_enabled";
+pub const ADOPTION_STAGE_KEY: &str = "adoption_stage";
+pub const ADOPTION_ENABLED_DEFAULT: &str = "1";
+pub const ADOPTION_STAGE_OFFLINE: &str = "offline";
+pub const ADOPTION_STAGE_ADMITTED_SHADOW: &str = "admitted_shadow";
+pub const ADOPTION_STAGE_QUALIFIED_LOW_RISK: &str = "qualified_low_risk";
+pub const ADOPTION_STAGE_EXPANDED: &str = "expanded";
+
+pub fn persist_schema_value(
+    unit: &ContinuityUnitOfWork<'_>,
+    key: &str,
+    value: &str,
+) -> Result<(), ContinuityFailure> {
+    unit.execute(
+        "INSERT INTO continuity_schema(key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        rusqlite::params![key, value],
+    )
+    .map_err(sql_failure)?;
+    Ok(())
+}
+
+pub fn load_schema_value(
+    unit: &ContinuityUnitOfWork<'_>,
+    key: &str,
+) -> Result<Option<String>, ContinuityFailure> {
+    unit.query_row(
+        "SELECT value FROM continuity_schema WHERE key=?1",
+        [key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(sql_failure)
+}
+
 pub fn persist_qualification_evidence(
     unit: &ContinuityUnitOfWork<'_>,
     responsibility_id: &str,
@@ -1248,6 +1375,22 @@ pub fn persist_qualification_evidence(
     )
     .map_err(sql_failure)?;
     Ok(())
+}
+
+pub fn load_qualification_evidence_row(
+    unit: &ContinuityUnitOfWork<'_>,
+    responsibility_id: &str,
+    identity_key: &str,
+) -> Result<Option<(String, String, String, String)>, ContinuityFailure> {
+    unit.query_row(
+        "SELECT responsibility_id, identity_key, payload, evidence_class
+         FROM continuity_qualification_evidence
+         WHERE responsibility_id=?1 AND identity_key=?2",
+        rusqlite::params![responsibility_id, identity_key],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )
+    .optional()
+    .map_err(sql_failure)
 }
 
 pub fn load_qualification_evidence(
@@ -1352,6 +1495,205 @@ pub fn admit_local_owner_principal(
             ContinuityFailureStage::ContinuityAdmission,
         )
     })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredOwnerAuthority {
+    conversation_id: String,
+    owner_membership_id: String,
+    owner_principal_id: String,
+}
+
+impl StoredOwnerAuthority {
+    pub(crate) fn from_admitted(
+        conversation_id: String,
+        owner_membership_id: String,
+        owner_principal_id: String,
+    ) -> Self {
+        Self {
+            conversation_id,
+            owner_membership_id,
+            owner_principal_id,
+        }
+    }
+
+    pub fn conversation_id(&self) -> &str {
+        &self.conversation_id
+    }
+
+    pub fn owner_membership_id(&self) -> &str {
+        &self.owner_membership_id
+    }
+
+    pub fn owner_principal_id(&self) -> &str {
+        &self.owner_principal_id
+    }
+}
+
+pub const EVALUATION_SESSION_KEY_PREFIX: &str = "evaluation_session:";
+pub const EVALUATION_CORPUS_KEY_PREFIX: &str = "evaluation_corpus:";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EvaluationCasePolarity {
+    Negative,
+    Positive,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EvaluationExpectedAction {
+    Abstain,
+    Takeover,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredEvaluationCase {
+    pub case_id: String,
+    pub family: String,
+    pub subgroup: String,
+    pub polarity: EvaluationCasePolarity,
+    pub expected_action: EvaluationExpectedAction,
+    pub input: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredEvaluationCorpus {
+    pub conversation_id: String,
+    pub owner_membership_id: String,
+    pub owner_principal_id: String,
+    pub dataset_id: String,
+    pub version_digest: String,
+    pub cases: Vec<StoredEvaluationCase>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredEvaluationSession {
+    pub session_id: String,
+    pub conversation_id: String,
+    pub owner_membership_id: String,
+    pub owner_principal_id: String,
+    pub recipient_membership_id: String,
+    pub responsibility_id: String,
+    pub identity: ContinuityCandidateIdentity,
+    pub policy_revision: String,
+    #[serde(default)]
+    pub dataset_id: String,
+    #[serde(default)]
+    pub corpus_version: String,
+    #[serde(default)]
+    pub consumed: bool,
+}
+
+impl StoredEvaluationSession {
+    pub fn same_admitted_binding(&self, other: &Self) -> bool {
+        self.session_id == other.session_id
+            && self.conversation_id == other.conversation_id
+            && self.owner_membership_id == other.owner_membership_id
+            && self.owner_principal_id == other.owner_principal_id
+            && self.recipient_membership_id == other.recipient_membership_id
+            && self.responsibility_id == other.responsibility_id
+            && self.identity == other.identity
+            && self.policy_revision == other.policy_revision
+            && self.dataset_id == other.dataset_id
+            && self.corpus_version == other.corpus_version
+    }
+}
+
+pub fn evaluation_session_key(session_id: &str) -> String {
+    format!("{EVALUATION_SESSION_KEY_PREFIX}{session_id}")
+}
+
+pub fn evaluation_corpus_key(conversation_id: &str) -> String {
+    format!("{EVALUATION_CORPUS_KEY_PREFIX}{conversation_id}")
+}
+
+pub fn collection_effect_id_for_session(session_id: &str) -> String {
+    format!("effect:collection:{session_id}")
+}
+
+pub fn evaluation_corpus_version_digest(
+    dataset_id: &str,
+    cases: &[StoredEvaluationCase],
+) -> Result<String, ContinuityFailure> {
+    let mut cases = cases.to_vec();
+    cases.sort_by(|left, right| left.case_id.cmp(&right.case_id));
+    let canonical = serde_json::to_string(&serde_json::json!({
+        "datasetId": dataset_id,
+        "cases": cases,
+    }))
+    .map_err(|_| {
+        continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        )
+    })?;
+    Ok(format!("sha256:{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+pub fn load_evaluation_corpus_in_unit(
+    unit: &ContinuityUnitOfWork<'_>,
+    conversation_id: &str,
+) -> Result<Option<StoredEvaluationCorpus>, ContinuityFailure> {
+    let Some(raw) = load_schema_value(unit, &evaluation_corpus_key(conversation_id))? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&raw).map(Some).map_err(|_| {
+        continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        )
+    })
+}
+
+pub fn persist_evaluation_corpus_in_unit(
+    unit: &ContinuityUnitOfWork<'_>,
+    corpus: &StoredEvaluationCorpus,
+) -> Result<(), ContinuityFailure> {
+    persist_schema_value(
+        unit,
+        &evaluation_corpus_key(&corpus.conversation_id),
+        &serde_json::to_string(corpus).map_err(|_| {
+            continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityCommit,
+            )
+        })?,
+    )
+}
+
+pub fn load_evaluation_session_in_unit(
+    unit: &ContinuityUnitOfWork<'_>,
+    session_id: &str,
+) -> Result<Option<StoredEvaluationSession>, ContinuityFailure> {
+    let Some(raw) = load_schema_value(unit, &evaluation_session_key(session_id))? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&raw).map(Some).map_err(|_| {
+        continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        )
+    })
+}
+
+pub fn persist_evaluation_session_in_unit(
+    unit: &ContinuityUnitOfWork<'_>,
+    session: &StoredEvaluationSession,
+) -> Result<(), ContinuityFailure> {
+    persist_schema_value(
+        unit,
+        &evaluation_session_key(&session.session_id),
+        &serde_json::to_string(session).map_err(|_| {
+            continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityCommit,
+            )
+        })?,
+    )
 }
 
 const QUALIFIED_PENDING_NOTICE_PREDICATE: &str = "

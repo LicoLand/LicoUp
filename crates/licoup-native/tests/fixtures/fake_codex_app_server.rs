@@ -99,6 +99,20 @@ fn main() {
                 &format!(r#"{{"id":{request_id},"result":{{"thread":{{"id":"{thread_id}"}}}}}}"#),
             );
         } else if line.contains("\"method\":\"thread/start\"") {
+            if let Ok(mut path) = std::env::current_exe() {
+                path.set_extension("turn-start.seen");
+                let seen = if line.contains("PRODUCTION-GRANT-SENTINEL") {
+                    "1"
+                } else {
+                    "0"
+                };
+                let _ = fs::write(path, seen);
+                if line.contains("OUT-OF-SCOPE-SECRET") {
+                    let mut leak = std::env::current_exe().expect("fake exe");
+                    leak.set_extension("leak.seen");
+                    let _ = fs::write(leak, "1");
+                }
+            }
             send(
                 &mut stdout,
                 &format!(
@@ -106,6 +120,20 @@ fn main() {
                 ),
             );
         } else if line.contains("\"method\":\"turn/start\"") {
+            if let Ok(mut path) = std::env::current_exe() {
+                path.set_extension("turn-start.seen");
+                let seen = if line.contains("PRODUCTION-GRANT-SENTINEL") {
+                    "1"
+                } else {
+                    "0"
+                };
+                let _ = fs::write(path, seen);
+                if line.contains("OUT-OF-SCOPE-SECRET") {
+                    let mut leak = std::env::current_exe().expect("fake exe");
+                    leak.set_extension("leak.seen");
+                    let _ = fs::write(leak, "1");
+                }
+            }
             if configured_output.is_none()
                 && !line.contains(EXPECTED_PROMPT)
                 && !line.contains(STEER_PROMPT)

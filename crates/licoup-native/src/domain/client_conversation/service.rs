@@ -764,7 +764,8 @@ impl ConversationService {
             | "admit-task-child"
             | "list-pending-completion-notices"
             | "ack-completion-notices"
-            | "resolve-completion-notice" => self.execute_continuity_command(action, object),
+            | "resolve-completion-notice"
+            | "set-adoption-enabled" => self.execute_continuity_command(action, object),
             _ => Err(anyhow!("unsupported_action")),
         }
     }
@@ -925,6 +926,27 @@ impl ConversationService {
                     required_string(object, "notificationId")?,
                 )
                 .map_err(|err| anyhow!(format!("{:?}", err.code))),
+            "set-adoption-enabled" => {
+                let enabled = object
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| anyhow!("invalid_request"))?;
+                let policy = continuity
+                    .set_adoption_enabled(
+                        conversation_id,
+                        required_string(object, "ownerMembershipId")?,
+                        enabled,
+                    )
+                    .map_err(|err| anyhow!(format!("{:?}", err.code)))?;
+                Ok(json!({
+                    "ok": true,
+                    "adoptionPolicy": {
+                        "enabled": policy.enabled,
+                        "stage": policy.stage,
+                        "realModelQualification": "unknown",
+                    },
+                }))
+            }
             "admit-task-child" => {
                 let admission = object
                     .get("admission")
@@ -2036,6 +2058,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
             "ownerMembershipId",
             "notificationId",
         ],
+        "set-adoption-enabled" => &["action", "conversationId", "ownerMembershipId", "enabled"],
         "admit-task-child" => &["action", "conversationId", "admission"],
         "revise-agreement" => &["action", "conversationId", "agreement"],
         "accept-evidence" => &["action", "conversationId", "goalId", "evidence"],
