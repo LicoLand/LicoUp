@@ -165,6 +165,60 @@ void main() {
     },
   );
 
+  test(
+    'native engine passes through catalog ids beyond the warehouse recipes',
+    () async {
+      final engine = NativeAgentHubEngine(
+        invoke: (arguments) async {
+          expect(arguments, ['agent-hub', 'catalog']);
+          return <String, dynamic>{
+            'ok': true,
+            'scanGeneration': 1,
+            'cards': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': 'kimi-code',
+                'label': 'Kimi Code CLI',
+                'present': true,
+                'primaryAction': 'open',
+              },
+              <String, dynamic>{
+                'id': 'grok',
+                'label': 'Grok CLI',
+                'present': true,
+                'primaryAction': 'open',
+              },
+              <String, dynamic>{
+                'id': 'command-code',
+                'label': 'Command Code CLI',
+                'present': false,
+                'primaryAction': 'unsupported',
+              },
+            ],
+          };
+        },
+      );
+      final snapshot = await engine.catalog();
+      expect(snapshot.ok, isTrue);
+      expect(snapshot.recipes.map((recipe) => recipe.id).toList(), [
+        'kimi-code',
+        'grok',
+        'command-code',
+      ]);
+      expect(
+        snapshot.recipes
+            .singleWhere((recipe) => recipe.id == 'kimi-code')
+            .present,
+        isTrue,
+      );
+      expect(
+        snapshot.recipes
+            .singleWhere((recipe) => recipe.id == 'command-code')
+            .primaryAction,
+        'unsupported',
+      );
+    },
+  );
+
   test('native card projects installed version and updateAvailable flag', () {
     final recipe = AgentHubRecipe.fromNativeCard(<String, dynamic>{
       'id': 'codex',

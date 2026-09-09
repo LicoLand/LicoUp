@@ -9,6 +9,7 @@
 | **Compatibility Matrix** | [COMPATIBILITY.md](../COMPATIBILITY.md) | Platform and agent support matrix (projected from the runtime adapter registry) |
 | **Domain Vocabulary** | [CONTEXT.md](../../CONTEXT.md) | Unified domain vocabulary definitions |
 | **Documentation Index** | [docs/README.md](../README.md) | Complete documentation table of contents |
+| **Continuous Assistant** | [CONTINUOUS-ASSISTANT.md](CONTINUOUS-ASSISTANT.md) | Target continuity semantics; current facts stay in STATUS |
 
 [`PRODUCT.md`](../../PRODUCT.md) owns the durable product goal and boundary. [`../STATUS.md`](../STATUS.md) owns current status. Current component and dependency facts are owned by the Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the architecture verifier under `apps/desktop/scripts/client-architecture/`. This document is their public architectural projection.
 

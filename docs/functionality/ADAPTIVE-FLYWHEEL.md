@@ -7,7 +7,8 @@ runtime. A strategy is a user-imported JSON state-machine Graph plus an ordered
 candidate chain for each actor slot. The Graph alone decides whether one run is
 a one-shot pipeline, a branching workflow, or an Agent Loop with back-edges.
 The engine infers no topology from a strategy name and ships no built-in
-strategy.
+executable Graph. Separately, the Assistant can discover built-in authoring
+policies and recommended model presets.
 
 ## Strategy sources
 
@@ -25,10 +26,37 @@ under `scripts/`. Import prepares and validates the archive, then commits one
 immutable revision. A committed revision does not depend on the original ZIP
 or its original filesystem path.
 
-The engine does not auto-register a package, reserve a strategy identity, or
-keep a product roster of vendor Agents. Neutral slot identifiers such as
-`entry` and `worker-a` are valid; a user's personal Agent lineup stays in
-their imported configuration, not in the product tree.
+The engine does not auto-register a package or reserve a strategy identity.
+Neutral slot identifiers such as `entry` and `worker-a` are valid. Actual Agent
+bindings belong to the user's configuration; advisory model recommendations
+do not bind slots or change execution rules.
+
+## Built-in Assistant policies
+
+The read-only `lico_assistant_workflow_policy` tool lists policy summaries with
+`{}` and returns instructions and structured model presets with
+`{"policyId":"better-plan"}`. The Assistant discovers and adopts a policy when
+useful, then uses existing tools to carry out the work. There is no preset
+picker, automatic global binding, or preinstalled executable Graph.
+
+Better Plan assigns design to a strong Designer, bounded implementation to
+Workers, and independent final audit and in-scope repair to a fresh Reviewer.
+The Assistant preserves user intent, chooses the task organization, diagnoses
+repeated rework, and owns closure. Multiple independent Reviewer opinions are
+optional; an ordered fallback list is not parallel review or consensus.
+
+The bundled [policy](../../crates/licoup-native/resources/workflow-policies/better-plan/SKILL.md)
+and [model presets](../../crates/licoup-native/resources/workflow-policies/better-plan/model-presets.json)
+are product assets. Presets name models semantically and preserve ordered
+reasoning preferences, including the frontend-specific route. The current
+Agent catalog and Membership Profiles remain authoritative for exact model
+identifiers, supported effort, readiness, and authority. These recommendations
+do not change the designated Assistant or guarantee that a model is installed.
+
+The protocol-neutral policy accessor owns no run state, binding, or scheduler.
+Reading guidance has no execution effect. Applying it to an Assistant-temporary
+run retains the failure and admission behavior described below; the Assistant
+must decide whether and how to use a later candidate after reconciling a failure.
 
 ## Graph and execution
 
@@ -142,10 +170,11 @@ the effect runs, the ordinary failure fallback applies.
 
 The failure fallback holds under both modes. An Assistant-run effect or drive
 failure settles one typed terminal outcome back to the originating Assistant
-turn. For an imported run, the terminal failure outcome — failed, blocked, or
-in-doubt — is reported to the bound Conversation's designated Assistant
-Membership as a typed Membership event, so the master agent decides what
-happens next; only identifier-level facts cross that seam.
+turn. For an imported strategy, prepare-import, commit-import, run admission,
+and the terminal run outcome — failed, blocked, or in-doubt — are reported to
+the bound Conversation's designated Assistant Membership as the same typed
+Membership event (`licoup.adaptive-flywheel.callback.v1`), so the master
+agent decides what happens next; only identifier-level facts cross that seam.
 
 Guard routing must select exactly one edge for every bounded payload. A state
 may declare one arbitrary guard with an unguarded fallback, or multiple

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -13,12 +14,14 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
     required this.selectedConversationId,
     required this.onSelect,
     required this.onCreate,
+    this.highlightedChildConversationId = '',
   });
 
   final List<ClientConversationSummary> conversations;
   final String selectedConversationId;
   final ValueChanged<String> onSelect;
   final VoidCallback onCreate;
+  final String highlightedChildConversationId;
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +69,22 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
               ),
             ),
           ),
-          for (final conversation in conversations.take(3))
+          for (final conversation in conversations.take(3)) ...[
             _CanonicalGroupSidebarRow(
               conversation: conversation,
               selected: conversation.id == selectedConversationId,
               onTap: () => onSelect(conversation.id),
             ),
+            for (final child in conversation.children)
+              Padding(
+                padding: const EdgeInsets.only(left: 18, right: 8, bottom: 6),
+                child: ContinuousAssistantChildEntry(
+                  task: _childTaskView(conversation.id, child),
+                  highlighted: highlightedChildConversationId == child.id,
+                  onOpenChild: (_) => onSelect(child.id),
+                ),
+              ),
+          ],
           if (conversations.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
@@ -89,6 +102,21 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
       ),
     );
   }
+}
+
+ContinuousAssistantTaskView _childTaskView(
+  String parentId,
+  ClientConversationSummary child,
+) {
+  return continuousAssistantTaskFromCardMetadata(
+    metadata: <String, dynamic>{
+      'goalId': child.taskGoalId ?? child.id,
+      'childConversationId': child.id,
+    },
+    parentConversationId: parentId,
+    eventId: child.id,
+    sequence: child.eventCount,
+  )!;
 }
 
 class _CanonicalGroupSidebarRow extends StatelessWidget {

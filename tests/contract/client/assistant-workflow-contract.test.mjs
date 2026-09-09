@@ -196,12 +196,13 @@ test("bridge contracts expose Assistant/Profile actions and typed failures", () 
   }
 });
 
-test("subagent MCP surface is closed and exposes the Assistant workflow facade only", () => {
+test("subagent MCP surface is closed and exposes the Assistant facade and policy discovery", () => {
   const assistantTools = [
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
     "lico_assistant_workflow_inspect",
     "lico_assistant_workflow_cancel",
+    "lico_assistant_workflow_policy",
   ];
   for (const name of assistantTools) {
     assert.match(subagentMcp, new RegExp(`"${name}"`, "u"), name);

@@ -363,6 +363,15 @@ fn run_turn_loop(
                 );
             }
             Ok(TransportEvent::StdoutClosed) | Err(RecvTimeoutError::Disconnected) => {
+                if state.cancel_was_requested() {
+                    let mut failure = state.failure(
+                        "claude_code_turn_cancelled",
+                        "Claude Code turn was cancelled by the user.",
+                        "turn/cancelled",
+                    );
+                    failure.turn_status = Some("cancelled".to_string());
+                    return (None, Some(failure), false);
+                }
                 return (
                     None,
                     Some(state.failure(
@@ -393,6 +402,12 @@ fn handle_control_requests(
                     .as_deref()
                     .or(state.expected_session_id.as_deref());
                 let matches = current == Some(session_id.as_str());
+                if matches {
+                    // Bind the user cancel before the interrupt reaches the
+                    // process so an is_error terminal cannot become
+                    // claude_code_turn_failed (LU-NA-3975).
+                    state.mark_cancel_requested();
+                }
                 let written =
                     matches && write_message(&mut transport.stdin, &interrupt_request()).is_ok();
                 let _ = acknowledged.send(written);
@@ -402,11 +417,6 @@ fn handle_control_requests(
                         "Claude Code stopped accepting an interrupt request.",
                         "turn/cancel",
                     ));
-                }
-                if written {
-                    // The CLI answers this interrupt with an is_error terminal
-                    // result; classify it as a user cancellation.
-                    state.mark_cancel_requested();
                 }
             }
             Ok(ControlRequest::Steer {

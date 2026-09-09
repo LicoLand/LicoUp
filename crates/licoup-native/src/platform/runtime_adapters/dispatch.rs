@@ -1,19 +1,18 @@
-use super::adapter::adapter_for_agent;
 use super::artifact::runtime_executable;
 use super::normalization::{
-    execution_response, normalize_acp, normalize_antigravity, normalize_claude, normalize_codex,
-    normalize_cursor, normalize_deepseek_harness, normalize_hermes_with_protocol,
-    normalize_lico_agent, normalize_openclaw, normalize_pi,
+    execution_response, execution_response_named, normalize_acp, normalize_antigravity,
+    normalize_claude, normalize_codex, normalize_cursor, normalize_deepseek_harness,
+    normalize_hermes_with_protocol, normalize_lico_agent, normalize_openclaw, normalize_pi,
 };
 use super::params::{
     AttachmentShapeFailure, LocalImageInput, MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE,
     MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, binary_param, bounded_output_param, codex_binary_param,
-    message_param, optional_output_param, parse_attachments, text_param, timeout_param,
+    message_param, optional_output_param, parse_attachments, text_param,
 };
 use super::{
-    DEFAULT_MAX_STDERR_BYTES, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
-    runtime_driver_profile,
+    DEFAULT_MAX_STDERR_BYTES, RuntimeAdapter, RuntimeAdapterError, runtime_driver_profile,
 };
+use super::{RuntimeLane, runtime_lane_for_agent};
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
 use crate::platform::{
@@ -117,10 +116,17 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     if text.trim().is_empty() && attachments.is_empty() {
         return Err(RuntimeAdapterError::MessageMissing);
     }
-    let adapter =
-        adapter_for_agent(&agent_id).ok_or_else(|| RuntimeAdapterError::UnsupportedAdapter {
+    let lane = runtime_lane_for_agent(&agent_id).ok_or_else(|| {
+        RuntimeAdapterError::UnsupportedAdapter {
             agent_label: agent_id.clone(),
-        })?;
+        }
+    })?;
+    let adapter = match &lane {
+        RuntimeLane::Dedicated(adapter) => *adapter,
+        RuntimeLane::GenericCli(registration) => {
+            return send_generic_cli(params, &agent_id, registration, &text, &attachments);
+        }
+    };
     crate::platform::native_agent_parser::require_registered(adapter);
     if adapter == RuntimeAdapter::DeepSeekHarness
         && runtime_driver_profile(adapter.id()).is_none_or(|profile| profile.readiness != "ready")
@@ -157,10 +163,10 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
-    // Omission and zero mean no deadline. Every explicit non-zero setting is
-    // either preserved byte-for-byte as the driver window or rejected before
-    // process launch; dispatch never silently clamps a caller request.
-    let timeout_ms = timeout_param(params, "timeoutMs", MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+    // Omission and zero mean "use the writable policy". Only an explicit
+    // timeoutUnbounded override keeps the turn without a deadline. Finite
+    // caller values stay inside the 1s–30min clamp.
+    let timeout_ms = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
         .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
     let max_stdout = optional_output_param(params, "maxStdoutBytes").map_err(|_| {
         RuntimeAdapterError::InvalidRuntimeSetting {
@@ -345,6 +351,124 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     };
 
     Ok(execution_response(adapter, execution))
+}
+
+fn send_generic_cli(
+    params: &Value,
+    agent_id: &str,
+    registration: &crate::domain::cli_registration::CliRegistration,
+    text: &str,
+    attachments: &[LocalImageInput],
+) -> Result<Value, RuntimeAdapterError> {
+    if !attachments.is_empty() {
+        return Err(RuntimeAdapterError::AttachmentUnsupportedForAdapter {
+            agent_label: agent_id.to_owned(),
+        });
+    }
+    if SshRuntimeConnection::from_params(params, agent_id)
+        .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?
+        .is_some()
+    {
+        return Err(RuntimeAdapterError::ConversationDispatchFailed);
+    }
+    let requested_cwd = text_param(params, &["cwd", "workingDirectory"])
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let cwd = resolve_local_agent_workspace(agent_id, requested_cwd.as_deref());
+    let params = match cwd.as_deref() {
+        Some(workspace) => Cow::Owned(params_with_workspace(params, workspace)),
+        None => Cow::Borrowed(params),
+    };
+    let params = params.as_ref();
+    let timeout_ms = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
+    let max_stdout = optional_output_param(params, "maxStdoutBytes").map_err(|_| {
+        RuntimeAdapterError::InvalidRuntimeSetting {
+            field: "maxStdoutBytes",
+        }
+    })?;
+    let executable = crate::platform::generic_cli_driver::resolve_executable(registration, params)?;
+    let execution = crate::platform::generic_cli_driver::execute(
+        registration,
+        &executable,
+        params,
+        text,
+        cwd.as_deref(),
+        timeout_ms,
+        max_stdout,
+    )?;
+    Ok(execution_response_named(
+        agent_id,
+        &registration.label,
+        crate::platform::generic_cli_driver::DRIVER_ID,
+        normalize_generic_cli(agent_id, params, execution),
+    ))
+}
+
+fn normalize_generic_cli(
+    agent_id: &str,
+    params: &Value,
+    execution: crate::platform::generic_cli_driver::RunResult,
+) -> super::model::NormalizedExecution {
+    use super::model::{NormalizedEffectiveSettings, NormalizedExecution, NormalizedFailure};
+    let error = if execution.ok {
+        None
+    } else {
+        Some(NormalizedFailure {
+            code: if execution.timed_out {
+                "generic_cli_timeout".to_owned()
+            } else {
+                "generic_cli_failed".to_owned()
+            },
+            message: if execution.timed_out {
+                "generic CLI turn timed out".to_owned()
+            } else {
+                "generic CLI turn failed".to_owned()
+            },
+            stage: "runtime/generic-cli".to_owned(),
+            component: Some(agent_id.to_owned()),
+            retryable: Some(execution.timed_out),
+            recovery: None,
+            user_interaction_required: false,
+            request_method: None,
+            session_id: None,
+            thread_id: None,
+            turn_id: None,
+            turn_status: None,
+        })
+    };
+    NormalizedExecution {
+        ok: execution.ok,
+        output: execution.output,
+        transitions: Vec::new(),
+        capabilities: serde_json::json!({
+            "newSession": false,
+            "resumeSession": false,
+            "structuredEvents": false,
+            "interactiveApprovalBridge": false
+        }),
+        error,
+        session_id: String::new(),
+        thread_id: String::new(),
+        turn_id: String::new(),
+        turn_status: if execution.ok {
+            "completed".to_owned()
+        } else {
+            "failed".to_owned()
+        },
+        effective: NormalizedEffectiveSettings {
+            cwd: text_param(params, &["cwd", "workingDirectory"]),
+            model: text_param(params, &["model"]),
+            reasoning_effort: text_param(params, &["reasoningEffort", "effort"]),
+            ..NormalizedEffectiveSettings::default()
+        },
+        status_code: execution.status_code,
+        stdout_truncated: execution.stdout_truncated,
+        stderr_truncated: false,
+        started_at: execution.started_at,
+        runtime_protocol: execution.runtime_protocol,
+        driver_id: crate::platform::generic_cli_driver::DRIVER_ID,
+    }
 }
 
 /// Republish the resolved workspace under both request keys so a driver that

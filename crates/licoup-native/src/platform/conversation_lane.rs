@@ -1081,16 +1081,15 @@ pub fn dispatch_lane_operation(
     }
 }
 
-/// L5 is the sole terminal decision point. Missing or malformed `timeoutMs`
-/// means no turn deadline; only a caller-explicit non-zero value can produce
-/// `deadlineExceeded`. The lower L4 compatibility default is therefore never
-/// observable through the Conversation lane.
+/// L5 is the sole terminal decision point. Missing or zero `timeoutMs` uses
+/// the writable policy default. Only `timeoutUnbounded` keeps the turn
+/// without a deadline. The lower L4 compatibility default is therefore never
+/// observable through the Conversation lane unless the caller asked for it.
 fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterError> {
-    let explicit_deadline = params
-        .get("timeoutMs")
-        .and_then(Value::as_u64)
-        .is_some_and(|timeout_ms| timeout_ms > 0);
-    let effective_params = params_with_explicit_timeout_policy(params);
+    let resolved_timeout = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
+        .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
+    let explicit_deadline = resolved_timeout > 0;
+    let effective_params = params_with_resolved_timeout(params, resolved_timeout);
     let mut arbiter = TurnSettlementArbiter::new();
     if arbiter.begin_dispatch().is_err() {
         return Err(RuntimeAdapterError::ConversationDispatchFailed);
@@ -1131,12 +1130,13 @@ fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterE
     }
 }
 
-fn params_with_explicit_timeout_policy(params: &Value) -> Value {
+fn params_with_resolved_timeout(params: &Value, timeout_ms: u64) -> Value {
     let mut effective = params.clone();
-    if let Some(object) = effective.as_object_mut()
-        && object.get("timeoutMs").and_then(Value::as_u64).is_none()
-    {
-        object.insert("timeoutMs".to_owned(), Value::from(0));
+    if let Some(object) = effective.as_object_mut() {
+        object.insert("timeoutMs".to_owned(), Value::from(timeout_ms));
+        if timeout_ms == 0 {
+            object.insert("timeoutUnbounded".to_owned(), Value::from(true));
+        }
     }
     effective
 }
@@ -1300,21 +1300,47 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_settlement_missing_timeout_has_no_implicit_deadline() {
-        let missing = params_with_explicit_timeout_policy(&json!({"agent": "codex"}));
-        assert_eq!(missing["timeoutMs"], 0);
-
-        let malformed = params_with_explicit_timeout_policy(&json!({
+    fn test_settlement_missing_timeout_uses_policy_unless_unbounded() {
+        let policy = json!({
+            "defaultTimeoutMs": 180_000,
+            "agents": {}
+        });
+        let missing = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
             "agent": "codex",
-            "timeoutMs": "120000"
-        }));
-        assert_eq!(malformed["timeoutMs"], 0);
+            "dispatchTimeoutPolicy": policy,
+        }))
+        .unwrap();
+        assert_eq!(missing, 180_000);
+        let resolved = params_with_resolved_timeout(
+            &json!({"agent": "codex", "dispatchTimeoutPolicy": policy}),
+            missing,
+        );
+        assert_eq!(resolved["timeoutMs"], 180_000);
 
-        let explicit = params_with_explicit_timeout_policy(&json!({
+        assert!(
+            crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+                "agent": "codex",
+                "timeoutMs": "120000",
+                "dispatchTimeoutPolicy": policy,
+            }))
+            .is_err()
+        );
+
+        let explicit = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
             "agent": "codex",
-            "timeoutMs": 300_000
-        }));
-        assert_eq!(explicit["timeoutMs"], 300_000);
+            "timeoutMs": 300_000,
+            "dispatchTimeoutPolicy": policy,
+        }))
+        .unwrap();
+        assert_eq!(explicit, 300_000);
+
+        let unbounded = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&json!({
+            "agent": "codex",
+            "timeoutMs": 0,
+            "timeoutUnbounded": true,
+        }))
+        .unwrap();
+        assert_eq!(unbounded, 0);
     }
 
     #[test]

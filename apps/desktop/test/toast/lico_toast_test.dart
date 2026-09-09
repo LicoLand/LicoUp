@@ -14,6 +14,7 @@ void main() {
     WidgetTester tester, {
     Locale locale = const Locale('en'),
     ValueNotifier<LicoToastNoticesSnapshot>? notices,
+    ValueChanged<ChromeOperationNotificationProjection>? onActivate,
     required Widget child,
   }) {
     return tester.pumpWidget(
@@ -29,6 +30,7 @@ void main() {
         home: LicoToastHost(
           child: LicoToastNoticesListener(
             notices: notices ?? ValueNotifier(const LicoToastNoticesSnapshot()),
+            onActivate: onActivate,
             child: child,
           ),
         ),
@@ -223,12 +225,14 @@ void main() {
       required String messageEnglish,
       String messageChinese = '中文消息',
       PresentationNoticeSeverity severity = PresentationNoticeSeverity.error,
+      ChromeCompletionNoticeTarget? completionTarget,
     }) => ChromeOperationNotificationProjection(
       id: id,
       messageChinese: messageChinese,
       messageEnglish: messageEnglish,
       severity: severity,
       reasonCode: 'test_reason',
+      completionTarget: completionTarget,
     );
 
     testWidgets('notices already present at mount stay silent', (tester) async {
@@ -295,6 +299,56 @@ void main() {
         expect(warning?.kind, LicoToastKind.error);
         expect(warning?.icon, Icons.warning_amber_rounded);
         expect(byMessage['Sync complete']?.kind, LicoToastKind.success);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'completion notice action activates only on click, never on arrival',
+      (tester) async {
+        final notices = ValueNotifier(const LicoToastNoticesSnapshot());
+        final activated = <ChromeOperationNotificationProjection>[];
+        await pumpHostApp(
+          tester,
+          notices: notices,
+          onActivate: activated.add,
+          child: contextProbe(),
+        );
+
+        notices.value = LicoToastNoticesSnapshot(
+          operationNotices: [
+            operationNotice(
+              id: 'notice:a',
+              messageEnglish: 'Task completed',
+              severity: PresentationNoticeSeverity.success,
+              completionTarget: const ChromeCompletionNoticeTarget(
+                notificationId: 'notice:a',
+                parentConversationId: 'conversation:a',
+                childConversationId: 'conversation:child-a',
+                goalId: 'goal:a',
+                cardEventId: 'event:card-a',
+                cardSequence: 4,
+              ),
+            ),
+          ],
+          operationRevision: 1,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+
+        expect(find.text('Task completed'), findsOneWidget);
+        expect(find.text('Open original matter'), findsOneWidget);
+        expect(activated, isEmpty);
+
+        await tester.tap(find.text('Open original matter'));
+        await tester.pump();
+        expect(activated, hasLength(1));
+        expect(activated.single.id, 'notice:a');
+        expect(
+          activated.single.completionTarget?.childConversationId,
+          'conversation:child-a',
+        );
+        expect(activated.single.completionTarget?.cardEventId, 'event:card-a');
         expect(tester.takeException(), isNull);
       },
     );

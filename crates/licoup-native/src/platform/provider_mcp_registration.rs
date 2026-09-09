@@ -39,6 +39,7 @@ fn antigravity_context_environment() -> Value {
 pub enum ProviderConfigKind {
     Cursor,
     Antigravity,
+    ClaudeCode,
 }
 
 impl ProviderConfigKind {
@@ -46,6 +47,7 @@ impl ProviderConfigKind {
         match self {
             Self::Cursor => "cursor",
             Self::Antigravity => "antigravity",
+            Self::ClaudeCode => "claude-code",
         }
     }
 }
@@ -223,7 +225,9 @@ pub fn install(
     });
     owned_entry["env"] = match plan.kind {
         ProviderConfigKind::Cursor => cursor_context_environment(),
-        ProviderConfigKind::Antigravity => antigravity_context_environment(),
+        ProviderConfigKind::Antigravity | ProviderConfigKind::ClaudeCode => {
+            antigravity_context_environment()
+        }
     };
     servers_mut(&mut config)?.insert(SERVER_KEY.to_owned(), owned_entry);
     write_skill(&plan.skill_path)?;
@@ -304,6 +308,7 @@ fn reviewed_config_candidates(kind: ProviderConfigKind) -> Result<Vec<PathBuf>, 
                 .join("antigravity")
                 .join("mcp_config.json"),
         ],
+        ProviderConfigKind::ClaudeCode => vec![home.join(".claude.json")],
     })
 }
 
@@ -347,6 +352,7 @@ fn resolve_skill_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationE
     let root = match kind {
         ProviderConfigKind::Cursor => home.join(".cursor").join("skills"),
         ProviderConfigKind::Antigravity => home.join(".gemini").join("config").join("skills"),
+        ProviderConfigKind::ClaudeCode => home.join(".claude").join("skills"),
     };
     Ok(root.join("lico-up-subagents").join("SKILL.md"))
 }
@@ -354,7 +360,7 @@ fn resolve_skill_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationE
 fn resolve_config_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationError> {
     let candidates = reviewed_config_candidates(kind)?;
     match kind {
-        ProviderConfigKind::Cursor => Ok(candidates[0].clone()),
+        ProviderConfigKind::Cursor | ProviderConfigKind::ClaudeCode => Ok(candidates[0].clone()),
         ProviderConfigKind::Antigravity => {
             let official = &candidates[0];
             let legacy = &candidates[1];
@@ -463,7 +469,7 @@ fn entry_is_exact(entry: &Map<String, Value>, kind: ProviderConfigKind, connecto
         .is_some_and(|args| args.as_slice() == [json!("--caller"), json!(kind.provider_id())]);
     let environment_exact = match kind {
         ProviderConfigKind::Cursor => entry.get("env") == Some(&cursor_context_environment()),
-        ProviderConfigKind::Antigravity => {
+        ProviderConfigKind::Antigravity | ProviderConfigKind::ClaudeCode => {
             entry.get("env") == Some(&antigravity_context_environment())
         }
     };
@@ -621,6 +627,48 @@ mod tests {
             antigravity_context_environment()["LICOUP_PORTABLE_DIR"],
             "${LICOUP_PORTABLE_DIR}"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn claude_code_owned_entry_uses_shell_env_interpolation() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-provider-claude-env-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let connector = root.join("lico-subagent-mcp");
+        fs::write(&connector, b"synthetic connector").unwrap();
+        let connector = fs::canonicalize(connector).unwrap();
+        let mut entry = json!({
+            "command": connector.to_string_lossy(),
+            "args": ["--caller", "claude-code"],
+            "disabled": false,
+            "managedBy": MANAGED_BY,
+            "schemaVersion": ENTRY_SCHEMA,
+            "provider": "claude-code"
+        })
+        .as_object()
+        .cloned()
+        .unwrap();
+        assert!(!entry_is_exact(
+            &entry,
+            ProviderConfigKind::ClaudeCode,
+            &connector
+        ));
+        entry.insert("env".to_owned(), cursor_context_environment());
+        assert!(!entry_is_exact(
+            &entry,
+            ProviderConfigKind::ClaudeCode,
+            &connector
+        ));
+        entry.insert("env".to_owned(), antigravity_context_environment());
+        assert!(entry_is_exact(
+            &entry,
+            ProviderConfigKind::ClaudeCode,
+            &connector
+        ));
+        assert_eq!(ProviderConfigKind::ClaudeCode.provider_id(), "claude-code");
         let _ = fs::remove_dir_all(root);
     }
 

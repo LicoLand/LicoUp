@@ -5,6 +5,7 @@ import {
   decorateRustToolchainCommand,
   isRustToolchainCommand,
   parseRustToolchainTerminalOutput,
+  resolveRustLibtestThreads,
   verifiedLibtestReportTimeCapability,
 } from "../../../tools/regression/client-regression-toolchain-stats/rust.mjs";
 
@@ -87,6 +88,32 @@ test("Cargo job recommendations reject invalid capacity values", () => {
       /cargoJobs must be a positive integer or null/u,
     );
   }
+});
+
+test("explicit serial libtest is honored independently of Cargo job concurrency", () => {
+  assert.equal(resolveRustLibtestThreads({
+    internalConcurrency: 4,
+    environment: { RUST_TEST_THREADS: "1" },
+  }), 1);
+  assert.equal(resolveRustLibtestThreads({
+    internalConcurrency: 4,
+    environment: {},
+  }), 4);
+  assert.equal(resolveRustLibtestThreads({
+    internalConcurrency: 4,
+    environment: { RUST_TEST_THREADS: "bogus" },
+  }), 4);
+
+  const decorated = decorateRustToolchainCommand(focusedCargoTest, {
+    cargoJobs: 4,
+    libtestThreads: resolveRustLibtestThreads({
+      internalConcurrency: 4,
+      environment: { RUST_TEST_THREADS: "1" },
+    }),
+  });
+  assert.equal(decorated.command.args.includes("--jobs=4"), true);
+  assert.equal(decorated.command.args.includes("--test-threads=1"), true);
+  assert.equal(decorated.command.args.includes("--test-threads=4"), false);
 });
 
 test("libtest threads are bounded without changing focused harness arguments", () => {

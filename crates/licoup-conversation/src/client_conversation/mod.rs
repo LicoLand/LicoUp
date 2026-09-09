@@ -228,6 +228,8 @@ pub struct MembershipProfileSnapshot {
     pub price_output_usd_per_million_tokens: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intelligence_score: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub task_tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reliability_class: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -149,11 +149,9 @@ fn cursor_parser_terminal_result_appends_missing_suffix() {
 }
 
 #[test]
-fn cursor_parser_terminal_result_rejects_true_divergence() {
+fn cursor_parser_terminal_result_keeps_streamed_text_when_result_diverges() {
     use crate::platform::cursor_driver::model::EffectiveSettings;
-    use crate::platform::native_agent_parser::adapters::cursor::{
-        CursorParseFailure, CursorParser,
-    };
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
 
     let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
     parser
@@ -162,13 +160,51 @@ fn cursor_parser_terminal_result_rejects_true_divergence() {
     parser
         .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]}}"#)
         .unwrap();
-    let divergent = parser.parse_line(
-        br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","result":"a different answer"}"#,
+    let terminal = parser
+        .parse_line(
+            br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","result":"a different answer"}"#,
+        )
+        .unwrap();
+    assert!(
+        terminal
+            .iter()
+            .all(|effect| !matches!(effect, CursorEffect::Text { .. }))
     );
-    assert!(matches!(
-        divergent,
-        Err(CursorParseFailure::TextSnapshotDiverged)
-    ));
+    assert!(terminal.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Complete(outcome) if outcome.output == "hello world"
+    )));
+}
+
+#[test]
+fn cursor_parser_ignores_a_rewritten_snapshot_and_still_completes() {
+    use crate::platform::cursor_driver::model::EffectiveSettings;
+    use crate::platform::native_agent_parser::adapters::cursor::{CursorEffect, CursorParser};
+
+    let mut parser = CursorParser::new("synthetic-session", "prompt", EffectiveSettings::default());
+    parser
+        .parse_line(br#"{"type":"user","session_id":"synthetic-session","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}"#)
+        .unwrap();
+    parser
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","timestamp_ms":1,"message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#)
+        .unwrap();
+    let rewritten = parser
+        .parse_line(br#"{"type":"assistant","session_id":"synthetic-session","message":{"role":"assistant","content":[{"type":"text","text":"rewritten"}]}}"#)
+        .unwrap();
+    assert!(
+        rewritten
+            .iter()
+            .all(|effect| !matches!(effect, CursorEffect::Text { .. }))
+    );
+    let terminal = parser
+        .parse_line(
+            br#"{"type":"result","subtype":"success","is_error":false,"session_id":"synthetic-session","result":"hello"}"#,
+        )
+        .unwrap();
+    assert!(terminal.iter().any(|effect| matches!(
+        effect,
+        CursorEffect::Complete(outcome) if outcome.output == "hello"
+    )));
 }
 
 #[test]

@@ -72,13 +72,30 @@ test("composition and pairing retain lifecycle and explicit station ownership", 
   for (const token of [
     "class MobileRelayPairingWorkspaceCard",
     "mobile-relay-station-base-url-field",
-    "canonicalMobileRelayStationOrigin",
-    "configureMobileRelayStation",
-    "copyMobilePairingCode",
+    "ConfigureRelayStation(",
+    "CopyRelayPairingCode(",
     "class MobileRelayPairingInfoRow",
   ]) {
     assert.ok(source["pairing.dart"].includes(token), `missing pairing token: ${token}`);
   }
+  const station = await read(
+    "apps/desktop/lib/src/contracts/mobile_relay/mobile_relay_station.dart",
+  );
+  const adapter = await read(
+    "apps/desktop/lib/src/composition/features/mobile_relay/mobile_relay_intent_adapter.dart",
+  );
+  assert.ok(
+    station.includes("String? canonicalMobileRelayStationOrigin(String value)"),
+    "station contract must remain the origin normalization owner",
+  );
+  assert.ok(
+    adapter.includes("case ConfigureRelayStation(:final address):"),
+    "intent adapter must remain the ConfigureRelayStation owner",
+  );
+  assert.ok(
+    adapter.includes("canonicalMobileRelayStationOrigin(address)"),
+    "intent adapter must apply the station-origin normalizer",
+  );
 });
 
 test("QR, scan, and trust remain independently constructable presenters", async () => {

@@ -237,6 +237,16 @@ impl SupervisedChild {
         self.pid
     }
 
+    pub(super) fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        match self.child.try_wait() {
+            Ok(Some(status)) => {
+                self.cleaned = true;
+                Ok(Some(status))
+            }
+            other => other,
+        }
+    }
+
     /// Gives a batch-style child a bounded opportunity to report its natural
     /// exit status before terminating any process tree it left behind. The
     /// root stays unreaped during the grace period so its process-group ID

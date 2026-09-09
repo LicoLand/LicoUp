@@ -1,3 +1,5 @@
+import process from "node:process";
+
 const CARGO_TIMING_SUBCOMMANDS = new Set(["check", "test"]);
 
 function unavailable(reason) {
@@ -61,6 +63,25 @@ export function verifiedLibtestReportTimeCapability(probe) {
       && probe?.requestedReportTime === true,
     source: "selected_harness_probe",
   });
+}
+
+function parsePositiveInteger(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number(String(value).trim());
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+export function resolveRustLibtestThreads({
+  internalConcurrency = null,
+  environment = process.env,
+} = {}) {
+  if (internalConcurrency !== null && (!Number.isInteger(internalConcurrency) || internalConcurrency <= 0)) {
+    throw new TypeError("internalConcurrency must be a positive integer or null");
+  }
+  const explicit = parsePositiveInteger(environment?.RUST_TEST_THREADS);
+  if (explicit !== null) return explicit;
+  return internalConcurrency;
 }
 
 export function decorateRustToolchainCommand(command, {

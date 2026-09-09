@@ -520,6 +520,24 @@ void main() {
         ),
       );
       expect(_summaryLineCount(boxes), lessThanOrEqualTo(3));
+      final header = tester.widget<Padding>(
+        find.byKey(Key('agent-hub-header-$id')),
+      );
+      expect(
+        header.padding,
+        const EdgeInsets.fromLTRB(
+          LicoContentSpacing.item,
+          LicoContentSpacing.compact,
+          LicoContentSpacing.item,
+          0,
+        ),
+      );
+      final cardRect = tester.getRect(find.byKey(Key('agent-hub-card-$id')));
+      final nameRect = tester.getRect(find.byKey(Key('agent-hub-name-$id')));
+      expect(
+        cardRect.right - nameRect.right,
+        greaterThanOrEqualTo(LicoContentSpacing.item - 0.5),
+      );
       final headerRect = tester.getRect(
         find.byKey(Key('agent-hub-header-$id')),
       );

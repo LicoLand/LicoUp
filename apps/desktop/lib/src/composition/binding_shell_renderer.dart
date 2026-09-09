@@ -213,6 +213,15 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
   @override
   Widget buildDockComposer(BuildContext context) =>
       _DockConversationComposer(agents: agents, conversation: conversation);
+
+  @override
+  void activateOperationNotice(ChromeOperationNotificationProjection notice) {
+    final target = notice.completionTarget;
+    if (target == null) return;
+    conversation.intents.send(
+      ActivateContinuityCompletionNotice(notificationId: target.notificationId),
+    );
+  }
 }
 
 /// Maps the chrome projection to the toast notices snapshot on demand.

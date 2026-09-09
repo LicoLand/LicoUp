@@ -195,7 +195,7 @@ final class _WorkflowEdgePainter extends CustomPainter {
       for (var i = 1; i < route.points.length; i++) {
         path.lineTo(route.points[i].dx, route.points[i].dy);
       }
-      canvas.drawPath(path, paint);
+      _strokeRoute(canvas, path, paint, dashed: route.callback);
       _drawArrow(
         canvas,
         route.points[route.points.length - 2],
@@ -203,6 +203,32 @@ final class _WorkflowEdgePainter extends CustomPainter {
         paint,
       );
       _drawEventLabel(canvas, route.label, route.labelAnchor);
+    }
+  }
+
+  void _strokeRoute(
+    Canvas canvas,
+    Path path,
+    Paint paint, {
+    required bool dashed,
+  }) {
+    if (!dashed) {
+      canvas.drawPath(path, paint);
+      return;
+    }
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      var draw = true;
+      const dash = 5.0;
+      const gap = 4.0;
+      while (distance < metric.length) {
+        final next = (distance + (draw ? dash : gap)).clamp(0.0, metric.length);
+        if (draw) {
+          canvas.drawPath(metric.extractPath(distance, next), paint);
+        }
+        distance = next;
+        draw = !draw;
+      }
     }
   }
 
