@@ -1,5 +1,6 @@
 use licoup_conversation::continuity::{
     ContinuityCandidateIdentity, ContinuityDatasetSplit, ContinuityFailure, ContinuityFailureCode,
+    StoredOwnerAuthority,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -99,8 +100,6 @@ pub struct ObservationEconomy {
     pub correction_count: u64,
     #[serde(default)]
     pub accepted_outcome: bool,
-    #[serde(default)]
-    pub native_success: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_identity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -134,8 +133,10 @@ pub struct EvidenceBundle {
     pub identity: ContinuityCandidateIdentity,
     pub observations: Vec<QualificationObservation>,
     pub evidence_class: EvidenceClass,
+    pub provenance: Option<LiveProvenance>,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SyntheticRecipe {
     pub negative_families: u64,
@@ -179,6 +180,7 @@ impl QualificationObservation {
 }
 
 impl EvidenceBundle {
+    #[cfg(any(test, feature = "test-support"))]
     pub fn from_fixture_parts(
         responsibility_id: String,
         identity: ContinuityCandidateIdentity,
@@ -189,27 +191,198 @@ impl EvidenceBundle {
             identity,
             observations,
             evidence_class: EvidenceClass::Synthetic,
+            provenance: None,
         }
     }
 
-    /// Live class is never constructed from a fixture document.
-    pub fn authorize_live(mut self, admission: LiveAdmission) -> Self {
-        let _ = admission;
+    pub fn authorize_live(mut self, admission: LiveAdmission) -> Result<Self, ContinuityFailure> {
+        if !identities_match(&self.identity, admission.identity()) {
+            return Err(invalid_request(ContinuityFailureCode::InvalidRequest));
+        }
+        if self.evidence_class == EvidenceClass::LiveAuthorized {
+            return Err(invalid_request(ContinuityFailureCode::IdempotencyConflict));
+        }
         self.evidence_class = EvidenceClass::LiveAuthorized;
-        self
+        self.provenance = Some(admission.provenance().clone());
+        Ok(self)
     }
 }
 
-/// Proof that a later authorized live session may mark evidence live. There is
-/// no JSON constructor.
-#[derive(Clone, Copy, Debug)]
+pub const SYNTHETIC_TEST_EVIDENCE_LABEL: &str = "synthetic-test-evidence";
+pub const AUTHORIZED_LIVE_SESSION_LABEL: &str = "authorized-live-session";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LiveAuthorityKind {
+    TrustedConfig,
+    InteractionUseCase,
+    TestEvidence,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LiveSourceKind {
+    HostConfiguration,
+    QualificationCatalog,
+    SyntheticTestBoundary,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct LiveSeal {
+    stored_owner: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveProvenance {
+    pub source_kind: LiveSourceKind,
+    pub authority_kind: LiveAuthorityKind,
+    pub source_id: String,
+    #[serde(default)]
+    pub conversation_id: String,
+    #[serde(default)]
+    pub owner_principal_id: String,
+    #[serde(default)]
+    pub session_id: String,
+    pub policy_revision: String,
+    pub evidence_label: String,
+    #[serde(default)]
+    pub collector_id: String,
+    #[serde(default)]
+    pub collection_digest: String,
+    #[serde(skip)]
+    seal: LiveSeal,
+}
+
+impl Default for LiveProvenance {
+    fn default() -> Self {
+        Self {
+            source_kind: LiveSourceKind::SyntheticTestBoundary,
+            authority_kind: LiveAuthorityKind::TestEvidence,
+            source_id: String::new(),
+            conversation_id: String::new(),
+            owner_principal_id: String::new(),
+            session_id: String::new(),
+            policy_revision: String::new(),
+            evidence_label: String::new(),
+            collector_id: String::new(),
+            collection_digest: String::new(),
+            seal: LiveSeal::default(),
+        }
+    }
+}
+
+impl LiveProvenance {
+    pub fn labeled_test_evidence(
+        source_id: impl Into<String>,
+        policy_revision: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_id: source_id.into(),
+            policy_revision: policy_revision.into(),
+            evidence_label: SYNTHETIC_TEST_EVIDENCE_LABEL.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn is_test_evidence(&self) -> bool {
+        self.authority_kind == LiveAuthorityKind::TestEvidence
+            && self.source_kind == LiveSourceKind::SyntheticTestBoundary
+            && self.evidence_label == SYNTHETIC_TEST_EVIDENCE_LABEL
+    }
+
+    pub fn is_stored_authority(&self) -> bool {
+        self.seal.stored_owner
+            && matches!(
+                (self.authority_kind, self.source_kind),
+                (
+                    LiveAuthorityKind::TrustedConfig,
+                    LiveSourceKind::HostConfiguration
+                )
+            )
+            && self.evidence_label == AUTHORIZED_LIVE_SESSION_LABEL
+            && !self.source_id.trim().is_empty()
+            && !self.conversation_id.trim().is_empty()
+            && !self.owner_principal_id.trim().is_empty()
+            && !self.session_id.trim().is_empty()
+            && !self.collector_id.trim().is_empty()
+            && self.collector_id != "collector:synthetic"
+            && !self.collection_digest.trim().is_empty()
+    }
+}
+
+/// Trusted live admission. There is no JSON `authorized` constructor, no
+/// public empty marker, and no caller-built TrustedConfig/InteractionUseCase
+/// label path. Tests may stand in for an external authorized execution
+/// boundary only as labeled synthetic test evidence.
+#[derive(Clone, Debug, PartialEq)]
 pub struct LiveAdmission {
-    _private: (),
+    identity: ContinuityCandidateIdentity,
+    provenance: LiveProvenance,
 }
 
 impl LiveAdmission {
-    pub fn for_authorized_live_session() -> Self {
-        Self { _private: () }
+    pub fn admit_test_evidence(
+        identity: ContinuityCandidateIdentity,
+        mut provenance: LiveProvenance,
+    ) -> Result<Self, ContinuityFailure> {
+        admit_identity(&identity)?;
+        if provenance.source_id.trim().is_empty()
+            || provenance.policy_revision.trim().is_empty()
+            || !provenance.is_test_evidence()
+        {
+            return Err(invalid_request(ContinuityFailureCode::InvalidRequest));
+        }
+        provenance.seal = LiveSeal {
+            stored_owner: false,
+        };
+        Ok(Self {
+            identity,
+            provenance,
+        })
+    }
+
+    pub fn from_admitted_session(
+        identity: ContinuityCandidateIdentity,
+        authority: StoredOwnerAuthority,
+        session_id: String,
+        policy_revision: String,
+        collector_id: String,
+        collection_digest: String,
+    ) -> Result<Self, ContinuityFailure> {
+        admit_identity(&identity)?;
+        if policy_revision.trim().is_empty()
+            || session_id.trim().is_empty()
+            || collector_id.trim().is_empty()
+            || collector_id == "collector:synthetic"
+            || collection_digest.trim().is_empty()
+        {
+            return Err(invalid_request(ContinuityFailureCode::InvalidRequest));
+        }
+        Ok(Self {
+            identity,
+            provenance: LiveProvenance {
+                source_kind: LiveSourceKind::HostConfiguration,
+                authority_kind: LiveAuthorityKind::TrustedConfig,
+                source_id: authority.owner_membership_id().to_owned(),
+                conversation_id: authority.conversation_id().to_owned(),
+                owner_principal_id: authority.owner_principal_id().to_owned(),
+                session_id,
+                policy_revision,
+                evidence_label: AUTHORIZED_LIVE_SESSION_LABEL.to_owned(),
+                collector_id,
+                collection_digest,
+                seal: LiveSeal { stored_owner: true },
+            },
+        })
+    }
+
+    pub fn identity(&self) -> &ContinuityCandidateIdentity {
+        &self.identity
+    }
+
+    pub fn provenance(&self) -> &LiveProvenance {
+        &self.provenance
     }
 }
 
@@ -261,6 +434,7 @@ pub fn child_expands_parent_permission(
         || parent.policy_revision != child.policy_revision
 }
 
+#[cfg(any(test, feature = "test-support"))]
 pub fn generate_synthetic(
     recipe: &SyntheticRecipe,
     subgroups: &[String],
@@ -324,6 +498,7 @@ pub fn generate_synthetic(
     Ok(observations)
 }
 
+#[cfg(any(test, feature = "test-support"))]
 fn family_observation(
     recipe: &SyntheticRecipe,
     polarity: ObservationPolarity,

@@ -1,18 +1,21 @@
 use super::admission::{
+    admit_achieved_required_current_evidence, admit_completion_against_current,
     admit_completion_transition, admit_goal_progress, admit_idempotency, admit_source_ref,
-    admit_task_child_admission, admit_versions,
+    admit_task_child_admission, admit_utf8_span, admit_versions, current_required_evidence,
 };
-use super::error::{continuity_failure, store_to_continuity};
+use super::error::{continuity_failure, sql_failure, store_to_continuity};
 use super::generated::{
     CONTINUITY_MAX_PAGE_SIZE, ContinuityAgreement, ContinuityAgreementProposal,
-    ContinuityCommitBasis, ContinuityEffectClass, ContinuityEvidenceRef, ContinuityFailure,
-    ContinuityFailureCode, ContinuityFailureStage, ContinuityFollowThroughKind,
-    ContinuityGoalCompletionTransition, ContinuityGoalContract, ContinuityGoalControl,
-    ContinuityGoalLifecycle, ContinuityGoalProgress, ContinuityInterpretationProposal,
-    ContinuityMatter, ContinuityMatterStatus, ContinuityNextAttention,
-    ContinuityParentContextGrant, ContinuityParentGrantBasis, ContinuitySourceOwnerKind,
-    ContinuitySourceRef, ContinuitySpeechAct, ContinuityTaskConversationRelation,
-    ContinuityTaskListingKind, ContinuityVisibilityScope, ContinuityWake,
+    ContinuityCandidateIdentity, ContinuityCommitBasis, ContinuityEffectClass,
+    ContinuityEvidenceRef, ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage,
+    ContinuityFollowThroughKind, ContinuityGoalCompletionTransition, ContinuityGoalContract,
+    ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
+    ContinuityInterpretationProposal, ContinuityMatter, ContinuityMatterStatus,
+    ContinuityNextAttention, ContinuityParentContextGrant, ContinuityParentGrantBasis,
+    ContinuityParentGrantStatus, ContinuitySourceOwnerKind, ContinuitySourceRef,
+    ContinuitySourceValidity, ContinuitySpeechAct, ContinuityTaskChildAdmission,
+    ContinuityTaskConversationRelation, ContinuityTaskListingKind, ContinuityVisibilityScope,
+    ContinuityWake,
 };
 use super::hooks::{
     ContinuityEffectStatus, ContinuityInterrupt, continuity_now_ms, take_interrupt,
@@ -29,11 +32,13 @@ pub use super::persist::{
     child_work_named_key, child_work_operation_id,
 };
 use super::persist::{
+    StoredEvaluationCase, StoredEvaluationCorpus, StoredEvaluationSession, StoredOwnerAuthority,
     admit_local_owner_principal, append_goal_evidence, child_recipient_membership,
     child_work_accepted as child_work_accepted_unit, child_work_started as child_work_started_unit,
     consume_completion_ids, consume_wake, count_cancel_effects as count_cancel_effects_unit,
     current_agreements, default_receipt, delete_child_work_live as delete_child_work_live_unit,
-    due_from_attention, enqueue_wake, ensure_scope,
+    delete_effect_if_status, due_from_attention, enqueue_wake, ensure_scope,
+    evaluation_corpus_version_digest,
     find_admitted_parent_grant as find_admitted_parent_grant_unit, goal_conversation_id,
     goals_for_matter, has_unknown_effects, increment_revocation, insert_agreement, insert_derived,
     list_all_parent_grants as list_all_parent_grants_unit,
@@ -46,16 +51,18 @@ use super::persist::{
     list_unapplied_settlements as list_unapplied_settlements_unit,
     list_unapplied_settlements_page as list_unapplied_settlements_page_unit, live_derived_count,
     load_child_work_intent, load_child_work_live as load_child_work_live_unit, load_completion,
-    load_effect, load_goal, load_idempotency, load_ingress_execution, load_named_cursor_payload,
+    load_effect, load_evaluation_corpus_in_unit, load_evaluation_session_in_unit, load_goal,
+    load_idempotency, load_ingress_execution, load_named_cursor_payload,
     load_oldest_pending_child_work as load_oldest_pending_child_work_unit,
-    load_qualification_evidence, load_qualified_completion_row, load_relation,
-    load_relation_for_child, new_continuity_id,
+    load_qualification_evidence, load_qualification_evidence_row, load_qualified_completion_row,
+    load_relation, load_relation_for_child, load_schema_value, new_continuity_id,
     pending_obligation_scan_evidence as pending_obligation_scan_evidence_unit,
-    pending_outbox_count, persist_qualification_evidence, record_effect,
-    set_goal_wait_due as set_goal_wait_due_unit, settlement_applied as settlement_applied_unit,
-    source_is_revoked, store_completion, store_idempotency, update_wake_generation,
-    upsert_association, upsert_goal, upsert_grant, upsert_matter, upsert_relation,
-    write_child_work_accepted as write_child_work_accepted_unit,
+    pending_outbox_count, persist_evaluation_corpus_in_unit, persist_evaluation_session_in_unit,
+    persist_qualification_evidence, persist_schema_value, record_effect,
+    revoke_admitted_recipient_grants, set_goal_wait_due as set_goal_wait_due_unit,
+    settlement_applied as settlement_applied_unit, source_is_revoked, store_completion,
+    store_idempotency, update_wake_generation, upsert_association, upsert_goal, upsert_grant,
+    upsert_matter, upsert_relation, write_child_work_accepted as write_child_work_accepted_unit,
     write_child_work_intent as write_child_work_intent_unit,
     write_child_work_live as write_child_work_live_unit,
     write_child_work_started as write_child_work_started_unit, write_ingress_execution,
@@ -395,7 +402,19 @@ fn apply_proposal(
             ));
         }
         created_card = admit_or_reuse_child(unit, proposal, admission, basis)?;
-        persist_child_work_obligation(unit, conversation_id, admission)?;
+        let wrote_obligation = persist_child_work_obligation(unit, conversation_id, admission)?;
+        if wrote_obligation {
+            if let Some((event_id, ingress_recipient)) = user_posted {
+                issue_current_input_grants(
+                    unit,
+                    conversation_id,
+                    admission,
+                    event_id,
+                    ingress_recipient,
+                    &proposal.envelope.request_id,
+                )?;
+            }
+        }
     }
 
     write_source_cursor(unit, &proposal.envelope)?;
@@ -721,24 +740,24 @@ fn persist_child_work_obligation(
     unit: &ContinuityUnitOfWork<'_>,
     conversation_id: &str,
     admission: &super::ContinuityTaskChildAdmission,
-) -> Result<(), ContinuityFailure> {
+) -> Result<bool, ContinuityFailure> {
     let Some(relation) = load_relation(unit, &admission.goal_id)? else {
-        return Ok(());
+        return Ok(false);
     };
     let Some((_, progress)) = load_goal(unit, &admission.goal_id)? else {
-        return Ok(());
+        return Ok(false);
     };
     if child_work_started_unit(unit, conversation_id, &admission.goal_id, progress.revision)? {
-        return Ok(());
+        return Ok(false);
     }
     if load_child_work_intent(unit, conversation_id, &admission.goal_id, progress.revision)?
         .is_some()
     {
-        return Ok(());
+        return Ok(false);
     }
     let Some(membership) = child_recipient_membership(unit, &relation.child_conversation_id)?
     else {
-        return Ok(());
+        return Ok(false);
     };
     write_child_work_intent_unit(
         unit,
@@ -756,7 +775,362 @@ fn persist_child_work_obligation(
             "parentConversationId": conversation_id,
             "operationId": child_work_operation_id(&admission.goal_id, progress.revision),
         }),
+    )?;
+    Ok(true)
+}
+
+fn issue_current_input_grants(
+    unit: &ContinuityUnitOfWork<'_>,
+    parent_conversation_id: &str,
+    admission: &super::ContinuityTaskChildAdmission,
+    source_event_id: &str,
+    ingress_recipient: &str,
+    request_id: &str,
+) -> Result<(), ContinuityFailure> {
+    let owner = current_authorizing_human_owner(unit, parent_conversation_id)?;
+    let Some((author, sequence, parts)) =
+        load_grantable_event(unit, parent_conversation_id, source_event_id)?
+    else {
+        return Err(continuity_failure(
+            ContinuityFailureCode::SourceUnavailable,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    };
+    let Some(author) = author.filter(|value| !value.trim().is_empty()) else {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    };
+    if author == ingress_recipient {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    admit_local_owner_principal(unit, parent_conversation_id, &author)?;
+    if author != owner {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    let sources = exact_grantable_sources(
+        source_event_id,
+        sequence,
+        &parts,
+        ContinuityVisibilityScope::Conversation,
+    );
+    upsert_validated_child_grants(
+        unit,
+        parent_conversation_id,
+        &admission.goal_id,
+        &sources,
+        request_id,
     )
+}
+
+fn issue_evidence_source_grant(
+    unit: &ContinuityUnitOfWork<'_>,
+    parent_conversation_id: &str,
+    goal_id: &str,
+    evidence: &ContinuityEvidenceRef,
+) -> Result<(), ContinuityFailure> {
+    if !matches!(
+        evidence.source.owner_kind,
+        ContinuitySourceOwnerKind::Event
+            | ContinuitySourceOwnerKind::Part
+            | ContinuitySourceOwnerKind::Span
+    ) {
+        return Ok(());
+    }
+    if evidence.source.validity == ContinuitySourceValidity::Revoked
+        || evidence.validity == ContinuitySourceValidity::Revoked
+    {
+        return Ok(());
+    }
+    let Some((author, sequence, parts)) =
+        load_grantable_event(unit, parent_conversation_id, &evidence.source.opaque_id)?
+    else {
+        return Ok(());
+    };
+    let Some(author) = author.filter(|value| !value.trim().is_empty()) else {
+        return Ok(());
+    };
+    if admit_local_owner_principal(unit, parent_conversation_id, &author).is_err() {
+        return Ok(());
+    }
+    if sequence != evidence.source.source_revision {
+        return Ok(());
+    }
+    if source_is_revoked(unit, parent_conversation_id, &evidence.source)? {
+        return Ok(());
+    }
+    let Some(source) = validated_exact_source(&evidence.source, sequence, &parts) else {
+        return Ok(());
+    };
+    upsert_validated_child_grants(
+        unit,
+        parent_conversation_id,
+        goal_id,
+        std::slice::from_ref(&source),
+        &format!(
+            "evidence:{goal_id}:{}:{}",
+            evidence.criterion_id, evidence.subject_version
+        ),
+    )
+}
+
+fn revoke_superseded_evidence_grants(
+    unit: &ContinuityUnitOfWork<'_>,
+    parent_conversation_id: &str,
+    goal_id: &str,
+    evidence: &ContinuityEvidenceRef,
+) -> Result<(), ContinuityFailure> {
+    let Some((_, progress)) = load_goal(unit, goal_id)? else {
+        return Ok(());
+    };
+    let Some(relation) = load_relation(unit, goal_id)? else {
+        return Ok(());
+    };
+    let Some(recipient) = child_recipient_membership(unit, &relation.child_conversation_id)? else {
+        return Ok(());
+    };
+    let superseded: Vec<ContinuitySourceRef> = progress
+        .criterion_evidence_refs
+        .iter()
+        .filter(|item| {
+            item.criterion_id == evidence.criterion_id
+                && item.subject_version < evidence.subject_version
+        })
+        .map(|item| item.source.clone())
+        .collect();
+    if superseded.is_empty() {
+        return Ok(());
+    }
+    revoke_admitted_recipient_grants(
+        unit,
+        parent_conversation_id,
+        &relation.child_conversation_id,
+        &recipient,
+        |allowed| {
+            superseded.iter().any(|old| {
+                allowed.owner_kind == old.owner_kind
+                    && allowed.opaque_id == old.opaque_id
+                    && allowed.part_id == old.part_id
+                    && allowed.source_revision == old.source_revision
+                    && allowed.digest == old.digest
+            })
+        },
+    )
+}
+
+fn upsert_validated_child_grants(
+    unit: &ContinuityUnitOfWork<'_>,
+    parent_conversation_id: &str,
+    goal_id: &str,
+    sources: &[ContinuitySourceRef],
+    request_id: &str,
+) -> Result<(), ContinuityFailure> {
+    if sources.is_empty() {
+        return Ok(());
+    }
+    let Some(relation) = load_relation(unit, goal_id)? else {
+        return Ok(());
+    };
+    if relation.parent_conversation_id != parent_conversation_id {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    let Some((_, progress)) = load_goal(unit, goal_id)? else {
+        return Ok(());
+    };
+    let Some(recipient) = child_recipient_membership(unit, &relation.child_conversation_id)? else {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    };
+    if !unit
+        .membership_is_active_agent(&relation.child_conversation_id, &recipient)
+        .map_err(store_to_continuity)?
+    {
+        return Err(continuity_failure(
+            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    let operation_id = child_work_operation_id(goal_id, progress.revision);
+    let (recipient_generation, _) = ensure_scope(unit, &relation.child_conversation_id)?;
+    for source in sources {
+        if source_is_revoked(unit, parent_conversation_id, source)? {
+            return Err(continuity_failure(
+                ContinuityFailureCode::SourceRevoked,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        let part = source.part_id.as_deref().unwrap_or("event");
+        let grant = ContinuityParentContextGrant {
+            grant_id: format!(
+                "grant:{}:{operation_id}:{}:{part}",
+                relation.child_conversation_id, source.opaque_id
+            ),
+            source_conversation_id: parent_conversation_id.to_owned(),
+            recipient_conversation_id: relation.child_conversation_id.clone(),
+            recipient_membership_id: recipient.clone(),
+            source_refs: vec![source.clone()],
+            authorized_scopes: vec![source.visibility_scope],
+            status: ContinuityParentGrantStatus::Admitted,
+            request_id: request_id.to_owned(),
+            revocation_generation: recipient_generation,
+        };
+        upsert_grant(unit, &grant)?;
+    }
+    Ok(())
+}
+
+fn current_authorizing_human_owner(
+    unit: &ContinuityUnitOfWork<'_>,
+    conversation_id: &str,
+) -> Result<String, ContinuityFailure> {
+    let owner = unit
+        .current_human_owner_membership(conversation_id)
+        .map_err(store_to_continuity)?
+        .ok_or_else(|| {
+            continuity_failure(
+                ContinuityFailureCode::ScopeDenied,
+                ContinuityFailureStage::ContinuityAdmission,
+            )
+        })?;
+    admit_local_owner_principal(unit, conversation_id, &owner)?;
+    Ok(owner)
+}
+
+fn load_grantable_event(
+    unit: &ContinuityUnitOfWork<'_>,
+    conversation_id: &str,
+    event_id: &str,
+) -> Result<Option<(Option<String>, i64, Vec<(String, String, String)>)>, ContinuityFailure> {
+    let Some((author, sequence)) = unit
+        .event_author_and_sequence(conversation_id, event_id)
+        .map_err(store_to_continuity)?
+    else {
+        return Ok(None);
+    };
+    let parts = unit
+        .event_canonical_parts(conversation_id, event_id)
+        .map_err(store_to_continuity)?;
+    Ok(Some((author, sequence, parts)))
+}
+
+fn exact_grantable_sources(
+    event_id: &str,
+    sequence: i64,
+    parts: &[(String, String, String)],
+    scope: ContinuityVisibilityScope,
+) -> Vec<ContinuitySourceRef> {
+    parts
+        .iter()
+        .filter(|(_, kind, _)| matches!(kind.as_str(), "text" | "reasoning" | "image"))
+        .map(|(part_id, kind, _)| exact_part_source(event_id, sequence, part_id, kind, scope))
+        .collect()
+}
+
+fn exact_part_source(
+    event_id: &str,
+    sequence: i64,
+    part_id: &str,
+    kind: &str,
+    visibility_scope: ContinuityVisibilityScope,
+) -> ContinuitySourceRef {
+    ContinuitySourceRef {
+        owner_kind: canonical_part_owner_kind(kind),
+        opaque_id: event_id.to_owned(),
+        part_id: Some(part_id.to_owned()),
+        span: None,
+        source_revision: sequence,
+        digest: canonical_part_digest(event_id, part_id, kind),
+        visibility_scope,
+        validity: ContinuitySourceValidity::Current,
+    }
+}
+
+fn canonical_part_digest(event_id: &str, part_id: &str, kind: &str) -> String {
+    if kind == "image" {
+        format!("part:{part_id}")
+    } else {
+        format!("event:{event_id}:{part_id}")
+    }
+}
+
+fn canonical_part_owner_kind(kind: &str) -> ContinuitySourceOwnerKind {
+    if kind == "image" {
+        ContinuitySourceOwnerKind::Part
+    } else {
+        ContinuitySourceOwnerKind::Event
+    }
+}
+
+fn validated_exact_source(
+    requested: &ContinuitySourceRef,
+    sequence: i64,
+    parts: &[(String, String, String)],
+) -> Option<ContinuitySourceRef> {
+    if requested.validity == ContinuitySourceValidity::Revoked {
+        return None;
+    }
+    if sequence != requested.source_revision {
+        return None;
+    }
+    let scopes = [
+        ContinuityVisibilityScope::Conversation,
+        ContinuityVisibilityScope::Matter,
+        ContinuityVisibilityScope::Goal,
+    ];
+    if admit_source_ref(&scopes, requested).is_err() {
+        return None;
+    }
+    match requested.part_id.as_deref().filter(|id| !id.is_empty()) {
+        None => {
+            if requested.owner_kind != ContinuitySourceOwnerKind::Event || requested.span.is_some()
+            {
+                return None;
+            }
+            Some(requested.clone())
+        }
+        Some(part_id) => {
+            let (_, kind, content) = parts.iter().find(|(id, _, _)| id == part_id)?;
+            if !matches!(kind.as_str(), "text" | "reasoning" | "image") {
+                return None;
+            }
+            if requested.digest != canonical_part_digest(&requested.opaque_id, part_id, kind) {
+                return None;
+            }
+            let canonical_kind = canonical_part_owner_kind(kind);
+            match requested.owner_kind {
+                ContinuitySourceOwnerKind::Span => {
+                    if kind == "image" {
+                        return None;
+                    }
+                    let span = requested.span.as_ref()?;
+                    if admit_utf8_span(content, span.start_byte, span.end_byte).is_err() {
+                        return None;
+                    }
+                }
+                other if other == canonical_kind => {
+                    if let Some(span) = requested.span.as_ref() {
+                        if admit_utf8_span(content, span.start_byte, span.end_byte).is_err() {
+                            return None;
+                        }
+                    }
+                }
+                _ => return None,
+            }
+            Some(requested.clone())
+        }
+    }
 }
 
 pub fn apply_goal_control(
@@ -797,17 +1171,35 @@ pub fn accept_completion(
         if is_terminal(current.lifecycle) {
             return Ok(false);
         }
+        admit_completion_against_current(transition, &current)?;
         if has_unknown_effects(unit, &transition.goal_id)? {
             return Err(continuity_failure(
                 ContinuityFailureCode::ReconciliationRequired,
                 ContinuityFailureStage::ContinuityEffects,
             ));
         }
+        if transition.to_lifecycle == ContinuityGoalLifecycle::Achieved {
+            admit_achieved_required_current_evidence(transition, &contract, &current)?;
+            for item in current_required_evidence(&contract, &current) {
+                if source_is_revoked(unit, conversation_id, &item.source)? {
+                    return Err(continuity_failure(
+                        ContinuityFailureCode::SourceRevoked,
+                        ContinuityFailureStage::ContinuityAdmission,
+                    ));
+                }
+            }
+            if source_is_revoked(unit, conversation_id, &transition.evaluation_ref)? {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::SourceRevoked,
+                    ContinuityFailureStage::ContinuityAdmission,
+                ));
+            }
+        }
         if load_completion(unit, &transition.notification_id)?.is_some() {
             return Ok(false);
         }
         contract.contract_revision = current.revision;
-        let mut stored = progress.clone();
+        let mut stored = current.clone();
         stored.lifecycle = transition.to_lifecycle;
         stored.next_attention = None;
         stored.active_execution_refs.clear();
@@ -1269,7 +1661,23 @@ pub fn append_criterion_evidence(
 ) -> Result<ContinuityGoalProgress, ContinuityFailure> {
     run_unit(store, |unit| {
         migrate_or_fail(unit)?;
-        let progress = append_goal_evidence(unit, conversation_id, goal_id, evidence)?;
+        ensure_scope(unit, conversation_id)?;
+        revoke_superseded_evidence_grants(unit, conversation_id, goal_id, &evidence)?;
+        let progress = append_goal_evidence(unit, conversation_id, goal_id, evidence.clone())?;
+        issue_evidence_source_grant(unit, conversation_id, goal_id, &evidence)?;
+        let _ = persist_child_work_obligation(
+            unit,
+            conversation_id,
+            &ContinuityTaskChildAdmission {
+                goal_id: goal_id.to_owned(),
+                parent_conversation_id: conversation_id.to_owned(),
+                speech_act: ContinuitySpeechAct::Delegation,
+                follow_through_kind: ContinuityFollowThroughKind::Durable,
+                observed_child_conversation_id: None,
+                observed_card_anchor: None,
+                request_id: format!("request:evidence-work:{goal_id}:{}", progress.revision),
+            },
+        )?;
         unit.request_commit();
         Ok(progress)
     })
@@ -1324,6 +1732,423 @@ pub fn list_qualification_evidence(
     run_unit(store, |unit| {
         migrate_or_fail(unit)?;
         load_qualification_evidence(unit)
+    })
+}
+
+pub fn load_adoption_policy_values(
+    store: &ConversationStore,
+) -> Result<(bool, String), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let enabled = match load_schema_value(unit, super::persist::ADOPTION_ENABLED_KEY)? {
+            Some(value) => value != "0",
+            None => true,
+        };
+        let stage = load_schema_value(unit, super::persist::ADOPTION_STAGE_KEY)?
+            .unwrap_or_else(|| super::persist::ADOPTION_STAGE_OFFLINE.to_owned());
+        Ok((enabled, stage))
+    })
+}
+
+pub fn persist_adoption_stage(
+    store: &ConversationStore,
+    stage: &str,
+) -> Result<(), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        persist_schema_value(unit, super::persist::ADOPTION_STAGE_KEY, stage)?;
+        unit.request_commit();
+        Ok(())
+    })
+}
+
+pub fn resolve_stored_owner_authority(
+    store: &ConversationStore,
+    conversation_id: &str,
+    owner_membership_id: &str,
+) -> Result<StoredOwnerAuthority, ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let archived: Option<i64> = unit
+            .query_row(
+                "SELECT archived FROM conversations WHERE id=?1",
+                [conversation_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sql_failure)?;
+        if archived != Some(0) {
+            return Err(continuity_failure(
+                ContinuityFailureCode::ScopeDenied,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        let owner_principal_id =
+            admit_local_owner_principal(unit, conversation_id, owner_membership_id)?;
+        Ok(StoredOwnerAuthority::from_admitted(
+            conversation_id.to_owned(),
+            owner_membership_id.to_owned(),
+            owner_principal_id,
+        ))
+    })
+}
+
+pub fn persist_evaluation_session(
+    store: &ConversationStore,
+    session: &StoredEvaluationSession,
+) -> Result<(), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        persist_evaluation_session_in_unit(unit, session)?;
+        unit.request_commit();
+        Ok(())
+    })
+}
+
+pub fn load_evaluation_session(
+    store: &ConversationStore,
+    session_id: &str,
+) -> Result<Option<StoredEvaluationSession>, ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        load_evaluation_session_in_unit(unit, session_id)
+    })
+}
+
+pub fn load_qualification_evidence_for(
+    store: &ConversationStore,
+    responsibility_id: &str,
+    identity_key: &str,
+) -> Result<Option<(String, String, String, String)>, ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        load_qualification_evidence_row(unit, responsibility_id, identity_key)
+    })
+}
+
+/// Claim the exact session collection effect before a native evaluation call.
+/// Executed or already-claimed operations fail closed without a second invoke.
+pub fn claim_collection_operation(
+    store: &ConversationStore,
+    session: &StoredEvaluationSession,
+    identity_key: &str,
+) -> Result<(), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let current =
+            load_evaluation_session_in_unit(unit, &session.session_id)?.ok_or_else(|| {
+                continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityAdmission,
+                )
+            })?;
+        if current.consumed {
+            return Err(continuity_failure(
+                ContinuityFailureCode::IdempotencyConflict,
+                ContinuityFailureStage::ContinuityCommit,
+            ));
+        }
+        if !current.same_admitted_binding(session) {
+            return Err(continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        if load_qualification_evidence_row(unit, &current.responsibility_id, identity_key)?
+            .is_some()
+        {
+            return Err(continuity_failure(
+                ContinuityFailureCode::IdempotencyConflict,
+                ContinuityFailureStage::ContinuityCommit,
+            ));
+        }
+        let effect_id = super::persist::collection_effect_id_for_session(&current.session_id);
+        match load_effect(unit, &effect_id)? {
+            Some(ContinuityEffectStatus::Executed) => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::IdempotencyConflict,
+                    ContinuityFailureStage::ContinuityCommit,
+                ));
+            }
+            Some(ContinuityEffectStatus::Unknown) => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::ReconciliationRequired,
+                    ContinuityFailureStage::ContinuityEffects,
+                ));
+            }
+            Some(ContinuityEffectStatus::NotExecuted) => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::IdempotencyConflict,
+                    ContinuityFailureStage::ContinuityCommit,
+                ));
+            }
+            None => {}
+        }
+        record_effect(
+            unit,
+            &current.conversation_id,
+            None,
+            &effect_id,
+            ContinuityEffectStatus::NotExecuted,
+        )?;
+        unit.request_commit();
+        Ok(())
+    })
+}
+
+/// Mark the exact collection claim Unknown immediately before the first native
+/// invocation. Pre-invoke callers must not use this; post-invoke failures keep
+/// Unknown so retry reconciles instead of rerunning.
+pub fn begin_collection_invocation(
+    store: &ConversationStore,
+    session: &StoredEvaluationSession,
+) -> Result<(), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let current =
+            load_evaluation_session_in_unit(unit, &session.session_id)?.ok_or_else(|| {
+                continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityAdmission,
+                )
+            })?;
+        if current.consumed || !current.same_admitted_binding(session) {
+            return Err(continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        let effect_id = super::persist::collection_effect_id_for_session(&current.session_id);
+        match load_effect(unit, &effect_id)? {
+            Some(ContinuityEffectStatus::NotExecuted) => {}
+            Some(ContinuityEffectStatus::Unknown) => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::ReconciliationRequired,
+                    ContinuityFailureStage::ContinuityEffects,
+                ));
+            }
+            Some(ContinuityEffectStatus::Executed) => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::IdempotencyConflict,
+                    ContinuityFailureStage::ContinuityCommit,
+                ));
+            }
+            None => {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityEffects,
+                ));
+            }
+        }
+        record_effect(
+            unit,
+            &current.conversation_id,
+            None,
+            &effect_id,
+            ContinuityEffectStatus::Unknown,
+        )?;
+        unit.request_commit();
+        Ok(())
+    })
+}
+
+/// Drop an uncommitted collection claim after a failed native evaluation.
+/// Executed receipts are left untouched. Unknown claims are retained.
+pub fn release_collection_operation(
+    store: &ConversationStore,
+    session_id: &str,
+) -> Result<(), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        delete_effect_if_status(
+            unit,
+            &super::persist::collection_effect_id_for_session(session_id),
+            ContinuityEffectStatus::NotExecuted,
+        )?;
+        unit.request_commit();
+        Ok(())
+    })
+}
+
+/// Atomically persist collected live evidence and consume the admitted session.
+/// Replay, an existing evidence key, or a consumed session fail before write.
+pub fn commit_collected_qualification(
+    store: &ConversationStore,
+    session: &StoredEvaluationSession,
+    responsibility_id: &str,
+    identity_key: &str,
+    payload: &str,
+    evidence_class: &str,
+) -> Result<StoredEvaluationSession, ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        let current =
+            load_evaluation_session_in_unit(unit, &session.session_id)?.ok_or_else(|| {
+                continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityAdmission,
+                )
+            })?;
+        if current.consumed {
+            return Err(continuity_failure(
+                ContinuityFailureCode::IdempotencyConflict,
+                ContinuityFailureStage::ContinuityCommit,
+            ));
+        }
+        if !current.same_admitted_binding(session) || current.responsibility_id != responsibility_id
+        {
+            return Err(continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        if load_qualification_evidence_row(unit, responsibility_id, identity_key)?.is_some() {
+            return Err(continuity_failure(
+                ContinuityFailureCode::IdempotencyConflict,
+                ContinuityFailureStage::ContinuityCommit,
+            ));
+        }
+        persist_qualification_evidence(
+            unit,
+            responsibility_id,
+            identity_key,
+            payload,
+            evidence_class,
+        )?;
+        record_effect(
+            unit,
+            &current.conversation_id,
+            None,
+            &super::persist::collection_effect_id_for_session(&current.session_id),
+            ContinuityEffectStatus::Executed,
+        )?;
+        let mut consumed = current;
+        consumed.consumed = true;
+        persist_evaluation_session_in_unit(unit, &consumed)?;
+        unit.request_commit();
+        Ok(consumed)
+    })
+}
+
+pub fn admit_evaluation_session(
+    store: &ConversationStore,
+    conversation_id: &str,
+    owner_membership_id: &str,
+    recipient_membership_id: &str,
+    responsibility_id: &str,
+    identity: ContinuityCandidateIdentity,
+    policy_revision: &str,
+) -> Result<StoredEvaluationSession, ContinuityFailure> {
+    let authority = resolve_stored_owner_authority(store, conversation_id, owner_membership_id)?;
+    if policy_revision.trim().is_empty()
+        || recipient_membership_id.trim().is_empty()
+        || responsibility_id != format!("{conversation_id}:{recipient_membership_id}")
+    {
+        return Err(continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    let corpus = load_evaluation_corpus(store, authority.conversation_id())?;
+    let (dataset_id, corpus_version, identity) = match corpus {
+        Some(corpus) => {
+            let mut identity = identity;
+            identity.dataset_version = corpus.version_digest.clone();
+            (corpus.dataset_id, corpus.version_digest, identity)
+        }
+        None => (String::new(), String::new(), identity),
+    };
+    let session = StoredEvaluationSession {
+        session_id: new_continuity_id("evaluation-session"),
+        conversation_id: authority.conversation_id().to_owned(),
+        owner_membership_id: authority.owner_membership_id().to_owned(),
+        owner_principal_id: authority.owner_principal_id().to_owned(),
+        recipient_membership_id: recipient_membership_id.to_owned(),
+        responsibility_id: responsibility_id.to_owned(),
+        identity,
+        policy_revision: policy_revision.to_owned(),
+        dataset_id,
+        corpus_version,
+        consumed: false,
+    };
+    persist_evaluation_session(store, &session)?;
+    Ok(session)
+}
+
+pub fn admit_evaluation_corpus(
+    store: &ConversationStore,
+    conversation_id: &str,
+    owner_membership_id: &str,
+    dataset_id: &str,
+    cases: Vec<StoredEvaluationCase>,
+) -> Result<StoredEvaluationCorpus, ContinuityFailure> {
+    let authority = resolve_stored_owner_authority(store, conversation_id, owner_membership_id)?;
+    if dataset_id.trim().is_empty() || cases.is_empty() {
+        return Err(continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for case in &cases {
+        if case.case_id.trim().is_empty()
+            || case.family.trim().is_empty()
+            || case.subgroup.trim().is_empty()
+            || case.input.trim().is_empty()
+            || !seen.insert(case.case_id.as_str())
+        {
+            return Err(continuity_failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+    }
+    let version_digest = evaluation_corpus_version_digest(dataset_id, &cases)?;
+    let corpus = StoredEvaluationCorpus {
+        conversation_id: authority.conversation_id().to_owned(),
+        owner_membership_id: authority.owner_membership_id().to_owned(),
+        owner_principal_id: authority.owner_principal_id().to_owned(),
+        dataset_id: dataset_id.to_owned(),
+        version_digest,
+        cases,
+    };
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        persist_evaluation_corpus_in_unit(unit, &corpus)?;
+        unit.request_commit();
+        Ok(())
+    })?;
+    Ok(corpus)
+}
+
+pub fn load_evaluation_corpus(
+    store: &ConversationStore,
+    conversation_id: &str,
+) -> Result<Option<StoredEvaluationCorpus>, ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        load_evaluation_corpus_in_unit(unit, conversation_id)
+    })
+}
+
+pub fn persist_adoption_enabled(
+    store: &ConversationStore,
+    conversation_id: &str,
+    owner_membership_id: &str,
+    enabled: bool,
+) -> Result<(bool, String), ContinuityFailure> {
+    run_unit(store, |unit| {
+        migrate_or_fail(unit)?;
+        admit_local_owner_principal(unit, conversation_id, owner_membership_id)?;
+        persist_schema_value(
+            unit,
+            super::persist::ADOPTION_ENABLED_KEY,
+            if enabled { "1" } else { "0" },
+        )?;
+        let stage = load_schema_value(unit, super::persist::ADOPTION_STAGE_KEY)?
+            .unwrap_or_else(|| super::persist::ADOPTION_STAGE_OFFLINE.to_owned());
+        unit.request_commit();
+        Ok((enabled, stage))
     })
 }
 

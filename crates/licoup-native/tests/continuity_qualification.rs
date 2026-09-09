@@ -1,3 +1,4 @@
+#![cfg(feature = "test-support")]
 use licoup_conversation::continuity::{
     ContinuityCandidateIdentity, ContinuityDatasetSplit, ContinuityFailureCode,
     ContinuityQualificationRecord, ContinuityQualificationResult, QualificationPort,
@@ -220,15 +221,15 @@ fn fixture_and_synthetic_evidence_never_become_live_qualified() {
     assert!(assessment.policy_pass);
     assert_eq!(assessment.result, ContinuityQualificationResult::Unknown);
     assert_eq!(
-        result_from_assessment(true, EvidenceClass::Synthetic, false),
+        result_from_assessment(true, EvidenceClass::Synthetic, false, None),
         ContinuityQualificationResult::Unknown
     );
     assert_eq!(
-        result_from_assessment(true, EvidenceClass::LiveAuthorized, false),
-        ContinuityQualificationResult::Qualified
+        result_from_assessment(true, EvidenceClass::LiveAuthorized, false, None),
+        ContinuityQualificationResult::Unknown
     );
     assert_eq!(
-        result_from_assessment(true, EvidenceClass::LiveAuthorized, true),
+        result_from_assessment(true, EvidenceClass::LiveAuthorized, true, None),
         ContinuityQualificationResult::Unknown
     );
 }
@@ -352,7 +353,7 @@ fn economy_reports_full_cost_latency_corrections_and_native_diff() {
     let policy = QualificationPolicy::draft_1();
     let mut rows = Vec::new();
     for (index, pair) in fixture["pairs"].as_array().unwrap().iter().enumerate() {
-        let task = Some(format!("task:{index}"));
+        let task = format!("task:{index}");
         let candidate = &pair["candidate"];
         rows.push(ObservationEconomy {
             role: EconomyRole::Candidate,
@@ -371,8 +372,7 @@ fn economy_reports_full_cost_latency_corrections_and_native_diff() {
             serial_latency_ms: candidate["serialLatencyMs"].as_u64(),
             correction_count: candidate["correctionCount"].as_u64().unwrap(),
             accepted_outcome: candidate["acceptedOutcome"].as_bool().unwrap(),
-            native_success: candidate["nativeSuccess"].as_bool(),
-            task_identity: task.clone(),
+            task_identity: Some(task.clone()),
             version_identity: Some("v1".into()),
             resource_identity: Some("res:1".into()),
         });
@@ -394,10 +394,54 @@ fn economy_reports_full_cost_latency_corrections_and_native_diff() {
             serial_latency_ms: baseline["serialLatencyMs"].as_u64(),
             correction_count: baseline["correctionCount"].as_u64().unwrap(),
             accepted_outcome: baseline["acceptedOutcome"].as_bool().unwrap(),
-            native_success: None,
-            task_identity: task,
+            task_identity: Some(task.clone()),
             version_identity: Some("v1".into()),
             resource_identity: Some("res:1".into()),
+        });
+        let native = &pair["nativeDirect"];
+        rows.push(ObservationEconomy {
+            role: EconomyRole::NativeDirect,
+            classification_cost: None,
+            retrieval_cost: None,
+            escalation_cost: None,
+            execution_cost: None,
+            retry_cost: None,
+            rework_cost: None,
+            measured_full_cost: native["measuredFullCost"].as_f64(),
+            input_tokens: None,
+            output_tokens: None,
+            model_id: None,
+            agent_id: None,
+            thinking: None,
+            serial_latency_ms: native["serialLatencyMs"].as_u64(),
+            correction_count: 0,
+            accepted_outcome: native["acceptedOutcome"].as_bool().unwrap(),
+            task_identity: Some(task),
+            version_identity: Some("v1".into()),
+            resource_identity: Some("res:1".into()),
+        });
+    }
+    for excluded in fixture["excludedNatives"].as_array().unwrap() {
+        rows.push(ObservationEconomy {
+            role: EconomyRole::NativeDirect,
+            classification_cost: None,
+            retrieval_cost: None,
+            escalation_cost: None,
+            execution_cost: None,
+            retry_cost: None,
+            rework_cost: None,
+            measured_full_cost: excluded["measuredFullCost"].as_f64(),
+            input_tokens: None,
+            output_tokens: None,
+            model_id: None,
+            agent_id: None,
+            thinking: None,
+            serial_latency_ms: excluded["serialLatencyMs"].as_u64(),
+            correction_count: 0,
+            accepted_outcome: excluded["acceptedOutcome"].as_bool().unwrap(),
+            task_identity: excluded["taskIdentity"].as_str().map(str::to_owned),
+            version_identity: excluded["versionIdentity"].as_str().map(str::to_owned),
+            resource_identity: excluded["resourceIdentity"].as_str().map(str::to_owned),
         });
     }
     assert!(evaluate_economy(&[], &policy).unknown_cost);
@@ -417,10 +461,9 @@ fn economy_reports_full_cost_latency_corrections_and_native_diff() {
         &policy.required_subgroups,
     )
     .unwrap();
-    observations[0].economy = Some(rows[0].clone());
-    observations[1].economy = Some(rows[1].clone());
-    observations[2].economy = Some(rows[2].clone());
-    observations[3].economy = Some(rows[3].clone());
+    for (index, row) in rows.iter().enumerate() {
+        observations[index].economy = Some(row.clone());
+    }
     let assessment = evaluate_bundle(
         &EvidenceBundle::from_fixture_parts(
             "responsibility:economy".to_owned(),
@@ -436,7 +479,23 @@ fn economy_reports_full_cost_latency_corrections_and_native_diff() {
     assert!(assessment.economy.extra_serial_latency_p95_ms.is_some());
     assert_eq!(assessment.economy.candidate_corrections, 1);
     assert_eq!(assessment.economy.baseline_corrections, 3);
-    assert!(assessment.economy.native_success_difference.is_some());
+    assert_eq!(
+        assessment.economy.native_success_difference,
+        Some(
+            fixture["expect"]["nativeSuccessDifference"]
+                .as_f64()
+                .unwrap()
+        )
+    );
+    assert_ne!(
+        assessment.economy.native_success_difference,
+        Some(
+            fixture["expect"]["unpairedNativeAverageWouldBe"]
+                .as_f64()
+                .unwrap()
+        ),
+        "unmatched and version-mismatched native samples must not enter the paired difference"
+    );
     assert!(
         assessment.result != ContinuityQualificationResult::Qualified
             || assessment.economy.economically_qualified
@@ -702,7 +761,6 @@ fn economy_blank() -> ObservationEconomy {
         serial_latency_ms: None,
         correction_count: 0,
         accepted_outcome: false,
-        native_success: None,
         task_identity: None,
         version_identity: None,
         resource_identity: None,

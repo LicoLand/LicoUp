@@ -116,12 +116,18 @@ impl HostDriverTransport {
                 };
             }
         };
+        let prompt = call
+            .params
+            .get("text")
+            .or_else(|| call.params.get("message"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
         match self.family {
             ProtocolFamily::Codex => {
                 let result = crate::platform::codex_app_server::execute(
                     &executable,
                     &call.params,
-                    "",
+                    prompt,
                     session_id,
                     cwd.as_deref(),
                     timeout_ms,
@@ -147,7 +153,7 @@ impl HostDriverTransport {
                 let result = crate::platform::pi_driver::execute(
                     &executable,
                     &call.params,
-                    "",
+                    prompt,
                     session_id,
                     cwd.as_deref(),
                     timeout_ms,

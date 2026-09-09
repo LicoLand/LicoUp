@@ -2,7 +2,7 @@
   "schema": "licoup.continuity.journey/v1",
   "id": "CA-J001",
   "status": "not_run",
-  "purpose": "单个可见Conversation中交错非编码、专业能力、问答、纠正和故障恢复。",
+  "purpose": "父对话与真实任务子对话中交错非编码、专业能力、问答、纠正和故障恢复。",
   "permission_policy": "Only admitted local/synthetic work; no external sending unless separately authorized.",
   "steps": [
     {
@@ -187,7 +187,7 @@
     }
   ],
   "final_invariants": [
-    "单个可见Conversation",
+    "一个父对话与真实任务子对话",
     "原始用户事件只存一次",
     "没有强制模式切换或用户手动重开Session",
     "只有实际验收与有效证据可闭环",

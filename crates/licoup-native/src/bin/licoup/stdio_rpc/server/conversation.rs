@@ -984,12 +984,11 @@ impl PersistentConversationRuntime {
         {
             callback_payload["membershipId"] = json!(turn.scope.membership_id);
         }
-        if callback_payload
-            .get("causationId")
-            .and_then(Value::as_str)
-            .is_none()
+        let settlement_causation = settlement_source_event_id(turn);
+        let existing_causation = callback_payload.get("causationId").and_then(Value::as_str);
+        if existing_causation.is_none() || existing_causation == Some(turn.scope.event_id.as_str())
         {
-            callback_payload["causationId"] = json!(turn.scope.event_id);
+            callback_payload["causationId"] = json!(settlement_causation);
         }
         if callback_payload
             .get("dispatchId")
@@ -1667,6 +1666,16 @@ fn stored_public_terminal(turn: &Arc<PersistentTurn>) -> Option<PersistentTermin
     turn.state.lock().ok()?.terminal.clone()
 }
 
+fn settlement_source_event_id(turn: &PersistentTurn) -> String {
+    turn.store
+        .event(&turn.scope.conversation_id, &turn.scope.event_id)
+        .ok()
+        .flatten()
+        .and_then(|event| event.causation_id)
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| turn.scope.event_id.clone())
+}
+
 fn public_persistent_terminal(
     original: &PersistentTerminal,
     recorded_state: DispatchState,
@@ -1832,7 +1841,7 @@ mod tests {
         ContinuityCommitmentProposal, ContinuityFollowThroughKind,
         ContinuityInterpretationProposal, ContinuityMatterSubject, ContinuityReadPort,
         ContinuitySpeechAct, ContinuityTaskChildAdmission, ContinuityWriteEnvelope,
-        TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, settlement_applied,
+        TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, list_all_parent_grants, settlement_applied,
     };
     use licoup_native::domain::client_conversation::{
         ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
@@ -3159,10 +3168,10 @@ mod tests {
     ) -> (
         PersistentConversationRuntime,
         ConversationService,
-        std::sync::mpsc::Receiver<(String, Value)>,
+        std::sync::mpsc::Receiver<(String, Value, Result<Value, String>)>,
     ) {
         let runtime = PersistentConversationRuntime::new(store.clone());
-        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value, Result<Value, String>)>();
         let send_runtime = runtime.clone();
         let send_executable = executable;
         let start_kinds_for_send = start_kinds;
@@ -3199,10 +3208,9 @@ mod tests {
         runtime.set_settlement_hook(move |conversation_id, payload| {
             let result = hooked
                 .after_runtime_settlement(conversation_id, payload)
-                .map(|_| ())
                 .map_err(|err| err.to_string());
-            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
-            result
+            let _ = tx.send((conversation_id.to_owned(), payload.clone(), result.clone()));
+            result.map(|_| ())
         });
         (runtime, service, rx)
     }
@@ -3410,6 +3418,235 @@ mod tests {
             .filter(|item| item.correlation_id.as_deref() == Some(dispatch_id))
             .count();
         assert_eq!(duplicates, 1, "finish must reuse the admitted turn Event");
+        let _ = std::fs::remove_file(result_path);
+        let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    }
+
+    #[test]
+    fn persistent_turn_child_work_delivers_granted_source_to_fake_lowest_codex() {
+        let _guard = FAKE_CODEX_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let executable = compile_fake_codex();
+        let mut result_path = executable.clone();
+        result_path.set_extension("result.json");
+        std::fs::write(&result_path, "VERTICAL-CHILD-RECEIPT").unwrap();
+
+        let store = ConversationStore::open_in_memory().unwrap();
+        let runtime = PersistentConversationRuntime::new(store.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, Value)>();
+        let service = ConversationService::from_store(store);
+        let send_runtime = runtime.clone();
+        let send_executable = executable.clone();
+        let started_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let started_kinds_for_send = started_kinds.clone();
+        let service = service.bind_conversation_runtime(PersistentRuntimePorts::new(
+            move |params: &Value| {
+                let kind = params
+                    .get("continuityKind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                started_kinds_for_send
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .push(kind.clone());
+                let params = with_test_executable(params, &send_executable);
+                if kind == "child-work" {
+                    send_runtime.start_admitted_background(&params, None)
+                } else {
+                    Ok(json!({
+                        "ok": true,
+                        "accepted": true,
+                        "turnHandle": "turn:parent",
+                    }))
+                }
+            },
+            |_conversation_id: &str| json!([]),
+            |_params: &Value| Ok(json!({ "ok": true })),
+            move |params: &Value| {
+                let conversation_id = params
+                    .get("conversationId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                Ok(json!({
+                    "ok": true,
+                    "output": typed_child_proposal_json(conversation_id),
+                }))
+            },
+            |_request: Value| Ok(json!({})),
+        ));
+        let hooked = service.clone();
+        runtime.set_settlement_hook(move |conversation_id, payload| {
+            let result = hooked
+                .after_runtime_settlement(conversation_id, payload)
+                .map(|_| ())
+                .map_err(|err| err.to_string());
+            let _ = tx.send((conversation_id.to_owned(), payload.clone()));
+            result
+        });
+
+        let (conversation_id, owner, agent) = create_designated_group(&service, "Vertical grants");
+        let secret = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "OUT-OF-SCOPE-SECRET chitchat only",
+            }))
+            .unwrap();
+        let secret_id = secret["event"]["id"].as_str().unwrap().to_owned();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": secret_id,
+            }))
+            .unwrap();
+        service
+            .after_runtime_settlement(
+                &conversation_id,
+                &json!({
+                    "output": assistant_envelope_json(
+                        "Ordinary chitchat.",
+                        &question_proposal_json(&conversation_id),
+                    ),
+                    "membershipId": agent,
+                    "causationId": secret_id,
+                    "dispatchId": "dispatch:parent-chitchat",
+                }),
+            )
+            .unwrap();
+
+        let posted = service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner,
+                "content": "PRODUCTION-GRANT-SENTINEL prepare notes",
+            }))
+            .unwrap();
+        let event_id = posted["event"]["id"].as_str().unwrap().to_owned();
+        service
+            .execute(json!({
+                "action": "conversation.dispatch.after-post",
+                "conversationId": conversation_id,
+                "eventId": event_id,
+            }))
+            .unwrap();
+        service
+            .after_runtime_settlement(
+                &conversation_id,
+                &json!({
+                    "output": assistant_envelope_json(
+                        "I'll prepare the notes in a child conversation.",
+                        &typed_child_proposal_json(&conversation_id),
+                    ),
+                    "membershipId": agent,
+                    "causationId": event_id,
+                    "dispatchId": "dispatch:parent-vertical-grant",
+                }),
+            )
+            .unwrap();
+        let relation = service
+            .store()
+            .list_child_relations(&conversation_id, None, 8)
+            .unwrap()
+            .remove(0);
+        let child_id = relation.child_conversation_id.clone();
+        let child_member = service
+            .store()
+            .get(&child_id)
+            .unwrap()
+            .assistant_membership_id
+            .expect("child assistant");
+        let grants = list_all_parent_grants(service.store()).unwrap();
+        assert!(
+            grants.iter().any(|grant| {
+                grant.recipient_conversation_id == child_id
+                    && grant.recipient_membership_id == child_member
+                    && grant
+                        .source_refs
+                        .iter()
+                        .any(|source| source.opaque_id == event_id)
+            }),
+            "admitted child grant must bind the posted sentinel event"
+        );
+        assert!(
+            !grants.iter().any(|grant| {
+                grant
+                    .source_refs
+                    .iter()
+                    .any(|source| source.opaque_id == secret_id)
+            }),
+            "chitchat without admission must not receive a grant"
+        );
+        let (settled_conversation, settled_payload) = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("fake Codex finish must invoke the settlement hook");
+        assert_eq!(settled_conversation, child_id);
+        let dispatch_id = settled_payload
+            .get("dispatchId")
+            .and_then(Value::as_str)
+            .expect("finish must stamp dispatchId");
+        assert!(
+            started_kinds
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .iter()
+                .any(|kind| kind == "child-work"),
+            "child-work must reach PersistentTurn start_admitted_background"
+        );
+        assert!(settlement_applied(service.store(), &child_id, dispatch_id).unwrap());
+        let event = service
+            .store()
+            .agent_turn_event_for_dispatch(&child_id, dispatch_id)
+            .unwrap()
+            .expect("canonical child turn event");
+        assert_eq!(
+            event.author_membership_id.as_deref(),
+            Some(child_member.as_str())
+        );
+        assert_eq!(event.correlation_id.as_deref(), Some(dispatch_id));
+        let (session_id, turn_id) = runtime
+            .inspect_turn(dispatch_id)
+            .expect("PersistentTurn remains inspectable after finish");
+        assert!(
+            !session_id.is_empty() || !turn_id.is_empty(),
+            "native session or turn identity must be non-empty"
+        );
+        let frames = service
+            .store()
+            .runtime_frames_after(
+                &licoup_native::domain::client_conversation::ConversationRuntimeScope {
+                    dispatch_id: dispatch_id.to_owned(),
+                    conversation_id: child_id.clone(),
+                    membership_id: child_member.clone(),
+                    event_id: event.id.clone(),
+                },
+                0,
+                i64::MAX as u64,
+                64,
+            )
+            .unwrap();
+        assert!(
+            !frames.is_empty(),
+            "PersistentTurn must persist a non-empty native frame"
+        );
+        let mut seen = executable.clone();
+        seen.set_extension("turn-start.seen");
+        let seen = std::fs::read_to_string(&seen).unwrap_or_default();
+        assert_eq!(
+            seen.trim(),
+            "1",
+            "lowest fake process must observe the granted sentinel"
+        );
+        let mut leak = executable.clone();
+        leak.set_extension("leak.seen");
+        assert!(
+            !leak.exists(),
+            "lowest fake process must not observe out-of-scope material"
+        );
         let _ = std::fs::remove_file(result_path);
         let _ = std::fs::remove_dir_all(executable.parent().unwrap());
     }
@@ -3778,7 +4015,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (settled_conversation, settled_payload) = rx
+        let (settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("ordinary fake Codex finish must settle");
         assert_eq!(settled_conversation, conversation_id);
@@ -3865,6 +4102,10 @@ mod tests {
                 "content": "帮我筹备团队分享。",
             }))
             .unwrap();
+        let posted_id = posted["event"]["id"]
+            .as_str()
+            .expect("posted event")
+            .to_owned();
         service
             .execute(json!({
                 "action": "conversation.dispatch.after-post",
@@ -3872,10 +4113,21 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (settled_conversation, settled_payload) = rx
+        let (settled_conversation, settled_payload, settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("delegation fake Codex finish must settle");
         assert_eq!(settled_conversation, conversation_id);
+        assert_eq!(
+            settled_payload.get("causationId").and_then(Value::as_str),
+            Some(posted_id.as_str()),
+            "settlement must keep the user-posted source event, not the agent turn Event"
+        );
+        let settlement =
+            settlement.unwrap_or_else(|err| panic!("parent proposal settlement must apply: {err}"));
+        assert!(
+            settlement.is_object(),
+            "parent proposal settlement must return a structured drain: {settlement}"
+        );
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
         let event = service
             .store()
@@ -3942,7 +4194,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (_settled_conversation, settled_payload) = rx
+        let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("chunked fake Codex finish must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
@@ -4097,7 +4349,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (settled_conversation, settled_payload) = rx
+        let (settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("malformed fake Codex finish must settle");
         assert_eq!(settled_conversation, conversation_id);
@@ -4169,7 +4421,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (_settled_conversation, settled_payload) = rx
+        let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("admitted fake Codex finish must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
@@ -4269,7 +4521,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (_settled_conversation, settled_payload) = rx
+        let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("malformed fake Codex finish must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
@@ -4343,7 +4595,7 @@ mod tests {
                 "eventId": posted["event"]["id"],
             }))
             .unwrap();
-        let (_settled_conversation, settled_payload) = rx
+        let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
             .expect("native fake Codex failure must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");

@@ -367,7 +367,6 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       inputs: [
         "tools/scripts/client-macos-install.mjs",
         "tools/scripts/lib/macos-app-lifecycle.mjs",
-        "apps/desktop/scripts/package-client/macos/install.mjs",
         "tests/contract/client/client-macos-install.test.mjs",
       ],
       command: command(

@@ -41,6 +41,14 @@ impl QualificationService {
         self.store.ingest(bundle)
     }
 
+    pub fn has_evidence(
+        &self,
+        responsibility_id: &str,
+        identity: &ContinuityCandidateIdentity,
+    ) -> bool {
+        self.store.get(responsibility_id, identity).is_some()
+    }
+
     pub fn withdraw_for_identity_change(
         &mut self,
         responsibility_id: &str,
@@ -72,6 +80,7 @@ impl QualificationService {
                 identity: identity.clone(),
                 observations: Vec::new(),
                 evidence_class: super::evidence::EvidenceClass::Synthetic,
+                provenance: None,
             });
         Ok(evaluate_bundle(&bundle, &self.policy, stale))
     }
