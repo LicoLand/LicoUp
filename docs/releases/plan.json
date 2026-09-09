@@ -17,7 +17,34 @@
     }
   ],
   "changelog": "CHANGELOG.md",
-  "nextRelease": null,
+  "nextRelease": {
+    "version": "0.2.0",
+    "classification": "minor",
+    "status": "ready",
+    "targetDate": "2026-09-10",
+    "integrationBranch": "nightly",
+    "features": [
+      {
+        "id": "continuous-assistant",
+        "type": "capability",
+        "title": "Durable Continuous Assistant child conversations and adoption controls",
+        "status": "accepted",
+        "pullRequest": "https://github.com/LicoLand/LicoUp/pull/275",
+        "dependsOn": [],
+        "risk": "medium",
+        "acceptance": [
+          "A long-running request is represented by one durable child Conversation and one parent timeline card anchored at the creating Event sequence.",
+          "Membership-scoped continue, steer, cancel, recovery, completion notices, and adoption-policy transitions remain fail-closed and idempotent."
+        ],
+        "evidence": [
+          "FINAL-REGRESSION-4-report.json: 78/78 static compatibility and continuity scenarios passed.",
+          "FINAL-SOURCE-COVERAGE.json: 24/24 source and architecture checks passed.",
+          "PR #275 required checks and macOS build/install/stable-launch verification passed."
+        ]
+      }
+    ],
+    "blockers": []
+  },
   "releases": [],
   "components": []
 }
