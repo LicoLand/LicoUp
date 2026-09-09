@@ -17,8 +17,13 @@ const int _parseCacheLimit = 256;
 /// wrapping the shared block list. Same bound and LRU discipline as
 /// [_parseCache]: each distinct snapshot occupies one entry and the least
 /// recently used snapshot evicts first.
-final LinkedHashMap<String, MessageMarkdownStreamingParse>
-_streamingParseCache = LinkedHashMap();
+final LinkedHashMap<String, _StreamingParseInternal> _streamingParseCache =
+    LinkedHashMap();
+
+/// Last streaming parse used to grow a reply by suffix only. Completed
+/// blocks stay as the same instances; only the open tail is reparsed.
+_StreamingParseInternal? _incrementalStreamingCursor;
+String? _incrementalStreamingPrefix;
 
 List<MessageMarkdownBlock> parseMessageMarkdownBlocks(String data) {
   final cached = _parseCache.remove(data);
@@ -56,35 +61,189 @@ MessageMarkdownStreamingParse parseStreamingMessageMarkdownBlocks(String data) {
   if (cached != null) {
     // Refresh recency: LRU eviction drops the least recently used entry.
     _streamingParseCache[data] = cached;
-    return cached;
+    _rememberIncrementalStreaming(cached);
+    return cached.parse;
   }
-  final lines = _normalizedLines(data);
-  final parsed = _streamingSplit(_parseScannedBlocks(lines), lines);
+  final normalized = _normalizeMarkdownNewlines(data);
+  final parsed = _parseStreamingMarkdownIncremental(normalized);
   if (_streamingParseCache.length >= _parseCacheLimit) {
     _streamingParseCache.remove(_streamingParseCache.keys.first);
   }
   _streamingParseCache[data] = parsed;
-  return parsed;
+  _rememberIncrementalStreaming(parsed);
+  return parsed.parse;
 }
 
-MessageMarkdownStreamingParse _streamingSplit(
+void _rememberIncrementalStreaming(_StreamingParseInternal parsed) {
+  _incrementalStreamingCursor = parsed;
+  _incrementalStreamingPrefix = parsed.completePrefix;
+}
+
+_StreamingParseInternal _parseStreamingMarkdownIncremental(String normalized) {
+  final cursor = _incrementalStreamingCursor;
+  final prefix = _incrementalStreamingPrefix;
+  final prefixLength = cursor?.completeSourceLength ?? 0;
+  if (cursor != null &&
+      prefix != null &&
+      prefixLength > 0 &&
+      prefix.length == prefixLength &&
+      normalized.length >= prefixLength &&
+      _hasNormalizedPrefix(normalized, prefix)) {
+    final remainder = normalized.substring(prefixLength);
+    if (remainder.isEmpty) {
+      return _StreamingParseInternal(
+        parse: MessageMarkdownStreamingParse(
+          complete: cursor.parse.complete,
+          tail: null,
+        ),
+        completeSourceLength: prefixLength,
+        lastCompleteStartOffset: cursor.lastCompleteStartOffset,
+        completePrefix: prefix,
+      );
+    }
+    return _mergeIncrementalStreaming(
+      cursor,
+      _parseStreamingMarkdownUncached(remainder),
+      prefixLength,
+    );
+  }
+  return _parseStreamingMarkdownUncached(normalized);
+}
+
+bool _hasNormalizedPrefix(String normalized, String prefix) {
+  return normalized.startsWith(prefix);
+}
+
+_StreamingParseInternal _parseStreamingMarkdownUncached(String normalized) {
+  final lines = _normalizedLines(normalized);
+  return _streamingSplit(_parseScannedBlocks(lines), lines, normalized);
+}
+
+_StreamingParseInternal _mergeIncrementalStreaming(
+  _StreamingParseInternal cursor,
+  _StreamingParseInternal remainder,
+  int prefixLength,
+) {
+  final prior = cursor.parse.complete;
+  final added = remainder.parse.complete;
+  final tail = remainder.parse.tail;
+  if (added.isEmpty) {
+    if (tail != null && prior.isNotEmpty) {
+      final reopened = _coalesceContinuableMarkdown(prior.last, tail);
+      if (reopened != null) {
+        final complete = prior.length == 1
+            ? const <MessageMarkdownBlock>[]
+            : List<MessageMarkdownBlock>.unmodifiable(
+                prior.sublist(0, prior.length - 1),
+              );
+        return _StreamingParseInternal(
+          parse: MessageMarkdownStreamingParse(
+            complete: complete,
+            tail: reopened,
+          ),
+          completeSourceLength: cursor.lastCompleteStartOffset,
+          lastCompleteStartOffset: complete.isEmpty
+              ? 0
+              : cursor.lastCompleteStartOffset,
+          completePrefix: cursor.completePrefix.substring(
+            0,
+            cursor.lastCompleteStartOffset,
+          ),
+        );
+      }
+    }
+    return _StreamingParseInternal(
+      parse: MessageMarkdownStreamingParse(complete: prior, tail: tail),
+      completeSourceLength: prefixLength,
+      lastCompleteStartOffset: cursor.lastCompleteStartOffset,
+      completePrefix: cursor.completePrefix,
+    );
+  }
+  final combined = List<MessageMarkdownBlock>.of(prior);
+  final coalesced = combined.isEmpty
+      ? null
+      : _coalesceContinuableMarkdown(combined.last, added.first);
+  if (coalesced != null) {
+    combined[combined.length - 1] = coalesced;
+    combined.addAll(added.skip(1));
+  } else {
+    combined.addAll(added);
+  }
+  final completeSourceLength = prefixLength + remainder.completeSourceLength;
+  final lastCompleteStartOffset = coalesced != null
+      ? cursor.lastCompleteStartOffset
+      : prefixLength + remainder.lastCompleteStartOffset;
+  return _StreamingParseInternal(
+    parse: MessageMarkdownStreamingParse(
+      complete: List<MessageMarkdownBlock>.unmodifiable(combined),
+      tail: tail,
+    ),
+    completeSourceLength: completeSourceLength,
+    lastCompleteStartOffset: lastCompleteStartOffset,
+    completePrefix: cursor.completePrefix + remainder.completePrefix,
+  );
+}
+
+MessageMarkdownBlock? _coalesceContinuableMarkdown(
+  MessageMarkdownBlock first,
+  MessageMarkdownBlock second,
+) {
+  if (first.type != second.type) {
+    return null;
+  }
+  return switch (first.type) {
+    MessageMarkdownBlockType.unorderedList =>
+      MessageMarkdownBlock.unorderedList([...first.items, ...second.items]),
+    MessageMarkdownBlockType.orderedList => MessageMarkdownBlock.orderedList([
+      ...first.items,
+      ...second.items,
+    ]),
+    MessageMarkdownBlockType.table => MessageMarkdownBlock.table([
+      ...first.rows,
+      ...second.rows,
+    ]),
+    MessageMarkdownBlockType.quote => MessageMarkdownBlock.quote(
+      '${first.text}\n${second.text}',
+    ),
+    MessageMarkdownBlockType.warning => MessageMarkdownBlock.warning(
+      '${first.text}\n${second.text}',
+    ),
+    MessageMarkdownBlockType.paragraph ||
+    MessageMarkdownBlockType.heading ||
+    MessageMarkdownBlockType.code => null,
+  };
+}
+
+_StreamingParseInternal _streamingSplit(
   List<_ScannedBlock> scanned,
   List<String> lines,
+  String normalized,
 ) {
   if (scanned.isEmpty) {
-    return const MessageMarkdownStreamingParse(complete: [], tail: null);
+    return _StreamingParseInternal(
+      parse: const MessageMarkdownStreamingParse(complete: [], tail: null),
+      completeSourceLength: 0,
+      lastCompleteStartOffset: 0,
+      completePrefix: '',
+    );
   }
   final last = scanned.last;
   if (last.closed) {
-    return MessageMarkdownStreamingParse(
-      complete: List.unmodifiable([for (final entry in scanned) entry.block]),
-      tail: null,
+    final complete = List<MessageMarkdownBlock>.unmodifiable([
+      for (final entry in scanned) entry.block,
+    ]);
+    return _StreamingParseInternal(
+      parse: MessageMarkdownStreamingParse(complete: complete, tail: null),
+      completeSourceLength: normalized.length,
+      lastCompleteStartOffset: _lineStartOffset(lines, last.startLine),
+      completePrefix: normalized,
     );
   }
   final complete = <MessageMarkdownBlock>[
     for (var index = 0; index < scanned.length - 1; index++)
       scanned[index].block,
   ];
+  var tailStartLine = last.startLine;
   final MessageMarkdownBlock tail;
   switch (last.block.type) {
     case MessageMarkdownBlockType.unorderedList:
@@ -100,6 +259,7 @@ MessageMarkdownStreamingParse _streamingSplit(
                   items.sublist(0, items.length - 1),
                 ),
         );
+        tailStartLine = last.endLineExclusive - 1;
       }
       tail = MessageMarkdownBlock.paragraph(items.last);
     case MessageMarkdownBlockType.table:
@@ -110,6 +270,7 @@ MessageMarkdownStreamingParse _streamingSplit(
         complete.add(
           MessageMarkdownBlock.table(rows.sublist(0, rows.length - 1)),
         );
+        tailStartLine = last.endLineExclusive - 1;
         tail = MessageMarkdownBlock.paragraph(
           lines[last.endLineExclusive - 1].trim(),
         );
@@ -128,10 +289,68 @@ MessageMarkdownStreamingParse _streamingSplit(
     case MessageMarkdownBlockType.warning:
       tail = last.block;
   }
-  return MessageMarkdownStreamingParse(
-    complete: List.unmodifiable(complete),
-    tail: tail,
+  final completeSourceLength = _lineStartOffset(lines, tailStartLine);
+  final lastCompleteStartOffset = complete.isEmpty
+      ? 0
+      : _lineStartOffset(lines, _lastCompleteStartLine(scanned, last));
+  return _StreamingParseInternal(
+    parse: MessageMarkdownStreamingParse(
+      complete: List.unmodifiable(complete),
+      tail: tail,
+    ),
+    completeSourceLength: completeSourceLength,
+    lastCompleteStartOffset: lastCompleteStartOffset,
+    completePrefix: normalized.substring(0, completeSourceLength),
   );
+}
+
+int _lastCompleteStartLine(List<_ScannedBlock> scanned, _ScannedBlock last) {
+  final splitListOrTable =
+      (last.block.type == MessageMarkdownBlockType.unorderedList ||
+          last.block.type == MessageMarkdownBlockType.orderedList ||
+          last.block.type == MessageMarkdownBlockType.table) &&
+      ((last.block.type == MessageMarkdownBlockType.table &&
+              last.block.rows.length > 1) ||
+          last.block.items.length > 1);
+  if (splitListOrTable) {
+    return last.startLine;
+  }
+  if (scanned.length < 2) {
+    return 0;
+  }
+  return scanned[scanned.length - 2].startLine;
+}
+
+int _lineStartOffset(List<String> lines, int lineIndex) {
+  if (lineIndex <= 0) {
+    return 0;
+  }
+  if (lineIndex >= lines.length) {
+    return lines.join('\n').length;
+  }
+  var offset = 0;
+  for (var index = 0; index < lineIndex; index++) {
+    offset += lines[index].length + 1;
+  }
+  return offset;
+}
+
+String _normalizeMarkdownNewlines(String data) {
+  return data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+}
+
+final class _StreamingParseInternal {
+  const _StreamingParseInternal({
+    required this.parse,
+    required this.completeSourceLength,
+    required this.lastCompleteStartOffset,
+    required this.completePrefix,
+  });
+
+  final MessageMarkdownStreamingParse parse;
+  final int completeSourceLength;
+  final int lastCompleteStartOffset;
+  final String completePrefix;
 }
 
 List<MessageMarkdownBlock> _parseMessageMarkdownBlocks(String data) {
@@ -142,7 +361,7 @@ List<MessageMarkdownBlock> _parseMessageMarkdownBlocks(String data) {
 }
 
 List<String> _normalizedLines(String data) {
-  return data.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+  return _normalizeMarkdownNewlines(data).split('\n');
 }
 
 List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {

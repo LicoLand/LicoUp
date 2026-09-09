@@ -6,17 +6,6 @@ use serde_json::{Value, json};
 pub const SCHEMA_VERSION: &str = "v0.0.2:client-agent-hub-manifest-1";
 pub const HOST_SCOPE: &str = "desktop";
 pub const PLUGIN_MANAGEMENT_BOUNDARY: &str = "adapter-plugins-only";
-pub const FIRST_BATCH_IDS: [&str; 9] = [
-    "codex",
-    "cursor",
-    "opencode",
-    "claude-code",
-    "pi",
-    "openclaw",
-    "hermes",
-    "antigravity",
-    "deepseek-harness",
-];
 pub const DEEP_ADAPTATION_IDS: [&str; 7] = [
     "codex",
     "cursor",
@@ -246,7 +235,6 @@ pub fn contract_surface() -> Value {
         "schemaVersion": SCHEMA_VERSION,
         "hostScope": HOST_SCOPE,
         "pluginManagementBoundary": PLUGIN_MANAGEMENT_BOUNDARY,
-        "firstBatchIds": FIRST_BATCH_IDS,
         "adaptation": {
             "deep": DEEP_ADAPTATION_IDS,
             "partial": [PARTIAL_ADAPTATION_ID],

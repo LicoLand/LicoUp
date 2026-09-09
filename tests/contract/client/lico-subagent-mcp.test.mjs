@@ -28,12 +28,13 @@ const TOOLS = [
   "lico_subagent_delegate",
   "lico_subagent_continue",
   "lico_subagent_cancel",
+  "lico_assistant_workflow_policy",
 ];
 
 test("common application freezes protocol, server identity, and ordered catalog", () => {
   assert.match(application, /PROTOCOL_REVISION: &str = "2025-06-18"/u);
   assert.match(application, /SERVER_NAME: &str = "lico-up-subagents"/u);
-  assert.match(application, /SERVER_VERSION: &str = "0.11.0"/u);
+  assert.match(application, /SERVER_VERSION: &str = "0.12.0"/u);
   const list = application.slice(
     application.indexOf("pub const TOOL_NAMES"),
     application.indexOf("pub fn server_definition"),
@@ -45,7 +46,9 @@ test("common application freezes protocol, server identity, and ordered catalog"
   assert.match(application, /"additionalProperties": false/u);
   assert.doesNotMatch(application, /RuntimeAdapter::Codex|RuntimeAdapter::Cursor/u);
   assert.equal(schema.properties.protocolRevision.const, "2025-06-18");
-  assert.equal(schema.properties.tools.minItems, 9);
+  assert.equal(schema.properties.tools.minItems, TOOLS.length);
+  assert.equal(schema.properties.tools.maxItems, TOOLS.length);
+  assert.deepEqual(schema.properties.tools.prefixItems.map((item) => item.const), TOOLS);
 });
 
 test("one parameterized engine owns framing, initialization, calls, and cancellation", () => {

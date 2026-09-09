@@ -109,9 +109,45 @@ export function defaultSystemPubCacheRoot(env = process.env) {
   return path.resolve(os.homedir(), ".pub-cache");
 }
 
+const LOOPBACK_PROXY_EXEMPTIONS = Object.freeze(["localhost", "127.0.0.1", "::1"]);
+
+function mergeLoopbackProxyExemptions(current) {
+  const parts = String(current ?? "")
+    .split(/[\s,]+/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set(parts.map((part) => part.toLowerCase()));
+  for (const extra of LOOPBACK_PROXY_EXEMPTIONS) {
+    if (!seen.has(extra.toLowerCase())) {
+      parts.push(extra);
+      seen.add(extra.toLowerCase());
+    }
+  }
+  return parts.join(",");
+}
+
+export function withTestProcessLoopbackProxyExemption(env = process.env) {
+  const nextEnv = { ...env };
+  const upper = nextEnv.NO_PROXY;
+  const lower = nextEnv.no_proxy;
+  if (upper != null && lower == null) {
+    const merged = mergeLoopbackProxyExemptions(upper);
+    nextEnv.NO_PROXY = merged;
+    nextEnv.no_proxy = merged;
+  } else if (lower != null && upper == null) {
+    const merged = mergeLoopbackProxyExemptions(lower);
+    nextEnv.NO_PROXY = merged;
+    nextEnv.no_proxy = merged;
+  } else {
+    nextEnv.NO_PROXY = mergeLoopbackProxyExemptions(upper);
+    nextEnv.no_proxy = mergeLoopbackProxyExemptions(lower);
+  }
+  return nextEnv;
+}
+
 export function withClientToolchainEnv(env = process.env, options = {}) {
   const nextEnv = {
-    ...env,
+    ...withTestProcessLoopbackProxyExemption(env),
     PUB_CACHE: path.resolve(options.pubCache || clientPubCacheRoot(env)),
     GRADLE_USER_HOME: path.resolve(options.gradleUserHome || clientGradleUserHome(env))
   };

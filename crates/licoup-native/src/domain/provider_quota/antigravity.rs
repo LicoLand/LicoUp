@@ -431,6 +431,7 @@ fn probe_loopback_endpoint(port: u16, csrf_token: &str) -> bool {
 fn capture(args: &[&str]) -> Option<String> {
     let (program, rest) = args.split_first()?;
     let mut command = Command::new(program);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command.args(rest);
     let result = crate::platform::run_bounded_command_output(
         &mut command,

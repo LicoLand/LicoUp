@@ -6,6 +6,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
+import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
@@ -429,6 +430,28 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             path: destination,
           ),
           trace,
+        );
+      case ExecuteContinuousAssistantCommand(
+        :final conversationId,
+        :final command,
+        :final goalId,
+      ):
+        _run(
+          () =>
+              _controller.clientConversationController.executeContinuityCommand(
+                conversationId: conversationId,
+                command: ContinuityCommand.fromWire(command),
+                goalId: goalId,
+              ),
+          trace,
+          stage: 'continuity-command',
+        );
+      case ActivateContinuityCompletionNotice(:final notificationId):
+        _run(
+          () => _controller.clientConversationController
+              .activateCompletionNotice(notificationId: notificationId),
+          trace,
+          stage: 'continuity-notice',
         );
       case BackupNativeConversationsByExactKeyword(
         :final query,

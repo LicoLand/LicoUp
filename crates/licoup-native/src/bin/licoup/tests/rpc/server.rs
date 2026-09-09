@@ -373,6 +373,7 @@ fn persistent_rpc_dispatches_after_post_by_identity_and_returns_the_entry_handle
         .unwrap()
         .to_owned();
     let runtime = PersistentConversationRuntime::new(service.store().clone());
+    let service = bind_conversation_runtime(service, &runtime, None);
     let input = rpc_input(&[
         json!({
             "protocol": STDIO_RPC_PROTOCOL,

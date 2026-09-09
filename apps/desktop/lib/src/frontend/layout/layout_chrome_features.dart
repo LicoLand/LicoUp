@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
+import 'package:licoup/src/presentation/chrome/chrome_projection.dart';
 
 /// Feature-owned chrome content that layout profiles may host in their shell
 /// chrome without importing feature code: the Desktop dock composer and the
@@ -25,6 +26,10 @@ abstract interface class LayoutChromeFeatures {
   /// navigate elsewhere set it to false so the panel closes. Profiles without
   /// such a panel leave this null.
   ValueNotifier<bool>? get auxChromePanelOpen => null;
+
+  /// Activate a completion notice only after an explicit user action.
+  /// Arrival never calls this.
+  void activateOperationNotice(ChromeOperationNotificationProjection notice) {}
 }
 
 /// Makes the host's feature-owned chrome content available to profile shells

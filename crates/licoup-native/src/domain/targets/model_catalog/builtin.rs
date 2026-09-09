@@ -80,3 +80,36 @@ pub(super) fn apply_builtin_model_catalog_overlay(
         sources.insert("builtin".to_string());
     }
 }
+
+pub(crate) const BUILTIN_FALLBACK_SOURCE: &str = "builtin-fallback";
+
+/// Cold-start model list when no live scan and no persisted archive exist.
+/// Never used once a scan archive is present.
+pub(crate) fn builtin_cold_start_catalog(target: &str) -> Option<Value> {
+    let agent_rows = builtin_catalog().agents.get(target)?;
+    if agent_rows.models.is_empty() {
+        return None;
+    }
+    let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+    for row in &agent_rows.models {
+        add_model_catalog_entry(
+            &mut entries,
+            &row.name,
+            BUILTIN_FALLBACK_SOURCE,
+            row.reasoning_efforts
+                .iter()
+                .filter(|effort| !effort.trim().is_empty())
+                .cloned()
+                .collect(),
+        );
+    }
+    if entries.is_empty() {
+        return None;
+    }
+    Some(build_model_catalog(
+        entries,
+        BTreeSet::from([BUILTIN_FALLBACK_SOURCE.to_string()]),
+        Vec::new(),
+        None,
+    ))
+}

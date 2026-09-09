@@ -10,6 +10,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/conversation_attachment_release.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -82,6 +83,10 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   });
   void agentWorkspaceNotifyActiveConversationChanged();
   void agentWorkspaceNotifyLiveConversationChanged();
+
+  /// Optional memory-pressure journal. Default is a no-op so tests stay dry.
+  void observeClientMemory(ClientMemoryDiagnosticObservation observation) {}
+
   void agentWorkspaceNotifyConversationTabActivityChanged();
   void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});

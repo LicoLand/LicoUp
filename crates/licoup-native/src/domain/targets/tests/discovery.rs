@@ -46,6 +46,8 @@ fn scan_includes_required_first_targets() {
             "hermes",
             "kimi",
             "kimi-code",
+            "grok",
+            "command-code",
             "pi",
             "deepseek-harness",
             "lico-agent",

@@ -256,6 +256,7 @@ void main() {
         find.byKey(const Key('messaging-group-roster-qa-boundary')),
         findsOneWidget,
       );
+      controller.dispose();
     },
   );
 }

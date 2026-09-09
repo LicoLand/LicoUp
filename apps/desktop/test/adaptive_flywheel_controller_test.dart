@@ -92,6 +92,32 @@ void main() {
     expect(bounded.diagnostics, hasLength(strategyWorkflowMaxDiagnostics));
   });
 
+  test('binds import failures to the selected conversation', () async {
+    final runner = _StrategyRunner(definitions: const []);
+    final controller = AdaptiveFlywheelController(gateway: runner);
+
+    await controller.importPackage(
+      '/synthetic/strategy.zip',
+      conversationId: 'conversation:group',
+    );
+    expect(runner.actions, [
+      'strategy.package.prepare-import',
+      'strategy.package.commit-import',
+      'strategy.definition.list',
+    ]);
+    expect(
+      runner.strategyRequests
+          .where(
+            (request) =>
+                request['action'] == 'strategy.package.prepare-import' ||
+                request['action'] == 'strategy.package.commit-import',
+          )
+          .map((request) => request['conversationId'])
+          .toList(),
+      ['conversation:group', 'conversation:group'],
+    );
+  });
+
   test('starts with an empty catalog until a package is imported', () async {
     final runner = _StrategyRunner(definitions: const []);
     final controller = AdaptiveFlywheelController(gateway: runner);
@@ -426,6 +452,10 @@ void main() {
       expect(intent['preferredModel'], 'gpt-5');
       expect(intent['preferredReasoningEffort'], 'high');
       expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsNothing);
+      await tester.runAsync(() async {
+        await bindings.close();
+        await clientController.close();
+      });
     },
   );
 
@@ -553,6 +583,7 @@ final class _StrategyRunner
   final bool includeRuntime;
   final List<Map<String, dynamic>> definitions;
   final List<String> actions = [];
+  final List<Map<String, dynamic>> strategyRequests = [];
   final List<Map<String, dynamic>> conversationRequests = [];
   final Map<String, Map<String, dynamic>> bindings = {};
   bool authorized = false;
@@ -574,16 +605,22 @@ final class _StrategyRunner
     String stdinText,
   ) async {
     if (args.first == 'conversation') {
-      expect(args, ['conversation', 'execute', '--stdin-json', 'true']);
+      expectSync(args, ['conversation', 'execute', '--stdin-json', 'true']);
       final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
       conversationRequests.add(request);
       return {'ok': true, 'result': _conversationResult(request)};
     }
-    expect(args, ['strategy', 'execute', '--stdin-json', 'true']);
+    expectSync(args, ['strategy', 'execute', '--stdin-json', 'true']);
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
     actions.add(action);
+    strategyRequests.add(Map<String, dynamic>.from(request));
     final Object result = switch (action) {
+      'strategy.package.prepare-import' => {
+        'preparationId': 'prep-1',
+        'revisionDigest': _StrategyRunner.summary['revisionDigest'],
+      },
+      'strategy.package.commit-import' => _StrategyRunner.summary,
       'strategy.definition.list' => definitions,
       'strategy.definition.inspect' => _inspection(),
       'strategy.binding.update' => _bind(request),

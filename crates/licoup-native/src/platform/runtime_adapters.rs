@@ -21,8 +21,6 @@ mod subagent_mesh;
 pub use licoup_agent_runtime::{PersistentTurnRuntime, RuntimeDriver, RuntimeDriverRegistry};
 
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
-const MIN_TIMEOUT_MS: u64 = 1_000;
-const MAX_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
 const DEFAULT_MAX_STDERR_BYTES: usize = 512 * 1024;
 // Keep the native dispatch clamp identical to the public subagent MCP bound.
 // A lower hidden clamp turns an accepted budget into a misleading early
@@ -50,6 +48,23 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
 
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};
 pub use dispatch::send_message;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeLane {
+    Dedicated(RuntimeAdapter),
+    GenericCli(crate::domain::cli_registration::CliRegistration),
+}
+
+pub(crate) fn runtime_lane_for_agent(agent_id: &str) -> Option<RuntimeLane> {
+    if let Some(adapter) = adapter::adapter_for_agent(agent_id) {
+        return Some(RuntimeLane::Dedicated(adapter));
+    }
+    crate::domain::cli_registration::registration_for(agent_id).map(RuntimeLane::GenericCli)
+}
+
+pub(crate) fn has_runtime_lane(agent_id: &str) -> bool {
+    runtime_lane_for_agent(agent_id).is_some()
+}
 pub use error::RuntimeAdapterError;
 pub(crate) use params::{
     MAX_IMAGE_ATTACHMENT_BYTES_PER_FILE, MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, MAX_IMAGE_ATTACHMENTS,
@@ -89,6 +104,13 @@ pub fn compose_generated_instruction_delivery(
         });
     };
     let Some(adapter) = adapter_for_agent_public(agent_id) else {
+        if crate::domain::cli_registration::registration_for(agent_id).is_some() {
+            return Ok(GeneratedInstructionDelivery {
+                text: format!("{guidance}\n\n{user_text}"),
+                field: None,
+                guidance: None,
+            });
+        }
         #[cfg(test)]
         {
             return Ok(GeneratedInstructionDelivery {

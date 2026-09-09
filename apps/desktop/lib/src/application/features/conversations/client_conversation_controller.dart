@@ -5,7 +5,9 @@ import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
+import 'package:licoup/src/application/features/conversations/client_memory_diagnostic_journal.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
@@ -17,13 +19,29 @@ final class ClientConversationController extends ApplicationStateOwner {
     required AgentCommandRunner runner,
     ClientConversationService service = const ClientConversationService(),
     void Function(String conversationId)? onSelectionChanged,
+    ClientMemoryDiagnosticJournal? memoryJournal,
+    Duration? pendingNoticePollInterval,
   }) : _runner = runner,
        _service = service,
-       _onSelectionChanged = onSelectionChanged;
+       _onSelectionChanged = onSelectionChanged,
+       _memoryJournal = memoryJournal,
+       _pendingNoticePollInterval =
+           pendingNoticePollInterval ?? defaultPendingNoticePollInterval;
+
+  /// Matches [ConversationRefreshPolicy.backgroundInterval] for idle surfaces.
+  static const Duration defaultPendingNoticePollInterval = Duration(
+    seconds: 30,
+  );
 
   final AgentCommandRunner _runner;
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
+  final ClientMemoryDiagnosticJournal? _memoryJournal;
+  final Duration _pendingNoticePollInterval;
+  Timer? _pendingNoticeTimer;
+  Future<void>? _pendingNoticePoll;
+  bool _flushingCompletionNoticeAcks = false;
+  final Set<String> _pendingAckNotificationIds = <String>{};
 
   bool _initialized = false;
   bool _disposed = false;
@@ -52,6 +70,8 @@ final class ClientConversationController extends ApplicationStateOwner {
   final ClientConversationRecentParticipants _recentParticipants =
       ClientConversationRecentParticipants();
   List<String> _availableConversationAgentIds = const [];
+  bool _memoryConversationOpen = false;
+  int _memoryLiveTurnCount = 0;
 
   bool get loading => _loading;
   bool get sending => _sending;
@@ -149,9 +169,206 @@ final class ClientConversationController extends ApplicationStateOwner {
     _failureRef = '#L-${mixed.toRadixString(16).toUpperCase().padLeft(4, '0')}';
   }
 
-  List<ClientConversationSummary> get groupConversations => _summaries
-      .where((conversation) => conversation.isGroup)
-      .toList(growable: false);
+  List<Map<String, dynamic>> _selectedTaskViews =
+      const <Map<String, dynamic>>[];
+  final Set<String> _publishedCompletionIds = <String>{};
+  List<Map<String, dynamic>> _freshCompletionNotices =
+      const <Map<String, dynamic>>[];
+
+  List<Map<String, dynamic>> get selectedTaskViews => _selectedTaskViews;
+
+  List<Map<String, dynamic>> takeFreshCompletionNotices() {
+    final notices = _freshCompletionNotices;
+    _freshCompletionNotices = const <Map<String, dynamic>>[];
+    return notices;
+  }
+
+  List<ClientConversationSummary> get groupConversations {
+    final childrenByParent = <String, List<ClientConversationSummary>>{};
+    for (final summary in _summaries) {
+      final parent = summary.parentConversationId;
+      if (parent != null && parent.isNotEmpty) {
+        childrenByParent
+            .putIfAbsent(parent, () => <ClientConversationSummary>[])
+            .add(summary);
+      }
+    }
+    return _summaries
+        .where(
+          (conversation) =>
+              conversation.isGroup && !conversation.isContinuityChild,
+        )
+        .map((root) => root.withChildren(childrenByParent[root.id] ?? const []))
+        .toList(growable: false);
+  }
+
+  Future<void> executeContinuityCommand({
+    required String conversationId,
+    required ContinuityCommand command,
+    required String goalId,
+    Map<String, dynamic>? extra,
+  }) async {
+    if (_disposed || command == ContinuityCommand.unrecognized) return;
+    final payload = <String, dynamic>{
+      'action': command.wireName,
+      'conversationId': conversationId,
+      'goalId': goalId,
+      ...?extra,
+    };
+    await _service.execute(_runner, payload);
+    await reloadSelected();
+  }
+
+  Future<void> activateCompletionNotice({
+    required String notificationId,
+  }) async {
+    if (_disposed) return;
+    final id = notificationId.trim();
+    if (id.isEmpty) return;
+    final anchor = _selectedConversation;
+    final owner = anchor?.localOwnerMembership;
+    if (anchor == null || owner == null) return;
+    try {
+      final raw = _objectMap(
+        await _service.execute(_runner, {
+          'action': 'resolve-completion-notice',
+          'conversationId': anchor.id,
+          'ownerMembershipId': owner.id,
+          'notificationId': id,
+        }),
+      );
+      if (raw['ok'] != true) return;
+      if (_disposed) return;
+      final child = (raw['childConversationId'] ?? '').toString().trim();
+      if (child.isEmpty) return;
+      if (_selectedConversationId != child) {
+        await selectConversation(child);
+      } else {
+        await reloadSelected();
+      }
+    } on ClientConversationServiceFailure {
+      return;
+    }
+  }
+
+  void acknowledgePublishedCompletionNotices(Iterable<String> ids) {
+    if (_disposed) return;
+    var pendingAck = false;
+    for (final id in ids) {
+      final notificationId = id.trim();
+      if (notificationId.isEmpty) continue;
+      _publishedCompletionIds.add(notificationId);
+      if (_pendingAckNotificationIds.add(notificationId)) {
+        pendingAck = true;
+      }
+    }
+    if (pendingAck) {
+      unawaited(_flushCompletionNoticeAcks());
+    }
+  }
+
+  void _queueCompletionNotice(Map<String, dynamic> notice) {
+    final notificationId = (notice['notificationId'] ?? '').toString().trim();
+    if (notificationId.isEmpty ||
+        _publishedCompletionIds.contains(notificationId) ||
+        _freshCompletionNotices.any(
+          (item) =>
+              (item['notificationId'] ?? '').toString().trim() ==
+              notificationId,
+        )) {
+      return;
+    }
+    _freshCompletionNotices = [..._freshCompletionNotices, notice];
+  }
+
+  void _startPendingNoticePoll() {
+    _pendingNoticeTimer?.cancel();
+    if (_disposed) return;
+    _pendingNoticeTimer = Timer.periodic(_pendingNoticePollInterval, (_) {
+      unawaited(pollPendingCompletionNotices());
+    });
+    unawaited(pollPendingCompletionNotices());
+  }
+
+  /// Lifecycle-owned pending-notice poll. The initialize timer calls this;
+  /// tests may await one tick without advancing the widget-test clock.
+  Future<void> pollPendingCompletionNotices() async {
+    if (_disposed || _pendingNoticePoll != null) return;
+    final future = _pollPendingCompletionNoticesOnce();
+    _pendingNoticePoll = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_pendingNoticePoll, future)) {
+        _pendingNoticePoll = null;
+      }
+    }
+  }
+
+  Future<void> _pollPendingCompletionNoticesOnce() async {
+    await _flushCompletionNoticeAcks();
+    if (_disposed) return;
+    final selected = _selectedConversation;
+    final owner = selected?.localOwnerMembership;
+    if (selected == null || owner == null) return;
+    try {
+      final raw = _objectMap(
+        await _service.execute(_runner, {
+          'action': 'list-pending-completion-notices',
+          'conversationId': selected.id,
+          'ownerMembershipId': owner.id,
+        }),
+      );
+      if (_disposed) return;
+      var queued = false;
+      for (final notice in _maps(raw['pendingCompletionNotices'])) {
+        final before = _freshCompletionNotices.length;
+        _queueCompletionNotice(notice);
+        queued = queued || _freshCompletionNotices.length > before;
+      }
+      if (queued) _publishChange();
+    } on ClientConversationServiceFailure {
+      return;
+    }
+  }
+
+  Future<void> _flushCompletionNoticeAcks() async {
+    if (_disposed ||
+        _flushingCompletionNoticeAcks ||
+        _pendingAckNotificationIds.isEmpty) {
+      return;
+    }
+    final selected = _selectedConversation;
+    final owner = selected?.localOwnerMembership;
+    if (selected == null || owner == null) return;
+    // The native command admits at most 50 IDs. Process each snapshot batch
+    // once so denied IDs remain retryable without hiding later eligible IDs.
+    final ids = _pendingAckNotificationIds.toList(growable: false);
+    _flushingCompletionNoticeAcks = true;
+    try {
+      for (var start = 0; start < ids.length && !_disposed; start += 50) {
+        final end = start + 50 < ids.length ? start + 50 : ids.length;
+        final raw = _objectMap(
+          await _service.execute(_runner, {
+            'action': 'ack-completion-notices',
+            'conversationId': selected.id,
+            'ownerMembershipId': owner.id,
+            'notificationIds': ids.sublist(start, end),
+          }),
+        );
+        if (_disposed) return;
+        for (final id in _profileStringList(
+          raw['acknowledgedNotificationIds'],
+        )) {
+          _pendingAckNotificationIds.remove(id);
+        }
+      }
+    } on ClientConversationServiceFailure {
+      return;
+    } finally {
+      _flushingCompletionNoticeAcks = false;
+    }
+  }
 
   Future<void> initialize() {
     if (_disposed || _initialized) return Future<void>.value();
@@ -165,7 +382,10 @@ final class ClientConversationController extends ApplicationStateOwner {
   Future<void> _initializeOnce() async {
     try {
       final succeeded = await _refresh();
-      if (!_disposed && succeeded) _initialized = true;
+      if (!_disposed && succeeded) {
+        _initialized = true;
+        _startPendingNoticePoll();
+      }
     } finally {
       _initialization = null;
     }
@@ -218,23 +438,21 @@ final class ClientConversationController extends ApplicationStateOwner {
       _events = const [];
       _recentParticipants.clear();
     } else {
+      _selectedTaskViews = List<Map<String, dynamic>>.unmodifiable(
+        cached.taskViews,
+      );
       _applySelectedSnapshot(cached.conversation, cached.events);
     }
     if (changed) _onSelectionChanged?.call(normalized);
     _publishChange();
-    if (cached != null) return;
-    await _waitUntilIdle();
-    if (_disposed || _selectedConversationId != normalized) return;
-    final loadedWhileWaiting = _conversationCache[normalized];
-    if (loadedWhileWaiting != null) {
-      _applySelectedSnapshot(
-        loadedWhileWaiting.conversation,
-        loadedWhileWaiting.events,
-      );
-      _publishChange();
-      return;
+    if (cached == null) {
+      try {
+        await _loadSelected();
+      } finally {
+        _publishChange();
+      }
     }
-    await _guard('open', _loadSelected);
+    unawaited(pollPendingCompletionNotices());
   }
 
   void clearSelection() {
@@ -560,7 +778,13 @@ final class ClientConversationController extends ApplicationStateOwner {
         throw const ClientConversationServiceFailure('invalid_response');
       }
       _draft = '';
-      _publishChange();
+      try {
+        await _loadSelected();
+        _publishChange();
+      } catch (_) {
+        // The Message Event is already durable. A readback failure must not
+        // skip dispatch; the post-dispatch reload still reconciles.
+      }
       if (dispatch) {
         try {
           final dispatched = await _service.execute(_runner, {
@@ -896,16 +1120,14 @@ final class ClientConversationController extends ApplicationStateOwner {
   Future<void> _loadSelected() async {
     final id = _selectedConversationId;
     if (id.isEmpty) return;
-    final conversation = ClientConversation.fromJson(
-      _objectMap(
-        await _service.execute(_runner, {
-          'action': 'conversation.get',
-          'conversationId': id,
-        }),
-      ),
+    final raw = _objectMap(
+      await _service.execute(_runner, {
+        'action': 'conversation.get',
+        'conversationId': id,
+      }),
     );
-    // Sequence values are contiguous and monotonic. Starting at total-50
-    // gives the required newest initial window without scanning old events.
+    final conversation = ClientConversation.fromJson(raw);
+    final stagedTaskViews = _maps(raw['taskViews']);
     final afterSequence = conversation.eventCount > 50
         ? conversation.eventCount - 50
         : 0;
@@ -919,13 +1141,53 @@ final class ClientConversationController extends ApplicationStateOwner {
         }),
       ),
     );
-    final events = List<ClientConversationEvent>.unmodifiable(page.events);
+    final events = List<ClientConversationEvent>.unmodifiable(
+      await _recoverAnchoredCardEvents(id, page.events, stagedTaskViews),
+    );
     _conversationCache[id] = _CachedClientConversation(
       conversation: conversation,
       events: events,
+      taskViews: stagedTaskViews,
     );
     if (_selectedConversationId != id) return;
+    _selectedTaskViews = stagedTaskViews;
     _applySelectedSnapshot(conversation, events);
+  }
+
+  Future<List<ClientConversationEvent>> _recoverAnchoredCardEvents(
+    String conversationId,
+    List<ClientConversationEvent> window,
+    List<Map<String, dynamic>> taskViews,
+  ) async {
+    final present = <int>{for (final event in window) event.sequence};
+    final recovered = List<ClientConversationEvent>.from(window);
+    for (final view in taskViews) {
+      final relation = view['relation'];
+      if (relation is! Map) continue;
+      final anchor = relation['cardAnchor'];
+      if (anchor is! Map) continue;
+      final sequence = (anchor['sequence'] as num?)?.toInt();
+      if (sequence == null || sequence <= 0 || present.contains(sequence)) {
+        continue;
+      }
+      final page = ClientConversationEventPage.fromJson(
+        _objectMap(
+          await _service.execute(_runner, {
+            'action': 'conversation.events.page',
+            'conversationId': conversationId,
+            'afterSequence': sequence - 1,
+            'limit': 1,
+          }),
+        ),
+      );
+      for (final event in page.events) {
+        if (event.sequence == sequence && present.add(sequence)) {
+          recovered.add(event);
+        }
+      }
+    }
+    recovered.sort((left, right) => left.sequence.compareTo(right.sequence));
+    return recovered;
   }
 
   void _applySelectedSnapshot(
@@ -979,6 +1241,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     _selectedConversationId = '';
     _selectedConversation = null;
     _events = const [];
+    _selectedTaskViews = const [];
     _recentParticipants.clear();
     _draft = '';
     _liveTurns = const [];
@@ -987,13 +1250,58 @@ final class ClientConversationController extends ApplicationStateOwner {
   }
 
   void _publishChange() {
-    if (!_disposed) publishChange();
+    if (_disposed) return;
+    _observeMemory();
+    publishChange();
+  }
+
+  void _observeMemory() {
+    final journal = _memoryJournal;
+    if (journal == null) return;
+    final open = _selectedConversationId.isNotEmpty;
+    final liveTurnCount = _liveTurns.length;
+    ClientMemoryDiagnosticEvent event;
+    if (open && !_memoryConversationOpen) {
+      event = ClientMemoryDiagnosticEvent.conversationOpened;
+    } else if (!open && _memoryConversationOpen) {
+      event = ClientMemoryDiagnosticEvent.conversationClosed;
+    } else if (open && liveTurnCount > 0 && _memoryLiveTurnCount == 0) {
+      event = ClientMemoryDiagnosticEvent.liveTurnOpened;
+    } else if (open && liveTurnCount == 0 && _memoryLiveTurnCount > 0) {
+      event = ClientMemoryDiagnosticEvent.liveTurnClosed;
+    } else if (open) {
+      event = ClientMemoryDiagnosticEvent.sample;
+    } else {
+      _memoryConversationOpen = false;
+      _memoryLiveTurnCount = 0;
+      return;
+    }
+    _memoryConversationOpen = open;
+    _memoryLiveTurnCount = liveTurnCount;
+    journal.observe(
+      ClientMemoryDiagnosticObservation(
+        event: event,
+        surface: ClientMemoryDiagnosticSurface.canonical,
+        eventCount: _selectedConversation?.eventCount ?? 0,
+        loadedEventCount: _events.length,
+        liveTurnCount: liveTurnCount,
+        livePartCount: _livePartCount(_liveTurns),
+        cachedConversationCount: _conversationCache.length,
+      ),
+    );
   }
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _pendingNoticeTimer?.cancel();
+    _pendingNoticeTimer = null;
+    if (_memoryConversationOpen) {
+      _selectedConversationId = '';
+      _liveTurns = const [];
+      _observeMemory();
+    }
     super.dispose();
   }
 }
@@ -1002,10 +1310,12 @@ final class _CachedClientConversation {
   const _CachedClientConversation({
     required this.conversation,
     required this.events,
+    this.taskViews = const <Map<String, dynamic>>[],
   });
 
   final ClientConversation conversation;
   final List<ClientConversationEvent> events;
+  final List<Map<String, dynamic>> taskViews;
 }
 
 List<ClientConversationSummary> _summaryList(Object? value) => value is List
@@ -1060,4 +1370,20 @@ List<Map<String, dynamic>> _postedLiveTurns(Object? posted) {
     for (final turn in turns)
       if (turn is Map) Map<String, dynamic>.from(turn),
   ];
+}
+
+List<Map<String, dynamic>> _maps(Object? value) => value is List
+    ? value
+          .whereType<Map>()
+          .map(Map<String, dynamic>.from)
+          .toList(growable: false)
+    : const <Map<String, dynamic>>[];
+
+int _livePartCount(List<Map<String, dynamic>> turns) {
+  var count = 0;
+  for (final turn in turns) {
+    final parts = turn['parts'];
+    count += parts is List ? parts.length : 1;
+  }
+  return count;
 }

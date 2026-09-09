@@ -326,6 +326,28 @@ final class BackupAllNativeConversations extends ConversationIntent {
   final String destination;
 }
 
+final class ExecuteContinuousAssistantCommand extends ConversationIntent {
+  const ExecuteContinuousAssistantCommand({
+    required this.conversationId,
+    required this.command,
+    required this.goalId,
+    super.trace,
+  });
+
+  final String conversationId;
+  final String command;
+  final String goalId;
+}
+
+final class ActivateContinuityCompletionNotice extends ConversationIntent {
+  const ActivateContinuityCompletionNotice({
+    required this.notificationId,
+    super.trace,
+  });
+
+  final String notificationId;
+}
+
 final class BackupNativeConversationsByExactKeyword extends ConversationIntent {
   const BackupNativeConversationsByExactKeyword({
     required this.query,

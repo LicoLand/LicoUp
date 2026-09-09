@@ -24,7 +24,8 @@ impl ProtocolConfig {
         session_id: &str,
         cwd: Option<&Path>,
     ) -> Result<Self, ProtocolFailure> {
-        if prompt.trim().is_empty() {
+        let open_new = text_param(params, &["openMode"]).as_deref() == Some("new");
+        if prompt.trim().is_empty() && session_id.trim().is_empty() && !open_new {
             return Err(ProtocolFailure::new(
                 "pi_empty_prompt",
                 "Pi Agent requires a non-empty message.",

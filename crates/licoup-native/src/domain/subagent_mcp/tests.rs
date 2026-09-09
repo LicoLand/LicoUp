@@ -20,7 +20,7 @@ fn frozen_server_and_ordered_closed_catalog_are_exact() {
     assert_eq!(definition.protocol_revision, "2025-06-18");
     assert_eq!(definition.compatible_protocol_revisions, &["2025-11-25"]);
     assert_eq!(definition.server_name, "lico-up-subagents");
-    assert_eq!(definition.server_version, "0.11.0");
+    assert_eq!(definition.server_version, "0.12.0");
     let catalog = tool_catalog();
     assert_eq!(
         catalog
@@ -66,6 +66,42 @@ fn validation_is_closed_and_bounds_effect_arguments() {
     assert!(!validate_tool_arguments(
         "lico_subagent_delegate",
         whitespace_prompt.as_object().unwrap()
+    ));
+    assert!(validate_tool_arguments(
+        "lico_subagent_delegate",
+        json!({
+            "agent": "cursor",
+            "prompt": "bounded task",
+        })
+        .as_object()
+        .unwrap()
+    ));
+    assert!(validate_tool_arguments(
+        "lico_subagent_delegate",
+        json!({
+            "prompt": "bounded task",
+        })
+        .as_object()
+        .unwrap()
+    ));
+    assert!(validate_tool_arguments(
+        "lico_subagent_cancel",
+        json!({
+            "agent": "cursor",
+        })
+        .as_object()
+        .unwrap()
+    ));
+    assert!(validate_tool_arguments(
+        "lico_subagent_delegate",
+        json!({
+            "prompt": "bounded task",
+            "timeoutMs": 0,
+            "timeoutUnbounded": true,
+            "taskType": "frontend",
+        })
+        .as_object()
+        .unwrap()
     ));
 }
 
@@ -400,6 +436,25 @@ impl ConversationHostPort for FixtureHost {
             preferred_reasoning_effort: None,
         })
     }
+    fn target_membership_by_agent(
+        &self,
+        conversation_id: &str,
+        agent: &str,
+    ) -> Result<TargetMembership, McpApplicationError> {
+        let matches = self
+            .providers
+            .iter()
+            .filter(|(_, provider)| provider.as_str() == agent)
+            .map(|(membership_id, _)| membership_id.clone())
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [membership_id] => self.target_membership(conversation_id, membership_id),
+            _ => Err(McpApplicationError::retryable(
+                "subagent_target_seat_missing",
+                "conversation/authorize",
+            )),
+        }
+    }
     fn claim_dispatch(
         &self,
         conversation_id: &str,
@@ -509,6 +564,14 @@ impl ConversationHostPort for StrategyFixtureHost {
         membership_id: &str,
     ) -> Result<TargetMembership, McpApplicationError> {
         self.inner.target_membership(conversation_id, membership_id)
+    }
+    fn target_membership_by_agent(
+        &self,
+        conversation_id: &str,
+        agent: &str,
+    ) -> Result<TargetMembership, McpApplicationError> {
+        self.inner
+            .target_membership_by_agent(conversation_id, agent)
     }
     fn claim_dispatch(
         &self,
@@ -652,6 +715,86 @@ fn invoke(
 }
 
 #[test]
+fn workflow_policy_discovery_reads_bundled_guidance_without_membership_or_adapters() {
+    let app = SubagentMcpApplication::new(
+        Arc::new(FixtureHost {
+            store: ConversationStore::open_in_memory().unwrap(),
+            providers: BTreeMap::new(),
+        }),
+        AdapterRegistry::empty(),
+        Arc::new(FixtureTargets),
+    );
+    let mut caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: None,
+        membership_id: None,
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+    let tool_name = "lico_assistant_workflow_policy";
+    let catalog = invoke(&app, &caller, tool_name, json!({})).unwrap();
+    let summaries = catalog["policies"].as_array().unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert!(summaries[0].get("instructions").is_none());
+    assert!(summaries[0].get("modelPresets").is_none());
+    let arguments = json!({"policyId": summaries[0]["id"]});
+    assert!(validate_tool_arguments(
+        tool_name,
+        arguments.as_object().unwrap()
+    ));
+    let policy = invoke(&app, &caller, tool_name, arguments).unwrap();
+    assert_eq!(policy["id"], summaries[0]["id"]);
+    assert!(
+        policy["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("# Better Plan")
+    );
+    assert_eq!(policy["modelPresets"]["schemaVersion"], 1);
+    assert_eq!(policy["modelPresets"]["assistant"], "designated-assistant");
+    assert_eq!(policy["modelPresets"]["candidateUse"], "ordered-fallback");
+    let roles = policy["modelPresets"]["roles"].as_array().unwrap();
+    let frontend = roles
+        .iter()
+        .find(|role| role["role"] == "frontend-worker")
+        .unwrap();
+    assert_eq!(
+        frontend["candidates"][1],
+        json!({
+            "modelName": "GPT-6 Astra", "reasoningEffort": "medium"
+        })
+    );
+    let reviewer = roles
+        .iter()
+        .find(|role| role["role"] == "reviewer")
+        .unwrap();
+    assert_eq!(reviewer["candidates"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        invoke(&app, &caller, tool_name, json!({"policyId": "missing"}))
+            .unwrap_err()
+            .code,
+        "workflow_policy_not_found"
+    );
+    for invalid in [
+        json!({"policyId": " "}),
+        json!({"policyId": null}),
+        json!({"execute": true}),
+    ] {
+        assert!(!validate_tool_arguments(
+            tool_name,
+            invalid.as_object().unwrap()
+        ));
+    }
+    caller.authenticated = false;
+    assert_eq!(
+        invoke(&app, &caller, tool_name, json!({}))
+            .unwrap_err()
+            .code,
+        "caller_authentication_required"
+    );
+}
+
+#[test]
 fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
     let target = TargetMembership {
         conversation_id: "conversation:fixture".into(),
@@ -684,6 +827,14 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         inherited.reasoning_effort.as_deref(),
         Some("profile-effort")
     );
+    assert!(
+        inherited
+            .generated_guidance
+            .as_deref()
+            .is_some_and(|guidance| guidance.contains("report the outcome back"))
+    );
+    assert!(!inherited.timeout_unbounded);
+    assert!(inherited.task_type.is_none());
 
     let overridden = dispatch_request(
         json!({
@@ -703,6 +854,24 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         overridden.reasoning_effort.as_deref(),
         Some("request-effort")
     );
+
+    let unbounded = dispatch_request(
+        json!({
+            "prompt":"bounded task",
+            "timeoutMs": 0,
+            "timeoutUnbounded": true,
+            "taskType": "frontend"
+        })
+        .as_object()
+        .unwrap(),
+        "membership:caller",
+        &target,
+        &claim,
+    )
+    .unwrap();
+    assert!(unbounded.timeout_unbounded);
+    assert_eq!(unbounded.timeout_ms, Some(0));
+    assert_eq!(unbounded.task_type.as_deref(), Some("frontend"));
 }
 
 #[test]
@@ -1349,4 +1518,115 @@ fn self_call_records_rejected_inbound_without_a_claim() {
         Some("subagent_self_call_rejected")
     );
     assert_eq!(edge.claim_state, None);
+}
+
+#[test]
+fn session_bound_delegate_accepts_agent_and_prompt() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let owner = Principal {
+        id: "human:owner".into(),
+        kind: PrincipalKind::Human,
+        display_name: "Owner".into(),
+        agent_id: None,
+        created_at_unix_ms: 1,
+    };
+    let members = ["codex", "cursor"].map(|provider| {
+        (
+            Principal {
+                id: format!("agent:{provider}"),
+                kind: PrincipalKind::Agent,
+                display_name: provider.into(),
+                agent_id: Some(provider.into()),
+                created_at_unix_ms: 1,
+            },
+            MembershipAccess::Member,
+        )
+    });
+    let conversation = store
+        .create_conversation_with_members("Session", owner, &members)
+        .unwrap();
+    let by_provider = conversation
+        .memberships
+        .iter()
+        .filter_map(|membership| {
+            membership
+                .principal
+                .agent_id
+                .as_deref()
+                .map(|provider| (provider.to_owned(), membership.id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let host = Arc::new(FixtureHost {
+        store: store.clone(),
+        providers: by_provider
+            .iter()
+            .map(|(provider, membership)| {
+                (
+                    membership.clone(),
+                    ProviderId::parse(provider.clone()).unwrap(),
+                )
+            })
+            .collect(),
+    });
+    let mut registry = AdapterRegistry::empty();
+    for provider in ["codex", "cursor"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+    let app = SubagentMcpApplication::new(host, registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(by_provider["codex"].clone()),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+    let receipt = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "cursor",
+            "prompt": "bounded task from session"
+        }),
+    )
+    .unwrap();
+    assert_eq!(receipt["accepted"], true);
+    assert_eq!(receipt["agentId"], "cursor");
+    assert_eq!(receipt["membershipId"], by_provider["cursor"]);
+    assert_eq!(calls.lock().unwrap().len(), 1);
+
+    let missing = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "unknown",
+            "prompt": "no seat"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(missing.code, "subagent_target_seat_missing");
+    assert!(missing.retryable);
+    assert_eq!(missing.stage, "conversation/authorize");
+
+    let no_target = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "prompt": "no seat selector"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(no_target.code, "subagent_target_seat_missing");
+    assert!(no_target.retryable);
 }

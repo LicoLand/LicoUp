@@ -2,7 +2,7 @@
 
 use super::{ConversationStore, StoreResult, enum_wire, new_id, now_ms};
 use crate::{DispatchState, EventPartKind, TurnState};
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 const HOST_INTERRUPTED: &str = "host_lifecycle_interrupted";
 
@@ -70,30 +70,31 @@ impl ColdRecoverableConversationStore for ConversationStore {
                 // later rows; every joined event is still finalized exactly
                 // once through its own finalized=0 guard.
                 if let Some(event_id) = event_id {
-                    let ordinal: i64 = transaction.query_row(
-                        "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",
-                        params![event_id],
-                        |row| row.get(0),
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO event_parts(id, event_id, ordinal, kind, content, created_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        params![
-                            new_id("part"),
-                            event_id,
-                            ordinal,
-                            enum_wire(EventPartKind::Diagnostic)?,
-                            serde_json::json!({"code": HOST_INTERRUPTED}).to_string(),
-                            now_ms(),
-                        ],
-                    )?;
-                    report.finalized_events += transaction.execute(
-                        "UPDATE events SET finalized=1 WHERE id=?1 AND finalized=0",
-                        params![event_id],
-                    )?;
-                    super::bump_revision(&transaction, &conversation_id, now_ms())?;
+                    report.finalized_events +=
+                        finalize_interrupted_message(&transaction, &event_id, &conversation_id)?;
                 }
             }
+            // A completed/failed dispatch, a missing correlation, or a
+            // membership-join miss can leave a Message Event at finalized=0.
+            // Those orphans stay "streaming" across relaunch unless this
+            // second pass settles them.
+            let orphans = {
+                let mut statement = transaction.prepare(
+                    "SELECT id, conversation_id FROM events
+                     WHERE kind='message' AND finalized=0
+                     ORDER BY conversation_id, sequence, id",
+                )?;
+                statement
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            for (event_id, conversation_id) in orphans {
+                report.finalized_events +=
+                    finalize_interrupted_message(&transaction, &event_id, &conversation_id)?;
+            }
+            super::dispatches::reconcile_terminal_subagent_claims(&transaction)?;
             transaction.commit()?;
             Ok(report)
         })
@@ -106,4 +107,57 @@ impl ConversationStore {
     pub fn cold_recover(&self) -> StoreResult<ColdRecoveryReport> {
         ColdRecoverableConversationStore::cold_recover(self)
     }
+}
+
+fn finalize_interrupted_message(
+    transaction: &impl super::CountedSqlite,
+    event_id: &str,
+    conversation_id: &str,
+) -> StoreResult<usize> {
+    let pending: Option<i64> = transaction
+        .query_row(
+            "SELECT finalized FROM events WHERE id=?1 AND conversation_id=?2 AND kind='message'",
+            params![event_id, conversation_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if pending != Some(0) {
+        return Ok(0);
+    }
+    let diagnostic = serde_json::json!({"code": HOST_INTERRUPTED}).to_string();
+    let already_marked: bool = transaction.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM event_parts
+           WHERE event_id=?1 AND kind='diagnostic' AND content=?2
+         )",
+        params![event_id, diagnostic],
+        |row| row.get(0),
+    )?;
+    if !already_marked {
+        let ordinal: i64 = transaction.query_row(
+            "SELECT COALESCE(MAX(ordinal), -1)+1 FROM event_parts WHERE event_id=?1",
+            params![event_id],
+            |row| row.get(0),
+        )?;
+        transaction.execute(
+            "INSERT INTO event_parts(id, event_id, ordinal, kind, content, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                new_id("part"),
+                event_id,
+                ordinal,
+                enum_wire(EventPartKind::Diagnostic)?,
+                diagnostic,
+                now_ms(),
+            ],
+        )?;
+    }
+    let changed = transaction.execute(
+        "UPDATE events SET finalized=1 WHERE id=?1 AND finalized=0",
+        params![event_id],
+    )?;
+    if changed > 0 {
+        super::bump_revision(transaction, conversation_id, now_ms())?;
+    }
+    Ok(changed)
 }

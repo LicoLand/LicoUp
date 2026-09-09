@@ -11,6 +11,10 @@ final class ClientConversationSummary {
     required this.updatedAtUnixMs,
     required this.membershipCount,
     required this.eventCount,
+    this.parentConversationId,
+    this.taskGoalId,
+    this.listingKind,
+    this.children = const <ClientConversationSummary>[],
   });
 
   factory ClientConversationSummary.fromJson(Map<String, dynamic> json) =>
@@ -24,6 +28,9 @@ final class ClientConversationSummary {
         updatedAtUnixMs: _integer(json['updatedAtUnixMs']),
         membershipCount: _integer(json['membershipCount']),
         eventCount: _integer(json['eventCount']),
+        parentConversationId: _optionalId(json['parentConversationId']),
+        taskGoalId: _optionalId(json['taskGoalId']),
+        listingKind: _optionalId(json['listingKind']),
       );
 
   final String id;
@@ -35,8 +42,33 @@ final class ClientConversationSummary {
   final int updatedAtUnixMs;
   final int membershipCount;
   final int eventCount;
+  final String? parentConversationId;
+  final String? taskGoalId;
+  final String? listingKind;
+  final List<ClientConversationSummary> children;
 
   bool get isGroup => group;
+
+  bool get isContinuityChild =>
+      parentConversationId != null && parentConversationId!.isNotEmpty;
+
+  ClientConversationSummary withChildren(List<ClientConversationSummary> next) {
+    return ClientConversationSummary(
+      id: id,
+      title: title,
+      archived: archived,
+      pinned: pinned,
+      group: group,
+      revision: revision,
+      updatedAtUnixMs: updatedAtUnixMs,
+      membershipCount: membershipCount,
+      eventCount: eventCount,
+      parentConversationId: parentConversationId,
+      taskGoalId: taskGoalId,
+      listingKind: listingKind,
+      children: List<ClientConversationSummary>.unmodifiable(next),
+    );
+  }
 }
 
 final class ClientConversation {
@@ -281,6 +313,11 @@ final class ClientConversationGroupMemberDraft {
 
   final String agentId;
   final String displayName;
+}
+
+String? _optionalId(Object? value) {
+  final text = (value ?? '').toString().trim();
+  return text.isEmpty ? null : text;
 }
 
 int _integer(Object? value) => switch (value) {

@@ -16,6 +16,7 @@ Implemented long-lived decisions:
 Accepted product decisions that are not current implementation:
 
 - [0007: User-terminal Agent command identity](0007-user-terminal-agent-command-identity.md)
+- [0010: Continuous Assistant, Matters and Goal Follow-through](0010-continuous-assistant.md) · [中文版](0010-continuous-assistant.zh-CN.md)
 
 New ADRs use stable numeric identifiers and record context, decision,
 alternatives, rationale, consequences, status, and implementation evidence.

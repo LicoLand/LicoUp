@@ -51,6 +51,8 @@ pub(super) fn target_uses_running_process_detection(target: &str) -> bool {
             | "kilo-code"
             | "kimi"
             | "kimi-code"
+            | "grok"
+            | "command-code"
             | "pi"
             | "deepseek-harness"
             | "lico-agent"
