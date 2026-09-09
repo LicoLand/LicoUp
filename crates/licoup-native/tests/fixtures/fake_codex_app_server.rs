@@ -29,12 +29,24 @@ fn main() {
                 path.is_file()
             })
             .unwrap_or(false);
-    let (thread_id, turn_id) = if steering_mode && cancel_mode {
-        ("fake-cancel-thread", "fake-cancel-turn")
+    let configured_identity = std::env::current_exe().ok().and_then(|mut path| {
+        path.set_extension("identity");
+        fs::read_to_string(path).ok()
+    });
+    let configured_identity = configured_identity.and_then(|value| {
+        let mut lines = value.lines().map(str::trim).filter(|line| !line.is_empty());
+        let thread_id = lines.next()?.to_owned();
+        let turn_id = lines.next()?.to_owned();
+        Some((thread_id, turn_id))
+    });
+    let (thread_id, turn_id) = if let Some(identity) = configured_identity {
+        identity
+    } else if steering_mode && cancel_mode {
+        ("fake-cancel-thread".to_owned(), "fake-cancel-turn".to_owned())
     } else if steering_mode {
-        ("fake-steer-thread", "fake-steer-turn")
+        ("fake-steer-thread".to_owned(), "fake-steer-turn".to_owned())
     } else {
-        ("fake-thread", "fake-turn")
+        ("fake-thread".to_owned(), "fake-turn".to_owned())
     };
     let chunk_mode = std::env::current_exe()
         .map(|mut path| {
@@ -185,8 +197,8 @@ fn main() {
         } else if line.contains("\"method\":\"turn/steer\"") {
             if !awaiting_steer
                 || !line.contains(STEER_GUIDANCE)
-                || json_string_field(&line, "threadId").as_deref() != Some(thread_id)
-                || json_string_field(&line, "expectedTurnId").as_deref() != Some(turn_id)
+                || json_string_field(&line, "threadId").as_deref() != Some(&thread_id)
+                || json_string_field(&line, "expectedTurnId").as_deref() != Some(&turn_id)
             {
                 std::process::exit(5);
             }
@@ -222,10 +234,10 @@ fn main() {
             );
             if cancel_mode {
                 let thread_id =
-                    json_string_field(&line, "threadId").unwrap_or_else(|| thread_id.into());
+                    json_string_field(&line, "threadId").unwrap_or_else(|| thread_id.clone());
                 let turn_id = json_string_field(&line, "turnId")
                     .or_else(|| json_string_field(&line, "expectedTurnId"))
-                    .unwrap_or_else(|| turn_id.into());
+                    .unwrap_or_else(|| turn_id.clone());
                 if let Ok(mut path) = std::env::current_exe() {
                     path.set_extension("interrupt.json");
                     let _ = fs::write(
