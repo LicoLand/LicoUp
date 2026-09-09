@@ -131,15 +131,40 @@ mod tests {
         ]);
         assert_eq!(value["ok"], true);
         let cards = value["cards"].as_array().expect("cards");
-        assert_eq!(cards.len(), 9);
-        assert_eq!(cards[0]["id"], "codex");
-        assert_eq!(cards[7]["id"], "antigravity");
-        assert_eq!(cards[7]["adaptation"], "partial");
-        assert_eq!(cards[8]["id"], "deepseek-harness");
-        assert_eq!(cards[8]["adaptation"], "pending-evaluation");
+        let ids = cards
+            .iter()
+            .map(|card| card["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        for entry in crate::domain::agent_catalog::entries() {
+            if entry.has_adapter {
+                assert!(ids.contains(&entry.id.as_str()), "missing {}", entry.id);
+            } else {
+                assert!(
+                    !ids.contains(&entry.id.as_str()),
+                    "unsupported {}",
+                    entry.id
+                );
+            }
+        }
+        assert!(ids.contains(&"kimi-code"));
+        assert!(ids.contains(&"grok"));
+        assert!(ids.contains(&"command-code"));
+        assert!(!ids.contains(&"code"));
+        assert!(!ids.contains(&"workbuddy"));
+        let antigravity = cards
+            .iter()
+            .find(|card| card["id"] == "antigravity")
+            .unwrap();
+        assert_eq!(antigravity["adaptation"], "partial");
+        let deepseek = cards
+            .iter()
+            .find(|card| card["id"] == "deepseek-harness")
+            .unwrap();
+        assert_eq!(deepseek["adaptation"], "pending-evaluation");
         assert_eq!(value["hostScope"], "desktop");
-        assert_eq!(cards[0]["homepage"], "https://developers.openai.com/codex");
-        assert_eq!(cards[0]["channelKind"], "");
+        let codex = cards.iter().find(|card| card["id"] == "codex").unwrap();
+        assert_eq!(codex["homepage"], "https://developers.openai.com/codex");
+        assert_eq!(codex["channelKind"], "");
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub(in crate::platform) fn probe(executable: &Path) -> CapabilityProbe {
     let help_ok = {
         let mut command = Command::new(executable);
         command.arg("--help");
+        crate::platform::user_shell_environment::apply_to_command(&mut command);
         crate::platform::configure_untrusted_agent_command(&mut command);
         command
             .output()

@@ -1,12 +1,14 @@
 [package]
 name = "licoup-native"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 license.workspace = true
 publish = false
 
 [features]
 default = []
+# Hermetic work-context constructors for integration tests. Not production.
+test-support = []
 # Explicit non-production topology support. Release profiles are rejected in `lib.rs`.
 secure-mesh-acceptance-mock-kt = []
 
@@ -130,3 +132,13 @@ path = "src/bin/lico-agent.rs"
 name = "lico-secure-mesh-kt-mock"
 path = "src/bin/lico-secure-mesh-kt-mock.rs"
 required-features = ["secure-mesh-acceptance-mock-kt"]
+
+[[test]]
+name = "continuity_host"
+path = "tests/continuity_host.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "continuity_native"
+path = "tests/continuity_native.rs"
+required-features = ["test-support"]

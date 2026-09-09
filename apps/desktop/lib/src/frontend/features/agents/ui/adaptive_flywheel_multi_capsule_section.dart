@@ -1043,7 +1043,7 @@ final class _AgentRuntimeAssignmentCascadeCardsState
   ) {
     final row = _CascadeOptionRow(
       key: Key('${widget.keyPrefix}-model-${active.target}-$model'),
-      label: agentOrchestrationModelDisplayName(active, model),
+      label: agentOrchestrationModelPickerLabel(active, model),
       selected: model == draftForActive.modelName,
       wrapLabel: true,
       onEnter: () {

@@ -172,6 +172,7 @@ final class AdaptiveFlywheelGraphEdge {
     required this.from,
     required this.to,
     required this.event,
+    this.mode = 'flow',
     this.guardLabel = '',
   });
 
@@ -180,13 +181,22 @@ final class AdaptiveFlywheelGraphEdge {
         from: (json['from'] ?? '').toString(),
         to: (json['to'] ?? '').toString(),
         event: (json['event'] ?? '').toString(),
+        mode: _transitionMode(json['mode']),
         guardLabel: _guardLabel(json['guard']),
       );
 
   final String from;
   final String to;
   final String event;
+  final String mode;
   final String guardLabel;
+
+  bool get callback => mode == 'callback';
+}
+
+String _transitionMode(Object? value) {
+  final mode = (value ?? '').toString().trim();
+  return mode == 'callback' ? 'callback' : 'flow';
 }
 
 String _guardLabel(Object? guard) {

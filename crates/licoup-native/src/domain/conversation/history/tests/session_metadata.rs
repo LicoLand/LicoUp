@@ -228,7 +228,7 @@ fn cli_provenance_labels_do_not_claim_desktop_or_ide_ownership() {
         super::super::session_metadata::source_label("cursor", &cursor_source),
         "cursor: cursor agent cli"
     );
-    assert_eq!(HistoryAdapter::Codex.label(), "Codex - CLI");
+    assert_eq!(HistoryAdapter::Codex.label(), "Codex CLI");
 }
 
 #[test]

@@ -156,6 +156,21 @@ export function rustLayer(filter, harnessArgs = []) {
   );
 }
 
+export function rustCrateIntegrationTest(crate, target, features = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "-p",
+      crate,
+      ...(features.length > 0 ? ["--features", features.join(",")] : []),
+      "--test",
+      target,
+    ],
+    10 * 60_000,
+  );
+}
+
 export function rustIntegrationTest(target, filter) {
   return command(
     "cargo",

@@ -31,6 +31,7 @@ fn run_probe_command(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     crate::platform::configure_untrusted_agent_command(&mut command);
     let mut child = SupervisedChild::spawn(&mut command).ok()?;
     let stdout = child.stdout()?;

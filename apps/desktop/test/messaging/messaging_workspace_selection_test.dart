@@ -289,6 +289,7 @@ void main() {
       '返回上一级',
     );
     expect(tester.takeException(), isNull);
+    await tester.runAsync(controller.close);
   });
 
   testWidgets('group conversation row changes only the detail pane', (
@@ -430,6 +431,7 @@ void main() {
     );
     expect(find.text('Opened Agent detail'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.runAsync(controller.close);
   });
 }
 

@@ -165,7 +165,6 @@ impl ClientStateStore {
     /// Typed target-route read in document order. The projection is refreshed
     /// only when the persisted file generation changes, so repeated reads
     /// decode the collection exactly once per generation.
-    #[cfg(test)]
     pub(crate) fn read_target_routes(&self) -> Result<Vec<TargetRouteRecord>> {
         let path = self.collection_path(TARGET_DISCOVERY_CACHE_COLLECTION)?;
         let mut guard = lock_target_index(&self.target_index);

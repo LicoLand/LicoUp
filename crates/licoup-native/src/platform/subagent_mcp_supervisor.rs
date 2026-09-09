@@ -74,8 +74,9 @@ impl SubagentMcpSupervisor {
         // creation, whose error path performs generation-bound cleanup.
         let engine = McpServerEngine::new(server_definition(), application)?;
         let generation = uuid::Uuid::new_v4().simple().to_string();
-        let tokens = ["codex", "cursor", "antigravity"]
-            .into_iter()
+        let tokens = crate::domain::subagent_mcp::CALLER_PROVIDERS
+            .iter()
+            .copied()
             .map(|provider| {
                 (
                     provider.to_owned(),
@@ -144,7 +145,7 @@ impl SubagentMcpSupervisor {
     }
 
     /// Health is the real contract, not thread liveness: one authenticated
-    /// initialize plus the exact ordered nine-tool catalog. The probe identity
+    /// initialize plus the exact ordered tool catalog. The probe identity
     /// never leaves the process and the probe session is closed afterwards.
     fn health_probe(&self) -> bool {
         let initialize = McpMessage::request(
@@ -410,9 +411,37 @@ struct ServiceState {
     address: SocketAddr,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SessionCallerBinding {
+    conversation_id: Option<String>,
+    membership_id: Option<String>,
+    parent_dispatch_id: Option<String>,
+}
+
 struct ServerSession {
     provider: String,
     state: Arc<McpSessionState>,
+    caller: Mutex<SessionCallerBinding>,
+}
+
+fn merge_session_caller_binding(
+    existing: &SessionCallerBinding,
+    headers: &HashMap<String, String>,
+) -> SessionCallerBinding {
+    SessionCallerBinding {
+        conversation_id: headers
+            .get("x-licoup-conversation-id")
+            .cloned()
+            .or_else(|| existing.conversation_id.clone()),
+        membership_id: headers
+            .get("x-licoup-membership-id")
+            .cloned()
+            .or_else(|| existing.membership_id.clone()),
+        parent_dispatch_id: headers
+            .get("x-licoup-parent-dispatch-id")
+            .cloned()
+            .or_else(|| existing.parent_dispatch_id.clone()),
+    }
 }
 
 fn serve(listener: TcpListener, service: Arc<ServiceState>, stop: Arc<AtomicBool>) {
@@ -556,7 +585,7 @@ fn handle_connection(mut stream: TcpStream, service: &ServiceState) -> Result<()
         None => return write_http(&mut stream, 400, &[], b""),
     }
     let requested_session = request.headers.get("mcp-session-id").cloned();
-    let (session_id, session) = if initialize && requested_session.is_none() {
+    let (session_id, session, binding) = if initialize && requested_session.is_none() {
         let mut sessions = service
             .sessions
             .lock()
@@ -566,29 +595,41 @@ fn handle_connection(mut stream: TcpStream, service: &ServiceState) -> Result<()
         }
         let id = uuid::Uuid::new_v4().simple().to_string();
         let session = Arc::new(McpSessionState::default());
+        let binding =
+            merge_session_caller_binding(&SessionCallerBinding::default(), &request.headers);
         sessions.insert(
             id.clone(),
             ServerSession {
                 provider: provider.clone(),
                 state: Arc::clone(&session),
+                caller: Mutex::new(binding.clone()),
             },
         );
-        (id, session)
+        (id, session, binding)
     } else {
         let Some(id) = requested_session else {
             return write_http(&mut stream, 400, &[], b"");
         };
-        let session = service
+        let sessions = service
             .sessions
             .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some(stored) = sessions
             .get(&id)
             .filter(|session| session.provider == *provider)
-            .map(|session| Arc::clone(&session.state));
-        let Some(session) = session else {
+        else {
             return write_http(&mut stream, 404, &[], b"");
         };
-        (id, session)
+        let session = Arc::clone(&stored.state);
+        let binding = {
+            let mut guard = stored
+                .caller
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            *guard = merge_session_caller_binding(&guard, &request.headers);
+            guard.clone()
+        };
+        (id, session, binding)
     };
     if !initialize && session.protocol_revision() != request_protocol_revision {
         return write_http(&mut stream, 400, &[], b"");
@@ -608,9 +649,9 @@ fn handle_connection(mut stream: TcpStream, service: &ServiceState) -> Result<()
     let caller = CallerContext {
         provider_id: ProviderId::parse(provider.clone())
             .map_err(|_| anyhow!("caller_provider_invalid"))?,
-        conversation_id: request.headers.get("x-licoup-conversation-id").cloned(),
-        membership_id: request.headers.get("x-licoup-membership-id").cloned(),
-        parent_dispatch_id: request.headers.get("x-licoup-parent-dispatch-id").cloned(),
+        conversation_id: binding.conversation_id,
+        membership_id: binding.membership_id,
+        parent_dispatch_id: binding.parent_dispatch_id,
         authenticated: true,
     };
     match service.engine.handle(&session, &caller, message) {
@@ -815,9 +856,10 @@ fn valid_discovery_document(document: &DiscoveryDocument) -> bool {
     document.schema_version == DISCOVERY_SCHEMA
         && valid_port
         && lowercase_hex(&document.generation, 32)
-        && document.tokens.len() == 3
-        && ["antigravity", "codex", "cursor"]
-            .into_iter()
+        && document.tokens.len() == crate::domain::subagent_mcp::CALLER_PROVIDERS.len()
+        && crate::domain::subagent_mcp::CALLER_PROVIDERS
+            .iter()
+            .copied()
             .all(|provider| {
                 document
                     .tokens
@@ -851,7 +893,7 @@ fn cleanup_discovery_generation(path: &Path, generation: &str) {
 }
 
 pub fn load_connector_discovery(provider: &str) -> Result<ConnectorDiscovery> {
-    if !matches!(provider, "codex" | "cursor" | "antigravity") {
+    if !crate::domain::subagent_mcp::CALLER_PROVIDERS.contains(&provider) {
         return Err(anyhow!("subagent_mcp_caller_invalid"));
     }
     let document = read_discovery(&discovery_path()?)?;
@@ -1027,6 +1069,29 @@ mod tests {
     }
 
     #[test]
+    fn later_request_reuses_session_caller_binding() {
+        let initial = SessionCallerBinding {
+            conversation_id: Some("conversation:one".into()),
+            membership_id: Some("membership:caller".into()),
+            parent_dispatch_id: None,
+        };
+        let reused = merge_session_caller_binding(&initial, &HashMap::new());
+        assert_eq!(reused.conversation_id.as_deref(), Some("conversation:one"));
+        assert_eq!(reused.membership_id.as_deref(), Some("membership:caller"));
+        let mut headers = HashMap::new();
+        headers.insert("x-licoup-conversation-id".into(), "conversation:two".into());
+        let overridden = merge_session_caller_binding(&initial, &headers);
+        assert_eq!(
+            overridden.conversation_id.as_deref(),
+            Some("conversation:two")
+        );
+        assert_eq!(
+            overridden.membership_id.as_deref(),
+            Some("membership:caller")
+        );
+    }
+
+    #[test]
     fn discovery_admission_is_exact_and_lowercase() {
         let valid = || DiscoveryDocument {
             schema_version: DISCOVERY_SCHEMA.to_owned(),
@@ -1034,6 +1099,7 @@ mod tests {
             generation: "a".repeat(32),
             tokens: HashMap::from([
                 ("antigravity".to_owned(), "b".repeat(64)),
+                ("claude-code".to_owned(), "a".repeat(64)),
                 ("codex".to_owned(), "c".repeat(64)),
                 ("cursor".to_owned(), "d".repeat(64)),
             ]),
@@ -1083,6 +1149,13 @@ mod tests {
             unreachable!()
         }
         fn target_membership(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> std::result::Result<TargetMembership, crate::core::mcp::McpApplicationError> {
+            unreachable!()
+        }
+        fn target_membership_by_agent(
             &self,
             _: &str,
             _: &str,
@@ -1239,7 +1312,7 @@ mod tests {
                 .pointer("/result/tools")
                 .and_then(Value::as_array)
                 .map(Vec::len),
-            Some(9)
+            Some(crate::domain::subagent_mcp::TOOL_NAMES.len())
         );
         connector_close_session(&discovery, session.as_deref().unwrap()).unwrap();
         let body = encode_http_body(&list, MAX_MCP_FRAME_BYTES).unwrap();

@@ -412,6 +412,56 @@ The response above may be incomplete.
       expect(parsed.tail?.text, '| c | d');
     });
 
+    test(
+      'incremental growth reuses completed heading, list, fence, and paragraph',
+      () {
+        const headingAndList = '# Title\n\n- one\n- tw';
+        final mid = parseStreamingMessageMarkdownBlocks(headingAndList);
+        expect(mid.complete, hasLength(2));
+        expect(mid.complete[0].type, MessageMarkdownBlockType.heading);
+        expect(mid.complete[0].text, 'Title');
+        expect(mid.complete[1].type, MessageMarkdownBlockType.unorderedList);
+        expect(mid.complete[1].items, ['one']);
+        expect(mid.tail?.type, MessageMarkdownBlockType.paragraph);
+        expect(mid.tail?.text, 'tw');
+
+        const stillOpenItem = '# Title\n\n- one\n- two more';
+        final openItem = parseStreamingMessageMarkdownBlocks(stillOpenItem);
+        expect(identical(openItem.complete, mid.complete), isTrue);
+        expect(identical(openItem.complete[0], mid.complete[0]), isTrue);
+        expect(identical(openItem.complete[1], mid.complete[1]), isTrue);
+        expect(openItem.tail?.text, 'two more');
+
+        const closedListThenParagraph = '# Title\n\n- one\n- two more\n\nNext';
+        final grown = parseStreamingMessageMarkdownBlocks(
+          closedListThenParagraph,
+        );
+        expect(identical(grown.complete[0], mid.complete[0]), isTrue);
+        expect(grown.complete[1].type, MessageMarkdownBlockType.unorderedList);
+        expect(grown.complete[1].items, ['one', 'two more']);
+        expect(grown.tail?.type, MessageMarkdownBlockType.paragraph);
+        expect(grown.tail?.text, 'Next');
+
+        const introAndFence = 'Hello there\n\n```dart\nint x';
+        final openFence = parseStreamingMessageMarkdownBlocks(introAndFence);
+        expect(
+          openFence.complete.single.type,
+          MessageMarkdownBlockType.paragraph,
+        );
+        expect(openFence.complete.single.text, 'Hello there');
+        expect(openFence.tail?.type, MessageMarkdownBlockType.code);
+
+        final grownFence = parseStreamingMessageMarkdownBlocks(
+          'Hello there\n\n```dart\nint x = 1;',
+        );
+        expect(
+          identical(grownFence.complete.single, openFence.complete.single),
+          isTrue,
+        );
+        expect(grownFence.tail?.text, 'int x = 1;');
+      },
+    );
+
     test('a fully terminated document has no tail and equals the finalized '
         'parse', () {
       const data =

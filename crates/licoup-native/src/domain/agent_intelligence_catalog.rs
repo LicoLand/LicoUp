@@ -1,7 +1,14 @@
 //! Current, network-free model intelligence facts owned by LicoUp.
 
+pub mod qualification;
+
 use serde::Deserialize;
-use std::{cmp::Ordering, collections::HashSet, sync::OnceLock};
+use serde_json::{Map, Value, json};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashSet},
+    sync::OnceLock,
+};
 
 const AA_INTELLIGENCE_JSON: &str =
     include_str!("agent_intelligence_catalog/aa_intelligence_index.json");
@@ -156,6 +163,162 @@ pub fn model_intelligence_per_usd(model_id: &str, thinking: &str) -> Option<f64>
     Some(model.intelligence_index? as f64 / model.cost_per_task_usd?)
 }
 
+pub const TASK_FRONTEND: &str = "frontend";
+pub const TASK_BACKEND: &str = "backend";
+pub const TASK_RETRIEVAL: &str = "retrieval";
+pub const TASK_TEXT: &str = "text";
+const MAX_USAGE_WEIGHT: i64 = 20;
+const USAGE_TOKEN_BUCKET: u64 = 10_000;
+
+/// Task tags already evidenced by the embedded snapshots. This is an overlay
+/// on the same catalog, not a second product table.
+pub fn task_tags_for_model(model_id: &str) -> Vec<String> {
+    AgentIntelligenceCatalog::embedded()
+        .ok()
+        .map(|catalog| catalog.task_tags(model_id))
+        .unwrap_or_default()
+}
+
+/// Allowlisted facts the Assistant/UI may see when picking a model.
+pub fn project_allowlisted_model(model_id: &str) -> Option<Value> {
+    let catalog = AgentIntelligenceCatalog::embedded().ok()?;
+    catalog.project_model(model_id)
+}
+
+/// Bounded harness projection of the same catalog. Never copies a second table.
+pub fn project_harness_catalog(agent_id: &str, limit: usize) -> Value {
+    let limit = limit.clamp(1, 32);
+    let Some(catalog) = AgentIntelligenceCatalog::embedded().ok() else {
+        return json!({"models": []});
+    };
+    let harness = coding_harness_id(agent_id);
+    let mut rows = catalog
+        .coding
+        .iter()
+        .filter(|variant| variant.harness == harness)
+        .map(|variant| {
+            let mut row = catalog
+                .project_model(&variant.model)
+                .unwrap_or_else(|| json!({ "modelId": variant.model }));
+            if let Some(object) = row.as_object_mut() {
+                object.insert("codingScore".to_owned(), json!(variant.index_score));
+                object.insert(
+                    "costPerTaskUsd".to_owned(),
+                    json!(variant.cost_per_task_usd),
+                );
+                object.insert(
+                    "reasoningEffort".to_owned(),
+                    json!(variant.reasoning_effort),
+                );
+                object.insert("variantId".to_owned(), json!(variant.variant_id));
+            }
+            (variant.index_score, variant.variant_id.clone(), row)
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    rows.truncate(limit);
+    json!({
+        "agentId": agent_id,
+        "models": rows.into_iter().map(|(_, _, row)| row).collect::<Vec<_>>(),
+    })
+}
+
+pub fn attach_allowlisted_model_fields(model_name: &str, entry: &mut Map<String, Value>) {
+    let Some(projected) = project_allowlisted_model(model_name) else {
+        return;
+    };
+    let Some(object) = projected.as_object() else {
+        return;
+    };
+    for key in [
+        "intelligenceIndex",
+        "codingScore",
+        "costPerTaskUsd",
+        "taskTags",
+    ] {
+        if let Some(value) = object.get(key) {
+            entry.insert(key.to_owned(), value.clone());
+        }
+    }
+}
+
+/// Merge local usage-report counts over the static seed. This is a count
+/// overlay, not a learned model.
+pub fn merged_agent_model_score(agent_id: &str, model_id: &str) -> Option<i64> {
+    let seed = agent_model_max_intelligence(agent_id, model_id)?;
+    Some(seed.saturating_add(usage_weight_for(agent_id, model_id)))
+}
+
+pub fn usage_weight_for(agent_id: &str, model_id: &str) -> i64 {
+    let weights = usage_weights_from_store();
+    let model = coding_model_key(model_id).to_owned();
+    weights
+        .get(&(agent_id.to_owned(), model.clone()))
+        .or_else(|| weights.get(&(coding_harness_id(agent_id).to_owned(), model)))
+        .copied()
+        .unwrap_or(0)
+}
+
+pub fn usage_weights_from_reports(reports: &[Value]) -> BTreeMap<(String, String), i64> {
+    let mut totals: BTreeMap<(String, String), (u64, u64)> = BTreeMap::new();
+    for report in reports {
+        let Some(agents) = report.get("agents").and_then(Value::as_array) else {
+            continue;
+        };
+        for agent in agents {
+            let Some(agent_id) = agent.get("agentId").and_then(Value::as_str) else {
+                continue;
+            };
+            let history = agent.get("history").unwrap_or(&Value::Null);
+            let hits = history
+                .get("sessionCount")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                .max(1);
+            let Some(days) = history.get("dailyUsage").and_then(Value::as_array) else {
+                continue;
+            };
+            for day in days {
+                let Some(models) = day.get("modelUsage").and_then(Value::as_object) else {
+                    continue;
+                };
+                for (model, tokens) in models {
+                    let tokens = tokens.as_u64().unwrap_or(0);
+                    let key = (agent_id.to_owned(), coding_model_key(model).to_owned());
+                    let entry = totals.entry(key).or_insert((0, 0));
+                    entry.0 = entry.0.saturating_add(hits);
+                    entry.1 = entry.1.saturating_add(tokens);
+                }
+            }
+        }
+    }
+    totals
+        .into_iter()
+        .map(|(key, (hits, tokens))| {
+            let token_buckets = (tokens / USAGE_TOKEN_BUCKET).min(8);
+            (
+                key,
+                (hits.saturating_add(token_buckets) as i64).min(MAX_USAGE_WEIGHT),
+            )
+        })
+        .collect()
+}
+
+fn usage_weights_from_store() -> BTreeMap<(String, String), i64> {
+    let Ok(store) = crate::platform::client_state::ClientStateStore::portable_read_only() else {
+        return BTreeMap::new();
+    };
+    let Ok(collection) = store.read_collection_read_only("agent-usage-reports") else {
+        return BTreeMap::new();
+    };
+    let reports = collection
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    usage_weights_from_reports(&reports)
+}
+
 impl AgentIntelligenceCatalog {
     pub fn embedded() -> Result<&'static Self, CatalogError> {
         CATALOG
@@ -254,6 +417,74 @@ impl AgentIntelligenceCatalog {
             })
     }
 
+    fn task_tags(&self, model_id: &str) -> Vec<String> {
+        let keys = model_lookup_keys(model_id);
+        let frontend = self.frontend.iter().any(|row| keys.contains(&row.model_id));
+        let backend = self.coding.iter().any(|row| keys.contains(&row.model));
+        let intelligence = self.intelligence.iter().find(|row| {
+            keys.iter()
+                .any(|key| row.model_id == *key || row.model_id.starts_with(&format!("{key}-")))
+        });
+        let cheap = intelligence.is_some_and(|row| {
+            row.cost_per_task_usd
+                .is_none_or(|cost| !cost.is_finite() || cost <= 0.15)
+        });
+        let mut tags = Vec::new();
+        if frontend {
+            tags.push(TASK_FRONTEND.to_owned());
+        }
+        if backend {
+            tags.push(TASK_BACKEND.to_owned());
+        }
+        if cheap {
+            tags.push(TASK_RETRIEVAL.to_owned());
+        }
+        if intelligence.is_some() && !frontend && !backend {
+            tags.push(TASK_TEXT.to_owned());
+        }
+        tags
+    }
+
+    fn project_model(&self, model_id: &str) -> Option<Value> {
+        let keys = model_lookup_keys(model_id);
+        let intelligence = self.intelligence.iter().find(|row| {
+            keys.iter()
+                .any(|key| row.model_id == *key || row.model_id.starts_with(&format!("{key}-")))
+        });
+        let coding_score = self
+            .coding
+            .iter()
+            .filter(|row| keys.contains(&row.model))
+            .map(|row| row.index_score)
+            .max();
+        let cost = self
+            .coding
+            .iter()
+            .filter(|row| keys.contains(&row.model))
+            .map(|row| row.cost_per_task_usd)
+            .min_by(|left, right| left.total_cmp(right))
+            .or_else(|| intelligence.and_then(|row| row.cost_per_task_usd));
+        let tags = self.task_tags(model_id);
+        if intelligence.is_none() && coding_score.is_none() && tags.is_empty() {
+            return None;
+        }
+        let mut object = Map::new();
+        object.insert("modelId".to_owned(), json!(coding_model_key(model_id)));
+        if let Some(score) = intelligence.and_then(|row| row.intelligence_index) {
+            object.insert("intelligenceIndex".to_owned(), json!(score));
+        }
+        if let Some(score) = coding_score {
+            object.insert("codingScore".to_owned(), json!(score));
+        }
+        if let Some(cost) = cost.filter(|value| value.is_finite()) {
+            object.insert("costPerTaskUsd".to_owned(), json!(cost));
+        }
+        if !tags.is_empty() {
+            object.insert("taskTags".to_owned(), json!(tags));
+        }
+        Some(Value::Object(object))
+    }
+
     /// Highest WebDev Arena score among models actually available locally.
     pub fn frontend_model<'a, I>(&self, available: I) -> Option<&FrontendArenaModel>
     where
@@ -346,6 +577,21 @@ pub fn coding_harness_id(agent_id: &str) -> &str {
         "antigravity" => "gemini-cli",
         value => value,
     }
+}
+
+fn model_lookup_keys(model_id: &str) -> Vec<String> {
+    let raw = model_id.trim();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    let mut keys = vec![
+        raw.to_owned(),
+        intelligence_model_alias(raw).to_owned(),
+        coding_model_key(raw).to_owned(),
+    ];
+    keys.sort();
+    keys.dedup();
+    keys
 }
 
 fn coding_reasoning_effort(thinking: &str) -> Option<&str> {
@@ -478,6 +724,7 @@ fn compare_optional_cost(left: Option<f64>, right: Option<f64>) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn model_intelligence_matches_model_and_thinking() {
@@ -651,5 +898,60 @@ mod tests {
             .frontend_model(["gpt-5-6-sol-xhigh", "kimi-k3"])
             .unwrap();
         assert_eq!(selected.model_id, "kimi-k3");
+    }
+
+    #[test]
+    fn task_tags_follow_existing_catalog_signal() {
+        let kimi = task_tags_for_model("kimi-k3");
+        assert!(kimi.contains(&TASK_FRONTEND.to_owned()));
+        assert!(kimi.contains(&TASK_BACKEND.to_owned()));
+        let glm = task_tags_for_model("glm-5-2");
+        assert!(glm.contains(&TASK_BACKEND.to_owned()));
+        let flash = task_tags_for_model("deepseek-v4-flash");
+        assert!(
+            flash.contains(&TASK_TEXT.to_owned()) || flash.contains(&TASK_RETRIEVAL.to_owned())
+        );
+        assert!(task_tags_for_model("not-measured").is_empty());
+        let projected = project_allowlisted_model("kimi-k3").unwrap();
+        assert_eq!(projected["modelId"], "kimi-k3");
+        assert!(projected.get("codingScore").is_some());
+        assert!(
+            projected["taskTags"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(TASK_FRONTEND))
+        );
+        let harness = project_harness_catalog("cursor", 4);
+        assert_eq!(harness["agentId"], "cursor");
+        assert!(!harness["models"].as_array().unwrap().is_empty());
+        assert!(
+            harness["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row.get("variantId").is_some())
+        );
+    }
+
+    #[test]
+    fn usage_report_counts_overlay_the_static_seed() {
+        let reports = [json!({
+            "agents": [{
+                "agentId": "codex",
+                "history": {
+                    "sessionCount": 3,
+                    "dailyUsage": [{
+                        "modelUsage": { "gpt-5.6-luna": 25_000 }
+                    }]
+                }
+            }]
+        })];
+        let weights = usage_weights_from_reports(&reports);
+        assert_eq!(
+            weights.get(&("codex".to_owned(), "gpt-5-6-luna".to_owned())),
+            Some(&5)
+        );
+        let seed = agent_model_max_intelligence("codex", "gpt-5.6-luna").unwrap();
+        assert_eq!(seed.saturating_add(5), seed + 5);
     }
 }

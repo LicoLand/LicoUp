@@ -11,7 +11,7 @@ private Canonical Conversation store. The public contract is frozen by
 
 - Primary protocol revision: `2025-06-18`; compatible inbound revision:
   `2025-11-25`
-- Server: `lico-up-subagents` `0.11.0`
+- Server: `lico-up-subagents` `0.12.0`
 - Transport: a desktop-owned authenticated loopback Streamable HTTP service
 - Provider entry: one tool-free stdio connector
 - Providers in this mesh: Codex, Cursor, and Antigravity
@@ -27,9 +27,28 @@ The exact ordered tool catalog is:
 7. `lico_subagent_delegate`
 8. `lico_subagent_continue`
 9. `lico_subagent_cancel`
+10. `lico_assistant_workflow_policy`
 
 All input schemas are closed. The connector contains no catalog or provider
 logic and performs one HTTP attempt for each stdio frame.
+
+## Built-in workflow policy discovery
+
+`lico_assistant_workflow_policy` is a read-only discovery and retrieval tool.
+Any authenticated caller may pass `{}` for a `policies` array of summaries,
+then `{"policyId":"better-plan"}` for the selected policy's `id`, `name`,
+`version`, `description`, `instructions`, and `modelPresets`. An unknown id
+returns `workflow_policy_not_found` at `workflow-policy/read`. The optional id
+is a nonempty bounded string; additional arguments are rejected.
+
+The bundled Better Plan policy describes Designer, Worker, and independent
+Reviewer responsibilities. Its model presets declare `schemaVersion: 1` and contain `assistant`, `candidateUse`,
+and ordered `roles`; each role has ordered `candidates` with `modelName` and
+`reasoningEffort`. Names are semantic recommendations, resolved against current
+Agent catalogs and Profiles before execution. Reading a policy needs no
+Conversation Membership, creates no run, changes no binding, and grants no
+execution authority. The Assistant decides when to adopt it. See
+[built-in policies](../functionality/ADAPTIVE-FLYWHEEL.md#built-in-assistant-policies).
 
 ## Assistant Profiles and temporary workflows
 
@@ -59,7 +78,7 @@ this answer channel. The decision rides the same idempotent execute call —
 same Conversation, Membership, workflow, bindings, input, and idempotency
 key — so a replayed decision is stale and settles nothing. `advance` enters
 the declared target, `return` re-enters the completed state, and `terminate`
-cancels the run. The nine-tool catalog is unchanged.
+cancels the run.
 
 ## Authority and lineage
 

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "assistant": "designated-assistant",
+  "candidateUse": "ordered-fallback",
+  "roles": [
+    {
+      "role": "designer",
+      "candidates": [
+        { "modelName": "GPT-6 Astra", "reasoningEffort": "max" },
+        { "modelName": "GPT-6 Astra", "reasoningEffort": "xhigh" }
+      ]
+    },
+    {
+      "role": "complex-worker",
+      "candidates": [
+        { "modelName": "Grok 4.6", "reasoningEffort": "xhigh" },
+        { "modelName": "GPT-6 Astra", "reasoningEffort": "medium" }
+      ]
+    },
+    {
+      "role": "standard-worker",
+      "candidates": [
+        { "modelName": "DeepSeek V4 Flash", "reasoningEffort": "max" },
+        { "modelName": "GLM 5.3 Flash", "reasoningEffort": "max" },
+        { "modelName": "GPT-5.6-Luna", "reasoningEffort": "max" },
+        { "modelName": "Gemini 3.8 Flash", "reasoningEffort": "high" }
+      ]
+    },
+    {
+      "role": "frontend-worker",
+      "candidates": [
+        { "modelName": "Kimi K3", "reasoningEffort": "max" },
+        { "modelName": "GPT-6 Astra", "reasoningEffort": "medium" }
+      ]
+    },
+    {
+      "role": "reviewer",
+      "candidates": [
+        { "modelName": "Kimi K3", "reasoningEffort": "max" }
+      ]
+    }
+  ]
+}

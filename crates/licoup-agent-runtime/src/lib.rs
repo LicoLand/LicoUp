@@ -10,6 +10,7 @@ use serde_json::Value;
 use std::fmt;
 
 pub mod protocol_selector;
+pub mod work_context;
 
 /// Providers supported by the client-owned Subagent Mesh. The value is an
 /// opaque catalog identifier, never a command, path, endpoint, or account.
@@ -299,7 +300,9 @@ pub struct SubagentDispatchRequest {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub working_directory: Option<String>,
+    pub task_type: Option<String>,
     pub timeout_ms: Option<u64>,
+    pub timeout_unbounded: bool,
     pub max_stdout_bytes: Option<u64>,
     pub max_stderr_bytes: Option<u64>,
     pub generated_guidance: Option<String>,

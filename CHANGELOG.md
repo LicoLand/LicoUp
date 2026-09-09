@@ -4,6 +4,15 @@ This file records notable public changes to LicoUp. Product and package
 versions are owned by `tools/client-version.json` and the synchronized package
 manifests.
 
+## 0.2.0 — 2026-09-10
+
+- Added a durable Continuous Assistant flow that gives each long-running request
+  one child Conversation, keeps one parent timeline card at its creation point,
+  and preserves membership-scoped continue, steering, cancellation, recovery,
+  and completion notices.
+- Added persisted adoption policy and evaluation receipts with explicit
+  fail-closed boundaries for unqualified live or paid model execution.
+
 ## Unreleased
 
 - Continuing a Cursor IDE-listed conversation from LicoUp now opens a new Agent

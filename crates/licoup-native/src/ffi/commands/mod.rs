@@ -1444,7 +1444,7 @@ fn build_command_table() -> CommandTable {
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: agent_hub::handle_catalog,
-        help: "Project Agent Hub cards from warehouse recipes; optional agent-id runs one live local lookup",
+        help: "Project Agent Hub cards from the AgentCatalog; optional agent-id runs one live local lookup",
     });
     table.register_command(CommandSpec {
         source_module: "agent_hub.rs",

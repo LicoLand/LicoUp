@@ -23,6 +23,7 @@ import {
   inspectPresentationContractPubspec,
   inspectPresentationContractSources,
   inspectPresentationPlaneDirectories,
+  isSemanticValueContract,
 } from "../../../apps/desktop/scripts/client-architecture/checks/flutter/presentation-boundary.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -629,6 +630,61 @@ test("stable Presentation and frontend reject every implementation direction", (
     "apps/desktop/lib/src/frontend/features/nested/panel.dart",
     "export '../../../mystery/runtime.dart' if (dart.library.io) '../../../backend/runtime.dart';\n",
   )).includes("presentation_boundary_frontend_unknown_internal"));
+});
+
+test("semantic value contracts allow data enums and reject execution APIs", () => {
+  const generatedPath = "apps/desktop/lib/src/contracts/generated/conversation.g.dart";
+  const valueEnumSource = [
+    "enum ContinuityPort {",
+    "  continuityRead('continuity-read'),",
+    "  unrecognized('');",
+    "  const ContinuityPort(this.wireName);",
+    "  final String wireName;",
+    "}",
+    "final class ContinuityMatter {",
+    "  const ContinuityMatter(this.id);",
+    "  final String id;",
+    "}",
+    "",
+  ].join("\n");
+  assert.equal(isSemanticValueContract(valueEnumSource), true);
+
+  const executionPort = [
+    "abstract interface class ConversationPort {",
+    "  Future<void> commit();",
+    "}",
+    "",
+  ].join("\n");
+  assert.equal(isSemanticValueContract(executionPort), false);
+
+  const executionRepository = "final class ConversationRepository { void save() {} }\n";
+  assert.equal(isSemanticValueContract(executionRepository), false);
+
+  const executionService = "final class AgentGateway { Stream<void> get changes; }\n";
+  assert.equal(isSemanticValueContract(executionService), false);
+
+  const tree = terminalPresentationTree();
+  const frontendPath = "apps/desktop/lib/src/frontend/features/example_panel.dart";
+  const valueTree = withSource(tree, generatedPath, valueEnumSource);
+  assert.equal(rulesFor(withSource(
+    valueTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/generated/conversation.g.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"), false);
+
+  const portTree = withSource(tree, generatedPath, executionPort);
+  assert.ok(rulesFor(withSource(
+    portTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/generated/conversation.g.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
+
+  const repositoryTree = withSource(tree, generatedPath, executionRepository);
+  assert.ok(rulesFor(withSource(
+    repositoryTree,
+    frontendPath,
+    "import 'package:licoup/src/contracts/generated/conversation.g.dart';\n",
+  )).includes("presentation_boundary_frontend_direction"));
 });
 
 test("stable Presentation rejects runtime ownership regardless of naming", () => {
