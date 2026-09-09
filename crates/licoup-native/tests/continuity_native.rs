@@ -894,3 +894,57 @@ fn host_driver_reaches_pi_execute_for_resume_start_and_loss() {
         },
     }
 }
+
+#[test]
+fn host_driver_transport_forwards_developer_instructions_to_fake_codex_process() {
+    use licoup_native::platform::work_context_ports::{
+        AdapterCall, AdapterTransport, HostDriverTransport,
+    };
+    use serde_json::json;
+
+    let executable = compile_fake_codex();
+    let mut result_path = executable.clone();
+    result_path.set_extension("result.json");
+    std::fs::write(&result_path, "\"ok\"").unwrap();
+    let cwd = std::env::temp_dir().join(format!(
+        "lico-ca-driver-cwd-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&cwd).unwrap();
+    let transport = HostDriverTransport::new(ProtocolFamily::Codex)
+        .with_executable(executable.to_string_lossy().into_owned())
+        .with_working_directory(cwd.clone());
+    let started = transport.invoke(&AdapterCall {
+        method: "thread/start",
+        params: json!({
+            "text": "PRODUCTION-GRANT-SENTINEL prepare notes now",
+            "developerInstructions": "PRODUCTION-GRANT-SENTINEL stay in the instruction field",
+            "workingDirectory": cwd.to_string_lossy(),
+        }),
+    });
+    assert!(
+        started.ok,
+        "HostDriverTransport must start the fake process"
+    );
+    let mut seen = executable.clone();
+    seen.set_extension("turn-start.seen");
+    let seen = std::fs::read_to_string(&seen).unwrap_or_default();
+    assert_eq!(
+        seen.trim(),
+        "1",
+        "fake Codex must observe developerInstructions without rewriting text"
+    );
+    let mut leak = executable.clone();
+    leak.set_extension("leak.seen");
+    assert!(
+        !leak.exists(),
+        "driver-layer call must not invent out-of-scope material"
+    );
+    assert!(transport.invocation_count() >= 1);
+    let _ = std::fs::remove_file(result_path);
+    let _ = std::fs::remove_dir_all(executable.parent().unwrap());
+    let _ = std::fs::remove_dir_all(cwd);
+}

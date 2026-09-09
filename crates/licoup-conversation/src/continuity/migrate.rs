@@ -5,7 +5,7 @@ use super::error::store_to_continuity;
 use super::generated::ContinuityFailure;
 use crate::store::{ContinuityUnitOfWork, StoreResult};
 
-pub const CONTINUITY_SCHEMA_VERSION: &str = "6";
+pub const CONTINUITY_SCHEMA_VERSION: &str = "7";
 
 const STATEMENTS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS continuity_schema (
@@ -210,6 +210,7 @@ pub fn ensure_continuity_schema(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<
         Err(error) => return Err(error.into()),
     };
     if current.as_deref() == Some(CONTINUITY_SCHEMA_VERSION) {
+        ensure_adoption_policy_keys(unit)?;
         return Ok(false);
     }
     for statement in STATEMENTS {
@@ -224,7 +225,20 @@ pub fn ensure_continuity_schema(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<
         [CONTINUITY_SCHEMA_VERSION],
     )?;
     ensure_designation_epoch(unit)?;
+    ensure_adoption_policy_keys(unit)?;
     Ok(true)
+}
+
+fn ensure_adoption_policy_keys(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<()> {
+    unit.execute(
+        "INSERT OR IGNORE INTO continuity_schema(key, value) VALUES ('adoption_enabled', '1')",
+        [],
+    )?;
+    unit.execute(
+        "INSERT OR IGNORE INTO continuity_schema(key, value) VALUES ('adoption_stage', 'offline')",
+        [],
+    )?;
+    Ok(())
 }
 
 fn migrate_outstanding_pending_state(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<()> {

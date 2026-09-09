@@ -133,6 +133,29 @@ structured streaming events, and explicit model selection. Its release
 readiness remains unverified, and LicoUp does not claim cancel, active-prompt
 steer, history readback, reasoning override, or multimodal input for this lane.
 
+## Continue work in ordinary chat
+
+Ordinary chat stays in the current conversation. When the Assistant accepts
+durable follow-through, LicoUp opens one child conversation in the parent's
+second-level list and keeps one task card on the original parent message. The
+people and agents who write in that child keep their own authorship. The parent
+card does not add executor badges.
+
+You can pause a goal, cancel the exact operation, close an observer, or delete
+a conversation. Those actions stay distinct. Turning the adoption policy off
+stops new automatic interpretation and dispatch; it does not erase goals,
+history, or unknown work that still needs recovery. Offline and admitted-shadow
+stages also keep automatic follow-through off even when the policy is enabled.
+Expanded coverage means more than one distinct qualified responsibility, not
+two stored identities of the same one. Archiving a conversation or losing
+owner access stops new automatic follow-through immediately. A source label is not authorization. Source material reaches a child only
+through the already admitted grant for that recipient.
+
+Qualification for a real or paid model remains unknown until that evaluation
+is separately authorized. This client does not claim live verification, a
+full release, or always-on mobile background work. The owning specification is
+[Continuous Assistant](../architecture/CONTINUOUS-ASSISTANT.md).
+
 ## Connect OpenClaw or Hermes in your VM
 
 This desktop flow is for a VM you control. Install and configure OpenClaw or

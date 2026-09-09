@@ -208,6 +208,14 @@
     {
       "path": "tests/fixtures/continuous-assistant/qualification/zero-sample-query.json",
       "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/adoption/adoption-policy.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/adoption/live-admission-facts.json",
+      "kind": "config-object"
     }
   ],
   "publicReferenceDomains": [

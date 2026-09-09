@@ -115,6 +115,74 @@ impl ContinuityUnitOfWork<'_> {
         Ok(found != 0)
     }
 
+    pub fn current_human_owner_membership(
+        &self,
+        conversation_id: &str,
+    ) -> StoreResult<Option<String>> {
+        self.query_row(
+            "SELECT m.id FROM memberships m
+             JOIN principals p ON p.id=m.principal_id
+             WHERE m.conversation_id=?1 AND m.status='active'
+               AND m.access='owner' AND p.kind='human'
+             ORDER BY m.joined_at ASC, m.id ASC LIMIT 1",
+            [conversation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn membership_is_active_agent(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<bool> {
+        let found: i64 = self.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM memberships m
+               JOIN principals p ON p.id=m.principal_id
+               WHERE m.id=?1 AND m.conversation_id=?2
+                 AND m.status='active' AND p.kind='agent'
+             )",
+            rusqlite::params![membership_id, conversation_id],
+            |row| row.get(0),
+        )?;
+        Ok(found != 0)
+    }
+
+    pub fn event_author_and_sequence(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+    ) -> StoreResult<Option<(Option<String>, i64)>> {
+        self.query_row(
+            "SELECT author_membership_id, sequence
+             FROM events WHERE id=?1 AND conversation_id=?2",
+            rusqlite::params![event_id, conversation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn event_canonical_parts(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+    ) -> StoreResult<Vec<(String, String, String)>> {
+        if !self.event_exists(conversation_id, event_id)? {
+            return Ok(Vec::new());
+        }
+        self.query_vec(
+            "SELECT id, kind, content FROM event_parts
+             WHERE event_id=?1 AND runtime_cursor IS NULL
+             ORDER BY ordinal ASC, id ASC",
+            [event_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(Into::into)
+    }
+
     pub fn bump_revision_cas(&self, conversation_id: &str, expected: i64) -> StoreResult<i64> {
         let changed = self.execute(
             "UPDATE conversations
@@ -374,6 +442,20 @@ impl ConversationStore {
                 unit.request_commit();
             }
             Ok(dirty)
+        })
+    }
+
+    pub fn continuity_revocation_generation(&self, conversation_id: &str) -> StoreResult<i64> {
+        self.ensure_continuity_migrated()?;
+        self.with_connection(|connection| {
+            let generation: Option<i64> = connection
+                .query_row(
+                    "SELECT revocation_generation FROM continuity_scope WHERE conversation_id=?1",
+                    [conversation_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(generation.unwrap_or(0))
         })
     }
 
