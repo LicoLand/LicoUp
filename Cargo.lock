@@ -2024,14 +2024,14 @@ dependencies = [
 
 [[package]]
 name = "licoup-agent-adapters"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "licoup-agent-runtime",
 ]
 
 [[package]]
 name = "licoup-agent-runtime"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -2040,11 +2040,11 @@ dependencies = [
 
 [[package]]
 name = "licoup-client-state"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "licoup-conversation"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "proptest",
@@ -2057,11 +2057,11 @@ dependencies = [
 
 [[package]]
 name = "licoup-endpoint-core"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "licoup-native"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "base64",
@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "licoup-platform-bridges"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -2141,7 +2141,7 @@ dependencies = [
 
 [[package]]
 name = "licoup-protocol-bindings"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "linux-raw-sys"
@@ -3607,7 +3607,7 @@ dependencies = [
 
 [[package]]
 name = "trybuild"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde_json",
  "toml",
