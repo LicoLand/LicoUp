@@ -18,25 +18,31 @@ use licoup_conversation::continuity::{
     ContinuityEvidenceRef, ContinuityEvidenceResult, ContinuityFailure, ContinuityFailureCode,
     ContinuityGoalCompletionTransition, ContinuityGoalControl, ContinuityGoalEvent,
     ContinuityGoalLifecycle, ContinuityGoalProgress, ContinuityInterpretationProposal,
-    ContinuityNextAttention, ContinuityReadPort, ContinuitySourceOwnerKind, ContinuitySourceRef,
-    ContinuitySourceValidity, ContinuityTaskConversationRelation, ContinuityVerificationKind,
-    ContinuityVisibilityScope, ContinuityWake, INGRESS_USER_POSTED_DESIGNATION,
-    PENDING_OBLIGATION_PAGE_SIZE, ack_completion_notices, append_criterion_evidence,
-    apply_goal_control, bump_host_generation, bump_revocation, child_work_identity_from_payload,
-    child_work_identity_payload, child_work_named_key, child_work_operation_id, child_work_started,
-    clear_child_work_live, commit_user_posted_proposal, consume_logical_wake, continuity_now_ms,
-    current_host_generation, enqueue_review_wake, ingress_execution_recorded,
-    list_all_pending_wakes, list_child_work_live, list_due_goals, list_pending_completion_notices,
-    list_qualification_evidence, list_unacked_child_work_page, list_unapplied_settlements,
-    list_unknown_effect_ids, load_effect_status, put_agreement, put_qualification_evidence,
-    read_agreements, read_child_links, read_child_work_accepted, read_child_work_intent,
-    read_child_work_live, read_goal, read_goal_bundle, read_oldest_pending_child_work,
-    read_pending_wakes, read_qualification_invalidations, read_relation_for_child,
-    read_settlement_applied, read_settlement_pending, record_child_work_accepted,
-    record_child_work_intent, record_child_work_live, record_child_work_started,
-    record_ingress_execution, record_qualification_invalidation, record_settlement_applied,
-    record_settlement_pending, replay_effect, resolve_completion_notice, schedule_goal_due,
-    settlement_applied, update_wake_host_generation,
+    ContinuityNextAttention, ContinuityQualificationResult, ContinuityReadPort,
+    ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity,
+    ContinuityTaskConversationRelation, ContinuityVerificationKind, ContinuityVisibilityScope,
+    ContinuityWake, INGRESS_USER_POSTED_DESIGNATION, PENDING_OBLIGATION_PAGE_SIZE,
+    StoredEvaluationCase, StoredEvaluationCorpus, ack_completion_notices, admit_evaluation_corpus,
+    admit_evaluation_session, append_criterion_evidence, apply_goal_control, bump_host_generation,
+    bump_revocation, child_work_identity_from_payload, child_work_identity_payload,
+    child_work_named_key, child_work_operation_id, child_work_started, claim_collection_operation,
+    clear_child_work_live, commit_collected_qualification, commit_user_posted_proposal,
+    consume_logical_wake, continuity_now_ms, current_host_generation, enqueue_review_wake,
+    ingress_execution_recorded, list_all_pending_wakes, list_child_work_live, list_due_goals,
+    list_pending_completion_notices, list_qualification_evidence, list_unacked_child_work_page,
+    list_unapplied_settlements, list_unknown_effect_ids, load_adoption_policy_values,
+    load_effect_status, load_evaluation_corpus, load_evaluation_session,
+    load_qualification_evidence_for, persist_adoption_enabled, persist_adoption_stage,
+    put_agreement, put_qualification_evidence, read_agreements, read_child_links,
+    read_child_work_accepted, read_child_work_intent, read_child_work_live, read_goal,
+    read_goal_bundle, read_oldest_pending_child_work, read_pending_wakes,
+    read_qualification_invalidations, read_relation_for_child, read_settlement_applied,
+    read_settlement_pending, record_child_work_accepted, record_child_work_intent,
+    record_child_work_live, record_child_work_started, record_ingress_execution,
+    record_qualification_invalidation, record_settlement_applied, record_settlement_pending,
+    release_collection_operation, replay_effect, resolve_completion_notice,
+    resolve_stored_owner_authority, schedule_goal_due, settlement_applied,
+    update_wake_host_generation,
 };
 use licoup_conversation::{
     Conversation, ConversationStore, DispatchState, EventPartKind, MembershipStatus, PrincipalKind,
@@ -45,8 +51,8 @@ use licoup_conversation::{
 use serde_json::{Value, json};
 
 use crate::domain::agent_intelligence_catalog::qualification::{
-    EvidenceBundle, EvidenceClass, QualificationObservation, QualificationService, RequestKind,
-    query_record,
+    EvidenceBundle, EvidenceClass, LiveAdmission, LiveProvenance, QualificationObservation,
+    QualificationService, RequestKind, query_record,
 };
 use crate::platform::runtime_adapters::{
     RuntimeAdapter, RuntimeAdapterError, adapter_for_agent_public,
@@ -55,6 +61,7 @@ use crate::platform::work_context_ports::{
     AdapterTransport, HostDriverTransport, bind_adapter_work_context, bind_host_work_context,
 };
 
+use super::adoption::{AdoptionPolicy, stage_from_coverage};
 use super::cognition::{
     AdmittedAssistantInvoker, AdmittedTurnRequest, AssemblySnapshot, CognitionIntent,
     CognitionInvoker, CognitionRequest, CompleteAdmittedTurn, PersistentTurnCognition,
@@ -62,6 +69,12 @@ use super::cognition::{
     collect_admitted_granted_facts, compose_admitted_turn_params, compose_continuity_guidance,
     proposal_creates_new_advancement, proposal_from_assistant_turn_response,
     proposal_from_turn_output, proposal_has_business_effect,
+};
+#[cfg(any(test, feature = "test-support"))]
+use super::collection::HermeticEvaluationObserver;
+use super::collection::{
+    AdmittedRuntimeEvaluationObserver, CollectedEvaluation, ExternalEvaluationObserver,
+    produce_collected_evaluation, validate_collection_receipt,
 };
 use super::context::{
     ContinuityWorkspace, FrozenContextStore, UnavailableContextCompositionService,
@@ -203,6 +216,9 @@ pub struct ContinuityHost {
     handed_notices: Mutex<BTreeSet<String>>,
     unknown_effects: Mutex<Vec<(String, String, Option<String>)>>,
     host_generation: Mutex<i64>,
+    adoption: Mutex<AdoptionPolicy>,
+    evaluation_observer: Mutex<Option<Arc<dyn ExternalEvaluationObserver>>>,
+    complete_turn: Mutex<Option<Arc<CompleteAdmittedTurn>>>,
     owner_claimed: AtomicBool,
     runtime_bound: AtomicBool,
     using_script: AtomicBool,
@@ -219,6 +235,9 @@ impl ContinuityHost {
             .map_err(|err| anyhow!(err.to_string()))?;
         let generation = current_host_generation(&store).map_err(attach_err)?;
         let unknown = list_unknown_effect_ids(&store).map_err(attach_err)?;
+        let adoption = load_adoption_policy_values(&store)
+            .map(|(enabled, stage)| AdoptionPolicy::from_stored(enabled, &stage))
+            .unwrap_or_default();
         let scripted = Arc::new(ScriptedCognitionInvoker::new());
         let production = Arc::new(AdmittedAssistantInvoker::new());
         let cognition: Arc<dyn CognitionInvoker> = production.clone();
@@ -237,11 +256,15 @@ impl ContinuityHost {
             handed_notices: Mutex::new(BTreeSet::new()),
             unknown_effects: Mutex::new(unknown),
             host_generation: Mutex::new(generation),
+            adoption: Mutex::new(adoption),
+            evaluation_observer: Mutex::new(None),
+            complete_turn: Mutex::new(None),
             owner_claimed: AtomicBool::new(false),
             runtime_bound: AtomicBool::new(false),
             using_script: AtomicBool::new(false),
         });
         host.reload_qualification().map_err(attach_err)?;
+        host.sync_adoption_stage().map_err(attach_err)?;
         Ok(host)
     }
 
@@ -311,6 +334,7 @@ impl ContinuityHost {
     }
 
     pub fn bind_persistent_cognition(&self, complete_turn: Arc<CompleteAdmittedTurn>) {
+        *lock(&self.complete_turn) = Some(Arc::clone(&complete_turn));
         self.production.bind(Arc::new(PersistentTurnCognition::new(
             self.store.clone(),
             complete_turn,
@@ -910,7 +934,227 @@ impl ContinuityHost {
             &payload,
             "synthetic",
         )?;
-        lock(&self.qualification).ingest_immutable(bundle)
+        lock(&self.qualification).ingest_immutable(bundle)?;
+        self.sync_adoption_stage()
+    }
+
+    pub fn ingest_test_live_qualification(
+        &self,
+        bundle: EvidenceBundle,
+        admission: LiveAdmission,
+    ) -> Result<(), ContinuityFailure> {
+        if !admission.provenance().is_test_evidence() {
+            return Err(source_unavailable());
+        }
+        self.persist_live_bundle(bundle.authorize_live(admission)?)
+    }
+
+    pub fn admit_live_evaluation_session(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+        recipient_membership_id: &str,
+    ) -> Result<String, ContinuityFailure> {
+        let conversation = self
+            .store
+            .get(conversation_id)
+            .map_err(|_| source_unavailable())?;
+        let identity = self.candidate_identity(&conversation, recipient_membership_id);
+        let responsibility = responsibility_id(&conversation, recipient_membership_id);
+        let session = admit_evaluation_session(
+            &self.store,
+            conversation_id,
+            owner_membership_id,
+            recipient_membership_id,
+            &responsibility,
+            identity,
+            &lock(&self.qualification).policy().policy_revision,
+        )?;
+        Ok(session.session_id)
+    }
+
+    pub fn admit_live_evaluation_corpus(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+        dataset_id: &str,
+        cases: Vec<StoredEvaluationCase>,
+    ) -> Result<StoredEvaluationCorpus, ContinuityFailure> {
+        admit_evaluation_corpus(
+            &self.store,
+            conversation_id,
+            owner_membership_id,
+            dataset_id,
+            cases,
+        )
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn bind_hermetic_evaluation_observer(&self, observations: Vec<QualificationObservation>) {
+        *lock(&self.evaluation_observer) =
+            Some(Arc::new(HermeticEvaluationObserver::new(observations)));
+    }
+
+    /// Production collection. Always runs the trusted producer, then evaluates
+    /// and commits atomically. Only the external observer may be replaced.
+    pub fn collect_admitted_qualification(
+        &self,
+        session_id: &str,
+    ) -> Result<(), ContinuityFailure> {
+        let session =
+            load_evaluation_session(&self.store, session_id)?.ok_or_else(invalid_request)?;
+        if session.consumed {
+            return Err(idempotency_conflict());
+        }
+        let authority = resolve_stored_owner_authority(
+            &self.store,
+            &session.conversation_id,
+            &session.owner_membership_id,
+        )?;
+        if authority.owner_principal_id() != session.owner_principal_id {
+            return Err(invalid_request());
+        }
+        let conversation = self
+            .store
+            .get(&session.conversation_id)
+            .map_err(|_| source_unavailable())?;
+        let expected = self.candidate_identity(&conversation, &session.recipient_membership_id);
+        if expected != session.identity
+            || responsibility_id(&conversation, &session.recipient_membership_id)
+                != session.responsibility_id
+        {
+            return Err(invalid_request());
+        }
+        if lock(&self.qualification).has_evidence(&session.responsibility_id, &session.identity) {
+            return Err(idempotency_conflict());
+        }
+        let identity_key = identity_key(&session.identity);
+        if load_qualification_evidence_for(&self.store, &session.responsibility_id, &identity_key)?
+            .is_some()
+        {
+            return Err(idempotency_conflict());
+        }
+        claim_collection_operation(&self.store, &session, &identity_key)?;
+        let outcome = (|| {
+            let collected = self.produce_admitted_session_evaluation(&session)?;
+            validate_collection_receipt(&collected.receipt, &session, &collected.observations)?;
+            let admission = LiveAdmission::from_admitted_session(
+                session.identity.clone(),
+                authority,
+                session.session_id.clone(),
+                lock(&self.qualification).policy().policy_revision.clone(),
+                collected.receipt.collector_id.clone(),
+                collected.receipt.digest.clone(),
+            )?;
+            let bundle = EvidenceBundle {
+                responsibility_id: session.responsibility_id.clone(),
+                identity: session.identity.clone(),
+                observations: collected.observations.clone(),
+                evidence_class: EvidenceClass::Synthetic,
+                provenance: None,
+            }
+            .authorize_live(admission)?;
+            let payload = serde_json::to_string(&json!({
+                "responsibilityId": bundle.responsibility_id,
+                "identity": bundle.identity,
+                "observations": bundle.observations,
+                "evidenceClass": "live-authorized",
+                "provenance": bundle.provenance,
+                "collectionReceipt": collected.receipt,
+            }))
+            .map_err(|_| source_unavailable())?;
+            commit_collected_qualification(
+                &self.store,
+                &session,
+                &session.responsibility_id,
+                &identity_key,
+                &payload,
+                "live-authorized",
+            )?;
+            lock(&self.qualification).ingest_immutable(bundle)?;
+            self.sync_adoption_stage()
+        })();
+        if outcome.is_err() {
+            let _ = release_collection_operation(&self.store, &session.session_id);
+        }
+        outcome
+    }
+
+    fn produce_admitted_session_evaluation(
+        &self,
+        session: &licoup_conversation::continuity::StoredEvaluationSession,
+    ) -> Result<CollectedEvaluation, ContinuityFailure> {
+        if let Some(bound) = lock(&self.evaluation_observer).clone() {
+            return produce_collected_evaluation(session, bound.as_ref());
+        }
+        let observer = AdmittedRuntimeEvaluationObserver::new(
+            self.store.clone(),
+            lock(&self.complete_turn).clone(),
+        );
+        produce_collected_evaluation(session, &observer)
+    }
+
+    fn persist_live_bundle(&self, bundle: EvidenceBundle) -> Result<(), ContinuityFailure> {
+        let Some(provenance) = bundle.provenance.clone() else {
+            return Err(source_unavailable());
+        };
+        let identity_key = identity_key(&bundle.identity);
+        if lock(&self.qualification).has_evidence(&bundle.responsibility_id, &bundle.identity) {
+            return Err(idempotency_conflict());
+        }
+        if load_qualification_evidence_for(&self.store, &bundle.responsibility_id, &identity_key)?
+            .is_some()
+        {
+            return Err(idempotency_conflict());
+        }
+        let payload = serde_json::to_string(&json!({
+            "responsibilityId": bundle.responsibility_id,
+            "identity": bundle.identity,
+            "observations": bundle.observations,
+            "evidenceClass": "live-authorized",
+            "provenance": provenance,
+        }))
+        .map_err(|_| source_unavailable())?;
+        put_qualification_evidence(
+            &self.store,
+            &bundle.responsibility_id,
+            &identity_key,
+            &payload,
+            "live-authorized",
+        )?;
+        lock(&self.qualification).ingest_immutable(bundle)?;
+        self.sync_adoption_stage()
+    }
+
+    pub fn adoption_policy(&self) -> AdoptionPolicy {
+        lock(&self.adoption).clone()
+    }
+
+    pub fn set_adoption_enabled(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+        enabled: bool,
+    ) -> Result<AdoptionPolicy, ContinuityFailure> {
+        persist_adoption_enabled(&self.store, conversation_id, owner_membership_id, enabled)?;
+        lock(&self.adoption).enabled = enabled;
+        if enabled {
+            self.sync_adoption_stage()?;
+        }
+        Ok(self.adoption_policy())
+    }
+
+    pub fn admit_request(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        kind: RequestKind,
+    ) -> Result<(), ContinuityFailure> {
+        let conversation = self
+            .store
+            .get(conversation_id)
+            .map_err(|_| source_unavailable())?;
+        self.qualify(&conversation, membership_id, kind)
     }
 
     pub fn annotate_list(&self, value: &mut Value) {
@@ -943,6 +1187,12 @@ impl ContinuityHost {
             .collect();
         value["taskViews"] = json!(views);
         value["unknownEffectIds"] = json!(self.unknown_effect_ids());
+        let policy = self.adoption_policy();
+        value["adoptionPolicy"] = json!({
+            "enabled": policy.enabled,
+            "stage": policy.stage,
+            "realModelQualification": "unknown",
+        });
     }
 
     pub fn list_pending_completion_notices(
@@ -1244,6 +1494,8 @@ impl ContinuityHost {
             };
             if progress.lifecycle == ContinuityGoalLifecycle::Achieved
                 || progress.lifecycle == ContinuityGoalLifecycle::Cancelled
+                || progress.control == ContinuityGoalControl::Paused
+                || progress.control == ContinuityGoalControl::CancelRequested
             {
                 continue;
             }
@@ -1323,18 +1575,49 @@ impl ContinuityHost {
 
     fn reload_qualification(&self) -> Result<(), ContinuityFailure> {
         let rows = list_qualification_evidence(&self.store)?;
+        let policy_revision = lock(&self.qualification).policy().policy_revision.clone();
         let mut service = QualificationService::draft_port();
-        for (_, _, payload, class) in rows {
-            if class != "synthetic" {
-                continue;
-            }
+        for (_, _, payload, _) in rows {
             let value: Value = serde_json::from_str(&payload).map_err(|_| source_unavailable())?;
-            let Some(bundle) = bundle_from_stored(&value) else {
+            let Some(bundle) = bundle_from_stored(self, &value, &policy_revision) else {
                 continue;
             };
             let _ = service.ingest_immutable(bundle);
         }
         *lock(&self.qualification) = service;
+        Ok(())
+    }
+
+    fn sync_adoption_stage(&self) -> Result<(), ContinuityFailure> {
+        let rows = list_qualification_evidence(&self.store)?;
+        let service = lock(&self.qualification);
+        let policy_revision = service.policy().policy_revision.clone();
+        let mut admitted = BTreeSet::new();
+        let mut qualified = BTreeSet::new();
+        for (_, _, payload, _) in rows {
+            let Ok(value) = serde_json::from_str::<Value>(&payload) else {
+                continue;
+            };
+            let Some(bundle) = bundle_from_stored(self, &value, &policy_revision) else {
+                continue;
+            };
+            if bundle.evidence_class != EvidenceClass::LiveAuthorized {
+                continue;
+            }
+            admitted.insert(bundle.responsibility_id.clone());
+            if let Ok(assessment) = service.assess(&bundle.responsibility_id, &bundle.identity) {
+                if assessment.result == ContinuityQualificationResult::Qualified {
+                    qualified.insert(bundle.responsibility_id);
+                }
+            }
+        }
+        drop(service);
+        let stage = stage_from_coverage(admitted.len() as u64, qualified.len() as u64);
+        let mut policy = lock(&self.adoption);
+        if policy.stage != stage {
+            policy.stage = stage;
+            persist_adoption_stage(&self.store, stage.as_str())?;
+        }
         Ok(())
     }
 
@@ -2847,8 +3130,10 @@ impl ContinuityHost {
                 return true;
             }
             self.store
-                .posted_event_text(conversation_id, &source.opaque_id)
-                .is_ok()
+                .event(conversation_id, &source.opaque_id)
+                .ok()
+                .flatten()
+                .is_some()
         });
     }
 
@@ -2875,6 +3160,16 @@ impl ContinuityHost {
         membership_id: &str,
         kind: RequestKind,
     ) -> Result<(), ContinuityFailure> {
+        if kind == RequestKind::AutomaticAdvancement {
+            if !lock(&self.adoption).automatic_interpretation_allowed() {
+                return Err(qualification_unknown_failure());
+            }
+            if !self
+                .responsibility_live_qualification_currently_valid(conversation, membership_id)?
+            {
+                return Err(qualification_unknown_failure());
+            }
+        }
         let identity = self.candidate_identity(conversation, membership_id);
         let responsibility = responsibility_id(conversation, membership_id);
         self.invalidate_if_identity_changed(&responsibility, &identity)?;
@@ -2890,6 +3185,19 @@ impl ContinuityHost {
         conversation: &Conversation,
         membership_id: &str,
     ) -> ContinuityCandidateIdentity {
+        self.candidate_identity_at(
+            conversation,
+            membership_id,
+            &lock(&self.qualification).policy().policy_revision,
+        )
+    }
+
+    fn candidate_identity_at(
+        &self,
+        conversation: &Conversation,
+        membership_id: &str,
+        policy_revision: &str,
+    ) -> ContinuityCandidateIdentity {
         let profile = self.store.membership_profile(membership_id).ok().flatten();
         let agent_id = conversation
             .memberships
@@ -2903,13 +3211,19 @@ impl ContinuityHost {
                 ProtocolFamily::Codex => "adapter:codex",
                 ProtocolFamily::Pi => "adapter:pi",
             });
-        candidate_identity_from_selection(
+        let mut identity = candidate_identity_from_selection(
             membership_id,
             agent_id.as_deref(),
             profile.as_ref(),
             adapter,
-            &lock(&self.qualification).policy().policy_revision,
-        )
+            policy_revision,
+        );
+        if let Ok(Some(corpus)) = load_evaluation_corpus(&self.store, &conversation.id) {
+            if !corpus.version_digest.is_empty() {
+                identity.dataset_version = corpus.version_digest;
+            }
+        }
+        identity
     }
 
     fn invalidate_if_identity_changed(
@@ -2928,7 +3242,11 @@ impl ContinuityHost {
             let Ok(value) = serde_json::from_str::<Value>(&payload) else {
                 continue;
             };
-            if let Some(bundle) = bundle_from_stored(&value) {
+            if let Some(bundle) = bundle_from_stored(
+                self,
+                &value,
+                &lock(&self.qualification).policy().policy_revision,
+            ) {
                 let _ = lock(&self.qualification).withdraw_for_identity_change(
                     &stored_responsibility,
                     &bundle.identity,
@@ -2937,6 +3255,32 @@ impl ContinuityHost {
             }
         }
         Ok(())
+    }
+
+    fn responsibility_live_qualification_currently_valid(
+        &self,
+        conversation: &Conversation,
+        membership_id: &str,
+    ) -> Result<bool, ContinuityFailure> {
+        let identity = self.candidate_identity(conversation, membership_id);
+        let responsibility = responsibility_id(conversation, membership_id);
+        let key = identity_key(&identity);
+        let Some((_, _, payload, class)) =
+            load_qualification_evidence_for(&self.store, &responsibility, &key)?
+        else {
+            return Ok(false);
+        };
+        if class != "live-authorized" {
+            return Ok(false);
+        }
+        let value: Value = serde_json::from_str(&payload).map_err(|_| source_unavailable())?;
+        let policy_revision = lock(&self.qualification).policy().policy_revision.clone();
+        let Some(bundle) = bundle_from_stored(self, &value, &policy_revision) else {
+            return Ok(false);
+        };
+        let assessment =
+            lock(&self.qualification).assess(&bundle.responsibility_id, &bundle.identity)?;
+        Ok(assessment.result == ContinuityQualificationResult::Qualified)
     }
 
     fn lookup_is_invalidated(
@@ -3045,16 +3389,98 @@ fn has_valid_next_responsibility(progress: &ContinuityGoalProgress) -> bool {
     }
 }
 
-fn bundle_from_stored(value: &Value) -> Option<EvidenceBundle> {
-    let responsibility_id = value.get("responsibilityId")?.as_str()?.to_owned();
-    let identity = serde_json::from_value(value.get("identity")?.clone()).ok()?;
+fn bundle_from_stored(
+    host: &ContinuityHost,
+    value: &Value,
+    policy_revision: &str,
+) -> Option<EvidenceBundle> {
+    let stored_responsibility = value.get("responsibilityId")?.as_str()?.to_owned();
+    let identity: ContinuityCandidateIdentity =
+        serde_json::from_value(value.get("identity")?.clone()).ok()?;
     let observations: Vec<QualificationObservation> =
         serde_json::from_value(value.get("observations").cloned().unwrap_or(json!([]))).ok()?;
+    let stored_class = value
+        .get("evidenceClass")
+        .and_then(Value::as_str)
+        .unwrap_or("synthetic");
+    if stored_class == "live-authorized" {
+        let provenance: LiveProvenance =
+            serde_json::from_value(value.get("provenance")?.clone()).ok()?;
+        let admission = if provenance.is_test_evidence() {
+            LiveAdmission::admit_test_evidence(identity.clone(), provenance).ok()?
+        } else {
+            let session = load_evaluation_session(host.store(), &provenance.session_id)
+                .ok()
+                .flatten()?;
+            let authority = resolve_stored_owner_authority(
+                host.store(),
+                &session.conversation_id,
+                &session.owner_membership_id,
+            )
+            .ok()?;
+            if authority.owner_principal_id() != session.owner_principal_id
+                || session.session_id != provenance.session_id
+                || session.conversation_id != provenance.conversation_id
+                || session.owner_membership_id != provenance.source_id
+                || session.owner_principal_id != provenance.owner_principal_id
+                || session.responsibility_id != stored_responsibility
+                || session.identity != identity
+            {
+                return None;
+            }
+            let conversation = host.store().get(&session.conversation_id).ok()?;
+            let current = host.candidate_identity_at(
+                &conversation,
+                &session.recipient_membership_id,
+                policy_revision,
+            );
+            if current != identity
+                || responsibility_id(&conversation, &session.recipient_membership_id)
+                    != stored_responsibility
+            {
+                return None;
+            }
+            if provenance.collection_digest.trim().is_empty()
+                || provenance.collector_id.trim().is_empty()
+                || provenance.collector_id == "collector:synthetic"
+            {
+                return None;
+            }
+            let receipt_value = value.get("collectionReceipt").cloned()?;
+            let receipt: super::collection::CollectionReceipt =
+                serde_json::from_value(receipt_value).ok()?;
+            if receipt.digest != provenance.collection_digest
+                || receipt.collector_id != provenance.collector_id
+                || receipt.session_id != session.session_id
+                || receipt.responsibility_id != stored_responsibility
+            {
+                return None;
+            }
+            validate_collection_receipt(&receipt, &session, &observations).ok()?;
+            LiveAdmission::from_admitted_session(
+                current,
+                authority,
+                session.session_id,
+                session.policy_revision,
+                provenance.collector_id,
+                provenance.collection_digest,
+            )
+            .ok()?
+        };
+        return Some(EvidenceBundle {
+            responsibility_id: stored_responsibility,
+            identity,
+            observations,
+            evidence_class: EvidenceClass::LiveAuthorized,
+            provenance: Some(admission.provenance().clone()),
+        });
+    }
     Some(EvidenceBundle {
-        responsibility_id,
+        responsibility_id: stored_responsibility,
         identity,
         observations,
         evidence_class: EvidenceClass::Synthetic,
+        provenance: None,
     })
 }
 
@@ -3166,8 +3592,10 @@ fn child_local_event<'a>(
         return "";
     }
     if store
-        .posted_event_text(child_conversation_id, event_id)
-        .is_ok()
+        .event(child_conversation_id, event_id)
+        .ok()
+        .flatten()
+        .is_some()
     {
         event_id
     } else {
@@ -3205,9 +3633,30 @@ fn identities_match(expected: &ChildWorkIdentity, actual: &ChildWorkIdentity) ->
         && expected.work_generation == actual.work_generation
 }
 
+fn idempotency_conflict() -> ContinuityFailure {
+    crate::domain::assistant_continuity::cognition::continuity_failure(
+        ContinuityFailureCode::IdempotencyConflict,
+        licoup_conversation::continuity::ContinuityFailureStage::ContinuityCommit,
+    )
+}
+
+fn invalid_request() -> ContinuityFailure {
+    crate::domain::assistant_continuity::cognition::continuity_failure(
+        ContinuityFailureCode::InvalidRequest,
+        licoup_conversation::continuity::ContinuityFailureStage::ContinuityAdmission,
+    )
+}
+
 fn source_unavailable() -> ContinuityFailure {
     crate::domain::assistant_continuity::cognition::continuity_failure(
         ContinuityFailureCode::SourceUnavailable,
+        licoup_conversation::continuity::ContinuityFailureStage::ContinuityAdmission,
+    )
+}
+
+fn qualification_unknown_failure() -> ContinuityFailure {
+    crate::domain::assistant_continuity::cognition::continuity_failure(
+        ContinuityFailureCode::QualificationUnknown,
         licoup_conversation::continuity::ContinuityFailureStage::ContinuityAdmission,
     )
 }

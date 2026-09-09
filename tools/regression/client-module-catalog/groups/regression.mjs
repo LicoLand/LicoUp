@@ -1276,22 +1276,6 @@ export const REGRESSION_MODULES = Object.freeze([
       ),
     }),
   defineModule({
-      id: "regression.dashboard-desktop-chrome-source-bundle",
-      kind: "regression-infrastructure",
-      summary: "Dashboard desktop chrome exact exports, ordinary leaf boundaries, and dedicated widget regressions",
-      inputs: [
-        "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
-        "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
-        "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
-        "tests/contract/client/dashboard-desktop-chrome-source-bundle.test.mjs",
-      ],
-      command: command(
-        "node",
-        ["--test", "tests/contract/client/dashboard-desktop-chrome-source-bundle.test.mjs"],
-        60_000,
-      ),
-    }),
-  defineModule({
       id: "regression.agent-usage-codex-source-bundle",
       kind: "regression-infrastructure",
       summary: "Codex usage split ownership, local-only scanning, cache, and privacy boundaries",
@@ -1703,6 +1687,109 @@ export const REGRESSION_MODULES = Object.freeze([
         "node",
         ["--test", "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs"],
         60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.client-bridge-generation",
+      kind: "regression-infrastructure",
+      summary: "Client bridge generator check with real rustfmt and dart format",
+      inputs: [
+        "tests/contract/client/client-bridge-generation.test.mjs",
+        "tools/scripts/generate-client-bridge-contracts.mjs",
+        "schemas/client_bridge/**",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/client-bridge-generation.test.mjs"],
+        5 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-contract",
+      kind: "regression-infrastructure",
+      summary: "Continuous Assistant conversation continuity contract and generated bridge format",
+      inputs: [
+        "tests/contract/client/continuous-assistant-contract.test.mjs",
+        "schemas/client_bridge/conversation.json",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-contract.test.mjs"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-integration",
+      kind: "regression-infrastructure",
+      summary: "Whole continuity_host integration target through the Node wrapper",
+      inputs: [
+        "tests/contract/client/continuous-assistant-integration.test.mjs",
+        "crates/licoup-native/tests/continuity_host.rs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-integration.test.mjs"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-scenarios",
+      kind: "regression-infrastructure",
+      summary: "Whole continuity_scenarios target through the Node wrapper",
+      inputs: [
+        "tests/contract/client/continuous-assistant-scenarios.test.mjs",
+        "tests/product-e2e/cli/continuous-assistant/scenarios/**",
+        "crates/licoup-native/tests/continuity_scenarios.rs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-scenarios.test.mjs"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-evaluation",
+      kind: "regression-infrastructure",
+      summary: "Whole continuity_evaluation target through the Node wrapper",
+      inputs: [
+        "tests/contract/client/continuous-assistant-evaluation.test.mjs",
+        "tests/product-e2e/cli/continuous-assistant/evaluation/**",
+        "crates/licoup-native/tests/continuity_evaluation.rs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-evaluation.test.mjs"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-adoption",
+      kind: "regression-infrastructure",
+      summary: "Whole continuity_adoption target through the Node wrapper",
+      inputs: [
+        "tests/contract/client/continuous-assistant-adoption.test.mjs",
+        "tests/product-e2e/cli/continuous-assistant/adoption/**",
+        "tests/fixtures/continuous-assistant/adoption/**",
+        "crates/licoup-native/tests/continuity_adoption.rs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-adoption.test.mjs"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
+      id: "regression.continuous-assistant-ux",
+      kind: "regression-infrastructure",
+      summary: "Continuous Assistant Flutter journeys through the Node wrapper",
+      inputs: [
+        "tests/contract/client/continuous-assistant-ux.test.mjs",
+        "apps/desktop/test/continuous_assistant_journeys/**",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/continuous-assistant-ux.test.mjs"],
+        10 * 60_000,
       ),
     }),
 ]);

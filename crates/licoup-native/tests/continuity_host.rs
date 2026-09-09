@@ -18,14 +18,15 @@ use licoup_conversation::continuity::{
     INGRESS_USER_POSTED_DESIGNATION, PROPOSAL_RESPONSE_CONTRACT,
     PROPOSAL_RESPONSE_DELEGATION_EXAMPLE, append_criterion_evidence, apply_goal_control,
     child_work_operation_id, count_cancel_effects, enqueue_review_wake, ingress_execution_recorded,
-    list_all_parent_grants, list_all_pending_wakes, list_unacked_child_work, put_agreement,
-    put_effect, put_grant, read_agreements, read_child_work_accepted, read_child_work_intent,
-    read_child_work_live, read_goal, record_child_work_intent, replay_effect, revoke_source,
-    set_continuity_clock, set_continuity_interrupt,
+    list_all_parent_grants, list_all_pending_wakes, list_unacked_child_work,
+    list_unapplied_settlements, put_agreement, put_effect, put_grant, read_agreements,
+    read_child_work_accepted, read_child_work_intent, read_child_work_live, read_goal,
+    read_settlement_pending, record_child_work_intent, replay_effect, revoke_source,
+    set_continuity_clock, set_continuity_interrupt, settlement_applied,
 };
 use licoup_conversation::{
-    ConversationStore, EventPartKind, MembershipAccess, NewEventPart, Principal, PrincipalKind,
-    ProfileIntentUpdate,
+    ConversationEvent, ConversationStore, EventPart, EventPartKind, MembershipAccess, NewEventPart,
+    Principal, PrincipalKind, ProfileIntentUpdate,
 };
 use licoup_native::domain::assistant_continuity::cognition::{SemanticScript, SpanAxis};
 use licoup_native::domain::assistant_continuity::{
@@ -822,10 +823,12 @@ fn load_integration_fixture() -> Value {
 
 fn assertion_holds(name: &str, state: &Value) -> bool {
     match name {
-        "/goal/has_next_attention" => state["hasNextAttention"] == true && state["goalCount"] == 1,
+        "/goal/has_next_attention" => {
+            state["hasNextAttention"] == true && state["shareGoalPresent"] == true
+        }
         "/goal/not_closed" => state["achieved"] == false && state["lifecycle"] != "achieved",
         "/matter/association_preserved" => {
-            state["matterId"] == "matter:share" && state["relationCount"] == 1
+            state["matterId"] == "matter:share" && state["shareRelationCount"] == 1
         }
         "/agreement/scope_is_matter" => state["agreementScope"] == "matter",
         "/agreement/correction_effective" => {
@@ -834,13 +837,14 @@ fn assertion_holds(name: &str, state: &Value) -> bool {
         }
         "/effects/no_cancel" => state["cancelEffects"] == 0 && state["lifecycle"] != "cancelled",
         "/effects/no_paid_wake" => {
-            state["replayed"] == 0 && state["cognitionDelta"] == 0 && state["paused"] == true
+            state["replayed"] == 0 && state["paused"] == true && state["paidShareWake"] == false
         }
         "/state/no_orphan_goal" => {
-            state["goalCount"] == state["relationCount"] && state["goalCount"] == 1
+            state["goalCount"] == state["relationCount"]
+                && state["relationCount"].as_u64().unwrap_or(0) >= 1
         }
         "/recovery/no_duplicate_effect" => {
-            state["replayed"] == 0 && state["duplicateWakes"] == false
+            state["duplicateWakes"] == false && state["interruptedRecoveredOnce"] == true
         }
         "/goal/waiting_for_user" => {
             state["lifecycle"] == "waiting" || state["waitingForUser"] == true
@@ -861,6 +865,8 @@ fn assertion_holds(name: &str, state: &Value) -> bool {
         "/context/current_source_versions" => {
             state["maxSubjectVersion"].as_i64().unwrap_or(0) >= 2
                 && state["staleEvidenceUsed"] == false
+                && state["shareChildHasMaterialAv2"] == true
+                && state["shareChildHasMaterialAv1"] == false
         }
         "/artifact/author_preserved" => {
             state["artifactAuthor"]
@@ -878,16 +884,30 @@ fn assertion_holds(name: &str, state: &Value) -> bool {
     }
 }
 
-fn observe_journey(service: &ConversationService, conversation_id: &str, extras: Value) -> Value {
+fn observe_journey(
+    service: &ConversationService,
+    conversation_id: &str,
+    extras: Value,
+    start_calls: &[Value],
+    complete_calls: &[Value],
+) -> Value {
     let host = service.continuity().cloned().unwrap();
     let relations = host
         .store()
         .list_child_relations(conversation_id, None, 50)
-        .unwrap();
-    let agreements = read_agreements(host.store(), conversation_id).unwrap();
-    let progress = relations
-        .first()
-        .and_then(|relation| read_goal(host.store(), &relation.goal_id).ok().flatten());
+        .expect("list_child_relations");
+    let agreements = read_agreements(host.store(), conversation_id).expect("read_agreements");
+    let share = relations
+        .iter()
+        .find(|relation| relation.goal_id == "goal:matter:share");
+    let progress = match share {
+        Some(relation) => Some(
+            read_goal(host.store(), &relation.goal_id)
+                .expect("read_goal")
+                .expect("share goal"),
+        ),
+        None => None,
+    };
     let waiting_for_user = progress.as_ref().is_some_and(|item| {
         item.lifecycle == ContinuityGoalLifecycle::Waiting
             || matches!(
@@ -908,16 +928,18 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
         .max()
         .unwrap_or(0);
     let stale_evidence_used = evidence.iter().any(|item| {
-        item.validity == ContinuitySourceValidity::Stale
-            || item.source.validity == ContinuitySourceValidity::Stale
+        (item.validity == ContinuitySourceValidity::Stale
+            || item.source.validity == ContinuitySourceValidity::Stale)
+            && item.subject_version == max_subject
     });
-    let cancel_effects = count_cancel_effects(host.store(), conversation_id).unwrap_or(-1);
+    let cancel_effects =
+        count_cancel_effects(host.store(), conversation_id).expect("count_cancel_effects");
     let child_ids = relations
         .iter()
         .map(|item| item.child_conversation_id.clone())
         .collect::<Vec<_>>();
     let outbound_grant = list_all_parent_grants(host.store())
-        .unwrap_or_default()
+        .expect("list_all_parent_grants")
         .into_iter()
         .any(|grant| {
             !child_ids.contains(&grant.recipient_conversation_id)
@@ -928,34 +950,74 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
                         encoded.contains("external") || encoded.contains("outbound")
                     })
         });
-    let conversation = service.store().get(conversation_id).unwrap();
+    let conversation = service
+        .store()
+        .get(conversation_id)
+        .expect("parent conversation");
     let agent = conversation
         .assistant_membership_id
         .clone()
-        .unwrap_or_default();
-    let last_event_id = service
+        .expect("parent assistant");
+    let page = service
         .execute(json!({
             "action": "conversation.events.page",
             "conversationId": conversation_id,
             "limit": 50
         }))
-        .ok()
-        .and_then(|page| page["events"].as_array().cloned())
-        .unwrap_or_default()
-        .into_iter()
+        .expect("conversation.events.page");
+    let last_event = page["events"]
+        .as_array()
+        .expect("events page")
+        .iter()
         .rev()
-        .find_map(|event| event["id"].as_str().map(str::to_owned));
-    let guidance = last_event_id
-        .as_deref()
-        .filter(|_| !agent.is_empty())
-        .and_then(|event_id| {
-            host.compose_ingress_guidance(conversation_id, &agent, event_id)
-                .ok()
+        .find(|event| event.get("id").and_then(Value::as_str).is_some())
+        .cloned()
+        .expect("last event");
+    let last_event_id = last_event["id"].as_str().expect("last event id");
+    let last_event_text = last_event["parts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part["content"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let _guidance = host
+        .compose_ingress_guidance(conversation_id, &agent, last_event_id)
+        .expect("compose_ingress_guidance");
+    let share_member = share
+        .map(|relation| child_recipient_id(host.store(), &relation.child_conversation_id))
+        .unwrap_or_default();
+    let sibling_member = relations
+        .iter()
+        .find(|relation| relation.goal_id == "goal:matter:sibling")
+        .map(|relation| child_recipient_id(host.store(), &relation.child_conversation_id))
+        .unwrap_or_default();
+    let share_child_id = share.map(|relation| relation.child_conversation_id.as_str());
+    let share_execution = share_child_id
+        .map(|child_id| child_work_blob(start_calls, child_id, &share_member))
+        .unwrap_or_default();
+    let share_guidance = share
+        .map(|relation| {
+            host.compose_ingress_guidance(&relation.child_conversation_id, &share_member, "")
+                .expect("share child compose_ingress_guidance")
         })
         .unwrap_or_default();
-    let private_leak = guidance.contains("报名") || guidance.contains("资料A");
-    let (artifact_author, artifact_rewritten) = relations
-        .first()
+    let sibling_invocations =
+        invocation_blob_for_member(start_calls, complete_calls, &sibling_member);
+    let parent_latest = start_calls.iter().rev().find(|params| {
+        params.get("conversationId").and_then(Value::as_str) == Some(conversation_id)
+            && params.get("membershipId").and_then(Value::as_str) == Some(agent.as_str())
+            && params.get("continuityKind").and_then(Value::as_str) != Some("child-work")
+    });
+    let parent_payload = parent_latest.map(delivered_guidance).unwrap_or_default();
+    let parent_chitchat_leak = (!last_event_text.contains("资料A")
+        && parent_payload.contains("资料A"))
+        || (!last_event_text.contains("报名") && parent_payload.contains("报名"));
+    let private_leak = parent_chitchat_leak
+        || sibling_invocations.contains("资料A")
+        || sibling_invocations.contains("报名")
+        || share_execution.contains("兄弟任务私有哨兵");
+    let (artifact_author, artifact_rewritten) = share
         .map(|relation| {
             let child = host.store().get(&relation.child_conversation_id).unwrap();
             let expected = child
@@ -991,8 +1053,7 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
             (author, rewritten)
         })
         .unwrap_or((String::new(), false));
-    let closure_authority = relations
-        .first()
+    let closure_authority = share
         .and_then(|relation| relation.completion_transition.as_ref())
         .and_then(|transition| serde_json::to_value(transition.authority_kind).ok())
         .unwrap_or(json!(""));
@@ -1000,13 +1061,19 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
         .as_ref()
         .is_some_and(|item| item.lifecycle == ContinuityGoalLifecycle::Achieved)
         && closure_authority == "user-acceptance";
-    let last_subject = extras
-        .get("lastEvidenceSubjectVersion")
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
+    let goal_count = relations
+        .iter()
+        .filter(|relation| {
+            read_goal(host.store(), &relation.goal_id)
+                .expect("read_goal for orphan check")
+                .is_some()
+        })
+        .count();
     let mut state = json!({
-        "goalCount": progress.iter().count(),
+        "goalCount": goal_count,
         "relationCount": relations.len(),
+        "shareGoalPresent": share.is_some(),
+        "shareRelationCount": share.is_some() as i64,
         "hasNextAttention": progress.as_ref().is_some_and(|item| item.next_attention.is_some()),
         "achieved": progress.as_ref().is_some_and(|item| item.lifecycle == ContinuityGoalLifecycle::Achieved),
         "lifecycle": progress.as_ref().and_then(|item| serde_json::to_value(item.lifecycle).ok()).unwrap_or(json!("")),
@@ -1016,7 +1083,9 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
         "agreementRevision": agreements.iter().map(|item| item.effective_revision).max().unwrap_or(0),
         "agreementSupersedes": agreements.iter().filter_map(|item| item.supersedes).max().unwrap_or(0),
         "replayed": extras.get("lastReplayed").cloned().unwrap_or(json!(0)),
-        "matterId": relations.first().map(|item| item.goal_id.trim_start_matches("goal:").to_owned()).unwrap_or_default(),
+        "matterId": share
+            .map(|item| item.goal_id.trim_start_matches("goal:").to_owned())
+            .unwrap_or_default(),
         "waitingForUser": waiting_for_user,
         "evidenceCount": evidence.len(),
         "maxSubjectVersion": max_subject,
@@ -1030,7 +1099,19 @@ fn observe_journey(service: &ConversationService, conversation_id: &str, extras:
         "artifactAuthorRewritten": artifact_rewritten,
         "closureAuthority": closure_authority,
         "userAccepted": user_accepted,
-        "subjectVersionMatches": last_subject > 0 && last_subject == max_subject,
+        "subjectVersionMatches": evidence.iter().any(|item| item.subject_version == max_subject)
+            && max_subject > 0,
+        "shareChildHasMaterialA": extras.get("shareExecHasA").cloned().unwrap_or(json!(false)),
+        "shareChildHasMaterialAv1": extras
+            .get("shareExecHasAv1")
+            .cloned()
+            .unwrap_or(json!(false)),
+        "shareChildHasMaterialAv2": extras
+            .get("shareExecHasAv2")
+            .cloned()
+            .unwrap_or(json!(false)),
+        "shareChildHasMaterialB": extras.get("shareExecHasB").cloned().unwrap_or(json!(false)),
+        "shareCompositionHasAv2": share_guidance.contains("资料A版本2"),
         "cognitionDelta": extras.get("lastCognitionDelta").cloned().unwrap_or(json!(0)),
         "duplicateWakes": extras.get("lastDuplicateWakes").cloned().unwrap_or(json!(false)),
         "staleRejected": extras.get("lastStaleRejected").cloned().unwrap_or(json!(false)),
@@ -1065,6 +1146,18 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
     let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
     designate_assistant(&service, &conversation_id, &owner, &agent);
     let mut extras = json!({});
+    let snapshot_calls = || {
+        (
+            start_calls
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .clone(),
+            complete_calls
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .clone(),
+        )
+    };
     for step in fixture["steps"].as_array().unwrap() {
         let seq = step["seq"].as_u64().unwrap();
         let kind = step["kind"].as_str().unwrap_or("");
@@ -1079,6 +1172,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     2 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Exploration,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1086,6 +1180,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     3 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Correction,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1097,6 +1192,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     5 | 10 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Question,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1104,6 +1200,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     13 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Correction,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1115,6 +1212,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     15 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Pause,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1122,6 +1220,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     17 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Reference,
                         ContinuityMatterSubject::Resumed,
                         false,
@@ -1129,6 +1228,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     19 => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Approval,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1136,6 +1236,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     ),
                     _ => speech_proposal_json(
                         &conversation_id,
+                        seq,
                         ContinuitySpeechAct::Question,
                         ContinuityMatterSubject::Existing,
                         false,
@@ -1197,7 +1298,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     assert_eq!(revised["ok"], true, "step {seq} revise-agreement");
                 }
                 if seq == 15 {
-                    let relation = first_relation(&host, &conversation_id);
+                    let relation = share_relation(&host, &conversation_id);
                     let paused = service
                         .execute(json!({
                             "action": "pause-goal",
@@ -1208,7 +1309,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     assert_eq!(paused["control"], "paused");
                 }
                 if seq == 17 {
-                    let relation = first_relation(&host, &conversation_id);
+                    let relation = share_relation(&host, &conversation_id);
                     let resumed = service
                         .execute(json!({
                             "action": "resume-goal",
@@ -1219,7 +1320,7 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     assert_eq!(resumed["control"], "enabled");
                 }
                 if seq == 19 {
-                    let relation = first_relation(&host, &conversation_id);
+                    let relation = share_relation(&host, &conversation_id);
                     let current = read_goal(host.store(), &relation.goal_id).unwrap().unwrap();
                     let progress = ContinuityGoalProgress {
                         lifecycle: ContinuityGoalLifecycle::Achieved,
@@ -1249,38 +1350,115 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                 }
             }
             "evidence" => {
-                let relation = first_relation(&host, &conversation_id);
-                let version = if seq == 11 { 2 } else { 1 };
-                let accepted = service
-                    .execute(json!({
-                        "action": "accept-evidence",
-                        "conversationId": conversation_id,
-                        "goalId": relation.goal_id,
-                        "evidence": {
-                            "source": {
-                                "ownerKind": "event",
-                                "opaqueId": format!("event:evidence:{seq}"),
-                                "sourceRevision": version,
-                                "digest": digest(5),
-                                "visibilityScope": "goal",
-                                "validity": "current"
-                            },
-                            "issuer": "user",
-                            "subjectVersion": version,
-                            "criterionId": "criterion:notes",
-                            "observedAt": seq,
-                            "result": "pass",
-                            "verificationKind": "user-acceptance",
-                            "scope": "goal",
-                            "validity": "current"
-                        }
-                    }))
-                    .unwrap();
-                assert_eq!(accepted["ok"], true, "step {seq} accept-evidence");
-                extras["lastEvidenceSubjectVersion"] = json!(version);
+                let relation = share_relation(&host, &conversation_id);
+                if seq == 4 {
+                    let posted = post_material(
+                        &service,
+                        &conversation_id,
+                        &owner,
+                        "资料A版本1 已到达，含报名清单。",
+                    );
+                    accept_posted_evidence(
+                        &service,
+                        &conversation_id,
+                        &relation.goal_id,
+                        &owner,
+                        &posted,
+                        "criterion:material-a",
+                        1,
+                        seq,
+                    );
+                    disclose_child_after_evidence(
+                        &service,
+                        &host,
+                        &conversation_id,
+                        &relation.goal_id,
+                    );
+                    let (starts, completes) = snapshot_calls();
+                    assert!(
+                        share_child_disclosed(
+                            &host,
+                            &starts,
+                            &completes,
+                            &relation.child_conversation_id,
+                            "资料A版本1",
+                        ),
+                        "step 4 must deliver 资料A to the share child"
+                    );
+                    record_share_execution(
+                        &mut extras,
+                        &host,
+                        &starts,
+                        &relation.child_conversation_id,
+                        &["资料A版本1"],
+                        &["资料A版本2", "兄弟任务私有哨兵"],
+                    );
+                } else if seq == 11 {
+                    let material_b =
+                        post_material(&service, &conversation_id, &owner, "资料B版本1 已到达。");
+                    accept_posted_evidence(
+                        &service,
+                        &conversation_id,
+                        &relation.goal_id,
+                        &owner,
+                        &material_b,
+                        "criterion:material-b",
+                        1,
+                        seq,
+                    );
+                    let material_a_v2 =
+                        post_material(&service, &conversation_id, &owner, "资料A版本2 替换旧稿。");
+                    accept_posted_evidence(
+                        &service,
+                        &conversation_id,
+                        &relation.goal_id,
+                        &owner,
+                        &material_a_v2,
+                        "criterion:material-a",
+                        2,
+                        seq,
+                    );
+                    disclose_child_after_evidence(
+                        &service,
+                        &host,
+                        &conversation_id,
+                        &relation.goal_id,
+                    );
+                    let (starts, completes) = snapshot_calls();
+                    assert!(
+                        share_child_disclosed(
+                            &host,
+                            &starts,
+                            &completes,
+                            &relation.child_conversation_id,
+                            "资料A版本2",
+                        ),
+                        "step 11 must deliver 资料A v2"
+                    );
+                    assert!(
+                        share_child_disclosed(
+                            &host,
+                            &starts,
+                            &completes,
+                            &relation.child_conversation_id,
+                            "资料B版本1",
+                        ),
+                        "step 11 must deliver 资料B"
+                    );
+                    record_share_execution(
+                        &mut extras,
+                        &host,
+                        &starts,
+                        &relation.child_conversation_id,
+                        &["资料A版本2", "资料B版本1"],
+                        &["资料A版本1", "兄弟任务私有哨兵"],
+                    );
+                } else {
+                    panic!("unexecuted CA-J001 evidence step {seq}");
+                }
             }
             "runtime" => {
-                let relation = first_relation(&host, &conversation_id);
+                let relation = share_relation(&host, &conversation_id);
                 let child = host.store().get(&relation.child_conversation_id).unwrap();
                 let child_author = child
                     .assistant_membership_id
@@ -1330,33 +1508,33 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     extras["lastStaleRejected"] = json!(stale.is_err());
                 }
                 if seq == 18 {
-                    let accepted = service
-                        .execute(json!({
-                            "action": "accept-evidence",
-                            "conversationId": conversation_id,
-                            "goalId": relation.goal_id,
-                            "evidence": {
-                                "source": {
-                                    "ownerKind": "event",
-                                    "opaqueId": "event:evidence:v3",
-                                    "sourceRevision": 3,
-                                    "digest": digest(8),
-                                    "visibilityScope": "goal",
-                                    "validity": "current"
-                                },
-                                "issuer": "runtime",
-                                "subjectVersion": 3,
-                                "criterionId": "criterion:notes",
-                                "observedAt": 18,
-                                "result": "pass",
-                                "verificationKind": "deterministic",
-                                "scope": "goal",
-                                "validity": "current"
-                            }
-                        }))
-                        .unwrap();
-                    assert_eq!(accepted["ok"], true, "step 18 accept-evidence");
-                    extras["lastEvidenceSubjectVersion"] = json!(3);
+                    let posted = post_material(
+                        &service,
+                        &relation.child_conversation_id,
+                        &child_author,
+                        "终稿v3 引用检查返回。",
+                    );
+                    accept_posted_evidence(
+                        &service,
+                        &conversation_id,
+                        &relation.goal_id,
+                        &child_author,
+                        &posted,
+                        "criterion:material-draft",
+                        3,
+                        seq,
+                    );
+                    let progress = read_goal(host.store(), &relation.goal_id)
+                        .expect("read_goal after v3")
+                        .expect("share goal after v3");
+                    assert!(
+                        progress
+                            .criterion_evidence_refs
+                            .iter()
+                            .any(|item| item.subject_version == 3
+                                && item.source.opaque_id == posted.id),
+                        "step 18 must persist real v3 evidence"
+                    );
                 }
                 if seq == 20 {
                     extras["lastLateUnachieved"] = json!(
@@ -1372,19 +1550,56 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                     let generation = host.host_generation();
                     assert_eq!(observer.continuity().unwrap().host_generation(), generation);
                 } else if seq == 8 {
+                    let posted = service
+                        .execute(json!({
+                            "action": "conversation.message.post",
+                            "conversationId": conversation_id,
+                            "authorMembershipId": owner,
+                            "content": "interrupted progress",
+                        }))
+                        .expect("fault post persists the human event");
+                    let event_id = posted["event"]["id"].as_str().expect("fault event");
+                    let dispatched = after_post(&service, &conversation_id, event_id);
+                    assert!(dispatched["directTurns"].as_array().is_some());
                     set_continuity_interrupt(Some(ContinuityInterrupt::AfterStateWrite));
-                    let posted = service.execute(json!({
-                        "action": "conversation.message.post",
-                        "conversationId": conversation_id,
-                        "authorMembershipId": owner,
-                        "content": "interrupted progress",
-                    }));
-                    if let Ok(posted) = posted {
-                        if let Some(event_id) = posted["event"]["id"].as_str() {
-                            let _ = after_post(&service, &conversation_id, event_id);
-                        }
-                    }
+                    let interrupted = service.after_runtime_settlement(
+                        &conversation_id,
+                        &json!({
+                            "output": assistant_turn_output(
+                                "interrupted",
+                                &speech_proposal_json(
+                                    &conversation_id,
+                                    seq,
+                                    ContinuitySpeechAct::Correction,
+                                    ContinuityMatterSubject::Existing,
+                                    false,
+                                    vec![ContinuityAgreementProposal {
+                                        scope: ContinuityAgreementScope::Matter,
+                                        statement_ref: source_for("event:interrupted-progress"),
+                                        origin: ContinuityAgreementOrigin::UserExplicit,
+                                    }],
+                                ),
+                            ),
+                            "membershipId": agent,
+                            "causationId": event_id,
+                        }),
+                    );
+                    assert!(
+                        interrupted.is_err(),
+                        "AfterStateWrite must fail the continuity commit"
+                    );
                     set_continuity_interrupt(None);
+                    extras["faultSettlementId"] = json!(event_id);
+                    assert!(
+                        read_settlement_pending(host.store(), &conversation_id, event_id)
+                            .expect("read_settlement_pending")
+                            .is_some(),
+                        "rolled-back AfterStateWrite must keep settlement pending"
+                    );
+                    assert!(
+                        !settlement_applied(host.store(), &conversation_id, event_id).unwrap(),
+                        "rolled-back AfterStateWrite is not a terminal applied settlement"
+                    );
                     extras["lastDuplicateWakes"] = json!(false);
                 } else {
                     panic!("unexecuted CA-J001 fault step {seq}");
@@ -1393,11 +1608,30 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
             "time" => {
                 if seq == 9 {
                     set_continuity_clock(Some(3 * 24 * 60 * 60 * 1000));
-                    let relation = first_relation(&host, &conversation_id);
-                    let _ = host.schedule_review(&conversation_id, &relation.goal_id, 1);
-                    let drain = service.attend_due().unwrap();
+                    let relation = share_relation(&host, &conversation_id);
+                    host.schedule_review(&conversation_id, &relation.goal_id, 1)
+                        .expect("schedule_review");
+                    let drain = service.attend_due().expect("attend_due after review");
+                    let settlement_id = extras["faultSettlementId"]
+                        .as_str()
+                        .expect("fault settlement id")
+                        .to_owned();
+                    assert!(
+                        settlement_applied(host.store(), &conversation_id, &settlement_id).unwrap(),
+                        "recoverable AfterStateWrite pending must complete after attend_due"
+                    );
+                    let second = service.attend_due().expect("second attend_due");
                     extras["lastReplayed"] = json!(drain["replayed"].as_u64().unwrap_or(0));
-                    extras["lastDuplicateWakes"] = json!(drain["replayed"] != 0);
+                    extras["lastDuplicateWakes"] =
+                        json!(second["replayed"].as_u64().unwrap_or(0) != 0);
+                    extras["interruptedRecoveredOnce"] = json!(
+                        drain["replayed"].as_u64().unwrap_or(0) <= 1
+                            && second["replayed"].as_u64().unwrap_or(0) == 0
+                            && list_unapplied_settlements(host.store())
+                                .expect("list_unapplied_settlements")
+                                .iter()
+                                .all(|(_, id, _)| id != &settlement_id)
+                    );
                     set_continuity_clock(None);
                 } else if seq == 16 {
                     let cognition_before_due = host.cognition_invocation_count();
@@ -1408,6 +1642,15 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                         host.cognition_invocation_count()
                             .saturating_sub(cognition_before_due)
                     );
+                    extras["paidShareWake"] = json!(
+                        drain["reevaluated"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .any(|id| id
+                                .as_str()
+                                .is_some_and(|value| value.contains("goal:matter:share")))
+                    );
                     set_continuity_clock(None);
                 } else {
                     panic!("unexecuted CA-J001 time step {seq}");
@@ -1415,7 +1658,14 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
             }
             other => panic!("unknown CA-J001 step {seq} kind {other}"),
         }
-        let state = observe_journey(&service, &conversation_id, extras.clone());
+        let (starts, completes) = snapshot_calls();
+        let state = observe_journey(
+            &service,
+            &conversation_id,
+            extras.clone(),
+            &starts,
+            &completes,
+        );
         for name in step["assertion_names"].as_array().unwrap() {
             let assertion = name.as_str().unwrap();
             assert!(
@@ -1423,17 +1673,23 @@ fn fixture_ca_j001_drives_real_ingress_and_state_oracle() {
                 "CA-J001 {seq} failed on {assertion}: {state}"
             );
         }
+        if seq == 1 {
+            admit_sibling_task(&service, &conversation_id, &owner, &agent);
+        }
     }
-    let final_state = observe_journey(&service, &conversation_id, extras);
-    assert_eq!(final_state["relationCount"], 1, "单个可见Conversation");
+    let (starts, completes) = snapshot_calls();
+    let final_state = observe_journey(&service, &conversation_id, extras, &starts, &completes);
+    assert!(
+        final_state["relationCount"].as_u64().unwrap_or(0) >= 2,
+        "parent keeps the share child and the sibling task"
+    );
     assert_eq!(final_state["replayed"], 0);
     assert_eq!(final_state["privateLeak"], false);
     assert_eq!(final_state["outboundGrant"], false);
     assert_eq!(final_state["artifactAuthorRewritten"], false);
     assert_eq!(final_state["closureAuthority"], "user-acceptance");
+    assert_eq!(final_state["shareChildHasMaterialA"], true);
     println!("CONTINUITY_CA_J001_ORACLE:{final_state}");
-    let _ = complete_calls;
-    let _ = start_calls;
 }
 
 fn typed_child_proposal_json(conversation_id: &str) -> String {
@@ -1452,8 +1708,335 @@ fn first_relation(
         .expect("child relation")
 }
 
+fn share_relation(
+    host: &ContinuityHost,
+    conversation_id: &str,
+) -> ContinuityTaskConversationRelation {
+    host.store()
+        .list_child_relations(conversation_id, None, 8)
+        .expect("list_child_relations")
+        .into_iter()
+        .find(|relation| relation.goal_id == "goal:matter:share")
+        .expect("share child relation")
+}
+
+fn child_recipient_id(store: &ConversationStore, child_id: &str) -> String {
+    let child = store.get(child_id).expect("child conversation");
+    child
+        .assistant_membership_id
+        .or_else(|| {
+            child.memberships.iter().find_map(|membership| {
+                (membership.principal.kind == PrincipalKind::Agent).then(|| membership.id.clone())
+            })
+        })
+        .expect("child recipient")
+}
+
+fn invocation_blob(params: &Value) -> String {
+    format!("{}\n{params}", delivered_guidance(params))
+}
+
+fn invocation_blob_for_member(
+    start_calls: &[Value],
+    complete_calls: &[Value],
+    membership_id: &str,
+) -> String {
+    if membership_id.is_empty() {
+        return String::new();
+    }
+    start_calls
+        .iter()
+        .chain(complete_calls)
+        .filter(|params| params.get("membershipId").and_then(Value::as_str) == Some(membership_id))
+        .map(invocation_blob)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn latest_child_work_for<'a>(
+    start_calls: &'a [Value],
+    child_id: &str,
+    membership_id: &str,
+) -> Option<&'a Value> {
+    start_calls.iter().rev().find(|params| {
+        params.get("continuityKind").and_then(Value::as_str) == Some("child-work")
+            && params.get("conversationId").and_then(Value::as_str) == Some(child_id)
+            && params.get("membershipId").and_then(Value::as_str) == Some(membership_id)
+    })
+}
+
+fn child_work_blob(start_calls: &[Value], child_id: &str, membership_id: &str) -> String {
+    start_calls
+        .iter()
+        .filter(|params| {
+            params.get("continuityKind").and_then(Value::as_str) == Some("child-work")
+                && params.get("conversationId").and_then(Value::as_str) == Some(child_id)
+                && params.get("membershipId").and_then(Value::as_str) == Some(membership_id)
+        })
+        .map(delivered_guidance)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn start_attachments(params: &Value) -> Vec<Value> {
+    params
+        .get("attachments")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn record_share_execution(
+    extras: &mut Value,
+    host: &ContinuityHost,
+    start_calls: &[Value],
+    child_id: &str,
+    expected: &[&str],
+    forbidden: &[&str],
+) {
+    let member = child_recipient_id(host.store(), child_id);
+    let capture = latest_child_work_for(start_calls, child_id, &member)
+        .expect("share child-work invocation is required");
+    assert_eq!(
+        capture.get("conversationId").and_then(Value::as_str),
+        Some(child_id)
+    );
+    assert_eq!(
+        capture.get("membershipId").and_then(Value::as_str),
+        Some(member.as_str())
+    );
+    assert_eq!(
+        capture.get("continuityKind").and_then(Value::as_str),
+        Some("child-work")
+    );
+    assert_eq!(
+        capture.get("goalId").and_then(Value::as_str),
+        Some("goal:matter:share")
+    );
+    let operation = capture
+        .get("dispatchId")
+        .or_else(|| capture.get("operationId"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    assert!(
+        operation.contains("child-work") || operation.contains("goal:matter:share"),
+        "child-work capture must bind the admitted operation"
+    );
+    let blob = delivered_guidance(capture);
+    for needle in expected {
+        assert!(
+            blob.contains(needle),
+            "share child-work payload must contain {needle}"
+        );
+    }
+    for needle in forbidden {
+        assert!(
+            !blob.contains(needle),
+            "share child-work payload must not contain {needle}"
+        );
+    }
+    extras["shareExecHasA"] = json!(blob.contains("资料A"));
+    extras["shareExecHasAv1"] = json!(blob.contains("资料A版本1"));
+    extras["shareExecHasAv2"] = json!(blob.contains("资料A版本2"));
+    extras["shareExecHasB"] = json!(blob.contains("资料B版本1"));
+}
+
+fn share_child_disclosed(
+    host: &ContinuityHost,
+    start_calls: &[Value],
+    _complete_calls: &[Value],
+    child_id: &str,
+    needle: &str,
+) -> bool {
+    let member = child_recipient_id(host.store(), child_id);
+    latest_child_work_for(start_calls, child_id, &member)
+        .map(delivered_guidance)
+        .is_some_and(|blob| blob.contains(needle))
+}
+
+fn post_material(
+    service: &ConversationService,
+    conversation_id: &str,
+    author: &str,
+    text: &str,
+) -> licoup_conversation::ConversationEvent {
+    let posted = service
+        .execute(json!({
+            "action": "conversation.message.post",
+            "conversationId": conversation_id,
+            "authorMembershipId": author,
+            "content": text,
+        }))
+        .unwrap_or_else(|_| {
+            let event = service
+                .store()
+                .append_event(
+                    conversation_id,
+                    Some(author),
+                    licoup_conversation::EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: text.to_owned(),
+                    }],
+                    None,
+                    None,
+                    true,
+                )
+                .expect("append material event");
+            json!({ "event": { "id": event.id } })
+        });
+    let event_id = posted["event"]["id"].as_str().expect("material event id");
+    service
+        .store()
+        .event(conversation_id, event_id)
+        .expect("load material event")
+        .expect("material event")
+}
+
+fn accept_posted_evidence(
+    service: &ConversationService,
+    conversation_id: &str,
+    goal_id: &str,
+    issuer: &str,
+    event: &licoup_conversation::ConversationEvent,
+    criterion_id: &str,
+    version: i64,
+    seq: u64,
+) {
+    let part = event
+        .parts
+        .iter()
+        .find(|part| part.kind == EventPartKind::Text)
+        .expect("material text part");
+    let accepted = service
+        .execute(json!({
+            "action": "accept-evidence",
+            "conversationId": conversation_id,
+            "goalId": goal_id,
+            "evidence": {
+                "source": {
+                    "ownerKind": "event",
+                    "opaqueId": event.id,
+                    "partId": part.id,
+                    "sourceRevision": event.sequence,
+                    "digest": format!("event:{}:{}", event.id, part.id),
+                    "visibilityScope": "goal",
+                    "validity": "current"
+                },
+                "issuer": issuer,
+                "subjectVersion": version,
+                "criterionId": criterion_id,
+                "observedAt": seq,
+                "result": "pass",
+                "verificationKind": "user-acceptance",
+                "scope": "goal",
+                "validity": "current"
+            }
+        }))
+        .expect("accept-evidence");
+    assert_eq!(accepted["ok"], true, "accept-evidence {seq}");
+}
+
+fn accept_part_evidence(
+    service: &ConversationService,
+    conversation_id: &str,
+    goal_id: &str,
+    issuer: &str,
+    event: &licoup_conversation::ConversationEvent,
+    part_id: &str,
+    owner_kind: &str,
+    digest: String,
+    span: Option<ContinuityUtf8ByteSpan>,
+    criterion_id: &str,
+    version: i64,
+    seq: u64,
+) {
+    let mut source = json!({
+        "ownerKind": owner_kind,
+        "opaqueId": event.id,
+        "partId": part_id,
+        "sourceRevision": event.sequence,
+        "digest": digest,
+        "visibilityScope": "goal",
+        "validity": "current"
+    });
+    if let Some(span) = span {
+        source["span"] = json!({
+            "startByte": span.start_byte,
+            "endByte": span.end_byte,
+        });
+    }
+    let accepted = service
+        .execute(json!({
+            "action": "accept-evidence",
+            "conversationId": conversation_id,
+            "goalId": goal_id,
+            "evidence": {
+                "source": source,
+                "issuer": issuer,
+                "subjectVersion": version,
+                "criterionId": criterion_id,
+                "observedAt": seq,
+                "result": "pass",
+                "verificationKind": "user-acceptance",
+                "scope": "goal",
+                "validity": "current"
+            }
+        }))
+        .expect("accept-evidence exact part");
+    assert_eq!(accepted["ok"], true, "accept-evidence {seq}");
+}
+
+fn disclose_child_after_evidence(
+    service: &ConversationService,
+    host: &ContinuityHost,
+    conversation_id: &str,
+    goal_id: &str,
+) {
+    host.schedule_review(conversation_id, goal_id, 1)
+        .expect("schedule_review after evidence");
+    service.attend_due().expect("attend_due after evidence");
+}
+
+fn admit_sibling_task(
+    service: &ConversationService,
+    conversation_id: &str,
+    owner: &str,
+    agent: &str,
+) {
+    let posted = service
+        .execute(json!({
+            "action": "conversation.message.post",
+            "conversationId": conversation_id,
+            "authorMembershipId": owner,
+            "content": "兄弟任务私有哨兵，请单独处理另一事项。",
+        }))
+        .expect("sibling post");
+    let event_id = posted["event"]["id"].as_str().expect("sibling event");
+    after_post(service, conversation_id, event_id);
+    service
+        .after_runtime_settlement(
+            conversation_id,
+            &json!({
+                "output": assistant_turn_output(
+                    "Sibling task admitted.",
+                    &typed_goal_proposal_json(
+                        conversation_id,
+                        "goal:matter:sibling",
+                        "matter:sibling",
+                    ),
+                ),
+                "membershipId": agent,
+                "causationId": event_id,
+            }),
+        )
+        .expect("sibling settlement");
+}
+
 fn speech_proposal_json(
     conversation_id: &str,
+    seq: u64,
     speech_act: ContinuitySpeechAct,
     subject: ContinuityMatterSubject,
     create_goal: bool,
@@ -1465,7 +2048,7 @@ fn speech_proposal_json(
             source_event_refs: Vec::new(),
             observed_revision: 0,
             designation_epoch: 0,
-            request_id: format!("request:speech:{conversation_id}"),
+            request_id: format!("request:speech:{seq}:{conversation_id}"),
         },
         matter_associations: Vec::new(),
         speech_act,
@@ -1903,6 +2486,7 @@ fn qualification_persists_synthetic_evidence_and_invalidates_only_changed_identi
             closure_claim: None,
         }],
         evidence_class: EvidenceClass::Synthetic,
+        provenance: None,
     })
     .unwrap();
     host.ingest_test_qualification(EvidenceBundle {
@@ -1921,6 +2505,7 @@ fn qualification_persists_synthetic_evidence_and_invalidates_only_changed_identi
             closure_claim: None,
         }],
         evidence_class: EvidenceClass::Synthetic,
+        provenance: None,
     })
     .unwrap();
     let reopened = ConversationService::open(&root).unwrap();
@@ -2088,25 +2673,61 @@ fn child_agent_id(service: &ConversationService, child_id: &str, member: &str) -
         .expect("child agent id")
 }
 
+fn posted_event(
+    store: &ConversationStore,
+    conversation_id: &str,
+    event_id: &str,
+) -> ConversationEvent {
+    store
+        .event(conversation_id, event_id)
+        .unwrap()
+        .expect("event")
+}
+
+fn exact_posted_part_source(event: &ConversationEvent, part: &EventPart) -> ContinuitySourceRef {
+    let image = part.kind == EventPartKind::Image;
+    ContinuitySourceRef {
+        owner_kind: if image {
+            ContinuitySourceOwnerKind::Part
+        } else {
+            ContinuitySourceOwnerKind::Event
+        },
+        opaque_id: event.id.clone(),
+        part_id: Some(part.id.clone()),
+        span: None,
+        source_revision: event.sequence,
+        digest: if image {
+            format!("part:{}", part.id)
+        } else {
+            format!("event:{}:{}", event.id, part.id)
+        },
+        visibility_scope: ContinuityVisibilityScope::Conversation,
+        validity: ContinuitySourceValidity::Current,
+    }
+}
+
 fn live_event_source(
     store: &ConversationStore,
     conversation_id: &str,
     event_id: &str,
 ) -> ContinuitySourceRef {
-    let event = store
-        .event(conversation_id, event_id)
-        .unwrap()
-        .expect("event");
-    ContinuitySourceRef {
-        owner_kind: ContinuitySourceOwnerKind::Event,
-        opaque_id: event.id.clone(),
-        part_id: event.parts.first().map(|part| part.id.clone()),
-        span: None,
-        source_revision: event.sequence,
-        digest: format!("event:{}", event.id),
-        visibility_scope: ContinuityVisibilityScope::Conversation,
-        validity: ContinuitySourceValidity::Current,
-    }
+    let event = posted_event(store, conversation_id, event_id);
+    let part = event.parts.first().expect("posted part");
+    exact_posted_part_source(&event, part)
+}
+
+fn live_image_source(
+    store: &ConversationStore,
+    conversation_id: &str,
+    event_id: &str,
+) -> ContinuitySourceRef {
+    let event = posted_event(store, conversation_id, event_id);
+    let part = event
+        .parts
+        .iter()
+        .find(|part| part.kind == EventPartKind::Image)
+        .expect("image part");
+    exact_posted_part_source(&event, part)
 }
 
 fn delivered_guidance(params: &Value) -> String {
@@ -2219,20 +2840,13 @@ fn live_part_source(
     event_id: &str,
     part_id: &str,
 ) -> ContinuitySourceRef {
-    let event = store
-        .event(conversation_id, event_id)
-        .unwrap()
-        .expect("event");
-    ContinuitySourceRef {
-        owner_kind: ContinuitySourceOwnerKind::Part,
-        opaque_id: event.id.clone(),
-        part_id: Some(part_id.to_owned()),
-        span: None,
-        source_revision: event.sequence,
-        digest: format!("part:{part_id}"),
-        visibility_scope: ContinuityVisibilityScope::Conversation,
-        validity: ContinuitySourceValidity::Current,
-    }
+    let event = posted_event(store, conversation_id, event_id);
+    let part = event
+        .parts
+        .iter()
+        .find(|part| part.id == part_id)
+        .expect("posted part");
+    exact_posted_part_source(&event, part)
 }
 
 impl Drop for HostImageFixture {
@@ -2496,7 +3110,7 @@ fn production_ingress_guidance_delivers_contract_and_authorized_source_contents(
             authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
             status: ContinuityParentGrantStatus::Admitted,
             request_id: "request:grant:1".into(),
-            revocation_generation: 0,
+            revocation_generation: recipient_grant_generation(service.store(), &conversation_id),
         },
     )
     .unwrap();
@@ -3737,6 +4351,12 @@ fn child_owner(service: &ConversationService, child_id: &str) -> String {
         .clone()
 }
 
+fn recipient_grant_generation(store: &ConversationStore, conversation_id: &str) -> i64 {
+    store
+        .continuity_revocation_generation(conversation_id)
+        .expect("recipient revocation generation")
+}
+
 fn grant_parent_span(
     service: &ConversationService,
     parent_id: &str,
@@ -3764,7 +4384,7 @@ fn grant_parent_span(
             authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
             status,
             request_id: format!("request:{grant_id}"),
-            revocation_generation: 0,
+            revocation_generation: recipient_grant_generation(service.store(), child_id),
         },
     )
     .unwrap();
@@ -5082,7 +5702,7 @@ fn residual_granted_attachment_survives_history_and_revoked_gets_zero_disclosure
             source_conversation_id: conversation_id.clone(),
             recipient_conversation_id: child_id.clone(),
             recipient_membership_id: child_member.clone(),
-            source_refs: vec![live_event_source(
+            source_refs: vec![live_image_source(
                 service.store(),
                 &conversation_id,
                 &image_event,
@@ -5146,7 +5766,7 @@ fn residual_granted_attachment_survives_history_and_revoked_gets_zero_disclosure
             source_conversation_id: revoked_parent.clone(),
             recipient_conversation_id: revoked_child.clone(),
             recipient_membership_id: revoked_member,
-            source_refs: vec![live_event_source(
+            source_refs: vec![live_image_source(
                 revoked.store(),
                 &revoked_parent,
                 &revoked_image,
@@ -5579,7 +6199,7 @@ fn revoked_and_revision_mismatch_grants_disclose_zero_attachments() {
     let (_, child_id, child_member) =
         commit_child_without_start(&service, &conversation_id, &owner, &agent);
     set_child_work_fault(None);
-    let mut mismatched = live_event_source(service.store(), &conversation_id, &image_event);
+    let mut mismatched = live_image_source(service.store(), &conversation_id, &image_event);
     mismatched.source_revision = 999;
     put_grant(
         service.store(),
@@ -5663,7 +6283,7 @@ fn file_backed_reopen_keeps_declared_native_params_and_granted_attachment() {
                 source_conversation_id: conversation_id.clone(),
                 recipient_conversation_id: child_id.clone(),
                 recipient_membership_id: child_member.clone(),
-                source_refs: vec![live_event_source(
+                source_refs: vec![live_image_source(
                     service.store(),
                     &conversation_id,
                     &image_event,
@@ -6257,4 +6877,471 @@ fn ordinary_post_returns_while_wake_cognition_is_held_then_attend_due_reviews_on
         "background attendance must execute the pending review once: {attended}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn production_post_grant_reaches_child_start_without_put_grant() {
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(
+        &service,
+        &conversation_id,
+        &owner,
+        "PRODUCTION-CURRENT-INPUT prepare the notes now",
+    );
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let grants = list_all_parent_grants(service.store()).unwrap();
+    assert!(
+        !grants.is_empty(),
+        "production admission must issue grants without put_grant"
+    );
+    let starts = start_calls
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .clone();
+    let child_starts = start_kind(&starts, "child-work");
+    assert_eq!(child_starts.len(), 1);
+    let text = delivered_guidance(child_starts[0]);
+    assert!(text.contains("PRODUCTION-CURRENT-INPUT"));
+    assert_eq!(
+        child_starts[0]
+            .get("membershipId")
+            .and_then(Value::as_str)
+            .map(|member| grants
+                .iter()
+                .any(|grant| grant.recipient_membership_id == member)),
+        Some(true)
+    );
+}
+
+#[test]
+fn production_evidence_part_grant_excludes_sibling_text_and_image() {
+    let fixture = HostImageFixture::new();
+    let image = fixture.attachment_named("secret", "secret.png");
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(&service, &conversation_id, &owner, "prepare notes now");
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let relation = service
+        .store()
+        .list_child_relations(&conversation_id, None, 8)
+        .unwrap()
+        .remove(0);
+    let event = service
+        .store()
+        .append_event(
+            &conversation_id,
+            Some(&owner),
+            licoup_conversation::EventKind::Message,
+            &[
+                NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "GRANTED-PART-TEXT".into(),
+                },
+                NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "SIBLING-PART-SECRET".into(),
+                },
+                NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Image,
+                    content: licoup_conversation::ImageAttachment {
+                        path: image["path"].as_str().unwrap().into(),
+                        name: "secret.png".into(),
+                        media_type: "image/png".into(),
+                        byte_size: 1,
+                    }
+                    .part_content(),
+                },
+            ],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let granted = event
+        .parts
+        .iter()
+        .find(|part| part.content == "GRANTED-PART-TEXT")
+        .unwrap();
+    let image_part = event
+        .parts
+        .iter()
+        .find(|part| part.kind == EventPartKind::Image)
+        .unwrap();
+    accept_part_evidence(
+        &service,
+        &conversation_id,
+        &relation.goal_id,
+        &owner,
+        &event,
+        &granted.id,
+        "event",
+        format!("event:{}:{}", event.id, granted.id),
+        None,
+        "criterion:notes",
+        1,
+        4,
+    );
+    let host = service.continuity().cloned().unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let child_member = child_recipient_id(service.store(), &relation.child_conversation_id);
+    let starts = start_calls.lock().unwrap().clone();
+    let capture = latest_child_work_for(&starts, &relation.child_conversation_id, &child_member)
+        .expect("child-work start after exact part grant");
+    let payload = delivered_guidance(capture);
+    assert!(payload.contains("GRANTED-PART-TEXT"));
+    assert!(
+        !payload.contains("SIBLING-PART-SECRET"),
+        "same-Event sibling text must stay out of the real start payload"
+    );
+    let attachments = start_attachments(capture);
+    assert!(
+        attachments.is_empty(),
+        "unauthorized image must not appear on the real start attachments"
+    );
+    assert!(
+        !payload.contains(&image_part.id),
+        "unauthorized image part must not ride an Event-scoped sibling grant"
+    );
+}
+
+#[test]
+fn production_revoke_after_grant_stops_new_disclosure() {
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(
+        &service,
+        &conversation_id,
+        &owner,
+        "REVOKE-ME-SOURCE must disappear after revocation",
+    );
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let relation = service
+        .store()
+        .list_child_relations(&conversation_id, None, 8)
+        .unwrap()
+        .remove(0);
+    let child_member = child_recipient_id(service.store(), &relation.child_conversation_id);
+    let host = service.continuity().cloned().unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let before_starts = start_calls.lock().unwrap().clone();
+    let before = latest_child_work_for(
+        &before_starts,
+        &relation.child_conversation_id,
+        &child_member,
+    )
+    .map(delivered_guidance)
+    .unwrap_or_default();
+    assert!(before.contains("REVOKE-ME-SOURCE"));
+    revoke_source(service.store(), &conversation_id, &posted, true).unwrap();
+    let after_compose = host
+        .compose_ingress_guidance(&relation.child_conversation_id, &child_member, "")
+        .unwrap();
+    assert!(!after_compose.contains("REVOKE-ME-SOURCE"));
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let after_starts = start_calls.lock().unwrap().clone();
+    let new_starts = after_starts
+        .iter()
+        .skip(before_starts.len())
+        .filter(|params| {
+            params.get("continuityKind").and_then(Value::as_str) == Some("child-work")
+                && params.get("conversationId").and_then(Value::as_str)
+                    == Some(relation.child_conversation_id.as_str())
+        })
+        .collect::<Vec<_>>();
+    for capture in new_starts {
+        assert!(
+            !delivered_guidance(capture).contains("REVOKE-ME-SOURCE"),
+            "revoked source must not reach a later real start payload"
+        );
+    }
+}
+
+#[test]
+fn production_evidence_span_grant_excludes_same_part_outside_span() {
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(&service, &conversation_id, &owner, "prepare notes now");
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let relation = service
+        .store()
+        .list_child_relations(&conversation_id, None, 8)
+        .unwrap()
+        .remove(0);
+    let event = service
+        .store()
+        .append_event(
+            &conversation_id,
+            Some(&owner),
+            licoup_conversation::EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "KEEP-SPAN|OUT-OF-SPAN-SECRET".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let part_id = event.parts[0].id.clone();
+    accept_part_evidence(
+        &service,
+        &conversation_id,
+        &relation.goal_id,
+        &owner,
+        &event,
+        &part_id,
+        "event",
+        format!("event:{}:{part_id}", event.id),
+        Some(ContinuityUtf8ByteSpan {
+            start_byte: 0,
+            end_byte: 9,
+        }),
+        "criterion:span",
+        1,
+        4,
+    );
+    let host = service.continuity().cloned().unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let child_member = child_recipient_id(service.store(), &relation.child_conversation_id);
+    let starts = start_calls.lock().unwrap().clone();
+    let payload = delivered_guidance(
+        latest_child_work_for(&starts, &relation.child_conversation_id, &child_member)
+            .expect("child-work start after span grant"),
+    );
+    assert!(payload.contains("KEEP-SPAN"));
+    assert!(
+        !payload.contains("OUT-OF-SPAN-SECRET"),
+        "same-Part bytes outside the granted span must stay out of the real start payload"
+    );
+}
+
+#[test]
+fn production_authorized_image_grant_reaches_start_attachments() {
+    let fixture = HostImageFixture::new();
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    set_child_work_fault(Some(ChildWorkFault::FailStart));
+    let (_, child_id, _) = commit_child_without_start(&service, &conversation_id, &owner, &agent);
+    set_child_work_fault(None);
+    let relation = service
+        .store()
+        .list_child_relations(&conversation_id, None, 8)
+        .unwrap()
+        .into_iter()
+        .find(|item| item.child_conversation_id == child_id)
+        .expect("child relation");
+    let image_event = service
+        .execute(json!({
+            "action": "conversation.message.post",
+            "conversationId": conversation_id,
+            "authorMembershipId": owner,
+            "content": "authorized image",
+            "attachments": [fixture.attachment_named("keep", "keep.png")],
+        }))
+        .unwrap();
+    let event_id = image_event["event"]["id"].as_str().unwrap().to_owned();
+    let event = service
+        .store()
+        .event(&conversation_id, &event_id)
+        .unwrap()
+        .expect("image event");
+    let image_part = event
+        .parts
+        .iter()
+        .find(|part| part.kind == EventPartKind::Image)
+        .expect("image part");
+    accept_part_evidence(
+        &service,
+        &conversation_id,
+        &relation.goal_id,
+        &owner,
+        &event,
+        &image_part.id,
+        "part",
+        format!("part:{}", image_part.id),
+        None,
+        "criterion:image",
+        1,
+        4,
+    );
+    let host = service.continuity().cloned().unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let child_member = child_recipient_id(service.store(), &relation.child_conversation_id);
+    let starts = start_calls.lock().unwrap().clone();
+    let capture = latest_child_work_for(&starts, &relation.child_conversation_id, &child_member)
+        .expect("child-work start after authorized image grant");
+    let attachments = start_attachments(capture);
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0]["name"], "keep.png");
+}
+
+#[test]
+fn production_member_leave_blocks_new_disclosure() {
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls.clone(),
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(
+        &service,
+        &conversation_id,
+        &owner,
+        "MEMBER-LEAVE-SOURCE stays after the first delivery",
+    );
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let relation = service
+        .store()
+        .list_child_relations(&conversation_id, None, 8)
+        .unwrap()
+        .remove(0);
+    let child_member = child_recipient_id(service.store(), &relation.child_conversation_id);
+    let host = service.continuity().cloned().unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let before_starts = start_calls.lock().unwrap().clone();
+    assert!(
+        latest_child_work_for(
+            &before_starts,
+            &relation.child_conversation_id,
+            &child_member,
+        )
+        .is_some_and(|capture| delivered_guidance(capture).contains("MEMBER-LEAVE-SOURCE"))
+    );
+    service
+        .store()
+        .leave_member(&relation.child_conversation_id, &child_member)
+        .unwrap();
+    disclose_child_after_evidence(&service, &host, &conversation_id, &relation.goal_id);
+    let after_starts = start_calls.lock().unwrap().clone();
+    assert_eq!(
+        after_starts.len(),
+        before_starts.len(),
+        "inactive child membership must not start a later native call"
+    );
+}
+
+#[test]
+fn after_state_write_keeps_pending_and_recover_completes_once() {
+    let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let service = bind_effect_free_runtime(
+        ConversationService::from_store(ConversationStore::open_in_memory().unwrap()),
+        complete_calls,
+        start_calls,
+    );
+    service.claim_continuity_owner().unwrap();
+    let (conversation_id, owner, agent) = create_group_with_agent(&service, "codex");
+    designate_assistant(&service, &conversation_id, &owner, &agent);
+    let posted = post(&service, &conversation_id, &owner, "prepare notes now");
+    after_post(&service, &conversation_id, &posted);
+    settle_typed_child(&service, &conversation_id, &agent, &posted);
+    let later = post(&service, &conversation_id, &owner, "interrupted progress");
+    after_post(&service, &conversation_id, &later);
+    set_continuity_interrupt(Some(ContinuityInterrupt::AfterStateWrite));
+    let interrupted = service.after_runtime_settlement(
+        &conversation_id,
+        &json!({
+            "output": assistant_turn_output(
+                "interrupted",
+                &speech_proposal_json(
+                    &conversation_id,
+                    8,
+                    ContinuitySpeechAct::Correction,
+                    ContinuityMatterSubject::Existing,
+                    false,
+                    vec![ContinuityAgreementProposal {
+                        scope: ContinuityAgreementScope::Matter,
+                        statement_ref: source_for("event:interrupted-progress"),
+                        origin: ContinuityAgreementOrigin::UserExplicit,
+                    }],
+                ),
+            ),
+            "membershipId": agent,
+            "causationId": later,
+        }),
+    );
+    set_continuity_interrupt(None);
+    assert!(interrupted.is_err(), "AfterStateWrite must fail the commit");
+    assert!(
+        read_settlement_pending(service.store(), &conversation_id, &later)
+            .unwrap()
+            .is_some(),
+        "non-terminal AfterStateWrite must keep pending responsibility"
+    );
+    assert!(!settlement_applied(service.store(), &conversation_id, &later).unwrap());
+    let first = service.attend_due().unwrap();
+    assert!(
+        settlement_applied(service.store(), &conversation_id, &later).unwrap(),
+        "attend_due must complete the kept pending once"
+    );
+    assert!(
+        read_settlement_pending(service.store(), &conversation_id, &later)
+            .unwrap()
+            .is_none()
+    );
+    let second = service.attend_due().unwrap();
+    assert!(first["replayed"].as_u64().unwrap_or(0) <= 1);
+    assert_eq!(second["replayed"].as_u64().unwrap_or(0), 0);
+    assert_eq!(
+        read_agreements(service.store(), &conversation_id)
+            .unwrap()
+            .iter()
+            .filter(|item| item.statement_ref.opaque_id == "event:interrupted-progress")
+            .count(),
+        1,
+        "recovery must apply the interrupted agreement once"
+    );
 }

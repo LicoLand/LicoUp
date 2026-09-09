@@ -115,18 +115,10 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.mobile-relay.secure-mesh-controller",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
   ])), [
     "architecture.client-boundaries",
-    "regression.dashboard-desktop-chrome-source-bundle",
-    "flutter.layout.dashboard-desktop-chrome.composition",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "regression.dashboard-desktop-chrome-source-bundle",
-    "flutter.layout.dashboard-desktop-chrome.search",
+    "flutter.layer.layout",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart",
@@ -194,40 +186,10 @@ test("Flutter controller assembly selects precise closures", () => {
   );
 });
 
-test("Dashboard desktop chrome leaves retain exact widget tests and bounded catalog ownership", () => {
-  const filters = new Map([
-    ["flutter.layout.dashboard-desktop-chrome.composition",
-      "test/layout/profiles/dashboard/desktop/dashboard_desktop_widget_test.dart"],
-    ["flutter.layout.dashboard-desktop-chrome.folder-sidebar",
-      "test/layout/profiles/dashboard/desktop/dashboard_folder_sidebar_test.dart"],
-    ["flutter.layout.dashboard-desktop-chrome.search",
-      "test/layout/profiles/dashboard/desktop/dashboard_desktop_search_test.dart"],
-  ]);
-  const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("flutter.layout.dashboard-desktop-chrome."));
-  assert.equal(modules.length, filters.size);
-  for (const [id, testPath] of filters) {
-    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
-    assert.equal(module.command.args.at(-1), testPath);
-  }
-
-  const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
-    candidate.id === "regression.dashboard-desktop-chrome-source-bundle");
-  const ownedInputs = new Set([
-    ...modules.flatMap((module) => module.inputs),
-    ...sourceCheck.inputs,
-  ]);
-  for (const relativePath of [
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
-  ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
-      `Dashboard desktop chrome source must have a focused regression owner: ${relativePath}`);
-  }
-
+test("Dashboard and desktop layout keep focused catalog ownership", () => {
   const layoutFoundation = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "flutter.layer.layout");
+  assert.ok(layoutFoundation);
   assert.equal(layoutFoundation.inputs.includes(
     "apps/desktop/lib/src/frontend/layout/**"), false);
   assert.equal(layoutFoundation.inputs.includes(

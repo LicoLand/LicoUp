@@ -136,8 +136,8 @@
       "id": "desktop-tests-keep-diagnostics-hidden-from-ordinary-ui",
       "file": "apps/desktop/test/secure_mesh_panel_test.dart",
       "tokens": [
-        "'deviceTrustStatus': 'device-trust-ready'",
-        "'protocolVersion': 'licomesh.secure-mesh.device-trust.v2'",
+        "RelayTrustProjection(",
+        "protocolVersion: 'licomesh.secure-mesh.device-trust.v2'",
         "find.text('device-trust-ready'), findsNothing",
         "find.text('blocked_for_production'), findsNothing"
       ]

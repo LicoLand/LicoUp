@@ -2,17 +2,20 @@ use licoup_conversation::continuity::{
     ASSISTANT_TURN_INVALID_ERROR, ContextCompositionPort, ContinuityAgreement,
     ContinuityAgreementOrigin, ContinuityAgreementScope, ContinuityAssistantTurnResponse,
     ContinuityClosureAuthorityKind, ContinuityCommitPort, ContinuityContextCompositionRequest,
-    ContinuityEffectStatus, ContinuityFailureCode, ContinuityFollowThroughKind,
-    ContinuityGoalCompletionTransition, ContinuityGoalControl, ContinuityGoalEvent,
-    ContinuityGoalLifecycle, ContinuityInterpretationProposal, ContinuityInterrupt,
+    ContinuityCriterion, ContinuityEffectStatus, ContinuityEvidenceRef, ContinuityEvidenceResult,
+    ContinuityFailureCode, ContinuityFollowThroughKind, ContinuityGoalCompletionTransition,
+    ContinuityGoalControl, ContinuityGoalEvent, ContinuityGoalLifecycle, ContinuityGoalProgress,
+    ContinuityInterpretationProposal, ContinuityInterrupt, ContinuityOracleKind,
     ContinuityParentContextGrant, ContinuityParentGrantStatus, ContinuityReadPort,
     ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
-    ContinuityTaskChildAdmission, ContinuityVisibilityScope, INGRESS_USER_POSTED_DESIGNATION,
+    ContinuityTaskChildAdmission, ContinuityUtf8ByteSpan, ContinuityVerificationKind,
+    ContinuityVisibilityScope, INGRESS_USER_POSTED_DESIGNATION, PENDING_OBLIGATION_PAGE_SIZE,
     TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, UnavailableContextComposition, accept_completion,
-    ack_completion_notices, apply_goal_control, commit_user_posted_proposal, consume_logical_wake,
-    derived_live_count, ingress_execution_recorded, list_due_goals,
-    list_pending_completion_notices, parse_continuity_value, put_agreement, put_derived,
-    put_effect, put_grant, read_agreements, read_goal, read_pending_outbox,
+    ack_completion_notices, append_criterion_evidence, apply_goal_control,
+    commit_user_posted_proposal, consume_logical_wake, derived_live_count,
+    ingress_execution_recorded, list_all_parent_grants, list_completion_notification_ids,
+    list_due_goals, list_pending_completion_notices, parse_continuity_value, put_agreement,
+    put_derived, put_effect, put_grant, read_agreements, read_goal, read_pending_outbox,
     read_relation_for_child, record_settlement_applied, record_settlement_pending, replay_effect,
     resolve_completion_notice, revoke_source, schedule_goal_due, set_continuity_interrupt,
     settlement_applied,
@@ -586,8 +589,8 @@ fn child_relation_is_atomic_idempotent_and_ordered() {
         relation_b.child_conversation_id
     );
 
-    complete_goal(&harness, "goal:b", 1);
-    complete_goal(&harness, "goal:a", 1);
+    complete_goal(&harness, "goal:b");
+    complete_goal(&harness, "goal:a");
     let listed = harness
         .store
         .list_child_relations(&harness.conversation_id, None, 20)
@@ -605,37 +608,15 @@ fn child_relation_is_atomic_idempotent_and_ordered() {
     );
 }
 
-fn complete_goal(harness: &Harness, goal_id: &str, revision: i64) {
-    let progress = licoup_conversation::continuity::ContinuityGoalProgress {
-        goal_id: goal_id.to_owned(),
-        revision,
-        lifecycle: ContinuityGoalLifecycle::Achieved,
-        control: ContinuityGoalControl::Enabled,
-        criterion_evidence_refs: Vec::new(),
-        active_execution_refs: Vec::new(),
-        blockers: Vec::new(),
-        next_attention: None,
-        closure_ref: None,
-    };
-    let transition = ContinuityGoalCompletionTransition {
-        transition_id: format!("transition:{goal_id}"),
-        goal_id: goal_id.to_owned(),
-        from_lifecycle: ContinuityGoalLifecycle::Active,
-        to_lifecycle: ContinuityGoalLifecycle::Achieved,
-        goal_revision: revision,
-        authority_kind: ContinuityClosureAuthorityKind::GoalEvaluation,
-        evaluation_ref: ContinuitySourceRef {
-            owner_kind: ContinuitySourceOwnerKind::Goal,
-            opaque_id: goal_id.to_owned(),
-            part_id: None,
-            span: None,
-            source_revision: revision,
-            digest: format!("goal:{goal_id}"),
-            visibility_scope: ContinuityVisibilityScope::Goal,
-            validity: ContinuitySourceValidity::Current,
-        },
-        notification_id: format!("notice:{goal_id}"),
-    };
+fn complete_goal(harness: &Harness, goal_id: &str) {
+    let current = read_goal(&harness.store, goal_id).unwrap().unwrap();
+    let (progress, transition) = achieved_close(
+        goal_id,
+        &current,
+        goal_evaluation_ref(goal_id, current.revision),
+        &format!("notice:{goal_id}"),
+        ContinuityClosureAuthorityKind::GoalEvaluation,
+    );
     assert!(
         accept_completion(
             &harness.store,
@@ -663,6 +644,116 @@ fn complete_goal(harness: &Harness, goal_id: &str, revision: i64) {
     );
 }
 
+fn goal_evaluation_ref(goal_id: &str, revision: i64) -> ContinuitySourceRef {
+    ContinuitySourceRef {
+        owner_kind: ContinuitySourceOwnerKind::Goal,
+        opaque_id: goal_id.to_owned(),
+        part_id: None,
+        span: None,
+        source_revision: revision,
+        digest: format!("goal:{goal_id}"),
+        visibility_scope: ContinuityVisibilityScope::Goal,
+        validity: ContinuitySourceValidity::Current,
+    }
+}
+
+fn achieved_close(
+    goal_id: &str,
+    current: &ContinuityGoalProgress,
+    evaluation_ref: ContinuitySourceRef,
+    notification_id: &str,
+    authority_kind: ContinuityClosureAuthorityKind,
+) -> (ContinuityGoalProgress, ContinuityGoalCompletionTransition) {
+    let mut progress = current.clone();
+    progress.lifecycle = ContinuityGoalLifecycle::Achieved;
+    progress.next_attention = None;
+    progress.active_execution_refs.clear();
+    let transition = ContinuityGoalCompletionTransition {
+        transition_id: format!("transition:{notification_id}"),
+        goal_id: goal_id.to_owned(),
+        from_lifecycle: current.lifecycle,
+        to_lifecycle: ContinuityGoalLifecycle::Achieved,
+        goal_revision: current.revision,
+        authority_kind,
+        evaluation_ref,
+        notification_id: notification_id.to_owned(),
+    };
+    (progress, transition)
+}
+
+fn commit_required_criterion_goal(
+    harness: &mut Harness,
+    request_id: &str,
+    goal_id: &str,
+    matter_id: &str,
+    criterion_id: &str,
+    with_child: bool,
+) {
+    let parent_assistant = with_child.then(|| designate_agent(harness));
+    let mut proposal = harness.proposal(request_id, goal_id, matter_id, with_child);
+    proposal.commitment_proposals[0]
+        .criteria
+        .push(ContinuityCriterion {
+            id: criterion_id.to_owned(),
+            description_ref: source_ref(&harness.event_id, 1),
+            required: true,
+            oracle_kind: ContinuityOracleKind::User,
+            artifact_version_rule: "current-subject-version".into(),
+            freshness_rule: "current".into(),
+            evaluator_policy: "user-acceptance".into(),
+        });
+    if let Some(parent_assistant) = parent_assistant {
+        commit_user_posted_proposal(
+            &harness.store,
+            &proposal,
+            &harness.event_id,
+            &parent_assistant,
+        )
+        .unwrap();
+    } else {
+        harness.store.commit(&proposal).unwrap();
+    }
+    harness.refresh();
+}
+
+fn post_owner_text(harness: &Harness, text: &str) -> licoup_conversation::ConversationEvent {
+    harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: text.into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap()
+}
+
+fn stored_subject_version(store: &ConversationStore, goal_id: &str, criterion_id: &str) -> i64 {
+    read_goal(store, goal_id)
+        .unwrap()
+        .unwrap()
+        .criterion_evidence_refs
+        .iter()
+        .filter(|item| item.criterion_id == criterion_id)
+        .map(|item| item.subject_version)
+        .max()
+        .unwrap_or(0)
+}
+
+fn notice_recorded(store: &ConversationStore, notification_id: &str) -> bool {
+    list_completion_notification_ids(store)
+        .unwrap()
+        .iter()
+        .any(|item| item == notification_id)
+}
+
 #[test]
 fn worker_exit_does_not_complete_goal_and_notice_is_consumed_once() {
     let harness = Harness::new("notice");
@@ -680,7 +771,7 @@ fn worker_exit_does_not_complete_goal_and_notice_is_consumed_once() {
     .unwrap();
     let still = read_goal(&harness.store, "goal:notes").unwrap().unwrap();
     assert_eq!(still.lifecycle, ContinuityGoalLifecycle::Active);
-    complete_goal(&harness, "goal:notes", 3);
+    complete_goal(&harness, "goal:notes");
 }
 
 #[test]
@@ -933,11 +1024,7 @@ fn natural_language_pause_targets_only_associated_goal() {
         .store
         .commit(&harness.proposal("request:c", "goal:c", "matter:c", false))
         .unwrap();
-    let revision_c = read_goal(&harness.store, "goal:c")
-        .unwrap()
-        .unwrap()
-        .revision;
-    complete_goal(&harness, "goal:c", revision_c);
+    complete_goal(&harness, "goal:c");
     harness.refresh();
 
     let mut pause_a = harness.proposal("request:pause-a", "goal:a", "matter:a", false);
@@ -1809,7 +1896,7 @@ fn pending_completion_notices_filter_before_limit_and_ack_is_idempotent() {
             Ok(())
         })
         .unwrap();
-    complete_goal(&harness, "goal:authorized", 1);
+    complete_goal(&harness, "goal:authorized");
 
     let pending = list_pending_completion_notices(
         &harness.store,
@@ -1867,4 +1954,1078 @@ fn pending_completion_notices_filter_before_limit_and_ack_is_idempotent() {
     .unwrap();
     assert_eq!(resolved.parent_conversation_id, harness.conversation_id);
     assert_eq!(resolved.card_event_id.is_empty(), false);
+}
+
+fn designate_agent(harness: &mut Harness) -> String {
+    let agent = harness
+        .store
+        .add_member(&harness.conversation_id, agent(), MembershipAccess::Member)
+        .unwrap();
+    harness.refresh();
+    harness
+        .store
+        .set_conversation_assistant(
+            &harness.conversation_id,
+            &harness.owner_membership_id,
+            harness.revision,
+            Some(&agent.id),
+        )
+        .unwrap();
+    harness.refresh();
+    agent.id
+}
+
+#[test]
+fn user_posted_child_admission_issues_exact_current_input_grants() {
+    let mut harness = Harness::new("grant-current-input");
+    let parent_assistant = designate_agent(&mut harness);
+    let proposal = harness.proposal(
+        "request:grant-current",
+        "goal:grant-current",
+        "matter:grant-current",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &proposal,
+        &harness.event_id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let relation = harness
+        .store
+        .relation_for_goal("goal:grant-current")
+        .unwrap();
+    let child = harness.store.get(&relation.child_conversation_id).unwrap();
+    let child_member = child.assistant_membership_id.clone().unwrap();
+    assert_ne!(child_member, parent_assistant);
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    assert_eq!(grants.len(), 1);
+    let grant = &grants[0];
+    assert_eq!(
+        grant.recipient_conversation_id,
+        relation.child_conversation_id
+    );
+    assert_eq!(grant.recipient_membership_id, child_member);
+    assert_eq!(grant.status, ContinuityParentGrantStatus::Admitted);
+    assert_eq!(grant.source_refs.len(), 1);
+    let source = &grant.source_refs[0];
+    let event = harness
+        .store
+        .event(&harness.conversation_id, &harness.event_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(source.opaque_id, harness.event_id);
+    assert_eq!(source.part_id.as_deref(), Some(event.parts[0].id.as_str()));
+    assert_eq!(
+        source.digest,
+        format!("event:{}:{}", event.id, event.parts[0].id)
+    );
+    assert_eq!(
+        harness
+            .store
+            .posted_event_part_text(
+                &harness.conversation_id,
+                &harness.event_id,
+                source.part_id.as_deref().unwrap()
+            )
+            .unwrap(),
+        "delegate notes"
+    );
+    assert_eq!(list_all_parent_grants(&harness.store).unwrap().len(), 1);
+    harness.refresh();
+    let later = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "later chitchat must not grant".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    harness.refresh();
+    let later_proposal = harness.proposal(
+        "request:grant-later",
+        "goal:grant-current",
+        "matter:grant-current",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &later_proposal,
+        &later.id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    assert_eq!(grants.len(), 1);
+    assert!(!grants.iter().any(|grant| {
+        grant
+            .source_refs
+            .iter()
+            .any(|source| source.opaque_id == later.id)
+    }));
+}
+
+#[test]
+fn accepted_canonical_evidence_issues_exact_part_grant() {
+    let mut harness = Harness::new("grant-evidence");
+    let parent_assistant = designate_agent(&mut harness);
+    let proposal = harness.proposal(
+        "request:grant-evidence",
+        "goal:grant-evidence",
+        "matter:grant-evidence",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &proposal,
+        &harness.event_id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let event = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[
+                NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "EVIDENCE-PART-A".into(),
+                },
+                NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "EVIDENCE-PART-B".into(),
+                },
+            ],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let granted_part = event.parts[0].id.clone();
+    let sibling_part = event.parts[1].id.clone();
+    append_criterion_evidence(
+        &harness.store,
+        &harness.conversation_id,
+        "goal:grant-evidence",
+        ContinuityEvidenceRef {
+            source: ContinuitySourceRef {
+                owner_kind: ContinuitySourceOwnerKind::Event,
+                opaque_id: event.id.clone(),
+                part_id: Some(granted_part.clone()),
+                span: None,
+                source_revision: event.sequence,
+                digest: format!("event:{}:{granted_part}", event.id),
+                visibility_scope: ContinuityVisibilityScope::Goal,
+                validity: ContinuitySourceValidity::Current,
+            },
+            issuer: harness.owner_membership_id.clone(),
+            subject_version: 1,
+            criterion_id: "criterion:notes".into(),
+            observed_at: 1,
+            result: ContinuityEvidenceResult::Pass,
+            verification_kind: ContinuityVerificationKind::UserAcceptance,
+            scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        },
+    )
+    .unwrap();
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    let evidence_grants: Vec<_> = grants
+        .iter()
+        .filter(|grant| {
+            grant
+                .source_refs
+                .iter()
+                .any(|source| source.opaque_id == event.id)
+        })
+        .collect();
+    assert_eq!(evidence_grants.len(), 1);
+    assert_eq!(
+        evidence_grants[0].source_refs[0].part_id.as_deref(),
+        Some(granted_part.as_str())
+    );
+    assert!(!evidence_grants.iter().any(|grant| {
+        grant
+            .source_refs
+            .iter()
+            .any(|source| source.part_id.as_deref() == Some(sibling_part.as_str()))
+    }));
+    assert_eq!(
+        harness
+            .store
+            .posted_event_part_text(&harness.conversation_id, &event.id, &granted_part)
+            .unwrap(),
+        "EVIDENCE-PART-A"
+    );
+}
+
+fn evidence_source(
+    event: &licoup_conversation::ConversationEvent,
+    part_id: &str,
+    span: Option<ContinuityUtf8ByteSpan>,
+    digest: String,
+    revision: i64,
+) -> ContinuitySourceRef {
+    ContinuitySourceRef {
+        owner_kind: ContinuitySourceOwnerKind::Event,
+        opaque_id: event.id.clone(),
+        part_id: Some(part_id.to_owned()),
+        span,
+        source_revision: revision,
+        digest,
+        visibility_scope: ContinuityVisibilityScope::Goal,
+        validity: ContinuitySourceValidity::Current,
+    }
+}
+
+fn accept_evidence(
+    harness: &Harness,
+    goal_id: &str,
+    source: ContinuitySourceRef,
+    criterion_id: &str,
+    version: i64,
+) {
+    append_criterion_evidence(
+        &harness.store,
+        &harness.conversation_id,
+        goal_id,
+        ContinuityEvidenceRef {
+            source,
+            issuer: harness.owner_membership_id.clone(),
+            subject_version: version,
+            criterion_id: criterion_id.into(),
+            observed_at: version,
+            result: ContinuityEvidenceResult::Pass,
+            verification_kind: ContinuityVerificationKind::UserAcceptance,
+            scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn evidence_grant_preserves_exact_span_digest_and_owner_kind() {
+    let mut harness = Harness::new("grant-span");
+    let parent_assistant = designate_agent(&mut harness);
+    let proposal = harness.proposal(
+        "request:grant-span",
+        "goal:grant-span",
+        "matter:grant-span",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &proposal,
+        &harness.event_id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let event = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "KEEP-SPAN|OUT-OF-SPAN-SECRET".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let part_id = event.parts[0].id.clone();
+    let admitted = evidence_source(
+        &event,
+        &part_id,
+        Some(ContinuityUtf8ByteSpan {
+            start_byte: 0,
+            end_byte: 9,
+        }),
+        format!("event:{}:{part_id}", event.id),
+        event.sequence,
+    );
+    accept_evidence(
+        &harness,
+        "goal:grant-span",
+        admitted.clone(),
+        "criterion:notes",
+        1,
+    );
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    let evidence = grants
+        .iter()
+        .find(|grant| {
+            grant
+                .source_refs
+                .iter()
+                .any(|source| source.opaque_id == event.id)
+        })
+        .expect("exact evidence grant");
+    assert_eq!(evidence.source_refs[0], admitted);
+}
+
+#[test]
+fn invalid_evidence_refs_do_not_issue_grants() {
+    let mut harness = Harness::new("grant-invalid");
+    let parent_assistant = designate_agent(&mut harness);
+    let proposal = harness.proposal(
+        "request:grant-invalid",
+        "goal:grant-invalid",
+        "matter:grant-invalid",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &proposal,
+        &harness.event_id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let before = list_all_parent_grants(&harness.store).unwrap().len();
+    let event = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "VALID-TEXT".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let part_id = event.parts[0].id.clone();
+    let cases = [
+        evidence_source(
+            &event,
+            &part_id,
+            None,
+            "digest:wrong".into(),
+            event.sequence,
+        ),
+        evidence_source(
+            &event,
+            &part_id,
+            None,
+            format!("event:{}:{part_id}", event.id),
+            event.sequence + 7,
+        ),
+        evidence_source(
+            &event,
+            "part:missing",
+            None,
+            format!("event:{}:part:missing", event.id),
+            event.sequence,
+        ),
+        evidence_source(
+            &event,
+            &part_id,
+            Some(ContinuityUtf8ByteSpan {
+                start_byte: 0,
+                end_byte: 64,
+            }),
+            format!("event:{}:{part_id}", event.id),
+            event.sequence,
+        ),
+    ];
+    for (index, source) in cases.into_iter().enumerate() {
+        accept_evidence(
+            &harness,
+            "goal:grant-invalid",
+            source,
+            &format!("criterion:invalid-{index}"),
+            1,
+        );
+    }
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    assert_eq!(grants.len(), before);
+    assert!(!grants.iter().any(|grant| {
+        grant
+            .source_refs
+            .iter()
+            .any(|source| source.opaque_id == event.id)
+    }));
+}
+
+#[test]
+fn superseded_evidence_revokes_every_matching_old_grant_and_keeps_independent_b() {
+    let mut harness = Harness::new("grant-supersede");
+    let parent_assistant = designate_agent(&mut harness);
+    let proposal = harness.proposal(
+        "request:grant-supersede",
+        "goal:grant-supersede",
+        "matter:grant-supersede",
+        true,
+    );
+    commit_user_posted_proposal(
+        &harness.store,
+        &proposal,
+        &harness.event_id,
+        &parent_assistant,
+    )
+    .unwrap();
+    let relation = harness
+        .store
+        .relation_for_goal("goal:grant-supersede")
+        .unwrap();
+    let child = harness.store.get(&relation.child_conversation_id).unwrap();
+    let child_member = child.assistant_membership_id.clone().unwrap();
+    let event_a = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "A-V1".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let event_b = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "B-V1".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let part_a = event_a.parts[0].id.clone();
+    let part_b = event_b.parts[0].id.clone();
+    let source_a = evidence_source(
+        &event_a,
+        &part_a,
+        None,
+        format!("event:{}:{part_a}", event_a.id),
+        event_a.sequence,
+    );
+    let source_b = evidence_source(
+        &event_b,
+        &part_b,
+        None,
+        format!("event:{}:{part_b}", event_b.id),
+        event_b.sequence,
+    );
+    accept_evidence(
+        &harness,
+        "goal:grant-supersede",
+        source_a.clone(),
+        "criterion:material-a",
+        1,
+    );
+    accept_evidence(
+        &harness,
+        "goal:grant-supersede",
+        source_b.clone(),
+        "criterion:material-b",
+        1,
+    );
+    for index in 0..PENDING_OBLIGATION_PAGE_SIZE {
+        put_grant(
+            &harness.store,
+            &ContinuityParentContextGrant {
+                grant_id: format!("grant:{index:02}-pad-old-a"),
+                source_conversation_id: harness.conversation_id.clone(),
+                recipient_conversation_id: relation.child_conversation_id.clone(),
+                recipient_membership_id: child_member.clone(),
+                source_refs: vec![source_a.clone()],
+                authorized_scopes: vec![ContinuityVisibilityScope::Goal],
+                status: ContinuityParentGrantStatus::Admitted,
+                request_id: format!("request:pad-old-a-{index}"),
+                revocation_generation: 0,
+            },
+        )
+        .unwrap();
+    }
+    put_grant(
+        &harness.store,
+        &ContinuityParentContextGrant {
+            grant_id: "grant:zz-old-a".into(),
+            source_conversation_id: harness.conversation_id.clone(),
+            recipient_conversation_id: relation.child_conversation_id.clone(),
+            recipient_membership_id: child_member.clone(),
+            source_refs: vec![source_a.clone()],
+            authorized_scopes: vec![ContinuityVisibilityScope::Goal],
+            status: ContinuityParentGrantStatus::Admitted,
+            request_id: "request:zz-old-a".into(),
+            revocation_generation: 0,
+        },
+    )
+    .unwrap();
+    let event_a2 = harness
+        .store
+        .append_event(
+            &harness.conversation_id,
+            Some(&harness.owner_membership_id),
+            EventKind::Message,
+            &[NewEventPart {
+                id: String::new(),
+                kind: EventPartKind::Text,
+                content: "A-V2".into(),
+            }],
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+    let part_a2 = event_a2.parts[0].id.clone();
+    accept_evidence(
+        &harness,
+        "goal:grant-supersede",
+        evidence_source(
+            &event_a2,
+            &part_a2,
+            None,
+            format!("event:{}:{part_a2}", event_a2.id),
+            event_a2.sequence,
+        ),
+        "criterion:material-a",
+        2,
+    );
+    let grants = list_all_parent_grants(&harness.store).unwrap();
+    let old_a_admitted = grants.iter().filter(|grant| {
+        grant.status == ContinuityParentGrantStatus::Admitted
+            && grant
+                .source_refs
+                .iter()
+                .any(|source| source.opaque_id == event_a.id)
+    });
+    assert_eq!(old_a_admitted.count(), 0);
+    assert!(grants.iter().any(|grant| {
+        grant.grant_id == "grant:zz-old-a" && grant.status == ContinuityParentGrantStatus::Revoked
+    }));
+    assert!(grants.iter().any(|grant| {
+        grant.status == ContinuityParentGrantStatus::Admitted
+            && grant
+                .source_refs
+                .iter()
+                .any(|source| source.opaque_id == event_b.id)
+    }));
+    assert!(grants.iter().any(|grant| {
+        grant.status == ContinuityParentGrantStatus::Admitted
+            && grant
+                .source_refs
+                .iter()
+                .any(|source| source.opaque_id == event_a2.id)
+    }));
+}
+
+#[test]
+fn accepted_v2_then_v1_close_rejects_without_rollback_or_notice() {
+    let mut harness = Harness::new("stale-v1-close");
+    commit_required_criterion_goal(
+        &mut harness,
+        "request:versioned",
+        "goal:versioned",
+        "matter:versioned",
+        "criterion:delivery",
+        true,
+    );
+    let v1 = post_owner_text(&harness, "artifact v1");
+    let v1_source = evidence_source(
+        &v1,
+        &v1.parts[0].id,
+        None,
+        format!("event:{}:{}", v1.id, v1.parts[0].id),
+        v1.sequence,
+    );
+    accept_evidence(
+        &harness,
+        "goal:versioned",
+        v1_source.clone(),
+        "criterion:delivery",
+        1,
+    );
+    let v2 = post_owner_text(&harness, "artifact v2 current");
+    accept_evidence(
+        &harness,
+        "goal:versioned",
+        evidence_source(
+            &v2,
+            &v2.parts[0].id,
+            None,
+            format!("event:{}:{}", v2.id, v2.parts[0].id),
+            v2.sequence,
+        ),
+        "criterion:delivery",
+        2,
+    );
+    let relation_before = harness.store.relation_for_goal("goal:versioned").unwrap();
+    let current = read_goal(&harness.store, "goal:versioned")
+        .unwrap()
+        .unwrap();
+    let mut progress = current.clone();
+    progress.lifecycle = ContinuityGoalLifecycle::Achieved;
+    progress.next_attention = None;
+    progress
+        .criterion_evidence_refs
+        .retain(|item| item.criterion_id == "criterion:delivery" && item.subject_version == 1);
+    let transition = ContinuityGoalCompletionTransition {
+        transition_id: "transition:stale-v1".into(),
+        goal_id: "goal:versioned".into(),
+        from_lifecycle: current.lifecycle,
+        to_lifecycle: ContinuityGoalLifecycle::Achieved,
+        goal_revision: progress.revision,
+        authority_kind: ContinuityClosureAuthorityKind::UserAcceptance,
+        evaluation_ref: v1_source,
+        notification_id: "notice:stale-v1".into(),
+    };
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::PrematureClosure
+    );
+    let stored = read_goal(&harness.store, "goal:versioned")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.lifecycle, ContinuityGoalLifecycle::Active);
+    assert_eq!(
+        stored_subject_version(&harness.store, "goal:versioned", "criterion:delivery"),
+        2
+    );
+    assert_eq!(stored.revision, current.revision);
+    assert_eq!(stored.criterion_evidence_refs.len(), 2);
+    assert!(!notice_recorded(&harness.store, "notice:stale-v1"));
+    let relation_after = harness.store.relation_for_goal("goal:versioned").unwrap();
+    assert_eq!(
+        relation_after.card_anchor.event_id,
+        relation_before.card_anchor.event_id
+    );
+    assert_eq!(
+        relation_after.card_anchor.sequence,
+        relation_before.card_anchor.sequence
+    );
+    assert!(relation_after.completion_transition.is_none());
+
+    let current = read_goal(&harness.store, "goal:versioned")
+        .unwrap()
+        .unwrap();
+    let (foreign_progress, foreign_transition) = achieved_close(
+        "goal:versioned",
+        &current,
+        ContinuitySourceRef {
+            owner_kind: ContinuitySourceOwnerKind::Event,
+            opaque_id: "event:foreign".into(),
+            part_id: None,
+            span: None,
+            source_revision: 1,
+            digest: "event:foreign".into(),
+            visibility_scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        },
+        "notice:foreign",
+        ContinuityClosureAuthorityKind::UserAcceptance,
+    );
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &foreign_transition,
+            &foreign_progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::PrematureClosure
+    );
+    assert_eq!(
+        stored_subject_version(&harness.store, "goal:versioned", "criterion:delivery"),
+        2
+    );
+    assert!(!notice_recorded(&harness.store, "notice:foreign"));
+}
+
+#[test]
+fn missing_failed_revoked_current_evidence_rejects_achieved() {
+    let mut harness = Harness::new("required-evidence");
+    commit_required_criterion_goal(
+        &mut harness,
+        "request:missing",
+        "goal:missing",
+        "matter:missing",
+        "criterion:delivery",
+        false,
+    );
+    let missing = read_goal(&harness.store, "goal:missing").unwrap().unwrap();
+    let (progress, transition) = achieved_close(
+        "goal:missing",
+        &missing,
+        goal_evaluation_ref("goal:missing", missing.revision),
+        "notice:missing",
+        ContinuityClosureAuthorityKind::UserAcceptance,
+    );
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::PrematureClosure
+    );
+    assert_eq!(
+        read_goal(&harness.store, "goal:missing")
+            .unwrap()
+            .unwrap()
+            .lifecycle,
+        ContinuityGoalLifecycle::Active
+    );
+    assert!(!notice_recorded(&harness.store, "notice:missing"));
+
+    let failed_event = post_owner_text(&harness, "failed artifact");
+    append_criterion_evidence(
+        &harness.store,
+        &harness.conversation_id,
+        "goal:missing",
+        ContinuityEvidenceRef {
+            source: evidence_source(
+                &failed_event,
+                &failed_event.parts[0].id,
+                None,
+                format!("event:{}:{}", failed_event.id, failed_event.parts[0].id),
+                failed_event.sequence,
+            ),
+            issuer: harness.owner_membership_id.clone(),
+            subject_version: 1,
+            criterion_id: "criterion:delivery".into(),
+            observed_at: 1,
+            result: ContinuityEvidenceResult::Fail,
+            verification_kind: ContinuityVerificationKind::UserAcceptance,
+            scope: ContinuityVisibilityScope::Goal,
+            validity: ContinuitySourceValidity::Current,
+        },
+    )
+    .unwrap();
+    let failed = read_goal(&harness.store, "goal:missing").unwrap().unwrap();
+    let (progress, transition) = achieved_close(
+        "goal:missing",
+        &failed,
+        goal_evaluation_ref("goal:missing", failed.revision),
+        "notice:failed",
+        ContinuityClosureAuthorityKind::UserAcceptance,
+    );
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::PrematureClosure
+    );
+    assert_eq!(
+        read_goal(&harness.store, "goal:missing")
+            .unwrap()
+            .unwrap()
+            .lifecycle,
+        ContinuityGoalLifecycle::Active
+    );
+    assert!(!notice_recorded(&harness.store, "notice:failed"));
+
+    harness.refresh();
+    commit_required_criterion_goal(
+        &mut harness,
+        "request:revoked",
+        "goal:revoked",
+        "matter:revoked",
+        "criterion:delivery",
+        false,
+    );
+    let revoked_event = post_owner_text(&harness, "current then revoked");
+    accept_evidence(
+        &harness,
+        "goal:revoked",
+        evidence_source(
+            &revoked_event,
+            &revoked_event.parts[0].id,
+            None,
+            format!("event:{}:{}", revoked_event.id, revoked_event.parts[0].id),
+            revoked_event.sequence,
+        ),
+        "criterion:delivery",
+        1,
+    );
+    revoke_source(
+        &harness.store,
+        &harness.conversation_id,
+        &revoked_event.id,
+        true,
+    )
+    .unwrap();
+    let revoked = read_goal(&harness.store, "goal:revoked").unwrap().unwrap();
+    let (progress, transition) = achieved_close(
+        "goal:revoked",
+        &revoked,
+        goal_evaluation_ref("goal:revoked", revoked.revision),
+        "notice:revoked",
+        ContinuityClosureAuthorityKind::UserAcceptance,
+    );
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::SourceRevoked
+    );
+    assert_eq!(
+        read_goal(&harness.store, "goal:revoked")
+            .unwrap()
+            .unwrap()
+            .lifecycle,
+        ContinuityGoalLifecycle::Active
+    );
+    assert!(!notice_recorded(&harness.store, "notice:revoked"));
+
+    let cancel = read_goal(&harness.store, "goal:missing").unwrap().unwrap();
+    let mut cancel_progress = cancel.clone();
+    cancel_progress.lifecycle = ContinuityGoalLifecycle::Cancelled;
+    cancel_progress.next_attention = None;
+    cancel_progress.active_execution_refs.clear();
+    let cancel_transition = ContinuityGoalCompletionTransition {
+        transition_id: "transition:cancel-missing".into(),
+        goal_id: "goal:missing".into(),
+        from_lifecycle: cancel.lifecycle,
+        to_lifecycle: ContinuityGoalLifecycle::Cancelled,
+        goal_revision: cancel.revision,
+        authority_kind: ContinuityClosureAuthorityKind::UserAcceptance,
+        evaluation_ref: goal_evaluation_ref("goal:missing", cancel.revision),
+        notification_id: "notice:cancel-missing".into(),
+    };
+    assert!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &cancel_transition,
+            &cancel_progress,
+        )
+        .unwrap()
+    );
+    let cancelled = read_goal(&harness.store, "goal:missing").unwrap().unwrap();
+    assert_eq!(cancelled.lifecycle, ContinuityGoalLifecycle::Cancelled);
+    assert_eq!(
+        cancelled.criterion_evidence_refs.len(),
+        cancel.criterion_evidence_refs.len()
+    );
+}
+
+#[test]
+fn valid_current_closure_once_retains_evidence_and_card_anchor() {
+    let mut harness = Harness::new("valid-current-close");
+    commit_required_criterion_goal(
+        &mut harness,
+        "request:current",
+        "goal:current",
+        "matter:current",
+        "criterion:delivery",
+        true,
+    );
+    let v1 = post_owner_text(&harness, "artifact v1");
+    accept_evidence(
+        &harness,
+        "goal:current",
+        evidence_source(
+            &v1,
+            &v1.parts[0].id,
+            None,
+            format!("event:{}:{}", v1.id, v1.parts[0].id),
+            v1.sequence,
+        ),
+        "criterion:delivery",
+        1,
+    );
+    let v2 = post_owner_text(&harness, "artifact v2 current");
+    let v2_source = evidence_source(
+        &v2,
+        &v2.parts[0].id,
+        None,
+        format!("event:{}:{}", v2.id, v2.parts[0].id),
+        v2.sequence,
+    );
+    accept_evidence(
+        &harness,
+        "goal:current",
+        v2_source.clone(),
+        "criterion:delivery",
+        2,
+    );
+    let relation_before = harness.store.relation_for_goal("goal:current").unwrap();
+    let current = read_goal(&harness.store, "goal:current").unwrap().unwrap();
+    let evidence_before = current.criterion_evidence_refs.clone();
+    let (progress, transition) = achieved_close(
+        "goal:current",
+        &current,
+        v2_source,
+        "notice:current",
+        ContinuityClosureAuthorityKind::UserAcceptance,
+    );
+    assert!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap()
+    );
+    assert!(
+        !accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &transition,
+            &progress,
+        )
+        .unwrap()
+    );
+    let stored = read_goal(&harness.store, "goal:current").unwrap().unwrap();
+    assert_eq!(stored.lifecycle, ContinuityGoalLifecycle::Achieved);
+    assert_eq!(stored.criterion_evidence_refs, evidence_before);
+    assert_eq!(
+        stored_subject_version(&harness.store, "goal:current", "criterion:delivery"),
+        2
+    );
+    assert!(notice_recorded(&harness.store, "notice:current"));
+    assert_eq!(
+        list_completion_notification_ids(&harness.store)
+            .unwrap()
+            .iter()
+            .filter(|item| *item == "notice:current")
+            .count(),
+        1
+    );
+    let relation_after = harness.store.relation_for_goal("goal:current").unwrap();
+    assert_eq!(
+        relation_after.card_anchor.event_id,
+        relation_before.card_anchor.event_id
+    );
+    assert_eq!(
+        relation_after.card_anchor.sequence,
+        relation_before.card_anchor.sequence
+    );
+    assert_eq!(
+        relation_after.card_anchor.part_id,
+        relation_before.card_anchor.part_id
+    );
+}
+
+#[test]
+fn stale_revision_or_from_state_rejects_without_mutation() {
+    let harness = Harness::new("stale-transition");
+    harness
+        .store
+        .commit(&harness.proposal("request:stale", "goal:stale", "matter:stale", true))
+        .unwrap();
+    let current = read_goal(&harness.store, "goal:stale").unwrap().unwrap();
+    let relation_before = harness.store.relation_for_goal("goal:stale").unwrap();
+    let mut stale_progress = current.clone();
+    stale_progress.lifecycle = ContinuityGoalLifecycle::Achieved;
+    stale_progress.next_attention = None;
+    stale_progress.revision = current.revision.saturating_add(4);
+    let stale_transition = ContinuityGoalCompletionTransition {
+        transition_id: "transition:stale-revision".into(),
+        goal_id: "goal:stale".into(),
+        from_lifecycle: current.lifecycle,
+        to_lifecycle: ContinuityGoalLifecycle::Achieved,
+        goal_revision: stale_progress.revision,
+        authority_kind: ContinuityClosureAuthorityKind::GoalEvaluation,
+        evaluation_ref: goal_evaluation_ref("goal:stale", stale_progress.revision),
+        notification_id: "notice:stale-revision".into(),
+    };
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &stale_transition,
+            &stale_progress,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::StaleRevision
+    );
+
+    let mut from_state = current.clone();
+    from_state.lifecycle = ContinuityGoalLifecycle::Achieved;
+    from_state.next_attention = None;
+    let from_transition = ContinuityGoalCompletionTransition {
+        transition_id: "transition:stale-from".into(),
+        goal_id: "goal:stale".into(),
+        from_lifecycle: ContinuityGoalLifecycle::Waiting,
+        to_lifecycle: ContinuityGoalLifecycle::Achieved,
+        goal_revision: current.revision,
+        authority_kind: ContinuityClosureAuthorityKind::GoalEvaluation,
+        evaluation_ref: goal_evaluation_ref("goal:stale", current.revision),
+        notification_id: "notice:stale-from".into(),
+    };
+    assert_eq!(
+        accept_completion(
+            &harness.store,
+            &harness.conversation_id,
+            &from_transition,
+            &from_state,
+        )
+        .unwrap_err()
+        .code,
+        ContinuityFailureCode::PrematureClosure
+    );
+
+    let stored = read_goal(&harness.store, "goal:stale").unwrap().unwrap();
+    assert_eq!(stored.lifecycle, ContinuityGoalLifecycle::Active);
+    assert_eq!(stored.revision, current.revision);
+    assert!(!notice_recorded(&harness.store, "notice:stale-revision"));
+    assert!(!notice_recorded(&harness.store, "notice:stale-from"));
+    let relation_after = harness.store.relation_for_goal("goal:stale").unwrap();
+    assert_eq!(
+        relation_after.card_anchor.event_id,
+        relation_before.card_anchor.event_id
+    );
+    assert_eq!(
+        relation_after.card_anchor.sequence,
+        relation_before.card_anchor.sequence
+    );
+    assert!(relation_after.completion_transition.is_none());
 }

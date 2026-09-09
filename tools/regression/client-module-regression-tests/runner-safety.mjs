@@ -233,8 +233,11 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   const calls = [];
   let releases = 0;
   const managedTarget = path.join(repoRoot, "build", "managed-native-target");
+  const environment = { ...process.env };
+  delete environment.RUST_TEST_THREADS;
   const result = await runClientRegressionCommand(batch, {
     repoRoot,
+    environment,
     leaseFactory(options) {
       assert.equal(options.scope, batch.id);
       return {
@@ -253,6 +256,115 @@ test("Rust command uses the managed target, native concurrency, and releases on 
   assert.equal(calls[0].args.includes("--timings"), true);
   assert.equal(calls[0].args.includes("--jobs=4"), true);
   assert.equal(releases, 1);
+});
+
+test("test child processes exempt loopback from inherited proxies", async () => {
+  const calls = [];
+  await runClientRegressionCommand(syntheticBatch(), {
+    repoRoot,
+    environment: {
+      ...process.env,
+      HTTP_PROXY: "http://proxy.example.test:8080",
+      HTTPS_PROXY: "http://proxy.example.test:8080",
+      NO_PROXY: "example.test",
+      no_proxy: "example.test",
+    },
+    spawnImpl(program, args, options) {
+      calls.push({ program, args, options });
+      return syntheticChild();
+    },
+  });
+  assert.equal(calls.length, 1);
+  const env = calls[0].options.env;
+  assert.equal(env.HTTP_PROXY, "http://proxy.example.test:8080");
+  assert.equal(env.HTTPS_PROXY, "http://proxy.example.test:8080");
+  for (const key of ["NO_PROXY", "no_proxy"]) {
+    assert.match(env[key], /example\.test/u);
+    assert.match(env[key], /localhost/u);
+    assert.match(env[key], /127\.0\.0\.1/u);
+    assert.match(env[key], /::1/u);
+  }
+
+  const loopback = "localhost,127.0.0.1,::1";
+  const matrix = [
+    {
+      input: { NO_PROXY: "corp.internal" },
+      omit: ["no_proxy"],
+      expected: {
+        NO_PROXY: `corp.internal,${loopback}`,
+        no_proxy: `corp.internal,${loopback}`,
+      },
+    },
+    {
+      input: { no_proxy: "corp.internal" },
+      omit: ["NO_PROXY"],
+      expected: {
+        NO_PROXY: `corp.internal,${loopback}`,
+        no_proxy: `corp.internal,${loopback}`,
+      },
+    },
+    {
+      input: { NO_PROXY: "upper.example", no_proxy: "lower.example" },
+      omit: [],
+      expected: {
+        NO_PROXY: `upper.example,${loopback}`,
+        no_proxy: `lower.example,${loopback}`,
+      },
+    },
+  ];
+  for (const row of matrix) {
+    const rowCalls = [];
+    const environment = {
+      ...process.env,
+      HTTP_PROXY: "http://proxy.example.test:8080",
+      HTTPS_PROXY: "http://proxy.example.test:8080",
+      ...row.input,
+    };
+    for (const key of row.omit) {
+      delete environment[key];
+    }
+    await runClientRegressionCommand(syntheticBatch(), {
+      repoRoot,
+      environment,
+      spawnImpl(program, args, options) {
+        rowCalls.push({ program, args, options });
+        return syntheticChild();
+      },
+    });
+    assert.equal(rowCalls.length, 1);
+    const rowEnv = rowCalls[0].options.env;
+    assert.equal(rowEnv.HTTP_PROXY, "http://proxy.example.test:8080");
+    assert.equal(rowEnv.HTTPS_PROXY, "http://proxy.example.test:8080");
+    assert.equal(rowEnv.NO_PROXY, row.expected.NO_PROXY);
+    assert.equal(rowEnv.no_proxy, row.expected.no_proxy);
+  }
+});
+
+test("explicit serial libtest is prepared independently of Cargo jobs", async () => {
+  const module = selectModulesById(["rust.domain.agent-usage"])[0];
+  const [batch] = planClientRegressionBatches([module]);
+  const calls = [];
+  await runClientRegressionCommand(batch, {
+    repoRoot,
+    environment: {
+      ...process.env,
+      RUST_TEST_THREADS: "1",
+    },
+    leaseFactory() {
+      return {
+        targetPath: path.join(repoRoot, "build", "managed-native-target"),
+        release() {},
+      };
+    },
+    spawnImpl(program, args, options) {
+      calls.push({ program, args, options });
+      return syntheticChild();
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args.includes("--jobs=4"), true);
+  assert.equal(calls[0].args.includes("--test-threads=1"), true);
+  assert.equal(calls[0].args.includes("--test-threads=4"), false);
 });
 
 test("Rust leases release and launch failures become reportable results", async () => {

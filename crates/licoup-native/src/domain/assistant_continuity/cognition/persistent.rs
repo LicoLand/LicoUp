@@ -421,36 +421,32 @@ fn append_admitted_source_attachments(
     if !source_attachments_are_admitted(request, conversation_id, source) {
         return;
     }
-    match source.owner_kind {
-        ContinuitySourceOwnerKind::Event => {
-            let Ok(found) = request
+    if let Some(part_id) = source.part_id.as_deref().filter(|value| !value.is_empty()) {
+        let Ok(Some(reference)) =
+            request
                 .store
-                .image_attachments_for_event(conversation_id, &source.opaque_id)
-            else {
-                return;
-            };
-            for reference in found {
-                if seen.insert(reference.part_id.clone()) {
-                    references.push(reference);
-                }
-            }
+                .image_attachment_for_part(conversation_id, &source.opaque_id, part_id)
+        else {
+            return;
+        };
+        if seen.insert(reference.part_id.clone()) {
+            references.push(reference);
         }
-        ContinuitySourceOwnerKind::Part => {
-            let Some(part_id) = source.part_id.as_deref().filter(|value| !value.is_empty()) else {
-                return;
-            };
-            let Ok(Some(reference)) = request.store.image_attachment_for_part(
-                conversation_id,
-                &source.opaque_id,
-                part_id,
-            ) else {
-                return;
-            };
-            if seen.insert(reference.part_id.clone()) {
-                references.push(reference);
-            }
+        return;
+    }
+    if source.owner_kind != ContinuitySourceOwnerKind::Event {
+        return;
+    }
+    let Ok(found) = request
+        .store
+        .image_attachments_for_event(conversation_id, &source.opaque_id)
+    else {
+        return;
+    };
+    for reference in found {
+        if seen.insert(reference.part_id.clone()) {
+            references.push(reference);
         }
-        _ => {}
     }
 }
 
@@ -695,9 +691,19 @@ fn resolve_authorized_text(
         .as_ref()
         .map(|agreement| &agreement.statement_ref)
         .unwrap_or(&record.source);
-    let text = store
-        .posted_event_text(&record.conversation_id, &source.opaque_id)
-        .ok()?;
+    let text = if let Some(part_id) = source
+        .part_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        store
+            .posted_event_part_text(&record.conversation_id, &source.opaque_id, part_id)
+            .ok()?
+    } else {
+        store
+            .posted_event_text(&record.conversation_id, &source.opaque_id)
+            .ok()?
+    };
     apply_source_span(&text, source.span.as_ref())
 }
 
