@@ -210,6 +210,58 @@
       "kind": "config-object"
     },
     {
+      "path": "tests/fixtures/continuous-assistant/evaluation/all-abstain-heldout.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/candidate-identity.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/evaluation-policy.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/family-heldout-split.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/heldout-denominators.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/identity-drift.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/live-admission-missing.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/native-comparable.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/pairing-unmatched-cost.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/unknown-cost.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/zero-sample.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/scenarios/catalog.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/scenarios/faults.json",
+      "kind": "config-object"
+    },
+    {
       "path": "tests/fixtures/continuous-assistant/adoption/adoption-policy.json",
       "kind": "config-object"
     },
