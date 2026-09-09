@@ -32,12 +32,43 @@ fn find_binary_with_path_dirs(names: &[&str], path_dirs: &[PathBuf]) -> Option<P
 }
 
 pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<PathBuf> {
+    if def.id == "command-code" {
+        return find_command_code_binary();
+    }
     if def.id != "cursor" {
         return find_binary(def.binary_names);
     }
     let path_dirs = crate::platform::user_shell_environment::search_path_dirs();
     find_cursor_binary_in_dirs(&path_dirs, params)
         .or_else(|| find_cursor_binary_in_dirs(&binary_search_dirs(), params))
+}
+
+fn find_command_code_binary() -> Option<PathBuf> {
+    let path_dirs = crate::platform::user_shell_environment::search_path_dirs();
+    find_command_code_binary_in_dirs(&path_dirs)
+        .or_else(|| find_command_code_binary_in_dirs(&binary_search_dirs()))
+}
+
+fn find_command_code_binary_in_dirs(dirs: &[PathBuf]) -> Option<PathBuf> {
+    find_binary_in_dirs(&["command-code", "cmdc"], dirs).or_else(|| {
+        find_binary_in_dirs(&["cmd"], dirs).filter(|path| !is_system_command_shell(path))
+    })
+}
+
+fn is_system_command_shell(path: &Path) -> bool {
+    let display = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    let file_name = display.rsplit('/').next().unwrap_or(display.as_str());
+    if file_name != "cmd" && file_name != "cmd.exe" {
+        return false;
+    }
+    display.contains("/system32/")
+        || display.contains("/syswow64/")
+        || display.contains("/windows/")
+        || display.contains("/sbin/")
+        || matches!(display.as_str(), "/bin/cmd" | "/usr/bin/cmd" | "/sbin/cmd")
 }
 
 fn find_cursor_binary_in_dirs(dirs: &[PathBuf], _params: &Value) -> Option<PathBuf> {
@@ -349,6 +380,21 @@ mod tests {
         assert_eq!(candidates.first(), Some(&dir.join("codex")));
         let deduped = dedupe_paths(vec![dir.join("Codex"), dir.join("codex")]);
         assert_eq!(deduped.len(), 1);
+    }
+
+    #[test]
+    fn command_code_never_binds_the_system_command_shell() {
+        let windows_cmd = ["C:", "Windows", "System32", "cmd.exe"]
+            .iter()
+            .collect::<PathBuf>();
+        assert!(is_system_command_shell(&windows_cmd));
+        assert!(is_system_command_shell(Path::new("/usr/bin/cmd")));
+        assert!(!is_system_command_shell(Path::new(
+            "/opt/homebrew/bin/command-code"
+        )));
+        assert!(!is_system_command_shell(&posix_path(&[
+            "opt", "local", "bin", "cmd"
+        ])));
     }
 
     #[test]

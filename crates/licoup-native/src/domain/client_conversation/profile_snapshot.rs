@@ -186,6 +186,10 @@ pub struct CandidateFilters {
     pub preferred_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_environment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_task: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_task: Option<String>,
 }
 
 /// Apply hard filters, then order by the stable lexicographic tuple frozen by
@@ -284,6 +288,11 @@ fn candidate_eligible(snapshot: &MembershipProfileSnapshot, filters: &CandidateF
             .as_deref()
             .map(|required| snapshot.readiness.as_deref() == Some(required))
             .unwrap_or(true)
+        && filters
+            .required_task
+            .as_deref()
+            .map(|required| snapshot.task_tags.iter().any(|tag| tag == required))
+            .unwrap_or(true)
 }
 
 fn preference_misses(snapshot: &MembershipProfileSnapshot, filters: &CandidateFilters) -> usize {
@@ -310,6 +319,12 @@ fn preference_misses(snapshot: &MembershipProfileSnapshot, filters: &CandidateFi
             .chain(snapshot.preferred_capabilities.iter())
             .filter(|value| !snapshot.capabilities.contains(value))
             .count()
+        + usize::from(
+            filters
+                .preferred_task
+                .as_deref()
+                .is_some_and(|task| !snapshot.task_tags.iter().any(|tag| tag == task)),
+        )
 }
 
 fn reliability_rank(snapshot: &MembershipProfileSnapshot) -> (bool, u8) {
@@ -410,6 +425,10 @@ fn project_with(
             "conversation.read".to_owned(),
         ],
     };
+    let task_tags = model
+        .as_deref()
+        .map(crate::domain::agent_intelligence_catalog::task_tags_for_model)
+        .unwrap_or_default();
     MembershipProfileSnapshot {
         conversation_id: conversation_id.to_owned(),
         membership_id: membership.id.clone(),
@@ -430,6 +449,7 @@ fn project_with(
         price_input_usd_per_million_tokens: price.map(|price| price.input),
         price_output_usd_per_million_tokens: price.map(|price| price.output),
         intelligence_score: score,
+        task_tags,
         reliability_class: target
             .as_ref()
             .and_then(|facts| facts.reliability_class.clone()),
@@ -516,7 +536,12 @@ impl ProfileSnapshotAuthority for ProductionSnapshotAuthority {
     }
 
     fn coding_score(&mut self, agent_id: &str, model: &str) -> Option<i64> {
-        crate::domain::agent_intelligence_catalog::agent_model_max_intelligence(agent_id, model)
+        crate::domain::agent_intelligence_catalog::merged_agent_model_score(agent_id, model)
+            .or_else(|| {
+                crate::domain::agent_intelligence_catalog::agent_model_max_intelligence(
+                    agent_id, model,
+                )
+            })
     }
 
     fn skill_names(&mut self, agent_id: &str) -> Vec<String> {
@@ -696,6 +721,35 @@ mod tests {
         assert_eq!(rejected.unwrap_err(), "profile_candidate_rejected");
     }
 
+    #[test]
+    fn task_filters_boost_matching_catalog_tags() {
+        let mut frontend = snapshot("membership:frontend");
+        frontend.task_tags = vec!["frontend".to_owned()];
+        frontend.intelligence_score = Some(4);
+        let mut backend = snapshot("membership:backend");
+        backend.task_tags = vec!["backend".to_owned()];
+        backend.intelligence_score = Some(9);
+        let ranked = rank_candidates(
+            vec![frontend.clone(), backend.clone()],
+            &CandidateFilters {
+                preferred_task: Some("frontend".to_owned()),
+                ..CandidateFilters::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(ranked[0].membership_id, "membership:frontend");
+        let required = rank_candidates(
+            vec![frontend, backend],
+            &CandidateFilters {
+                required_task: Some("frontend".to_owned()),
+                ..CandidateFilters::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(required.len(), 1);
+        assert_eq!(required[0].membership_id, "membership:frontend");
+    }
+
     fn membership(id: &str, access: MembershipAccess) -> Membership {
         Membership {
             id: id.to_owned(),
@@ -735,6 +789,7 @@ mod tests {
             price_input_usd_per_million_tokens: None,
             price_output_usd_per_million_tokens: None,
             intelligence_score: None,
+            task_tags: Vec::new(),
             reliability_class: None,
             latency_class: None,
             authority: vec!["conversation.act".to_owned()],

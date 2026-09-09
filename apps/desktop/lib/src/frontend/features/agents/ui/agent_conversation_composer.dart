@@ -148,6 +148,10 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   /// stays a plain [ValueKey] for tests.
   final GlobalKey _fieldSizeKey = GlobalKey();
   bool _multilineEstimate = false;
+  bool _fieldMeasureScheduled = false;
+  double? _lastMeasuredFieldHeight;
+  int? _singleLineExtentStyleKey;
+  double? _cachedSingleLineFieldExtent;
 
   /// Trailing debounce for the draft-store echo. Typing stays purely local;
   /// the store write republishes the composer projection and rebuilds the
@@ -251,12 +255,21 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   /// The field's laid-out height drives the capsule morph: one text line of
   /// interior is a stadium; anything taller (wrapped or hard-broken draft)
   /// becomes the rounded rectangle. Size notifications arrive mid-layout, so
-  /// the readback runs post-frame.
+  /// the readback runs post-frame. Sub-pixel height noise is ignored so
+  /// typing one line does not rebuild a TextPainter every frame.
   void _onFieldSizeNotification() {
+    if (_fieldMeasureScheduled) return;
+    _fieldMeasureScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fieldMeasureScheduled = false;
       if (!mounted) return;
       final size = _fieldSizeKey.currentContext?.size;
       if (size == null) return;
+      final lastHeight = _lastMeasuredFieldHeight;
+      if (lastHeight != null && (size.height - lastHeight).abs() < 1) {
+        return;
+      }
+      _lastMeasuredFieldHeight = size.height;
       final multiline = size.height > _singleLineFieldExtent(context) + 0.5;
       if (multiline == _multilineEstimate) return;
       setState(() => _multilineEstimate = multiline);
@@ -267,15 +280,32 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   /// the control row (send/leading extent) and one padded text line.
   double _singleLineFieldExtent(BuildContext context) {
     final style = Theme.of(context).textTheme.bodyLarge ?? const TextStyle();
+    final styleKey = Object.hash(
+      style.fontSize,
+      style.height,
+      style.fontWeight,
+      style.fontFamily,
+      style.letterSpacing,
+      Directionality.of(context),
+    );
+    final cached = _cachedSingleLineFieldExtent;
+    if (cached != null && _singleLineExtentStyleKey == styleKey) {
+      return cached;
+    }
     final painter = TextPainter(
       text: TextSpan(text: 'Ag', style: style),
       textDirection: Directionality.of(context),
     )..layout();
-    return LicoRadius.composerInset * 2 +
+    final extent =
+        LicoRadius.composerInset * 2 +
         math.max(
           LicoIconButtonSize.medium.extent,
           painter.height + 10, // text row vertical padding (5 + 5)
         );
+    painter.dispose();
+    _singleLineExtentStyleKey = styleKey;
+    _cachedSingleLineFieldExtent = extent;
+    return extent;
   }
 
   bool _syncMentionQuery() {

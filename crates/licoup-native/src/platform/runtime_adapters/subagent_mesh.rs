@@ -51,6 +51,7 @@ enum ExactIdentityKind {
     CodexRollout,
     CursorChat,
     AntigravityReceipt,
+    ClaudeCodeSession,
 }
 
 pub(crate) fn production_subagent_runtimes() -> Vec<Arc<dyn SubagentRuntimeAdapter>> {
@@ -84,6 +85,19 @@ pub(crate) fn production_subagent_runtimes() -> Vec<Arc<dyn SubagentRuntimeAdapt
         Arc::new(HostSubagentRuntime::new(
             "antigravity",
             ExactIdentityKind::AntigravityReceipt,
+            SubagentCapabilities {
+                create: true,
+                exact_resume: true,
+                observe: true,
+                continue_turn: true,
+                active_cancel: true,
+                native_steer: false,
+                instruction_policy: InstructionPolicy::OrdinaryWirePrefix,
+            },
+        )),
+        Arc::new(HostSubagentRuntime::new(
+            "claude-code",
+            ExactIdentityKind::ClaudeCodeSession,
             SubagentCapabilities {
                 create: true,
                 exact_resume: true,
@@ -133,6 +147,12 @@ fn production_caller_integrations() -> Vec<Arc<dyn McpCallerIntegration>> {
             "antigravity",
             CallerManagerKind::AntigravityUserConfig,
             crate::domain::targets::agent_cli_executable("antigravity"),
+            connector.clone(),
+        )),
+        Arc::new(ManagedCallerIntegration::new(
+            "claude-code",
+            CallerManagerKind::ClaudeCodeUserConfig,
+            crate::domain::targets::agent_cli_executable("claude-code"),
             connector,
         )),
     ]
@@ -143,6 +163,7 @@ enum CallerManagerKind {
     CodexPlugin,
     CursorUserConfig,
     AntigravityUserConfig,
+    ClaudeCodeUserConfig,
 }
 
 struct ManagedCallerIntegration {
@@ -210,6 +231,20 @@ impl ManagedCallerIntegration {
                 .map(|plan| plan.digest().to_owned())
                 .map_err(|_| registration_failure("caller_registration_plan_failed"))
             }
+            CallerManagerKind::ClaudeCodeUserConfig => {
+                if self.provider_binary.is_none() {
+                    return Err(AdapterFailure::permanent(
+                        "provider_binary_unavailable",
+                        "registration/plan",
+                    ));
+                }
+                let connector = self.connector.as_deref().ok_or_else(|| {
+                    AdapterFailure::permanent("mcp_connector_unavailable", "registration/plan")
+                })?;
+                crate::platform::claude_code_subagent_mcp_manager::plan(connector)
+                    .map(|plan| plan.digest().to_owned())
+                    .map_err(|_| registration_failure("caller_registration_plan_failed"))
+            }
         }
     }
 
@@ -232,6 +267,13 @@ impl ManagedCallerIntegration {
                 self.provider_binary.is_some()
                     && self.connector.as_deref().is_some_and(|connector| {
                         crate::platform::antigravity_subagent_mcp_manager::status(connector)
+                            == IntegrationState::Ready
+                    })
+            }
+            CallerManagerKind::ClaudeCodeUserConfig => {
+                self.provider_binary.is_some()
+                    && self.connector.as_deref().is_some_and(|connector| {
+                        crate::platform::claude_code_subagent_mcp_manager::status(connector)
                             == IntegrationState::Ready
                     })
             }
@@ -305,6 +347,28 @@ impl ManagedCallerIntegration {
                 } else {
                     crate::platform::antigravity_subagent_mcp_manager::install(&plan, &mut permit)
                         .map(|_| ())
+                }
+                .map_err(|_| registration_failure("caller_registration_apply_failed"))
+            }
+            CallerManagerKind::ClaudeCodeUserConfig => {
+                if self.provider_binary.is_none() {
+                    return Err(AdapterFailure::permanent(
+                        "provider_binary_unavailable",
+                        "registration/apply",
+                    ));
+                }
+                let connector = self.connector.as_deref().ok_or_else(|| {
+                    AdapterFailure::permanent("mcp_connector_unavailable", "registration/apply")
+                })?;
+                let plan = crate::platform::claude_code_subagent_mcp_manager::plan(connector)
+                    .map_err(|_| registration_failure("caller_registration_plan_failed"))?;
+                let mut permit = plan
+                    .approve(true, digest)
+                    .map_err(|_| registration_failure("caller_registration_approval_mismatch"))?;
+                if remove {
+                    crate::platform::claude_code_subagent_mcp_manager::remove(&plan, &mut permit)
+                } else {
+                    crate::platform::claude_code_subagent_mcp_manager::install(&plan, &mut permit)
                 }
                 .map_err(|_| registration_failure("caller_registration_apply_failed"))
             }
@@ -398,6 +462,7 @@ impl HostSubagentRuntime {
             "text": text,
             "streamEvents": true,
             "timeoutMs": request.timeout_ms.unwrap_or(0),
+            "timeoutUnbounded": request.timeout_unbounded,
             "conversationId": request.conversation_id,
             "membershipId": request.target_membership_id,
             "callerMembershipId": request.caller_membership_id,
@@ -423,6 +488,7 @@ impl HostSubagentRuntime {
             ("model", request.model.as_deref()),
             ("reasoningEffort", request.reasoning_effort.as_deref()),
             ("workingDirectory", request.working_directory.as_deref()),
+            ("taskType", request.task_type.as_deref()),
         ] {
             if let Some(value) = value {
                 params[key] = json!(value);
@@ -486,6 +552,7 @@ impl HostSubagentRuntime {
                     session_id,
                 )
             }
+            ExactIdentityKind::ClaudeCodeSession => valid_opaque_identity(session_id),
         };
         if !valid {
             return Err(AdapterFailure::permanent(
@@ -852,7 +919,7 @@ mod tests {
                 .iter()
                 .map(|runtime| runtime.provider_id().as_str())
                 .collect::<Vec<_>>(),
-            ["codex", "cursor", "antigravity"]
+            ["codex", "cursor", "antigravity", "claude-code"]
         );
         for runtime in runtimes {
             let caps = runtime.capabilities();

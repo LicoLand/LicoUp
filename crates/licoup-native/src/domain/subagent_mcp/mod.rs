@@ -7,6 +7,7 @@
 use crate::core::mcp::{
     McpApplication, McpApplicationError, McpServerDefinition, McpToolCallContext,
 };
+use crate::domain::adaptive_flywheel::{builtin_workflow_policies, builtin_workflow_policy};
 use licoup_agent_adapters::AdapterRegistry;
 use licoup_agent_runtime::{
     AdapterFailure, DurableNativeBinding, ProviderId, RuntimeDispatchReceipt, RuntimeTransition,
@@ -26,7 +27,7 @@ pub use production::production_application;
 pub const PROTOCOL_REVISION: &str = "2025-06-18";
 pub const COMPATIBLE_PROTOCOL_REVISIONS: &[&str] = &["2025-11-25"];
 pub const SERVER_NAME: &str = "lico-up-subagents";
-pub const SERVER_VERSION: &str = "0.11.0";
+pub const SERVER_VERSION: &str = "0.12.0";
 pub const MAX_MCP_FRAME_BYTES: usize = 64 * 1024;
 pub const MAX_PROMPT_BYTES: usize = 48 * 1024;
 pub const MAX_ID_BYTES: usize = 256;
@@ -38,6 +39,10 @@ pub const MAX_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MIN_SUBAGENT_STDERR_BYTES: u64 = 16 * 1024;
 pub const MAX_SUBAGENT_STDERR_BYTES: u64 = 4 * 1024 * 1024;
 
+/// Production mesh callers that receive a discovery token and may occupy a
+/// Canonical Conversation Membership seat. Sorted for discovery admission.
+pub const CALLER_PROVIDERS: &[&str] = &["antigravity", "claude-code", "codex", "cursor"];
+
 pub const TOOL_NAMES: &[&str] = &[
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
@@ -48,6 +53,7 @@ pub const TOOL_NAMES: &[&str] = &[
     "lico_subagent_delegate",
     "lico_subagent_continue",
     "lico_subagent_cancel",
+    "lico_assistant_workflow_policy",
 ];
 
 pub fn server_definition() -> McpServerDefinition {
@@ -126,6 +132,11 @@ pub trait ConversationHostPort: Send + Sync {
         &self,
         conversation_id: &str,
         membership_id: &str,
+    ) -> Result<TargetMembership, McpApplicationError>;
+    fn target_membership_by_agent(
+        &self,
+        conversation_id: &str,
+        agent: &str,
     ) -> Result<TargetMembership, McpApplicationError>;
     fn claim_dispatch(
         &self,
@@ -221,14 +232,35 @@ impl SubagentMcpApplication {
         Ok(runtime)
     }
 
+    fn resolve_target(
+        &self,
+        conversation_id: &str,
+        arguments: &Map<String, Value>,
+    ) -> Result<TargetMembership, McpApplicationError> {
+        if let Some(membership_id) = optional_bounded_text(arguments, "membershipId", MAX_ID_BYTES)?
+        {
+            return self
+                .conversation
+                .target_membership(conversation_id, &membership_id);
+        }
+        if let Some(agent) = optional_bounded_text(arguments, "agent", MAX_ID_BYTES)? {
+            return self
+                .conversation
+                .target_membership_by_agent(conversation_id, &agent);
+        }
+        Err(retryable(
+            "subagent_target_seat_missing",
+            "conversation/authorize",
+        ))
+    }
+
     fn dispatch(
         &self,
         caller: &CallerContext,
         arguments: &Map<String, Value>,
         continuing: bool,
     ) -> Result<Value, McpApplicationError> {
-        let conversation_id = required_text(arguments, "conversationId", MAX_ID_BYTES)?;
-        let target_membership_id = required_text(arguments, "membershipId", MAX_ID_BYTES)?;
+        let conversation_id = resolve_conversation_id(caller, arguments)?;
         // Parse every fallible request field before the durable claim. A
         // whitespace-only prompt passes JSON Schema minLength but is rejected
         // by the normalized application contract; discovering that after the
@@ -243,9 +275,7 @@ impl SubagentMcpApplication {
         }
         let caller_membership_id = caller.effect_scope(&conversation_id)?;
         self.conversation.verify_caller(caller, &conversation_id)?;
-        let target = self
-            .conversation
-            .target_membership(&conversation_id, &target_membership_id)?;
+        let target = self.resolve_target(&conversation_id, arguments)?;
         let operation = if continuing {
             Operation::Continue
         } else {
@@ -259,7 +289,7 @@ impl SubagentMcpApplication {
         let resume_identity = if continuing {
             let binding = self
                 .conversation
-                .latest_resume_binding(&conversation_id, &target_membership_id)?;
+                .latest_resume_binding(&conversation_id, &target.membership_id)?;
             if let (Some(requested), Some(recorded)) = (
                 arguments.get("workingDirectory").and_then(Value::as_str),
                 binding.working_directory(),
@@ -282,7 +312,7 @@ impl SubagentMcpApplication {
         let claim = self.conversation.claim_dispatch(
             &conversation_id,
             caller_membership_id,
-            &target_membership_id,
+            &target.membership_id,
             caller.parent_dispatch_id.as_deref(),
         )?;
         let request = dispatch_request(arguments, caller_membership_id, &target, &claim)?;
@@ -334,20 +364,17 @@ impl SubagentMcpApplication {
         caller: &CallerContext,
         arguments: &Map<String, Value>,
     ) -> Result<Value, McpApplicationError> {
-        let conversation_id = required_text(arguments, "conversationId", MAX_ID_BYTES)?;
-        let target_membership_id = required_text(arguments, "membershipId", MAX_ID_BYTES)?;
+        let conversation_id = resolve_conversation_id(caller, arguments)?;
         let caller_membership_id = caller.effect_scope(&conversation_id)?;
         self.conversation.verify_caller(caller, &conversation_id)?;
-        let target = self
-            .conversation
-            .target_membership(&conversation_id, &target_membership_id)?;
+        let target = self.resolve_target(&conversation_id, arguments)?;
         let runtime = self.runtime(&target, Operation::Cancel)?;
         let claim = self
             .conversation
             .active_claim(
                 &conversation_id,
                 caller_membership_id,
-                &target_membership_id,
+                &target.membership_id,
             )?
             .ok_or_else(|| permanent("subagent_cancel_unavailable", "dispatch/cancel"))?;
         self.conversation
@@ -516,6 +543,12 @@ impl McpApplication for SubagentMcpApplication {
                 arguments,
             ),
             "lico_subagents_list" => self.targets.list(),
+            "lico_assistant_workflow_policy" => match optional_text(arguments, "policyId") {
+                None => Ok(json!({"policies": builtin_workflow_policies()})),
+                Some(id) => builtin_workflow_policy(&id)
+                    .map(|policy| json!(policy))
+                    .ok_or_else(|| permanent("workflow_policy_not_found", "workflow-policy/read")),
+            },
             "lico_subagent_probe" => self.probe(arguments),
             "lico_subagent_delegate" | "lico_subagent_continue" | "lico_subagent_cancel" => {
                 let result = match name {
@@ -535,6 +568,19 @@ impl McpApplication for SubagentMcpApplication {
     }
 }
 
+/// Default guidance for a delegated Membership: the target knows it is a
+/// subagent in a group, must finish the bounded task, and must report back.
+fn subagent_situation_guidance() -> String {
+    [
+        "You are a delegated LicoUp subagent in the current Canonical Conversation.",
+        "Do only the bounded task in the prompt.",
+        "When the work is finished, report the outcome back to the caller so the supervisor can continue.",
+        "Do not stay silent after the work completes.",
+        "Do not attempt a self-call or a cross-conversation call.",
+    ]
+    .join(" ")
+}
+
 fn dispatch_request(
     arguments: &Map<String, Value>,
     caller_membership_id: &str,
@@ -551,10 +597,16 @@ fn dispatch_request(
         reasoning_effort: optional_text(arguments, "reasoningEffort")
             .or_else(|| target.preferred_reasoning_effort.clone()),
         working_directory: optional_text(arguments, "workingDirectory"),
+        task_type: optional_text(arguments, "taskType"),
         timeout_ms: arguments.get("timeoutMs").and_then(Value::as_u64),
+        timeout_unbounded: arguments
+            .get("timeoutUnbounded")
+            .or_else(|| arguments.get("unboundedTimeout"))
+            .and_then(Value::as_bool)
+            == Some(true),
         max_stdout_bytes: arguments.get("maxStdoutBytes").and_then(Value::as_u64),
         max_stderr_bytes: arguments.get("maxStderrBytes").and_then(Value::as_u64),
-        generated_guidance: None,
+        generated_guidance: Some(subagent_situation_guidance()),
     })
 }
 
@@ -606,6 +658,27 @@ fn permanent(code: &'static str, stage: &'static str) -> McpApplicationError {
     McpApplicationError::permanent(code, stage)
 }
 
+fn retryable(code: &'static str, stage: &'static str) -> McpApplicationError {
+    McpApplicationError::retryable(code, stage)
+}
+
+fn resolve_conversation_id(
+    caller: &CallerContext,
+    arguments: &Map<String, Value>,
+) -> Result<String, McpApplicationError> {
+    if let Some(conversation_id) = optional_bounded_text(arguments, "conversationId", MAX_ID_BYTES)?
+    {
+        return Ok(conversation_id);
+    }
+    caller
+        .conversation_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= MAX_ID_BYTES && !value.contains('\0'))
+        .map(str::to_owned)
+        .ok_or_else(|| permanent("invalid_request", "schema/validate"))
+}
+
 fn reconciliation_required() -> McpApplicationError {
     McpApplicationError {
         code: "dispatch_reconciliation_required",
@@ -636,6 +709,20 @@ fn optional_text(arguments: &Map<String, Value>, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
+}
+
+fn optional_bounded_text(
+    arguments: &Map<String, Value>,
+    key: &str,
+    max: usize,
+) -> Result<Option<String>, McpApplicationError> {
+    let Some(value) = optional_text(arguments, key) else {
+        return Ok(None);
+    };
+    if value.len() > max || value.contains('\0') {
+        return Err(permanent("invalid_request", "schema/validate"));
+    }
+    Ok(Some(value))
 }
 
 pub fn tool_catalog() -> Vec<Value> {
@@ -704,10 +791,25 @@ pub fn tool_catalog() -> Vec<Value> {
             &[
                 ("conversationId", bounded_string(MAX_ID_BYTES)),
                 ("membershipId", bounded_string(MAX_ID_BYTES)),
+                ("agent", bounded_string(MAX_ID_BYTES)),
             ],
-            &["conversationId", "membershipId"],
+            &[],
         ),
+        workflow_policy_tool(),
     ]
+}
+
+fn workflow_policy_tool() -> Value {
+    let mut definition = tool(
+        "lico_assistant_workflow_policy",
+        &[("policyId", bounded_string(MAX_ID_BYTES))],
+        &[],
+    );
+    definition["description"] = json!(
+        "Discover built-in development workflow policies and recommended model presets. Omit policyId to list summaries; pass a listed id such as better-plan to read its instructions and ordered model preferences. Read-only guidance for the Assistant; execute work through existing tools."
+    );
+    definition["annotations"] = json!({"readOnlyHint": true});
+    definition
 }
 
 fn dispatch_tool(name: &'static str) -> Value {
@@ -716,17 +818,33 @@ fn dispatch_tool(name: &'static str) -> Value {
         &[
             ("conversationId", bounded_string(MAX_ID_BYTES)),
             ("membershipId", bounded_string(MAX_ID_BYTES)),
+            ("agent", bounded_string(MAX_ID_BYTES)),
             ("prompt", bounded_string(MAX_PROMPT_BYTES)),
             ("model", bounded_string(MAX_ID_BYTES)),
             ("reasoningEffort", bounded_string(32)),
+            (
+                "taskType",
+                json!({
+                    "type": "string",
+                    "enum": ["frontend", "backend", "retrieval", "text"]
+                }),
+            ),
             (
                 "workingDirectory",
                 bounded_string(MAX_WORKING_DIRECTORY_BYTES),
             ),
             (
                 "timeoutMs",
-                json!({"type":"integer", "minimum":MIN_SUBAGENT_TIMEOUT_MS, "maximum":MAX_SUBAGENT_TIMEOUT_MS, "x-zeroMeansUnbounded":true}),
+                json!({
+                    "type":"integer",
+                    "minimum":0,
+                    "maximum":MAX_SUBAGENT_TIMEOUT_MS,
+                    "x-zeroMeansPolicyDefault":true,
+                    "x-minFiniteTimeoutMs": MIN_SUBAGENT_TIMEOUT_MS
+                }),
             ),
+            ("timeoutUnbounded", json!({"type": "boolean"})),
+            ("unboundedTimeout", json!({"type": "boolean"})),
             (
                 "maxStdoutBytes",
                 json!({"type":"integer", "minimum":MIN_SUBAGENT_STDOUT_BYTES, "maximum":MAX_SUBAGENT_STDOUT_BYTES}),
@@ -736,7 +854,7 @@ fn dispatch_tool(name: &'static str) -> Value {
                 json!({"type":"integer", "minimum":MIN_SUBAGENT_STDERR_BYTES, "maximum":MAX_SUBAGENT_STDERR_BYTES}),
             ),
         ],
-        &["conversationId", "membershipId", "prompt"],
+        &["prompt"],
     )
 }
 
@@ -811,6 +929,7 @@ pub fn validate_tool_arguments(name: &str, arguments: &Map<String, Value>) -> bo
                             .unwrap_or(u64::MAX)
             }),
             Some("object") => value.is_object(),
+            Some("boolean") => value.is_boolean(),
             Some("array") => value.as_array().is_some_and(|items| {
                 items.len()
                     <= schema

@@ -239,6 +239,9 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
         if observed.get(&domain.domain_id) != Some(&domain.target_schema_version) {
             continue;
         }
+        if domain.domain_id == "canonical-conversation" {
+            upgrade_canonical_conversation_schema(data_root)?;
+        }
         reconcile_current_marker(&marker_root, domain)?;
         for edge in &domain.steps {
             reconciled_current_domain |= reconcile_ledger(&mut ledger, domain, edge);
@@ -793,18 +796,12 @@ fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
     let database_present = regular_file_present(&database)?;
     let completion_present = regular_file_present(&completion_marker)?;
     let legacy_present = canonical_legacy_state_present(root)?;
-    let database_version = probe_sqlite_meta(&database, "schema_meta", "version", "11")?.version;
+    probe_sqlite_meta(&database, "schema_meta", "version", "12")?;
     if !database_present {
         ensure!(!completion_present, "unsupported_state_shape");
         return Ok(AuthoritativeProbe {
             version: 0,
             present: legacy_present,
-        });
-    }
-    if database_version == 0 {
-        return Ok(AuthoritativeProbe {
-            version: 0,
-            present: true,
         });
     }
     if !completion_present {
@@ -819,10 +816,33 @@ fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
         value == "schema=v5\nstatus=complete\n",
         "unsupported_state_shape"
     );
+    // Frontier version 1 means "this conversation store exists". The inner
+    // SQLite schema (11 → 12) is an in-store upgrade. Reporting 0 for an
+    // older-but-known schema fights the already-written domain marker and
+    // blocks startup admission with unsupported_state_shape.
     Ok(AuthoritativeProbe {
         version: 1,
         present: true,
     })
+}
+
+/// When the conversation domain is already admitted, still apply a newer
+/// inner SQLite schema so `ConversationStore::open` is not left on v11.
+fn upgrade_canonical_conversation_schema(root: &Path) -> Result<()> {
+    let database = root.join("client-state/conversations/conversations.sqlite3");
+    if !regular_file_present(&database)? {
+        return Ok(());
+    }
+    if probe_sqlite_meta(&database, "schema_meta", "version", "12")?.version == 1 {
+        return Ok(());
+    }
+    crate::domain::client_conversation::ConversationStore::open_for_migration(root)
+        .context("migration_step_failed")?;
+    ensure!(
+        probe_sqlite_meta(&database, "schema_meta", "version", "12")?.version == 1,
+        "migration_postcondition_failed"
+    );
+    Ok(())
 }
 
 fn probe_mobile_relay(path: &Path) -> Result<AuthoritativeProbe> {
@@ -1658,7 +1678,7 @@ mod tests {
                 "client-state/conversations/conversations.sqlite3",
                 "schema_meta",
                 "version",
-                "11",
+                "12",
             ),
             (
                 "client-state/adaptive-flywheel/strategies.sqlite3",
@@ -1720,6 +1740,35 @@ mod tests {
         let conversations = store.list(false).unwrap();
         assert_eq!(conversations.len(), 1);
         assert_eq!(conversations[0].title, "Preserved");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn admitted_v11_conversation_store_upgrades_without_resetting_the_domain() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-conversation-v11-admit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        admit(&root).unwrap();
+        let database = root.join("client-state/conversations/conversations.sqlite3");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute("UPDATE schema_meta SET value='11' WHERE key='version'", [])
+            .unwrap();
+        drop(connection);
+        assert_eq!(probe_canonical_conversation(&root).unwrap().version, 1);
+
+        admit(&root).unwrap();
+
+        let version: String = Connection::open(&database)
+            .unwrap()
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key='version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "12");
         let _ = fs::remove_dir_all(root);
     }
 }

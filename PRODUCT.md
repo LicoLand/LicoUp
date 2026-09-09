@@ -40,9 +40,31 @@ network-volume, microphone, camera, or other apps' data prompts. Token usage is
 not scanned until Monitoring is opened.
 
 The product remains useful as a local-agent client before human messaging,
-federation, recovery, notary, and multi-device goals are delivered. Those
+federation, recovery, and multi-device goals are delivered. Those
 goals become current capability only after their owning implementation and
 verification close.
+
+## Continuous collaboration destination
+
+The User should be able to keep working with the same visible Assistant without
+managing provider sessions, resetting conversations, selecting a coding or Goal
+mode, or manually moving information into a memory interface. The Assistant
+understands when an exchange is a question, exploration, a commitment or a
+return to earlier work. It brings professional capabilities into that exchange
+when needed; software development is one form of work among many.
+
+Changing the subject should not contaminate unrelated work or discard an
+unfinished commitment. Returning later should restore relevant agreements,
+evidence and progress without requiring the User to repeat the background.
+The User remains free to create, organize and separate Conversations; a stable
+Assistant experience never merges private and shared visibility scopes.
+
+Automatic organization removes management effort, not control. Real participants,
+work provenance, resource use and external destinations remain inspectable.
+Required approvals, User corrections, explicit Assistant designation and
+native-Agent capabilities remain part of the experience. Continuous collaboration
+mechanisms and adoption boundaries belong to the accepted
+[Continuous Assistant architecture](docs/architecture/CONTINUOUS-ASSISTANT.md).
 
 ## Agent command identity
 
@@ -58,7 +80,7 @@ launch binding instead of silently discarding User configuration.
 The Agent Center shows the observed command binding and every additional
 candidate. An explicit User selection of a command or version replaces the
 observed default. User-configured environment variables, arguments, and Hooks
-then extend that selected launch profile with visible, deterministic
+then extend the selected launch profile with visible, deterministic
 precedence. A manifest-discovered or LicoUp-managed runtime may be offered when
 the command-line environment has no matching command, but it must never be
 presented as the User's terminal choice.
@@ -77,8 +99,31 @@ The long-term model uses one visible Conversation for people and Agents:
 - local search and projections are built after endpoint-controlled
   decryption.
 
-Provider-native histories may be projected into the experience, but they do
-not silently become the canonical LicoUp conversation authority.
+Provider-managed cloud history may be read into the experience after the user
+authorizes its provider. It remains a provider-owned source and never silently
+becomes the canonical LicoUp conversation authority.
+
+## Trusted history and recovery
+
+The product direction includes a provider-managed cloud history path. With
+provider authorization, retained history is readable by default and the
+default history read does not call a recovery key. Client-side encryption for
+this history is an explicit opt-in; it is not silently enabled by the default
+path.
+
+History recovery restores all retained objects that the authorized provider
+still makes available. Provider access rules still apply, and recovery cannot
+bypass those rules or recreate objects that are missing, deleted, expired, or
+otherwise unavailable. Identity recovery material is protected and validated
+separately, and default history reads never depend on it. Replacement-device
+recovery prepares identity authority and all retained available history, then
+publishes them atomically; identity material alone cannot recreate absent
+history.
+
+LicoUp never sends this history through or stores it at a Station; malicious
+Stations remain outside the history path. This history path does not require
+or promise a notary service or endpoint attestation. Any evidence shown by
+LicoUp remains local and scoped to the operation that produced it.
 
 ## Endpoint responsibility and protocol execution
 
@@ -86,13 +131,13 @@ LicoUp owns:
 
 - endpoint identity material, private-key custody, and local cryptographic
   Provider selection and invocation;
-- decrypted plaintext, conversation history, local search projections, and
-  user-selected backups;
+- decrypted plaintext, canonical Conversation history, provider-authorized
+  history projections, local search projections, and user-selected backups;
 - conforming execution of one pinned Lico Arc Protocol Line;
 - endpoint admission, the User's peer-trust decision, approval, protected
   disclosure, and local effects;
 - local persistence and enforcement of protocol-defined freshness, replay,
-  recovery, and endpoint-evidence transitions;
+  and recovery transitions;
 - client configuration, native bridges, platform adaptation, packaging, and
   user experience.
 
@@ -102,9 +147,9 @@ delivery claim is only an untrusted operational hint.
 
 LicoUp does not own an alternative cryptographic protocol that it may
 unilaterally fork. Wire-observable Pairwise Protection, Generic Message,
-Reliable Exchange, negotiation, Transport Profile, and protocol-transition
-semantics remain governed by versioned Lico Arc Protocol Lines. LicoUp selects
-a supported line, holds the endpoint keys and local state, executes that line,
+Reliable Exchange, fixed session admission, and Transport Profile semantics
+remain governed by the initial Lico Arc V1 / Generation 1. LicoUp holds the
+endpoint keys and local state, executes that exact definition,
 and fails closed when it cannot conform.
 
 ## Federation boundary
@@ -132,8 +177,9 @@ synchronized release.
   Reliable Exchange, negotiation, Transport Profile, federation governance,
   and protocol compatibility.
 - LicoUp holds private keys, selects and invokes local Providers, executes a
-  pinned Protocol Line, and owns plaintext, history, backups, endpoint
-  admission, approval, local effects, and the User's final trust decision.
+  pinned Protocol Line, and owns plaintext, canonical history,
+  provider-authorized history projections, backups, endpoint admission,
+  approval, local effects, and the User's final trust decision.
 - A Station owns no trust decision.
 
 These states must remain distinct and must never collapse into a generic
@@ -183,6 +229,8 @@ LicoUp does not:
 - define, stabilize, or silently fork a product-specific endpoint wire
   protocol;
 - make an official network a mandatory or privileged trust root;
+- treat provider authorization as endpoint identity recovery, restore history
+  objects that are no longer available, or make a Station a history store;
 - treat build availability, preview status, generated artifacts, or plans as
   release or support evidence;
 - preserve a retired product-specific station wire as a permanent

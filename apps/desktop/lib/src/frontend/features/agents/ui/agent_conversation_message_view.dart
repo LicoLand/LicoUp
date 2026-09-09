@@ -440,7 +440,7 @@ class AgentConversationMessageListState
               'agent-conversation-message-list-$_timelineSessionKey',
             ),
             reverse: true,
-            scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+            scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
               LicoContentSpacing.item + widget.topOverlayInset,
@@ -643,9 +643,58 @@ final class _ConversationEarlierPageRow extends StatelessWidget {
   }
 }
 
+/// One-slot identity for [mergeConversationReadbackAndLiveMessages]. A
+/// streamed pane republishes new list wrappers every frame while ids and
+/// text are unchanged; returning the same merged instance skips the O(n)
+/// copies and the O(n²) tail walk.
+({int readBack, int live})? _mergeConversationIdentity;
+List<AgentConversationMessage>? _mergedConversationMessages;
+
+int _conversationMergeListIdentity(List<AgentConversationMessage> messages) {
+  if (messages.isEmpty) {
+    return 0;
+  }
+  var hash = messages.length;
+  hash = Object.hash(
+    hash,
+    messages.first.id,
+    messages.first.text.length,
+    messages.last.id,
+    messages.last.text.length,
+  );
+  for (final message in messages) {
+    hash = Object.hash(
+      hash,
+      message.id,
+      message.text.hashCode,
+      message.stableIdentity,
+      message.cardType,
+    );
+  }
+  return hash;
+}
+
 /// Keeps a completed live turn visible until readback arrives without briefly
 /// rendering the same user/assistant pair twice during convergence.
 List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
+  List<AgentConversationMessage> readBack,
+  List<AgentConversationMessage> live,
+) {
+  final identity = (
+    readBack: _conversationMergeListIdentity(readBack),
+    live: _conversationMergeListIdentity(live),
+  );
+  final cached = _mergedConversationMessages;
+  if (cached != null && _mergeConversationIdentity == identity) {
+    return cached;
+  }
+  final merged = _mergeConversationReadbackAndLiveMessages(readBack, live);
+  _mergeConversationIdentity = identity;
+  _mergedConversationMessages = merged;
+  return merged;
+}
+
+List<AgentConversationMessage> _mergeConversationReadbackAndLiveMessages(
   List<AgentConversationMessage> readBack,
   List<AgentConversationMessage> live,
 ) {

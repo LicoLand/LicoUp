@@ -55,6 +55,8 @@ class LicoToast extends StatelessWidget {
     this.icon,
     this.iconColor,
     this.onTap,
+    this.actionLabel,
+    this.onAction,
   });
 
   final String message;
@@ -69,6 +71,10 @@ class LicoToast extends StatelessWidget {
 
   /// Tap handler; the host wires this to early dismissal.
   final VoidCallback? onTap;
+
+  /// Distinct action from dismiss. Arrival never invokes this.
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +129,10 @@ class LicoToast extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(width: 10),
+                  TextButton(onPressed: onAction, child: Text(actionLabel!)),
+                ],
               ],
             ),
           ),
@@ -145,6 +155,8 @@ void showLicoToast(
   IconData? icon,
   Color? iconColor,
   Duration showDuration = _defaultShowDuration,
+  String? actionLabel,
+  VoidCallback? onAction,
 }) {
   final host = LicoToastHost.maybeOf(context);
   if (host == null) {
@@ -159,6 +171,8 @@ void showLicoToast(
     icon: icon,
     iconColor: iconColor,
     showDuration: showDuration,
+    actionLabel: actionLabel,
+    onAction: onAction,
   );
 }
 
@@ -196,6 +210,8 @@ class LicoToastHostState extends State<LicoToastHost> {
     IconData? icon,
     Color? iconColor,
     Duration showDuration = _defaultShowDuration,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return;
@@ -208,6 +224,8 @@ class LicoToastHostState extends State<LicoToastHost> {
         icon: icon,
         iconColor: iconColor,
         showDuration: showDuration,
+        actionLabel: actionLabel,
+        onAction: onAction,
       ),
     );
     while (_items.length > _maxVisibleToasts) {
@@ -299,6 +317,8 @@ final class _LicoToastItem {
     required this.icon,
     required this.iconColor,
     required this.showDuration,
+    this.actionLabel,
+    this.onAction,
   });
 
   final int id;
@@ -307,6 +327,8 @@ final class _LicoToastItem {
   final IconData? icon;
   final Color? iconColor;
   final Duration showDuration;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 }
 
 /// One animated toast in the stack: fade/slide entrance, auto-dismiss timer,
@@ -380,6 +402,13 @@ class _LicoToastItemViewState extends State<_LicoToastItemView>
           icon: widget.item.icon,
           iconColor: widget.item.iconColor,
           onTap: _dismiss,
+          actionLabel: widget.item.actionLabel,
+          onAction: widget.item.onAction == null
+              ? null
+              : () {
+                  widget.item.onAction!();
+                  _dismiss();
+                },
         ),
       ),
     );
@@ -439,12 +468,14 @@ class LicoToastNoticesListener extends StatefulWidget {
     super.key,
     required this.notices,
     required this.child,
+    this.onActivate,
   });
 
   /// The chrome notification-notices exposure (frozen contract 4).
   final ValueListenable<LicoToastNoticesSnapshot> notices;
 
   final Widget child;
+  final ValueChanged<ChromeOperationNotificationProjection>? onActivate;
 
   @override
   State<LicoToastNoticesListener> createState() =>
@@ -538,9 +569,21 @@ class _LicoToastNoticesListenerState extends State<LicoToastNoticesListener> {
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final message = chinese ? notice.messageChinese : notice.messageEnglish;
     if (message.trim().isEmpty) return;
+    final actionLabel = notice.completionTarget == null
+        ? null
+        : (chinese ? '打开原事项' : 'Open original matter');
+    final onAction = notice.completionTarget == null
+        ? null
+        : () => widget.onActivate?.call(notice);
     switch (notice.severity) {
       case PresentationNoticeSeverity.error:
-        showLicoToast(context, message: message, kind: LicoToastKind.error);
+        showLicoToast(
+          context,
+          message: message,
+          kind: LicoToastKind.error,
+          actionLabel: actionLabel,
+          onAction: onAction,
+        );
       case PresentationNoticeSeverity.warning:
         // The legacy bell surfaced warnings with the amber glyph; keep that
         // accent on the unified toast.
@@ -550,11 +593,25 @@ class _LicoToastNoticesListenerState extends State<LicoToastNoticesListener> {
           kind: LicoToastKind.error,
           icon: Icons.warning_amber_rounded,
           iconColor: context.licoColors.warning,
+          actionLabel: actionLabel,
+          onAction: onAction,
         );
       case PresentationNoticeSeverity.success:
-        showLicoToast(context, message: message, kind: LicoToastKind.success);
+        showLicoToast(
+          context,
+          message: message,
+          kind: LicoToastKind.success,
+          actionLabel: actionLabel,
+          onAction: onAction,
+        );
       case PresentationNoticeSeverity.information:
-        showLicoToast(context, message: message, kind: LicoToastKind.info);
+        showLicoToast(
+          context,
+          message: message,
+          kind: LicoToastKind.info,
+          actionLabel: actionLabel,
+          onAction: onAction,
+        );
     }
   }
 

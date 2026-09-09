@@ -67,6 +67,7 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
   @override
   void didUpdateWidget(covariant MessagingProcessStatusRow oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Stream publishes (same `active`, new events) leave `_expanded` alone.
     if (widget.active && !oldWidget.active) {
       // A new turn starts: return to the collapsed default and forget the
       // previous run's manual expansion.

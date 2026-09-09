@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
@@ -176,19 +179,21 @@ class MessagingMessageGroup extends StatelessWidget {
         ),
         const SizedBox(height: LicoContentSpacing.compact),
         for (var index = 0; index < messages.length; index++) ...[
-          _MessagingGroupMessageRow(
+          RepaintBoundary(
             key: ValueKey<String>(
               'messaging-group-message-${messages[index].id}-${messages[index].createdAt}',
             ),
-            message: messages[index],
-            adapter: adapter,
-            authorIsUser: authorIsUser,
-            agentKey: bubbleGlowKey,
-            conversationId: conversationId,
-            isStreaming: streamingMessageIds.contains(messages[index].id),
-            onCopyText: onCopyText,
-            onRetryMessage: onRetryMessage,
-            onDeleteMessage: onDeleteMessage,
+            child: _MessagingGroupMessageRow(
+              message: messages[index],
+              adapter: adapter,
+              authorIsUser: authorIsUser,
+              agentKey: bubbleGlowKey,
+              conversationId: conversationId,
+              isStreaming: streamingMessageIds.contains(messages[index].id),
+              onCopyText: onCopyText,
+              onRetryMessage: onRetryMessage,
+              onDeleteMessage: onDeleteMessage,
+            ),
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
@@ -221,7 +226,6 @@ class MessagingMessageGroup extends StatelessWidget {
 
 class _MessagingGroupMessageRow extends StatefulWidget {
   const _MessagingGroupMessageRow({
-    super.key,
     required this.message,
     required this.adapter,
     required this.authorIsUser,
@@ -420,6 +424,9 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.message.cardType == 'continuity-task-card') {
+      return _ContinuousAssistantTimelineCard(message: widget.message);
+    }
     final colors = context.licoColors;
     final content = AgentConversationMessageContent(
       data: widget.message.text,
@@ -638,6 +645,59 @@ class _MessagingAgentBadge extends StatelessWidget {
           letterSpacing: 0.4,
           height: 1.1,
         ),
+      ),
+    );
+  }
+}
+
+class _ContinuousAssistantTimelineCard extends StatelessWidget {
+  const _ContinuousAssistantTimelineCard({required this.message});
+
+  final AgentConversationMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = ContinuousAssistantHostScope.maybeOf(context);
+    Map<String, dynamic> metadata = const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(message.text);
+      if (decoded is Map) {
+        metadata = Map<String, dynamic>.from(decoded);
+      }
+    } on Object {
+      metadata = <String, dynamic>{
+        'goalId': message.cardTitle,
+        'childConversationId': message.text,
+      };
+    }
+    final sequence = int.tryParse((metadata['sequence'] ?? '').toString()) ?? 0;
+    final task = continuousAssistantTaskFromCardMetadata(
+      metadata: metadata,
+      parentConversationId: scope?.conversationId ?? '',
+      eventId: message.id,
+      sequence: sequence,
+    );
+    if (task == null) {
+      return const SizedBox.shrink();
+    }
+    final live = scope?.progressFor(task.relation.goalId);
+    final resolved = live == null
+        ? task
+        : ContinuousAssistantTaskView(
+            relation: task.relation,
+            progress: live,
+            contract: task.contract,
+            matter: task.matter,
+            childWorkContexts: task.childWorkContexts,
+          );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LicoContentSpacing.item),
+      child: ContinuousAssistantParentCard(
+        task: resolved,
+        onOpenChild: scope == null
+            ? null
+            : (_) => scope.onOpenChild(resolved.relation.childConversationId),
+        onCommand: scope?.onCommand,
       ),
     );
   }

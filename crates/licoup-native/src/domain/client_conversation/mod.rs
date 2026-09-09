@@ -19,7 +19,7 @@ pub use profile_snapshot::{
     rank_candidates,
 };
 pub(crate) use service::route_receipt;
-pub use service::{ConversationService, dispatch_attachments_param};
+pub use service::{ConversationService, PersistentRuntimePorts, dispatch_attachments_param};
 
 /// Product-owned private dispatch guidance remains composed by the native host
 /// and is never written into Conversation Event text.

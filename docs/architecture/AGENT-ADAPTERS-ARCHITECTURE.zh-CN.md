@@ -113,7 +113,7 @@ flowchart LR
   T --> E["Canonical Event / Part"]
 ```
 
-`core::mcp` 只负责 framing。`SubagentMcpApplication` 独占冻结的入站修订与九工具
+`core::mcp` 只负责 framing。`SubagentMcpApplication` 独占冻结的入站修订与工具目录
 语义。`McpCallerIntegration` 与 `SubagentRuntimeAdapter` 是唯一供应商 port。caller
 身份与服务器自有父谱系来自已认证请求 context，绝不作为工具参数。任何 adapter
 效果前都先提交持久 active-edge claim。

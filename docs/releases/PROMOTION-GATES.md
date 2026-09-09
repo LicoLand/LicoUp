@@ -16,6 +16,10 @@ on every edge. Each destination additionally requires only the aggregate owned
 by its incoming edge. All three edges use merge commits. Rulesets, required
 check names, and the default branch are not changed during a release cut.
 
+Release-tooling changes also use the standalone `client:gate:release-policy`
+lane when selected by the local changed-file plan. That local check does not
+add a job to the `Client required` CI aggregate.
+
 Preview or advance the fixed train with:
 
 ```sh
@@ -24,8 +28,17 @@ npm run client:promotion -- advance --head nightly --base stable
 npm run client:promotion -- advance --head stable --base release
 ```
 
-The promotion command reuses the open pull request for an edge, binds checks to
-its exact head, and stops on the first invalid topology or failed check.
+`plan` is read-only. `advance` and `train` push the source branch when needed,
+create or reuse each promotion pull request, wait for its required checks, and
+merge it. The current task must authorize the effects of the selected edge or
+train; the final `stable` → `release` merge also triggers automatic source
+publication. Source-only promotion and policy inspection do not require Apple
+publication credentials. The `stable` gate still
+performs its existing local macOS build and install; Apple binary publication
+remains a separate explicitly authorized operation.
+
+The mutating promotion commands bind checks to the exact head and stop on the
+first invalid topology or failed check.
 `nightly` remains open for later ordinary work. Once a snapshot is cut, do not
 promote a later `nightly` tip into the same in-flight publication.
 

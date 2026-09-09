@@ -115,12 +115,18 @@ class _ClientShellState extends State<ClientShell>
                     >(
                       source: widget.binding.navigation,
                       select: _navigationProjection,
-                      builder: (context, navigation) => _buildLayoutHost(
-                        context,
-                        environment,
-                        selection,
-                        navigation,
-                      ),
+                      builder: (context, navigation) =>
+                          ProjectionBuilder<StatusProjection, StatusProjection>(
+                            source: widget.binding.status,
+                            select: _statusProjection,
+                            builder: (context, status) => _buildLayoutHost(
+                              context,
+                              environment,
+                              selection,
+                              navigation,
+                              status,
+                            ),
+                          ),
                     ),
               );
             },
@@ -135,6 +141,7 @@ class _ClientShellState extends State<ClientShell>
     LayoutEnvironment environment,
     LayoutSelectionState selection,
     NavigationProjection navigation,
+    StatusProjection status,
   ) {
     final colors = context.licoColors;
     return LayoutChromeFeaturesScope(
@@ -153,7 +160,7 @@ class _ClientShellState extends State<ClientShell>
         content: this,
         focusCoordinator: _focusCoordinator,
         primaryFocusTarget: LayoutFocusTargets.primaryLandmark,
-        loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
+        loadingBuilder: (context) => _startupLoading(context, status),
         palette: layoutPaletteFromColors(colors),
         chrome: _layoutChrome,
       ),
@@ -216,3 +223,36 @@ LayoutSelectionState _layoutProjection(LayoutProjection value) =>
     value.selection;
 
 NavigationProjection _navigationProjection(NavigationProjection value) => value;
+
+StatusProjection _statusProjection(StatusProjection value) => value;
+
+Widget _startupLoading(BuildContext context, StatusProjection status) {
+  if (status.errorCode.isEmpty) {
+    return const Center(child: CircularProgressIndicator());
+  }
+  final locale = LicoStrings.of(context);
+  final message = locale.isChinese
+      ? status.messageChinese
+      : status.messageEnglish;
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            status.errorCode,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    ),
+  );
+}
