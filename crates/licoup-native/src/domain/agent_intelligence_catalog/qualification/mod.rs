@@ -28,11 +28,14 @@ pub use evaluate::{
     QualificationAssessment, RateReport, UnqualifiedReason, evaluate_bundle, result_from_assessment,
 };
 pub use evidence::{
-    ClosureClaim, EconomyRole, EvidenceBundle, EvidenceClass, HardInvariantCounts, LiveAdmission,
+    AUTHORIZED_LIVE_SESSION_LABEL, ClosureClaim, EconomyRole, EvidenceBundle, EvidenceClass,
+    HardInvariantCounts, LiveAdmission, LiveAuthorityKind, LiveProvenance, LiveSourceKind,
     ObservationEconomy, ObservationJudgment, ObservationPolarity, QualificationObservation,
-    SyntheticRecipe, admit_identity, child_expands_parent_permission, generate_synthetic,
+    SYNTHETIC_TEST_EVIDENCE_LABEL, admit_identity, child_expands_parent_permission,
     identities_match, identity_changed,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use evidence::{SyntheticRecipe, generate_synthetic};
 pub use owners::{
     agent_model_token_price, catalog_model_projection, model_token_price, skill_hub_list,
     target_read_only, token_cost_from_owner,

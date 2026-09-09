@@ -12,8 +12,10 @@
 | Current evidence | [STATUS.md](../STATUS.md) | Implemented and verified capability |
 
 **Status: accepted target design, 2026-09-07; child-conversation amendment
-2026-09-08.** This document specifies the next architecture; it is not
-implementation or compatibility evidence. Normative words below apply to the
+2026-09-08; source adoption mechanism 2026-09-09.** This document specifies the
+target architecture. Current implementation facts belong to
+[`STATUS.md`](../STATUS.md). It is not compatibility, live-model, or release
+evidence. Normative words below apply to the
 target. Existing turn, Graph, security and release contracts remain
 authoritative in their respective domains. The 2026-09-08 amendment replaces
 the earlier single-visible-Conversation presentation: admitted durable work
@@ -406,6 +408,24 @@ rewritten authorship or automatic effects. Feature rollback can stop new
 interpretation while preserving Goal state, auditability and explicit recovery.
 Local plans, raw evaluations and execution reports stay in the repository's ignored
 plan/report locations. The design does not itself change release status.
+
+Current source behavior, distinct from the target above: the host persists one
+adoption policy in `continuity_schema` and projects it on `conversation.get`.
+Stages follow existing qualification facts. Disabled policy blocks new automatic
+interpretation and dispatch only. Explicit user-requested execution keeps its
+prior contract. Enum labels and caller-built TrustedConfig or InteractionUseCase
+facts are not stored authority. Production live issuance resolves the stored
+active owner, admits an evaluation session, and runs the host producer, which
+invokes the bound admitted PersistentTurn on known cases and grades typed
+outputs before qualification. An unbound runtime stays unavailable. A hermetic
+observer is test-only. Reload revalidates that
+authorization, collection receipts, and drops revoked or archived owners.
+Archive or owner loss denies the next automatic admission without reboot.
+`expanded` requires distinct qualified responsibilities. TestEvidence cannot promote real-model
+Qualified. Offline and admitted-shadow stages do not dispatch automatically even
+when adoption is enabled. Real model qualification is unknown until separately
+authorized and run. Parent cards do not show executor badges. This is not
+mobile always-on.
 
 ## 13. Frozen machine contract (not live capability)
 

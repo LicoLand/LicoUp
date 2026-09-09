@@ -4,7 +4,9 @@ use licoup_conversation::continuity::{
     ContinuityReadPort, ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity,
     ContinuityVisibilityScope, PENDING_OBLIGATION_PAGE_SIZE, read_agreements,
 };
-use licoup_conversation::{ConversationStore, EventKind, EventPartKind, MembershipStatus};
+use licoup_conversation::{
+    ConversationEvent, ConversationStore, EventKind, EventPart, EventPartKind, MembershipStatus,
+};
 
 use super::cognition::{ContextRecord, InformationClass};
 use super::context::FrozenContextStore;
@@ -29,6 +31,9 @@ pub fn populate_live_store(
         }
     }
     if let Ok(conversation) = store.get(conversation_id) {
+        let recipient_generation = store
+            .continuity_revocation_generation(conversation_id)
+            .unwrap_or(0);
         for membership in conversation
             .memberships
             .iter()
@@ -47,14 +52,9 @@ pub fn populate_live_store(
                 let page_len = page.len();
                 after = page.last().map(|grant| grant.grant_id.clone());
                 for grant in page {
-                    live.set_recipient_revocation(
-                        conversation_id,
-                        &membership.id,
-                        grant.revocation_generation,
-                    );
                     for source in &grant.source_refs {
-                        let Ok(text) = store
-                            .posted_event_text(&grant.source_conversation_id, &source.opaque_id)
+                        let Ok(text) =
+                            posted_source_text(store, &grant.source_conversation_id, source)
                         else {
                             continue;
                         };
@@ -83,6 +83,7 @@ pub fn populate_live_store(
                     break;
                 }
             }
+            live.set_recipient_revocation(conversation_id, &membership.id, recipient_generation);
         }
     }
     if let Ok(agreements) = read_agreements(store, conversation_id) {
@@ -112,44 +113,100 @@ pub fn populate_live_store(
             if event.kind != EventKind::Message {
                 continue;
             }
-            let text = event
+            let grantable: Vec<_> = event
                 .parts
                 .iter()
-                .filter(|part| part.kind == EventPartKind::Text)
-                .map(|part| part.content.clone())
-                .collect::<Vec<_>>()
-                .join("\n");
-            let source = ContinuitySourceRef {
-                owner_kind: ContinuitySourceOwnerKind::Event,
-                opaque_id: event.id.clone(),
-                part_id: event.parts.first().map(|part| part.id.clone()),
-                span: None,
-                source_revision: event.sequence,
-                digest: format!("event:{}", event.id),
-                visibility_scope: ContinuityVisibilityScope::Conversation,
-                validity: ContinuitySourceValidity::Current,
-            };
-            live.insert_record(ContextRecord {
-                conversation_id: conversation_id.to_owned(),
-                matter_id: None,
-                class: InformationClass::ConversationFact,
-                source,
-                agreement: None,
-                membership_id: event.author_membership_id.clone(),
-                recency: event.sequence,
-                entities: Vec::new(),
-                text_bytes: text.len() as u64,
-                explicit_refs: Vec::new(),
-                conversation_level: true,
-                is_current_input: current_event_id == Some(event.id.as_str()),
-                is_malicious_data: false,
-                is_summary: false,
-                is_worker_or_turn_exit: false,
-                is_mcp_return: false,
-            });
+                .filter(|part| {
+                    matches!(
+                        part.kind,
+                        EventPartKind::Text | EventPartKind::Reasoning | EventPartKind::Image
+                    )
+                })
+                .collect();
+            if grantable.is_empty() {
+                continue;
+            }
+            let explicit_refs = grantable
+                .iter()
+                .map(|part| exact_live_part_source(&event, part))
+                .collect::<Vec<_>>();
+            let primary_id = grantable
+                .iter()
+                .find(|part| part.kind == EventPartKind::Text)
+                .or_else(|| grantable.first())
+                .map(|part| part.id.clone());
+            let is_current_event = current_event_id == Some(event.id.as_str());
+            for part in grantable {
+                let is_current_input =
+                    is_current_event && primary_id.as_deref() == Some(part.id.as_str());
+                live.insert_record(ContextRecord {
+                    conversation_id: conversation_id.to_owned(),
+                    matter_id: None,
+                    class: InformationClass::ConversationFact,
+                    source: exact_live_part_source(&event, part),
+                    agreement: None,
+                    membership_id: event.author_membership_id.clone(),
+                    recency: event.sequence,
+                    entities: Vec::new(),
+                    text_bytes: if part.kind == EventPartKind::Image {
+                        0
+                    } else {
+                        part.content.len() as u64
+                    },
+                    explicit_refs: if is_current_input {
+                        explicit_refs.clone()
+                    } else {
+                        Vec::new()
+                    },
+                    conversation_level: true,
+                    is_current_input,
+                    is_malicious_data: false,
+                    is_summary: false,
+                    is_worker_or_turn_exit: false,
+                    is_mcp_return: false,
+                });
+            }
         }
     }
     live
+}
+
+fn exact_live_part_source(event: &ConversationEvent, part: &EventPart) -> ContinuitySourceRef {
+    let image = part.kind == EventPartKind::Image;
+    ContinuitySourceRef {
+        owner_kind: if image {
+            ContinuitySourceOwnerKind::Part
+        } else {
+            ContinuitySourceOwnerKind::Event
+        },
+        opaque_id: event.id.clone(),
+        part_id: Some(part.id.clone()),
+        span: None,
+        source_revision: event.sequence,
+        digest: if image {
+            format!("part:{}", part.id)
+        } else {
+            format!("event:{}:{}", event.id, part.id)
+        },
+        visibility_scope: ContinuityVisibilityScope::Conversation,
+        validity: ContinuitySourceValidity::Current,
+    }
+}
+
+fn posted_source_text(
+    store: &ConversationStore,
+    conversation_id: &str,
+    source: &ContinuitySourceRef,
+) -> anyhow::Result<String> {
+    if let Some(part_id) = source
+        .part_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        store.posted_event_part_text(conversation_id, &source.opaque_id, part_id)
+    } else {
+        store.posted_event_text(conversation_id, &source.opaque_id)
+    }
 }
 
 /// Marks one admitted task subject as the current input for the recipient

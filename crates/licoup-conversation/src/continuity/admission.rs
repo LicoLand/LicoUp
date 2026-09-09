@@ -7,11 +7,12 @@
 use super::generated::{
     CONTINUITY_MAX_PAGE_SIZE, ContinuityClosureAuthorityKind, ContinuityCommitBasis,
     ContinuityContextCompositionRequest, ContinuityDecisionLayer, ContinuityEffectClass,
-    ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage, ContinuityFollowThroughKind,
-    ContinuityGoalCompletionTransition, ContinuityGoalControl, ContinuityGoalLifecycle,
-    ContinuityGoalProgress, ContinuityParentCardAnchor, ContinuityParentContextGrant,
-    ContinuityParentGrantBasis, ContinuityParentGrantStatus, ContinuityRecoveryClass,
-    ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
+    ContinuityEvidenceRef, ContinuityEvidenceResult, ContinuityFailure, ContinuityFailureCode,
+    ContinuityFailureStage, ContinuityFollowThroughKind, ContinuityGoalCompletionTransition,
+    ContinuityGoalContract, ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
+    ContinuityParentCardAnchor, ContinuityParentContextGrant, ContinuityParentGrantBasis,
+    ContinuityParentGrantStatus, ContinuityRecoveryClass, ContinuitySourceOwnerKind,
+    ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
     ContinuityTaskChildAdmission, ContinuityTaskConversationRelation, ContinuityTaskListingKind,
     ContinuityUtf8ByteSpan, ContinuityVisibilityScope, ContinuityWriteEnvelope,
 };
@@ -351,8 +352,10 @@ pub fn admit_task_relation(
     Ok(())
 }
 
-/// Terminal Goal state requires Goal evaluation or User acceptance. A worker
-/// or PersistentTurn exit is not a closure authority.
+/// Structural check that the intended transition and caller snapshot are
+/// well-formed. A worker or PersistentTurn exit is not a closure authority.
+/// Stored Goal identity, revision, lifecycle, and required current evidence are
+/// admitted separately against the persisted record.
 pub fn admit_completion_transition(
     transition: &ContinuityGoalCompletionTransition,
     progress: &ContinuityGoalProgress,
@@ -380,6 +383,162 @@ pub fn admit_completion_transition(
         ));
     }
     admit_goal_progress(progress)?;
+    Ok(())
+}
+
+pub(super) fn admit_completion_against_current(
+    transition: &ContinuityGoalCompletionTransition,
+    current: &ContinuityGoalProgress,
+) -> Result<(), ContinuityFailure> {
+    if transition.goal_id != current.goal_id {
+        return Err(failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    if transition.goal_revision != current.revision {
+        return Err(failure(
+            ContinuityFailureCode::StaleRevision,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    if transition.from_lifecycle != current.lifecycle {
+        return Err(failure(
+            ContinuityFailureCode::PrematureClosure,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    Ok(())
+}
+
+fn current_subject_version(progress: &ContinuityGoalProgress, criterion_id: &str) -> Option<i64> {
+    progress
+        .criterion_evidence_refs
+        .iter()
+        .filter(|item| item.criterion_id == criterion_id)
+        .map(|item| item.subject_version)
+        .max()
+}
+
+fn evidence_is_current_valid_pass(item: &ContinuityEvidenceRef) -> bool {
+    item.validity == ContinuitySourceValidity::Current
+        && item.source.validity == ContinuitySourceValidity::Current
+        && item.result == ContinuityEvidenceResult::Pass
+}
+
+fn evaluation_refers_to_evidence(
+    evaluation_ref: &ContinuitySourceRef,
+    evidence: &ContinuityEvidenceRef,
+) -> bool {
+    evaluation_ref.opaque_id == evidence.source.opaque_id
+        && evaluation_ref.source_revision == evidence.source.source_revision
+        && match (&evaluation_ref.part_id, &evidence.source.part_id) {
+            (Some(left), Some(right)) => left == right,
+            _ => true,
+        }
+}
+
+pub(super) fn current_required_evidence<'a>(
+    contract: &'a ContinuityGoalContract,
+    progress: &'a ContinuityGoalProgress,
+) -> Vec<&'a ContinuityEvidenceRef> {
+    contract
+        .criteria
+        .iter()
+        .filter(|criterion| criterion.required)
+        .flat_map(|criterion| {
+            let version = current_subject_version(progress, &criterion.id);
+            progress.criterion_evidence_refs.iter().filter(move |item| {
+                item.criterion_id == criterion.id && Some(item.subject_version) == version
+            })
+        })
+        .collect()
+}
+
+pub(super) fn admit_achieved_required_current_evidence(
+    transition: &ContinuityGoalCompletionTransition,
+    contract: &ContinuityGoalContract,
+    current: &ContinuityGoalProgress,
+) -> Result<(), ContinuityFailure> {
+    if transition.to_lifecycle != ContinuityGoalLifecycle::Achieved {
+        return Ok(());
+    }
+    if transition.evaluation_ref.validity != ContinuitySourceValidity::Current {
+        return Err(failure(
+            ContinuityFailureCode::PrematureClosure,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    for criterion in contract.criteria.iter().filter(|item| item.required) {
+        let Some(version) = current_subject_version(current, &criterion.id) else {
+            return Err(failure(
+                ContinuityFailureCode::PrematureClosure,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        };
+        let current_items: Vec<&ContinuityEvidenceRef> = current
+            .criterion_evidence_refs
+            .iter()
+            .filter(|item| item.criterion_id == criterion.id && item.subject_version == version)
+            .collect();
+        if current_items.is_empty()
+            || !current_items
+                .iter()
+                .all(|item| evidence_is_current_valid_pass(item))
+        {
+            return Err(failure(
+                ContinuityFailureCode::PrematureClosure,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+    }
+    admit_evaluation_ref_against_required_current(transition, contract, current)
+}
+
+fn admit_evaluation_ref_against_required_current(
+    transition: &ContinuityGoalCompletionTransition,
+    contract: &ContinuityGoalContract,
+    current: &ContinuityGoalProgress,
+) -> Result<(), ContinuityFailure> {
+    let required: Vec<_> = contract
+        .criteria
+        .iter()
+        .filter(|item| item.required)
+        .collect();
+    if required.is_empty() {
+        return Ok(());
+    }
+    if transition.evaluation_ref.owner_kind == ContinuitySourceOwnerKind::Goal
+        && transition.evaluation_ref.opaque_id == transition.goal_id
+        && transition.evaluation_ref.source_revision == current.revision
+    {
+        return Ok(());
+    }
+    let matched: Vec<&ContinuityEvidenceRef> = current
+        .criterion_evidence_refs
+        .iter()
+        .filter(|item| {
+            required
+                .iter()
+                .any(|criterion| criterion.id == item.criterion_id)
+                && evaluation_refers_to_evidence(&transition.evaluation_ref, item)
+        })
+        .collect();
+    if matched.is_empty() {
+        return Err(failure(
+            ContinuityFailureCode::PrematureClosure,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    if matched.iter().any(|item| {
+        current_subject_version(current, &item.criterion_id) != Some(item.subject_version)
+            || !evidence_is_current_valid_pass(item)
+    }) {
+        return Err(failure(
+            ContinuityFailureCode::PrematureClosure,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
     Ok(())
 }
 

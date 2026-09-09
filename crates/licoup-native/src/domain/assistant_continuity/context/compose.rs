@@ -419,7 +419,18 @@ fn granted_parent_records(
             continue;
         }
         for allowed in &grant.source_refs {
-            admit_parent_context_grant(grant, allowed, &basis)?;
+            match admit_parent_context_grant(grant, allowed, &basis) {
+                Ok(()) => {}
+                Err(err)
+                    if matches!(
+                        err.code,
+                        ContinuityFailureCode::StaleRevision | ContinuityFailureCode::ScopeDenied
+                    ) =>
+                {
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
             if let Some(record) = all.iter().find(|item| {
                 item.conversation_id == grant.source_conversation_id
                     && source_key(&item.source) == source_key(allowed)
