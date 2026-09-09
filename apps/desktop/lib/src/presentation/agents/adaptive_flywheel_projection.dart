@@ -119,13 +119,17 @@ final class AdaptiveFlywheelGraphEdgeProjection {
     required this.from,
     required this.to,
     required this.event,
+    this.mode = 'flow',
     required this.guardLabel,
   });
 
   final String from;
   final String to;
   final String event;
+  final String mode;
   final String guardLabel;
+
+  bool get callback => mode == 'callback';
 
   @override
   bool operator ==(Object other) =>
@@ -134,10 +138,11 @@ final class AdaptiveFlywheelGraphEdgeProjection {
           other.from == from &&
           other.to == to &&
           other.event == event &&
+          other.mode == mode &&
           other.guardLabel == guardLabel;
 
   @override
-  int get hashCode => Object.hash(from, to, event, guardLabel);
+  int get hashCode => Object.hash(from, to, event, mode, guardLabel);
 }
 
 final class AdaptiveFlywheelInspectionProjection {

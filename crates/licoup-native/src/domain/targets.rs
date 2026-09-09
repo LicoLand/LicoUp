@@ -19,6 +19,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub use catalog::{AdapterCapabilities, TargetCandidate};
+pub(crate) use catalog::{normalize_target, target_def, target_defs};
 
 pub fn scan_targets() -> Result<Value> {
     discovery::scan_targets()
@@ -37,7 +38,7 @@ pub(crate) fn available_runtime_executable(target: &str) -> Option<PathBuf> {
 /// product-bundled executable (editor extension or desktop bundle).
 pub(crate) fn agent_cli_executable(agent_id: &str) -> Option<PathBuf> {
     let def = catalog::target_def(agent_id).ok()?;
-    binaries::find_binary(def.binary_names)
+    binaries::find_target_binary(&def, &Value::Null)
         .or_else(|| binaries::find_extension_bundled_binary(&def))
 }
 

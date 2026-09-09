@@ -24,6 +24,7 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
+- [Continuous Assistant target architecture](architecture/CONTINUOUS-ASSISTANT.md) · [持续 Assistant 目标架构](architecture/CONTINUOUS-ASSISTANT.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 - [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
@@ -95,6 +96,7 @@ catalogs and update commands are stated in those files.
 - [ADR 0007: User-terminal Agent command identity](adrs/0007-user-terminal-agent-command-identity.md)
 - [ADR 0008: Native Agent parser and conversation integrity](adrs/0008-native-agent-parser-and-conversation-integrity.md)
 - [ADR 0009: Single Source of Truth Documentation Architecture and Domain Indexing](adrs/0009-single-source-of-truth-documentation-architecture.md) · [中文版](adrs/0009-single-source-of-truth-documentation-architecture.zh-CN.md)
+- [ADR 0010: Continuous Assistant, Matters and Goal Follow-through](adrs/0010-continuous-assistant.md) · [中文版](adrs/0010-continuous-assistant.zh-CN.md)
 
 Plans, proposals, work reports, raw audit material, caches, and build output are
 not formal documents. They remain in ignored `docs/plans/`, `docs/reports/`,

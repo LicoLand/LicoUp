@@ -170,11 +170,50 @@ fn map_error(error: RegistrationError) -> AntigravitySubagentMcpError {
     }
 }
 
-/// Resolve the packaged thin connector next to the running native binary.
+/// Resolve the packaged thin connector next to `licoup-cli`.
+///
+/// Registration must use the bundled sidecar in an app bundle
+/// (`Contents/MacOS/lico-subagent-mcp`), never a workspace
+/// `target/release` or `target/debug` cargo artifact.
 pub fn default_mcp_binary_path() -> Option<PathBuf> {
-    let directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let connector = directory.join(format!("lico-subagent-mcp{}", std::env::consts::EXE_SUFFIX));
-    connector.is_file().then_some(connector)
+    let name = format!("lico-subagent-mcp{}", std::env::consts::EXE_SUFFIX);
+    if let Some(directory) = std::env::current_exe()
+        .ok()
+        .as_ref()
+        .and_then(|exe| exe.parent())
+        .map(Path::to_path_buf)
+    {
+        let connector = directory.join(&name);
+        if connector.is_file()
+            && (is_macos_bundle_macos_dir(&directory) || !is_cargo_target_artifact_dir(&directory))
+        {
+            return Some(connector);
+        }
+    }
+    let bundled = PathBuf::from("/Applications/LicoUp.app/Contents/MacOS").join(name);
+    bundled.is_file().then_some(bundled)
+}
+
+fn is_macos_bundle_macos_dir(directory: &Path) -> bool {
+    directory.file_name().is_some_and(|name| name == "MacOS")
+        && directory
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .is_some_and(|name| name == "Contents")
+}
+
+pub(crate) fn is_cargo_target_artifact_dir(directory: &Path) -> bool {
+    let mut names = directory.iter().filter_map(|part| part.to_str());
+    while let Some(name) = names.next() {
+        if name != "target" {
+            continue;
+        }
+        match names.next() {
+            Some("debug" | "release") => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -187,5 +226,36 @@ mod tests {
             AntigravitySubagentMcpPlan::prepare("cursor", Path::new("connector")).unwrap_err(),
             AntigravitySubagentMcpError::NotAntigravity
         );
+    }
+
+    #[test]
+    fn cargo_target_directories_are_not_bundle_macos_dirs() {
+        assert!(!is_macos_bundle_macos_dir(Path::new(
+            "target/release/lico-subagent-mcp"
+        )));
+        assert!(is_cargo_target_artifact_dir(Path::new(
+            "workspace/target/release"
+        )));
+        assert!(is_cargo_target_artifact_dir(Path::new(
+            "workspace/target/debug/deps"
+        )));
+        assert!(!is_cargo_target_artifact_dir(Path::new(
+            "/Applications/LicoUp.app/Contents/MacOS"
+        )));
+        assert!(is_macos_bundle_macos_dir(Path::new(
+            "/Applications/LicoUp.app/Contents/MacOS"
+        )));
+    }
+
+    #[test]
+    fn default_mcp_binary_path_never_returns_a_cargo_target_artifact() {
+        if let Some(path) = default_mcp_binary_path() {
+            let parent = path.parent().expect("connector parent");
+            assert!(
+                !is_cargo_target_artifact_dir(parent),
+                "bundled connector must not resolve from cargo target: {}",
+                path.display()
+            );
+        }
     }
 }

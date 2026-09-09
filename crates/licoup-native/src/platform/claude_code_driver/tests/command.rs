@@ -25,6 +25,11 @@ fn fixed_stream_command_keeps_prompt_off_argv_and_resumes_by_session_flag() {
         resume_position.map(|index| args[index + 1].as_str()),
         Some(session)
     );
+    let effort_position = args.iter().position(|argument| argument == "--effort");
+    assert_eq!(
+        effort_position.map(|index| args[index + 1].as_str()),
+        Some("xhigh")
+    );
     let fresh = config(json!({}), prompt, "");
     let fresh_identity = LaunchIdentity::new("claude-test", &fresh, Some(&absolute_test_cwd()));
     assert!(

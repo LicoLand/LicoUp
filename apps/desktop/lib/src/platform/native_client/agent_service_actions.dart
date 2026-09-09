@@ -33,6 +33,8 @@ class NativeCommandActions {
     'hermes',
     'kimi',
     'kimi-code',
+    'grok',
+    'command-code',
     'pi',
     'deepseek-harness',
   ];

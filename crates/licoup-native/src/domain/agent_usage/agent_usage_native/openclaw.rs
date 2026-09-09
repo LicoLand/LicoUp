@@ -96,6 +96,7 @@ fn query_gateway_usage(
 
 fn query_gateway_once(executable: &Path, params: &str) -> Result<Value, GatewayUsageFailure> {
     let mut command = Command::new(executable);
+    crate::platform::user_shell_environment::apply_to_command(&mut command);
     command
         .arg("gateway")
         .arg("call")

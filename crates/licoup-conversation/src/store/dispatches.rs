@@ -266,7 +266,73 @@ impl ConversationStore {
                 "UPDATE subagent_dispatch_claims SET state=?2, updated_at=?3 WHERE id=?1",
                 params![dispatch_id, next.as_str(), now_ms()],
             )?;
+            if matches!(
+                next,
+                SubagentDispatchClaimState::Completed
+                    | SubagentDispatchClaimState::Failed
+                    | SubagentDispatchClaimState::Cancelled
+            ) {
+                connection.execute(
+                    "UPDATE subagent_dispatch_claims
+                     SET watchdog_deadline_unix_ms=NULL, updated_at=?2
+                     WHERE id=?1",
+                    params![dispatch_id, now_ms()],
+                )?;
+            }
             Ok(())
+        })
+    }
+
+    pub fn set_subagent_watchdog_deadline(
+        &self,
+        dispatch_id: &str,
+        deadline_unix_ms: i64,
+    ) -> StoreResult<()> {
+        validate_identifier(dispatch_id, "dispatch_id")?;
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE subagent_dispatch_claims
+                 SET watchdog_deadline_unix_ms=?2, updated_at=?3
+                 WHERE id=?1 AND state IN (
+                   'claimed','running','cancel-requested','reconciliation-required'
+                 )",
+                params![dispatch_id, deadline_unix_ms, now_ms()],
+            )?;
+            if changed == 0 {
+                return Err(anyhow!("subagent_dispatch_not_found"));
+            }
+            Ok(())
+        })
+    }
+
+    pub fn clear_subagent_watchdog_deadline(&self, dispatch_id: &str) -> StoreResult<()> {
+        validate_identifier(dispatch_id, "dispatch_id")?;
+        self.with_connection(|connection| {
+            connection.execute(
+                "UPDATE subagent_dispatch_claims
+                 SET watchdog_deadline_unix_ms=NULL, updated_at=?2
+                 WHERE id=?1",
+                params![dispatch_id, now_ms()],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Non-terminal claims that still own a durable watchdog deadline.
+    /// Host boot re-arms these so a restart cannot drop timeout callbacks.
+    pub fn pending_subagent_watchdogs(&self) -> StoreResult<Vec<(String, i64)>> {
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT id, watchdog_deadline_unix_ms FROM subagent_dispatch_claims
+                 WHERE watchdog_deadline_unix_ms IS NOT NULL
+                   AND state IN (
+                     'claimed','running','cancel-requested','reconciliation-required'
+                   )
+                 ORDER BY watchdog_deadline_unix_ms ASC, id ASC",
+            )?;
+            let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
         })
     }
 
@@ -421,12 +487,41 @@ fn reconcile_subagent_claims(
     Ok(())
 }
 
+/// Host-open writeback: a crash can fail the canonical dispatch while the
+/// lineage claim is still `running`. `subagent_claim` never reconciles, so
+/// this pass must settle every open claim whose dispatch is already terminal.
+pub(super) fn reconcile_terminal_subagent_claims(
+    transaction: &impl super::CountedSqlite,
+) -> StoreResult<()> {
+    transaction.execute(
+        "UPDATE subagent_dispatch_claims
+         SET state = CASE (
+           SELECT d.state FROM conversation_dispatches d
+           WHERE d.id=subagent_dispatch_claims.id
+         )
+           WHEN 'completed' THEN 'completed'
+           WHEN 'failed' THEN 'failed'
+           WHEN 'cancelled' THEN 'cancelled'
+           ELSE state
+         END,
+         updated_at=?1
+         WHERE state IN ('claimed','running','cancel-requested','reconciliation-required')
+           AND EXISTS (
+             SELECT 1 FROM conversation_dispatches d
+             WHERE d.id=subagent_dispatch_claims.id
+               AND d.state IN ('completed','failed','cancelled')
+           )",
+        params![now_ms()],
+    )?;
+    Ok(())
+}
+
 /// Eager terminal writeback for one settled dispatch. When the canonical
 /// `conversation_dispatches` row reaches a terminal state, the lineage claim
 /// sharing the dispatch id moves to the matching claim state inside the same
-/// transaction, reusing the `reconcile_subagent_claims` state mapping. A
-/// missing claim or a transition that `valid_claim_transition` forbids is left
-/// to the lazy reconciler instead of failing the settlement.
+/// transaction. A missing claim or a transition that
+/// `valid_claim_transition` forbids is left to the lazy reconciler instead
+/// of failing the settlement.
 pub(super) fn writeback_subagent_claim_terminal(
     transaction: &super::CountedTransaction<'_>,
     dispatch_id: &str,
@@ -464,7 +559,11 @@ fn valid_claim_transition(current: &str, next: SubagentDispatchClaimState) -> bo
         (current, next),
         (
             "claimed",
-            State::Running | State::Failed | State::ReconciliationRequired
+            State::Running
+                | State::Completed
+                | State::Failed
+                | State::Cancelled
+                | State::ReconciliationRequired
         ) | (
             "running",
             State::Completed
@@ -788,7 +887,7 @@ mod tests {
     }
 
     #[test]
-    fn finish_runtime_dispatch_skips_a_claim_transition_the_table_forbids() {
+    fn finish_runtime_dispatch_settles_a_claim_that_never_reached_running() {
         let (store, conversation, membership) = fixture();
         let claim = store
             .claim_subagent_dispatch(&conversation, &membership[0], &membership[1], None)
@@ -813,8 +912,9 @@ mod tests {
             )
             .unwrap();
         // The claim never reached `running` (the adapter receipt never
-        // arrived), so `claimed -> completed` is not in the transition table
-        // and the eager writeback must skip rather than fail the settlement.
+        // arrived). Settlement still writes the matching terminal claim so a
+        // later `subagent_claim` read — which never reconciles — is not left
+        // at `claimed` after the dispatch has already completed.
         store
             .finish_runtime_dispatch(
                 &scope,
@@ -825,19 +925,13 @@ mod tests {
             .unwrap();
         assert_eq!(
             store.subagent_claim(&claim.id).unwrap().unwrap().state,
-            SubagentDispatchClaimState::Claimed
+            SubagentDispatchClaimState::Completed
         );
-        // The lazy reconciler still projects the canonical dispatch state on
-        // the next scoped read, so the edge is not stranded.
         assert!(
             store
                 .active_subagent_claim(&conversation, &membership[0], &membership[1])
                 .unwrap()
                 .is_none()
-        );
-        assert_eq!(
-            store.subagent_claim(&claim.id).unwrap().unwrap().state,
-            SubagentDispatchClaimState::Completed
         );
     }
 
@@ -958,5 +1052,22 @@ mod tests {
             .subagent_mesh_edge(&conversation, &membership[1], &membership[0])
             .unwrap();
         assert_eq!(other, SubagentMeshEdge::default());
+    }
+
+    #[test]
+    fn watchdog_deadline_survives_store_reopen() {
+        let (store, conversation, membership) = fixture();
+        let claim = store
+            .claim_subagent_dispatch(&conversation, &membership[0], &membership[1], None)
+            .unwrap();
+        store
+            .set_subagent_watchdog_deadline(&claim.id, 9_000)
+            .unwrap();
+        let pending = store.pending_subagent_watchdogs().unwrap();
+        assert_eq!(pending, vec![(claim.id.clone(), 9_000)]);
+        store
+            .update_subagent_claim_state(&claim.id, SubagentDispatchClaimState::Completed)
+            .unwrap();
+        assert!(store.pending_subagent_watchdogs().unwrap().is_empty());
     }
 }

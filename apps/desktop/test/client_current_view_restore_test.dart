@@ -11,15 +11,25 @@ void main() {
   late Directory directory;
   late PortableDataRoot portableData;
   late ClientCurrentViewTracker tracker;
+  final controllers = <ClientController>[];
+  final trackers = <ClientCurrentViewTracker>[];
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('lico-current-view-');
     portableData = PortableDataRoot(dataDirectoryOverride: directory);
     tracker = ClientCurrentViewTracker();
+    trackers.add(tracker);
   });
 
   tearDown(() async {
-    await tracker.flush();
+    for (final controller in controllers) {
+      await controller.close();
+    }
+    for (final ownedTracker in trackers) {
+      await ownedTracker.flush();
+    }
+    controllers.clear();
+    trackers.clear();
     if (await directory.exists()) {
       await directory.delete(recursive: true);
     }
@@ -45,15 +55,19 @@ void main() {
     adapterStatus: 'implemented',
   );
 
-  ClientController newController({FakeAgentService? agentService}) =>
-      ClientController(
-        portableData: portableData,
-        agentService: agentService ?? _CurrentViewAgentService(),
-        currentViewTracker: tracker,
-      );
+  ClientController newController({FakeAgentService? agentService}) {
+    final controller = ClientController(
+      portableData: portableData,
+      agentService: agentService ?? _CurrentViewAgentService(),
+      currentViewTracker: tracker,
+    );
+    controllers.add(controller);
+    return controller;
+  }
 
   ClientController relaunchController({FakeAgentService? agentService}) {
     tracker = ClientCurrentViewTracker();
+    trackers.add(tracker);
     return newController(agentService: agentService);
   }
 
@@ -65,7 +79,7 @@ void main() {
 
   test('reopens the exact Agent conversation after relaunch', () async {
     final first = newController();
-    addTearDown(first.dispose);
+
     await first.initialize();
     first.scannedTargets = [codexTarget()];
     first.selectedConversationAgentId = 'codex';
@@ -104,7 +118,7 @@ void main() {
         ),
       ];
     final second = relaunchController(agentService: secondService);
-    addTearDown(second.dispose);
+
     await second.initialize();
     await awaitNativeModelCatalogSettled(second);
 
@@ -117,7 +131,7 @@ void main() {
     final firstService = _CurrentViewAgentService()
       ..scanTargetsResult = [codexTarget()];
     final first = newController(agentService: firstService);
-    addTearDown(first.dispose);
+
     await first.initialize();
 
     first.scannedTargets = [codexTarget()];
@@ -132,7 +146,7 @@ void main() {
       agentService: _CurrentViewAgentService()
         ..scanTargetsResult = [codexTarget()],
     );
-    addTearDown(second.dispose);
+
     await second.initialize();
 
     expect(second.selectedConversationAgentId, isEmpty);
@@ -148,7 +162,7 @@ void main() {
 
   test('restores the top-level section without forgetting Local', () async {
     final first = newController();
-    addTearDown(first.dispose);
+
     await first.initialize();
     await first.clientConversationController.selectConversation(
       _CurrentViewAgentService.groupId,
@@ -157,7 +171,7 @@ void main() {
     await tracker.flush();
 
     final second = relaunchController();
-    addTearDown(second.dispose);
+
     await second.initialize();
     await second.applyCurrentConversationViewRestore();
 
@@ -179,7 +193,7 @@ void main() {
 
   test('the final view wins after rapid cross-interface switches', () async {
     final first = newController();
-    addTearDown(first.dispose);
+
     await first.initialize();
 
     first.selectSection(ClientSection.models);
@@ -192,7 +206,7 @@ void main() {
     await tracker.flush();
 
     final second = relaunchController();
-    addTearDown(second.dispose);
+
     await second.initialize();
 
     expect(second.currentSection, ClientSection.agents);
@@ -207,7 +221,6 @@ void main() {
       agentService: _CurrentViewAgentService()
         ..scanTargetsResult = [codexTarget()],
     );
-    addTearDown(controller.dispose);
 
     await controller.initialize();
 
@@ -222,7 +235,7 @@ void main() {
 
   test('missing restored Agent does not select an unrelated Agent', () async {
     final first = newController();
-    addTearDown(first.dispose);
+
     await first.initialize();
     first.scannedTargets = [codexTarget()];
     first.selectedConversationAgentId = 'codex';
@@ -234,7 +247,7 @@ void main() {
       agentService: _CurrentViewAgentService()
         ..scanTargetsResult = [claudeCodeTarget()],
     );
-    addTearDown(second.dispose);
+
     await second.initialize();
 
     expect(second.selectedConversationAgentId, isEmpty);
@@ -245,7 +258,7 @@ void main() {
     'restore still applies when targets settle before tracker load',
     () async {
       final first = newController();
-      addTearDown(first.dispose);
+
       await first.initialize();
       first.scannedTargets = [codexTarget()];
       first.selectedConversationAgentId = 'codex';
@@ -253,7 +266,7 @@ void main() {
       await tracker.flush();
 
       final second = relaunchController();
-      addTearDown(second.dispose);
+
       second.scannedTargets = [claudeCodeTarget(), codexTarget()];
       second.selectDefaultConversationAgent();
       expect(second.selectedConversationAgentId, isEmpty);

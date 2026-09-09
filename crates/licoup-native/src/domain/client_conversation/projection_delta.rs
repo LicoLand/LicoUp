@@ -7,12 +7,9 @@
 //! `licoup-conversation` rules ([`licoup_conversation::projection`]); the host
 //! only supplies its own capability facts.
 
-use licoup_conversation::projection::{InteractionCapability, user_message_event_payload};
-
-/// Event kind carrying the submitted-user-message projection. The generated
-/// delta envelope is vocabulary-open, so this is a stream-level event name,
-/// not a schema change.
-pub(crate) const USER_MESSAGE_EVENT_KIND: &str = "conversation.user.message";
+use licoup_conversation::projection::{
+    InteractionCapability, USER_MESSAGE_EVENT_KIND, user_message_event_payload,
+};
 
 /// One typed projection delta emitted by the native send stream.
 #[derive(Clone, Debug, Eq, PartialEq)]

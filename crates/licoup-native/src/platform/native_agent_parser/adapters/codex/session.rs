@@ -5,7 +5,7 @@ use crate::platform::codex_app_server::limits::{
     THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{
-    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
+    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
 };
 use serde_json::{Map, Value, json};
 use std::fs::File;
@@ -214,6 +214,22 @@ impl CodexParser {
             sandbox: result.get("sandbox").cloned(),
             approval_policy: result.get("approvalPolicy").cloned(),
         };
+
+        if self.config.prompt.is_empty() && self.config.local_images.is_empty() {
+            self.phase = ProtocolPhase::Finished;
+            return vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
+                output: String::new(),
+                session_id: thread_id.to_string(),
+                thread_id: thread_id.to_string(),
+                turn_id: String::new(),
+                turn_status: if self.config.is_resume() {
+                    "resumed".to_owned()
+                } else {
+                    "opened".to_owned()
+                },
+                effective: self.effective.clone(),
+            }))];
+        }
 
         self.phase = ProtocolPhase::AwaitTurnStart;
         vec![ProtocolEffect::Send(self.turn_start_request(thread_id))]

@@ -218,6 +218,9 @@ final class _FixtureChromeFeatures implements LayoutChromeFeatures {
   const _FixtureChromeFeatures();
 
   @override
+  void activateOperationNotice(notice) {}
+
+  @override
   ValueNotifier<bool>? get auxChromePanelOpen => null;
 
   @override

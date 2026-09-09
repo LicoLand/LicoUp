@@ -1,4 +1,4 @@
-import { rustLayer, rustIntegrationTest, defineModule } from "../helpers.mjs";
+import { rustLayer, rustIntegrationTest, rustCrateIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
@@ -7,11 +7,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
         "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/resources/workflow-policies/**",
         "crates/licoup-native/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
       command: rustLayer("domain::adaptive_flywheel::"),
+    }),
+  defineModule({
+      id: "rust.domain.subagent-mcp",
+      kind: "rust-domain",
+      summary: "Authenticated Assistant and Subagent MCP application, policy discovery, and exact Membership delegation",
+      inputs: [
+        "crates/licoup-native/src/domain/subagent_mcp/**",
+        "crates/licoup-native/src/domain/adaptive_flywheel/policy.rs",
+        "crates/licoup-native/resources/workflow-policies/**",
+      ],
+      command: rustLayer("domain::subagent_mcp::"),
     }),
   defineModule({
       id: "rust.domain.agent-intelligence-catalog",
@@ -69,6 +81,54 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::client_conversation::"),
     }),
   defineModule({
+      id: "rust.domain.conversation-continuity-store",
+      kind: "rust-domain",
+      summary: "Conversation continuity store, schema migration, and persisted adoption policy",
+      inputs: [
+        "crates/licoup-conversation/src/continuity/**",
+        "crates/licoup-conversation/tests/continuity_store.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-conversation", "continuity_store"),
+    }),
+  defineModule({
+      id: "rust.domain.assistant-continuity",
+      kind: "rust-domain",
+      summary: "Host-private continuous-assistant continuity module and native work-context proofs",
+      inputs: [
+        "crates/licoup-native/src/domain/assistant_continuity/**",
+        "crates/licoup-native/tests/continuity_native.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "continuity_native", ["test-support"]),
+    }),
+  defineModule({
+      id: "rust.domain.assistant-continuity-context",
+      kind: "rust-domain",
+      summary: "Admitted context composition proofs for the continuous-assistant host",
+      inputs: [
+        "crates/licoup-native/tests/continuity_context.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "continuity_context", ["test-support"]),
+    }),
+  defineModule({
+      id: "rust.domain.assistant-continuity-qualification",
+      kind: "rust-domain",
+      summary: "Named qualification admission proofs without duplicating the catalog source owner",
+      inputs: [
+        "crates/licoup-native/tests/continuity_qualification.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "continuity_qualification", ["test-support"]),
+    }),
+  defineModule({
+      id: "rust.domain.trusted-history-recovery",
+      kind: "rust-domain",
+      summary: "Provider-authorized retained history with default readable storage, opt-in encryption, and atomic complete recovery",
+      inputs: [
+        "crates/licoup-native/src/domain/history_backup/**",
+        "crates/licoup-native/src/domain/conversation/history_backup_catalog.rs",
+      ],
+      command: rustLayer("domain::history_backup::"),
+    }),
+  defineModule({
       id: "rust.domain.mcp-adapter",
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",
@@ -95,7 +155,12 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.agent-hub",
       kind: "rust-domain",
       summary: "Agent Hub catalog, package recipes, confirmation, version checks, and ownership",
-      inputs: ["crates/licoup-native/src/domain/agent_hub/**"],
+      inputs: [
+        "crates/licoup-native/src/domain/agent_hub/**",
+        "crates/licoup-native/src/domain/agent_catalog.rs",
+        "crates/licoup-native/src/domain/cli_registration.rs",
+        "crates/licoup-native/src/domain/native_roles.rs",
+      ],
       command: rustLayer("domain::agent_hub::"),
     }),
   defineModule({
@@ -137,7 +202,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       id: "rust.domain.session-policy",
       kind: "rust-domain",
       summary: "Session capability, review, and admission policy",
-      inputs: ["crates/licoup-native/src/domain/session_policy/**"],
+      inputs: [
+        "crates/licoup-native/src/domain/session_policy/**",
+        "crates/licoup-native/src/domain/dispatch_timeout_policy.rs",
+      ],
       command: rustLayer("domain::session_policy::"),
     }),
   defineModule({

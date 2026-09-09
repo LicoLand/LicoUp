@@ -158,22 +158,6 @@ fn optional_u64_param(params: &Value, key: &str) -> Result<Option<u64>, ()> {
         .ok_or(())
 }
 
-pub(super) fn timeout_param(
-    params: &Value,
-    key: &str,
-    minimum: u64,
-    maximum: u64,
-) -> Result<u64, ()> {
-    let Some(value) = optional_u64_param(params, key)? else {
-        return Ok(0);
-    };
-    if value == 0 || (minimum..=maximum).contains(&value) {
-        Ok(value)
-    } else {
-        Err(())
-    }
-}
-
 /// An explicitly configured output budget. Absent means the client imposes
 /// no limit: LicoUp waits for the agent to finish and streams whatever it
 /// produces. Explicit values stay bounded by the public contract ceiling.
@@ -239,17 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn timeout_and_output_values_are_exact_or_rejected() {
-        assert_eq!(timeout_param(&json!({}), "timeoutMs", 1_000, 10_000), Ok(0));
-        assert_eq!(
-            timeout_param(&json!({"timeoutMs": 0}), "timeoutMs", 1_000, 10_000),
-            Ok(0)
-        );
-        assert_eq!(
-            timeout_param(&json!({"timeoutMs": 4_321}), "timeoutMs", 1_000, 10_000),
-            Ok(4_321)
-        );
-        assert!(timeout_param(&json!({"timeoutMs": 999}), "timeoutMs", 1_000, 10_000).is_err());
+    fn output_values_are_exact_or_rejected() {
         assert!(optional_output_param(&json!({"maxStdoutBytes": 0}), "maxStdoutBytes").is_err());
     }
 }

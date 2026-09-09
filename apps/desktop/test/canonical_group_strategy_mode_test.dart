@@ -226,6 +226,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(gateway.startCount, 0);
+      controller.dispose();
     },
   );
 
@@ -289,6 +290,7 @@ void main() {
       expect(callOrder, isNot(contains('flywheel:strategy.run.cancel')));
       expect(callOrder, isNot(contains('flywheel:strategy.run.start')));
       expect(gateway.startCount, 0);
+      controller.dispose();
     },
   );
 
@@ -349,6 +351,7 @@ void main() {
         ),
         hasLength(1),
       );
+      controller.dispose();
     },
   );
 
@@ -410,6 +413,7 @@ void main() {
       expect(assistant.left, lessThan(field.left + 24));
       expect(assistant.top, greaterThan(field.top));
       expect(assistant.bottom, lessThan(field.bottom));
+      controller.dispose();
     },
   );
 
@@ -475,6 +479,7 @@ void main() {
         findsOneWidget,
       );
       expect(conversationRunner.strategyRevision, 'rev-auth');
+      controller.dispose();
     },
   );
 
@@ -529,6 +534,7 @@ void main() {
         findsOneWidget,
       );
       expectAssistantIdentityLabel('Codex');
+      controller.dispose();
     },
   );
 
@@ -598,6 +604,7 @@ void main() {
       );
       expect(gateway.actions, isNot(contains('strategy.run.start')));
       expect(gateway.startCount, 0);
+      controller.dispose();
     },
   );
 
@@ -651,6 +658,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining(controller.failureRef), findsWidgets);
+      controller.dispose();
     },
   );
 
@@ -704,6 +712,7 @@ void main() {
             .enabled,
         isFalse,
       );
+      controller.dispose();
     },
   );
 
@@ -767,6 +776,7 @@ void main() {
             .enabled,
         isFalse,
       );
+      controller.dispose();
     },
   );
 
@@ -829,6 +839,7 @@ void main() {
             .enabled,
         isTrue,
       );
+      controller.dispose();
     },
   );
 
@@ -875,6 +886,7 @@ void main() {
     expect(persistent.attachedHandles, ['dispatch:existing']);
     expect(persistent.attachedAfterCursors, [0]);
     expect(find.text('streaming token'), findsOneWidget);
+    controller.dispose();
   });
 
   testWidgets(
@@ -954,6 +966,7 @@ void main() {
           .widget<MessagingParticipantFlow>(flowFinder)
           .items;
       expect(identical(itemsAfterBurst, itemsAfterDraft), isTrue);
+      controller.dispose();
     },
   );
 
@@ -1022,6 +1035,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('streaming token'), findsOneWidget);
       expect(controller.dispatchPending, isFalse);
+      controller.dispose();
     },
   );
 
@@ -1078,6 +1092,7 @@ void main() {
 
       expect(find.text('streaming token'), findsOneWidget);
       expect(controller.dispatchPending, isFalse);
+      controller.dispose();
     },
   );
 
@@ -1132,6 +1147,7 @@ void main() {
     expect(controller.failureCode, isEmpty);
     expect(controller.dispatchPending, isFalse);
     expect(persistent.cancelCount, 0);
+    controller.dispose();
   });
 
   testWidgets('observer loss reattaches an active turn after its last cursor', (
@@ -1189,6 +1205,7 @@ void main() {
     ]);
     expect(persistent.attachedAfterCursors, [0, 1]);
     expect(find.text('streaming token'), findsOneWidget);
+    controller.dispose();
   });
 
   testWidgets('single active group turn exposes an explicit stop operation', (
@@ -1234,6 +1251,7 @@ void main() {
     await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
     await tester.pump();
     expect(persistent.cancelCount, 1);
+    controller.dispose();
   });
 
   testWidgets('observer loss reloads and preserves exact persisted failure', (
@@ -1294,6 +1312,7 @@ void main() {
     expect(controller.failureCode, isNot('transport_failed'));
     expect(controller.dispatchPending, isFalse);
     expect(persistent.cancelCount, 0);
+    controller.dispose();
   });
 
   testWidgets(
@@ -1371,6 +1390,7 @@ void main() {
             .enabled,
         isTrue,
       );
+      controller.dispose();
     },
   );
 }
