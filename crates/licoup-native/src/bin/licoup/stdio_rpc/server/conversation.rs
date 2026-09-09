@@ -3666,6 +3666,11 @@ mod tests {
         let mut interrupt_path = executable.clone();
         interrupt_path.set_extension("interrupt.json");
         let _ = std::fs::remove_file(&interrupt_path);
+        let thread_id = format!("fake-cancel-thread-{}", std::process::id());
+        let turn_id = format!("fake-cancel-turn-{}", std::process::id());
+        let mut identity_path = executable.clone();
+        identity_path.set_extension("identity");
+        std::fs::write(&identity_path, format!("{thread_id}\n{turn_id}\n")).unwrap();
 
         let store = ConversationStore::open_in_memory().unwrap();
         let runtime = PersistentConversationRuntime::new(store.clone());
@@ -3848,7 +3853,7 @@ mod tests {
         while Instant::now() < deadline {
             if runtime
                 .inspect_turn(&dispatch_id)
-                .is_some_and(|(_, turn_id)| turn_id == "fake-cancel-turn")
+                .is_some_and(|(_, native_turn_id)| native_turn_id == turn_id)
             {
                 break;
             }
@@ -3857,8 +3862,8 @@ mod tests {
         assert_eq!(
             runtime
                 .inspect_turn(&dispatch_id)
-                .map(|(_, turn_id)| turn_id),
-            Some("fake-cancel-turn".into()),
+                .map(|(_, native_turn_id)| native_turn_id),
+            Some(turn_id.clone()),
             "live native turn must bind before control"
         );
         assert_eq!(start_count.load(Ordering::SeqCst), 1);
@@ -3965,18 +3970,24 @@ mod tests {
             "live Codex cancel must be Accepted on the admitted PersistentTurn owner"
         );
         let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline && !interrupt_path.exists() {
+        let interrupt = loop {
+            if let Ok(contents) = std::fs::read_to_string(&interrupt_path)
+                && let Ok(interrupt) = serde_json::from_str::<Value>(&contents)
+            {
+                break interrupt;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native interrupt receipt must become a complete JSON document"
+            );
             std::thread::sleep(Duration::from_millis(20));
-        }
-        let interrupt = serde_json::from_str::<Value>(
-            &std::fs::read_to_string(&interrupt_path).expect("native interrupt receipt"),
-        )
-        .unwrap();
+        };
         assert_eq!(interrupt["method"], "turn/interrupt");
-        assert_eq!(interrupt["threadId"], "fake-cancel-thread");
-        assert_eq!(interrupt["turnId"], "fake-cancel-turn");
+        assert_eq!(interrupt["threadId"], thread_id);
+        assert_eq!(interrupt["turnId"], turn_id);
         let _ = std::fs::remove_file(steer_mode);
         let _ = std::fs::remove_file(cancel_mode);
+        let _ = std::fs::remove_file(identity_path);
         let _ = std::fs::remove_file(interrupt_path);
         let _ = std::fs::remove_dir_all(executable.parent().unwrap());
     }
