@@ -46,7 +46,7 @@ void main() {
     await tester.pump();
 
     // The region paints no fill, border, shadow, or edge light: content sits
-    // flush on the native window glass and only the rounded clip shapes it.
+    // flush on the clear window veil and only the rounded clip shapes it.
     final card = tester.widget<ClipRRect>(
       find.byKey(const Key('dashboard-desktop-main-card')),
     );

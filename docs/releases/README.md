@@ -3,20 +3,20 @@
 
 - Repository: `LicoLand/LicoUp`
 - Profile: `semver`
-- Current version: `0.1.2`
+- Current version: `0.2.0`
 
 ## Next release
 
-- Version: `0.2.0`
-- Classification: `minor`
+- Version: `0.2.1`
+- Classification: `patch`
 - Status: `ready`
-- Target date: `2026-09-10`
+- Target date: `2026-09-11`
 - Integration branch: `nightly`
 - Progress: `1/1` accepted (`100%`)
 
 | ID | Type | Feature | Status | Risk | Pull request | Depends on | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| continuous-assistant | capability | Durable Continuous Assistant child conversations and adoption controls | accepted | medium | [PR](https://github.com/LicoLand/LicoUp/pull/275) | — | FINAL-REGRESSION-4-report.json: 78/78 static compatibility and continuity scenarios passed.<br>FINAL-SOURCE-COVERAGE.json: 24/24 source and architecture checks passed.<br>PR #275 required checks and macOS build/install/stable-launch verification passed. |
+| clear-window-veil | fix | Clear window veil and quieter glass chrome | accepted | low | [PR](https://github.com/LicoLand/LicoUp/pull/306) | — | PR #306 required Client source policy, Flutter checks, and Client required aggregates passed.<br>Installed macOS client launch and stable-survival verification passed for the clear-veil build. |
 
 ## Release history
 

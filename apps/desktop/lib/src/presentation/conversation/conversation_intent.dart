@@ -237,6 +237,10 @@ final class RefreshCanonicalAssistantThread extends ConversationIntent {
   const RefreshCanonicalAssistantThread({super.trace});
 }
 
+final class ClearCanonicalConversationHistory extends ConversationIntent {
+  const ClearCanonicalConversationHistory({super.trace});
+}
+
 final class RefreshCanonicalAssistantProfile extends ConversationIntent {
   const RefreshCanonicalAssistantProfile({super.trace});
 }

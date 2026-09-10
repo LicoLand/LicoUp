@@ -33,7 +33,7 @@ void registerAgentUsageCacheScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       ),
     );
@@ -61,7 +61,7 @@ void registerAgentUsageCacheScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       );
 

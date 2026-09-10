@@ -345,6 +345,12 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           trace,
           stage: 'assistant-refresh',
         );
+      case ClearCanonicalConversationHistory():
+        _runResult(
+          _controller.clientConversationController.clearSelectedHistory,
+          trace,
+          stage: 'canonical-clear',
+        );
       case RefreshCanonicalAssistantProfile():
         _run(
           _projection.refreshCanonicalAssistantProfile,

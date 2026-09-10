@@ -54,23 +54,23 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/presentation/dashboard_desktop_destination_presentations.dart",
-      "digest": "sha256:0dc44e6e0b43b5a64c5e8685bb7c816d33b4819c46fd9c52da4eff29e054bde0"
+      "digest": "sha256:d282f95179510b7800c897d5d32c7fccc2205f3c07ae52600e39ba66a3f4f608"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/preview/dashboard_desktop_preview.dart",
-      "digest": "sha256:8836513ecf8b815500bf65aa40db957f9ee6762170166b7d7787b2a8dd221780"
+      "digest": "sha256:7af4413db75ce8f746f306df8b30a697db9aa11dcb132b2434e299e38168c077"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_content_region.dart",
-      "digest": "sha256:cfee6135e09b1d8b288f3896596b780661127e929cf2845ecd220757c41a33c9"
+      "digest": "sha256:8881a52cfcec47c7c503b7dca9c21c90d27f9d546a7659f3cdd09875f8b599f2"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_shell.dart",
-      "digest": "sha256:dfaae2ba219ab2817613fd2db42cf1b80687a81e6052e8788fa1de1f00e12a39"
+      "digest": "sha256:1e6ca2a22ab24e9de359e450436dd04b32d7fd4983f8712d7f663155bb224c5b"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_main_content_card.dart",
-      "digest": "sha256:62207aa1de2f676c357b08acad485f3a408c993b730f1d05769a53d1c3354afa"
+      "digest": "sha256:8455a576c17e0ee5d7668a76242fef9999c6fdfffb6ace2f7c3432ddceb0c066"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_profile_page.dart",
@@ -90,7 +90,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart",
-      "digest": "sha256:41738a2d722a5beaa2db8fe55618f3cbad6492ffce67e02e9739d2d09fae4dd7"
+      "digest": "sha256:7de05d09acb267432cf118172fb263fb8762f5574da4cb4a572b6ec25179256f"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/expanded-shell.png",
@@ -106,11 +106,11 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/production-baseline/agents.png",
-      "digest": "sha256:eb40f36a25eb15d0cbfc76a4d6e0d5e23c876cae9ca6b26ac0eaa820f9440e7d"
+      "digest": "sha256:09b3d9c25ecd35b81fd5644b823d8bdadf3d3c54ab07caced64cfa0fe10f1dda"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/production-baseline/settings.png",
-      "digest": "sha256:3a76027b0e3f17112a2993b710af2fa17ae0cbbe0b9be458c188854970de9dca"
+      "digest": "sha256:fe7c84f30a759cc318fc1cc2c2fdac8a7fdf3809450f7ff02ae59bc7ccda230f"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
@@ -118,11 +118,11 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_shell_test.dart",
-      "digest": "sha256:ab4103396cf5dd63c84f6271bc203cb8888513efd68a03541a933ca70f9a7e32"
+      "digest": "sha256:4a85d419297904a87e51de5b6fc497f8233c28534b060d45a8d470607194944c"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_test_harness.dart",
-      "digest": "sha256:9b20660568d2077f95424f23ba99950ddc0fd28e924c0a75da468983f4e6814a"
+      "digest": "sha256:d48de6d1ba41b5de983a11c3d24220a59994db1c96ed0189cfad0cd8eb6bfa61"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_feature_list_test.dart",
@@ -134,24 +134,24 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_main_content_card_test.dart",
-      "digest": "sha256:8b74b6e54c2e098f2a6ef3943567262408112ee70358b06d648d6f7150ad4023"
+      "digest": "sha256:d144a3ebbacf37bd09ae1e62695c2099cb2dae96271c05ed4bcb6c86f598df5c"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_features_reorder_restored.png",
-      "digest": "sha256:ea225bf1823636f9d93fbbfe04baa2500e3c6a78c863bd531880f41dde7ac436"
+      "digest": "sha256:b9692d146603f12c5429ea01b221e875c2d53e56d0cda768f731aa84f3e0429a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_features_reordered.png",
-      "digest": "sha256:ea225bf1823636f9d93fbbfe04baa2500e3c6a78c863bd531880f41dde7ac436"
+      "digest": "sha256:b9692d146603f12c5429ea01b221e875c2d53e56d0cda768f731aa84f3e0429a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_models_chat_channels_pane.png",
-      "digest": "sha256:1afff135e26ec1dd7d46243d18d70893bf012e6b5d493235ff4a0b1f6bef33b7"
+      "digest": "sha256:35f7b6bffb029e79a8cffcce4f9d772947474df37e2a8267423b2939fe5856cc"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_models_gateway_pane.png",
-      "digest": "sha256:a0e0e2d9fff4db8a54fa59eacbfea6e2fcee07287a7034e1b48dda466b4c3ce3"
+      "digest": "sha256:45d449166326cbb4195e7f5fd53fb56ddcc333bc36e993a1361513af71ab1cca"
     }
   ],
-  "manifestDigest": "sha256:ef1ba71d3afc2f25c4c9f2f3268a3358a1cf8058af6472e0d1ad2b37d9bfa995"
+  "manifestDigest": "sha256:be140537da0a46d0ea9e1ab0ad9261c484ada55f6599bcfd5a91bd4ff7c22fdd"
 }
