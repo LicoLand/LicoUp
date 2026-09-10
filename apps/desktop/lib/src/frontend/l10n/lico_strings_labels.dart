@@ -582,6 +582,10 @@ extension LicoStringsLabels on LicoStrings {
           isChinese
               ? 'Codex 模型额度已用完 · $failureRef'
               : 'Codex model usage limit reached · $failureRef',
+        'continuity_assistant_turn_invalid' =>
+          isChinese
+              ? '助手没有留下可用回复 · $failureRef'
+              : 'Assistant left no usable reply · $failureRef',
         _ => groupConversationFailureCapsule(failureRef),
       };
   String groupConversationFailureRecovery(String recovery) => switch (recovery
