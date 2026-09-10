@@ -19,7 +19,6 @@ class AgentUsageCharts extends StatefulWidget {
     required this.windowDays,
     required this.windowBusy,
     required this.onWindowChanged,
-    this.onExit,
   });
 
   final AgentUsageReport? report;
@@ -27,7 +26,6 @@ class AgentUsageCharts extends StatefulWidget {
   final int windowDays;
   final bool windowBusy;
   final ValueChanged<int> onWindowChanged;
-  final VoidCallback? onExit;
 
   @override
   State<AgentUsageCharts> createState() => _AgentUsageChartsState();
@@ -40,7 +38,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final report = widget.report;
-    if (report == null) return AgentUsageEmptyState(onExit: widget.onExit);
+    if (report == null) return const AgentUsageEmptyState();
 
     final agents = [
       for (final agent in report.agents)
@@ -70,7 +68,6 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             onGroupingChanged: (grouping) {
               setState(() => _grouping = grouping);
             },
-            onExit: widget.onExit,
           )
         else ...[
           AgentUsageWaveOverview(
@@ -82,7 +79,6 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             windowDays: widget.windowDays,
             windowBusy: widget.windowBusy,
             onWindowChanged: widget.onWindowChanged,
-            onExit: widget.onExit,
           ),
           const SizedBox(height: 16),
           Builder(
@@ -187,13 +183,11 @@ class AgentUsageWorkflowSection extends StatefulWidget {
     required this.workflows,
     required this.summary,
     required this.onGroupingChanged,
-    this.onExit,
   });
 
   final List<AgentUsageWorkflow> workflows;
   final AgentUsageTokenTotals summary;
   final ValueChanged<AgentUsageChartGrouping> onGroupingChanged;
-  final VoidCallback? onExit;
 
   @override
   State<AgentUsageWorkflowSection> createState() =>
@@ -220,7 +214,6 @@ final class _AgentUsageWorkflowSectionState
       children: [
         AgentUsagePanelHeader(
           title: strings.workflowUsage,
-          onExit: widget.onExit,
           trailing: [
             AgentUsageGroupingSwitch(
               grouping: AgentUsageChartGrouping.workflow,

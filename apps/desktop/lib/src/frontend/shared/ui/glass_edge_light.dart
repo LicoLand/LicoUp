@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// Static specular edge light for clear-glass surfaces: a thin top-bright rim
-/// (light catching the glass edge) plus a soft sheen band decaying downward
-/// from the top edge. Unlike `MessagingBubbleEdgeGlow` this is always lit and
-/// paints crisp gradients only — no mask-filter bloom — so structural shell
-/// cards carry zero per-frame blur cost.
+/// Static specular edge light for clear-glass surfaces: a thin rim of one
+/// alpha around the full frame, plus a soft sheen band decaying downward
+/// from the top edge. Unlike `MessagingBubbleEdgeGlow` this is always lit
+/// and paints crisp geometry only — no mask-filter bloom — so structural
+/// shell cards carry zero per-frame blur cost.
 class GlassEdgeLight extends StatelessWidget {
   const GlassEdgeLight({
     super.key,
@@ -33,9 +33,7 @@ class GlassEdgeLight extends StatelessWidget {
     return CustomPaint(
       foregroundPainter: GlassEdgeLightPainter(
         borderRadius: borderRadius,
-        rimGradient: MessagingDesktopMetrics.glassEdgeRimGradient(
-          isDark: isDark,
-        ),
+        rimColor: MessagingDesktopMetrics.glassEdgeRimColor(isDark: isDark),
         sheenGradient: MessagingDesktopMetrics.glassEdgeSheenGradient(
           isDark: isDark,
         ),
@@ -52,14 +50,14 @@ class GlassEdgeLight extends StatelessWidget {
 class GlassEdgeLightPainter extends CustomPainter {
   const GlassEdgeLightPainter({
     required this.borderRadius,
-    required this.rimGradient,
+    required this.rimColor,
     required this.sheenGradient,
     required this.sheenExtent,
     required this.rimWidth,
   });
 
   final BorderRadius borderRadius;
-  final Gradient rimGradient;
+  final Color rimColor;
   final Gradient sheenGradient;
   final double sheenExtent;
   final double rimWidth;
@@ -87,7 +85,7 @@ class GlassEdgeLightPainter extends CustomPainter {
       final rim = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = rimWidth
-        ..shader = rimGradient.createShader(rect);
+        ..color = rimColor;
       canvas.drawRRect(rrect.deflate(rimWidth / 2), rim);
     }
   }
@@ -95,7 +93,7 @@ class GlassEdgeLightPainter extends CustomPainter {
   @override
   bool shouldRepaint(GlassEdgeLightPainter oldDelegate) =>
       oldDelegate.borderRadius != borderRadius ||
-      oldDelegate.rimGradient != rimGradient ||
+      oldDelegate.rimColor != rimColor ||
       oldDelegate.sheenGradient != sheenGradient ||
       oldDelegate.sheenExtent != sheenExtent ||
       oldDelegate.rimWidth != rimWidth;

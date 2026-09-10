@@ -101,6 +101,13 @@ void main() {
         find.byKey(const Key('dashboard-fake-content-agentHub')),
         findsOneWidget,
       );
+      final region = tester.widget<ColoredBox>(
+        find.byKey(const Key('dashboard-content-region')),
+      );
+      expect(
+        region.color,
+        MessagingDesktopMetrics.surfaceGlassTint(isDark: true),
+      );
       final card = tester.widget<ClipRRect>(
         find.byKey(const Key('dashboard-desktop-main-card')),
       );
