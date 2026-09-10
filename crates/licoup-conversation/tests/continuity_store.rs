@@ -1808,8 +1808,8 @@ fn unadmitted_chat_preserves_proposal_looking_json_and_trailing_prose() {
 }
 
 #[test]
-fn admitted_malformed_output_is_failed_not_completed_silence() {
-    let harness = Harness::new("malformed envelope");
+fn admitted_untyped_json_is_raw_completed_reply() {
+    let harness = Harness::new("untyped json");
     let member = harness
         .store
         .add_member(&harness.conversation_id, agent(), MembershipAccess::Member)
@@ -1846,22 +1846,132 @@ fn admitted_malformed_output_is_failed_not_completed_silence() {
             None,
         )
         .unwrap();
-    assert_eq!(state, DispatchState::Failed);
-    assert!(
-        visible_text(&harness.store, &harness.conversation_id, &scope.event_id).is_empty(),
-        "private-only output must not become a successful reply"
+    assert_eq!(state, DispatchState::Completed);
+    assert_eq!(
+        visible_text(&harness.store, &harness.conversation_id, &scope.event_id),
+        private_only
     );
+    let metadata = metadata_joined(&harness.store, &harness.conversation_id, &scope.event_id);
+    assert!(metadata.contains("untyped-assistant-reply"));
     let event = harness
         .store
         .event(&harness.conversation_id, &scope.event_id)
         .unwrap()
         .unwrap();
     assert!(
-        event.parts.iter().any(|part| {
-            part.kind == EventPartKind::Diagnostic
-                && part.content.contains(ASSISTANT_TURN_INVALID_ERROR)
-        }),
-        "malformed admitted output must persist a typed diagnostic"
+        event
+            .parts
+            .iter()
+            .all(|part| part.kind != EventPartKind::Diagnostic
+                || !part.content.contains(ASSISTANT_TURN_INVALID_ERROR)),
+        "raw conversation must not be rewritten as an envelope failure"
+    );
+}
+
+#[test]
+fn admitted_empty_output_is_still_failed() {
+    let harness = Harness::new("empty envelope");
+    let member = harness
+        .store
+        .add_member(&harness.conversation_id, agent(), MembershipAccess::Member)
+        .unwrap();
+    let scope = harness
+        .store
+        .prepare_runtime_dispatch(
+            "agent:local",
+            "",
+            "ordinary question",
+            Some(&harness.conversation_id),
+            Some(&member.id),
+            None,
+            None,
+        )
+        .unwrap();
+    harness
+        .store
+        .admit_runtime_response_mode(&scope, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN)
+        .unwrap();
+    let state = harness
+        .store
+        .finish_runtime_dispatch(
+            &scope,
+            &serde_json::json!({"output": "   "}),
+            DispatchState::Completed,
+            None,
+        )
+        .unwrap();
+    assert_eq!(state, DispatchState::Failed);
+    assert!(visible_text(&harness.store, &harness.conversation_id, &scope.event_id).is_empty());
+    let event = harness
+        .store
+        .event(&harness.conversation_id, &scope.event_id)
+        .unwrap()
+        .unwrap();
+    assert!(event.parts.iter().any(|part| {
+        part.kind == EventPartKind::Diagnostic
+            && part.content.contains(ASSISTANT_TURN_INVALID_ERROR)
+    }));
+}
+
+#[test]
+fn admitted_plain_prose_is_completed_reply_with_host_abstain() {
+    let harness = Harness::new("plain prose");
+    let member = harness
+        .store
+        .add_member(&harness.conversation_id, agent(), MembershipAccess::Member)
+        .unwrap();
+    let scope = harness
+        .store
+        .prepare_runtime_dispatch(
+            "agent:local",
+            "",
+            "ordinary question",
+            Some(&harness.conversation_id),
+            Some(&member.id),
+            None,
+            None,
+        )
+        .unwrap();
+    harness
+        .store
+        .admit_runtime_response_mode(&scope, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN)
+        .unwrap();
+    let reply = "这是普通中文回复，不是信封 JSON。";
+    harness
+        .store
+        .append_runtime_frame(
+            &scope,
+            1,
+            &serde_json::json!({
+                "event": "agent.message.chunk",
+                "payload": {"text": reply},
+            }),
+        )
+        .unwrap();
+    assert!(
+        visible_text(&harness.store, &harness.conversation_id, &scope.event_id).is_empty(),
+        "admitted prose chunks must stay unpublished until terminal assembly"
+    );
+    let state = harness
+        .store
+        .finish_runtime_dispatch(
+            &scope,
+            &serde_json::json!({"output": reply}),
+            DispatchState::Completed,
+            None,
+        )
+        .unwrap();
+    assert_eq!(state, DispatchState::Completed);
+    assert_eq!(
+        visible_text(&harness.store, &harness.conversation_id, &scope.event_id),
+        reply
+    );
+    let metadata = metadata_joined(&harness.store, &harness.conversation_id, &scope.event_id);
+    assert!(metadata.contains("trustedResponseMode"));
+    assert!(metadata.contains("untyped-assistant-reply"));
+    assert!(
+        !visible_text(&harness.store, &harness.conversation_id, &scope.event_id)
+            .contains("untyped-assistant-reply")
     );
 }
 

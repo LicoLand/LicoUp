@@ -60,6 +60,10 @@ void main() {
       ProblemCodeCatalog.wire('conversation_dispatch_failed'),
       'LU-CV-1201',
     );
+    expect(
+      ProblemCodeCatalog.wire('continuity_assistant_turn_invalid'),
+      'LU-CV-1215',
+    );
     expect(ProblemCodeCatalog.wire('strategy_run_start_failed'), 'LU-ST-1925');
     expect(
       ProblemCodeCatalog.wire('strategy_actor_quota_exhausted'),
