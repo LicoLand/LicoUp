@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -78,7 +79,88 @@ void main() {
       find.byKey(ContinuousAssistantKeys.child('conversation:child-a')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('canonical-archived-continuity-toggle')),
+      findsNothing,
+    );
   });
+
+  testWidgets(
+    'archived continuity children stay collapsed at the list bottom',
+    (tester) async {
+      final root =
+          ClientConversationSummary(
+                id: 'conversation:root-0',
+                title: 'Root 0',
+                archived: false,
+                group: true,
+                revision: 1,
+                updatedAtUnixMs: 1,
+                membershipCount: 2,
+                eventCount: 1,
+              )
+              .withChildren([
+                const ClientConversationSummary(
+                  id: 'conversation:child-active',
+                  title: 'Active child',
+                  archived: false,
+                  group: true,
+                  revision: 1,
+                  updatedAtUnixMs: 1,
+                  membershipCount: 2,
+                  eventCount: 2,
+                  parentConversationId: 'conversation:root-0',
+                  taskGoalId: 'goal:active',
+                  listingKind: 'child-task',
+                ),
+              ])
+              .withArchivedChildren([
+                const ClientConversationSummary(
+                  id: 'conversation:child-archived',
+                  title: 'Archived child',
+                  archived: true,
+                  group: true,
+                  revision: 1,
+                  updatedAtUnixMs: 1,
+                  membershipCount: 2,
+                  eventCount: 4,
+                  parentConversationId: 'conversation:root-0',
+                  taskGoalId: 'goal:archived',
+                  listingKind: 'child-task',
+                ),
+              ]);
+      await tester.pumpWidget(
+        wrapContinuousAssistant(
+          CanonicalGroupConversationSidebar(
+            conversations: [root],
+            selectedConversationId: 'conversation:root-0',
+            onSelect: (_) {},
+            onCreate: () {},
+          ),
+        ),
+      );
+      expect(
+        find.byKey(ContinuousAssistantKeys.child('conversation:child-active')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          ContinuousAssistantKeys.child('conversation:child-archived'),
+        ),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const Key('canonical-archived-continuity-toggle')),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(
+          ContinuousAssistantKeys.child('conversation:child-archived'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('parent card stays at supplied sequence and commands fire once', (
     tester,

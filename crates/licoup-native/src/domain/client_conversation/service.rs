@@ -373,6 +373,19 @@ impl ConversationService {
                 )?;
                 Ok(json!({"ok": true, "status": "accepted"}))
             }
+            "conversation.clear" => {
+                let conversation_id = required_string(object, "conversationId")?;
+                if !self.active_turns_for(conversation_id).is_empty() {
+                    return Err(anyhow!("conversation_clear_blocked"));
+                }
+                let report = self.store.clear_conversation_history(
+                    conversation_id,
+                    required_string(object, "ownerMembershipId")?,
+                )?;
+                let mut value = serde_json::to_value(report)?;
+                value["ok"] = json!(true);
+                Ok(value)
+            }
             "conversation.pin.set" => {
                 self.store.set_conversation_pinned(
                     required_string(object, "conversationId")?,
@@ -1945,6 +1958,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.create" => &["action", "title", "owner", "members"],
         "conversation.rename" => &["action", "conversationId", "title"],
         "conversation.archive" => &["action", "conversationId", "archived"],
+        "conversation.clear" => &["action", "conversationId", "ownerMembershipId"],
         "conversation.pin.set" => &["action", "conversationId", "pinned"],
         "conversation.strategy.set" => &["action", "conversationId", "strategyRevision"],
         "conversation.assistant.set" => &[
@@ -2867,6 +2881,135 @@ mod tests {
                 .events
                 .iter()
                 .any(|event| event.id == event_id)
+        );
+    }
+
+    #[test]
+    fn clear_empties_group_history_archives_children_and_rotates_assistant() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |_| Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable),
+        );
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let before = service.store().get(&conversation_id).unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": before.revision,
+                "membershipId": agent_id,
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "remember this"
+            }))
+            .unwrap();
+        let child = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Child task",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:one",
+                        "kind": "agent",
+                        "displayName": "One",
+                        "agentId": "one"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let child_id = child["id"].as_str().unwrap().to_owned();
+        service
+            .store()
+            .register_continuity_child_link(&conversation_id, &child_id, "goal:clear-child")
+            .unwrap();
+
+        let cleared = service
+            .execute(json!({
+                "action": "conversation.clear",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+            }))
+            .unwrap();
+
+        assert_eq!(cleared["ok"], true);
+        assert_eq!(cleared["archivedChildIds"], json!([child_id]));
+        let after = service.store().get(&conversation_id).unwrap();
+        assert_eq!(after.event_count, 0);
+        assert_ne!(
+            after.assistant_membership_id.as_deref(),
+            Some(agent_id.as_str())
+        );
+        assert_eq!(
+            after.assistant_membership_id.as_deref(),
+            cleared["assistantMembershipId"].as_str()
+        );
+        let child_after = service.store().get(&child_id).unwrap();
+        assert!(child_after.archived);
+        assert!(
+            after
+                .memberships
+                .iter()
+                .all(|membership| membership.id != agent_id)
+        );
+        assert!(
+            service
+                .store()
+                .private_runtime_binding(
+                    &conversation_id,
+                    after.assistant_membership_id.as_deref().unwrap(),
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            service
+                .store()
+                .page_events(&conversation_id, None, 20)
+                .unwrap()
+                .events
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn clear_refuses_unfinalized_or_active_group_work() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |params| Ok(accepted_receipt(params)),
+        );
+        let (conversation_id, owner_id, _) = group_fixture(&service);
+        persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One still running"
+            }),
+        );
+        let error = service
+            .execute(json!({
+                "action": "conversation.clear",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+            }))
+            .expect_err("active work must block clear");
+        assert_eq!(error.to_string(), "conversation_clear_blocked");
+        assert!(
+            !service
+                .store()
+                .page_events(&conversation_id, None, 20)
+                .unwrap()
+                .events
+                .is_empty()
         );
     }
 
