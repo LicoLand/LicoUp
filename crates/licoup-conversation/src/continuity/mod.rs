@@ -72,7 +72,7 @@ pub use turn_response::{
     apply_admitted_validation_failure_facts, decode_assistant_turn_response,
     is_assistant_turn_response_mode, project_admitted_known_text_fields,
     public_admitted_failure_payload, public_admitted_output, published_envelope,
-    redact_live_runtime_event, trusted_response_mode_from_metadata, trusted_response_mode_metadata,
-    usable_reply_text,
+    published_terminal_envelope, redact_live_runtime_event, trusted_response_mode_from_metadata,
+    trusted_response_mode_metadata, usable_reply_text,
 };
 pub use unavailable::*;

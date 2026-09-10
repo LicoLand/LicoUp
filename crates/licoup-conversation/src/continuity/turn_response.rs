@@ -5,10 +5,15 @@
 
 use serde_json::{Value, json};
 
-use super::generated::ContinuityAssistantTurnResponse;
+use super::generated::{
+    ContinuityAssistantTurnResponse, ContinuityCommitmentProposal,
+    ContinuityInterpretationProposal, ContinuityMatterSubject, ContinuitySpeechAct,
+    ContinuityWriteEnvelope,
+};
 
 pub const TRUSTED_RESPONSE_MODE_ASSISTANT_TURN: &str = "assistant-turn-response";
 pub const ASSISTANT_TURN_INVALID_ERROR: &str = "continuity_assistant_turn_invalid";
+const UNTYPED_ASSISTANT_REPLY_REASON: &str = "untyped-assistant-reply";
 
 pub fn trusted_response_mode_metadata(mode: &str) -> String {
     json!({ "trustedResponseMode": mode }).to_string()
@@ -52,10 +57,25 @@ pub fn published_envelope(output: &str) -> Option<(String, String)> {
     Some((reply, proposal))
 }
 
-/// User-facing admitted output is replyText only. The private proposal stays
-/// on the host settlement / canonical metadata owner.
+/// Terminal-assembled publication. A complete typed envelope still unwraps
+/// `replyText`. Any other nonempty output is the raw conversation. Live chunks
+/// stay on [`published_envelope`] so a partial object is never flashed early.
+pub fn published_terminal_envelope(output: &str) -> Option<(String, String)> {
+    if let Some(published) = published_envelope(output) {
+        return Some(published);
+    }
+    if let Some(embedded) = extract_embedded_json_object(output)
+        && let Some(published) = published_envelope(&embedded)
+    {
+        return Some(published);
+    }
+    recover_raw_reply(output)
+}
+
+/// User-facing admitted output is replyText when a typed envelope is present.
+/// Otherwise the raw terminal text is the conversation.
 pub fn public_admitted_output(output: &str) -> Option<String> {
-    published_envelope(output).map(|(reply, _)| reply)
+    published_terminal_envelope(output).map(|(reply, _)| reply)
 }
 
 pub fn public_admitted_failure_payload() -> Value {
@@ -121,7 +141,12 @@ pub fn redact_live_runtime_event(event: &Value) -> Value {
         return redacted;
     };
     let text = payload.get("text").and_then(Value::as_str).unwrap_or("");
-    match published_envelope(text) {
+    let published = if kind == "agent.message.completed" {
+        published_terminal_envelope(text)
+    } else {
+        published_envelope(text)
+    };
+    match published {
         Some((reply, _)) => {
             payload.insert("text".into(), json!(reply));
         }
@@ -130,4 +155,116 @@ pub fn redact_live_runtime_event(event: &Value) -> Value {
         }
     }
     redacted
+}
+
+fn extract_embedded_json_object(output: &str) -> Option<String> {
+    let trimmed = output.trim();
+    let start = trimmed.find('{')?;
+    let end = trimmed.rfind('}')?;
+    if end < start {
+        return None;
+    }
+    let slice = &trimmed[start..=end];
+    let value: Value = serde_json::from_str(slice).ok()?;
+    value.is_object().then(|| slice.to_owned())
+}
+
+fn recover_raw_reply(output: &str) -> Option<(String, String)> {
+    let reply = output.trim();
+    if reply.is_empty() {
+        return None;
+    }
+    let proposal = serde_json::to_string(&host_abstain_proposal()).ok()?;
+    Some((reply.to_owned(), proposal))
+}
+
+fn host_abstain_proposal() -> ContinuityInterpretationProposal {
+    ContinuityInterpretationProposal {
+        envelope: ContinuityWriteEnvelope {
+            conversation_id: "conversation:host-owned".to_owned(),
+            source_event_refs: Vec::new(),
+            observed_revision: 0,
+            designation_epoch: 0,
+            request_id: "request:host-abstain".to_owned(),
+        },
+        matter_associations: Vec::new(),
+        speech_act: ContinuitySpeechAct::Exploration,
+        commitment_proposals: vec![ContinuityCommitmentProposal {
+            matter_id: None,
+            subject: ContinuityMatterSubject::Unresolved,
+            expected_result: "abstain".to_owned(),
+            criteria: Vec::new(),
+            create_goal: false,
+        }],
+        agreement_proposals: Vec::new(),
+        capability_needs: Vec::new(),
+        uncertainty_reasons: vec![UNTYPED_ASSISTANT_REPLY_REASON.to_owned()],
+        requested_reads: Vec::new(),
+        task_child_admission: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn typed_envelope(reply: &str) -> String {
+        serde_json::to_string(&ContinuityAssistantTurnResponse {
+            reply_text: reply.to_owned(),
+            interpretation_proposal: host_abstain_proposal(),
+        })
+        .expect("typed envelope")
+    }
+
+    #[test]
+    fn live_decode_stays_strict() {
+        assert!(published_envelope("普通中文回复").is_none());
+        assert_eq!(
+            published_envelope(&typed_envelope("typed reply"))
+                .map(|(reply, _)| reply)
+                .as_deref(),
+            Some("typed reply")
+        );
+    }
+
+    #[test]
+    fn terminal_publishes_raw_conversation_when_envelope_is_absent() {
+        let (reply, proposal) =
+            published_terminal_envelope("  普通中文回复  ").expect("recovered prose");
+        assert_eq!(reply, "普通中文回复");
+        assert!(proposal.contains(UNTYPED_ASSISTANT_REPLY_REASON));
+        assert_eq!(
+            public_admitted_output("普通中文回复").as_deref(),
+            Some("普通中文回复")
+        );
+        let private_only = r#"{"speechAct":"question"}"#;
+        assert_eq!(
+            published_terminal_envelope(private_only)
+                .map(|(text, _)| text)
+                .as_deref(),
+            Some(private_only)
+        );
+        assert_eq!(
+            published_terminal_envelope("{\"replyText\":")
+                .map(|(text, _)| text)
+                .as_deref(),
+            Some("{\"replyText\":")
+        );
+        assert!(published_terminal_envelope("").is_none());
+        assert!(published_terminal_envelope("   ").is_none());
+    }
+
+    #[test]
+    fn live_chunks_hide_prose_until_completed() {
+        let chunk = redact_live_runtime_event(&json!({
+            "event": "agent.message.chunk",
+            "payload": {"text": "普通中文回复"},
+        }));
+        assert_eq!(chunk["payload"]["text"], "");
+        let completed = redact_live_runtime_event(&json!({
+            "event": "agent.message.completed",
+            "payload": {"text": "普通中文回复"},
+        }));
+        assert_eq!(completed["payload"]["text"], "普通中文回复");
+    }
 }
