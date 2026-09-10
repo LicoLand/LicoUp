@@ -4499,28 +4499,29 @@ mod tests {
     }
 
     #[test]
-    fn malformed_admitted_fake_codex_output_is_failed_not_silence() {
+    fn untyped_admitted_fake_codex_output_is_raw_reply() {
         let _guard = FAKE_CODEX_LOCK
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let executable = compile_fake_codex();
-        let store_root = executable.parent().unwrap().join("malformed-store");
+        let store_root = executable.parent().unwrap().join("untyped-store");
         std::fs::create_dir_all(&store_root).unwrap();
         let store = ConversationStore::open(&store_root).unwrap();
         let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (runtime, service, rx) =
             bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
         let (conversation_id, owner, _agent) =
-            create_designated_group(&service, "Malformed envelope");
+            create_designated_group(&service, "Untyped envelope");
+        let raw = typed_child_proposal_json(&conversation_id);
         let mut result_path = executable.clone();
         result_path.set_extension("result.json");
-        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        std::fs::write(&result_path, &raw).unwrap();
         let posted = service
             .execute(json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner,
-                "content": "this should fail honestly",
+                "content": "this should stay visible",
             }))
             .unwrap();
         service
@@ -4532,13 +4533,13 @@ mod tests {
             .unwrap();
         let (settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
-            .expect("malformed fake Codex finish must settle");
+            .expect("untyped fake Codex finish must settle");
         assert_eq!(settled_conversation, conversation_id);
         assert_eq!(
             settled_payload.get("ok").and_then(Value::as_bool),
-            Some(false)
+            Some(true)
         );
-        assert_eq!(
+        assert_ne!(
             settled_payload.get("code").and_then(Value::as_str),
             Some(ASSISTANT_TURN_INVALID_ERROR)
         );
@@ -4547,22 +4548,18 @@ mod tests {
             .store()
             .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
             .unwrap()
-            .expect("failed turn event");
-        assert!(
-            visible_text(service.store(), &conversation_id, &event.id).is_empty(),
-            "malformed admitted output must not become Completed silence text"
+            .expect("completed turn event");
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            raw
         );
-        assert!(event.parts.iter().any(|part| {
-            part.kind == EventPartKind::Diagnostic
-                && part.content.contains(ASSISTANT_TURN_INVALID_ERROR)
-        }));
         assert!(
             service
                 .store()
                 .list_child_relations(&conversation_id, None, 8)
                 .unwrap()
                 .is_empty(),
-            "turn failure is not Goal acceptance"
+            "raw conversation is not Goal acceptance"
         );
         let _ = runtime;
         let _ = std::fs::remove_file(result_path);
@@ -4671,28 +4668,29 @@ mod tests {
     }
 
     #[test]
-    fn malformed_admitted_public_terminal_is_failed_after_fake_codex() {
+    fn untyped_admitted_public_terminal_is_raw_after_fake_codex() {
         let _guard = FAKE_CODEX_LOCK
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let executable = compile_fake_codex();
-        let store_root = executable.parent().unwrap().join("public-failed-store");
+        let store_root = executable.parent().unwrap().join("public-untyped-store");
         std::fs::create_dir_all(&store_root).unwrap();
         let store = ConversationStore::open(&store_root).unwrap();
         let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (runtime, service, rx) =
             bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
         let (conversation_id, owner, _agent) =
-            create_designated_group(&service, "Public failed terminal");
+            create_designated_group(&service, "Public untyped terminal");
+        let raw = typed_child_proposal_json(&conversation_id);
         let mut result_path = executable.clone();
         result_path.set_extension("result.json");
-        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        std::fs::write(&result_path, &raw).unwrap();
         let posted = service
             .execute(json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner,
-                "content": "this should fail publicly",
+                "content": "this should stay visible publicly",
             }))
             .unwrap();
         service
@@ -4704,43 +4702,38 @@ mod tests {
             .unwrap();
         let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
-            .expect("malformed fake Codex finish must settle");
+            .expect("untyped fake Codex finish must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
-        let (ok, public_payload) = runtime
-            .public_terminal(dispatch_id)
-            .expect("failed admitted finish must store a public terminal");
-        assert!(
-            !ok,
-            "malformed admitted public terminal must not be ok=true: {public_payload}"
-        );
-        assert_eq!(
-            public_payload.get("code").and_then(Value::as_str),
+        assert_ne!(
+            settled_payload.get("code").and_then(Value::as_str),
             Some(ASSISTANT_TURN_INVALID_ERROR)
         );
+        let (ok, public_payload) = runtime
+            .public_terminal(dispatch_id)
+            .expect("untyped admitted finish must store a public terminal");
         assert!(
-            !public_payload
-                .to_string()
-                .contains("interpretationProposal"),
-            "failed public terminal must not leak the private proposal: {public_payload}"
+            ok,
+            "untyped admitted public terminal must stay ok: {public_payload}"
+        );
+        assert_eq!(
+            public_payload.get("output").and_then(Value::as_str),
+            Some(raw.as_str()),
+            "public terminal must keep the raw conversation: {public_payload}"
         );
         runtime.evict_turn_cache(dispatch_id);
-        let turn = runtime.turn(dispatch_id).expect("failed turn remains");
+        let turn = runtime.turn(dispatch_id).expect("completed turn remains");
         let high_water = runtime
             .turn_high_water(dispatch_id)
-            .expect("failed turn keeps its high-water after eviction");
+            .expect("untyped turn keeps its high-water after eviction");
         let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
-        replay_turn(&writer, "attach-failed", "workflow-failed", &turn, 0).unwrap();
+        replay_turn(&writer, "attach-untyped", "workflow-untyped", &turn, 0).unwrap();
         let frames = decode_replay_frames(&writer);
         let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
-        assert_eq!(terminal["ok"], false, "{terminal}");
+        assert_eq!(terminal["ok"], true, "{terminal}");
         assert_eq!(
-            public_terminal_code(&terminal["error"]),
-            Some(ASSISTANT_TURN_INVALID_ERROR),
-            "malformed admitted attach must keep the validation code: {terminal}"
-        );
-        assert!(
-            !terminal.to_string().contains("interpretationProposal"),
-            "failed attach terminal must stay public: {terminal}"
+            terminal["result"]["output"].as_str(),
+            Some(raw.as_str()),
+            "untyped admitted attach must keep the raw conversation: {terminal}"
         );
         let _ = runtime;
         let _ = std::fs::remove_file(result_path);
