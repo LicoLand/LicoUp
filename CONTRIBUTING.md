@@ -70,6 +70,41 @@ targets are reported but are not deleted automatically. After an abnormal test
 exit, a structurally valid dead lease remains protected for a grace period and
 only then becomes reclaimable; malformed or tampered records always fail closed.
 
+## Agent-assisted contribution
+
+An Agent may assist your work, but you remain the author of every commit. If
+an Agent takes part in your contribution, prepare in this order before the
+first commit:
+
+1. Clone the repository and run `npm ci`.
+2. Authenticate GitHub CLI with your own account, then install and verify the
+   repository identity policy:
+
+   ```bash
+   gh auth login
+   npm run repo:identity:install
+   npm run repo:identity:verify
+   ```
+
+   Commits created before the hooks are installed fail the push-time and
+   remote identity checks and must be repaired in history.
+3. Disable your Agent tool's commit attribution. Most tools add a
+   `Co-Authored-By`, `Generated-by`, or "Generated with" line by default (for
+   example, Claude Code's `attribution` setting). The local hooks and the
+   remote identity check reject every attribution trailer and every
+   Agent-shaped identity.
+4. Review the Agent's output yourself. Commit only changes you have read and
+   accepted, under your own authenticated identity. The full policy is in
+   [Commit identity and authorship](#commit-identity-and-authorship).
+
+Start each change on one action-prefixed branch (`feature/`, `fix/`,
+`docs/`, `refactor/`, `test/`, or `chore/`) and open a merge-commit pull
+request to `nightly`. The contract is the
+[Pull request checklist](#pull-request-checklist). During development, run
+the smallest relevant checks. Before handoff, run the source policy once
+plus only the technology lanes your change touches, as listed in
+[Set up](#set-up).
+
 ## Platform permissions
 
 Request an OS privacy permission only when the current user action needs that
