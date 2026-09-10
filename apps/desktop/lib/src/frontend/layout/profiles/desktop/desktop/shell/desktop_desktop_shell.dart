@@ -23,8 +23,8 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desk
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 /// Desktop shell builders: one huge main area with a floating stretchable
 /// capsule dock below.
@@ -365,6 +365,14 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     return Stack(
       fit: StackFit.expand,
       children: [
+        Positioned.fill(
+          child: ColoredBox(
+            key: const Key('desktop-window-veil'),
+            color: MessagingDesktopMetrics.surfaceGlassTint(
+              isDark: context.layoutPalette.isDark,
+            ),
+          ),
+        ),
         Positioned.fill(child: _buildMainArea(context)),
         if (fullscreenApp != DesktopFullscreenApp.settings)
           const Positioned(

@@ -317,14 +317,16 @@ final class AssistantToggleButton extends StatelessWidget {
 /// is a plain transparent overlay child (no glass card) of circular
 /// overlay-glass action buttons stacked exactly above the trigger: attachments
 /// nearest the button, discard-pending-images above it while images are
-/// staged, and new conversation on top. Hovering a circle expands it rightward
-/// into a highlighted capsule — the icon stays pinned in a fixed left slot and
-/// the label extends right. Tapping outside dismisses the menu.
+/// staged, reset history next, and new conversation on top. Hovering a circle
+/// expands it rightward into a highlighted capsule — the icon stays pinned in
+/// a fixed left slot and the label extends right. Tapping outside dismisses
+/// the menu.
 final class CanonicalGroupAssistantActions extends StatefulWidget {
   const CanonicalGroupAssistantActions({
     super.key,
     this.onPickAttachments,
     this.onNewConversation,
+    this.onClearHistory,
     this.onDiscardImages,
     this.showDiscardImages = false,
   });
@@ -334,6 +336,9 @@ final class CanonicalGroupAssistantActions extends StatefulWidget {
 
   /// Runs the same assistant thread refresh as the slash-new composer command.
   final VoidCallback? onNewConversation;
+
+  /// Empties Canonical history after confirmation in the group pane.
+  final VoidCallback? onClearHistory;
 
   /// Abandons the staged images (scope clear, which also releases the files).
   final VoidCallback? onDiscardImages;
@@ -421,6 +426,17 @@ final class _CanonicalGroupAssistantActionsState
                       onTap: () => _runAction(widget.onDiscardImages),
                     ),
                   ],
+                  const SizedBox(height: 8),
+                  _AssistantActionCircle(
+                    actionKey: const Key(
+                      'canonical-group-action-clear-history',
+                    ),
+                    icon: Icons.restart_alt,
+                    label: strings.clearCanonicalConversationHistory,
+                    onTap: widget.onClearHistory == null
+                        ? null
+                        : () => _runAction(widget.onClearHistory),
+                  ),
                   const SizedBox(height: 8),
                   _AssistantActionCircle(
                     actionKey: const Key(

@@ -11,6 +11,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/sidebar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
@@ -494,20 +495,36 @@ class _MessagingContactListState extends State<MessagingContactList> {
     );
   }
 
+  List<ClientConversationSummary> get _archivedContinuityChildren => [
+    for (final conversation in widget.groupConversations)
+      ...conversation.archivedChildren,
+  ];
+
   Widget _contactListBody() {
     final listItems = _combinedItems(_entries());
-    if (listItems.isEmpty) {
+    final archivedChildren = _archivedContinuityChildren;
+    if (listItems.isEmpty && archivedChildren.isEmpty) {
       return _MessagingContactListEmpty(
         scanning: widget.scanning,
         loading: widget.loading,
       );
     }
+    final footerCount = archivedChildren.isEmpty ? 0 : 1;
     return ScrollConfiguration(
       behavior: const _MessagingSlimScrollbarBehavior(),
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-        itemCount: listItems.length,
+        itemCount: listItems.length + footerCount,
         itemBuilder: (context, index) {
+          if (index >= listItems.length) {
+            return CanonicalArchivedContinuityChildren(
+              toggleKey: const Key('messaging-archived-continuity-toggle'),
+              children: archivedChildren,
+              highlightedChildConversationId:
+                  widget.selectedGroupConversationId,
+              onSelect: widget.onSelectGroupConversation ?? (_) {},
+            );
+          }
           final item = listItems[index];
           final conversation = item.groupConversation;
           if (conversation != null) {

@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "repository": "LicoLand/LicoUp",
   "profile": "semver",
-  "currentVersion": "0.1.2",
+  "currentVersion": "0.2.0",
   "versionSources": [
     {
       "format": "json",
@@ -18,28 +18,28 @@
   ],
   "changelog": "CHANGELOG.md",
   "nextRelease": {
-    "version": "0.2.0",
-    "classification": "minor",
+    "version": "0.2.1",
+    "classification": "patch",
     "status": "ready",
-    "targetDate": "2026-09-10",
+    "targetDate": "2026-09-11",
     "integrationBranch": "nightly",
     "features": [
       {
-        "id": "continuous-assistant",
-        "type": "capability",
-        "title": "Durable Continuous Assistant child conversations and adoption controls",
+        "id": "clear-window-veil",
+        "type": "fix",
+        "title": "Clear window veil and quieter glass chrome",
         "status": "accepted",
-        "pullRequest": "https://github.com/LicoLand/LicoUp/pull/275",
+        "pullRequest": "https://github.com/LicoLand/LicoUp/pull/306",
         "dependsOn": [],
-        "risk": "medium",
+        "risk": "low",
         "acceptance": [
-          "A long-running request is represented by one durable child Conversation and one parent timeline card anchored at the creating Event sequence.",
-          "Membership-scoped continue, steer, cancel, recovery, completion notices, and adoption-policy transitions remain fail-closed and idempotent."
+          "The desktop window uses a see-through color veil instead of a frosted visual-effect material.",
+          "Structural glass rims use one alpha on all four sides.",
+          "Token Usage and Communication no longer show redundant inner titles."
         ],
         "evidence": [
-          "FINAL-REGRESSION-4-report.json: 78/78 static compatibility and continuity scenarios passed.",
-          "FINAL-SOURCE-COVERAGE.json: 24/24 source and architecture checks passed.",
-          "PR #275 required checks and macOS build/install/stable-launch verification passed."
+          "PR #306 required Client source policy, Flutter checks, and Client required aggregates passed.",
+          "Installed macOS client launch and stable-survival verification passed for the clear-veil build."
         ]
       }
     ],

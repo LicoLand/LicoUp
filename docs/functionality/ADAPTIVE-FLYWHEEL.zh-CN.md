@@ -121,6 +121,26 @@ Assistant membership——通过与效果输出相同的 Membership 作用域会
 等待按进入顺序排队，并按同一顺序决策。只经 `callback` 边到达的目标可以把 actor
 binding 推迟到主智能体决策；如果效果真正执行时仍未声明，则走普通的失败兜底。
 
+## 主智能体提醒
+
+指定 Assistant 是目标的长期属主，因此 Graph 会继续前进的每一次效果结算都会在
+Conversation 时间线上发出一条仅含标识符的提醒：
+
+| Graph 事件 | 提醒 | Graph | 是否需要 Assistant 决策 |
+| --- | --- | --- | --- |
+| `flow` 效果结算（含经 flow 走到终态 success） | `strategy-flow-settled` | 继续前进，绝不 park | 否 |
+| `callback` 边 park | `strategy-callback-request` | 持久等待 | 是（`advance` / `return` / `terminate`） |
+| 终态失败——failed、blocked 或 in-doubt | `strategy-terminal-outcome` | 已停止 | 是（由主智能体决定下一步） |
+
+提醒只告诉 Assistant「这一步结算了」，不是上下文回传。其载荷保持标识符级别——run、
+state、visit、边模式，以及存在时的应答通道——Worker transcript、prompt、路径与工具
+结果永远不进入提醒。Assistant 想看细节时自行读同一条 Conversation。
+
+当指定 Assistant 的回合已经结算时，提醒会自动开一轮新的 Assistant turn，其输入只带
+那条标识事件。当该 membership 已有回合在飞时，提醒只留在时间线上供当前回合看见，
+不再叠加第二轮。`flow` 提醒绝不把边改写成 park，也绝不把 `flow` 边收成 `callback`。
+人闸——策略授权与对外披露——保持不变。
+
 失败兜底在两种模式下都成立。Assistant run 的效果或 drive 失败只结算一个 typed 终态
 结果回传发起方 Assistant turn。导入策略的 prepare-import、commit-import、run 准入
 以及终态失败——failed、blocked 或 in-doubt——会作为同一条 typed Membership 事件

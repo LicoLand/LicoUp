@@ -10,7 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// identity capsule, header icon buttons, and the floating composer field.
 /// Fill / border / blur / shadow all come from [MessagingDesktopMetrics]
 /// conversation-overlay tokens — do not hardcode per widget. A static
-/// [GlassEdgeLight] rim gives each capsule the specular glass edge.
+/// [GlassEdgeLight] paints a uniform specular rim around each capsule.
 class MessagingConversationOverlayGlass extends StatelessWidget {
   const MessagingConversationOverlayGlass({
     super.key,

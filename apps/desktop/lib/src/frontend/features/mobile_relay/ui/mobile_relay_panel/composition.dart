@@ -11,9 +11,7 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sy
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
-import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
@@ -93,11 +91,6 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          LicoSectionHeader(
-            title: strings.pairing,
-            leading: MinimalScanIcon(color: colors.accent, size: 22),
-          ),
-          const SizedBox(height: 12),
           if (mobileClient) ...[
             MobileRelayScanPairingPrompt(
               colors: colors,
