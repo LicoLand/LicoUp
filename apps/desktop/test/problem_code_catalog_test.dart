@@ -40,6 +40,7 @@ void main() {
       ProblemCodeCatalog.wire('conversation_operation_failed'),
       'LU-CV-1402',
     );
+    expect(ProblemCodeCatalog.wire('conversation_clear_blocked'), 'LU-CV-1214');
     expect(ProblemCodeCatalog.wire('transport_failed'), 'LU-RP-1001');
     expect(ProblemCodeCatalog.wire('timeout'), 'LU-RP-1002');
     expect(ProblemCodeCatalog.wire('invalid_request'), 'LU-RP-1008');
