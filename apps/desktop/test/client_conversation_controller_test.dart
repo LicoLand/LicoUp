@@ -833,9 +833,8 @@ Map<String, dynamic> _summary({
   'updatedAtUnixMs': 10,
   'membershipCount': members,
   'eventCount': 1,
-  if (parentConversationId != null)
-    'parentConversationId': parentConversationId,
-  if (taskGoalId != null) 'taskGoalId': taskGoalId,
+  'parentConversationId': ?parentConversationId,
+  'taskGoalId': ?taskGoalId,
 };
 
 Map<String, dynamic> _conversation(
