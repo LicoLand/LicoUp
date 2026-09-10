@@ -324,6 +324,58 @@ class _CanonicalGroupConversationPaneState
     widget.conversation.intents.send(const RefreshCanonicalAssistantThread());
   }
 
+  void _clearHistory() {
+    if (_turnActive || widget.canonical.sending) {
+      widget.conversation.intents.send(
+        const SurfaceConversationFailure(
+          stage: 'canonical-clear',
+          reasonCode: 'conversation_clear_blocked',
+        ),
+      );
+      return;
+    }
+    unawaited(_confirmAndClearHistory());
+  }
+
+  Future<void> _confirmAndClearHistory() async {
+    final conversation = widget.canonical.conversation;
+    if (conversation == null) return;
+    final strings = LicoStrings.of(context);
+    final title = conversation.title.trim().isEmpty
+        ? strings.groupConversation
+        : conversation.title.trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final dialogStrings = LicoStrings.of(dialogContext);
+        return AlertDialog(
+          title: Text(dialogStrings.confirmClearCanonicalConversationTitle),
+          content: Text(
+            dialogStrings.confirmClearCanonicalConversationMessage(title),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(dialogStrings.cancel),
+            ),
+            FilledButton(
+              key: const Key('canonical-group-clear-history-confirm'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(
+                dialogStrings.confirmClearCanonicalConversationAction,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      widget.conversation.intents.send(
+        const ClearCanonicalConversationHistory(),
+      );
+    }
+  }
+
   Future<bool> _sendComposerMessage(
     ClientConversation conversation,
     String text,
@@ -532,6 +584,7 @@ class _CanonicalGroupConversationPaneState
         onNewConversation: conversation.assistantMembership == null
             ? null
             : _refreshAssistantThread,
+        onClearHistory: _clearHistory,
         onDiscardImages:
             widget.onClearComposerImages ??
             () => widget.conversation.intents.send(
