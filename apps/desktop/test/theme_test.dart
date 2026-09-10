@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/appearance/appearance_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -660,6 +661,36 @@ void main() {
     });
     expect(result.ok, isFalse);
     expect(result.errors.join('; '), contains('accent'));
+  });
+
+  test('window veil is a clear see-through mask, not frosted transparent', () {
+    final dark = MessagingDesktopMetrics.surfaceGlassTint(isDark: true);
+    final light = MessagingDesktopMetrics.surfaceGlassTint(isDark: false);
+    expect(dark, const Color.fromARGB(225, 0, 0, 0));
+    expect(light, const Color.fromARGB(217, 255, 255, 255));
+    expect(dark.a, greaterThan(0.0));
+    expect(dark.a, lessThan(1.0));
+    expect(light.a, greaterThan(0.0));
+    expect(light.a, lessThan(1.0));
+  });
+
+  test('glass edge rim is one alpha around the full frame', () {
+    final dark = MessagingDesktopMetrics.glassEdgeRimColor(isDark: true);
+    final light = MessagingDesktopMetrics.glassEdgeRimColor(isDark: false);
+    expect(
+      dark,
+      MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
+        MessagingDesktopMetrics.glassEdgeRimAlphaDark,
+      ),
+    );
+    expect(
+      light,
+      MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
+        MessagingDesktopMetrics.glassEdgeRimAlphaLight,
+      ),
+    );
+    expect(dark.a, greaterThan(0.0));
+    expect(light.a, greaterThan(0.0));
   });
 
   test('rgba token values resolve to a translucent color', () {

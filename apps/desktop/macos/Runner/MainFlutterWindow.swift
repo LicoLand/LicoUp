@@ -12,18 +12,18 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var trafficLightAnchorRect: NSRect?
 
   /// Clears AppKit layer backgrounds so transparent Flutter pixels reveal
-  /// the NSVisualEffectView beneath instead of the default black backing.
+  /// the desktop behind the window instead of the default black backing.
   private func applyTransparentLayer(to view: NSView) {
     view.wantsLayer = true
     view.layer?.isOpaque = false
     view.layer?.backgroundColor = NSColor.clear.cgColor
   }
 
-  /// Installing the visual-effect view as `contentView` (below) makes AppKit
-  /// clear `contentViewController`, which would deallocate the
-  /// FlutterViewController and shut its engine (and the Dart VM) down. Retain
-  /// the controller for the window's lifetime so the engine keeps rendering
-  /// into its view inside the visual-effect hierarchy.
+  /// Installing a replacement `contentView` (below) makes AppKit clear
+  /// `contentViewController`, which would deallocate the FlutterViewController
+  /// and shut its engine (and the Dart VM) down. Retain the controller for
+  /// the window's lifetime so the engine keeps rendering into its view inside
+  /// the rounded container.
   private var retainedFlutterViewController: FlutterViewController?
 
   override func awakeFromNib() {
@@ -52,32 +52,26 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     // R_window = searchButtonRadius (16) + edgeInset (8) = 24.
     let windowCornerRadius: CGFloat = 24
 
-    // True Dock-style frosted glass: a system visual-effect view behind the
-    // Flutter content, so transparent Flutter regions (the Messaging
-    // profile's window chrome) blur the desktop beneath the window while
-    // opaque regions render unchanged. `.popover` reads as deep dark glass in
-    // the dark preset — `.underWindowBackground` rendered a flat gray haze —
-    // and still follows the system appearance in both light and dark presets.
-    let visualEffectView = NSVisualEffectView(
-      frame: flutterViewController.view.frame
-    )
-    visualEffectView.autoresizingMask = [.width, .height]
-    visualEffectView.material = .popover
-    visualEffectView.blendingMode = .behindWindow
-    visualEffectView.state = .active
-    applyTransparentLayer(to: visualEffectView)
-    visualEffectView.layer?.cornerRadius = windowCornerRadius
-    visualEffectView.layer?.masksToBounds = true
-    visualEffectView.layer?.cornerCurve = .continuous
+    // Clear (non-blurred) window backdrop: a plain container behind Flutter
+    // so transparent regions show the desktop sharply. Do not install
+    // NSVisualEffectView — system materials frost the wallpaper into a gray
+    // haze. The see-through black / light veil is painted in Flutter via
+    // MessagingDesktopMetrics.surfaceGlassTint.
+    let windowBackdropView = NSView(frame: flutterViewController.view.frame)
+    windowBackdropView.autoresizingMask = [.width, .height]
+    applyTransparentLayer(to: windowBackdropView)
+    windowBackdropView.layer?.cornerRadius = windowCornerRadius
+    windowBackdropView.layer?.masksToBounds = true
+    windowBackdropView.layer?.cornerCurve = .continuous
     flutterViewController.view.autoresizingMask = [.width, .height]
-    flutterViewController.view.frame = visualEffectView.bounds
+    flutterViewController.view.frame = windowBackdropView.bounds
     applyTransparentLayer(to: flutterViewController.view)
-    // Corner shape is owned by the visual-effect view; the Flutter view stays
+    // Corner shape is owned by the backdrop container; the Flutter view stays
     // unclipped so transparent margin gutters do not expose a black layer.
     flutterViewController.view.layer?.cornerRadius = windowCornerRadius
     flutterViewController.view.layer?.cornerCurve = .continuous
-    visualEffectView.addSubview(flutterViewController.view)
-    self.contentView = visualEffectView
+    windowBackdropView.addSubview(flutterViewController.view)
+    self.contentView = windowBackdropView
     applyTransparentLayer(to: self.contentView!)
 
     // Align now and after Flutter finishes its first layout passes. Do not hook
