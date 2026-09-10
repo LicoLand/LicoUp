@@ -192,6 +192,22 @@ impl PersistentConversationRuntime {
             })
     }
 
+    /// True while a Membership-scoped turn is registered and not terminal.
+    /// The designated-Assistant wake uses this to keep a notice timeline-only
+    /// when a turn of that membership is already in flight; it never stacks a
+    /// second turn for one wake.
+    fn live_turn_for_membership(&self, membership_id: &str) -> bool {
+        self.inner.turns.lock().is_ok_and(|turns| {
+            turns.values().any(|turn| {
+                turn.scope.membership_id == membership_id
+                    && turn
+                        .state
+                        .lock()
+                        .is_ok_and(|state| state.terminal.is_none())
+            })
+        })
+    }
+
     fn begin(&self, params: &Value) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
         self.begin_with(params, PersistentTurnAdmission::Public)
     }
@@ -1790,6 +1806,64 @@ pub(super) fn strategy_turn_port(
     }
 }
 
+/// The designated-Assistant notice port: a notice already durable on the
+/// Conversation timeline wakes exactly one new Assistant turn, and only when
+/// no turn of that membership is in flight. Composition shares the persistent
+/// host runtime; without it the strategy service keeps notices timeline-only.
+pub(super) fn assistant_wake_port(
+    runtime: PersistentConversationRuntime,
+    portable_data_dir: Option<PathBuf>,
+) -> licoup_native::domain::adaptive_flywheel::AssistantWakePort {
+    licoup_native::domain::adaptive_flywheel::AssistantWakePort {
+        wake: Arc::new(move |conversation_id, membership_id, notice| {
+            if runtime.live_turn_for_membership(membership_id) {
+                return Ok(());
+            }
+            let agent_id = {
+                let conversation = runtime
+                    .inner
+                    .store
+                    .get(conversation_id)
+                    .map_err(|_| "assistant_wake_conversation_unavailable".to_owned())?;
+                conversation
+                    .memberships
+                    .iter()
+                    .find(|membership| membership.id == membership_id)
+                    .and_then(|membership| membership.principal.agent_id.clone())
+                    .ok_or_else(|| "assistant_wake_agent_unavailable".to_owned())?
+            };
+            let params = json!({
+                "agent": agent_id,
+                "agentId": agent_id,
+                "text": assistant_notice_text(notice),
+                "streamEvents": true,
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "causationId": notice.get("runId").cloned().unwrap_or(Value::Null),
+            });
+            let wake_runtime = runtime.clone();
+            let wake_dir = portable_data_dir.clone();
+            std::thread::Builder::new()
+                .name("assistant-wake".to_owned())
+                .spawn(move || {
+                    let _ = wake_runtime.start_background(&params, wake_dir);
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }),
+    }
+}
+
+/// The turn input for a notice carries the identifier event only: its kind,
+/// run/state/visit identifiers, and edge mode. Worker transcripts, prompts,
+/// paths and tool results never enter the Assistant turn.
+fn assistant_notice_text(notice: &Value) -> String {
+    let payload = serde_json::to_string(notice).unwrap_or_else(|_| "{}".to_owned());
+    format!(
+        "Adaptive Flywheel notice for the designated Assistant — identifier-only; read this Conversation for details: {payload}"
+    )
+}
+
 pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()>>) {
     while !workers.is_empty() {
         reap_finished(workers);
@@ -3027,6 +3101,102 @@ mod tests {
             .unwrap()
             .contains_key(&claim.id);
         assert!(armed);
+    }
+
+    #[test]
+    fn live_turn_lookup_tracks_active_memberships() {
+        let runtime = runtime(64);
+        let store = runtime.inner.store.clone();
+        let conversation = store
+            .create_conversation(
+                "Project",
+                Principal {
+                    id: "human:owner".into(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Owner".into(),
+                    agent_id: None,
+                    created_at_unix_ms: 1,
+                },
+            )
+            .unwrap();
+        let membership = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:entry".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Entry".into(),
+                    agent_id: Some("entry-agent".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let params = json!({
+            "agent": "entry-agent",
+            "text": "Adaptive Flywheel notice",
+            "conversationId": conversation.id,
+            "membershipId": membership.id,
+        });
+        let handle = runtime.open_turn(&params).unwrap();
+        assert!(runtime.live_turn_for_membership(&membership.id));
+        assert!(!runtime.live_turn_for_membership("membership-elsewhere"));
+        runtime.abandon_turn(&handle);
+        assert!(!runtime.live_turn_for_membership(&membership.id));
+    }
+
+    #[test]
+    fn assistant_wake_skips_memberships_with_a_live_turn() {
+        let runtime = runtime(64);
+        let store = runtime.inner.store.clone();
+        let conversation = store
+            .create_conversation(
+                "Project",
+                Principal {
+                    id: "human:owner".into(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Owner".into(),
+                    agent_id: None,
+                    created_at_unix_ms: 1,
+                },
+            )
+            .unwrap();
+        let membership = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:entry".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Entry".into(),
+                    agent_id: Some("entry-agent".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let params = json!({
+            "agent": "entry-agent",
+            "text": "Adaptive Flywheel notice",
+            "conversationId": conversation.id,
+            "membershipId": membership.id,
+        });
+        let handle = runtime.open_turn(&params).unwrap();
+        let port = assistant_wake_port(runtime.clone(), None);
+        let notice = json!({
+            "kind": "strategy-flow-settled",
+            "runId": "run-1",
+            "stateId": "greet",
+            "stateVisit": 1,
+            "mode": "flow",
+        });
+        let before = runtime.inner.turns.lock().unwrap().len();
+        (port.wake)(&conversation.id, &membership.id, &notice).unwrap();
+        let after = runtime.inner.turns.lock().unwrap().len();
+        assert_eq!(
+            before, after,
+            "a live membership turn keeps the notice timeline-only"
+        );
+        runtime.abandon_turn(&handle);
     }
 
     fn compile_fake_codex() -> std::path::PathBuf {

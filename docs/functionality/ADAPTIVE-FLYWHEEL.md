@@ -168,6 +168,32 @@ in that order. A target reached only through `callback` edges may defer its
 actor binding to the master decision; if the binding is still undeclared when
 the effect runs, the ordinary failure fallback applies.
 
+## Master notices
+
+The designated Assistant is the goal's long-term owner, so every settled
+effect that the Graph advances on announces itself as one identifier-only
+notice on the Conversation timeline:
+
+| Graph event | Notice | Graph | Assistant decision required |
+| --- | --- | --- | --- |
+| A `flow` effect settles (including reaching terminal success through flow) | `strategy-flow-settled` | continues, never parks | no |
+| A `callback` edge parks | `strategy-callback-request` | durably waits | yes (`advance` / `return` / `terminate`) |
+| Terminal failure — failed, blocked, or in-doubt | `strategy-terminal-outcome` | already stopped | yes (the master decides the next step) |
+
+A notice tells the Assistant *that* a step settled; it is not a context
+return. Its payload stays identifier-level — run, state, visit, edge mode,
+and the answer channel when one exists — and worker transcripts, prompts,
+paths, and tool output never enter it. The Assistant reads the same
+Conversation when it wants the details.
+
+When the designated Assistant's turn has already settled, a notice opens one
+new Assistant turn whose input carries that identifier event alone. When a
+turn of that membership is already in flight, the notice stays timeline-only
+where the current turn can see it, and no second turn is stacked. A `flow`
+notice never rewrites its edge into a park, and a `flow` edge is never
+collapsed into a `callback`. Human gates — strategy authorization and
+external disclosure — are unchanged.
+
 The failure fallback holds under both modes. An Assistant-run effect or drive
 failure settles one typed terminal outcome back to the originating Assistant
 turn. For an imported strategy, prepare-import, commit-import, run admission,

@@ -80,6 +80,18 @@ key — so a replayed decision is stale and settles nothing. `advance` enters
 the declared target, `return` re-enters the completed state, and `terminate`
 cancels the run.
 
+Every settled effect reports one identifier-only master notice on the
+Conversation timeline: `strategy-flow-settled` when the Graph continues along
+`flow` edges (including a run that reaches terminal success through flow),
+`strategy-callback-request` when a callback parks the run, and
+`strategy-terminal-outcome` for the typed terminal failure. A notice carries
+identifiers only — run, state, visit, edge mode, and the answer channel when
+one exists — and never worker transcripts, prompts, paths, or tool output.
+When the designated Assistant's turn has already settled, the notice opens
+one new Assistant turn whose input is that identifier event alone; while a
+turn of that membership is in flight the notice stays timeline-only and no
+second turn is stacked. A `flow` notice never rewrites its edge into a park.
+
 ## Authority and lineage
 
 Every effect is bound to an authenticated caller Membership and an exact target
