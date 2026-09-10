@@ -15,8 +15,8 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dash
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
-/// Dashboard desktop shell hierarchy: destinations sit flush on the native
-/// window glass inside the chromeless main content region, while the sidebar
+/// Dashboard desktop shell hierarchy: destinations sit flush on the clear
+/// window veil inside the chromeless main content region, while the sidebar
 /// list is the single floating glass card (the macOS split-view idiom). The
 /// sidebar chrome is unified — search capsule, list, and bottom nav stay put
 /// while switching destinations. The traffic lights sit at the sidebar card
@@ -103,8 +103,9 @@ final class _DashboardDesktopShellState extends State<_DashboardDesktopShell> {
         child: Focus(
           skipTraversal: true,
           child: Material(
-            // Transparent base: the native NSVisualEffectView blurs the
-            // desktop beneath every chrome region and margin gutter.
+            // Transparent base: the clear window veil in
+            // DashboardContentRegion tints the desktop beneath chrome and
+            // gutters without frosting it.
             color: Colors.transparent,
             child: notifier == null
                 ? _shellContent(data, profileOpen: _profileOpen)

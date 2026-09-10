@@ -154,12 +154,7 @@ final class BindingShellRenderer implements ShellRendererPort {
         agentsHomeKey: agentsHomeKey as GlobalKey<MobileAgentsHomeState>,
       ),
     ),
-    ClientSection.monitoring => AgentUsagePanel(
-      binding: _monitoring,
-      onExit: () => _shellIntents.send(
-        const SelectShellDestination(ClientSection.agents),
-      ),
-    ),
+    ClientSection.monitoring => AgentUsagePanel(binding: _monitoring),
     ClientSection.skillHub => SkillHubPanel(binding: _skillHub),
     ClientSection.pluginManagement => AdapterPluginPanel(
       binding: _pluginManagement,

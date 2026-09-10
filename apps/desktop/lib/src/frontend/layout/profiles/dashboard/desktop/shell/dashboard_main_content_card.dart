@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
 
 /// The Dashboard desktop shell's unified outer content region: transparent
-/// and chromeless so every destination sits directly on the native window
-/// glass — the macOS split-view idiom where the content pane is flush with
+/// and chromeless so every destination sits directly on the clear window
+/// veil — the macOS split-view idiom where the content pane is flush with
 /// the window and the sidebar list is the single floating glass card.
 /// Sits inset from the content region on every edge by
 /// [MessagingDesktopMetrics.mainCardMargin]; the rounded clip keeps content

@@ -160,13 +160,13 @@ void main() {
         find.byKey(const Key('secure-mesh-file-sync-pick-source')),
         findsOneWidget,
       );
-      expect(find.text('Communication'), findsOneWidget);
+      expect(find.text('Communication'), findsNothing);
       expect(
         find.byKey(const Key('pairing-qr-workspace-card')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('pairing-qr-frame')), findsOneWidget);
-      expect(find.byType(MinimalScanIcon), findsWidgets);
+      expect(find.byType(MinimalScanIcon), findsNothing);
       expect(find.byTooltip('Copy Pairing Code'), findsNothing);
       expect(find.widgetWithText(FilledButton, 'Create Code'), findsNothing);
       expect(
