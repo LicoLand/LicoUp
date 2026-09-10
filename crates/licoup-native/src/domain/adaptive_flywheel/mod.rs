@@ -39,7 +39,7 @@ pub use policy::{
 pub use reducer::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
 };
-pub use service::{ActorTurnPort, StrategyService};
+pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
 pub use store::StrategyStore;
 pub(crate) use workflow_diagnostics::{
     WorkflowValidationFailure, compile_workflow_source, compile_workflow_value,

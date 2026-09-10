@@ -498,6 +498,17 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '助手操作' : 'Assistant actions';
   String get newAssistantConversation =>
       isChinese ? '新助手对话' : 'New Assistant conversation';
+  String get clearCanonicalConversationHistory =>
+      isChinese ? '重置历史' : 'Reset history';
+  String get confirmClearCanonicalConversationTitle =>
+      isChinese ? '重置这段群聊历史？' : 'Reset this group history?';
+  String confirmClearCanonicalConversationMessage(String title) => isChinese
+      ? '“$title” 的群聊历史会重置。Continuity 子会话会保留并自动归档。之后从新的 Assistant 对话继续。'
+      : '“$title” group history will be reset. Continuity child conversations stay intact and are archived. Later turns continue from a new Assistant conversation.';
+  String get confirmClearCanonicalConversationAction =>
+      isChinese ? '重置' : 'Reset';
+  String get archivedContinuityChildren =>
+      isChinese ? '已归档子会话' : 'Archived children';
   String get discardPendingImages =>
       isChinese ? '丢弃待发送的图片' : 'Discard pending images';
   String get contacts => isChinese ? '对话' : 'Conversations';
@@ -571,6 +582,10 @@ extension LicoStringsLabels on LicoStrings {
           isChinese
               ? 'Codex 模型额度已用完 · $failureRef'
               : 'Codex model usage limit reached · $failureRef',
+        'continuity_assistant_turn_invalid' =>
+          isChinese
+              ? '助手没有留下可用回复 · $failureRef'
+              : 'Assistant left no usable reply · $failureRef',
         _ => groupConversationFailureCapsule(failureRef),
       };
   String groupConversationFailureRecovery(String recovery) => switch (recovery

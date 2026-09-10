@@ -4,7 +4,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 /// Shared renderer measurements for the Messaging presentation.
 abstract final class MessagingDesktopMetrics {
-  /// Far-left destination column on the unified frosted-glass shell.
+  /// Far-left destination column on the unified clear-veil shell.
   static const double navigationRailExtent = 56;
 
   /// Default width of the shared sidebar column on first open (no persisted
@@ -36,7 +36,7 @@ abstract final class MessagingDesktopMetrics {
   static const double conversationListCardCornerRadius = 16;
 
   /// Translucent card fill on the dark chat canvas — thin enough that the
-  /// native glass reads through instead of stacking into a gray haze.
+  /// window veil reads through instead of stacking into a gray haze.
   static const int conversationListCardTintDarkAlpha = 12;
 
   /// Translucent card fill on the light chat canvas.
@@ -411,27 +411,20 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Specular edge light for clear-glass surfaces: a crisp top-bright rim
-  /// (light catching the glass edge) plus a soft sheen band decaying downward
-  /// from the top. The light is [chromeForegroundColor] — the same
-  /// preset-independent light the shell chrome already uses on native glass —
-  /// never brand/primary, so the rim reads as reflected light instead of a
-  /// colored outline. Painted by `GlassEdgeLight`; shells must use these
-  /// tokens, not hardcoded alphas.
+  /// Specular edge light for clear-glass surfaces: one uniform rim around
+  /// the full frame, plus a soft sheen band decaying downward from the top.
+  /// The light is [chromeForegroundColor] — the same preset-independent
+  /// light the shell chrome already uses — never brand/primary, so the rim
+  /// reads as reflected light instead of a colored outline. Painted by
+  /// `GlassEdgeLight`; shells must use these tokens, not hardcoded alphas.
   static const double glassEdgeRimWidth = 1;
 
-  /// Rim alpha at the top edge (dark canvas) — the bright catch-light.
+  /// Rim alpha on every edge (dark canvas). Same value all the way around
+  /// so the frame does not fade from top to bottom.
   static const int glassEdgeRimAlphaDark = 110;
 
-  /// Rim alpha at the top edge (light canvas).
+  /// Rim alpha on every edge (light canvas).
   static const int glassEdgeRimAlphaLight = 185;
-
-  /// Rim alpha at the bottom edge (dark canvas) — faint, not invisible, so
-  /// the glass silhouette stays continuous.
-  static const int glassEdgeRimDimAlphaDark = 22;
-
-  /// Rim alpha at the bottom edge (light canvas).
-  static const int glassEdgeRimDimAlphaLight = 44;
 
   /// Top sheen band alpha (dark canvas) — a faint glint; brighter bands read
   /// as a painted highlight instead of reflected light.
@@ -444,19 +437,10 @@ abstract final class MessagingDesktopMetrics {
   /// list card). Small capsules pass a tighter extent.
   static const double glassEdgeSheenExtent = 56;
 
-  /// Top-bright rim gradient for the specular edge stroke.
-  static Gradient glassEdgeRimGradient({required bool isDark}) =>
-      LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          chromeForegroundColor.withAlpha(
-            isDark ? glassEdgeRimAlphaDark : glassEdgeRimAlphaLight,
-          ),
-          chromeForegroundColor.withAlpha(
-            isDark ? glassEdgeRimDimAlphaDark : glassEdgeRimDimAlphaLight,
-          ),
-        ],
+  /// Uniform rim color for the full glass frame.
+  static Color glassEdgeRimColor({required bool isDark}) =>
+      chromeForegroundColor.withAlpha(
+        isDark ? glassEdgeRimAlphaDark : glassEdgeRimAlphaLight,
       );
 
   /// Sheen gradient for the top band: the rim hue fading to nothing.
@@ -487,19 +471,24 @@ abstract final class MessagingDesktopMetrics {
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
 
-  /// Dark preset shell tint alpha — 0 (native NSVisualEffectView only).
-  /// Flutter color overlays (especially white, and black in dark mode) severely
-  /// degrade frosted-glass material quality; both presets rely on native VE.
-  static const int chromeTintDarkAlpha = 0;
+  /// Dark preset window veil — a clear black mask. High enough that chat
+  /// text stays readable, low enough that the desktop still shows through
+  /// faintly. Must stay below 255: an opaque fill hides the wallpaper.
+  static const int chromeTintDarkAlpha = 225;
 
-  /// Light preset shell tint alpha — 0 (native NSVisualEffectView only).
-  /// Kept as a named token so tests and docs reference one shared path.
-  static const int lightSurfaceGlassAlpha = 0;
+  /// Light preset window veil — a clear white mask with the same see-through
+  /// job as [chromeTintDarkAlpha]. Not a frosted material.
+  static const int lightSurfaceGlassAlpha = 217;
 
-  /// Frosted-glass tint shared by chrome band and the
-  /// content region beneath the unified main card. Both presets return fully
-  /// transparent — native NSVisualEffectView provides the frosted material.
-  static Color surfaceGlassTint({required bool isDark}) => Colors.transparent;
+  /// Clear (non-blurred) window veil shared by shell regions. Dark paints
+  /// black; light paints white. Wallpaper shows through sharply — do not
+  /// restore NSVisualEffectView or BackdropFilter on this layer.
+  static Color surfaceGlassTint({required bool isDark}) => Color.fromARGB(
+    isDark ? chromeTintDarkAlpha : lightSurfaceGlassAlpha,
+    isDark ? 0 : 255,
+    isDark ? 0 : 255,
+    isDark ? 0 : 255,
+  );
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).

@@ -71,6 +71,15 @@ callback 边时，run 持久挂起而不进入声明的下一节点；execute �
 的决策是陈旧的，不会结算任何东西。`advance` 进入声明的下一节点，`return` 重新进入
 已完成节点，`terminate` 取消该 run。
 
+每一次结算的效果都会在 Conversation 时间线上发出仅含标识符的主智能体提醒：
+Graph 沿 `flow` 边继续（含经 flow 走到终态 success）时为 `strategy-flow-settled`，
+callback 边 park 时为 `strategy-callback-request`，typed 终态失败时为
+`strategy-terminal-outcome`。提醒只携带标识符——run、state、visit、边模式，以及存在
+时的应答通道——绝不包含 Worker transcript、prompt、路径或工具结果。当指定 Assistant
+的回合已经结算时，提醒会自动开一轮新的 Assistant turn，其输入只带该标识事件；当该
+membership 已有回合在飞时，提醒只留在时间线上，不再叠加第二轮。`flow` 提醒绝不把
+边改写成 park。
+
 ## 权限与调用谱系
 
 每项效果都绑定到已认证 caller Membership，以及同一 Canonical Conversation

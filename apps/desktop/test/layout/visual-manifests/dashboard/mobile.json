@@ -62,7 +62,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/agents.png",
-      "digest": "sha256:11bbd963cc7c3319f9ff7209302261652622b64c4c48e33772203846ca133b9d"
+      "digest": "sha256:f93b8861e81dfc9645ad1a11277b9886a6906e93555fd4be5ef987eeab43d1fe"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/settings.png",
@@ -81,5 +81,5 @@
       "digest": "sha256:32cb32b81a4bbf991fd36e4a09ad612aaddb3ceccdf616b28a0d59de8dc2cbc2"
     }
   ],
-  "manifestDigest": "sha256:bd59651940a6ac4ba14a81b93fb620ef8eadfc331ad105ede46acff8950e9338"
+  "manifestDigest": "sha256:9af58ffbb5e331ac8c731265da7562d475bca0d6ff8d60f785e891311f16afa2"
 }

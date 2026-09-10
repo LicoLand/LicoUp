@@ -193,12 +193,25 @@ final class ClientConversationController extends ApplicationStateOwner {
             .add(summary);
       }
     }
+    final archivedByParent = <String, List<ClientConversationSummary>>{};
+    for (final summary in _archivedSummaries) {
+      final parent = summary.parentConversationId;
+      if (parent != null && parent.isNotEmpty) {
+        archivedByParent
+            .putIfAbsent(parent, () => <ClientConversationSummary>[])
+            .add(summary);
+      }
+    }
     return _summaries
         .where(
           (conversation) =>
               conversation.isGroup && !conversation.isContinuityChild,
         )
-        .map((root) => root.withChildren(childrenByParent[root.id] ?? const []))
+        .map(
+          (root) => root
+              .withChildren(childrenByParent[root.id] ?? const [])
+              .withArchivedChildren(archivedByParent[root.id] ?? const []),
+        )
         .toList(growable: false);
   }
 
@@ -396,17 +409,9 @@ final class ClientConversationController extends ApplicationStateOwner {
   }
 
   Future<bool> _refresh() => _guard('list', () async {
-    _summaries = _summaryList(
-      await _service.execute(_runner, {
-        'action': 'conversation.list',
-        'includeArchived': false,
-      }),
-    );
-    _discardStaleConversationSnapshots();
+    await _refreshCatalogWithoutGuard();
     if (_selectedConversationId.isNotEmpty &&
-        !_summaries.any(
-          (conversation) => conversation.id == _selectedConversationId,
-        )) {
+        !_isListedConversation(_selectedConversationId)) {
       _clearSelection();
     }
     if (_selectedConversationId.isNotEmpty) {
@@ -1070,6 +1075,50 @@ final class ClientConversationController extends ApplicationStateOwner {
     });
   }
 
+  Future<bool> clearSelectedHistory() async {
+    final conversation = _selectedConversation;
+    final owner = conversation?.localOwnerMembership;
+    if (conversation == null || owner == null || !conversation.group) {
+      return false;
+    }
+    if (_sending || _dispatchPending || _liveTurns.isNotEmpty) {
+      surfaceFailure('canonical-clear', 'conversation_clear_blocked');
+      return false;
+    }
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null ||
+        selected.id != conversation.id ||
+        selected.localOwnerMembership == null) {
+      return false;
+    }
+    return _guard('clear', () async {
+      final conversationId = selected.id;
+      await _service.execute(_runner, {
+        'action': 'conversation.clear',
+        'conversationId': conversationId,
+        'ownerMembershipId': selected.localOwnerMembership!.id,
+      });
+      _liveTurns = const [];
+      _dispatchPending = false;
+      await _refreshCatalogWithoutGuard();
+      if (_selectedConversationId != conversationId &&
+          groupConversations.any(
+            (group) =>
+                group.id == conversationId &&
+                group.archivedChildren.any(
+                  (child) => child.id == _selectedConversationId,
+                ),
+          )) {
+        _selectedConversationId = conversationId;
+        _onSelectionChanged?.call(conversationId);
+      }
+      if (_selectedConversationId == conversationId) {
+        await _loadSelected();
+      }
+    });
+  }
+
   Future<void> _refreshCatalogWithoutGuard() async {
     _summaries = _summaryList(
       await _service.execute(_runner, {
@@ -1077,6 +1126,7 @@ final class ClientConversationController extends ApplicationStateOwner {
         'includeArchived': false,
       }),
     );
+    await _refreshArchivedWithoutGuard();
     _discardStaleConversationSnapshots();
   }
 
@@ -1092,6 +1142,15 @@ final class ClientConversationController extends ApplicationStateOwner {
           summary.updatedAtUnixMs != conversation.updatedAtUnixMs ||
           summary.eventCount != conversation.eventCount;
     });
+  }
+
+  bool _isListedConversation(String id) {
+    if (_summaries.any((conversation) => conversation.id == id)) {
+      return true;
+    }
+    return groupConversations.any(
+      (group) => group.archivedChildren.any((child) => child.id == id),
+    );
   }
 
   Future<void> _refreshArchivedWithoutGuard() async {

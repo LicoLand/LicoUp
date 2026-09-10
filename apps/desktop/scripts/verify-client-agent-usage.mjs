@@ -353,7 +353,7 @@ assertIncludes(
     "enum AgentUsageChartGrouping",
     "AgentUsageChartGrouping.agent",
     "AgentUsageChartGrouping.model",
-    "strings.tokenUsage",
+    "strings.statsPanel",
     "strings.totalTokens",
     "modelTokenUsage",
     "AgentUsageWorkflowSection",
@@ -390,6 +390,11 @@ const clientShellDelegatesFeatureConstruction =
 assert(
   clientShellDelegatesFeatureConstruction,
   "stable ClientShell must delegate destination rendering without ClientController or AgentUsagePanel",
+);
+assertIncludes(
+  clientShell,
+  ["ClientSection.monitoring => strings.tokenUsage"],
+  "monitoring destination label",
 );
 
 const usagePanelReferencePaths = [...flutterProductionSources]

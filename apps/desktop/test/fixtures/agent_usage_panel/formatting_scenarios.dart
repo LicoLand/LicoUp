@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,10 +33,7 @@ void registerAgentUsageFormattingScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(
-            binding: monitoring.binding,
-            onExit: () => controller.selectSection(ClientSection.agents),
-          ),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       ),
     );
@@ -50,16 +46,8 @@ void registerAgentUsageFormattingScenarios() {
     expect(service.scanCalls, 1);
     expect(find.text('7.9M'), findsAtLeastNWidgets(1));
     expect(find.text('670.7K'), findsAtLeastNWidgets(1));
-    expect(find.text('Token Usage'), findsOneWidget);
-    expect(find.byKey(const Key('agent-usage-exit-button')), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.byKey(const Key('agent-usage-exit-button'))).dx,
-      lessThan(tester.getTopLeft(find.text('Token Usage')).dx),
-    );
-    controller.selectSection(ClientSection.monitoring);
-    await tester.tap(find.byKey(const Key('agent-usage-exit-button')));
-    await tester.pump();
-    expect(controller.currentSection, ClientSection.agents);
+    expect(find.text('Token Usage'), findsNothing);
+    expect(find.byKey(const Key('agent-usage-exit-button')), findsNothing);
     expect(find.text('Total'), findsOneWidget);
     expect(find.text('240.4M'), findsOneWidget);
     expect(find.text('Report Totals'), findsNothing);
@@ -142,10 +130,7 @@ void registerAgentUsageFormattingScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(
-            binding: monitoring.binding,
-            onExit: () => controller.selectSection(ClientSection.agents),
-          ),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       ),
     );
