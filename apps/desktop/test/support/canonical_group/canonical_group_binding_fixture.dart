@@ -1041,6 +1041,8 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         unawaited(controller.deleteMessage(eventId));
       case RefreshCanonicalAssistantThread():
         unawaited(controller.refreshSelectedAssistantThread());
+      case ClearCanonicalConversationHistory():
+        unawaited(controller.clearSelectedHistory());
       case RefreshCanonicalAssistantProfile():
         break;
       case SurfaceConversationFailure(:final stage, :final reasonCode):
