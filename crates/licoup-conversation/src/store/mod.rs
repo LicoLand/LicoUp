@@ -1,10 +1,10 @@
 use super::{
-    ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationDispatch, ConversationEvent,
-    ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
-    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind,
-    ImageAttachment, Membership, MembershipAccess, Principal, PrincipalKind, PrivateRuntimeBinding,
-    ProfileIntent, ProfileIntentUpdate, ProfileResponsibility, RuntimeBinding, SourceLink,
-    TurnState,
+    ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationClearReport,
+    ConversationDispatch, ConversationEvent, ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID,
+    DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn, DispatchSessionMode, DispatchState, EventKind,
+    EventPage, EventPart, EventPartKind, ImageAttachment, Membership, MembershipAccess, Principal,
+    PrincipalKind, PrivateRuntimeBinding, ProfileIntent, ProfileIntentUpdate,
+    ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -1242,7 +1242,7 @@ impl ConversationStore {
                 .and_then(Value::as_str)
                 .filter(|output| !output.is_empty());
             let envelope_published = if envelope_mode && state == DispatchState::Completed {
-                terminal_output.and_then(crate::continuity::published_envelope)
+                terminal_output.and_then(crate::continuity::published_terminal_envelope)
             } else {
                 None
             };
@@ -1733,6 +1733,106 @@ impl ConversationStore {
             if changed == 0 {
                 return Err(anyhow!("conversation_not_found"));
             }
+            Ok(())
+        })
+    }
+
+    /// Empty one Conversation's visible Event history without touching Agent
+    /// native sessions. Continuity children stay intact and are archived.
+    /// An in-flight turn or unfinalized Event refuses the write.
+    pub fn clear_conversation_history(
+        &self,
+        conversation_id: &str,
+        owner_membership_id: &str,
+    ) -> StoreResult<ConversationClearReport> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(owner_membership_id, "membership_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ensure_conversation(&transaction, conversation_id)?;
+            ensure_local_owner(&transaction, conversation_id, owner_membership_id)?;
+            let is_group: bool = transaction.query_row(
+                "SELECT is_group FROM conversations WHERE id=?1",
+                params![conversation_id],
+                |row| row.get::<_, i64>(0).map(|value| value != 0),
+            )?;
+            if !is_group {
+                return Err(anyhow!("invalid_request"));
+            }
+            let blocked: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM events
+                   WHERE conversation_id=?1 AND finalized=0
+                 ) OR EXISTS(
+                   SELECT 1 FROM direct_turns
+                   WHERE conversation_id=?1
+                     AND state IN ('pending','claimed','running','waiting-for-human')
+                 ) OR EXISTS(
+                   SELECT 1 FROM conversation_dispatches
+                   WHERE conversation_id=?1
+                     AND state IN ('accepted','running','cancel-requested')
+                 )",
+                params![conversation_id],
+                |row| row.get(0),
+            )?;
+            if blocked {
+                return Err(anyhow!("conversation_clear_blocked"));
+            }
+            if table_exists(&transaction, "subagent_dispatch_claims")? {
+                let subagent_active: bool = transaction.query_row(
+                    "SELECT EXISTS(
+                       SELECT 1 FROM subagent_dispatch_claims
+                       WHERE conversation_id=?1
+                         AND state IN (
+                           'claimed','running','cancel-requested','reconciliation-required'
+                         )
+                     )",
+                    params![conversation_id],
+                    |row| row.get(0),
+                )?;
+                if subagent_active {
+                    return Err(anyhow!("conversation_clear_blocked"));
+                }
+            }
+            let archived_child_ids =
+                archive_continuity_children(&transaction, conversation_id, now)?;
+            delete_conversation_events(&transaction, conversation_id)?;
+            let assistant_membership_id =
+                rotate_assistant_membership(&transaction, conversation_id, now)?;
+            bump_revision(&transaction, conversation_id, now)?;
+            transaction.commit()?;
+            Ok(ConversationClearReport {
+                conversation_id: conversation_id.to_owned(),
+                archived_child_ids,
+                assistant_membership_id,
+            })
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn register_continuity_child_link(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        goal_id: &str,
+    ) -> StoreResult<()> {
+        validate_identifier(parent_id, "conversation_id")?;
+        validate_identifier(child_id, "conversation_id")?;
+        validate_identifier(goal_id, "goal_id")?;
+        self.with_connection(|connection| {
+            if !table_exists(connection, "continuity_task_relations")? {
+                return Err(anyhow!("unsupported_action"));
+            }
+            connection.execute(
+                "INSERT INTO continuity_task_relations(
+                   goal_id, parent_conversation_id, child_conversation_id, card_event_id,
+                   card_sequence, card_part_id, listing_kind, follow_through_kind,
+                   created_event, completion_transition, revision
+                 ) VALUES (?1, ?2, ?3, ?4, 0, NULL, 'child-task', 'durable', '{}', NULL, 1)",
+                params![goal_id, parent_id, child_id, child_id],
+            )?;
             Ok(())
         })
     }
@@ -5215,6 +5315,194 @@ fn insert_import_entry(
     Ok(())
 }
 
+fn table_exists(connection: &impl CountedSqlite, name: &str) -> StoreResult<bool> {
+    let found: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        params![name],
+        |row| row.get(0),
+    )?;
+    Ok(found)
+}
+
+fn archive_continuity_children(
+    connection: &impl CountedSqlite,
+    parent_id: &str,
+    now: i64,
+) -> StoreResult<Vec<String>> {
+    if !table_exists(connection, "continuity_task_relations")? {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection.prepare(
+        "SELECT child_conversation_id FROM continuity_task_relations
+         WHERE parent_conversation_id=?1
+         ORDER BY card_sequence ASC, goal_id ASC",
+    )?;
+    let child_ids = statement
+        .query_map(params![parent_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut archived = Vec::new();
+    for child_id in child_ids {
+        if child_id == parent_id {
+            continue;
+        }
+        let changed = connection.execute(
+            "UPDATE conversations
+             SET archived=1, revision=revision+1, updated_at=?2
+             WHERE id=?1 AND archived=0",
+            params![child_id, now],
+        )?;
+        if changed > 0 {
+            archived.push(child_id);
+        }
+    }
+    Ok(archived)
+}
+
+fn rotate_assistant_membership(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    now: i64,
+) -> StoreResult<Option<String>> {
+    let current: Option<String> = connection.query_row(
+        "SELECT assistant_membership_id FROM conversations WHERE id=?1",
+        params![conversation_id],
+        |row| row.get(0),
+    )?;
+    let Some(current_id) = current.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let principal: (String, String, String, Option<String>, String) = connection.query_row(
+        "SELECT p.id, p.display_name, p.kind, p.agent_id, m.access
+         FROM memberships m
+         JOIN principals p ON p.id=m.principal_id
+         WHERE m.id=?1 AND m.conversation_id=?2 AND m.status='active'",
+        params![current_id, conversation_id],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
+    )?;
+    if principal.2 != "agent" {
+        return Ok(Some(current_id));
+    }
+    let profile: Option<(
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = connection
+        .query_row(
+            "SELECT required_capabilities, preferred_capabilities, skill_references,
+                    preferred_model, preferred_reasoning_effort, preferred_environment
+             FROM membership_profiles WHERE membership_id=?1",
+            params![current_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .optional()?;
+    connection.execute(
+        "UPDATE conversations SET assistant_membership_id=NULL WHERE id=?1",
+        params![conversation_id],
+    )?;
+    connection.execute(
+        "DELETE FROM memberships WHERE id=?1 AND conversation_id=?2",
+        params![current_id, conversation_id],
+    )?;
+    let next_id = new_id("membership");
+    connection.execute(
+        "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
+         VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
+        params![next_id, conversation_id, principal.0, principal.4, now],
+    )?;
+    if let Some(profile) = profile {
+        connection.execute(
+            "INSERT INTO membership_profiles(
+               membership_id, revision, responsibility, required_capabilities,
+               preferred_capabilities, skill_references, preferred_model,
+               preferred_reasoning_effort, preferred_environment, updated_at
+             ) VALUES (?1, 0, 'assistant', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                next_id, profile.0, profile.1, profile.2, profile.3, profile.4, profile.5, now
+            ],
+        )?;
+    } else {
+        ensure_membership_profile_default(connection, &next_id, now)?;
+        set_profile_responsibility(connection, &next_id, ProfileResponsibility::Assistant, now)?;
+    }
+    connection.execute(
+        "UPDATE conversations SET assistant_membership_id=?2 WHERE id=?1",
+        params![conversation_id, next_id],
+    )?;
+    Ok(Some(next_id))
+}
+
+fn delete_conversation_events(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+) -> StoreResult<()> {
+    connection.execute(
+        "DELETE FROM event_search WHERE conversation_id=?1",
+        params![conversation_id],
+    )?;
+    connection.execute(
+        "DELETE FROM conversation_dispatches WHERE conversation_id=?1",
+        params![conversation_id],
+    )?;
+    connection.execute(
+        "DELETE FROM direct_turns WHERE conversation_id=?1",
+        params![conversation_id],
+    )?;
+    if table_exists(connection, "subagent_dispatch_claims")? {
+        connection.execute(
+            "DELETE FROM subagent_dispatch_claims WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
+    }
+    if table_exists(connection, "subagent_mcp_inbound")? {
+        connection.execute(
+            "DELETE FROM subagent_mcp_inbound WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
+    }
+    connection.execute(
+        "DELETE FROM event_parts WHERE event_id IN
+         (SELECT id FROM events WHERE conversation_id=?1)",
+        params![conversation_id],
+    )?;
+    connection.execute(
+        "DELETE FROM events WHERE conversation_id=?1",
+        params![conversation_id],
+    )?;
+    if table_exists(connection, "continuity_source_cursors")? {
+        connection.execute(
+            "DELETE FROM continuity_source_cursors WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
+    }
+    if table_exists(connection, "continuity_matter_associations")? {
+        connection.execute(
+            "DELETE FROM continuity_matter_associations WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
+    }
+    Ok(())
+}
+
 fn bump_revision(
     connection: &impl CountedSqlite,
     conversation_id: &str,
@@ -5472,7 +5760,7 @@ fn runtime_semantic_parts(frame: &Value, trusted_mode: Option<&str>) -> Vec<NewE
                 if crate::continuity::is_assistant_turn_response_mode(trusted_mode) {
                     if event == "agent.message.completed"
                         && let Some((reply, proposal)) =
-                            crate::continuity::published_envelope(value)
+                            crate::continuity::published_terminal_envelope(value)
                     {
                         parts.push((EventPartKind::Text, reply));
                         parts.push((EventPartKind::Metadata, proposal));

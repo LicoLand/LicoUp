@@ -23,9 +23,7 @@ final class AgentUsageWaveOverview extends StatefulWidget {
     required this.windowBusy,
     required this.onWindowChanged,
     this.showGroupingControl = true,
-    this.title,
     this.tooltipSemanticLabel,
-    this.onExit,
   });
 
   final AgentUsageChartGrouping grouping;
@@ -35,9 +33,7 @@ final class AgentUsageWaveOverview extends StatefulWidget {
   final bool windowBusy;
   final ValueChanged<int> onWindowChanged;
   final bool showGroupingControl;
-  final String? title;
   final String Function(DateTime date)? tooltipSemanticLabel;
-  final VoidCallback? onExit;
 
   @override
   State<AgentUsageWaveOverview> createState() => _AgentUsageWaveOverviewState();
@@ -156,8 +152,6 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AgentUsagePanelHeader(
-          title: widget.title ?? strings.tokenUsage,
-          onExit: widget.onExit,
           trailing: [
             if (widget.showGroupingControl) ...[
               AgentUsageGroupingSwitch(

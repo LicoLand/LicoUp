@@ -149,6 +149,7 @@ enum ConversationFailureCode {
   profileRevisionStale("profile_revision_stale"),
   profileCandidateRejected("profile_candidate_rejected"),
   conversationRevisionStale("conversation_revision_stale"),
+  conversationClearBlocked("conversation_clear_blocked"),
   localOwnerRequired("local_owner_required"),
   unknown('');
 
@@ -171,6 +172,7 @@ enum ConversationActionKind {
   conversationCreate("conversation.create"),
   conversationRename("conversation.rename"),
   conversationArchive("conversation.archive"),
+  conversationClear("conversation.clear"),
   conversationStrategySet("conversation.strategy.set"),
   conversationList("conversation.list"),
   conversationGet("conversation.get"),

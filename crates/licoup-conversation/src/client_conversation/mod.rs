@@ -84,6 +84,15 @@ pub struct ConversationSummary {
     pub event_count: i64,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationClearReport {
+    pub conversation_id: String,
+    pub archived_child_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assistant_membership_id: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Membership {

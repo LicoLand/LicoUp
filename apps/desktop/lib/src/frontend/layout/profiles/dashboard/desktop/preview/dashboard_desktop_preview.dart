@@ -27,7 +27,7 @@ Widget buildDashboardDesktopPreview(BuildContext context) =>
     const DashboardDesktopPreview();
 
 /// A deterministic, non-interactive layout-picker thumbnail of the Dashboard
-/// shell. The live shell uses native frosted glass for the content region and
+/// shell. The live shell uses the clear window veil for the content region and
 /// gutters; this preview approximates structure with flat palette fills for
 /// the list column and chat canvas, with a traffic-light hint at the list
 /// column's top-left.
