@@ -106,6 +106,8 @@ pub enum ConversationFailureCode {
     ProfileCandidateRejected,
     #[serde(rename = "conversation_revision_stale")]
     ConversationRevisionStale,
+    #[serde(rename = "conversation_clear_blocked")]
+    ConversationClearBlocked,
     #[serde(rename = "local_owner_required")]
     LocalOwnerRequired,
 }
@@ -128,6 +130,8 @@ pub enum ConversationActionKind {
     ConversationRename,
     #[serde(rename = "conversation.archive")]
     ConversationArchive,
+    #[serde(rename = "conversation.clear")]
+    ConversationClear,
     #[serde(rename = "conversation.strategy.set")]
     ConversationStrategySet,
     #[serde(rename = "conversation.list")]

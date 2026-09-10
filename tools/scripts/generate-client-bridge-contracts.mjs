@@ -358,6 +358,7 @@ function readConversationSchema(family) {
     "conversation.create",
     "conversation.rename",
     "conversation.archive",
+    "conversation.clear",
     "conversation.strategy.set",
     "conversation.list",
     "conversation.get",

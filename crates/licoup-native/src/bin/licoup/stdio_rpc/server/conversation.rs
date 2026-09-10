@@ -192,6 +192,22 @@ impl PersistentConversationRuntime {
             })
     }
 
+    /// True while a Membership-scoped turn is registered and not terminal.
+    /// The designated-Assistant wake uses this to keep a notice timeline-only
+    /// when a turn of that membership is already in flight; it never stacks a
+    /// second turn for one wake.
+    fn live_turn_for_membership(&self, membership_id: &str) -> bool {
+        self.inner.turns.lock().is_ok_and(|turns| {
+            turns.values().any(|turn| {
+                turn.scope.membership_id == membership_id
+                    && turn
+                        .state
+                        .lock()
+                        .is_ok_and(|state| state.terminal.is_none())
+            })
+        })
+    }
+
     fn begin(&self, params: &Value) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
         self.begin_with(params, PersistentTurnAdmission::Public)
     }
@@ -1790,6 +1806,64 @@ pub(super) fn strategy_turn_port(
     }
 }
 
+/// The designated-Assistant notice port: a notice already durable on the
+/// Conversation timeline wakes exactly one new Assistant turn, and only when
+/// no turn of that membership is in flight. Composition shares the persistent
+/// host runtime; without it the strategy service keeps notices timeline-only.
+pub(super) fn assistant_wake_port(
+    runtime: PersistentConversationRuntime,
+    portable_data_dir: Option<PathBuf>,
+) -> licoup_native::domain::adaptive_flywheel::AssistantWakePort {
+    licoup_native::domain::adaptive_flywheel::AssistantWakePort {
+        wake: Arc::new(move |conversation_id, membership_id, notice| {
+            if runtime.live_turn_for_membership(membership_id) {
+                return Ok(());
+            }
+            let agent_id = {
+                let conversation = runtime
+                    .inner
+                    .store
+                    .get(conversation_id)
+                    .map_err(|_| "assistant_wake_conversation_unavailable".to_owned())?;
+                conversation
+                    .memberships
+                    .iter()
+                    .find(|membership| membership.id == membership_id)
+                    .and_then(|membership| membership.principal.agent_id.clone())
+                    .ok_or_else(|| "assistant_wake_agent_unavailable".to_owned())?
+            };
+            let params = json!({
+                "agent": agent_id,
+                "agentId": agent_id,
+                "text": assistant_notice_text(notice),
+                "streamEvents": true,
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+                "causationId": notice.get("runId").cloned().unwrap_or(Value::Null),
+            });
+            let wake_runtime = runtime.clone();
+            let wake_dir = portable_data_dir.clone();
+            std::thread::Builder::new()
+                .name("assistant-wake".to_owned())
+                .spawn(move || {
+                    let _ = wake_runtime.start_background(&params, wake_dir);
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }),
+    }
+}
+
+/// The turn input for a notice carries the identifier event only: its kind,
+/// run/state/visit identifiers, and edge mode. Worker transcripts, prompts,
+/// paths and tool results never enter the Assistant turn.
+fn assistant_notice_text(notice: &Value) -> String {
+    let payload = serde_json::to_string(notice).unwrap_or_else(|_| "{}".to_owned());
+    format!(
+        "Adaptive Flywheel notice for the designated Assistant — identifier-only; read this Conversation for details: {payload}"
+    )
+}
+
 pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()>>) {
     while !workers.is_empty() {
         reap_finished(workers);
@@ -3027,6 +3101,102 @@ mod tests {
             .unwrap()
             .contains_key(&claim.id);
         assert!(armed);
+    }
+
+    #[test]
+    fn live_turn_lookup_tracks_active_memberships() {
+        let runtime = runtime(64);
+        let store = runtime.inner.store.clone();
+        let conversation = store
+            .create_conversation(
+                "Project",
+                Principal {
+                    id: "human:owner".into(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Owner".into(),
+                    agent_id: None,
+                    created_at_unix_ms: 1,
+                },
+            )
+            .unwrap();
+        let membership = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:entry".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Entry".into(),
+                    agent_id: Some("entry-agent".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let params = json!({
+            "agent": "entry-agent",
+            "text": "Adaptive Flywheel notice",
+            "conversationId": conversation.id,
+            "membershipId": membership.id,
+        });
+        let handle = runtime.open_turn(&params).unwrap();
+        assert!(runtime.live_turn_for_membership(&membership.id));
+        assert!(!runtime.live_turn_for_membership("membership-elsewhere"));
+        runtime.abandon_turn(&handle);
+        assert!(!runtime.live_turn_for_membership(&membership.id));
+    }
+
+    #[test]
+    fn assistant_wake_skips_memberships_with_a_live_turn() {
+        let runtime = runtime(64);
+        let store = runtime.inner.store.clone();
+        let conversation = store
+            .create_conversation(
+                "Project",
+                Principal {
+                    id: "human:owner".into(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Owner".into(),
+                    agent_id: None,
+                    created_at_unix_ms: 1,
+                },
+            )
+            .unwrap();
+        let membership = store
+            .add_member(
+                &conversation.id,
+                Principal {
+                    id: "agent:entry".into(),
+                    kind: PrincipalKind::Agent,
+                    display_name: "Entry".into(),
+                    agent_id: Some("entry-agent".into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+            .unwrap();
+        let params = json!({
+            "agent": "entry-agent",
+            "text": "Adaptive Flywheel notice",
+            "conversationId": conversation.id,
+            "membershipId": membership.id,
+        });
+        let handle = runtime.open_turn(&params).unwrap();
+        let port = assistant_wake_port(runtime.clone(), None);
+        let notice = json!({
+            "kind": "strategy-flow-settled",
+            "runId": "run-1",
+            "stateId": "greet",
+            "stateVisit": 1,
+            "mode": "flow",
+        });
+        let before = runtime.inner.turns.lock().unwrap().len();
+        (port.wake)(&conversation.id, &membership.id, &notice).unwrap();
+        let after = runtime.inner.turns.lock().unwrap().len();
+        assert_eq!(
+            before, after,
+            "a live membership turn keeps the notice timeline-only"
+        );
+        runtime.abandon_turn(&handle);
     }
 
     fn compile_fake_codex() -> std::path::PathBuf {
@@ -4329,28 +4499,29 @@ mod tests {
     }
 
     #[test]
-    fn malformed_admitted_fake_codex_output_is_failed_not_silence() {
+    fn untyped_admitted_fake_codex_output_is_raw_reply() {
         let _guard = FAKE_CODEX_LOCK
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let executable = compile_fake_codex();
-        let store_root = executable.parent().unwrap().join("malformed-store");
+        let store_root = executable.parent().unwrap().join("untyped-store");
         std::fs::create_dir_all(&store_root).unwrap();
         let store = ConversationStore::open(&store_root).unwrap();
         let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (runtime, service, rx) =
             bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
         let (conversation_id, owner, _agent) =
-            create_designated_group(&service, "Malformed envelope");
+            create_designated_group(&service, "Untyped envelope");
+        let raw = typed_child_proposal_json(&conversation_id);
         let mut result_path = executable.clone();
         result_path.set_extension("result.json");
-        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        std::fs::write(&result_path, &raw).unwrap();
         let posted = service
             .execute(json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner,
-                "content": "this should fail honestly",
+                "content": "this should stay visible",
             }))
             .unwrap();
         service
@@ -4362,13 +4533,13 @@ mod tests {
             .unwrap();
         let (settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
-            .expect("malformed fake Codex finish must settle");
+            .expect("untyped fake Codex finish must settle");
         assert_eq!(settled_conversation, conversation_id);
         assert_eq!(
             settled_payload.get("ok").and_then(Value::as_bool),
-            Some(false)
+            Some(true)
         );
-        assert_eq!(
+        assert_ne!(
             settled_payload.get("code").and_then(Value::as_str),
             Some(ASSISTANT_TURN_INVALID_ERROR)
         );
@@ -4377,22 +4548,18 @@ mod tests {
             .store()
             .agent_turn_event_for_dispatch(&conversation_id, dispatch_id)
             .unwrap()
-            .expect("failed turn event");
-        assert!(
-            visible_text(service.store(), &conversation_id, &event.id).is_empty(),
-            "malformed admitted output must not become Completed silence text"
+            .expect("completed turn event");
+        assert_eq!(
+            visible_text(service.store(), &conversation_id, &event.id),
+            raw
         );
-        assert!(event.parts.iter().any(|part| {
-            part.kind == EventPartKind::Diagnostic
-                && part.content.contains(ASSISTANT_TURN_INVALID_ERROR)
-        }));
         assert!(
             service
                 .store()
                 .list_child_relations(&conversation_id, None, 8)
                 .unwrap()
                 .is_empty(),
-            "turn failure is not Goal acceptance"
+            "raw conversation is not Goal acceptance"
         );
         let _ = runtime;
         let _ = std::fs::remove_file(result_path);
@@ -4501,28 +4668,29 @@ mod tests {
     }
 
     #[test]
-    fn malformed_admitted_public_terminal_is_failed_after_fake_codex() {
+    fn untyped_admitted_public_terminal_is_raw_after_fake_codex() {
         let _guard = FAKE_CODEX_LOCK
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let executable = compile_fake_codex();
-        let store_root = executable.parent().unwrap().join("public-failed-store");
+        let store_root = executable.parent().unwrap().join("public-untyped-store");
         std::fs::create_dir_all(&store_root).unwrap();
         let store = ConversationStore::open(&store_root).unwrap();
         let start_kinds = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (runtime, service, rx) =
             bind_fake_codex_parent_runtime(store, executable.clone(), start_kinds);
         let (conversation_id, owner, _agent) =
-            create_designated_group(&service, "Public failed terminal");
+            create_designated_group(&service, "Public untyped terminal");
+        let raw = typed_child_proposal_json(&conversation_id);
         let mut result_path = executable.clone();
         result_path.set_extension("result.json");
-        std::fs::write(&result_path, typed_child_proposal_json(&conversation_id)).unwrap();
+        std::fs::write(&result_path, &raw).unwrap();
         let posted = service
             .execute(json!({
                 "action": "conversation.message.post",
                 "conversationId": conversation_id,
                 "authorMembershipId": owner,
-                "content": "this should fail publicly",
+                "content": "this should stay visible publicly",
             }))
             .unwrap();
         service
@@ -4534,43 +4702,38 @@ mod tests {
             .unwrap();
         let (_settled_conversation, settled_payload, _settlement) = rx
             .recv_timeout(Duration::from_secs(30))
-            .expect("malformed fake Codex finish must settle");
+            .expect("untyped fake Codex finish must settle");
         let dispatch_id = settled_payload["dispatchId"].as_str().expect("dispatchId");
-        let (ok, public_payload) = runtime
-            .public_terminal(dispatch_id)
-            .expect("failed admitted finish must store a public terminal");
-        assert!(
-            !ok,
-            "malformed admitted public terminal must not be ok=true: {public_payload}"
-        );
-        assert_eq!(
-            public_payload.get("code").and_then(Value::as_str),
+        assert_ne!(
+            settled_payload.get("code").and_then(Value::as_str),
             Some(ASSISTANT_TURN_INVALID_ERROR)
         );
+        let (ok, public_payload) = runtime
+            .public_terminal(dispatch_id)
+            .expect("untyped admitted finish must store a public terminal");
         assert!(
-            !public_payload
-                .to_string()
-                .contains("interpretationProposal"),
-            "failed public terminal must not leak the private proposal: {public_payload}"
+            ok,
+            "untyped admitted public terminal must stay ok: {public_payload}"
+        );
+        assert_eq!(
+            public_payload.get("output").and_then(Value::as_str),
+            Some(raw.as_str()),
+            "public terminal must keep the raw conversation: {public_payload}"
         );
         runtime.evict_turn_cache(dispatch_id);
-        let turn = runtime.turn(dispatch_id).expect("failed turn remains");
+        let turn = runtime.turn(dispatch_id).expect("completed turn remains");
         let high_water = runtime
             .turn_high_water(dispatch_id)
-            .expect("failed turn keeps its high-water after eviction");
+            .expect("untyped turn keeps its high-water after eviction");
         let writer = Arc::new(Mutex::new(Vec::<u8>::new()));
-        replay_turn(&writer, "attach-failed", "workflow-failed", &turn, 0).unwrap();
+        replay_turn(&writer, "attach-untyped", "workflow-untyped", &turn, 0).unwrap();
         let frames = decode_replay_frames(&writer);
         let terminal = assert_contiguous_store_fallback_replay(&frames, high_water);
-        assert_eq!(terminal["ok"], false, "{terminal}");
+        assert_eq!(terminal["ok"], true, "{terminal}");
         assert_eq!(
-            public_terminal_code(&terminal["error"]),
-            Some(ASSISTANT_TURN_INVALID_ERROR),
-            "malformed admitted attach must keep the validation code: {terminal}"
-        );
-        assert!(
-            !terminal.to_string().contains("interpretationProposal"),
-            "failed attach terminal must stay public: {terminal}"
+            terminal["result"]["output"].as_str(),
+            Some(raw.as_str()),
+            "untyped admitted attach must keep the raw conversation: {terminal}"
         );
         let _ = runtime;
         let _ = std::fs::remove_file(result_path);

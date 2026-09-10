@@ -24,7 +24,7 @@ void main() {
     expect(find.byType(LicoPaneScaffold), findsOneWidget);
     expect(find.text('Mobile Pairing'), findsOneWidget);
     expect(find.byKey(const Key('mobile-relay-refresh')), findsOneWidget);
-    expect(find.text('Communication'), findsOneWidget);
+    expect(find.text('Communication'), findsNothing);
     expect(find.byKey(const Key('pairing-qr-workspace-card')), findsOneWidget);
     expect(find.byKey(const Key('pairing-qr-frame')), findsOneWidget);
     expect(find.byType(MobileRelayScanPairingPrompt), findsNothing);

@@ -8,6 +8,7 @@
     "conversation.create",
     "conversation.rename",
     "conversation.archive",
+    "conversation.clear",
     "conversation.strategy.set",
     "conversation.list",
     "conversation.get",
@@ -81,6 +82,7 @@
     "profile_revision_stale",
     "profile_candidate_rejected",
     "conversation_revision_stale",
+    "conversation_clear_blocked",
     "local_owner_required"
   ],
   "continuousAssistant": {
