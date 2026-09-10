@@ -30,11 +30,7 @@ void registerAgentUsageModelShareScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(
-            binding: monitoring.binding,
-            onExit: () {},
-            autoLoad: false,
-          ),
+          child: AgentUsagePanel(binding: monitoring.binding, autoLoad: false),
         ),
       ),
     );
@@ -94,7 +90,6 @@ void registerAgentUsageModelShareScenarios() {
             height: 720,
             child: AgentUsagePanel(
               binding: monitoring.binding,
-              onExit: () {},
               autoLoad: false,
             ),
           ),
@@ -165,7 +160,6 @@ void registerAgentUsageModelShareScenarios() {
             height: 720,
             child: AgentUsagePanel(
               binding: monitoring.binding,
-              onExit: () {},
               autoLoad: false,
             ),
           ),

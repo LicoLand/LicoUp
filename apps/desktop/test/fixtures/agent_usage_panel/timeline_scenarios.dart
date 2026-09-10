@@ -31,7 +31,7 @@ void registerAgentUsageTimelineScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       ),
     );
@@ -39,7 +39,7 @@ void registerAgentUsageTimelineScenarios() {
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.text('Token Usage'), findsOneWidget);
+    expect(find.text('Token Usage'), findsNothing);
     expect(find.text('Usage Over Time'), findsNothing);
     expect(find.text('Last 30 days'), findsNothing);
     expect(find.byKey(const Key('agent-usage-window-chip-30')), findsOneWidget);
@@ -82,11 +82,7 @@ void registerAgentUsageTimelineScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(
-            binding: monitoring.binding,
-            onExit: () {},
-            autoLoad: false,
-          ),
+          child: AgentUsagePanel(binding: monitoring.binding, autoLoad: false),
         ),
       ),
     );
@@ -140,7 +136,6 @@ void registerAgentUsageTimelineScenarios() {
             height: 720,
             child: AgentUsagePanel(
               binding: monitoring.binding,
-              onExit: () {},
               autoLoad: false,
             ),
           ),

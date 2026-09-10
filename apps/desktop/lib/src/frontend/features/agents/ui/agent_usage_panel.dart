@@ -12,12 +12,10 @@ class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({
     super.key,
     required this.binding,
-    required this.onExit,
     this.autoLoad = true,
   });
 
   final MonitoringBinding binding;
-  final VoidCallback onExit;
   final bool autoLoad;
 
   @override
@@ -115,7 +113,6 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
             windowBusy: projection.refreshing,
             onWindowChanged: (days) =>
                 widget.binding.intents.send(SetMonitoringHistoryDays(days)),
-            onExit: widget.onExit,
           ),
         ),
       ),
