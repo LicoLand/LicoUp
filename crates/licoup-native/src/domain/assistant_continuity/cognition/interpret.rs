@@ -8,7 +8,7 @@ use licoup_conversation::continuity::{
     ContinuityInterpretationProposal, ContinuityMatterAssociation, ContinuityMatterSubject,
     ContinuitySourceRef, ContinuitySpeechAct, ContinuityTaskChildAdmission,
     ContinuityWriteEnvelope, DiscoveredKnowledgePort, InterpretationPort,
-    admit_task_child_admission, decode_assistant_turn_response, usable_reply_text,
+    admit_task_child_admission, published_terminal_envelope,
 };
 use serde_json::Value;
 
@@ -162,17 +162,19 @@ pub(crate) fn restamp_proposal(
     Ok(proposal)
 }
 
-/// Admitted ordinary-continuity settlement: require the typed envelope and a
-/// nonempty usable reply. Bare proposal JSON is not Goal acceptance.
+/// Admitted ordinary-continuity settlement. A typed envelope still unwraps
+/// its proposal. Any other nonempty terminal text is a host abstain; bare
+/// proposal JSON is not Goal acceptance.
 pub(crate) fn proposal_from_assistant_turn_response(
     assembly: &AssemblySnapshot,
     output: &str,
 ) -> Result<ContinuityInterpretationProposal, ContinuityFailure> {
-    match decode_assistant_turn_response(output) {
-        Some(response) if usable_reply_text(&response).is_some() => {
-            restamp_proposal(assembly, response.interpretation_proposal)
-        }
-        _ => Ok(abstain_proposal(assembly)),
+    match published_terminal_envelope(output) {
+        Some((_, proposal)) => match serde_json::from_str(&proposal) {
+            Ok(proposal) => restamp_proposal(assembly, proposal),
+            Err(_) => Ok(abstain_proposal(assembly)),
+        },
+        None => Ok(abstain_proposal(assembly)),
     }
 }
 
