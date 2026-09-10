@@ -35,7 +35,7 @@ void registerAgentUsagePollingScenarios() {
         home: SizedBox(
           width: 980,
           height: 620,
-          child: AgentUsagePanel(binding: monitoring.binding, onExit: () {}),
+          child: AgentUsagePanel(binding: monitoring.binding),
         ),
       ),
     );

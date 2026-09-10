@@ -10,7 +10,7 @@ const LayoutAgentsPresentation desktopDesktopAgentsPresentation =
 const LayoutSettingsPresentation desktopDesktopSettingsPresentation =
     DesktopDesktopSettingsPresentation();
 
-/// Desktop 对话 fullscreen: transparent canvas over the native glass blur so
+/// Desktop 对话 fullscreen: transparent canvas over the clear window veil so
 /// the conversation surface and the floating capsule dock read as one screen;
 /// the conversation list floats in a nested glass card.
 final class DesktopDesktopAgentsPresentation
