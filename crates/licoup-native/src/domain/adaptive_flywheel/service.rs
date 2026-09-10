@@ -41,6 +41,15 @@ pub struct ActorTurnPort {
     pub abandon: Arc<dyn Fn(&str) + Send + Sync>,
 }
 
+/// The notice seam for the designated Assistant. `wake` receives the
+/// Conversation id, the designated Assistant Membership id, and the
+/// identifier-only notice part already appended to the timeline; it opens one
+/// new Assistant turn for that notice only when no turn of that membership is
+/// in flight. Composition happens where the persistent host runtime exists.
+pub struct AssistantWakePort {
+    pub wake: Arc<dyn Fn(&str, &str, &Value) -> std::result::Result<(), String> + Send + Sync>,
+}
+
 fn driving_runs() -> &'static Mutex<BTreeSet<String>> {
     static RUNS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
     RUNS.get_or_init(|| Mutex::new(BTreeSet::new()))
@@ -52,6 +61,7 @@ pub struct StrategyService {
     importer: StrategyPackageImporter,
     portable_root: PathBuf,
     actor_port: Option<Arc<ActorTurnPort>>,
+    assistant_wake: Option<Arc<AssistantWakePort>>,
     profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
 }
 
@@ -71,6 +81,7 @@ impl StrategyService {
             importer: StrategyPackageImporter::open(portable_root)?,
             portable_root: portable_root.to_path_buf(),
             actor_port: None,
+            assistant_wake: None,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         };
         service.refresh_runtime_bindings()?;
@@ -87,12 +98,18 @@ impl StrategyService {
             importer,
             portable_root,
             actor_port: None,
+            assistant_wake: None,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         }
     }
 
     pub fn with_actor_turn_port(mut self, actor_port: ActorTurnPort) -> Self {
         self.actor_port = Some(Arc::new(actor_port));
+        self
+    }
+
+    pub fn with_assistant_wake_port(mut self, assistant_wake: AssistantWakePort) -> Self {
+        self.assistant_wake = Some(Arc::new(assistant_wake));
         self
     }
 
@@ -1714,7 +1731,23 @@ impl StrategyService {
         let failure_terminal = after.assistant_membership_id.is_none()
             && failure_terminal_status(after.status)
             && !before.is_some_and(|snapshot| failure_terminal_status(snapshot.status));
-        if newly_parked.is_empty() && !failure_terminal {
+        // Flow settlement: a state completed without parking a callback and
+        // without a terminal failure. Both the ordinary continuation and a
+        // run that reached terminal success through flow edges notify; a
+        // newly parked callback is reported as a callback-request instead.
+        let flow_settled: Vec<(&String, u64)> = if newly_parked.is_empty() && !failure_terminal {
+            after
+                .completed_states
+                .iter()
+                .filter(|state| {
+                    !before.is_some_and(|snapshot| snapshot.completed_states.contains(*state))
+                })
+                .map(|state| (state, after.state_visits.get(state).copied().unwrap_or(0)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if newly_parked.is_empty() && flow_settled.is_empty() && !failure_terminal {
             return Ok(());
         }
         let answer_channel = if after.assistant_membership_id.is_some() {
@@ -1753,6 +1786,21 @@ impl StrategyService {
                     "runId": after.run_id,
                     "status": wire_enum(after.status)?,
                     "diagnostic": after.diagnostic_code,
+                }),
+            )?;
+        }
+        for (state_id, state_visit) in flow_settled {
+            self.append_master_report(
+                conversation_id,
+                after.assistant_membership_id.as_deref(),
+                Some(&after.run_id),
+                json!({
+                    "kind": "strategy-flow-settled",
+                    "schema": "licoup.adaptive-flywheel.callback.v1",
+                    "runId": after.run_id,
+                    "stateId": state_id,
+                    "stateVisit": state_visit,
+                    "mode": "flow",
                 }),
             )?;
         }
@@ -1817,6 +1865,13 @@ impl StrategyService {
             causation_id,
             true,
         )?;
+        // The notice is already durable on the timeline; the wake is a
+        // fire-and-forget surface that opens one new Assistant turn only when
+        // no turn of that membership is in flight, so it never fails the
+        // drive and never stacks a second turn.
+        if let Some(port) = self.assistant_wake.as_ref() {
+            let _ = (port.wake)(conversation_id, &master, &part);
+        }
         Ok(())
     }
 
@@ -4714,5 +4769,168 @@ mod tests {
         assert!(snapshot.pending_callbacks.is_empty());
         drop(service);
         remove_root(root);
+    }
+
+    #[test]
+    fn imported_flow_settlement_reports_the_master_and_wakes_the_assistant() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let wakes = Arc::new(Mutex::new(Vec::<(String, String, Value)>::new()));
+        let wake_log = Arc::clone(&wakes);
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_assistant_wake_port(AssistantWakePort {
+            wake: Arc::new(move |conversation, master, notice| {
+                wake_log.lock().unwrap().push((
+                    conversation.to_owned(),
+                    master.to_owned(),
+                    notice.clone(),
+                ));
+                Ok(())
+            }),
+        });
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "flow-start-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        // The entry effect settles and the Graph continues to `done` without
+        // parking: every settled step — the entry actor and the terminal
+        // success state — owes the master one identifier notice.
+        let snapshot = wait_for_terminal(&store, &run_id);
+        assert_eq!(snapshot.status, StrategyRunStatus::Completed);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut notices: Vec<Value> = Vec::new();
+        while std::time::Instant::now() < deadline {
+            let page = conversation_store
+                .page_events(&conversation_id, None, 64)
+                .unwrap();
+            notices = page
+                .events
+                .iter()
+                .flat_map(|event| {
+                    event
+                        .parts
+                        .iter()
+                        .filter(|part| {
+                            part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                        })
+                        .filter_map(|part| serde_json::from_str::<Value>(&part.content).ok())
+                })
+                .filter(|content| content["kind"] == json!("strategy-flow-settled"))
+                .collect();
+            if notices
+                .iter()
+                .any(|notice| notice["stateId"] == json!("greet"))
+                && notices
+                    .iter()
+                    .any(|notice| notice["stateId"] == json!("done"))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            notices
+                .iter()
+                .any(|notice| notice["stateId"] == json!("greet")),
+            "no notices: {notices:?}"
+        );
+        assert!(
+            notices
+                .iter()
+                .any(|notice| notice["stateId"] == json!("done"))
+        );
+        for notice in &notices {
+            assert_eq!(notice["runId"], json!(run_id));
+            assert_eq!(notice["mode"], json!("flow"));
+        }
+
+        // Every settlement report wakes with the same identifier event only.
+        let wakes = wakes.lock().unwrap();
+        assert!(!wakes.is_empty(), "{wakes:?}");
+        for wake in wakes.iter() {
+            assert_eq!(wake.0, conversation_id);
+            assert_eq!(wake.1, membership_id);
+            assert_eq!(wake.2["kind"], json!("strategy-flow-settled"));
+            assert_eq!(wake.2["runId"], json!(run_id));
+            assert!(wake.2.get("stateId").and_then(Value::as_str).is_some());
+        }
+        drop(wakes);
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn callback_park_reports_only_the_callback_request() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_callback_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "callback-flow-start-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+        let parked = wait_for_status(&store, &run_id, StrategyRunStatus::Waiting);
+        assert_eq!(parked.pending_callbacks.len(), 1);
+        wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-callback-request",
+        );
+
+        // A settle that parks reports the wait, not a flow settlement: the
+        // step did not continue on its own.
+        let page = conversation_store
+            .page_events(&conversation_id, None, 64)
+            .unwrap();
+        let flow_notices = page
+            .events
+            .iter()
+            .filter(|event| {
+                event.parts.iter().any(|part| {
+                    part.kind == crate::domain::client_conversation::EventPartKind::Metadata
+                        && serde_json::from_str::<Value>(&part.content)
+                            .is_ok_and(|content| content["kind"] == json!("strategy-flow-settled"))
+                })
+            })
+            .count();
+        assert_eq!(flow_notices, 0);
+        remove_drive_root(root, service);
     }
 }
