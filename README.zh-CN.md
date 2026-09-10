@@ -24,7 +24,14 @@ LicoUp 是一个开源的智能体协作客户端，专注于多端互联与隐�
 
 ## 安装
 
-尚未发布打包版本——请从源码构建：
+下载最新的 macOS（Apple 芯片）安装包，打开后将 LicoUp 拖入“应用程序”：
+
+[LicoUp-macos-arm64.dmg](https://github.com/LicoLand/LicoUp/releases/latest/download/LicoUp-macos-arm64.dmg)
+
+摘要、源码归档以及后续平台包见
+[最新发布](https://github.com/LicoLand/LicoUp/releases/latest)页面。
+
+也可以从源码构建：
 
 | 工具链 | 要求 |
 | --- | --- |

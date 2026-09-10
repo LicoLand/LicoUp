@@ -26,7 +26,15 @@ Peer transfers currently use a preview end-to-end encryption path. The sender en
 
 ## Installation
 
-No packaged release is published yet — build from source:
+Download the latest macOS (Apple silicon) installer and drag LicoUp into
+Applications:
+
+[LicoUp-macos-arm64.dmg](https://github.com/LicoLand/LicoUp/releases/latest/download/LicoUp-macos-arm64.dmg)
+
+Digests, source archives, and future platform packages are on the
+[latest release](https://github.com/LicoLand/LicoUp/releases/latest) page.
+
+To build from source instead:
 
 | Toolchain | Requirement |
 | --- | --- |
