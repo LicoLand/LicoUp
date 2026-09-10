@@ -359,108 +359,96 @@ Current applications: window corner 24 = content card 16 + window margin 8;
 the Dashboard folder sidebar card 16 inside an 8px margin; the macOS native
 corner mask mirrors the same rule in `MainFlutterWindow.swift`.
 
-## Window Chrome and Frosted Glass
+## Window Chrome and Clear Veil
 
-The Messaging desktop layout profile uses native frosted glass for its shell
-chrome. These rules are durable: any change to shell chrome must preserve them.
+The Dashboard desktop layout uses a transparent window plus a **clear
+(non-blurred) veil** so the desktop can show through slightly without the
+milky frosted haze of a visual-effect material. These rules are durable: any
+change to shell chrome must preserve them.
 
 ### Transparent window base
 
-The bottom-most Flutter rendering layer must be **fully transparent** so the
-platform can show live desktop blur beneath chrome regions and margin gutters.
+The bottom-most Flutter rendering layer must stay **transparent** so the
+platform can show the live desktop through chrome regions and margin gutters.
 
 On macOS, `apps/desktop/macos/Runner/MainFlutterWindow.swift` owns this:
 
 - Window and `FlutterViewController` backgrounds are `.clear`; the window is
   non-opaque.
-- An `NSVisualEffectView` with `.underWindowBackground` material sits behind
-  the Flutter view. AppKit layer backgrounds are cleared (`isOpaque = false`,
-  `backgroundColor = .clear`) on the effect view, Flutter view, and content
-  view.
-- Corner radius and `masksToBounds` are applied on the effect view; the Flutter
+- A plain `NSView` container holds the Flutter view. AppKit layer backgrounds
+  are cleared (`isOpaque = false`, `backgroundColor = .clear`) on the
+  container, Flutter view, and content view.
+- Corner radius and `masksToBounds` are applied on the container; the Flutter
   view stays unclipped so transparent margin gutters do not expose a black
   backing layer.
 
+Do **not** install an `NSVisualEffectView` behind the Flutter view. System
+materials blur the wallpaper into a gray fog. The see-through layer is a
+clear color veil, not a frosted blur.
+
 Flutter shell code sets its scaffold base to `Colors.transparent` for the same
-reason: opaque Flutter fills would hide the native blur.
+reason: an opaque Flutter fill would hide the desktop and the veil.
 
-### Unified glass on the shell regions
+### Unified veil on the shell regions
 
-The top chrome band and the content region beneath it (including margin
-gutters around the main card) must read as **one identical glass layer**. They
-share:
+The content region (including margin gutters around the main card) is **one
+identical veil layer**. Current owners:
 
 | Component | Role |
 | --- | --- |
-| `MessagingChromeBand` | Top tab/chrome bar: conversation tabs, search, token usage, notifications |
-| `MessagingContentRegion` | Remaining shell area under the band |
-| `MessagingMainContentCard` | Shared outer content card (glass + black veil, border, shadow, radius via `mainContentCard*`) |
+| `DashboardContentRegion` | Paints the shared veil via `surfaceGlassTint` |
+| `DashboardMainContentCard` | Chromeless rounded clip so destinations sit on that veil |
+| Desktop profile root (`desktop-window-veil`) | Same `surfaceGlassTint` under the dock canvas |
 
-The rounded **main content card** (`MessagingMainContentCard`, key
-`messaging-desktop-main-card`) sits on top of the content region as an L1
-**glass card**: transparent glass over native VE, plus hairline border, soft
-shadow, and shared corner radius. Shell code must build it through
-`MessagingMainContentCard` — not inline decoration.
+The rounded **main content card** (`DashboardMainContentCard`, key
+`dashboard-desktop-main-card`) does **not** paint a second mask, border, or
+shadow. Shell code must build it through `DashboardMainContentCard` — not
+inline decoration.
 
-**Why a black veil on this card (not on shell chrome).** The conversation
-surface is glass by design (transparent fill so native frosted blur shows
-through). Dense chat and list text on that raw glass is hard to read — contrast
-collapses against busy wallpaper blur. Therefore the main content card paints a
-**black mask** (`Colors.black` via `mainContentCardFill` /
-`mainContentCardOverlayDarkAlpha` / `mainContentCardOverlayLightAlpha`) to
-raise text readability while keeping the glass character. Shell band /
-content-region gutters stay **untinted** (`surfaceGlassTint` → transparent):
-they are chrome, not a reading surface, and a shell-wide Flutter tint muddies
-the frosted material (see **Shared tint tokens** below).
+**Why the veil lives on the window region.** Conversation UI is transparent so
+the desktop can show through. Without a darkening layer, message and list text
+lose contrast against a busy wallpaper. The veil is therefore required on the
+content region for legibility. Do not restore a frosted visual-effect material
+to recover contrast.
 
-Geometry and veil **must** come from `MessagingDesktopMetrics.mainContentCard*`
-helpers — no hardcoding. No Flutter `BackdropFilter` on this card; blur remains
-native VE beneath the transparent shell.
+Geometry **must** come from `MessagingDesktopMetrics` helpers — no hardcoding.
+No Flutter `BackdropFilter` on this region: the window veil is a color mask.
 
 ### Shared tint tokens — no hardcoding
 
-Frosted blur comes from the native visual-effect view. Flutter chrome does
-**not** apply a color tint overlay in either preset — shared tokens in
-`MessagingDesktopMetrics` (`messaging_desktop_tokens.dart`) keep the shell
-regions on one path:
+The clear veil comes from shared tokens in `MessagingDesktopMetrics`
+(`messaging_desktop_tokens.dart`):
 
-- `surfaceGlassTint(isDark:)` — the single entry point the shell regions use;
-  returns fully transparent in both presets
-- `chromeTintDarkAlpha` — `0`; dark preset uses native VE only
-- `lightSurfaceGlassAlpha` — `0`; light preset uses native VE only
+- `surfaceGlassTint(isDark:)` — the single entry point the shell regions use
+- `chromeTintDarkAlpha` — black veil in the dark preset (see-through, not
+  opaque)
+- `lightSurfaceGlassAlpha` — white veil in the light preset (same job)
 
-**Why no Flutter tint overlay.** Stacking a Flutter color wash (especially
-white in light mode, and black in dark mode) on top of the native
-`NSVisualEffectView` severely degrades frosted-glass material quality — the
-blur reads flat or muddy instead of translucent. Both presets therefore rely
-on native frosted glass alone; chrome foreground tokens (icons, search, hover
-washes) handle legibility without painting a shell-wide tint layer.
+**Why a Flutter tint overlay.** With no native visual-effect view, the veil
+must be a color mask. Dark paints black; light paints white. Neither preset
+uses a frosted material. Chrome foreground tokens (icons, search, hover
+washes) still handle control legibility on top of the veil.
 
-Do **not** hardcode per-component tint alphas or duplicate glass colors in
-feature code. Do **not** use Flutter `BackdropFilter` on shell chrome as the
-blur source: it samples the engine's black clear color and breaks the native
-frosted effect.
+Do **not** hardcode per-component tint alphas or duplicate veil colors in
+feature code. Do **not** use Flutter `BackdropFilter` on shell chrome as a
+window-blur source: it samples the engine's clear color and reintroduces a
+foggy read.
 
-Each region still implements the shared path as a `ColoredBox` using
-`surfaceGlassTint` so call sites stay unified even when the tint is transparent.
+Each region paints `surfaceGlassTint` as a sibling `ColoredBox` behind the
+content — never as a `ColoredBox` ancestor wrapping `ListTile`s, which would
+hide Material ink.
 
-### Light and dark glass parity
+### Light and dark veil parity
 
-Light and dark presets must present **equivalent frosted-glass character**
-through the same glass system — not a separate light-opaque or solid chrome
-treatment. The shell should read as translucent blur in both modes; light mode
-must not fall back to painting chrome as an opaque `background` fill while dark
-mode keeps native frosted glass.
+Light and dark presets must present **equivalent clear-veil character**
+through the same token path — not a separate light-opaque or solid chrome
+treatment. The shell should read as a translucent mask in both modes; light
+mode must not fall back to painting chrome as an opaque `background` fill
+while dark mode keeps a see-through veil.
 
-**Chrome backgrounds.** The shell regions (`MessagingChromeBand`,
-`MessagingContentRegion`) use the same structure in
-both presets: transparent window base and native blur beneath. Each region still
-uses a `ColoredBox` from `surfaceGlassTint(isDark:)` so call sites stay
-unified; in both presets that tint is fully transparent (no stacked white or
-black layer). Token values live in `MessagingDesktopMetrics` — not per-widget.
-The contract is that both presets deliver the same *glass* reading — visible
-blur, consistent transparency treatment, one unified layer — with native
-frosted material only.
+**Chrome backgrounds.** The shell regions use the same structure in both
+presets: transparent window base and `surfaceGlassTint` on the content
+region. Token values live in `MessagingDesktopMetrics` — not per-widget.
 
 **Chrome icons and controls.** Light and dark presets share the **same**
 light-on-glass chrome style: clean white foreground for icons, search field
@@ -470,7 +458,7 @@ introduce a divergent light-only or dark-only chrome icon treatment.
 
 All chrome foreground colors and alphas **must** go through shared tokens in
 `MessagingDesktopMetrics` (`chromeForegroundColor`, `chromeIconMuted`,
-`chromeIconHover`, `chromeIconDisabled`, `chromeForeground`, `chromeSearchBorder`,
+`chromeForeground`, `chromeSearchBorder`,
 `chromeSearchIcon`, `chromeSearchPlaceholder`) — not raw palette roles
 (`textMuted`, `text`, `line`) and not per-widget `isDark` branches or
 hardcoded `Colors.white` / theme-specific one-offs. Widgets call the token
@@ -480,19 +468,18 @@ Selected destination controls and other brand-primary fills keep
 `textOnPrimary` (or equivalent) on the fill for readable contrast. Unselected
 chrome icons follow the shared light-on-glass foreground path in **both**
 presets. Do not introduce opaque nav tiles or desaturated solid chrome buttons
-where the shared glass system applies.
+where the shared veil system applies.
 
 ### Seamless shell edges
 
-The band and content region form one continuous glass layer. Do **not** draw
-hairline or border dividers along their shared edge (band↔content region).
-Separation comes from the main card inset and internal content structure, not
-chrome edge rules.
+The content region is one continuous veil. Do **not** draw hairline or border
+dividers along chrome edges. Separation comes from the main card inset and
+internal content structure, not chrome edge rules.
 
 ### Enforcement
 
-Shell chrome must stay token-driven. Adding a fourth glass region, changing
-tint values, or adjusting chrome icon/search styling requires updating
+Shell chrome must stay token-driven. Adding another veil region, changing tint
+values, or adjusting chrome icon/search styling requires updating
 `MessagingDesktopMetrics` once and keeping all consumers aligned. Chrome
 foreground styling is **mandatory-consistency**: light and dark must share the
 same token path and visual character; divergent per-theme hardcoding in widgets
@@ -606,15 +593,14 @@ usage immediately left of notifications). One shell-owned column hosts that
 foundation: it owns the drag-resize handle and the persisted width. Dedicated
 lists are only the slot content. Switching destinations does not change the
 column width; Token 用量 keeps the same column so the left edge does not jump.
-There is no far-left destination icon rail outside the card. The transparent
-top band and the content region beneath it share one frosted glass treatment
-(see **Window Chrome and Frosted Glass**); macOS traffic lights overlay the
-band's leading clearance.
+There is no far-left destination icon rail outside the card. The content
+region uses one clear window veil (see **Window Chrome and Clear Veil**);
+macOS traffic lights overlay the sidebar card's leading clearance.
 
-Content stacks in three flat layers: transparent window base with native blur,
-one unified-glass shell (top band and margin gutters), then the rounded main
-content card standing off the leading, trailing, and bottom edges, and the
-destination detail as the innermost layer.
+Content stacks in three flat layers: transparent window base, one clear veil
+on the content region (including margin gutters), then the rounded chromeless
+main content card standing off every edge, and the destination detail as the
+innermost layer.
 
 Mobile keeps a compact Agents/Settings shell; pairing and encrypted relay flows
 open contextually.
@@ -681,25 +667,25 @@ persistent settings band and not only behind a buried overflow menu. Dashboard
 may still surface the same facts more visibly via `showRuntimeSettings`.
 
 **Agents workspace framing (Telegram-style).** The Messaging desktop Agents
-destination sits inside the shell **main content glass card**
-(`MessagingMainContentCard`). Inside that card, the shell-owned sidebar
-column and the detail pane share the card's glass as the conversation
+destination sits inside the shell **main content region**
+(`DashboardMainContentCard`). Inside that clip, the shell-owned sidebar
+column and the detail pane share the window veil as the conversation
 background:
 
 | Region | Treatment |
 | --- | --- |
-| **Main content card** | Transparent glass + **black veil** for readability (border, shadow, radius via `mainContentCard*`). |
+| **Main content card** | Chromeless rounded clip over the clear window veil (`surfaceGlassTint`). |
 | **Chat canvas** (workspace fill) | **Transparent** — lets the main content card (glass + veil) show through behind both columns. |
-| **Left conversation list** | Nested **floating glass card** above that background (`conversationListCard*`). |
+| **Left conversation list** | Nested **floating glass card** above that background (`conversationListCard*` + a uniform `GlassEdgeLight` rim on all four sides). |
 | **Right conversation detail** | **Flush with the main-card surface** (一体) — no detail-column card chrome. |
 | **Chrome conversation tabs** | The top band lists live conversation targets from `orderedConversationTargets`, including the synthetic orchestration contact labeled **默认** / Default. Tabs switch agent context without inventing a separate “home” chrome recipe. |
 | **Conversation header** | Left: adaptive-width identity glass **capsule**; right: separate capsule icon buttons at the **same height and corner radius** as the identity capsule, with shared gap. Capsules **overlay** the full-height transcript (`Stack` + `conversationHeaderOverlayExtent` top inset) so the detail canvas is continuous — not a Column band that truncates the chat below. Geometry via `conversationHeaderCapsule*`; glass via shared `MessagingConversationOverlayGlass` / `conversationOverlayGlass*`. **Header icon actions** (conversation switcher, details) and the chrome-band **notification bell** open as **hover-revealed floating cards** anchored to their triggers — not push sidebars or opaque menus. Cards share `MessagingHoverPopover` + `MessagingConversationOverlayGlass` with the notification readability veil; tap toggles for accessibility. The popover follower **shrink-wraps the card** so `targetAnchor` / `followerAnchor` resolve against the card size (top-right triggers keep `bottomRight`/`topRight`; composer runtime uses `topLeft`/`bottomLeft`). Details content (runtime, capabilities, connection, session metadata) lives in the details hover card on desktop and a bottom sheet on mobile — there is no details sidebar. |
 | **Conversation composer** | Same overlay model and **the same overlay-glass treatment** as the header capsules (shared `MessagingConversationOverlayGlass` + `conversationOverlayGlass*` fill/border/blur/shadow — white wash family, not a heavier black slab). Floats over the transcript with `conversationComposerOverlayExtent` bottom inset. Messaging desktop adds a **separate attach capsule** immediately to the left of the input capsule (same square extent and corner radius as header icon buttons via `conversationHeaderCapsuleButtonExtent` / `conversationComposerCapsuleCornerRadius`; gap via `conversationHeaderCapsuleButtonGap`). The attach control is outside the input field, not embedded inside it. Send is a **circular** brand-accent control trailing the field capsule. A **context capsule row** (`ComposerCapsuleRow`) sits directly above the composer on messaging surfaces: workspace directory (folder / `~/…` / lock) and a **runtime selector capsule** (`ComposerRuntimeCapsule`) share one glass band and `conversationComposerCapsuleRowExtent` transcript inset. The runtime capsule shows a compact **model + reasoning-effort** summary with a chevron (empty model selection displays the localized **Auto** / native-default label). Hover or tap opens a frosted primary glass card whose **sibling rows** are **模型 / Model** and **思考强度 / Reasoning Effort** when that agent exposes effort options for the effective model (explicit selection, else catalog default). Each row cascades into its own detached submenu to the right with a gap; the primary card stays fixed (`CrossAxisAlignment.end` so a tall submenu does not lift the primary off the capsule). The Model submenu marks the catalog default as Auto/default; the Effort submenu offers a leading Auto row to clear an override. Hide empty rows and hide the whole runtime capsule when no selectable catalogs exist. Console may keep model/effort selection inside a denser runtime bar. |
 
-**Black veil rationale.** Conversation UI is a transparent glass card on native
-frosted blur. Without a darkening layer, message and list text lose contrast.
-The black mask is therefore required on the main content card for legibility;
-it is **not** reapplied to shell navigation chrome.
+**Black veil rationale.** Conversation UI is a transparent canvas on the
+clear window veil. Without that darkening layer, message and list text lose
+contrast against a busy wallpaper. The mask is therefore required on the
+content region for legibility; it is **not** a frosted visual-effect material.
 
 Hard rules:
 
@@ -707,18 +693,18 @@ Hard rules:
    card; the main card already is that shared glass surface.
 2. Do **not** give the detail column its own floating card chrome.
 3. Do **not** use Flutter `BackdropFilter` on the main/list interior cards
-   (crisp wash only; shell blur remains native VE — see **Window Chrome and
-   Frosted Glass**). Conversation **header/composer overlay capsules** and
+   (crisp wash only; the window veil is a color mask — see **Window Chrome
+   and Clear Veil**). Conversation **header/composer overlay capsules** and
    **user message bubbles** are exceptions: capsules share
    `MessagingConversationOverlayGlass` / `conversationOverlayGlass*`; own-
    message bubbles use `MessagingUserBubbleGlass` / `userBubbleGlass*`.
-4. Main-card and list-card geometry/veil **must** come from shared
-   `MessagingDesktopMetrics` helpers (`mainContentCardFill` /
-   `mainContentCardBorder` / `mainContentCardShadows`, and
-   `conversationListCard*`). Presentation and shell widgets must not hardcode
-   inset, radius, tint, border, or shadow values for these cards.
-5. Do **not** remove the main-card black veil without a replacement that keeps
-   chat/list text readable on glass.
+4. Main-card and list-card geometry **must** come from shared
+   `MessagingDesktopMetrics` helpers (`mainCardMargin` /
+   `mainCardCornerRadius`, and `conversationListCard*`). Presentation and
+   shell widgets must not hardcode inset, radius, tint, border, or shadow
+   values for these cards.
+5. Do **not** remove the window veil (`surfaceGlassTint`) without a
+   replacement that keeps chat/list text readable on a see-through window.
 6. Do **not** let `MessagingHoverPopover` followers take tight full-screen
    overlay constraints without an `Align` (or equivalent) shrink-wrap — otherwise
    `followerAnchor` resolves against the window and top-right cards appear at
@@ -727,18 +713,21 @@ Hard rules:
    Working rows, or lifecycle rails; transcript chrome stays neutral on glass,
    and bubble color lives only in the rim edge light (agent brand hue or the
    default white).
+8. Structural glass rims (`GlassEdgeLight` / `glassEdgeRimColor`) use **one
+   alpha on all four sides**. Do not restore a top-bright / bottom-dim rim
+   gradient on list cards or overlay capsules.
 
 **Shared main-card destinations.** Skill Center, Plugin Management, Token usage
 statistics, Keys, Settings, and Mobile Relay use the same outer
-`MessagingMainContentCard` container with a transparent destination canvas
-(`messagingMainContentCardDestinations` in
-`messaging_desktop_destination_presentations.dart`). They do **not** inherit
+`DashboardMainContentCard` container with a transparent destination canvas
+(`dashboardMainContentCardDestinations` in
+`dashboard_desktop_destination_presentations.dart`). They do **not** inherit
 Agents-specific inner framing (nested list card, overlay header/composer).
 
 Implementation ownership: shared outer card in
-`messaging_main_content_card.dart` (used by `messaging_desktop_shell.dart`);
-Agents framing in `MessagingDesktopAgentsPresentation`
-(`messaging_desktop_destination_presentations.dart`); tokens in
+`dashboard_main_content_card.dart` (used by `dashboard_desktop_shell.dart`);
+Agents framing in `DashboardDesktopAgentsPresentation`
+(`dashboard_desktop_destination_presentations.dart`); tokens in
 `messaging_desktop_tokens.dart`; shared header/composer overlay glass in
 `messaging_conversation_overlay_glass.dart`; user bubble glass in
 `messaging_user_bubble_glass.dart`; agent bubble in

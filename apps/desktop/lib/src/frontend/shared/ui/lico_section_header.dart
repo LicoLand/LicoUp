@@ -6,7 +6,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// The panel-level section header: an optional leading glyph and a bold
-/// title, as used by settings and the mobile relay panel.
+/// title, as used by settings.
 ///
 /// These headers introduce a whole card or region, so they take a title role;
 /// group labels *inside* a list or menu use [LicoGroupHeader] instead.

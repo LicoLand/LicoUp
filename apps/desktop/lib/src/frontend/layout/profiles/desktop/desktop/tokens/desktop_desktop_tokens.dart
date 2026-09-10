@@ -2,6 +2,9 @@ import 'dart:ui' show Color;
 
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
+export 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart'
+    show MessagingDesktopMetrics;
+
 /// Geometry for the Desktop presentation: one spacious main canvas with a
 /// floating stretchable capsule dock below, floating feature cards one
 /// Z-level above the canvas, and a Launchpad-style glass app store.
