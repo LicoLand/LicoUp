@@ -1242,7 +1242,7 @@ impl ConversationStore {
                 .and_then(Value::as_str)
                 .filter(|output| !output.is_empty());
             let envelope_published = if envelope_mode && state == DispatchState::Completed {
-                terminal_output.and_then(crate::continuity::published_envelope)
+                terminal_output.and_then(crate::continuity::published_terminal_envelope)
             } else {
                 None
             };
@@ -5760,7 +5760,7 @@ fn runtime_semantic_parts(frame: &Value, trusted_mode: Option<&str>) -> Vec<NewE
                 if crate::continuity::is_assistant_turn_response_mode(trusted_mode) {
                     if event == "agent.message.completed"
                         && let Some((reply, proposal)) =
-                            crate::continuity::published_envelope(value)
+                            crate::continuity::published_terminal_envelope(value)
                     {
                         parts.push((EventPartKind::Text, reply));
                         parts.push((EventPartKind::Metadata, proposal));

@@ -5,7 +5,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 ///
 /// Inventory (surfaced codes mapped here):
 /// - LU-RP 1000-1199 Stdio RPC, process IO, request-shape failures (22 assigned)
-/// - LU-CV 1200-1499 Canonical Conversation store and group operations (16 assigned)
+/// - LU-CV 1200-1499 Canonical Conversation store and group operations (17 assigned)
 /// - LU-AG 1500-1899 Agent workspace conversation, dispatch, native session (50 assigned)
 /// - LU-ST 1900-2199 Adaptive Flywheel / strategy envelope (28 assigned)
 /// - LU-CL 2200-2399 Native CLI admission (16 assigned)
@@ -107,6 +107,10 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'profile_intent_limit': ProblemCode(ProblemDomain.conversation, 1212),
   'profile_revision_stale': ProblemCode(ProblemDomain.conversation, 1213),
   'conversation_clear_blocked': ProblemCode(ProblemDomain.conversation, 1214),
+  'continuity_assistant_turn_invalid': ProblemCode(
+    ProblemDomain.conversation,
+    1215,
+  ),
   'conversation_operation_failed': ProblemCode(
     ProblemDomain.conversation,
     1402,
