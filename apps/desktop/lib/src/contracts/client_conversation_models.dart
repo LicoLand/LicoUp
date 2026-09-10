@@ -15,6 +15,7 @@ final class ClientConversationSummary {
     this.taskGoalId,
     this.listingKind,
     this.children = const <ClientConversationSummary>[],
+    this.archivedChildren = const <ClientConversationSummary>[],
   });
 
   factory ClientConversationSummary.fromJson(Map<String, dynamic> json) =>
@@ -46,6 +47,7 @@ final class ClientConversationSummary {
   final String? taskGoalId;
   final String? listingKind;
   final List<ClientConversationSummary> children;
+  final List<ClientConversationSummary> archivedChildren;
 
   bool get isGroup => group;
 
@@ -67,6 +69,28 @@ final class ClientConversationSummary {
       taskGoalId: taskGoalId,
       listingKind: listingKind,
       children: List<ClientConversationSummary>.unmodifiable(next),
+      archivedChildren: archivedChildren,
+    );
+  }
+
+  ClientConversationSummary withArchivedChildren(
+    List<ClientConversationSummary> next,
+  ) {
+    return ClientConversationSummary(
+      id: id,
+      title: title,
+      archived: archived,
+      pinned: pinned,
+      group: group,
+      revision: revision,
+      updatedAtUnixMs: updatedAtUnixMs,
+      membershipCount: membershipCount,
+      eventCount: eventCount,
+      parentConversationId: parentConversationId,
+      taskGoalId: taskGoalId,
+      listingKind: listingKind,
+      children: children,
+      archivedChildren: List<ClientConversationSummary>.unmodifiable(next),
     );
   }
 }

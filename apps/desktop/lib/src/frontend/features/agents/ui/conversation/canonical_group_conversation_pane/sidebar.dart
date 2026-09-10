@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/continuous_assistant/continuous_ass
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class CanonicalGroupConversationSidebar extends StatelessWidget {
@@ -85,6 +86,14 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
                 ),
               ),
           ],
+          CanonicalArchivedContinuityChildren(
+            children: [
+              for (final conversation in conversations.take(3))
+                ...conversation.archivedChildren,
+            ],
+            highlightedChildConversationId: highlightedChildConversationId,
+            onSelect: onSelect,
+          ),
           if (conversations.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
@@ -100,6 +109,84 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Collapsed footer for Continuity children that were archived by
+/// `conversation.clear`. Hidden until the header is opened; a selected
+/// child forces the section open so the current row stays visible.
+class CanonicalArchivedContinuityChildren extends StatefulWidget {
+  const CanonicalArchivedContinuityChildren({
+    super.key,
+    required this.children,
+    required this.onSelect,
+    this.highlightedChildConversationId = '',
+    this.toggleKey = const Key('canonical-archived-continuity-toggle'),
+  });
+
+  final List<ClientConversationSummary> children;
+  final ValueChanged<String> onSelect;
+  final String highlightedChildConversationId;
+  final Key toggleKey;
+
+  @override
+  State<CanonicalArchivedContinuityChildren> createState() =>
+      _CanonicalArchivedContinuityChildrenState();
+}
+
+class _CanonicalArchivedContinuityChildrenState
+    extends State<CanonicalArchivedContinuityChildren> {
+  bool _expanded = false;
+
+  bool get _containsHighlighted => widget.children.any(
+    (child) => child.id == widget.highlightedChildConversationId,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = _containsHighlighted;
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant CanonicalArchivedContinuityChildren oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+    if (_containsHighlighted && !_expanded) {
+      _expanded = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.children.isEmpty) return const SizedBox.shrink();
+    final strings = LicoStrings.of(context);
+    final visible = _expanded || _containsHighlighted;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LicoGroupHeader(
+          label: strings.archivedContinuityChildren,
+          count: widget.children.length,
+          expanded: visible,
+          onToggle: () => setState(() => _expanded = !_expanded),
+          toggleKey: widget.toggleKey,
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+        ),
+        if (visible)
+          for (final child in widget.children)
+            Padding(
+              padding: const EdgeInsets.only(left: 18, right: 8, bottom: 6),
+              child: ContinuousAssistantChildEntry(
+                task: _childTaskView(child.parentConversationId ?? '', child),
+                highlighted: widget.highlightedChildConversationId == child.id,
+                onOpenChild: (_) => widget.onSelect(child.id),
+              ),
+            ),
+      ],
     );
   }
 }

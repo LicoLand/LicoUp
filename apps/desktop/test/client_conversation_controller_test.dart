@@ -236,7 +236,7 @@ void main() {
         runner.requests.where(
           (request) => request['action'] == 'conversation.list',
         ),
-        hasLength(1),
+        hasLength(2),
       );
     },
   );
@@ -537,6 +537,7 @@ void main() {
       'conversation.events.page',
       'conversation.dispatch.after-post',
       'conversation.list',
+      'conversation.list',
       'conversation.get',
       'conversation.events.page',
     ]);
@@ -578,6 +579,58 @@ void main() {
     },
   );
 
+  test('clears group history through the canonical store action', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.clearSelectedHistory(), isTrue);
+
+    final cleared = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.clear',
+    );
+    expect(cleared.keys.toSet(), {
+      'action',
+      'conversationId',
+      'ownerMembershipId',
+    });
+    expect(cleared['conversationId'], 'conversation:group');
+    expect(cleared['ownerMembershipId'], 'membership:owner');
+    expect(controller.events, isEmpty);
+    expect(
+      controller.groupConversations.single.archivedChildren.map(
+        (child) => child.id,
+      ),
+      ['conversation:child'],
+    );
+  });
+
+  test('refuses clear while a group dispatch is still live', () async {
+    final runner = _ConversationRunner()
+      ..postTurns = [
+        {
+          'turnHandle': 'dispatch:live',
+          'conversationId': 'conversation:group',
+          'agent': 'codex',
+        },
+      ]
+      ..dispatchPending = true;
+    final controller = ClientConversationController(runner: runner);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+    expect(await controller.postMessage('hello @Codex'), isTrue);
+
+    expect(await controller.clearSelectedHistory(), isFalse);
+    expect(
+      runner.requests.where(
+        (request) => request['action'] == 'conversation.clear',
+      ),
+      isEmpty,
+    );
+    expect(controller.failureCode, 'conversation_clear_blocked');
+  });
+
   test('deletes a local message through the canonical store action', () async {
     final runner = _ConversationRunner();
     final controller = ClientConversationController(runner: runner);
@@ -612,6 +665,7 @@ final class _ConversationRunner implements AgentCommandRunner {
   bool includeFailedTurn = false;
   bool appendedFailure = false;
   bool messageDeleted = false;
+  bool historyCleared = false;
   String failPostCode = '';
   String failDispatchCode = '';
   String strategyRevision = '';
@@ -643,6 +697,9 @@ final class _ConversationRunner implements AgentCommandRunner {
     }
     if (action == 'conversation.message.delete') {
       messageDeleted = true;
+    }
+    if (action == 'conversation.clear') {
+      historyCleared = true;
     }
     if (action == 'conversation.event.append') {
       appendedFailure = true;
@@ -676,7 +733,7 @@ final class _ConversationRunner implements AgentCommandRunner {
         'conversation.events.page' => {
           'events': request['conversationId'] == 'conversation:created'
               ? <Map<String, dynamic>>[]
-              : messageDeleted
+              : messageDeleted || historyCleared
               ? <Map<String, dynamic>>[]
               : [
                   _event(),
@@ -709,6 +766,11 @@ final class _ConversationRunner implements AgentCommandRunner {
         },
         'conversation.event.append' => _failedTurnEvent(),
         'conversation.message.delete' => <String, dynamic>{},
+        'conversation.clear' => <String, dynamic>{
+          'conversationId': request['conversationId'],
+          'archivedChildIds': <String>['conversation:child'],
+          'assistantMembershipId': 'membership:codex-rotated',
+        },
         'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
       },
@@ -726,6 +788,15 @@ final class _ConversationRunner implements AgentCommandRunner {
         members: 3,
         pinned: groupPinned,
         archived: groupArchived,
+      ),
+    if (historyCleared && request['includeArchived'] == true)
+      _summary(
+        id: 'conversation:child',
+        members: 2,
+        pinned: false,
+        archived: true,
+        parentConversationId: 'conversation:group',
+        taskGoalId: 'goal:child',
       ),
     _summary(id: 'conversation:direct', members: 2),
   ];
@@ -750,6 +821,8 @@ Map<String, dynamic> _summary({
   required int members,
   bool? pinned,
   bool archived = false,
+  String? parentConversationId,
+  String? taskGoalId,
 }) => {
   'id': id,
   'title': id == 'conversation:direct' ? 'Direct' : 'Lico',
@@ -760,6 +833,8 @@ Map<String, dynamic> _summary({
   'updatedAtUnixMs': 10,
   'membershipCount': members,
   'eventCount': 1,
+  'parentConversationId': ?parentConversationId,
+  'taskGoalId': ?taskGoalId,
 };
 
 Map<String, dynamic> _conversation(
