@@ -7,7 +7,7 @@ import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/das
 import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
-/// Destinations whose body sits flush on the native window glass inside the
+/// Destinations whose body sits flush on the clear window veil inside the
 /// chromeless main content region. These use a transparent canvas; they do
 /// not paint an opaque surface fill of their own.
 const Set<ClientSection> dashboardMainContentCardDestinations = <ClientSection>{
@@ -26,7 +26,7 @@ const LayoutAgentsPresentation dashboardDesktopAgentsPresentation =
 const LayoutSettingsPresentation dashboardDesktopSettingsPresentation =
     DashboardDesktopSettingsPresentation();
 
-/// Dashboard desktop Agents: the window glass itself is the conversation
+/// Dashboard desktop Agents: the window veil itself is the conversation
 /// surface (the main content region is chromeless); the conversation list is
 /// the single floating glass card; the chat pane is flush with the window.
 /// The list IS the sidebar, so no collapse controls are offered.
@@ -34,7 +34,7 @@ final class DashboardDesktopAgentsPresentation
     implements LayoutAgentsPresentation {
   const DashboardDesktopAgentsPresentation();
 
-  /// Transparent so the native window glass is the shared conversation
+  /// Transparent so the clear window veil is the shared conversation
   /// background (the list card floats above it).
   @override
   Color canvasColor(LayoutPalette palette) => Colors.transparent;

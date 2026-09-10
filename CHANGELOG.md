@@ -4,17 +4,11 @@ This file records notable public changes to LicoUp. Product and package
 versions are owned by `tools/client-version.json` and the synchronized package
 manifests.
 
-## 0.2.0 — 2026-09-10
+## 0.2.1 — 2026-09-11
 
-- Added a durable Continuous Assistant flow that gives each long-running request
-  one child Conversation, keeps one parent timeline card at its creation point,
-  and preserves membership-scoped continue, steering, cancellation, recovery,
-  and completion notices.
-- Added persisted adoption policy and evaluation receipts with explicit
-  fail-closed boundaries for unqualified live or paid model execution.
-
-## Unreleased
-
+- Replaced the macOS frosted visual-effect backdrop with a clear see-through
+  color veil, kept structural glass rims one alpha around the full frame, and
+  removed the Token Usage back title and Communication section header.
 - Continuing a Cursor IDE-listed conversation from LicoUp now opens a new Agent
   CLI session and injects a one-time handoff (composer id, `state.vscdb`
   key prefixes, and the last IDE assistant return) instead of resuming the IDE
@@ -56,6 +50,15 @@ manifests.
   the local LLM Gateway routes claude-sonnet-4-6, claude-opus-4-7, and
   claude-haiku-4-5 to the matching anthropic/claude-* upstream models across all
   three client protocols.
+
+## 0.2.0 — 2026-09-10
+
+- Added a durable Continuous Assistant flow that gives each long-running request
+  one child Conversation, keeps one parent timeline card at its creation point,
+  and preserves membership-scoped continue, steering, cancellation, recovery,
+  and completion notices.
+- Added persisted adoption policy and evaluation receipts with explicit
+  fail-closed boundaries for unqualified live or paid model execution.
 
 ## 0.1.1 — 2026-08-14
 

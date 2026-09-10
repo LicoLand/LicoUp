@@ -530,15 +530,24 @@ void main() {
       final newConversation = find.byKey(
         const Key('canonical-group-action-new-conversation'),
       );
+      final clearHistory = find.byKey(
+        const Key('canonical-group-action-clear-history'),
+      );
       expect(attachments, findsOneWidget);
       expect(newConversation, findsOneWidget);
+      expect(clearHistory, findsOneWidget);
       expect(
         find.byKey(const Key('canonical-group-action-discard-images')),
         findsNothing,
       );
-      // Attachments is nearest the button; new conversation above it.
+      // Attachments is nearest the button; reset history above it;
+      // new conversation is furthest from the button.
       expect(
         tester.getRect(attachments).bottom,
+        greaterThan(tester.getRect(clearHistory).bottom),
+      );
+      expect(
+        tester.getRect(clearHistory).bottom,
         greaterThan(tester.getRect(newConversation).bottom),
       );
       expect(find.text('Attachments'), findsNothing);
@@ -629,6 +638,12 @@ void main() {
       'conversation.assistant.set',
       'conversation.profile.update',
     ]);
+    expect(
+      runner.requests.where(
+        (request) => request['action'] == 'conversation.clear',
+      ),
+      isEmpty,
+    );
 
     final leave = runner.requests.firstWhere(
       (request) => request['action'] == 'conversation.membership.leave',
@@ -677,6 +692,76 @@ void main() {
       ),
       findsOneWidget,
     );
+    controller.dispose();
+  });
+
+  testWidgets('clear-history action confirms then clears Canonical history', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final runner = _AssistantSurfaceRunner();
+    final controller = ClientConversationController(runner: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+    final originalMembershipId = runner.assistantMembershipId;
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('canonical-group-action-clear-history')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reset this group history?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(
+      runner.requests.where(
+        (request) => request['action'] == 'conversation.clear',
+      ),
+      isEmpty,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('canonical-group-action-clear-history')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('canonical-group-clear-history-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    final cleared = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.clear',
+    );
+    expect(cleared['conversationId'], 'conversation:group');
+    expect(cleared['ownerMembershipId'], 'membership:owner');
+    expect(runner.assistantMembershipId, isNot(originalMembershipId));
+    expect(controller.selectedConversationId, 'conversation:group');
+    expect(controller.events, isEmpty);
     controller.dispose();
   });
 
@@ -1248,6 +1333,39 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
         assistantMembershipId = (request['membershipId'] ?? '').toString();
         revision += 1;
         return {'ok': true, 'result': <String, dynamic>{}};
+      case 'conversation.clear':
+        final previous = assistantMembershipId;
+        if (previous.isNotEmpty) {
+          for (final membership in _memberships) {
+            if (membership['id'] == previous) {
+              membership['status'] = 'left';
+              membership['leftAtUnixMs'] = 4;
+            }
+          }
+          final rotatedId = 'membership:codex-cleared-${++_rotationCount}';
+          _memberships.add(
+            _membership(
+              id: rotatedId,
+              principalId: 'agent:codex',
+              kind: 'agent',
+              label: assistantDisplayName,
+              agentId: assistantAgentId,
+            ),
+          );
+          _profiles[rotatedId] = Map<String, dynamic>.from(
+            _profiles[previous] ?? const <String, dynamic>{},
+          );
+          assistantMembershipId = rotatedId;
+        }
+        revision += 1;
+        return {
+          'ok': true,
+          'result': <String, dynamic>{
+            'conversationId': 'conversation:group',
+            'archivedChildIds': <String>[],
+            'assistantMembershipId': assistantMembershipId,
+          },
+        };
       case 'conversation.profile.update':
         final membershipId = (request['membershipId'] ?? '').toString();
         final profile = _profiles[membershipId];
