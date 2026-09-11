@@ -156,7 +156,10 @@ class _QuotaWindowRow extends StatelessWidget {
     final amountText = used == null
         ? ''
         : limit != null && limit > 0
-        ? strings.quotaWindowAmount(formatQuotaAmount(used), formatQuotaAmount(limit))
+        ? strings.quotaWindowAmount(
+            formatQuotaAmount(used),
+            formatQuotaAmount(limit),
+          )
         : strings.quotaWindowSpent(formatQuotaAmount(used));
     // Section layout follows the CodexBar usage card one to one: window
     // label, full-width stadium progress bar, then a row with the used

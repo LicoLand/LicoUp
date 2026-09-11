@@ -152,7 +152,9 @@ void mergeAgentUsageModelValues(
         totalTokens: tokens,
         breakdown: agentUsageTokenBreakdown(entry.value, totalTokens: tokens),
         requestCount: requests,
-        tokenUnavailableRequests: agentUsageTokenUnavailableRequests(entry.value),
+        tokenUnavailableRequests: agentUsageTokenUnavailableRequests(
+          entry.value,
+        ),
       );
       values.update(
         label,

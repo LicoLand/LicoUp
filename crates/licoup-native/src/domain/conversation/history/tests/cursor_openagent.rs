@@ -758,7 +758,10 @@ fn cursor_usage_scan_does_not_treat_product_context_meter_as_usage() {
         "stateRoot": usage_state.to_string_lossy()
     }))
     .unwrap();
-    assert_eq!(usage["agents"][0]["history"]["source"], "cursor-hosted-usage-events");
+    assert_eq!(
+        usage["agents"][0]["history"]["source"],
+        "cursor-hosted-usage-events"
+    );
     assert_eq!(usage["agents"][0]["history"]["totalTokens"], 0);
     assert_eq!(usage["agents"][0]["history"]["dailyUsage"], json!([]));
 }
