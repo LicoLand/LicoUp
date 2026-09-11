@@ -1,6 +1,6 @@
 use crate::platform::codex_app_server::config::ProtocolConfig;
 use crate::platform::codex_app_server::limits::{
-    INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
+    ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome};
 use crate::platform::native_agent_parser::adapters::codex::CodexParser;
@@ -18,7 +18,7 @@ pub(super) fn config(params: Value, prompt: &str, session_id: &str) -> ProtocolC
 }
 
 pub(super) fn initialize(protocol: &mut CodexParser) -> Vec<ProtocolEffect> {
-    protocol.handle_message(json!({
+    let mut effects = protocol.handle_message(json!({
         "id": INITIALIZE_REQUEST_ID,
         "result": {
             "userAgent": "codex-test",
@@ -26,7 +26,21 @@ pub(super) fn initialize(protocol: &mut CodexParser) -> Vec<ProtocolEffect> {
             "platformOs": "test",
             "codexHome": "/redacted"
         }
-    }))
+    }));
+    // Default/Luna configurations now perform the account capability read before opening a
+    // thread. Feeding a normal response here keeps existing protocol fixtures focused on their
+    // thread behavior while dedicated tests can inspect the preflight request directly.
+    effects.extend(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "result": {"rateLimits": {"primary": {"usedPercent": 0.0}}}
+    })));
+    effects.retain(|effect| match effect {
+        ProtocolEffect::Send(message) => {
+            message.get("method").and_then(Value::as_str) != Some("account/rateLimits/read")
+        }
+        ProtocolEffect::Complete(_) | ProtocolEffect::Fail(_) => true,
+    });
+    effects
 }
 
 pub(super) fn open_thread(protocol: &mut CodexParser) -> Vec<ProtocolEffect> {
