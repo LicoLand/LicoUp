@@ -53,6 +53,10 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '最新报表中没有智能体用量' : 'No agent usage in the latest report';
   String get noModelUsageInLatestReport =>
       isChinese ? '最新报表中没有模型用量' : 'No model usage in the latest report';
+  /// Hosted-ledger rows whose requests carried no token fields never show a
+  /// token total; they show how many requests the plan included.
+  String agentUsageIncludedRequests(int count) =>
+      isChinese ? '已包含 $count 次请求' : 'Included · $count requests';
   String get dailyUsageBreakdownUnavailable =>
       isChinese ? '暂无每日用量明细' : 'Daily usage breakdown unavailable';
   String get noModelUsageInLatestDailyBreakdown => isChinese
@@ -600,6 +604,10 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '$provider 配额用量' : '$provider quota usage';
   String quotaWindowUsedPercent(int percent) =>
       isChinese ? '已用 $percent%' : '$percent% Used';
+  /// Absolute budget line for currency-metered quota windows.
+  String quotaWindowAmount(String used, String limit) =>
+      isChinese ? '已用 $used / $limit' : '$used / $limit used';
+  String quotaWindowSpent(String used) => isChinese ? '已用 $used' : '$used used';
   String quotaWindowResetCountdown(String duration) =>
       isChinese ? '$duration后重置' : 'Resets in $duration';
   String quotaSnapshotCapturedAgo(String duration) =>

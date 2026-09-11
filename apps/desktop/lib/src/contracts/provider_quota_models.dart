@@ -38,6 +38,12 @@ String? _optionalText(Object? value) {
   return text.isEmpty ? null : text;
 }
 
+double? _optionalDouble(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString().trim());
+}
+
 /// Freshness state of one provider quota snapshot. `unavailable` means the
 /// provider has a quota source but no usable fetch; the UI renders nothing
 /// for it rather than fake data.
@@ -63,6 +69,9 @@ class ProviderQuotaWindow {
   const ProviderQuotaWindow({
     required this.label,
     required this.usedPercent,
+    this.used,
+    this.limit,
+    this.remaining,
     this.windowMinutes,
     this.resetsAt,
     this.resetDescription = '',
@@ -70,6 +79,13 @@ class ProviderQuotaWindow {
 
   final String label;
   final double usedPercent;
+
+  /// Absolute budget in USD for currency-metered providers (for example
+  /// Cursor's plan and on-demand budgets). Percent-only providers leave these
+  /// unset and the card renders the percentage alone.
+  final double? used;
+  final double? limit;
+  final double? remaining;
   final int? windowMinutes;
 
   /// RFC 3339 reset timestamp; backfilled from cache by the native scheduler
@@ -86,6 +102,9 @@ class ProviderQuotaWindow {
     return ProviderQuotaWindow(
       label: _text(json['label']),
       usedPercent: _double(json['usedPercent']),
+      used: _optionalDouble(json['used']),
+      limit: _optionalDouble(json['limit']),
+      remaining: _optionalDouble(json['remaining']),
       windowMinutes: json['windowMinutes'] == null
           ? null
           : _int(json['windowMinutes']),
@@ -97,6 +116,9 @@ class ProviderQuotaWindow {
   Map<String, dynamic> toJson() => {
     'label': label,
     'usedPercent': usedPercent,
+    'used': used,
+    'limit': limit,
+    'remaining': remaining,
     'windowMinutes': windowMinutes,
     'resetsAt': resetsAt,
     'resetDescription': resetDescription,
