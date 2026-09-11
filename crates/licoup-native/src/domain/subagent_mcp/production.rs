@@ -1,18 +1,20 @@
 use super::{
-    CALLER_PROVIDERS, CallerContext, ConversationHostPort, McpApplicationError, ReadOnlyTargetPort,
+    CallerContext, ConversationHostPort, McpApplicationError, ReadOnlyTargetPort,
     SubagentMcpApplication, TargetMembership, permanent,
 };
 use crate::domain::client_conversation::{Conversation, MembershipStatus, PrincipalKind};
+use licoup_agent_adapters::AdapterRegistry;
 use licoup_agent_runtime::{DurableNativeBinding, ProviderId};
 use licoup_conversation::{SubagentDispatchClaim, SubagentDispatchClaimState};
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 pub fn production_application() -> Result<SubagentMcpApplication, McpApplicationError> {
+    let adapters = crate::platform::runtime_adapters::production_subagent_registry();
     Ok(SubagentMcpApplication::new(
         Arc::new(NativeConversationHost),
-        crate::platform::runtime_adapters::production_subagent_registry(),
-        Arc::new(NativeReadOnlyTargets),
+        adapters.clone(),
+        Arc::new(NativeReadOnlyTargets { adapters }),
     ))
 }
 
@@ -350,18 +352,37 @@ impl ConversationHostPort for NativeConversationHost {
     }
 }
 
-struct NativeReadOnlyTargets;
+struct NativeReadOnlyTargets {
+    /// Mesh membership authority, shared with the application that owns it. The
+    /// inventory exposes exactly the Agents that hold a mesh seat.
+    adapters: AdapterRegistry,
+}
+
+impl NativeReadOnlyTargets {
+    fn members(&self) -> Vec<String> {
+        self.adapters
+            .caller_providers()
+            .map(|provider| provider.as_str().to_owned())
+            .collect()
+    }
+
+    fn is_member(&self, agent_id: &str) -> bool {
+        self.adapters
+            .caller_providers()
+            .any(|provider| provider.as_str() == agent_id)
+    }
+}
 
 impl ReadOnlyTargetPort for NativeReadOnlyTargets {
     fn list(&self) -> Result<Value, McpApplicationError> {
-        let targets = CALLER_PROVIDERS
+        let targets = self
+            .members()
             .iter()
-            .copied()
             .map(|provider| {
                 crate::domain::targets::inspect_target_read_only(provider)
                     .map_err(|_| retryable("target_inventory_unavailable", "target/list"))?
                     .get("target")
-                    .and_then(project_target)
+                    .and_then(|target| project_target(target, &self.adapters))
                     .ok_or_else(|| retryable("target_inventory_unavailable", "target/list"))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -373,18 +394,24 @@ impl ReadOnlyTargetPort for NativeReadOnlyTargets {
     }
 
     fn probe(&self, provider: &ProviderId) -> Result<Value, McpApplicationError> {
+        if !self.is_member(provider.as_str()) {
+            return Err(permanent("subagent_unavailable", "target/probe"));
+        }
         let inspected = crate::domain::targets::inspect_target_read_only(provider.as_str())
             .map_err(|_| permanent("subagent_unavailable", "target/probe"))?;
         inspected
             .get("target")
-            .and_then(project_target)
+            .and_then(|target| project_target(target, &self.adapters))
             .ok_or_else(|| permanent("subagent_unavailable", "target/probe"))
     }
 }
 
-fn project_target(target: &Value) -> Option<Value> {
+fn project_target(target: &Value, adapters: &AdapterRegistry) -> Option<Value> {
     let agent_id = target.get("target").and_then(Value::as_str)?;
-    if !CALLER_PROVIDERS.contains(&agent_id) {
+    if !adapters
+        .caller_providers()
+        .any(|provider| provider.as_str() == agent_id)
+    {
         return None;
     }
     Some(json!({
@@ -529,17 +556,21 @@ mod tests {
 
     #[test]
     fn target_projection_drops_user_labels_and_private_inventory() {
-        let projected = project_target(&json!({
-            "target": "cursor",
-            "label": "private-user-label",
-            "status": "detected",
-            "binaryPath": "private-binary-canary",
-            "model": "private-model",
-            "adapterCapabilities": {
-                "conversationDriver": "cursor-cli",
-                "conversationReadiness": "ready"
-            }
-        }))
+        let adapters = crate::platform::runtime_adapters::production_subagent_registry();
+        let projected = project_target(
+            &json!({
+                "target": "cursor",
+                "label": "private-user-label",
+                "status": "detected",
+                "binaryPath": "private-binary-canary",
+                "model": "private-model",
+                "adapterCapabilities": {
+                    "conversationDriver": "cursor-cli",
+                    "conversationReadiness": "ready"
+                }
+            }),
+            &adapters,
+        )
         .unwrap();
         assert_eq!(
             projected
