@@ -505,10 +505,9 @@ fn ensure_owned_entry_unambiguous(
 }
 
 /// Two shapes count as the same connector under a different key: an entry whose
-/// `command` is exactly the connector path or resolves to it, and an entry
-/// keyed by the connector's own reported server identity. An earlier
-/// registration shape used that identity as the key, which is why such an entry
-/// looks legitimate at a glance.
+/// `command` resolves to the connector, and an entry keyed by the connector's
+/// own reported server identity. An earlier registration shape used that
+/// identity as the key, which is why such an entry looks legitimate at a glance.
 fn has_duplicate_connector_entry(config: &Value, connector: &Path) -> bool {
     let Some(servers) = config.get("mcpServers").and_then(Value::as_object) else {
         return false;
@@ -524,10 +523,29 @@ fn has_duplicate_connector_entry(config: &Value, connector: &Path) -> bool {
             .as_object()
             .and_then(|entry| entry.get("command"))
             .and_then(Value::as_str)
-            .map(Path::new)
-            .and_then(|command| fs::canonicalize(command).ok())
-            .is_some_and(|command| command == connector)
+            .is_some_and(|command| command_is_connector(command, connector))
     })
+}
+
+/// Whether one `mcpServers[].command` names the connector.
+///
+/// A bare name is resolved through the client's `PATH`, not against the current
+/// directory, so `fs::canonicalize` cannot settle it here: a sibling entry
+/// holding the bare connector name would read as unrelated and another server
+/// would be registered beside it. Bare names are therefore compared by file
+/// name, which is the identity the client would resolve.
+fn command_is_connector(command: &str, connector: &Path) -> bool {
+    let command = Path::new(command);
+    if !command.is_absolute()
+        && command
+            .parent()
+            .is_none_or(|parent| parent.as_os_str().is_empty())
+    {
+        return command.file_name() == connector.file_name();
+    }
+    fs::canonicalize(command)
+        .ok()
+        .is_some_and(|resolved| resolved == connector)
 }
 
 fn entry_is_exact(entry: &Map<String, Value>, kind: ProviderConfigKind, connector: &Path) -> bool {
@@ -686,6 +704,25 @@ mod tests {
                 &connector
             ),
             Err(RegistrationError::DuplicateConnectorEntry)
+        );
+
+        // A bare name is resolved through the client's PATH, so it cannot be
+        // canonicalized here. It still names the same connector.
+        let bare_name = json!({"mcpServers": {
+            "some-server": {"command": "lico-subagent-mcp"}
+        }});
+        assert_eq!(
+            ensure_owned_entry_unambiguous(&bare_name, ProviderConfigKind::ClaudeCode, &connector),
+            Err(RegistrationError::DuplicateConnectorEntry)
+        );
+
+        // A bare name for a different connector stays legal.
+        let bare_other = json!({"mcpServers": {
+            "some-server": {"command": "some-other-connector"}
+        }});
+        assert_eq!(
+            ensure_owned_entry_unambiguous(&bare_other, ProviderConfigKind::ClaudeCode, &connector),
+            Ok(())
         );
 
         // A sibling entry for a different connector stays legal.
