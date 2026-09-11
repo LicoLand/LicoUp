@@ -39,10 +39,6 @@ pub const MAX_SUBAGENT_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MIN_SUBAGENT_STDERR_BYTES: u64 = 16 * 1024;
 pub const MAX_SUBAGENT_STDERR_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Production mesh callers that receive a discovery token and may occupy a
-/// Canonical Conversation Membership seat. Sorted for discovery admission.
-pub const CALLER_PROVIDERS: &[&str] = &["antigravity", "claude-code", "codex", "cursor"];
-
 pub const TOOL_NAMES: &[&str] = &[
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
@@ -196,6 +192,18 @@ impl SubagentMcpApplication {
             adapters,
             targets,
         }
+    }
+
+    /// Mesh members: the providers the adapter registry admits as callers, in
+    /// provider-id order. This is the single authority for the caller set. The
+    /// supervisor publishes exactly these as discovery tokens, and the connector
+    /// reads its own membership back from that set, so neither side keeps a
+    /// private copy of the list.
+    pub fn caller_providers(&self) -> Vec<String> {
+        self.adapters
+            .caller_providers()
+            .map(|provider| provider.as_str().to_owned())
+            .collect()
     }
 
     fn runtime(
