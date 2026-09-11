@@ -20,10 +20,22 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
   final bucketKeys = bucketDates.map(agentUsageDateKey).toSet();
   final valuesByDay = {for (final key in bucketKeys) key: <String, double>{}};
   final modelShareTotals = <String, double>{};
+  final modelRequestTotals = <String, int>{};
 
   void addModelShare(String model, AgentUsageModelTokens usage) {
     final label = agentUsageModelDisplayName(model);
-    _addUsageValue(modelShareTotals, label, usage.totalTokens);
+    if (usage.totalTokens > 0) {
+      _addUsageValue(modelShareTotals, label, usage.totalTokens);
+    }
+    // Hosted ledgers report requests that carry no token fields (Included
+    // Auto calls). They stay request counts and never become a token total.
+    if (usage.requestCount > 0) {
+      modelRequestTotals.update(
+        label,
+        (value) => value + usage.requestCount,
+        ifAbsent: () => usage.requestCount,
+      );
+    }
   }
 
   var hasDailyBreakdown = false;
@@ -100,6 +112,10 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
     for (final entry in seriesLabels.take(agentUsageWaveSeriesLimit)) entry.key,
   ];
   final shareLabels = agentUsageRankedShareLabels(shareTotals);
+  final requestOnlyLabels = [
+    for (final label in modelRequestTotals.keys)
+      if ((shareTotals[label] ?? 0) <= 0) label,
+  ]..sort();
   final visibleLabelSet = visibleLabels.toSet();
   final snapshots = [
     for (final snapshot in rawSnapshots)
@@ -115,6 +131,8 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
     snapshots: snapshots,
     series: [for (final label in visibleLabels) AgentUsageSeries(label: label)],
     seriesTotals: Map.unmodifiable(shareTotals),
+    requestCounts: Map.unmodifiable(modelRequestTotals),
+    requestOnlyShareLabels: List.unmodifiable(requestOnlyLabels),
     shareSeriesLabels: List.unmodifiable(shareLabels),
     groupTotal: shareTotals.values.fold<double>(0, (sum, value) => sum + value),
     hasDailyBreakdown: hasDailyBreakdown,
