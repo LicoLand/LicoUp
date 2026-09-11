@@ -159,7 +159,9 @@ fn map_error(error: RegistrationError) -> AntigravitySubagentMcpError {
             AntigravitySubagentMcpError::ApprovalMismatch
         }
         RegistrationError::ApprovalConsumed => AntigravitySubagentMcpError::ApprovalConsumed,
-        RegistrationError::ConfigAmbiguous | RegistrationError::OwnedEntryAmbiguous => {
+        RegistrationError::ConfigAmbiguous
+        | RegistrationError::OwnedEntryAmbiguous
+        | RegistrationError::DuplicateConnectorEntry => {
             AntigravitySubagentMcpError::ConfigAmbiguous
         }
         RegistrationError::ConfigPathUnsupported => {

@@ -10,7 +10,8 @@ use licoup_native::core::mcp::{
 use licoup_native::domain::subagent_mcp::MAX_MCP_FRAME_BYTES;
 use licoup_native::domain::subagent_mcp::{PROTOCOL_REVISION, server_definition};
 use licoup_native::platform::subagent_mcp_supervisor::{
-    connector_close_session, connector_exchange, load_connector_discovery,
+    ConnectorDiscoveryError, connector_close_session, connector_exchange, load_connector_discovery,
+    published_callers,
 };
 use std::env;
 use std::io::{self, Write};
@@ -20,6 +21,61 @@ use std::thread;
 
 const MAX_IN_FLIGHT_FRAMES: usize = 32;
 
+/// Stdout carries protocol frames only, so every startup refusal is reported on
+/// stderr. Without one the client sees a bare transport-level connection close
+/// and reads a refused caller as a connectivity fault.
+const DIAGNOSTIC_PREFIX: &str = "lico-subagent-mcp";
+
+/// Why this process refused to start. Each cause names itself so the client can
+/// act without inspecting anything else.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CallerRejection {
+    Undeclared,
+    Conflicting,
+    Unexpected,
+    /// A declared provider this build does not admit as a mesh caller.
+    /// `known_assistant` distinguishes a typo from an Agent that exists but
+    /// simply has no mesh seat.
+    NotAMeshCaller {
+        provider: String,
+        known_assistant: bool,
+    },
+}
+
+impl CallerRejection {
+    fn describe(&self, supported: &[String]) -> String {
+        let suffix = if supported.is_empty() {
+            String::new()
+        } else {
+            format!(" (supported: {})", supported.join(", "))
+        };
+        match self {
+            Self::Undeclared => format!(
+                "caller provider is not declared; pass --caller <provider> or set \
+                 LICOUP_MCP_CALLER_PROVIDER{suffix}"
+            ),
+            Self::Conflicting => "--caller and LICOUP_MCP_CALLER_PROVIDER disagree; declare \
+                 exactly one caller provider"
+                .to_owned(),
+            Self::Unexpected => {
+                "unexpected arguments; the accepted form is --caller <provider>".to_owned()
+            }
+            Self::NotAMeshCaller {
+                provider,
+                known_assistant: true,
+            } => format!("the '{provider}' Assistant does not support the subagent mesh{suffix}"),
+            Self::NotAMeshCaller {
+                provider,
+                known_assistant: false,
+            } => format!("'{provider}' is not a known Assistant{suffix}"),
+        }
+    }
+}
+
+fn report(reason: impl std::fmt::Display) {
+    eprintln!("{DIAGNOSTIC_PREFIX}: {reason}");
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -28,14 +84,41 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), ()> {
-    let provider = caller_provider(
+    let provider = match caller_provider(
         env::args().skip(1),
         env::var("LICOUP_MCP_CALLER_PROVIDER").ok(),
-    )?;
+    ) {
+        Ok(provider) => provider,
+        Err(rejection) => {
+            report(rejection.describe(&published_callers()));
+            return Err(());
+        }
+    };
     // Missing discovery exits before the first stdio frame. Antigravity IDE
     // then reports EOF on `initialize`. The owned MCP `env` block must bind
     // `LICOUP_PORTABLE_DIR` so this lookup can find the desktop supervisor.
-    let discovery = load_connector_discovery(&provider).map_err(|_| ())?;
+    let discovery = match load_connector_discovery(&provider) {
+        Ok(discovery) => discovery,
+        Err(ConnectorDiscoveryError::CallerNotSupported(supported)) => {
+            // Membership is the published capability set, not a list compiled
+            // into this binary, so an Assistant without a seat is refused before
+            // any frame reaches the loopback service. The classification only
+            // decides which explanation fits: a name nobody knows, or an Agent
+            // that is known but is not a mesh caller.
+            report(
+                CallerRejection::NotAMeshCaller {
+                    known_assistant: licoup_native::domain::agent_catalog::contains(&provider),
+                    provider,
+                }
+                .describe(&supported),
+            );
+            return Err(());
+        }
+        Err(error) => {
+            report(error.code());
+            return Err(());
+        }
+    };
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let writer = Arc::new(Mutex::new(io::stdout()));
@@ -181,24 +264,35 @@ fn initialize_protocol_revision(message: &licoup_native::core::mcp::McpMessage) 
     }
 }
 
+/// Resolve the declared caller from the command line or the environment.
+///
+/// Only the declaration is resolved here: exactly one source, non-empty, no
+/// conflicting pair. Whether the declared Agent is admitted is decided later
+/// against the published capability set, so this binary never carries a list of
+/// its own that could drift from the service that mints the seats.
 fn caller_provider(
     args: impl IntoIterator<Item = String>,
     environment: Option<String>,
-) -> Result<String, ()> {
+) -> Result<String, CallerRejection> {
     let args = args.into_iter().collect::<Vec<_>>();
     let argument = match args.as_slice() {
         [] => None,
         [flag, provider] if flag == "--caller" => Some(provider.as_str()),
-        _ => return Err(()),
+        _ => return Err(CallerRejection::Unexpected),
     };
-    let environment = environment.as_deref().filter(|value| !value.is_empty());
+    // A blank declaration declares nothing, so it reports as undeclared rather
+    // than as an unknown provider name.
+    let environment = environment
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
     if argument.is_some() && environment.is_some() && argument != environment {
-        return Err(());
+        return Err(CallerRejection::Conflicting);
     }
-    let provider = argument.or(environment).ok_or(())?;
-    if !licoup_native::domain::subagent_mcp::CALLER_PROVIDERS.contains(&provider) {
-        return Err(());
-    }
+    let provider = argument
+        .or(environment)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(CallerRejection::Undeclared)?;
     Ok(provider.to_owned())
 }
 
@@ -216,13 +310,92 @@ mod tests {
             caller_provider(std::iter::empty(), Some("codex".into())).unwrap(),
             "codex"
         );
-        assert!(
-            caller_provider(["--caller".into(), "cursor".into()], Some("codex".into())).is_err()
+        assert_eq!(
+            caller_provider(["--caller".into(), "cursor".into()], Some("codex".into()))
+                .unwrap_err(),
+            CallerRejection::Conflicting
         );
-        assert!(caller_provider(["--caller".into(), "other".into()], None).is_err());
         assert_eq!(
             caller_provider(["--caller".into(), "claude-code".into()], None).unwrap(),
             "claude-code"
+        );
+        // Membership is not decided here: a declared name this build does not
+        // recognise is refused against the published capability set instead, so
+        // the two causes stay distinguishable.
+        assert_eq!(
+            caller_provider(["--caller".into(), "other".into()], None).unwrap(),
+            "other"
+        );
+    }
+
+    #[test]
+    fn refused_callers_carry_an_actionable_diagnostic() {
+        assert_eq!(
+            caller_provider(std::iter::empty(), None).unwrap_err(),
+            CallerRejection::Undeclared
+        );
+        assert_eq!(
+            caller_provider(std::iter::empty(), Some("   ".into())).unwrap_err(),
+            CallerRejection::Undeclared
+        );
+        assert_eq!(
+            caller_provider(["--caller".into()], None).unwrap_err(),
+            CallerRejection::Unexpected
+        );
+        assert_eq!(
+            caller_provider(["--caller".into(), "cursor".into(), "extra".into()], None)
+                .unwrap_err(),
+            CallerRejection::Unexpected
+        );
+
+        let supported = vec!["codex".to_owned(), "cursor".to_owned()];
+        let undeclared = CallerRejection::Undeclared.describe(&supported);
+        assert!(undeclared.contains("is not declared"), "{undeclared}");
+        assert!(
+            undeclared.contains("LICOUP_MCP_CALLER_PROVIDER"),
+            "{undeclared}"
+        );
+        assert!(
+            undeclared.contains("(supported: codex, cursor)"),
+            "{undeclared}"
+        );
+
+        let unsupported = CallerRejection::NotAMeshCaller {
+            provider: "grok".to_owned(),
+            known_assistant: true,
+        }
+        .describe(&supported);
+        assert!(
+            unsupported.contains("the 'grok' Assistant does not support the subagent mesh"),
+            "{unsupported}"
+        );
+        assert!(unsupported.contains("codex, cursor"), "{unsupported}");
+
+        let unknown = CallerRejection::NotAMeshCaller {
+            provider: "claude".to_owned(),
+            known_assistant: false,
+        }
+        .describe(&supported);
+        assert!(
+            unknown.contains("'claude' is not a known Assistant"),
+            "{unknown}"
+        );
+
+        // A refusal must stay useful when the service is not running and the
+        // capability set is therefore unknown.
+        let bare = CallerRejection::Undeclared.describe(&[]);
+        assert!(bare.contains("is not declared"), "{bare}");
+        assert!(!bare.contains("supported"), "{bare}");
+
+        assert!(
+            CallerRejection::Conflicting
+                .describe(&supported)
+                .contains("declare exactly one caller provider")
+        );
+        assert!(
+            CallerRejection::Unexpected
+                .describe(&supported)
+                .contains("--caller <provider>")
         );
     }
 
