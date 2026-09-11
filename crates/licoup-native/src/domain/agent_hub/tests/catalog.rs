@@ -2,7 +2,7 @@ use super::super::*;
 use super::support::portable_params;
 use crate::domain::agent_catalog;
 use crate::domain::agent_hub::contract::{
-    ADAPTATION_PARTIAL, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
+    ADAPTATION_PARTIAL, HOST_SCOPE, InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED,
 };
 use crate::domain::agent_hub::ownership;
 use crate::platform::client_state::ClientStateStore;
@@ -421,6 +421,69 @@ fn catalog_projects_discovered_grok_and_command_code() {
             .iter()
             .all(|item| item["id"] != "custom-local-agent")
     );
+}
+
+/// A full refresh takes the whole catalog in one command, so the batched pass
+/// must return exactly the cards its per-card requests returned — same set, same
+/// membership order — or the client silently shows a different catalog.
+#[test]
+fn catalog_live_lookup_resolves_every_member_in_one_pass() {
+    let (_dir, params) = portable_params("catalog-live-batch");
+    let mut batched_params = params.clone();
+    batched_params["liveLookup"] = serde_json::json!(true);
+    let batched = catalog(&batched_params).unwrap();
+    let batched_cards = batched["cards"].as_array().unwrap().clone();
+    assert_catalog_membership(&batched_cards);
+
+    let expected = agent_catalog::supported_membership(std::iter::empty::<&str>())
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>();
+    let ids = batched_cards
+        .iter()
+        .map(|card| card["id"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, expected, "batched cards follow membership order");
+    assert_eq!(
+        batched["scanGeneration"],
+        params["platformCapabilities"]["scanGeneration"]
+    );
+    assert_eq!(batched["hostScope"], HOST_SCOPE);
+
+    // A supplied snapshot already carries the facts, so the batched request must
+    // not add live inspection on top of it.
+    let mut injected = batched_params.clone();
+    injected["discoveryCandidates"] = serde_json::json!([
+        {"target": "codex", "present": true, "status": "detected"}
+    ]);
+    let with_snapshot = catalog(&injected).unwrap();
+    let codex = with_snapshot["cards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|card| card["id"] == "codex")
+        .unwrap();
+    assert_eq!(codex["present"], true);
+    assert_eq!(codex["location"], "local");
+}
+
+#[test]
+fn catalog_live_lookup_keeps_membership_order_and_one_card_per_member() {
+    let (_dir, params) = portable_params("catalog-live-order");
+    let mut batched_params = params.clone();
+    batched_params["liveLookup"] = serde_json::json!(true);
+    let cards = catalog(&batched_params).unwrap()["cards"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let mut ids = cards
+        .iter()
+        .map(|card| card["id"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    let total = ids.len();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), total, "one card per member, no duplicates");
 }
 
 fn assert_catalog_membership(cards: &[serde_json::Value]) {
