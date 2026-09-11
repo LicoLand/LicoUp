@@ -426,11 +426,22 @@ fn catalog_projects_discovered_grok_and_command_code() {
 /// A full refresh takes the whole catalog in one command, so the batched pass
 /// must return exactly the cards its per-card requests returned — same set, same
 /// membership order — or the client silently shows a different catalog.
+///
+/// The fixture seeds an *empty* `discoveryCandidates`, and any supplied snapshot
+/// suppresses live inspection. That key is removed here on purpose: without it
+/// the only remaining fact source is the batched member inspection this test
+/// exists to cover, and an injected process name must then surface on the card.
 #[test]
 fn catalog_live_lookup_resolves_every_member_in_one_pass() {
     let (_dir, params) = portable_params("catalog-live-batch");
     let mut batched_params = params.clone();
     batched_params["liveLookup"] = serde_json::json!(true);
+    batched_params["runningProcessNames"] = serde_json::json!(["codex"]);
+    batched_params
+        .as_object_mut()
+        .unwrap()
+        .remove("discoveryCandidates");
+
     let batched = catalog(&batched_params).unwrap();
     let batched_cards = batched["cards"].as_array().unwrap().clone();
     assert_catalog_membership(&batched_cards);
@@ -444,27 +455,50 @@ fn catalog_live_lookup_resolves_every_member_in_one_pass() {
         .map(|card| card["id"].as_str().unwrap().to_owned())
         .collect::<Vec<_>>();
     assert_eq!(ids, expected, "batched cards follow membership order");
-    assert_eq!(
-        batched["scanGeneration"],
-        params["platformCapabilities"]["scanGeneration"]
-    );
+    assert_eq!(batched["scanGeneration"], 7);
     assert_eq!(batched["hostScope"], HOST_SCOPE);
 
-    // A supplied snapshot already carries the facts, so the batched request must
-    // not add live inspection on top of it.
-    let mut injected = batched_params.clone();
+    // Proof the live branch ran: codex is the only injected running process, so
+    // its card reports present and an agent that is not running does not. A
+    // batch that skipped the inspection would report both absent, since the
+    // fixture supplies no facts of its own.
+    let card = |id: &str| {
+        batched_cards
+            .iter()
+            .find(|card| card["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        card("codex")["present"],
+        true,
+        "a batched refresh must carry inspected presence onto the card"
+    );
+    assert_eq!(card("openclaw")["present"], false);
+}
+
+/// A snapshot the caller already holds is authoritative: the batched request
+/// must not inspect on top of it, or the client pays for live work it did not
+/// ask for and its own facts lose to machine state.
+#[test]
+fn catalog_live_lookup_defers_to_a_supplied_snapshot() {
+    let (_dir, params) = portable_params("catalog-live-supplied");
+    let mut injected = params.clone();
+    injected["liveLookup"] = serde_json::json!(true);
+    injected["runningProcessNames"] = serde_json::json!(["codex"]);
     injected["discoveryCandidates"] = serde_json::json!([
-        {"target": "codex", "present": true, "status": "detected"}
+        {"target": "openclaw", "present": true, "status": "detected",
+         "location": "virtual-machine", "scanSource": "virtual-machine-orbstack"}
     ]);
-    let with_snapshot = catalog(&injected).unwrap();
-    let codex = with_snapshot["cards"]
+    let cards = catalog(&injected).unwrap()["cards"]
         .as_array()
         .unwrap()
-        .iter()
-        .find(|card| card["id"] == "codex")
-        .unwrap();
-    assert_eq!(codex["present"], true);
-    assert_eq!(codex["location"], "local");
+        .clone();
+    let card = |id: &str| cards.iter().find(|card| card["id"] == id).unwrap().clone();
+    // The supplied fact wins even though codex is the running process.
+    assert_eq!(card("openclaw")["present"], true);
+    assert_eq!(card("openclaw")["location"], "virtual-machine");
+    assert_eq!(card("codex")["present"], false);
 }
 
 #[test]
@@ -472,6 +506,10 @@ fn catalog_live_lookup_keeps_membership_order_and_one_card_per_member() {
     let (_dir, params) = portable_params("catalog-live-order");
     let mut batched_params = params.clone();
     batched_params["liveLookup"] = serde_json::json!(true);
+    batched_params
+        .as_object_mut()
+        .unwrap()
+        .remove("discoveryCandidates");
     let cards = catalog(&batched_params).unwrap()["cards"]
         .as_array()
         .unwrap()
