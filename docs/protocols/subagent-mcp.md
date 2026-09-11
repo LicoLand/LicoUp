@@ -160,10 +160,14 @@ sessions and connection counts are bounded. Shutdown removes only the discovery
 generation owned by that supervisor.
 
 Registration changes require one digest-bound, single-use approval. Cursor and
-Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry,
-multiple Antigravity config candidates, or a changed config fails closed.
+Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry, a
+sibling entry for the same connector under any other key, multiple Antigravity
+config candidates, or a changed config fails closed.
 The same approval delivers the embedded `lico-up-subagents` Skill through the
-provider's user Skill Hub root; foreign Skill content also fails closed.
+provider's user Skill Hub root, where foreign Skill content also fails closed,
+and republishes it on the shared `~/.agents/skills` surface. That shared copy is
+a copy rather than a link, and is not byte-verified, because one file there
+serves every installed connector version.
 Public responses omit config bodies, credentials, endpoints, native sessions,
 paths, prompts, and Agent output.
 
