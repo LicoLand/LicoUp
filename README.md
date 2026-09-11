@@ -16,12 +16,6 @@ English · [简体中文](README.zh-CN.md)
 
 LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. Sensitive runtime data stays on the device. Default scenarios do not upload plaintext user content.
 
-In the intended trusted-history path, provider-managed retained history is
-read after provider authorization. History is readable by default through that
-authorization, and the default history read does not call a recovery key.
-Client-side history encryption is an explicit opt-in; the current client
-has no cloud login, vendor adapter, live sync, or UI wiring for this path.
-
 Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
 
 ## Installation
