@@ -14,7 +14,10 @@ private Canonical Conversation store. The public contract is frozen by
 - Server: `lico-up-subagents` `0.12.0`
 - Transport: a desktop-owned authenticated loopback Streamable HTTP service
 - Provider entry: one tool-free stdio connector
-- Providers in this mesh: Codex, Cursor, and Antigravity
+- Mesh callers: the Agents the adapter registry admits as callers. A connector
+  declares its Agent through `--caller` or `LICOUP_MCP_CALLER_PROVIDER`; the
+  set is never enumerated in code or prose, so it cannot drift from the registry
+  that mints the seats
 
 The exact ordered tool catalog is:
 
@@ -159,11 +162,24 @@ ephemeral per-provider bearer token and is hardened under client state. MCP
 sessions and connection counts are bounded. Shutdown removes only the discovery
 generation owned by that supervisor.
 
+Discovery publishes exactly one token per admitted caller, so the token map is
+the membership set. The connector reads its own seat back from that set: a
+declared Agent without one is refused before the first stdio frame, and the
+refusal names both the cause and the callers the service does admit. A name that
+is no Assistant at all is reported separately from an Assistant that exists but
+has no mesh seat. The token map is validated structurally, so a caller set this
+build does not recognise is admitted as a document rather than rejected as a
+corrupt one.
+
 Registration changes require one digest-bound, single-use approval. Cursor and
-Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry,
-multiple Antigravity config candidates, or a changed config fails closed.
+Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry, a
+sibling entry for the same connector under any other key, multiple Antigravity
+config candidates, or a changed config fails closed.
 The same approval delivers the embedded `lico-up-subagents` Skill through the
-provider's user Skill Hub root; foreign Skill content also fails closed.
+provider's user Skill Hub root, where foreign Skill content also fails closed,
+and republishes it on the shared `~/.agents/skills` surface. That shared copy is
+a copy rather than a link, and is not byte-verified, because one file there
+serves every installed connector version.
 Public responses omit config bodies, credentials, endpoints, native sessions,
 paths, prompts, and Agent output.
 
