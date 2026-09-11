@@ -17,10 +17,13 @@ test("Cursor registration is namespaced, digest-bound, owned, and ambiguity-clos
   assert.match(common, /managedBy/u);
   assert.match(common, /config_digest/u);
   assert.match(common, /OwnedEntryAmbiguous/u);
+  assert.match(common, /DuplicateConnectorEntry/u);
   assert.match(common, /ApprovalConsumed/u);
   assert.match(common, /pub fn remove/u);
   assert.match(common, /resources\/subagent-mesh\/SKILL\.md/u);
   assert.match(common, /\.cursor.*skills/su);
+  assert.match(common, /publish_shared_skill/u);
+  assert.match(common, /\.agents.*skills/su);
 });
 
 test("Cursor target keeps exact create/resume, workspace, PTY, acknowledgement and cancel", () => {

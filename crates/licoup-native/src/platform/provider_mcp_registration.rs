@@ -1,4 +1,7 @@
 //! Digest-bound mutation of one namespaced, LicoUp-owned user MCP entry.
+//!
+//! One approval also delivers the embedded usage Skill to the provider's user
+//! Skill Hub root, and publishes a copy of it on the shared Skill surface.
 
 use super::{file_security, paths};
 use serde_json::{Map, Value, json};
@@ -59,6 +62,7 @@ pub enum RegistrationError {
     ConfigAmbiguous,
     ConfigPathUnsupported,
     OwnedEntryAmbiguous,
+    DuplicateConnectorEntry,
     ApprovalRequired,
     ApprovalMismatch,
     ApprovalConsumed,
@@ -71,6 +75,7 @@ pub struct RegistrationPlan {
     kind: ProviderConfigKind,
     connector: PathBuf,
     config_path: PathBuf,
+    shared_skill_path: PathBuf,
     config_digest: String,
     skill_path: PathBuf,
     skill_digest: String,
@@ -106,9 +111,10 @@ impl RegistrationPlan {
         config_path: PathBuf,
     ) -> Result<Self, RegistrationError> {
         let skill_path = resolve_skill_path(kind)?;
+        let shared_skill_path = shared_skill_path()?;
         let raw = read_optional_config(&config_path)?;
         let config = parse_config(raw.as_deref())?;
-        ensure_owned_entry_unambiguous(&config, kind)?;
+        ensure_owned_entry_unambiguous(&config, kind, &connector)?;
         let config_digest = digest_bytes(raw.as_deref().unwrap_or(b"<absent>"));
         let skill = read_optional_skill(&skill_path)?;
         if skill
@@ -122,6 +128,7 @@ impl RegistrationPlan {
             kind,
             &connector,
             &config_path,
+            &shared_skill_path,
             &config_digest,
             &skill_digest,
         )?;
@@ -129,6 +136,7 @@ impl RegistrationPlan {
             kind,
             connector,
             config_path,
+            shared_skill_path,
             config_digest,
             skill_path,
             skill_digest,
@@ -189,7 +197,7 @@ fn status_at(
 ) -> Result<bool, RegistrationError> {
     let raw = read_optional_config(path)?;
     let config = parse_config(raw.as_deref())?;
-    ensure_owned_entry_unambiguous(&config, kind)?;
+    ensure_owned_entry_unambiguous(&config, kind, connector)?;
     let skill_path = resolve_skill_path(kind)?;
     let skill_ready =
         read_optional_skill(&skill_path)?.is_some_and(|skill| skill == SKILL_SOURCE.as_bytes());
@@ -214,7 +222,7 @@ pub fn install(
         return Err(RegistrationError::ConfigChanged);
     }
     let mut config = parse_config(raw.as_deref())?;
-    ensure_owned_entry_unambiguous(&config, plan.kind)?;
+    ensure_owned_entry_unambiguous(&config, plan.kind, &plan.connector)?;
     let mut owned_entry = json!({
         "command": plan.connector.to_string_lossy(),
         "args": ["--caller", plan.kind.provider_id()],
@@ -231,9 +239,13 @@ pub fn install(
     };
     servers_mut(&mut config)?.insert(SERVER_KEY.to_owned(), owned_entry);
     write_skill(&plan.skill_path)?;
+    let published_shared = publish_shared_skill(&plan.shared_skill_path);
     if let Err(error) = write_config(&plan.config_path, &config) {
         if plan.skill_was_absent {
             let _ = fs::remove_file(&plan.skill_path);
+        }
+        if let Some(path) = published_shared {
+            let _ = fs::remove_file(path);
         }
         return Err(error);
     }
@@ -261,7 +273,7 @@ pub fn remove(
         return Err(RegistrationError::ConfigChanged);
     }
     let mut config = parse_config(raw.as_deref())?;
-    ensure_owned_entry_unambiguous(&config, plan.kind)?;
+    ensure_owned_entry_unambiguous(&config, plan.kind, &plan.connector)?;
     if entry(&config).is_none() {
         return Ok(());
     }
@@ -271,6 +283,8 @@ pub fn remove(
     {
         fs::remove_file(&plan.skill_path).map_err(|_| RegistrationError::WriteFailed)?;
     }
+    // The shared publication stays: it has no single provider owner, and another
+    // registered provider may still rely on it.
     Ok(())
 }
 
@@ -287,6 +301,7 @@ fn claim(
             plan.kind,
             &plan.connector,
             &plan.config_path,
+            &plan.shared_skill_path,
             &plan.config_digest,
             &plan.skill_digest,
         )? != plan.digest
@@ -355,6 +370,21 @@ fn resolve_skill_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationE
         ProviderConfigKind::ClaudeCode => home.join(".claude").join("skills"),
     };
     Ok(root.join("lico-up-subagents").join("SKILL.md"))
+}
+
+/// The cross-Agent shared Skill surface. Agents that subscribe to it receive
+/// the usage Skill even when their own provider-local write is the only other
+/// delivery route.
+fn shared_skill_path() -> Result<PathBuf, RegistrationError> {
+    let home = paths::user_home_from_env().ok_or(RegistrationError::ConfigUnavailable)?;
+    Ok(shared_skill_path_in(&home))
+}
+
+fn shared_skill_path_in(home: &Path) -> PathBuf {
+    home.join(".agents")
+        .join("skills")
+        .join("lico-up-subagents")
+        .join("SKILL.md")
 }
 
 fn resolve_config_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationError> {
@@ -445,10 +475,22 @@ fn entry(config: &Value) -> Option<&Map<String, Value>> {
         .as_object()
 }
 
+/// Fail closed unless the namespaced entry is LicoUp's own and no sibling entry
+/// registers the same connector under another key.
+///
+/// The owned key is rewritten by `install`; a sibling key for the same
+/// connector would leave the client with two servers, two spawned processes and
+/// one tool catalog listed twice. Both conditions are reported instead, so
+/// `status` never reads as "not installed" while such an entry sits in the
+/// config.
 fn ensure_owned_entry_unambiguous(
     config: &Value,
     kind: ProviderConfigKind,
+    connector: &Path,
 ) -> Result<(), RegistrationError> {
+    if has_duplicate_connector_entry(config, connector) {
+        return Err(RegistrationError::DuplicateConnectorEntry);
+    }
     let Some(entry) = entry(config) else {
         return Ok(());
     };
@@ -460,6 +502,32 @@ fn ensure_owned_entry_unambiguous(
     } else {
         Err(RegistrationError::OwnedEntryAmbiguous)
     }
+}
+
+/// Two shapes count as the same connector under a different key: an entry whose
+/// `command` is exactly the connector path or resolves to it, and an entry
+/// keyed by the connector's own reported server identity. An earlier
+/// registration shape used that identity as the key, which is why such an entry
+/// looks legitimate at a glance.
+fn has_duplicate_connector_entry(config: &Value, connector: &Path) -> bool {
+    let Some(servers) = config.get("mcpServers").and_then(Value::as_object) else {
+        return false;
+    };
+    servers.iter().any(|(key, value)| {
+        if key == SERVER_KEY {
+            return false;
+        }
+        if key == crate::domain::subagent_mcp::SERVER_NAME {
+            return true;
+        }
+        value
+            .as_object()
+            .and_then(|entry| entry.get("command"))
+            .and_then(Value::as_str)
+            .map(Path::new)
+            .and_then(|command| fs::canonicalize(command).ok())
+            .is_some_and(|command| command == connector)
+    })
 }
 
 fn entry_is_exact(entry: &Map<String, Value>, kind: ProviderConfigKind, connector: &Path) -> bool {
@@ -511,10 +579,28 @@ fn write_skill(path: &Path) -> Result<(), RegistrationError> {
         .map_err(|_| RegistrationError::WriteFailed)
 }
 
+/// Publish the embedded Skill as one copy on the shared surface.
+///
+/// The provider-local artifact is the one byte-verified against this connector;
+/// the shared copy deliberately is not, because a single shared file serves
+/// every installed connector version and a differing copy is version drift, not
+/// a foreign artifact. The publication is secondary, so its failure never fails
+/// an approved registration, and it returns the path only when this call
+/// created it, so a failed config write can roll it back.
+fn publish_shared_skill(path: &Path) -> Option<PathBuf> {
+    if path.exists() {
+        let _ = write_skill(path);
+        return None;
+    }
+    write_skill(path).ok()?;
+    Some(path.to_path_buf())
+}
+
 fn plan_digest(
     kind: ProviderConfigKind,
     connector: &Path,
     config_path: &Path,
+    shared_skill_path: &Path,
     config_digest: &str,
     skill_digest: &str,
 ) -> Result<String, RegistrationError> {
@@ -525,6 +611,7 @@ fn plan_digest(
         kind.provider_id().as_bytes(),
         SERVER_KEY.as_bytes(),
         config_path.to_string_lossy().as_bytes(),
+        shared_skill_path.to_string_lossy().as_bytes(),
         config_digest.as_bytes(),
         skill_digest.as_bytes(),
         SKILL_SOURCE.as_bytes(),
@@ -550,9 +637,68 @@ mod tests {
             SERVER_KEY: {"command": "foreign"}
         }});
         assert_eq!(
-            ensure_owned_entry_unambiguous(&config, ProviderConfigKind::Cursor),
+            ensure_owned_entry_unambiguous(
+                &config,
+                ProviderConfigKind::Cursor,
+                Path::new("/absent-connector")
+            ),
             Err(RegistrationError::OwnedEntryAmbiguous)
         );
+    }
+
+    #[test]
+    fn same_connector_under_another_key_is_reported_instead_of_registered_twice() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-provider-duplicate-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let connector = root.join("lico-subagent-mcp");
+        fs::write(&connector, b"synthetic connector").unwrap();
+        let connector = fs::canonicalize(&connector).unwrap();
+
+        // The shape a superseded registration wrote: the connector's own
+        // reported identity as the key, no ownership fields, no `--caller`.
+        let mut servers = Map::new();
+        servers.insert(
+            crate::domain::subagent_mcp::SERVER_NAME.to_owned(),
+            json!({
+                "type": "stdio",
+                "command": connector.to_string_lossy(),
+                "args": [],
+                "env": {}
+            }),
+        );
+        let legacy_key = json!({"mcpServers": servers});
+        assert_eq!(
+            ensure_owned_entry_unambiguous(&legacy_key, ProviderConfigKind::ClaudeCode, &connector),
+            Err(RegistrationError::DuplicateConnectorEntry)
+        );
+
+        // The same connector under an arbitrary key, matched by its command.
+        let arbitrary_key = json!({"mcpServers": {
+            "some-server": {"command": connector.to_string_lossy()}
+        }});
+        assert_eq!(
+            ensure_owned_entry_unambiguous(
+                &arbitrary_key,
+                ProviderConfigKind::ClaudeCode,
+                &connector
+            ),
+            Err(RegistrationError::DuplicateConnectorEntry)
+        );
+
+        // A sibling entry for a different connector stays legal.
+        let other = root.join("other-connector");
+        fs::write(&other, b"synthetic connector").unwrap();
+        let unrelated = json!({"mcpServers": {
+            "other": {"command": fs::canonicalize(&other).unwrap().to_string_lossy()}
+        }});
+        assert_eq!(
+            ensure_owned_entry_unambiguous(&unrelated, ProviderConfigKind::ClaudeCode, &connector),
+            Ok(())
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -683,10 +829,12 @@ mod tests {
         let config_digest = digest_bytes(b"<absent>");
         let skill_path = root.join("skills/lico-up-subagents/SKILL.md");
         let skill_digest = digest_bytes(b"<absent>");
+        let shared_skill_path = root.join("shared/skills/lico-up-subagents/SKILL.md");
         let digest = plan_digest(
             ProviderConfigKind::Cursor,
             &connector,
             &config_path,
+            &shared_skill_path,
             &config_digest,
             &skill_digest,
         )
@@ -695,6 +843,7 @@ mod tests {
             kind: ProviderConfigKind::Cursor,
             connector,
             config_path: config_path.clone(),
+            shared_skill_path,
             config_digest,
             skill_path,
             skill_digest,
@@ -728,10 +877,12 @@ mod tests {
         let config_digest = digest_bytes(config_source);
         let skill_path = root.join("skills/lico-up-subagents/SKILL.md");
         let skill_digest = digest_bytes(b"<absent>");
+        let shared_skill_path = root.join("shared/skills/lico-up-subagents/SKILL.md");
         let digest = plan_digest(
             ProviderConfigKind::Cursor,
             &connector,
             &config_path,
+            &shared_skill_path,
             &config_digest,
             &skill_digest,
         )
@@ -740,6 +891,7 @@ mod tests {
             kind: ProviderConfigKind::Cursor,
             connector,
             config_path: config_path.clone(),
+            shared_skill_path: shared_skill_path.clone(),
             config_digest,
             skill_path: skill_path.clone(),
             skill_digest,
@@ -756,6 +908,30 @@ mod tests {
             cursor_context_environment()
         );
         assert_eq!(fs::read_to_string(skill_path).unwrap(), SKILL_SOURCE);
+        assert_eq!(fs::read_to_string(shared_skill_path).unwrap(), SKILL_SOURCE);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shared_surface_publication_serves_the_embedded_skill_as_an_unverified_copy() {
+        let root =
+            std::env::temp_dir().join(format!("licoup-provider-shared-{}", uuid::Uuid::new_v4()));
+        let shared = shared_skill_path_in(&root);
+        assert_eq!(
+            shared,
+            root.join(".agents")
+                .join("skills")
+                .join("lico-up-subagents")
+                .join("SKILL.md")
+        );
+        assert_eq!(publish_shared_skill(&shared), Some(shared.clone()));
+        assert_eq!(fs::read_to_string(&shared).unwrap(), SKILL_SOURCE);
+        // A copy that already exists is refreshed but never claimed as created,
+        // so a failed config write cannot remove another connector's copy.
+        assert_eq!(publish_shared_skill(&shared), None);
+        fs::write(&shared, b"another connector version").unwrap();
+        assert_eq!(publish_shared_skill(&shared), None);
+        assert_eq!(fs::read_to_string(&shared).unwrap(), SKILL_SOURCE);
         let _ = fs::remove_dir_all(root);
     }
 
