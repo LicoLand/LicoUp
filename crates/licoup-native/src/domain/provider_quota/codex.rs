@@ -29,6 +29,10 @@ const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_APP_SERVER_OUTPUT_BYTES: usize = 256 * 1024;
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(800);
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
+const LUNA_RESERVE_LABEL: &str = "Luna Reserve";
+const LUNA_RESERVE_LIMIT_ID: &str = "base_model_inference";
+const LUNA_RESERVE_MODEL: &str = "gpt-reserve";
+const APP_SERVER_CAPABILITY_REJECTED: &str = "codex_app_server_capability_rejected";
 
 type HostedFetch = dyn Fn(&str, &str) -> Result<Value, QuotaFetchError> + Send + Sync;
 type AppServerFetch = dyn Fn(&Path) -> Result<Value, QuotaFetchError> + Send + Sync;
@@ -186,6 +190,14 @@ fn normalize_wham_usage(
             windows.push(normalized);
         }
     }
+    if let Some(additional) = payload
+        .get("additional_rate_limits")
+        .or_else(|| payload.get("additionalRateLimits"))
+        .or_else(|| rate_limit.get("additional_rate_limits"))
+        .or_else(|| rate_limit.get("additionalRateLimits"))
+    {
+        append_hosted_additional_windows(&mut windows, additional);
+    }
     if identity.account_label.is_none() {
         identity.account_label = payload
             .get("account_email")
@@ -250,7 +262,88 @@ fn normalize_app_server_rate_limits(
             windows.push(normalized);
         }
     }
+    if let Some(additional) = payload
+        .get("rateLimitsByLimitId")
+        .or_else(|| payload.get("rate_limits_by_limit_id"))
+    {
+        append_app_server_additional_windows(&mut windows, additional);
+    }
     snapshot(windows, identity, captured_at)
+}
+
+fn string_field<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn is_luna_reserve_bucket(limit_id: Option<&str>, limit_name: Option<&str>) -> bool {
+    limit_id.is_some_and(|value| {
+        value.eq_ignore_ascii_case(LUNA_RESERVE_LIMIT_ID)
+            || value.eq_ignore_ascii_case("base-model-inference")
+    }) || limit_name.is_some_and(|value| value.eq_ignore_ascii_case(LUNA_RESERVE_MODEL))
+}
+
+fn append_hosted_additional_windows(windows: &mut Vec<QuotaWindow>, additional: &Value) {
+    if let Some(items) = additional.as_array() {
+        for item in items {
+            append_hosted_reserve_bucket(windows, None, item);
+        }
+    } else if let Some(items) = additional.as_object() {
+        for (key, item) in items {
+            append_hosted_reserve_bucket(windows, Some(key), item);
+        }
+    }
+}
+
+fn append_hosted_reserve_bucket(
+    windows: &mut Vec<QuotaWindow>,
+    map_key: Option<&str>,
+    bucket: &Value,
+) {
+    let limit_id = string_field(bucket, &["metered_feature", "meteredFeature"])
+        .or(map_key)
+        .or_else(|| string_field(bucket, &["limit_id", "limitId"]));
+    let limit_name = string_field(bucket, &["limit_name", "limitName"]);
+    if !is_luna_reserve_bucket(limit_id, limit_name) {
+        return;
+    }
+    let rate_limit = bucket
+        .get("rate_limit")
+        .or_else(|| bucket.get("rateLimit"))
+        .unwrap_or(bucket);
+    for (key, suffix) in [("primary_window", ""), ("secondary_window", " (secondary)")] {
+        let Some(window) = rate_limit.get(key) else {
+            continue;
+        };
+        let label = format!("{LUNA_RESERVE_LABEL}{suffix}");
+        if let Some(normalized) = normalize_hosted_window(window, &label) {
+            windows.push(normalized);
+        }
+    }
+}
+
+fn append_app_server_additional_windows(windows: &mut Vec<QuotaWindow>, additional: &Value) {
+    let Some(items) = additional.as_object() else {
+        return;
+    };
+    for (key, snapshot) in items {
+        let limit_id = string_field(snapshot, &["limitId", "limit_id"]).or(Some(key.as_str()));
+        let limit_name = string_field(snapshot, &["limitName", "limit_name"]);
+        if !is_luna_reserve_bucket(limit_id, limit_name) {
+            continue;
+        }
+        for (window_key, suffix) in [("primary", ""), ("secondary", " (secondary)")] {
+            let Some(window) = snapshot.get(window_key) else {
+                continue;
+            };
+            let label = format!("{LUNA_RESERVE_LABEL}{suffix}");
+            if let Some(normalized) = normalize_app_server_window(window, &label) {
+                windows.push(normalized);
+            }
+        }
+    }
 }
 
 fn normalize_app_server_window(window: &Value, label: &str) -> Option<QuotaWindow> {
@@ -299,6 +392,18 @@ fn reset_description(window_minutes: Option<u64>) -> String {
 /// lane. Stdin is closed after the request; shutdown escalates SIGTERM to
 /// SIGKILL so no app-server child outlives the exchange.
 fn app_server_rate_limits(executable: &Path) -> Result<Value, QuotaFetchError> {
+    match app_server_rate_limits_once(executable, true) {
+        Err(error) if error.code == APP_SERVER_CAPABILITY_REJECTED => {
+            app_server_rate_limits_once(executable, false)
+        }
+        result => result,
+    }
+}
+
+fn app_server_rate_limits_once(
+    executable: &Path,
+    supports_luna_reserve: bool,
+) -> Result<Value, QuotaFetchError> {
     use command_group::CommandGroup;
 
     let initialize = json!({
@@ -311,7 +416,11 @@ fn app_server_rate_limits(executable: &Path) -> Result<Value, QuotaFetchError> {
         "jsonrpc": "2.0",
         "id": 2,
         "method": "account/rateLimits/read",
-        "params": {}
+        "params": if supports_luna_reserve {
+            json!({"supportsLunaReserve": true})
+        } else {
+            Value::Null
+        }
     });
     let mut request = serde_json::to_vec(&initialize)
         .map_err(|_| QuotaFetchError::new("codex_app_server_request_invalid"))?;
@@ -398,6 +507,15 @@ pub(super) fn parse_rate_limits_response(bytes: &[u8]) -> Result<Value, QuotaFet
             && let Some(result) = value.get("result")
         {
             return Ok(result.clone());
+        }
+        if value.get("id").and_then(Value::as_i64) == Some(2)
+            && value
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_i64)
+                .is_some_and(|code| matches!(code, -32600 | -32602))
+        {
+            return Err(QuotaFetchError::new(APP_SERVER_CAPABILITY_REJECTED));
         }
     }
     Err(QuotaFetchError::new("codex_app_server_response_missing"))

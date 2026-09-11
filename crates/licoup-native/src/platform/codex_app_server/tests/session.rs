@@ -2,7 +2,10 @@ use super::support::{
     completed_outcome, config, failed_effect, initialize, open_thread, sent_messages, start_turn,
 };
 use crate::platform::codex_app_server::config::ProtocolConfig;
-use crate::platform::codex_app_server::limits::{THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID};
+use crate::platform::codex_app_server::limits::{
+    ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID,
+    THREAD_UNARCHIVE_REQUEST_ID,
+};
 use crate::platform::codex_app_server::model::ProtocolEffect;
 use crate::platform::native_agent_parser::adapters::codex::CodexParser;
 use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
@@ -24,6 +27,18 @@ fn thread_open_response(thread_id: &str) -> Value {
         "result": {
             "thread": {"id": thread_id, "cwd": "/workspace/project"},
             "cwd": "/workspace/project"
+        }
+    })
+}
+
+fn initialize_response() -> Value {
+    json!({
+        "id": INITIALIZE_REQUEST_ID,
+        "result": {
+            "userAgent": "codex-test",
+            "platformFamily": "test",
+            "platformOs": "test",
+            "codexHome": "/redacted"
         }
     })
 }
@@ -85,6 +100,132 @@ fn new_thread_sends_prompt_only_in_turn_start_stdio_message() {
     assert_eq!(turn_messages[0]["params"]["input"][0]["text"], prompt);
     assert_eq!(turn_messages[0]["params"]["model"], "explicit-model");
     assert_eq!(turn_messages[0]["params"]["effort"], "high");
+}
+
+#[test]
+fn luna_reserve_capability_read_routes_an_eligible_turn_without_changing_effective_settings() {
+    let mut protocol = CodexParser::new(config(
+        json!({"model": "gpt-5.6-luna", "reasoningEffort": "high"}),
+        "hello",
+        "",
+    ));
+
+    let initialized = sent_messages(protocol.handle_message(initialize_response()));
+    assert_eq!(initialized.len(), 2);
+    assert_eq!(initialized[0], json!({"method": "initialized"}));
+    assert_eq!(initialized[1]["method"], "account/rateLimits/read");
+    assert_eq!(initialized[1]["params"]["supportsLunaReserve"], true);
+
+    let thread_messages = sent_messages(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "result": {
+            "ordinaryUsageAllowed": false,
+            "rateLimits": {"primary": {"usedPercent": 100.0}},
+            "rateLimitsByLimitId": {
+                "base_model_inference": {
+                    "limitId": "base_model_inference",
+                    "limitName": "gpt-reserve",
+                    "normalModelSlug": "gpt-5.6-luna",
+                    "primary": {"usedPercent": 48.0}
+                }
+            },
+            "rateLimitUpsell": {
+                "banner_type": "luna_reserve",
+                "blocked_model_slug": "gpt-5.6-luna"
+            }
+        }
+    })));
+    assert_eq!(thread_messages[0]["method"], "thread/start");
+
+    let turn_messages = sent_messages(open_thread(&mut protocol));
+    assert_eq!(turn_messages[0]["params"]["model"], "gpt-reserve");
+    assert_eq!(turn_messages[0]["params"]["effort"], "high");
+
+    start_turn(&mut protocol);
+    let outcome = completed_outcome(protocol.handle_message(json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {
+                "id": "turn-1",
+                "status": "completed",
+                "items": [{"id": "agent-1", "type": "agentMessage", "text": "done"}]
+            }
+        }
+    })));
+    assert_eq!(outcome.effective.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(outcome.effective.reasoning_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn luna_reserve_capability_read_accepts_legacy_response_without_ordinary_usage_permission() {
+    let mut protocol = CodexParser::new(config(json!({"model": "gpt-5.6-luna"}), "hello", ""));
+    sent_messages(protocol.handle_message(initialize_response()));
+
+    let thread_messages = sent_messages(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "result": {
+            "rateLimits": {
+                "primary": {"rateLimitReachedType": "rate_limit_reached"}
+            },
+            "rateLimitsByLimitId": {
+                "base_model_inference": {
+                    "limitName": "gpt-reserve",
+                    "primary": {"usedPercent": 0.0}
+                }
+            },
+            "rateLimitUpsell": {"banner_type": "luna_reserve"}
+        }
+    })));
+    assert_eq!(thread_messages[0]["method"], "thread/start");
+
+    let turn_messages = sent_messages(open_thread(&mut protocol));
+    assert_eq!(turn_messages[0]["params"]["model"], "gpt-reserve");
+}
+
+#[test]
+fn ordinary_account_response_keeps_luna_on_the_normal_route() {
+    let mut protocol = CodexParser::new(config(
+        json!({"model": "gpt-5.6-luna", "reasoningEffort": "medium"}),
+        "hello",
+        "",
+    ));
+    sent_messages(protocol.handle_message(initialize_response()));
+    let thread_messages = sent_messages(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "result": {
+            "ordinaryUsageAllowed": true,
+            "rateLimits": {"primary": {"usedPercent": 12.0}}
+        }
+    })));
+    assert_eq!(thread_messages[0]["method"], "thread/start");
+    let turn_messages = sent_messages(open_thread(&mut protocol));
+    assert_eq!(turn_messages[0]["params"]["model"], "gpt-5.6-luna");
+}
+
+#[test]
+fn older_app_server_rejecting_capability_params_is_retried_with_null_params() {
+    let mut protocol = CodexParser::new(config(json!({"model": "gpt-5.6-luna"}), "hello", ""));
+    sent_messages(protocol.handle_message(initialize_response()));
+
+    let retry = sent_messages(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "error": {"code": -32602, "message": "invalid params"}
+    })));
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0]["method"], "account/rateLimits/read");
+    assert!(retry[0]["params"].is_null());
+
+    let thread_messages = sent_messages(protocol.handle_message(json!({
+        "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+        "result": {
+            "ordinaryUsageAllowed": false,
+            "rateLimits": {"primary": {"usedPercent": 100.0}}
+        }
+    })));
+    assert_eq!(thread_messages[0]["method"], "thread/start");
+    let turn_messages = sent_messages(open_thread(&mut protocol));
+    assert_eq!(turn_messages[0]["params"]["model"], "gpt-5.6-luna");
 }
 
 #[test]
