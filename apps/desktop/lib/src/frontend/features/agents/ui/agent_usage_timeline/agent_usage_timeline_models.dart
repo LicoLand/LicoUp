@@ -14,6 +14,8 @@ class AgentUsageTimelineData {
     required this.shareSeriesLabels,
     required this.groupTotal,
     required this.hasDailyBreakdown,
+    this.requestCounts = const {},
+    this.requestOnlyShareLabels = const [],
   });
 
   final List<AgentUsageSnapshot> snapshots;
@@ -22,6 +24,13 @@ class AgentUsageTimelineData {
   final List<String> shareSeriesLabels;
   final double groupTotal;
   final bool hasDailyBreakdown;
+
+  /// Event-level request counts per series label, independent of tokens.
+  final Map<String, int> requestCounts;
+
+  /// Labels whose source reported requests without any token fields. They are
+  /// never charted as tokens; the share list renders their request count.
+  final List<String> requestOnlyShareLabels;
 
   bool get isEmpty =>
       snapshots.isEmpty ||
@@ -34,6 +43,8 @@ class AgentUsageTimelineData {
   );
 
   double totalFor(String label) => seriesTotals[label] ?? 0;
+
+  int requestCountFor(String label) => requestCounts[label] ?? 0;
 
   double shareTotalFor(String label) {
     if (label != agentUsageOverflowSeriesLabel) {
