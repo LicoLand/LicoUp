@@ -86,6 +86,14 @@ impl AdapterRegistry {
     pub fn providers(&self) -> impl ExactSizeIterator<Item = &ProviderId> {
         self.runtimes.keys()
     }
+
+    /// Providers admitted as mesh callers. `register_pair` admits both
+    /// directions together, so this is also the mesh member set: the authority
+    /// for which Agents receive a discovery token and may occupy a Membership
+    /// seat. Ordered by provider id for deterministic publication.
+    pub fn caller_providers(&self) -> impl ExactSizeIterator<Item = &ProviderId> {
+        self.callers.keys()
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +106,6 @@ mod tests {
         assert!(registry.is_empty());
         assert_eq!(registry.len(), 0);
         assert_eq!(registry.get(AdapterId::new("codex")), None);
+        assert_eq!(registry.caller_providers().len(), 0);
     }
 }

@@ -13,7 +13,9 @@ Conversation store 共同组成。公开契约冻结在
 - 服务器：`lico-up-subagents` `0.12.0`
 - 传输：桌面客户端托管的已认证回环 Streamable HTTP 服务
 - 供应商入口：不含工具定义的轻量 stdio connector
-- 本 Mesh 供应商：Codex、Cursor、Antigravity
+- Mesh caller：由适配器注册表接纳为 caller 的 Agent。connector 通过 `--caller`
+  或 `LICOUP_MCP_CALLER_PROVIDER` 声明自身 Agent；该集合不在代码或文档中逐一列举，
+  因此不会与签发席位的注册表发生漂移
 
 准确且有序的工具目录为：
 
@@ -135,10 +137,19 @@ HTTP 只监听回环。私有 discovery 保存临时、按供应商区分的 bea
 客户端状态目录内加固。MCP session 与连接数有界；关闭时只删除当前 supervisor
 所属 generation。
 
+discovery 为每个已接纳 caller 发布恰好一个 token，因此 token 映射即成员集合。
+connector 从该集合读回自己的席位：已声明但无席位的 Agent 会在第一个 stdio 帧之前
+被拒绝，拒绝信息同时说明原因和服务当前接纳的 caller。完全不属于任何 Assistant 的
+名称，与"确实存在但无 Mesh 席位"的 Assistant 分开报告。token 映射只做结构化校验，
+因此本版本不认识的 caller 集合会作为文档被接纳，而不会被当作损坏文档拒绝。
+
 注册变更要求一次 digest 绑定且只能消费一次的批准。Cursor 与 Antigravity 只修改
-LicoUp 命名空间且确认归属的 entry；外来 entry、多个 Antigravity 配置候选或配置
-发生变化都会 fail closed。同一次批准还会通过供应商 user Skill Hub root 交付内嵌的
-`lico-up-subagents` Skill；外来 Skill 内容同样 fail closed。公开响应不包含配置正文、凭据、endpoint、原生 session、
+LicoUp 命名空间且确认归属的 entry；外来 entry、同一连接器挂在其它任意 key 下的条目、
+多个 Antigravity 配置候选或配置发生变化都会 fail closed。同一次批准还会通过供应商
+user Skill Hub root 交付内嵌的 `lico-up-subagents` Skill（外来 Skill 内容同样
+fail closed），并在共享的 `~/.agents/skills` 表面重新发布同一份内容。该共享副本是
+拷贝而非链接，且不做逐字节校验，因为该处一个文件服务所有已安装的连接器版本。
+公开响应不包含配置正文、凭据、endpoint、原生 session、
 路径、prompt 或 Agent output。
 
 ## 相互独立的验证路径

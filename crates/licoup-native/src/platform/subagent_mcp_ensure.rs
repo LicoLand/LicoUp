@@ -371,7 +371,7 @@ fn map_registration_error(
         ApprovalRequired => SubagentMcpEnsureError::ApprovalRequired,
         ApprovalMismatch | ConfigChanged => SubagentMcpEnsureError::ApprovalMismatch,
         ApprovalConsumed => SubagentMcpEnsureError::ApprovalConsumed,
-        ConfigAmbiguous => SubagentMcpEnsureError::ConfigAmbiguous,
+        ConfigAmbiguous | DuplicateConnectorEntry => SubagentMcpEnsureError::ConfigAmbiguous,
         ConfigPathUnsupported => SubagentMcpEnsureError::ConfigPathUnsupported,
         ConfigUnavailable | OwnedEntryAmbiguous | WriteFailed => {
             SubagentMcpEnsureError::InstallFailed
