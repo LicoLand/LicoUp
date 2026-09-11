@@ -2993,6 +2993,14 @@ impl ConversationStore {
 
     #[doc(hidden)]
     pub fn direct_turn(&self, turn_id: &str) -> StoreResult<DirectTurn> {
+        self.direct_turn_record(turn_id)?
+            .ok_or_else(|| anyhow!("direct_turn_not_found"))
+    }
+
+    /// The durable record for one direct turn, or `None` when the store holds
+    /// none. Callers that must tell "no such turn" apart from a failed read
+    /// use this, since the error of [`Self::direct_turn`] cannot.
+    pub fn direct_turn_record(&self, turn_id: &str) -> StoreResult<Option<DirectTurn>> {
         validate_identifier(turn_id, "direct_turn_id")?;
         self.with_connection(|connection| {
             connection
@@ -3002,6 +3010,7 @@ impl ConversationStore {
                     params![turn_id],
                     direct_turn_from_row,
                 )
+                .optional()
                 .map_err(Into::into)
         })
     }
