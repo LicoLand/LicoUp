@@ -2039,6 +2039,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-application"
+version = "0.2.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-client-state"
 version = "0.2.1"
 
