@@ -132,10 +132,9 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
 
         // One batched live pass resolves every card. The desktop transport runs
         // native requests through one serialized queue, so resolving cards one
-        // command at a time cost a round trip per card. A card whose own lookup
-        // fails keeps the warehouse card painted above.
+        // command at a time cost a round trip per card.
         final live = await _engine.catalog(live: true);
-        final recipes = live.recipes.isEmpty ? root.recipes : live.recipes;
+        final recipes = _withWarehouseFallback(root.recipes, live.recipes);
         final resolved = AgentHubCatalogSnapshot(
           recipes: recipes,
           scanGeneration: root.scanGeneration,
@@ -155,6 +154,28 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
       _resolvingRecipeIds.clear();
       publishChange();
     }
+  }
+
+  /// Batched live state, with the warehouse card retained for any member the
+  /// batch did not return.
+  ///
+  /// The batch is meant to cover every member, but a partial answer must never
+  /// shrink the catalog: a missing card would read as "this Agent is gone"
+  /// rather than "its live state is unknown". Order follows [warehouse], so the
+  /// card order stays the one the first paint established.
+  List<AgentHubRecipe> _withWarehouseFallback(
+    List<AgentHubRecipe> warehouse,
+    List<AgentHubRecipe> live,
+  ) {
+    if (live.isEmpty) {
+      return warehouse;
+    }
+    final byId = {for (final recipe in live) recipe.id: recipe};
+    final merged = [
+      for (final recipe in warehouse) byId.remove(recipe.id) ?? recipe,
+    ];
+    merged.addAll(byId.values);
+    return merged;
   }
 
   void _replaceRecipe(AgentHubRecipe recipe) {
