@@ -352,7 +352,10 @@ fn normalize_usage_summary(
 }
 
 fn on_demand_is_reportable(value: &Value) -> bool {
-    value.get("enabled").and_then(Value::as_bool).unwrap_or(false)
+    value
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
         || amount_usd(value, "used").is_some_and(|amount| amount > 0.0)
         || amount_usd(value, "limit").is_some_and(|amount| amount > 0.0)
 }
