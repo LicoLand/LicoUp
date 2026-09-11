@@ -77,6 +77,14 @@ fn main() {
                 &mut stdout,
                 r#"{"id":1,"result":{"codexHome":"/redacted","platformFamily":"test","platformOs":"test","userAgent":"fake-codex"}}"#,
             );
+        } else if line.contains("\"method\":\"account/rateLimits/read\"") {
+            let request_id = json_request_id(&line).unwrap_or_else(|| "4".to_owned());
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"id":{request_id},"result":{{"ordinaryUsageAllowed":true,"rateLimits":{{"primary":{{"usedPercent":0}}}}}}}}"#
+                ),
+            );
         } else if line.contains("\"method\":\"thread/resume\"") {
             let thread_id = json_string_field(&line, "threadId").unwrap_or_default();
             let request_id = json_request_id(&line).unwrap_or_else(|| "2".to_owned());
@@ -104,7 +112,7 @@ fn main() {
             }
         } else if line.contains("\"method\":\"thread/unarchive\"") {
             let thread_id = json_string_field(&line, "threadId").unwrap_or_default();
-            let request_id = json_request_id(&line).unwrap_or_else(|| "4".to_owned());
+            let request_id = json_request_id(&line).unwrap_or_else(|| "5".to_owned());
             unarchived = true;
             send(
                 &mut stdout,

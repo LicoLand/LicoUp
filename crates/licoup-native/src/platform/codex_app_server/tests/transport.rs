@@ -33,7 +33,7 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
 
     let result = execute(
         &executable.to_string_lossy(),
-        &json!({"model": "fake-explicit", "reasoningEffort": "high"}),
+        &json!({"model": "gpt-5.6-luna", "reasoningEffort": "high"}),
         "fake-child-private-prompt",
         "",
         Some(&temp_dir),
@@ -54,7 +54,7 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
             crate::platform::native_agent_parser::LifecycleStage::Completed
         ))
     ));
-    assert_eq!(result.effective.model.as_deref(), Some("fake-explicit"));
+    assert_eq!(result.effective.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(result.effective.reasoning_effort.as_deref(), Some("high"));
     assert!(result.stderr_truncated);
 
