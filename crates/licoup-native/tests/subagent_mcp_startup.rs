@@ -223,6 +223,33 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The caller check runs before the first stdio frame, so a refusal must name
+/// its cause on stderr: a stdio client otherwise reports only
+/// `CONNECTION_CLOSED` and the failure reads as a transport fault.
+#[test]
+fn refused_caller_is_reported_on_stderr_before_the_first_frame() {
+    for (arguments, marker) in [
+        (Vec::new(), "is not declared"),
+        (vec!["--caller", "claude"], "is not accepted"),
+    ] {
+        let output = Command::new(CONNECTOR_BIN)
+            .args(arguments)
+            .env_remove("LICOUP_MCP_CALLER_PROVIDER")
+            .stdin(Stdio::null())
+            .output()
+            .expect("connector probe");
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            output.stdout.is_empty(),
+            "stdout stays a pure protocol channel"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr text");
+        assert!(stderr.starts_with("lico-subagent-mcp: "), "{stderr}");
+        assert!(stderr.contains(marker), "{stderr}");
+        assert!(stderr.contains("claude-code"), "{stderr}");
+    }
+}
+
 #[test]
 fn owner_shutdown_removes_discovery_state() {
     let root = temp_root("shutdown");

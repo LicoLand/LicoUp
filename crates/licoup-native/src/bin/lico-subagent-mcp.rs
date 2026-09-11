@@ -20,6 +20,53 @@ use std::thread;
 
 const MAX_IN_FLIGHT_FRAMES: usize = 32;
 
+/// Stdout carries protocol frames only, so every startup refusal is reported on
+/// stderr. Without one the client sees a bare transport-level connection close
+/// and reads a refused caller as a connectivity fault.
+const DIAGNOSTIC_PREFIX: &str = "lico-subagent-mcp";
+
+/// Why this process refused to start. Each cause names itself so the client can
+/// act without inspecting anything else.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CallerRejection {
+    Undeclared,
+    Unaccepted,
+    Conflicting,
+    Unexpected,
+}
+
+impl std::fmt::Display for CallerRejection {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let accepted = licoup_native::domain::subagent_mcp::CALLER_PROVIDERS.join(", ");
+        match self {
+            Self::Undeclared => write!(
+                formatter,
+                "caller provider is not declared; pass --caller <provider> or set \
+                 LICOUP_MCP_CALLER_PROVIDER (accepted: {accepted})"
+            ),
+            Self::Unaccepted => {
+                write!(
+                    formatter,
+                    "caller provider is not accepted (accepted: {accepted})"
+                )
+            }
+            Self::Conflicting => write!(
+                formatter,
+                "--caller and LICOUP_MCP_CALLER_PROVIDER disagree; declare exactly one caller \
+                 provider"
+            ),
+            Self::Unexpected => write!(
+                formatter,
+                "unexpected arguments; the accepted form is --caller <provider>"
+            ),
+        }
+    }
+}
+
+fn report(reason: impl std::fmt::Display) {
+    eprintln!("{DIAGNOSTIC_PREFIX}: {reason}");
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -31,11 +78,13 @@ fn run() -> Result<(), ()> {
     let provider = caller_provider(
         env::args().skip(1),
         env::var("LICOUP_MCP_CALLER_PROVIDER").ok(),
-    )?;
+    )
+    .map_err(report)?;
     // Missing discovery exits before the first stdio frame. Antigravity IDE
     // then reports EOF on `initialize`. The owned MCP `env` block must bind
     // `LICOUP_PORTABLE_DIR` so this lookup can find the desktop supervisor.
-    let discovery = load_connector_discovery(&provider).map_err(|_| ())?;
+    // The reason is a stable code, so the diagnostic stays privacy-safe.
+    let discovery = load_connector_discovery(&provider).map_err(report)?;
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let writer = Arc::new(Mutex::new(io::stdout()));
@@ -184,20 +233,26 @@ fn initialize_protocol_revision(message: &licoup_native::core::mcp::McpMessage) 
 fn caller_provider(
     args: impl IntoIterator<Item = String>,
     environment: Option<String>,
-) -> Result<String, ()> {
+) -> Result<String, CallerRejection> {
     let args = args.into_iter().collect::<Vec<_>>();
     let argument = match args.as_slice() {
         [] => None,
         [flag, provider] if flag == "--caller" => Some(provider.as_str()),
-        _ => return Err(()),
+        _ => return Err(CallerRejection::Unexpected),
     };
-    let environment = environment.as_deref().filter(|value| !value.is_empty());
+    // A blank declaration declares nothing, so it reports as undeclared rather
+    // than as an unaccepted provider name.
+    let environment = environment
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
     if argument.is_some() && environment.is_some() && argument != environment {
-        return Err(());
+        return Err(CallerRejection::Conflicting);
     }
-    let provider = argument.or(environment).ok_or(())?;
+    let provider = argument
+        .or(environment)
+        .ok_or(CallerRejection::Undeclared)?;
     if !licoup_native::domain::subagent_mcp::CALLER_PROVIDERS.contains(&provider) {
-        return Err(());
+        return Err(CallerRejection::Unaccepted);
     }
     Ok(provider.to_owned())
 }
@@ -216,13 +271,66 @@ mod tests {
             caller_provider(std::iter::empty(), Some("codex".into())).unwrap(),
             "codex"
         );
-        assert!(
-            caller_provider(["--caller".into(), "cursor".into()], Some("codex".into())).is_err()
+        assert_eq!(
+            caller_provider(["--caller".into(), "cursor".into()], Some("codex".into()))
+                .unwrap_err(),
+            CallerRejection::Conflicting
         );
-        assert!(caller_provider(["--caller".into(), "other".into()], None).is_err());
+        assert_eq!(
+            caller_provider(["--caller".into(), "other".into()], None).unwrap_err(),
+            CallerRejection::Unaccepted
+        );
         assert_eq!(
             caller_provider(["--caller".into(), "claude-code".into()], None).unwrap(),
             "claude-code"
+        );
+    }
+
+    #[test]
+    fn refused_callers_carry_an_actionable_diagnostic() {
+        assert_eq!(
+            caller_provider(std::iter::empty(), None).unwrap_err(),
+            CallerRejection::Undeclared
+        );
+        assert_eq!(
+            caller_provider(std::iter::empty(), Some("   ".into())).unwrap_err(),
+            CallerRejection::Undeclared
+        );
+        assert_eq!(
+            caller_provider(["--caller".into(), "claude".into()], None).unwrap_err(),
+            CallerRejection::Unaccepted
+        );
+        assert_eq!(
+            caller_provider(["--caller".into()], None).unwrap_err(),
+            CallerRejection::Unexpected
+        );
+        assert_eq!(
+            caller_provider(["--caller".into(), "cursor".into(), "extra".into()], None)
+                .unwrap_err(),
+            CallerRejection::Unexpected
+        );
+
+        let undeclared = CallerRejection::Undeclared.to_string();
+        assert!(undeclared.contains("is not declared"), "{undeclared}");
+        assert!(
+            undeclared.contains("LICOUP_MCP_CALLER_PROVIDER"),
+            "{undeclared}"
+        );
+        for provider in licoup_native::domain::subagent_mcp::CALLER_PROVIDERS {
+            assert!(undeclared.contains(provider), "{undeclared}");
+        }
+        let unaccepted = CallerRejection::Unaccepted.to_string();
+        assert!(unaccepted.contains("is not accepted"), "{unaccepted}");
+        assert!(unaccepted.contains("claude-code"), "{unaccepted}");
+        assert!(
+            CallerRejection::Conflicting
+                .to_string()
+                .contains("declare exactly one caller provider")
+        );
+        assert!(
+            CallerRejection::Unexpected
+                .to_string()
+                .contains("--caller <provider>")
         );
     }
 

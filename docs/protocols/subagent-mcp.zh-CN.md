@@ -136,9 +136,12 @@ HTTP 只监听回环。私有 discovery 保存临时、按供应商区分的 bea
 所属 generation。
 
 注册变更要求一次 digest 绑定且只能消费一次的批准。Cursor 与 Antigravity 只修改
-LicoUp 命名空间且确认归属的 entry；外来 entry、多个 Antigravity 配置候选或配置
-发生变化都会 fail closed。同一次批准还会通过供应商 user Skill Hub root 交付内嵌的
-`lico-up-subagents` Skill；外来 Skill 内容同样 fail closed。公开响应不包含配置正文、凭据、endpoint、原生 session、
+LicoUp 命名空间且确认归属的 entry；外来 entry、同一连接器挂在其它任意 key 下的条目、
+多个 Antigravity 配置候选或配置发生变化都会 fail closed。同一次批准还会通过供应商
+user Skill Hub root 交付内嵌的 `lico-up-subagents` Skill（外来 Skill 内容同样
+fail closed），并在共享的 `~/.agents/skills` 表面重新发布同一份内容。该共享副本是
+拷贝而非链接，且不做逐字节校验，因为该处一个文件服务所有已安装的连接器版本。
+公开响应不包含配置正文、凭据、endpoint、原生 session、
 路径、prompt 或 Agent output。
 
 ## 相互独立的验证路径
