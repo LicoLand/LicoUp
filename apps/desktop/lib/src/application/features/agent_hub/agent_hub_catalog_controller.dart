@@ -130,9 +130,12 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
           ..addAll(root.recipes.map((recipe) => recipe.id));
         publishChange();
 
-        final recipes = await Future.wait([
-          for (final recipe in root.recipes) _resolveRecipe(recipe),
-        ]);
+        // One batched live pass resolves every card. The desktop transport runs
+        // native requests through one serialized queue, so resolving cards one
+        // command at a time cost a round trip per card. A card whose own lookup
+        // fails keeps the warehouse card painted above.
+        final live = await _engine.catalog(live: true);
+        final recipes = live.recipes.isEmpty ? root.recipes : live.recipes;
         final resolved = AgentHubCatalogSnapshot(
           recipes: recipes,
           scanGeneration: root.scanGeneration,
@@ -152,21 +155,6 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
       _resolvingRecipeIds.clear();
       publishChange();
     }
-  }
-
-  Future<AgentHubRecipe> _resolveRecipe(AgentHubRecipe fallback) async {
-    var resolved = fallback;
-    try {
-      final snapshot = await _engine.catalog(recipeId: fallback.id);
-      resolved = _recipeFrom(snapshot, fallback.id) ?? fallback;
-      _replaceRecipe(resolved);
-    } on Object {
-      // One failed probe must not discard the warehouse card or block peers.
-    } finally {
-      _resolvingRecipeIds.remove(fallback.id);
-      publishChange();
-    }
-    return resolved;
   }
 
   void _replaceRecipe(AgentHubRecipe recipe) {
