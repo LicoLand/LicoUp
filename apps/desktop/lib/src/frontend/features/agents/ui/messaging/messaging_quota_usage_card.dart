@@ -149,6 +149,15 @@ class _QuotaWindowRow extends StatelessWidget {
             formatQuotaDuration(strings, remaining),
           )
         : window.resetDescription;
+    // Currency-metered providers also carry the absolute budget; percent-only
+    // providers render the same row as before.
+    final used = window.used;
+    final limit = window.limit;
+    final amountText = used == null
+        ? ''
+        : limit != null && limit > 0
+        ? strings.quotaWindowAmount(formatQuotaAmount(used), formatQuotaAmount(limit))
+        : strings.quotaWindowSpent(formatQuotaAmount(used));
     // Section layout follows the CodexBar usage card one to one: window
     // label, full-width stadium progress bar, then a row with the used
     // percentage on the left and the reset countdown on the right.
@@ -189,6 +198,15 @@ class _QuotaWindowRow extends StatelessWidget {
             ],
           ],
         ),
+        if (amountText.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            amountText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textMuted, fontSize: 11.5),
+          ),
+        ],
       ],
     );
   }
@@ -261,3 +279,7 @@ String formatQuotaDuration(LicoStrings strings, Duration value) {
   final days = value.inDays;
   return strings.quotaDurationDaysHours(days, hours - days * 24);
 }
+
+/// Provider budgets are metered in US dollars by every current source, so the
+/// card formats one unit rather than guessing a locale currency.
+String formatQuotaAmount(double value) => '\$${value.toStringAsFixed(2)}';

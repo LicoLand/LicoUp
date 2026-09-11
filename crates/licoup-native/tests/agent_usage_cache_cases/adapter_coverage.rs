@@ -80,6 +80,9 @@ fn native_adapters_prefer_exact_metadata_from_bounded_standard_stores() {
     assert_eq!(copilot["agents"][0]["history"]["totalTokens"], 25);
     assert_eq!(copilot["agents"][0]["confidence"], "high");
 
+    // Cursor's local stores are not a billing ledger: bubble counters in a
+    // workspace database never become reported usage, and an unavailable
+    // hosted session fails closed with a sanitized warning.
     let cursor_workspace =
         home.join("Library/Application Support/Cursor/User/workspaceStorage/workspace");
     fs::create_dir_all(&cursor_workspace).unwrap();
@@ -105,11 +108,14 @@ fn native_adapters_prefer_exact_metadata_from_bounded_standard_stores() {
     drop(connection);
     fs::write(cursor_workspace.join("conversation.json"), b"{}").unwrap();
     let cursor = scan_agent(&home, &state, "cursor");
-    assert_eq!(cursor["agents"][0]["history"]["totalTokens"], 37);
+    assert_eq!(cursor["agents"][0]["history"]["totalTokens"], 0);
     assert_eq!(
-        cursor["agents"][0]["history"]["scanCache"]["discoveredSources"],
-        1
+        cursor["agents"][0]["history"]["source"],
+        "cursor-hosted-usage-events"
     );
+    assert!(cursor["warnings"].as_array().unwrap().iter().any(|warning| {
+        warning["code"] == "cursor_auth_token_unreadable" && warning["agentId"] == "cursor"
+    }));
 
     fs::remove_dir_all(home).unwrap();
     fs::remove_dir_all(state).unwrap();

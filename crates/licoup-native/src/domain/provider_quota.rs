@@ -20,5 +20,11 @@ mod scheduler;
 
 pub use command::snapshot;
 
+/// Cursor session resolution is shared with the hosted Cursor usage ledger in
+/// `domain::agent_usage`: one owner for the state-store read, the JWT expiry
+/// check, and the WorkOS cookie derivation, so both consumers send the same
+/// in-memory credential and neither persists it.
+pub(crate) use cursor::{resolve_session, state_db_path};
+
 #[cfg(test)]
 mod tests;

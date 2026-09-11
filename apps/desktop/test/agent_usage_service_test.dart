@@ -324,8 +324,8 @@ void main() {
     },
   );
 
-  test('requires schemaVersion to be the exact integer 6', () {
-    for (final schemaVersion in <Object>[6.0, 6.9, '6']) {
+  test('requires schemaVersion to be the exact integer 7', () {
+    for (final schemaVersion in <Object>[7.0, 7.9, '7']) {
       expect(
         () => AgentUsageReport.fromJson({
           'schemaVersion': schemaVersion,

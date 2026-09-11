@@ -52,7 +52,16 @@ fn cursor_usage_payload() -> Value {
             "plan": {
                 "totalPercentUsed": 42.5,
                 "autoPercentUsed": 50.0,
-                "apiPercentUsed": 10.0
+                "apiPercentUsed": 10.0,
+                "used": 850,
+                "limit": 2000,
+                "remaining": 1150
+            },
+            "onDemand": {
+                "enabled": true,
+                "used": 250,
+                "limit": 5000,
+                "remaining": 4750
             }
         },
         "billingCycleStart": "2033-05-01T00:00:00Z",
@@ -318,16 +327,26 @@ fn provider_quota_cursor_source_normalizes_synthetic_payload() {
     assert_eq!(snapshot.provider, QuotaProvider::Cursor);
     assert_eq!(snapshot.status, QuotaStatus::Live);
     assert_eq!(snapshot.captured_at, SYNTHETIC_NOW);
-    assert_eq!(snapshot.windows.len(), 3);
+    assert_eq!(snapshot.windows.len(), 4);
     let plan = &snapshot.windows[0];
     assert_eq!(plan.label, "plan");
     assert_eq!(plan.used_percent, 42.5);
     assert_eq!(plan.window_minutes, Some(44640));
     assert_eq!(plan.resets_at.as_deref(), Some("2033-06-01T00:00:00Z"));
+    // Cursor meters plan and on-demand budgets in cents; the contract carries
+    // USD so the card can show used/limit next to the percentage.
+    assert_eq!(plan.used, Some(8.5));
+    assert_eq!(plan.limit, Some(20.0));
+    assert_eq!(plan.remaining, Some(11.5));
     assert_eq!(snapshot.windows[1].label, "auto");
     assert_eq!(snapshot.windows[1].used_percent, 50.0);
     assert_eq!(snapshot.windows[2].label, "api");
     assert_eq!(snapshot.windows[2].used_percent, 10.0);
+    let on_demand = &snapshot.windows[3];
+    assert_eq!(on_demand.label, "on-demand");
+    assert_eq!(on_demand.used, Some(2.5));
+    assert_eq!(on_demand.limit, Some(50.0));
+    assert_eq!(on_demand.used_percent, 5.0);
     assert_eq!(snapshot.identity.plan.as_deref(), Some("pro"));
     assert_eq!(
         snapshot.identity.account_label.as_deref(),
@@ -336,6 +355,49 @@ fn provider_quota_cursor_source_normalizes_synthetic_payload() {
 
     let wire = snapshot.wire_value().to_string();
     assert!(!wire.contains(&token));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_quota_cursor_source_keeps_on_demand_distinct_from_plan() {
+    let root = temp_root("cursor-on-demand");
+    let token = active_cursor_token();
+    let db_path = write_cursor_state_db(&root, &token);
+    let payload = json!({
+        "individualUsage": {
+            "plan": {"totalPercentUsed": 12.0, "used": 240, "limit": 2000},
+            // A disabled individual budget reports nothing; the shared team
+            // budget is the account's real on-demand meter.
+            "onDemand": {"enabled": false, "used": 0, "limit": null, "remaining": null}
+        },
+        "teamUsage": {
+            "onDemand": {"enabled": true, "used": 1500, "limit": 10000, "remaining": 8500}
+        },
+        "billingCycleStart": "2033-05-01T00:00:00Z",
+        "billingCycleEnd": "2033-06-01T00:00:00Z",
+        "membershipType": "pro"
+    });
+    let source = cursor::CursorSource::for_testing(
+        Some(db_path),
+        Box::new(move |url, _| {
+            if url == "https://cursor.com/api/usage-summary" {
+                return Ok(payload.clone());
+            }
+            Ok(json!({}))
+        }),
+    );
+
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+    let labels = snapshot
+        .windows
+        .iter()
+        .map(|window| window.label.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["plan", "on-demand"]);
+    let on_demand = &snapshot.windows[1];
+    assert_eq!(on_demand.used, Some(15.0));
+    assert_eq!(on_demand.limit, Some(100.0));
+    assert_eq!(on_demand.used_percent, 15.0);
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -601,6 +663,7 @@ fn provider_quota_scheduler_backoff_cadence_staleness_and_backfill() {
         window_minutes: Some(300),
         resets_at: Some("2033-05-18T03:33:20Z".to_owned()),
         reset_description: String::new(),
+        ..super::contract::QuotaWindow::default()
     }];
     let mut fresh = vec![super::contract::QuotaWindow {
         label: "session".to_owned(),
@@ -608,6 +671,7 @@ fn provider_quota_scheduler_backoff_cadence_staleness_and_backfill() {
         window_minutes: Some(300),
         resets_at: None,
         reset_description: String::new(),
+        ..super::contract::QuotaWindow::default()
     }];
     scheduler::backfill_reset_timestamps(&mut fresh, &cached);
     assert_eq!(fresh[0].resets_at.as_deref(), Some("2033-05-18T03:33:20Z"));
@@ -650,6 +714,7 @@ fn synthetic_snapshot(provider: QuotaProvider, resets_at: Option<&str>) -> Provi
             window_minutes: Some(300),
             resets_at: resets_at.map(str::to_owned),
             reset_description: "5-hour window".to_owned(),
+            ..super::contract::QuotaWindow::default()
         }],
         identity: Default::default(),
         captured_at: SYNTHETIC_NOW.to_owned(),

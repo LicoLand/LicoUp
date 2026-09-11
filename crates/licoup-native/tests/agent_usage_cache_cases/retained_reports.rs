@@ -10,7 +10,7 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
             json!({
                 "items": [
                     {
-                        "schemaVersion": 6,
+                        "schemaVersion": 7,
                         "mode": "local-token-usage",
                         "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-10T12:00:00Z",
@@ -18,7 +18,7 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
                         "agents": []
                     },
                     {
-                        "schemaVersion": 6,
+                        "schemaVersion": 7,
                         "mode": "invalid-mode",
                         "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-11T12:00:00Z",
@@ -26,7 +26,7 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
                         "agents": []
                     },
                     {
-                        "schemaVersion": 6,
+                        "schemaVersion": 7,
                         "mode": "local-token-usage",
                         "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-09T12:00:00Z",
@@ -51,7 +51,7 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
     let retained = store.read_collection("agent-usage-reports").unwrap();
     let items = retained["items"].as_array().unwrap();
     assert_eq!(items.len(), 2);
-    assert!(items.iter().all(|item| item["schemaVersion"] == 6));
+    assert!(items.iter().all(|item| item["schemaVersion"] == 7));
     assert!(items.iter().all(|item| item["mode"] == "local-token-usage"));
     assert!(
         items

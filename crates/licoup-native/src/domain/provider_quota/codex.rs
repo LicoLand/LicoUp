@@ -228,6 +228,7 @@ fn normalize_hosted_window(window: &Value, label: &str) -> Option<QuotaWindow> {
         window_minutes,
         resets_at,
         reset_description: reset_description(window_minutes),
+        ..QuotaWindow::default()
     })
 }
 
@@ -277,6 +278,7 @@ fn normalize_app_server_window(window: &Value, label: &str) -> Option<QuotaWindo
         window_minutes,
         resets_at,
         reset_description: reset_description(window_minutes),
+        ..QuotaWindow::default()
     })
 }
 

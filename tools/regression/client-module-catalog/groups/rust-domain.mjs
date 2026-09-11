@@ -246,14 +246,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.agent-usage.native-cache",
       kind: "rust-domain",
-      summary: "Exact native metadata readers with append cursors and immutable historical day/model rollups",
+      summary: "Hosted Cursor ledger plus exact native metadata readers with append cursors and immutable historical day/model rollups",
       inputs: [
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser.rs",
-        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/openclaw.rs",

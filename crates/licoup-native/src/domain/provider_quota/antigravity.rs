@@ -272,6 +272,7 @@ fn normalize_bucket(bucket: &Value, model_label: &Option<String>) -> Option<Quot
             .and_then(Value::as_str)
             .map(str::to_owned)
             .unwrap_or_else(|| "bucket reset".to_owned()),
+        ..QuotaWindow::default()
     })
 }
 
