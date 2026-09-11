@@ -447,7 +447,7 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
 }
 
 class AgentUsageReport {
-  static const currentSchemaVersion = 6;
+  static const currentSchemaVersion = 7;
   static const currentMode = 'local-token-usage';
   static const currentTokenSourceMode = 'native-metadata-first-incremental';
 

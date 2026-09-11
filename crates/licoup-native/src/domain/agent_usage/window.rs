@@ -13,6 +13,9 @@ pub(super) struct UsageWindow {
     pub(super) days: u64,
     pub(super) timezone_offset_minutes: i64,
     pub(super) timezone_transitions: Vec<TimezoneTransition>,
+    /// Scan instant the window was built from; hosted sources use it for
+    /// credential expiry and query bounds instead of reading the wall clock.
+    pub(super) now: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,6 +51,7 @@ impl UsageWindow {
             days,
             timezone_offset_minutes,
             timezone_transitions,
+            now: now_utc,
         }
     }
 
@@ -98,6 +102,7 @@ impl UsageWindow {
             days: u64::MAX,
             timezone_offset_minutes: self.timezone_offset_minutes,
             timezone_transitions: self.timezone_transitions.clone(),
+            now: self.now,
         }
     }
 
@@ -110,7 +115,31 @@ impl UsageWindow {
             days: 1,
             timezone_offset_minutes: self.timezone_offset_minutes,
             timezone_transitions: self.timezone_transitions.clone(),
+            now: self.now,
         }
+    }
+
+    /// UTC epoch milliseconds of a local calendar day's midnight, resolved
+    /// through the window's offset and transition table. Hosted fetches use it
+    /// to snap their query start to the consumer's own day boundary.
+    pub(super) fn local_day_start_millis(&self, day: &str) -> Option<i64> {
+        let value = day.trim();
+        if value.len() != 10 {
+            return None;
+        }
+        let year = value.get(0..4)?.parse().ok()?;
+        let month = Month::try_from(value.get(5..7)?.parse::<u8>().ok()?).ok()?;
+        let date = Date::from_calendar_date(year, month, value.get(8..10)?.parse().ok()?).ok()?;
+        let midnight = date.midnight().assume_utc();
+        let offset = timezone_offset_at(
+            midnight.unix_timestamp(),
+            self.timezone_offset_minutes,
+            &self.timezone_transitions,
+        );
+        midnight
+            .unix_timestamp()
+            .checked_sub(offset.saturating_mul(60))?
+            .checked_mul(1000)
     }
 
     /// Coarse UTC bounds for indexed millisecond timestamp queries. The

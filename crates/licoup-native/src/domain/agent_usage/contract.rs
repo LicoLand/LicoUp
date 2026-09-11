@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) const AGENT_USAGE_SCHEMA_VERSION: u32 = 6;
+pub(super) const AGENT_USAGE_SCHEMA_VERSION: u32 = 7;
 pub(super) const AGENT_USAGE_MODE: &str = "local-token-usage";
 pub(super) const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "native-metadata-first-incremental";
 pub(super) const REPORT_COLLECTION: &str = "agent-usage-reports";
@@ -83,6 +83,9 @@ pub(super) struct HistoryUsageSummary {
     pub(super) estimated_total_tokens: u64,
     pub(super) explicit_records: u64,
     pub(super) estimated_records: u64,
+    /// Present usage events whose provider payload carried no token fields.
+    /// They are counted as requests only: no token value is invented for them.
+    pub(super) token_unavailable_records: u64,
     pub(super) source_paths: BTreeSet<String>,
     pub(super) skipped: Vec<Value>,
     pub(super) daily_usage: BTreeMap<String, DailyUsageSummary>,
@@ -106,6 +109,16 @@ impl HistoryUsageSummary {
     }
 
     pub(super) fn confidence(&self) -> &'static str {
+        if self.token_unavailable_records > 0 {
+            // A source that omits token fields for part of its requests can
+            // never be high confidence: the missing consumption is real and
+            // unbounded, so the totals stay explicitly partial.
+            return if self.explicit_records > 0 {
+                "medium"
+            } else {
+                "low"
+            };
+        }
         if self.explicit_records > 0 && self.estimated_records == 0 {
             "high"
         } else if self.explicit_records > 0 && self.estimated_records > 0 {
@@ -131,6 +144,7 @@ impl HistoryUsageSummary {
             "tokenSourceBreakdown": {
                 "explicitRecords": self.explicit_records,
                 "estimatedRecords": self.estimated_records,
+                "tokenUnavailableRequests": self.token_unavailable_records,
                 "explicitPromptTokens": self.explicit_prompt_tokens,
                 "explicitCachedInputTokens": self.explicit_cached_input_tokens,
                 "explicitCompletionTokens": self.explicit_completion_tokens,
@@ -142,6 +156,7 @@ impl HistoryUsageSummary {
             "dailyUsage": self.daily_usage_json(),
             "source": self.source.unwrap_or("native-history-adapters"),
             "confidence": self.confidence(),
+            "tokenUnavailableRequests": self.token_unavailable_records,
             "scanCache": self.scan_cache
         })
     }
@@ -184,6 +199,47 @@ impl HistoryUsageSummary {
         }
     }
 
+    /// Record one present-but-tokenless usage event: a real request whose
+    /// provider payload carried no token fields. Nothing is estimated for it;
+    /// it only raises the request counters and the day's visibility.
+    pub(super) fn add_token_unavailable_request(
+        &mut self,
+        date_key: Option<String>,
+        model: Option<String>,
+    ) {
+        self.token_unavailable_records = self.token_unavailable_records.saturating_add(1);
+        if let Some(date_key) = date_key.filter(|value| !value.trim().is_empty()) {
+            self.daily_usage
+                .entry(date_key)
+                .or_default()
+                .add_token_unavailable_request(model);
+        }
+    }
+
+    /// Re-adopt one already-published local day verbatim (hosted incremental
+    /// baseline). The day's counters are trusted as previously published; no
+    /// token value is recomputed and no estimate is introduced.
+    pub(super) fn adopt_daily_summary(&mut self, date: String, usage: DailyUsageSummary) {
+        self.message_count = self.message_count.saturating_add(usage.message_count);
+        self.explicit_prompt_tokens = self
+            .explicit_prompt_tokens
+            .saturating_add(usage.prompt_tokens);
+        self.explicit_cached_input_tokens = self
+            .explicit_cached_input_tokens
+            .saturating_add(usage.cached_input_tokens);
+        self.explicit_completion_tokens = self
+            .explicit_completion_tokens
+            .saturating_add(usage.completion_tokens);
+        self.explicit_total_tokens = self
+            .explicit_total_tokens
+            .saturating_add(usage.total_tokens);
+        self.explicit_records = self.explicit_records.saturating_add(usage.explicit_records);
+        self.token_unavailable_records = self
+            .token_unavailable_records
+            .saturating_add(usage.token_unavailable_requests);
+        self.daily_usage.insert(date, usage);
+    }
+
     pub(super) fn merge(&mut self, other: &Self) {
         self.session_count = self.session_count.saturating_add(other.session_count);
         self.message_count = self.message_count.saturating_add(other.message_count);
@@ -212,6 +268,9 @@ impl HistoryUsageSummary {
         self.estimated_records = self
             .estimated_records
             .saturating_add(other.estimated_records);
+        self.token_unavailable_records = self
+            .token_unavailable_records
+            .saturating_add(other.token_unavailable_records);
         for (date, usage) in &other.daily_usage {
             self.daily_usage
                 .entry(date.clone())
@@ -232,6 +291,8 @@ impl HistoryUsageSummary {
                     "completionTokens": usage.completion_tokens,
                     "totalTokens": usage.total_tokens,
                     "messageCount": usage.message_count,
+                    "requestCount": usage.request_count,
+                    "tokenUnavailableRequests": usage.token_unavailable_requests,
                     "modelUsage": usage.model_usage_totals_json(),
                     "modelTokenUsage": usage.model_token_usage_json(),
                     "explicitRecords": usage.explicit_records,
@@ -270,6 +331,11 @@ pub(super) struct DailyUsageSummary {
     pub(super) estimated_records: u64,
     pub(super) estimated_prompt_tokens: u64,
     pub(super) estimated_completion_tokens: u64,
+    /// Event-level request counters, populated by sources that ledger
+    /// individual requests (the hosted Cursor ledger). Aggregate-only sources
+    /// leave them at zero.
+    pub(super) request_count: u64,
+    pub(super) token_unavailable_requests: u64,
     pub(super) model_usage: BTreeMap<String, ModelTokenUsageSummary>,
 }
 
@@ -284,6 +350,7 @@ impl DailyUsageSummary {
             .saturating_add(usage.completion_tokens);
         self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens);
         self.message_count = self.message_count.saturating_add(1);
+        self.request_count = self.request_count.saturating_add(1);
         match usage.accuracy {
             UsageAccuracy::Exact => {
                 self.explicit_records = self.explicit_records.saturating_add(1);
@@ -302,13 +369,29 @@ impl DailyUsageSummary {
             .model
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_owned());
-        self.model_usage.entry(model).or_default().add(
+        let entry = self.model_usage.entry(model).or_default();
+        entry.record_request();
+        entry.add(
             usage.prompt_tokens,
             usage.cached_input_tokens,
             usage.completion_tokens,
             usage.total_tokens,
             usage.accuracy,
         );
+    }
+
+    /// One tokenless request for a model: counted, never converted to tokens.
+    fn add_token_unavailable_request(&mut self, model: Option<String>) {
+        let model = model
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_owned());
+        self.message_count = self.message_count.saturating_add(1);
+        self.request_count = self.request_count.saturating_add(1);
+        self.token_unavailable_requests = self.token_unavailable_requests.saturating_add(1);
+        self.model_usage
+            .entry(model)
+            .or_default()
+            .record_token_unavailable_request();
     }
 
     pub(super) fn add_model_usage(
@@ -364,6 +447,10 @@ impl DailyUsageSummary {
             .saturating_add(other.completion_tokens);
         self.total_tokens = self.total_tokens.saturating_add(other.total_tokens);
         self.message_count = self.message_count.saturating_add(other.message_count);
+        self.request_count = self.request_count.saturating_add(other.request_count);
+        self.token_unavailable_requests = self
+            .token_unavailable_requests
+            .saturating_add(other.token_unavailable_requests);
         self.explicit_records = self.explicit_records.saturating_add(other.explicit_records);
         self.estimated_records = self
             .estimated_records
@@ -405,9 +492,21 @@ pub(super) struct ModelTokenUsageSummary {
     pub(super) total_tokens: u64,
     pub(super) estimated_prompt_tokens: u64,
     pub(super) estimated_completion_tokens: u64,
+    pub(super) request_count: u64,
+    pub(super) token_unavailable_requests: u64,
 }
 
 impl ModelTokenUsageSummary {
+    /// Count one event-level request for this model without adding tokens.
+    fn record_request(&mut self) {
+        self.request_count = self.request_count.saturating_add(1);
+    }
+
+    fn record_token_unavailable_request(&mut self) {
+        self.request_count = self.request_count.saturating_add(1);
+        self.token_unavailable_requests = self.token_unavailable_requests.saturating_add(1);
+    }
+
     fn add(
         &mut self,
         prompt_tokens: u64,
@@ -445,6 +544,10 @@ impl ModelTokenUsageSummary {
         self.estimated_completion_tokens = self
             .estimated_completion_tokens
             .saturating_add(other.estimated_completion_tokens);
+        self.request_count = self.request_count.saturating_add(other.request_count);
+        self.token_unavailable_requests = self
+            .token_unavailable_requests
+            .saturating_add(other.token_unavailable_requests);
     }
 
     fn to_json(self) -> Value {
@@ -453,6 +556,8 @@ impl ModelTokenUsageSummary {
             "cachedInputTokens": self.cached_input_tokens,
             "completionTokens": self.completion_tokens,
             "totalTokens": self.total_tokens,
+            "requestCount": self.request_count,
+            "tokenUnavailableRequests": self.token_unavailable_requests,
         })
     }
 }
@@ -547,13 +652,51 @@ mod tests {
     }
 
     #[test]
-    fn contract_identity_is_schema_six_metadata_first_incremental() {
-        assert_eq!(AGENT_USAGE_SCHEMA_VERSION, 6);
+    fn contract_identity_is_schema_seven_metadata_first_incremental() {
+        assert_eq!(AGENT_USAGE_SCHEMA_VERSION, 7);
         assert_eq!(AGENT_USAGE_MODE, "local-token-usage");
         assert_eq!(
             AGENT_USAGE_TOKEN_SOURCE_MODE,
             "native-metadata-first-incremental"
         );
         assert_eq!(DEFAULT_USAGE_WINDOW_DAYS, 30);
+    }
+
+    #[test]
+    fn tokenless_requests_are_counted_without_inventing_tokens() {
+        let mut summary = HistoryUsageSummary::default();
+        summary.add(
+            MessageUsage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                model: Some("composer-2.5".to_owned()),
+                ..MessageUsage::default()
+            },
+            Some("2026-07-15".to_owned()),
+        );
+        summary.add_token_unavailable_request(
+            Some("2026-07-15".to_owned()),
+            Some("cursor-auto".to_owned()),
+        );
+
+        // The tokenless request never becomes a token total, and it keeps the
+        // source at explicit-partial confidence instead of high.
+        assert_eq!(summary.total_tokens(), 15);
+        assert_eq!(summary.confidence(), "medium");
+        assert_eq!(summary.token_unavailable_records, 1);
+        let contract = summary.to_json();
+        assert_eq!(contract["totalTokens"], 15);
+        assert_eq!(contract["tokenUnavailableRequests"], 1);
+        assert_eq!(
+            contract["tokenSourceBreakdown"]["tokenUnavailableRequests"],
+            1
+        );
+        assert_eq!(contract["dailyUsage"][0]["requestCount"], 2);
+        assert_eq!(contract["dailyUsage"][0]["tokenUnavailableRequests"], 1);
+        let model = &contract["dailyUsage"][0]["modelTokenUsage"]["cursor-auto"];
+        assert_eq!(model["totalTokens"], 0);
+        assert_eq!(model["requestCount"], 1);
+        assert_eq!(model["tokenUnavailableRequests"], 1);
     }
 }
