@@ -72,14 +72,18 @@ impl SubagentMcpSupervisor {
         // Complete every fallible in-process construction before publishing
         // discovery. After publication, the only fallible step is thread
         // creation, whose error path performs generation-bound cleanup.
-        let engine = McpServerEngine::new(server_definition(), application)?;
+        let engine = McpServerEngine::new(server_definition(), application.clone())?;
         let generation = uuid::Uuid::new_v4().simple().to_string();
-        let tokens = crate::domain::subagent_mcp::CALLER_PROVIDERS
-            .iter()
-            .copied()
+        // The token map is the capability set made concrete: exactly the mesh
+        // callers the adapter registry admits. Publishing it here also lets the
+        // connector distinguish "this Agent has no mesh seat" from "the
+        // service is unreachable", without consulting a list of its own.
+        let tokens = application
+            .caller_providers()
+            .into_iter()
             .map(|provider| {
                 (
-                    provider.to_owned(),
+                    provider,
                     format!(
                         "{}{}",
                         uuid::Uuid::new_v4().simple(),
@@ -856,16 +860,23 @@ fn valid_discovery_document(document: &DiscoveryDocument) -> bool {
     document.schema_version == DISCOVERY_SCHEMA
         && valid_port
         && lowercase_hex(&document.generation, 32)
-        && document.tokens.len() == crate::domain::subagent_mcp::CALLER_PROVIDERS.len()
-        && crate::domain::subagent_mcp::CALLER_PROVIDERS
+        && !document.tokens.is_empty()
+        && document
+            .tokens
             .iter()
-            .copied()
-            .all(|provider| {
-                document
-                    .tokens
-                    .get(provider)
-                    .is_some_and(|token| lowercase_hex(token, 64))
-            })
+            .all(|(provider, token)| valid_caller_id(provider) && lowercase_hex(token, 64))
+}
+
+/// A published caller id is an opaque Agent identifier. The set is deliberately
+/// not compared against a known list here: the token map *is* the capability
+/// set, and the reader must be able to tell "no seat for this Agent" from
+/// "unreadable discovery".
+fn valid_caller_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+        })
 }
 
 fn lowercase_hex(value: &str, length: usize) -> bool {
@@ -892,16 +903,62 @@ fn cleanup_discovery_generation(path: &Path, generation: &str) {
     }
 }
 
-pub fn load_connector_discovery(provider: &str) -> Result<ConnectorDiscovery> {
-    if !crate::domain::subagent_mcp::CALLER_PROVIDERS.contains(&provider) {
-        return Err(anyhow!("subagent_mcp_caller_invalid"));
+/// Why a connector could not obtain its authenticated loopback identity.
+///
+/// The two causes need different user actions, so they are never collapsed into
+/// one opaque failure: an unreachable desktop-owned service is an installation
+/// or lifecycle problem, while an Agent without a mesh seat is simply not
+/// supported and will not become supported by retrying.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConnectorDiscoveryError {
+    Unavailable,
+    /// The document is valid but admits no seat for this caller. The payload is
+    /// the caller set it does admit, in provider-id order.
+    CallerNotSupported(Vec<String>),
+}
+
+impl ConnectorDiscoveryError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::Unavailable => "subagent_mcp_discovery_unavailable",
+            Self::CallerNotSupported(_) => "subagent_mcp_caller_unsupported",
+        }
     }
-    let document = read_discovery(&discovery_path()?)?;
-    let token = document
-        .tokens
-        .get(provider)
-        .cloned()
-        .ok_or_else(|| anyhow!("subagent_mcp_discovery_invalid"))?;
+}
+
+impl std::fmt::Display for ConnectorDiscoveryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.code())
+    }
+}
+
+/// The callers the currently published service admits, in provider-id order.
+/// Diagnostics only: absent, stale, or unreadable discovery yields an empty
+/// list rather than an error, because it must never change an exit path.
+pub fn published_callers() -> Vec<String> {
+    discovery_path()
+        .ok()
+        .and_then(|path| read_discovery(&path).ok())
+        .map(|document| {
+            let mut providers = document.tokens.into_keys().collect::<Vec<_>>();
+            providers.sort();
+            providers
+        })
+        .unwrap_or_default()
+}
+
+pub fn load_connector_discovery(
+    provider: &str,
+) -> Result<ConnectorDiscovery, ConnectorDiscoveryError> {
+    let path = discovery_path().map_err(|_| ConnectorDiscoveryError::Unavailable)?;
+    let document = read_discovery(&path).map_err(|_| ConnectorDiscoveryError::Unavailable)?;
+    // Membership is decided by the published capability set, not by a list of
+    // known names compiled into this binary.
+    let Some(token) = document.tokens.get(provider).cloned() else {
+        let mut supported = document.tokens.into_keys().collect::<Vec<_>>();
+        supported.sort();
+        return Err(ConnectorDiscoveryError::CallerNotSupported(supported));
+    };
     Ok(ConnectorDiscovery {
         endpoint: document.endpoint,
         bearer_token: token,
@@ -1118,9 +1175,37 @@ mod tests {
         let mut uppercase = valid();
         uppercase.tokens.insert("codex".to_owned(), "A".repeat(64));
         assert!(!valid_discovery_document(&uppercase));
-        let mut extra = valid();
-        extra.tokens.insert("other".to_owned(), "e".repeat(64));
-        assert!(!valid_discovery_document(&extra));
+        let mut truncated = valid();
+        truncated.tokens.insert("codex".to_owned(), "c".repeat(63));
+        assert!(!valid_discovery_document(&truncated));
+        let mut empty = valid();
+        empty.tokens.clear();
+        assert!(!valid_discovery_document(&empty));
+        let mut malformed_id = valid();
+        malformed_id
+            .tokens
+            .insert("Codex CLI".to_owned(), "e".repeat(64));
+        assert!(!valid_discovery_document(&malformed_id));
+    }
+
+    /// The token map is the capability set, so a caller the reader does not
+    /// recognise is admitted structurally. Deciding that an Agent has no mesh
+    /// seat is the reader's job, not a reason to reject the whole document.
+    #[test]
+    fn discovery_admits_a_caller_set_the_reader_does_not_know() {
+        let mut document = DiscoveryDocument {
+            schema_version: DISCOVERY_SCHEMA.to_owned(),
+            endpoint: "http://127.0.0.1:34567/mcp".to_owned(),
+            generation: "a".repeat(32),
+            tokens: HashMap::from([("some-new-agent".to_owned(), "b".repeat(64))]),
+        };
+        assert!(valid_discovery_document(&document));
+        assert!(valid_caller_id("some-new-agent"));
+        assert!(!valid_caller_id("Some New Agent"));
+        assert!(!valid_caller_id(""));
+
+        document.tokens.clear();
+        assert!(!valid_discovery_document(&document));
     }
 
     struct FixtureConversation;
@@ -1210,6 +1295,14 @@ mod tests {
 
     struct FixtureTargets;
 
+    /// Mesh membership now belongs to the registry, so a fixture that exercises
+    /// the published caller seats must declare them the same way production
+    /// does. These supervisor tests probe real caller ids, so they run against
+    /// the production membership rather than an empty registry.
+    fn fixture_members() -> AdapterRegistry {
+        crate::platform::runtime_adapters::production_subagent_registry()
+    }
+
     impl ReadOnlyTargetPort for FixtureTargets {
         fn list(&self) -> std::result::Result<Value, crate::core::mcp::McpApplicationError> {
             Ok(json!({"subagents": []}))
@@ -1261,7 +1354,7 @@ mod tests {
         let previous = super::super::paths::set_portable_data_dir_override(Some(root.clone()));
         let application = SubagentMcpApplication::new(
             Arc::new(FixtureConversation),
-            AdapterRegistry::empty(),
+            fixture_members(),
             Arc::new(FixtureTargets),
         );
         let supervisor = SubagentMcpSupervisor::start_with_application(application).unwrap();
@@ -1378,7 +1471,7 @@ mod tests {
         let previous = super::super::paths::set_portable_data_dir_override(Some(root.clone()));
         let application = SubagentMcpApplication::new(
             Arc::new(FixtureConversation),
-            AdapterRegistry::empty(),
+            fixture_members(),
             Arc::new(FixtureTargets),
         );
         let supervisor = SubagentMcpSupervisor::start_with_application(application).unwrap();
@@ -1496,7 +1589,7 @@ mod tests {
             super::super::paths::set_portable_data_dir_override(Some(monitor_root.clone()));
             SubagentMcpSupervisor::start_with_application(SubagentMcpApplication::new(
                 Arc::new(FixtureConversation),
-                AdapterRegistry::empty(),
+                fixture_members(),
                 Arc::new(FixtureTargets),
             ))
         });

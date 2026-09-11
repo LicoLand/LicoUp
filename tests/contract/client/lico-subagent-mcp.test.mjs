@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
 const application = read("crates/licoup-native/src/domain/subagent_mcp/mod.rs");
+const production = read("crates/licoup-native/src/domain/subagent_mcp/production.rs");
 const engine = read("crates/licoup-native/src/core/mcp/server.rs");
 const core = read("crates/licoup-native/src/core/mcp.rs");
 const connector = read("crates/licoup-native/src/bin/lico-subagent-mcp.rs");
@@ -81,6 +82,24 @@ test("connector is tool-free and performs one authenticated HTTP exchange", () =
   assert.match(supervisor, /mcp-session-id/u);
   assert.match(supervisor, /MAX_HTTP_CONNECTIONS/u);
   assert.match(supervisor, /atomic_write_private_text_bounded/u);
+});
+
+test("mesh membership is the registry's caller set and is never re-listed", () => {
+  // The membership authority is the adapter registry; both sides read it.
+  assert.match(adapters, /pub fn caller_providers/u);
+  assert.match(application, /pub fn caller_providers/u);
+  assert.match(supervisor, /\.caller_providers\(\)/u);
+  // No caller list survives anywhere in the mesh.
+  for (const source of [application, supervisor, connector, production]) {
+    assert.doesNotMatch(source, /CALLER_PROVIDERS/u);
+  }
+  // The connector resolves the declaration only, and decides membership from
+  // what the service published.
+  assert.match(connector, /CallerNotSupported/u);
+  assert.match(connector, /published_callers/u);
+  assert.match(connector, /agent_catalog::contains/u);
+  assert.match(supervisor, /fn valid_caller_id/u);
+  assert.match(production, /adapters: AdapterRegistry/u);
 });
 
 test("caller and target ports meet only in one registry", () => {
