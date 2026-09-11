@@ -23,6 +23,7 @@ licoup-endpoint-core = { path = "../licoup-endpoint-core" }
 licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
+licoup-application = { path = "../licoup-application" }
 licoup-conversation = { path = "../licoup-conversation" }
 anyhow.workspace = true
 thiserror.workspace = true
