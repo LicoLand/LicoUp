@@ -65,7 +65,7 @@ fn command_scan_keeps_schema_modes_dimensions_and_privacy_boundary() {
     }))
     .unwrap();
 
-    assert_eq!(result["schemaVersion"], 6);
+    assert_eq!(result["schemaVersion"], 7);
     assert_eq!(result["mode"], "local-token-usage");
     assert_eq!(
         result["tokenSourceMode"],
@@ -111,7 +111,7 @@ fn command_custom_window_and_retained_report_close_independently() {
         "limit": 1
     }))
     .unwrap();
-    assert_eq!(listed["schemaVersion"], 6);
+    assert_eq!(listed["schemaVersion"], 7);
     assert_eq!(listed["mode"], "local-token-usage");
     assert_eq!(
         listed["tokenSourceMode"],

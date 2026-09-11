@@ -247,7 +247,10 @@ external transfer remains disabled.
   owns route selection, and raw native conversation locations remain a private
   adapter binding. The view does not expose prompts, replies, tool payloads, summaries,
   compaction, or cache controls; active work plus the newest twenty terminal
-  rollups are bounded by the native ledger.
+  rollups are bounded by the native ledger. Cursor is the exception: its usage
+  and quota ring come from the account's own hosted dashboard rather than local
+  IDE counters. Requests Cursor reports without token fields stay request
+  counts, and plan, Auto/API, and on-demand budgets stay separate.
 - Logs and diagnostics stay local unless the user saves an explicit, redacted
   copy.
 

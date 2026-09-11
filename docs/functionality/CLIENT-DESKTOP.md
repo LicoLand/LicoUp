@@ -230,6 +230,17 @@ unknown model attribution remain explicit rather than silently fabricated. An
 empty workflow collection has a localized empty state while Agent and Model
 views remain available.
 
+Cursor's own dashboard is the only billing authority for Cursor usage. LicoUp
+reads the account's filtered usage events through the same in-memory session as
+the quota ring, keeps only per-day, per-model token and request aggregates, and
+never projects local bubble counters, context-window meters, conversation
+identifiers, or account identity into the report. Requests whose payload carries
+no token fields stay request counts instead of estimated tokens, paging is
+reconciled against the provider's own event count, and an unusable session fails
+closed with a sanitized warning. The roster quota card keeps plan usage, the
+Auto/API sub-quotas, and the on-demand budget distinct, showing used/limit
+amounts and the billing-cycle reset.
+
 Regression: agent/model dimensions, default and custom windows, timezone
 transitions, deduplication, cache invalidation, redaction, and empty/partial local
 source handling.
