@@ -158,9 +158,27 @@ fn read_outcome(operation: Operation, payload: Value) -> CommandOutcome {
 }
 
 /// One durable read through the already-running conversation host.
+///
+/// The transport answers inside its own envelope, so the operation's own body
+/// is the nested `result`. Publishing the envelope verbatim would leak the
+/// transport into a versioned payload.
 fn host_read(params: Value) -> Result<Value, ApplicationFailure> {
-    crate::platform::subagent_mcp_host_client::execute_existing(CONVERSATION_HOST_METHOD, &params)
-        .map_err(|error| host_failure(&error))
+    let response = crate::platform::subagent_mcp_host_client::execute_existing(
+        CONVERSATION_HOST_METHOD,
+        &params,
+    )
+    .map_err(|error| host_failure(&error))?;
+    operation_payload(response)
+}
+
+/// The operation's own body out of one host reply.
+fn operation_payload(response: Value) -> Result<Value, ApplicationFailure> {
+    response.get("result").cloned().ok_or_else(|| {
+        ApplicationFailure::retryable(
+            "conversation_state_unavailable",
+            CONVERSATION_TRANSPORT_STAGE,
+        )
+    })
 }
 
 /// Map a host failure onto the normalized failure model.
@@ -184,5 +202,28 @@ fn host_failure(error: &anyhow::Error) -> ApplicationFailure {
             CONVERSATION_TRANSPORT_STAGE,
         ),
         other => ApplicationFailure::retryable(other, CONVERSATION_TRANSPORT_STAGE),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_read_publishes_the_operation_body_not_the_transport_envelope() {
+        let payload = operation_payload(json!({
+            "ok": true,
+            "result": [{"id": "lico-group-default"}],
+        }))
+        .expect("a completed reply carries a body");
+        assert_eq!(payload, json!([{"id": "lico-group-default"}]));
+    }
+
+    #[test]
+    fn a_reply_without_a_body_is_retryable_rather_than_published() {
+        let failure = operation_payload(json!({"ok": false})).expect_err("no body to publish");
+        assert_eq!(failure.code, "conversation_state_unavailable");
+        assert_eq!(failure.stage, CONVERSATION_TRANSPORT_STAGE);
+        assert!(failure.retryable);
     }
 }
