@@ -16,10 +16,12 @@ already pin.
 **Path convention.** A path starting with `crates/`, `apps/`, `tests/`,
 `tools/`, `schemas/`, or `docs/` is repository-relative. Any other path is
 relative to `crates/licoup-native/src/` — so `domain/subagent_mcp/mod.rs` means
-`crates/licoup-native/src/domain/subagent_mcp/mod.rs`. A bare `:NNN` range in a
-table inherits the file named in that row or, when the row leaves it empty, in
-the nearest preceding row of the same table. Every reference resolves under
-these rules.
+`crates/licoup-native/src/domain/subagent_mcp/mod.rs`.
+
+**Every reference carries its own file.** No reference below is a bare line
+number: each names the file it belongs to, even in a table whose neighbouring
+rows name the same file. That makes every reference checkable without reading
+its surroundings, and it is enforced mechanically.
 
 ## 1. Command surface
 
@@ -94,18 +96,18 @@ The 29 wire methods collapse onto 8 dispatch variants
 `ClientConversation`, `StrategyExecute`, `Catalog{operation}`, `StateGet`,
 `StateSet`, `Shutdown`.
 
-Envelope shapes (owner: `bin/licoup/stdio_rpc/response.rs`):
+Envelope shapes, all owned by `bin/licoup/stdio_rpc/response.rs`:
 
 | Kind | Fields | Location |
 | --- | --- | --- |
-| Success | `protocol`, `id`, `workflowId`, `ok: true`, `result` | `:184-203` |
-| Error | `protocol`, `id`, `workflowId`, `ok: false`, `error: ClientError` | `:205-223` |
-| Stream event | `protocol`, `id`, `workflowId`, `kind: "event"`, `sequence`, `event` | `:60-103` |
-| Stream terminal | `protocol`, `id`, `workflowId`, `kind: "terminal"`, `sequence`, `ok`, `result`/`error` | `:105-167` |
+| Success | `protocol`, `id`, `workflowId`, `ok: true`, `result` | `bin/licoup/stdio_rpc/response.rs:184-203` |
+| Error | `protocol`, `id`, `workflowId`, `ok: false`, `error: ClientError` | `bin/licoup/stdio_rpc/response.rs:205-223` |
+| Stream event | `protocol`, `id`, `workflowId`, `kind: "event"`, `sequence`, `event` | `bin/licoup/stdio_rpc/response.rs:60-103` |
+| Stream terminal | `protocol`, `id`, `workflowId`, `kind: "terminal"`, `sequence`, `ok`, `result`/`error` | `bin/licoup/stdio_rpc/response.rs:105-167` |
 
 `ClientError` fields are `code`, `stage`, `component`, `retryable`, `recovery`,
 `presentationArgs` (`ffi/generated/client_error.rs:159-172`). The `code`
-enumeration holds **45** values (`:6-97`).
+enumeration holds **45** values (`ffi/generated/client_error.rs:6-97`).
 
 ### 1.4 Binaries
 
@@ -240,14 +242,14 @@ authenticated, conversation-bound agent membership.
 | Item | Value | Location |
 | --- | --- | --- |
 | Endpoint name | `licoup-conversation-{token}-{generation}` | `platform/conversation_host_transport.rs:89-100` |
-| Token file | `<root>/client-state/conversation-runtime/endpoint-token` | `:105-115` |
-| Token form | 32 lowercase hex, `create_new` + sync + harden | `:119-138` |
-| Generation | SHA-256 of executable file metadata, first 8 bytes → 16 hex | `:19-67` |
+| Token file | `<root>/client-state/conversation-runtime/endpoint-token` | `platform/conversation_host_transport.rs:105-115` |
+| Token form | 32 lowercase hex, `create_new` + sync + harden | `platform/conversation_host_transport.rs:119-138` |
+| Generation | SHA-256 of executable file metadata, first 8 bytes → 16 hex | `platform/conversation_host_transport.rs:19-67` |
 | Host record | `generation\nhost_pid\n[client_pid]` | `bin/licoup/conversation_host.rs:39-101` |
-| Owner env | `LICOUP_CLIENT_PID` | `:32-37` |
-| Constants | 80 connect attempts, 25 ms retry, 2 s stale wait, 500 ms owner check, 300 s idle grace | `:32-37` |
-| Owner-death exit | checkpoint then break the accept loop | `:497-503` |
-| Idle exit (no owner) | after the 300 s grace, only when attendance is idle | `:504-514` |
+| Owner env | `LICOUP_CLIENT_PID` | `bin/licoup/conversation_host.rs:32-37` |
+| Constants | 80 connect attempts, 25 ms retry, 2 s stale wait, 500 ms owner check, 300 s idle grace | `bin/licoup/conversation_host.rs:32-37` |
+| Owner-death exit | checkpoint then break the accept loop | `bin/licoup/conversation_host.rs:497-503` |
+| Idle exit (no owner) | after the 300 s grace, only when attendance is idle | `bin/licoup/conversation_host.rs:504-514` |
 
 Authentication on this channel is **possession of the socket name**, which
 requires reading the hardened token file. No caller identity crosses the wire.
@@ -259,7 +261,7 @@ requires reading the hardened token file. No caller identity crosses the wire.
 | GUI dies | host notices within 500 ms, checkpoints, exits; in-flight turn threads die with the process |
 | stdio lane pipe closes | the lane joins until every Agent turn reaches terminal (`bin/licoup/stdio_rpc/server.rs:92-99`) |
 | proxy lane | drains the host after stdout disappears so the desktop can reconnect (`bin/licoup/conversation_host.rs:282-313`) |
-| attendance worker | detached on owner exit, never awaited (`:443-449`) |
+| attendance worker | detached on owner exit, never awaited (`bin/licoup/conversation_host.rs:443-449`) |
 
 ### 4.2 Update behaviour today
 
@@ -267,7 +269,7 @@ requires reading the hardened token file. No caller identity crosses the wire.
 | --- | --- |
 | Apply script quits the GUI and waits for its pid to vanish | `domain/client_update/native_runner/script.rs:93-148` |
 | Pre-handoff written `pending` | `domain/client_state_migration.rs:414-484` |
-| Candidate claims before state admission | `:371-403`, invoked from `:178-186` |
+| Candidate claims before state admission | `domain/client_state_migration.rs:371-403`, invoked from `domain/client_state_migration.rs:178-186` |
 | Endpoint generation prevents a new binary attaching to an old host | `platform/conversation_host_transport.rs:44-48, 89-100` |
 
 ### 4.3 Handoff verification map
@@ -279,16 +281,16 @@ least one test. Cover these, not new abstractions.
 | --- | --- | --- |
 | Host start from a desktop lane | `bin/licoup/conversation_host.rs:255-280` | `native-client-smoke`, `subagent_mcp_startup` |
 | Host restart after unexpected exit | supervisor | `platform/subagent_mcp_supervisor.rs:1595-1638` |
-| Owner death while work is in flight | `bin/licoup/conversation_host.rs:497-503` | `:787-951` |
-| Idle exit | `:504-514` | `:531-542` |
-| Endpoint generation isolation | `platform/conversation_host_transport.rs:89-100` | `:174-197` |
-| Generation record integrity | `bin/licoup/conversation_host.rs:39-101` | `:556-577` |
-| Update handoff pending → claimed | `domain/client_state_migration.rs:371-403` | `:1631-1649` |
-| Handoff mismatch / rejection | `:486-503` | `:1531-1562` |
-| Crash before the store step | `claim_update_handoff` entry `:178-186`; failpoint `:267` | `:1513` |
-| Crash after the store step, before the ledger write | failpoint `:274` | `:1479` |
-| Crash after the ledger write | failpoint `:277` | `:1513` |
-| Kill mid-turn cold recovery | `crates/licoup-conversation/tests/cold_recovery.rs` | `:9`, `:76`, `:149`, `:212` |
+| Owner death while work is in flight | `bin/licoup/conversation_host.rs:497-503` | `bin/licoup/conversation_host.rs:787-951` |
+| Idle exit | `bin/licoup/conversation_host.rs:504-514` | `bin/licoup/conversation_host.rs:531-542` |
+| Endpoint generation isolation | `platform/conversation_host_transport.rs:89-100` | `platform/conversation_host_transport.rs:174-197` |
+| Generation record integrity | `bin/licoup/conversation_host.rs:39-101` | `bin/licoup/conversation_host.rs:556-577` |
+| Update handoff pending → claimed | `domain/client_state_migration.rs:371-403` | `domain/client_state_migration.rs:1631-1649` |
+| Handoff mismatch / rejection | `domain/client_state_migration.rs:486-503` | `domain/client_state_migration.rs:1531-1562` |
+| Crash before the store step | `claim_update_handoff` entry `domain/client_state_migration.rs:178-186`; failpoint `domain/client_state_migration.rs:267` | `domain/client_state_migration.rs:1513` |
+| Crash after the store step, before the ledger write | failpoint `domain/client_state_migration.rs:274` | `domain/client_state_migration.rs:1479` |
+| Crash after the ledger write | failpoint `domain/client_state_migration.rs:277` | `domain/client_state_migration.rs:1513` |
+| Kill mid-turn cold recovery | `crates/licoup-conversation/tests/cold_recovery.rs:9`, `crates/licoup-conversation/tests/cold_recovery.rs:76`, `crates/licoup-conversation/tests/cold_recovery.rs:149`, `crates/licoup-conversation/tests/cold_recovery.rs:212` |
 | Post-claim cleanup failure must not roll back | `client_update/native_runner/script.rs` | `domain/client_state_migration.rs:1562` |
 
 ## 5. Data frontier and format boundary
@@ -335,18 +337,18 @@ versioned (see the note after the numeric table).
 
 Numeric-version JSON documents admitted during migration
 (`domain/client_state_migration.rs:1050-1055`). Two have dedicated handlers, the
-rest share `migrate_json_schema` (`:1130`):
+rest share `migrate_json_schema` (`domain/client_state_migration.rs:1130`):
 
 | Document | Version | Handler |
 | --- | --- | --- |
 | `.licoup-workspace.json` | 1 | `migrate_json_schema` |
 | `client-state/appearance-preferences.json` | 1 | `migrate_json_schema` |
-| `client-state/agent-tab-order.json` | 1 | `migrate_agent_tab_order` (`:1102`) |
+| `client-state/agent-tab-order.json` | 1 | `migrate_agent_tab_order` (`domain/client_state_migration.rs:1102`) |
 | `client-state/agent-tool-allowlists.json` | 1 | `migrate_json_schema` |
 | `client-state/current-client-view.json` | 1 | `migrate_json_schema` |
 | `client-state/mobile-home-layout.json` | 2 | `migrate_json_schema` |
 | `client-state/skill-hub-preferences.json` | 1 | `migrate_json_schema` |
-| `client-state/mobile-relay/config.json` | 2 | `migrate_mobile_relay` (`:1117`) |
+| `client-state/mobile-relay/config.json` | 2 | `migrate_mobile_relay` (`domain/client_state_migration.rs:1117`) |
 
 Not every persisted document is versioned: `telegram-gateway/channel.ready` holds
 only `channelId`, `state`, and `botUsername`
@@ -362,8 +364,8 @@ Reuse as-is:
 - the ledger and per-domain markers as the durable progress record
 - `ConversationStore::open_for_migration` and
   `AdaptiveFlywheelStore::open_for_migration` as the only writers during a step
-- the domain routing already present at `:723` / `:1007`
-- the exclusive `admission.lock` flock at `:165-173`
+- the domain routing already present at `domain/client_state_migration.rs:723` and `domain/client_state_migration.rs:1007`
+- the exclusive `admission.lock` flock at `domain/client_state_migration.rs:165-173`
 
 New in the tool (does not exist today):
 
@@ -374,7 +376,8 @@ New in the tool (does not exist today):
 - a `doctor` / `recover` repair mode with enumerated actions
 - rollback. Migration is forward-only today: once a higher product version is
   admitted, an older binary is permanently refused
-  (`reject_older_binary` at `:623`, code `state_newer_than_binary`)
+  (`reject_older_binary` at `domain/client_state_migration.rs:623`, code
+  `state_newer_than_binary`)
 
 Trigger today is implicit: the desktop runs admission as the second lifecycle
 step before storage load
