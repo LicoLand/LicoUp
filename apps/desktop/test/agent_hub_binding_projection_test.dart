@@ -49,8 +49,10 @@ final class _FakeAgentHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => null;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async =>
-      const AgentHubCatalogSnapshot(recipes: [_recipe]);
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async => const AgentHubCatalogSnapshot(recipes: [_recipe]);
 
   @override
   Future<AgentHubOperationResult> confirm(AgentHubConfirmRequest request) =>

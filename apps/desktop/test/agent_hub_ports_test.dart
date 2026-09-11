@@ -165,6 +165,36 @@ void main() {
     },
   );
 
+  /// A full refresh must not ask natively once per card: the desktop transport
+  /// runs native requests through one serialized queue, so the refresh pays for
+  /// every extra command. One batched live pass covers the whole catalog.
+  test('a live refresh resolves every card in one native command', () async {
+    final calls = <List<String>>[];
+    final engine = NativeAgentHubEngine(
+      invoke: (arguments) async {
+        calls.add(List<String>.from(arguments));
+        return <String, dynamic>{
+          'ok': true,
+          'scanGeneration': 4,
+          'cards': _nativeCards(),
+        };
+      },
+    );
+
+    await engine.catalog();
+    await engine.catalog(live: true);
+
+    expect(calls, [
+      ['agent-hub', 'catalog'],
+      ['agent-hub', 'catalog', '--stdin-json', '{"liveLookup":true}'],
+    ]);
+    // A per-card id is still available for a targeted refresh, and it is the
+    // only form that adds a command beyond the root pair.
+    await engine.catalog(recipeId: 'codex');
+    expect(calls, hasLength(3));
+    expect(calls.last, ['agent-hub', 'catalog', '--agent-id', 'codex']);
+  });
+
   test(
     'native engine passes through catalog ids beyond the warehouse recipes',
     () async {
