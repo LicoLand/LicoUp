@@ -821,12 +821,26 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
         == 0
 }
 
+/// Owner path for publishing discovery. Constructing it creates and hardens the
+/// state root, so it belongs to the supervisor that owns that state — never to a
+/// reader.
 fn discovery_path() -> Result<PathBuf> {
     let root = super::paths::portable_data_dir()?
         .join("client-state")
         .join("subagent-mcp");
     super::file_security::ensure_private_dir(&root)?;
     Ok(root.join("discovery.json"))
+}
+
+/// Reader path for discovery. Resolves lexically and never creates the state
+/// root, so reading is side-effect free even when nothing has been published
+/// yet. A refused connector must be able to report why without leaving the
+/// directories it was refused before creating.
+fn discovery_path_read_only() -> Result<PathBuf> {
+    Ok(super::paths::portable_data_dir_read_only()?
+        .join("client-state")
+        .join("subagent-mcp")
+        .join("discovery.json"))
 }
 
 fn write_discovery(path: &Path, document: &DiscoveryDocument) -> Result<()> {
@@ -936,7 +950,7 @@ impl std::fmt::Display for ConnectorDiscoveryError {
 /// Diagnostics only: absent, stale, or unreadable discovery yields an empty
 /// list rather than an error, because it must never change an exit path.
 pub fn published_callers() -> Vec<String> {
-    discovery_path()
+    discovery_path_read_only()
         .ok()
         .and_then(|path| read_discovery(&path).ok())
         .map(|document| {
@@ -950,7 +964,8 @@ pub fn published_callers() -> Vec<String> {
 pub fn load_connector_discovery(
     provider: &str,
 ) -> Result<ConnectorDiscovery, ConnectorDiscoveryError> {
-    let path = discovery_path().map_err(|_| ConnectorDiscoveryError::Unavailable)?;
+    // A connector only ever reads discovery; the supervisor owns creating it.
+    let path = discovery_path_read_only().map_err(|_| ConnectorDiscoveryError::Unavailable)?;
     let document = read_discovery(&path).map_err(|_| ConnectorDiscoveryError::Unavailable)?;
     // Membership is decided by the published capability set, not by a list of
     // known names compiled into this binary.
