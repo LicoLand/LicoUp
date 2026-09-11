@@ -333,7 +333,13 @@ abstract interface class AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog;
 
   /// Warehouse cards when [recipeId] is empty. One live local lookup when set.
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''});
+  ///
+  /// [live] resolves every card's live state in that one command instead of
+  /// leaving the caller to ask per card. Only a full refresh uses it.
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  });
 
   Future<AgentHubOperationResult> plan(AgentHubPlanRequest request);
 
