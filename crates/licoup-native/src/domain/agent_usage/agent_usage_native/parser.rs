@@ -1,4 +1,3 @@
-mod cursor;
 mod hermes;
 mod openagent;
 
@@ -13,7 +12,6 @@ use crate::domain::conversation::history::HistoryScanConfig;
 use crate::domain::conversation::source_catalog::HistoryAdapter;
 use crate::domain::conversation::usage::extract_token_usage;
 use anyhow::{Context, Result};
-use cursor::parse_cursor_usage_database;
 use hermes::parse_hermes_usage_database;
 use openagent::parse_openagent_usage_database;
 use rusqlite::{Connection, OpenFlags};
@@ -131,22 +129,6 @@ pub(super) fn parse_snapshot_source(
     metadata: &fs::Metadata,
     calendar: &UsageWindow,
 ) -> Result<ParseResult> {
-    if adapter == HistoryAdapter::Cursor
-        && matches!(
-            extension(path).as_str(),
-            "sqlite" | "sqlite3" | "db" | "vscdb"
-        )
-        && let Some(summary) = parse_cursor_usage_database(path, calendar)
-        && summary.explicit_records > 0
-    {
-        let session_increment = summary.session_count;
-        return Ok(ParseResult {
-            summary,
-            parsed_bytes: metadata.len(),
-            session_increment,
-            ..ParseResult::default()
-        });
-    }
     if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode)
         && matches!(extension(path).as_str(), "sqlite" | "sqlite3" | "db")
         && let Some(mut parsed) = parse_openagent_usage_database(path, calendar)
@@ -319,19 +301,6 @@ fn explicit_usage_event(
         )
         && event.get("token_usage").is_none()
         && event.get("tokenUsage").is_none()
-    {
-        return None;
-    }
-    // Cursor composer context meters intentionally have no recognized usage
-    // container. Only request/bubble/hook counters are accepted here.
-    if adapter == HistoryAdapter::Cursor
-        && event.get("usage").is_none()
-        && event.get("tokenUsage").is_none()
-        && event.get("token_usage").is_none()
-        && event.get("tokenCount").is_none()
-        && event.get("input_tokens").is_none()
-        && event.get("inputTokens").is_none()
-        && event.get("gen_ai.usage").is_none()
     {
         return None;
     }
@@ -694,22 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn cursor_context_meter_is_not_a_consumption_event() {
-        assert!(
-            explicit_usage_event(
-                HistoryAdapter::Cursor,
-                &json!({
-                    "timestamp": "2026-07-15T10:00:00Z",
-                    "promptTokenBreakdown": {"totalUsedTokens": 999},
-                    "contextTokensUsed": 999
-                }),
-                &window()
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
     fn copilot_nested_usage_metadata_is_read_without_context_estimation() {
         let event = explicit_usage_event(
             HistoryAdapter::Copilot,
@@ -730,60 +683,6 @@ mod tests {
 
         assert_eq!(event.usage.total_tokens, 22);
         assert_eq!(event.usage.model.as_deref(), Some("copilot-test"));
-    }
-
-    #[test]
-    fn cursor_database_reads_only_exact_bubble_metadata() {
-        let path = temp_file("cursor.vscdb");
-        let connection = Connection::open(&path).unwrap();
-        connection
-            .execute_batch("CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL);")
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO cursorDiskKV VALUES(?1,?2)",
-                rusqlite::params![
-                    "composerData:session-1",
-                    serde_json::to_vec(&json!({
-                        "modelConfig": {
-                            "modelName": "composer-product-label",
-                            "selectedModels": [{"modelId": "grok-4.5"}]
-                        },
-                        "promptTokenBreakdown": {"totalUsedTokens": 900_000},
-                        "contextTokensUsed": 900_000
-                    }))
-                    .unwrap()
-                ],
-            )
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO cursorDiskKV VALUES(?1,?2)",
-                rusqlite::params![
-                    "bubbleId:session-1:bubble-1",
-                    serde_json::to_vec(&json!({
-                        "createdAt": 1_784_080_800_000i64,
-                        "text": "this conversation body must not be projected",
-                        "modelInfo": {"modelName": "default"},
-                        "tokenCount": {"inputTokens": 12, "outputTokens": 4},
-                        "promptTokenBreakdown": {"totalUsedTokens": 800_000},
-                        "contextTokensUsed": 800_000
-                    }))
-                    .unwrap()
-                ],
-            )
-            .unwrap();
-        drop(connection);
-
-        let summary = parse_cursor_usage_database(&path, &window()).unwrap();
-        assert_eq!(summary.total_tokens(), 16);
-        assert_eq!(summary.explicit_records, 1);
-        assert_eq!(summary.session_count, 1);
-        assert_eq!(
-            summary.daily_usage["2026-07-15"].model_usage["grok-4.5"].total_tokens,
-            16
-        );
-        fs::remove_file(path).unwrap();
     }
 
     #[test]

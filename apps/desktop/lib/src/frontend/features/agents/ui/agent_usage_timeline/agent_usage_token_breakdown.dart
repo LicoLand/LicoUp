@@ -5,20 +5,38 @@ class AgentUsageModelTokens {
   const AgentUsageModelTokens({
     required this.totalTokens,
     required this.breakdown,
+    this.requestCount = 0,
+    this.tokenUnavailableRequests = 0,
   });
 
   final double totalTokens;
   final AgentUsageTokenBreakdown breakdown;
 
+  /// Event-level requests the source attributed to this model. Hosted ledgers
+  /// report requests whose payload carried no token fields; those never become
+  /// a token total, they stay a request count.
+  final int requestCount;
+
+  /// Requests counted here that carried no token fields at all.
+  final int tokenUnavailableRequests;
+
   AgentUsageModelTokens merge(AgentUsageModelTokens other) {
     return AgentUsageModelTokens(
       totalTokens: totalTokens + other.totalTokens,
       breakdown: breakdown.merge(other.breakdown),
+      requestCount: requestCount + other.requestCount,
+      tokenUnavailableRequests:
+          tokenUnavailableRequests + other.tokenUnavailableRequests,
     );
   }
 
   AgentUsageModelTokens withBreakdown(AgentUsageTokenBreakdown value) {
-    return AgentUsageModelTokens(totalTokens: totalTokens, breakdown: value);
+    return AgentUsageModelTokens(
+      totalTokens: totalTokens,
+      breakdown: value,
+      requestCount: requestCount,
+      tokenUnavailableRequests: tokenUnavailableRequests,
+    );
   }
 }
 
@@ -104,10 +122,13 @@ void mergeAgentUsageModelValues(
     final modelName = agentUsageModelName(source);
     if (modelName.isNotEmpty) {
       final tokens = agentUsageTokensFromSource(source);
-      if (tokens > 0) {
+      final requests = agentUsageRequestCount(source);
+      if (tokens > 0 || requests > 0) {
         final usage = AgentUsageModelTokens(
           totalTokens: tokens,
           breakdown: agentUsageTokenBreakdown(source, totalTokens: tokens),
+          requestCount: requests,
+          tokenUnavailableRequests: agentUsageTokenUnavailableRequests(source),
         );
         values.update(
           modelName,
@@ -123,19 +144,65 @@ void mergeAgentUsageModelValues(
         continue;
       }
       final tokens = agentUsageTokensFromSource(entry.value);
-      if (tokens > 0) {
-        final usage = AgentUsageModelTokens(
-          totalTokens: tokens,
-          breakdown: agentUsageTokenBreakdown(entry.value, totalTokens: tokens),
-        );
-        values.update(
-          label,
-          (value) => value.merge(usage),
-          ifAbsent: () => usage,
-        );
+      final requests = agentUsageRequestCount(entry.value);
+      if (tokens <= 0 && requests <= 0) {
+        continue;
       }
+      final usage = AgentUsageModelTokens(
+        totalTokens: tokens,
+        breakdown: agentUsageTokenBreakdown(entry.value, totalTokens: tokens),
+        requestCount: requests,
+        tokenUnavailableRequests: agentUsageTokenUnavailableRequests(entry.value),
+      );
+      values.update(
+        label,
+        (value) => value.merge(usage),
+        ifAbsent: () => usage,
+      );
     }
   }
+}
+
+/// Event-level request count carried by one model projection. Absent for
+/// aggregate-only sources, in which case the model stays token-only.
+int agentUsageRequestCount(Object? source) {
+  if (source is! Map) {
+    return 0;
+  }
+  for (final key in const ['requestCount', 'request_count', 'requests']) {
+    if (source.containsKey(key)) {
+      return _nonNegativeUsageInt(source[key]);
+    }
+  }
+  return 0;
+}
+
+/// Requests inside [agentUsageRequestCount] that carried no token fields.
+int agentUsageTokenUnavailableRequests(Object? source) {
+  if (source is! Map) {
+    return 0;
+  }
+  for (final key in const [
+    'tokenUnavailableRequests',
+    'token_unavailable_requests',
+  ]) {
+    if (source.containsKey(key)) {
+      return _nonNegativeUsageInt(source[key]);
+    }
+  }
+  return 0;
+}
+
+int _nonNegativeUsageInt(Object? value) {
+  if (value is int) {
+    return value < 0 ? 0 : value;
+  }
+  if (value is num) {
+    final rounded = value.toInt();
+    return rounded < 0 ? 0 : rounded;
+  }
+  final parsed = int.tryParse(value?.toString() ?? '') ?? 0;
+  return parsed < 0 ? 0 : parsed;
 }
 
 AgentUsageTokenBreakdown agentUsageTokenBreakdown(

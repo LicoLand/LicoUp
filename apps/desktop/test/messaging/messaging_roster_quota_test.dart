@@ -359,6 +359,58 @@ void main() {
       // Unmount so the countdown ticker is cancelled before teardown.
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets('usage card renders metered budget next to the percentage', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 600);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        _testApp(
+          const Key('messaging-quota-usage-card-metered'),
+          const Center(
+            child: MessagingQuotaUsageCard(
+              snapshot: ProviderQuotaSnapshot(
+                agentId: 'cursor',
+                provider: 'cursor',
+                status: ProviderQuotaStatus.live,
+                windows: [
+                  ProviderQuotaWindow(
+                    label: 'plan',
+                    usedPercent: 42,
+                    used: 8.4,
+                    limit: 20,
+                    resetDescription: 'monthly billing cycle',
+                  ),
+                  ProviderQuotaWindow(
+                    label: 'on-demand',
+                    usedPercent: 0,
+                    used: 1.25,
+                    resetDescription: 'monthly billing cycle',
+                  ),
+                ],
+                identity: ProviderQuotaIdentity(plan: 'pro'),
+                capturedAt: '',
+                staleAfterSeconds: 3600,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // A budgeted window shows used/limit; an open-ended meter shows spend
+      // alone — never a fabricated limit.
+      expect(find.text('Cursor quota usage'), findsOneWidget);
+      expect(find.text('\$8.40 / \$20.00 used'), findsOneWidget);
+      expect(find.text('\$1.25 used'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   group('provider quota controller', () {
@@ -425,6 +477,7 @@ void main() {
       expect(snapshot.windows, hasLength(2));
       expect(snapshot.windows.first.usedPercent, 187.4);
       expect(snapshot.windows.first.windowMinutes, 300);
+      expect(snapshot.windows.first.used, isNull);
       expect(snapshot.identity.accountLabel, 'work@example.com');
       expect(snapshot.staleAfterSeconds, 300);
 
@@ -442,6 +495,45 @@ void main() {
         }),
         throwsFormatException,
       );
+    });
+
+    test('wire contract parses metered budget amounts', () {
+      final report = ProviderQuotaSnapshotReport.fromJson(
+        _wireReport([
+          {
+            'agentId': 'cursor',
+            'provider': 'cursor',
+            'status': 'live',
+            'windows': const [
+              {
+                'label': 'plan',
+                'usedPercent': 42,
+                'used': 8.4,
+                'limit': 20,
+                'remaining': 11.6,
+                'resetsAt': '2026-09-01T00:00:00Z',
+                'resetDescription': 'monthly billing cycle',
+              },
+              {
+                'label': 'on-demand',
+                'usedPercent': 0,
+                'used': 0,
+                'resetsAt': null,
+                'resetDescription': 'monthly billing cycle',
+              },
+            ],
+            'identity': const {'plan': 'pro'},
+            'capturedAt': '2026-08-29T11:48:00Z',
+            'staleAfterSeconds': 3600,
+          },
+        ]),
+      );
+      final windows = report.byAgentId['cursor']!.windows;
+      expect(windows.first.used, 8.4);
+      expect(windows.first.limit, 20);
+      expect(windows.first.remaining, 11.6);
+      expect(windows.last.used, 0);
+      expect(windows.last.limit, isNull);
     });
 
     test('adapter drives the fixed provider-quota snapshot command', () async {

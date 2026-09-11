@@ -281,18 +281,15 @@ fn cursor_adapter_reads_disk_kv_composer_bubbles_with_model() {
         "stateRoot": usage_state.to_string_lossy()
     }))
     .unwrap();
+    // Cursor usage comes from the hosted ledger only. A rerooted scan names
+    // no state store, so the local bubble counters stay unprojected.
     let history = &usage["agents"][0]["history"];
-    let daily = history["dailyUsage"].as_array().unwrap();
-    assert!(!daily.is_empty(), "expected cursor daily usage entries");
-    let model_usage = daily[0]["modelUsage"].as_object().unwrap();
-    assert!(
-        model_usage.contains_key("grok-4.5"),
-        "expected grok-4.5 model usage, got {model_usage:?}"
-    );
-    assert!(
-        !model_usage.contains_key("Others"),
-        "cursor models should not collapse into Others: {model_usage:?}"
-    );
+    assert_eq!(history["source"], "cursor-hosted-usage-events");
+    assert_eq!(history["totalTokens"], 0);
+    assert_eq!(history["dailyUsage"], json!([]));
+    assert!(usage["warnings"].as_array().unwrap().iter().any(|warning| {
+        warning["code"] == "cursor_state_store_unavailable" && warning["agentId"] == "cursor"
+    }));
 }
 
 #[test]
@@ -391,22 +388,10 @@ fn cursor_adapter_prefers_selected_models_over_composer_label() {
         "stateRoot": usage_state.to_string_lossy()
     }))
     .unwrap();
-    let model_usage = usage["agents"][0]["history"]["dailyUsage"][0]["modelUsage"]
-        .as_object()
-        .unwrap();
-    assert_eq!(model_usage.get("grok-4.5"), Some(&json!(100)));
-    assert!(
-        !model_usage.contains_key("composer-2.5-fast"),
-        "composer product label must not replace selected model: {model_usage:?}"
-    );
-    assert!(
-        !model_usage.contains_key("Others"),
-        "cursor selected models must not collapse into Others: {model_usage:?}"
-    );
-    assert!(
-        !model_usage.contains_key("cursor-auto"),
-        "bubble modelInfo default must fall back to selected model: {model_usage:?}"
-    );
+    let history = &usage["agents"][0]["history"];
+    assert_eq!(history["source"], "cursor-hosted-usage-events");
+    assert_eq!(history["totalTokens"], 0);
+    assert_eq!(history["dailyUsage"], json!([]));
 }
 
 #[test]
@@ -688,6 +673,7 @@ fn cursor_usage_scan_ignores_composer_context_occupancy() {
     }))
     .unwrap();
     let history = &usage["agents"][0]["history"];
+    assert_eq!(history["source"], "cursor-hosted-usage-events");
     assert_eq!(history["totalTokens"], 0);
     assert_eq!(history["confidence"], "unavailable");
     assert_eq!(history["dailyUsage"], json!([]));
@@ -772,6 +758,7 @@ fn cursor_usage_scan_does_not_treat_product_context_meter_as_usage() {
         "stateRoot": usage_state.to_string_lossy()
     }))
     .unwrap();
+    assert_eq!(usage["agents"][0]["history"]["source"], "cursor-hosted-usage-events");
     assert_eq!(usage["agents"][0]["history"]["totalTokens"], 0);
     assert_eq!(usage["agents"][0]["history"]["dailyUsage"], json!([]));
 }
