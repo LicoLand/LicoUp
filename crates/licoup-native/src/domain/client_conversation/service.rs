@@ -1069,7 +1069,10 @@ impl ConversationService {
         };
         let content = self.store.posted_event_text(conversation_id, event_id)?;
         let mention_ids = self.resolve_mentions(conversation_id, &content)?;
-        let active = self.active_turns_for(conversation_id);
+        // Routing only steers into a turn that can still receive work. The
+        // host's raw view may still list a turn the store has closed, and
+        // steering into one of those would drop the message silently.
+        let active = self.routable_turns(conversation_id);
         let assistant_ids = if mention_ids.is_empty() {
             let conversation = self.store.get(conversation_id)?;
             conversation
@@ -1261,6 +1264,12 @@ impl ConversationService {
         Ok(mentioned)
     }
 
+    /// The turns the host currently reports as active.
+    ///
+    /// This is the host's own view, deliberately unreconciled: callers that
+    /// guard destructive work want the conservative answer, so a turn this
+    /// process still holds counts even if the store has since closed it.
+    /// Routing needs the opposite preference and calls [`Self::routable_turns`].
     fn active_turns_for(&self, conversation_id: &str) -> Vec<ActiveTurnRef> {
         let Some(active_turns) = self.host.active_turns.as_ref() else {
             return Vec::new();
@@ -1296,6 +1305,36 @@ impl ConversationService {
                 })
             })
             .collect()
+    }
+
+    /// The turns that may still receive work, reconciled against the store.
+    ///
+    /// The host keeps live turns in process memory while the store is the
+    /// durable authority on whether a turn is still open, and the two can
+    /// disagree: a cold recovery marks every in-flight dispatch interrupted
+    /// without reaching into the owning process, so the host keeps offering a
+    /// turn the store has already closed. Routing trusts this list to choose
+    /// between steering an existing turn and starting one, so an unreconciled
+    /// entry silently swallows the message — it is steered into a turn that
+    /// will never run. A turn the store has closed is therefore not routable.
+    fn routable_turns(&self, conversation_id: &str) -> Vec<ActiveTurnRef> {
+        self.active_turns_for(conversation_id)
+            .into_iter()
+            .filter(|turn| !self.store_turn_is_closed(&turn.turn_handle))
+            .collect()
+    }
+
+    /// Whether the durable record already closed this turn.
+    ///
+    /// An unknown turn counts as open: the store is the authority on turns it
+    /// knows, and absence is not evidence that work stopped. A read failure
+    /// likewise keeps the host's view rather than dropping a live turn on a
+    /// transient error.
+    fn store_turn_is_closed(&self, turn_handle: &str) -> bool {
+        self.store
+            .direct_turn(turn_handle)
+            .map(|turn| turn.state.is_terminal())
+            .unwrap_or(false)
     }
 
     fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> SteerDisposition {
@@ -3897,6 +3936,72 @@ mod tests {
         assert!(posted.get("strategyError").is_none());
         assert_eq!(steers.lock().unwrap()[0]["text"], "steer please");
         assert_eq!(steers.lock().unwrap()[0]["turnHandle"], "dispatch:live");
+    }
+
+    #[test]
+    fn a_follow_up_never_steers_into_a_turn_the_store_already_closed() {
+        let refusing = Arc::new(Mutex::new(true));
+        let runtime_mode = Arc::clone(&refusing);
+        let started = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_started = Arc::clone(&started);
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let host_turns = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let host_view = Arc::clone(&host_turns);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(move |params| {
+                if *runtime_mode.lock().unwrap() {
+                    return Err(
+                        crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable,
+                    );
+                }
+                captured_started.lock().unwrap().push(params.clone());
+                Ok(accepted_receipt(params))
+            })
+            .with_active_turns(move |_| json!({"turns": host_view.lock().unwrap().clone()}))
+            .with_steer_turn(move |params| {
+                captured_steers.lock().unwrap().push(params.clone());
+                Ok(json!({"ok": true, "status": "accepted"}))
+            });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let closed = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One run"
+            }),
+        );
+        assert_eq!(closed["directTurns"][0]["state"], "failed");
+        // The owning host keeps advertising the turn its own process opened,
+        // while cold recovery already closed it in the durable record.
+        host_turns.lock().unwrap().push(json!({
+            "turnHandle": closed["directTurns"][0]["id"],
+            "conversationId": conversation_id,
+            "membershipId": agent_id,
+            "agent": "one"
+        }));
+        *refusing.lock().unwrap() = false;
+        let follow_up = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One run"
+            }),
+        );
+        assert!(
+            steers.lock().unwrap().is_empty(),
+            "a closed turn can never receive a steer"
+        );
+        assert_eq!(started.lock().unwrap().len(), 1);
+        assert_eq!(follow_up["directTurns"][0]["state"], "running");
+        assert_ne!(
+            follow_up["directTurns"][0]["id"],
+            closed["directTurns"][0]["id"]
+        );
     }
 
     #[test]
