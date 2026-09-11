@@ -6,7 +6,9 @@
 
 基线版本：**`8638e1040ac7abfa4005673a9fdac05065b3f5cc`**（`nightly`）。核对下文任何断言时请钉住该提交；后续 `nightly` 可能已前进。智能体数量、工具目录与二进制名称，均为契约测试已经钉住的值。
 
-**路径约定。** 以 `crates/`、`apps/`、`tests/`、`tools/`、`schemas/` 或 `docs/` 开头的路径为仓库相对路径。其余路径相对于 `crates/licoup-native/src/`，例如 `domain/subagent_mcp/mod.rs` 即 `crates/licoup-native/src/domain/subagent_mcp/mod.rs`。表格中的裸 `:NNN` 行号继承该行所写的文件；若该行未写文件，则继承同一表格中最近的前一行。所有引用均按这些规则解析。
+**路径约定。** 以 `crates/`、`apps/`、`tests/`、`tools/`、`schemas/` 或 `docs/` 开头的路径为仓库相对路径。其余路径相对于 `crates/licoup-native/src/`，例如 `domain/subagent_mcp/mod.rs` 即 `crates/licoup-native/src/domain/subagent_mcp/mod.rs`。
+
+**每条引用自带文件。** 下文没有任何裸行号：每条引用都写明所属文件，即使同表相邻行指向同一文件。这样无需上下文即可核对每条引用，且由脚本强制。
 
 ## 1. 命令表面
 
@@ -81,14 +83,14 @@
 
 | 种类 | 字段 | 位置 |
 | --- | --- | --- |
-| 成功 | `protocol`、`id`、`workflowId`、`ok: true`、`result` | `:184-203` |
-| 错误 | `protocol`、`id`、`workflowId`、`ok: false`、`error: ClientError` | `:205-223` |
-| 流式事件 | `protocol`、`id`、`workflowId`、`kind: "event"`、`sequence`、`event` | `:60-103` |
-| 流式终止 | `protocol`、`id`、`workflowId`、`kind: "terminal"`、`sequence`、`ok`、`result`/`error` | `:105-167` |
+| 成功 | `protocol`、`id`、`workflowId`、`ok: true`、`result` | `bin/licoup/stdio_rpc/response.rs:184-203` |
+| 错误 | `protocol`、`id`、`workflowId`、`ok: false`、`error: ClientError` | `bin/licoup/stdio_rpc/response.rs:205-223` |
+| 流式事件 | `protocol`、`id`、`workflowId`、`kind: "event"`、`sequence`、`event` | `bin/licoup/stdio_rpc/response.rs:60-103` |
+| 流式终止 | `protocol`、`id`、`workflowId`、`kind: "terminal"`、`sequence`、`ok`、`result`/`error` | `bin/licoup/stdio_rpc/response.rs:105-167` |
 
 `ClientError` 字段为 `code`、`stage`、`component`、`retryable`、`recovery`、
 `presentationArgs`（`ffi/generated/client_error.rs:159-172`）。`code` 枚举共
-**45** 个值（`:6-97`）。
+**45** 个值（`ffi/generated/client_error.rs:6-97`）。
 
 ### 1.4 二进制
 
@@ -218,14 +220,14 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 | 项 | 值 | 位置 |
 | --- | --- | --- |
 | endpoint 名 | `licoup-conversation-{token}-{generation}` | `platform/conversation_host_transport.rs:89-100` |
-| token 文件 | `<root>/client-state/conversation-runtime/endpoint-token` | `:105-115` |
-| token 形式 | 32 位小写十六进制，`create_new` + 同步 + 加固 | `:119-138` |
-| generation | 可执行文件元数据的 SHA-256，取前 8 字节 → 16 位十六进制 | `:19-67` |
+| token 文件 | `<root>/client-state/conversation-runtime/endpoint-token` | `platform/conversation_host_transport.rs:105-115` |
+| token 形式 | 32 位小写十六进制，`create_new` + 同步 + 加固 | `platform/conversation_host_transport.rs:119-138` |
+| generation | 可执行文件元数据的 SHA-256，取前 8 字节 → 16 位十六进制 | `platform/conversation_host_transport.rs:19-67` |
 | 宿主记录 | `generation\nhost_pid\n[client_pid]` | `bin/licoup/conversation_host.rs:39-101` |
-| 属主环境变量 | `LICOUP_CLIENT_PID` | `:32-37` |
-| 常量 | 80 次连接尝试、25 ms 重试、2 s 陈旧等待、500 ms 属主检查、300 s 空闲宽限 | `:32-37` |
-| 属主死亡退出 | checkpoint 后跳出 accept 循环 | `:497-503` |
-| 空闲退出（无属主） | 宽限期后、且 attendance 空闲时才退出 | `:504-514` |
+| 属主环境变量 | `LICOUP_CLIENT_PID` | `bin/licoup/conversation_host.rs:32-37` |
+| 常量 | 80 次连接尝试、25 ms 重试、2 s 陈旧等待、500 ms 属主检查、300 s 空闲宽限 | `bin/licoup/conversation_host.rs:32-37` |
+| 属主死亡退出 | checkpoint 后跳出 accept 循环 | `bin/licoup/conversation_host.rs:497-503` |
+| 空闲退出（无属主） | 宽限期后、且 attendance 空闲时才退出 | `bin/licoup/conversation_host.rs:504-514` |
 
 该通道的认证方式是**持有 socket 名**，而读取该名字需要私有 token 文件。线上不
 传输任何调用方身份。
@@ -237,7 +239,7 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 | GUI 死亡 | 宿主在 500 ms 内察觉，checkpoint 后退出；进行中的 turn 线程随进程终止 |
 | stdio 通道管道关闭 | 该通道会 join 直到每个 Agent turn 到达终态（`bin/licoup/stdio_rpc/server.rs:92-99`） |
 | 代理通道 | stdout 消失后继续读干宿主，便于桌面重连（`bin/licoup/conversation_host.rs:282-313`） |
-| attendance worker | 属主退出时被 detach，永不等待（`:443-449`） |
+| attendance worker | 属主退出时被 detach，永不等待（`bin/licoup/conversation_host.rs:443-449`） |
 
 ### 4.2 当前的更新行为
 
@@ -245,7 +247,7 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 | --- | --- |
 | apply 脚本退出 GUI 并等待其 pid 消失 | `domain/client_update/native_runner/script.rs:93-148` |
 | 预写 `pending` 交接文件 | `domain/client_state_migration.rs:414-484` |
-| 候选版本在状态准入前先 claim | `:371-403`，由 `:178-186` 调用 |
+| 候选版本在状态准入前先 claim | `domain/client_state_migration.rs:371-403`，由 `domain/client_state_migration.rs:178-186` 调用 |
 | endpoint generation 阻止新二进制附着旧宿主 | `platform/conversation_host_transport.rs:44-48, 89-100` |
 
 ### 4.3 交接验证地图
@@ -257,16 +259,16 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 | --- | --- | --- |
 | 从桌面通道启动宿主 | `bin/licoup/conversation_host.rs:255-280` | `native-client-smoke`、`subagent_mcp_startup` |
 | 意外退出后重启宿主 | supervisor | `platform/subagent_mcp_supervisor.rs:1595-1638` |
-| 工作进行中属主死亡 | `bin/licoup/conversation_host.rs:497-503` | `:787-951` |
-| 空闲退出 | `:504-514` | `:531-542` |
-| endpoint generation 隔离 | `platform/conversation_host_transport.rs:89-100` | `:174-197` |
-| generation 记录完整性 | `bin/licoup/conversation_host.rs:39-101` | `:556-577` |
-| 更新交接 pending → claimed | `domain/client_state_migration.rs:371-403` | `:1631-1649` |
-| 交接不匹配 / 被拒 | `:486-503` | `:1531-1562` |
-| store 步骤前崩溃 | `claim_update_handoff` 入口 `:178-186`；failpoint `:267` | `:1513` |
-| store 步骤后、ledger 写入前崩溃 | failpoint `:274` | `:1479` |
-| ledger 写入后崩溃 | failpoint `:277` | `:1513` |
-| turn 中途被杀后的冷恢复 | `crates/licoup-conversation/tests/cold_recovery.rs` | `:9`、`:76`、`:149`、`:212` |
+| 工作进行中属主死亡 | `bin/licoup/conversation_host.rs:497-503` | `bin/licoup/conversation_host.rs:787-951` |
+| 空闲退出 | `bin/licoup/conversation_host.rs:504-514` | `bin/licoup/conversation_host.rs:531-542` |
+| endpoint generation 隔离 | `platform/conversation_host_transport.rs:89-100` | `platform/conversation_host_transport.rs:174-197` |
+| generation 记录完整性 | `bin/licoup/conversation_host.rs:39-101` | `bin/licoup/conversation_host.rs:556-577` |
+| 更新交接 pending → claimed | `domain/client_state_migration.rs:371-403` | `domain/client_state_migration.rs:1631-1649` |
+| 交接不匹配 / 被拒 | `domain/client_state_migration.rs:486-503` | `domain/client_state_migration.rs:1531-1562` |
+| store 步骤前崩溃 | `claim_update_handoff` 入口 `domain/client_state_migration.rs:178-186`；failpoint `domain/client_state_migration.rs:267` | `domain/client_state_migration.rs:1513` |
+| store 步骤后、ledger 写入前崩溃 | failpoint `domain/client_state_migration.rs:274` | `domain/client_state_migration.rs:1479` |
+| ledger 写入后崩溃 | failpoint `domain/client_state_migration.rs:277` | `domain/client_state_migration.rs:1513` |
+| turn 中途被杀后的冷恢复 | `crates/licoup-conversation/tests/cold_recovery.rs:9`、`crates/licoup-conversation/tests/cold_recovery.rs:76`、`crates/licoup-conversation/tests/cold_recovery.rs:149`、`crates/licoup-conversation/tests/cold_recovery.rs:212` |
 | claim 后清理失败不得回滚 | `client_update/native_runner/script.rs` | `domain/client_state_migration.rs:1562` |
 
 ## 5. 数据边界与格式边界
@@ -308,18 +310,18 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 | （内联，交接被拒） | `v0.0.1:client-update-handoff-rejection-1` | `client-state/migrations/update-handoff.json.rejected` |
 
 迁移期间准入的数字版本 JSON 文档（`domain/client_state_migration.rs:1050-1055`）。
-其中两个有专用处理函数，其余共用 `migrate_json_schema`（`:1130`）：
+其中两个有专用处理函数，其余共用 `migrate_json_schema`（`domain/client_state_migration.rs:1130`）：
 
 | 文档 | 版本 | 处理函数 |
 | --- | --- | --- |
 | `.licoup-workspace.json` | 1 | `migrate_json_schema` |
 | `client-state/appearance-preferences.json` | 1 | `migrate_json_schema` |
-| `client-state/agent-tab-order.json` | 1 | `migrate_agent_tab_order`（`:1102`） |
+| `client-state/agent-tab-order.json` | 1 | `migrate_agent_tab_order`（`domain/client_state_migration.rs:1102`） |
 | `client-state/agent-tool-allowlists.json` | 1 | `migrate_json_schema` |
 | `client-state/current-client-view.json` | 1 | `migrate_json_schema` |
 | `client-state/mobile-home-layout.json` | 2 | `migrate_json_schema` |
 | `client-state/skill-hub-preferences.json` | 1 | `migrate_json_schema` |
-| `client-state/mobile-relay/config.json` | 2 | `migrate_mobile_relay`（`:1117`） |
+| `client-state/mobile-relay/config.json` | 2 | `migrate_mobile_relay`（`domain/client_state_migration.rs:1117`） |
 
 并非所有持久化文档都带版本：`telegram-gateway/channel.ready` 仅含 `channelId`、
 `state`、`botUsername`（`platform/gateway_runtime/channels/telegram/mod.rs:44-53`）。
@@ -334,8 +336,8 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
 - ledger 与 per-domain marker 作为持久进度记录
 - `ConversationStore::open_for_migration` 与
   `AdaptiveFlywheelStore::open_for_migration` 作为步骤期间唯一写入方
-- `:723` / `:1007` 已有的域路由
-- `:165-173` 的排他 `admission.lock` flock
+- `domain/client_state_migration.rs:723` 与 `domain/client_state_migration.rs:1007` 已有的域路由
+- `domain/client_state_migration.rs:165-173` 的排他 `admission.lock` flock
 
 工具中新增（今天不存在）：
 
@@ -344,7 +346,7 @@ token 集合即适配器注册表的 caller 集，因此已发布的 token 映�
   的 `admit()`，返回 `AdmissionResult`
 - 带枚举动作的 `doctor` / `recover` 修复模式
 - 回滚。今天迁移是单向的：一旦接纳了更高的产品版本，旧二进制会被永久拒绝
-  （`:623` 的 `reject_older_binary`，错误码 `state_newer_than_binary`）
+  （`domain/client_state_migration.rs:623` 的 `reject_older_binary`，错误码 `state_newer_than_binary`）
 
 今天的触发方式是隐式的：桌面在存储加载之前把准入作为第二个生命周期步骤
 （`apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart:75-78`，
