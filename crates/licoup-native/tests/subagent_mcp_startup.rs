@@ -265,6 +265,30 @@ fn refused_caller_is_reported_on_stderr_before_the_first_frame() {
     }
 }
 
+/// Diagnosing a refusal must not mutate anything. The diagnostic reads the
+/// published caller set, and a reader that resolves its state root the way the
+/// owner does would create the directory tree it was refused before creating —
+/// so running the connector against a fresh root must leave that root untouched.
+#[test]
+fn a_refused_connector_leaves_no_state_behind() {
+    for arguments in [
+        Vec::new(),
+        vec!["--caller", "not-a-real-agent"],
+        vec!["--caller", "grok"],
+    ] {
+        let root = temp_root("refusal-side-effect");
+        // Deliberately not created: an absent root is the strongest assertion.
+        let (code, _) = connector_refusal(Some(&root), &arguments);
+        assert_eq!(code, Some(1));
+        assert!(
+            !root.exists(),
+            "a refused connector must not create its state root: {}",
+            root.display()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
 /// An Assistant that exists but holds no mesh seat is refused before any frame,
 /// and the refusal says so instead of looking like a transport fault. The
 /// admitted set is read from the running service, never from a list compiled
