@@ -7,6 +7,7 @@
 //! prepared statements.
 
 mod cache;
+mod cursor;
 mod files;
 mod models;
 mod openclaw;
@@ -47,7 +48,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use watermark::{WatermarkProjection, apply_cumulative_watermarks};
 
-pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v8";
+pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v9";
 const CACHE_REFRESH_INTERVAL_MS: u64 = 60_000;
 const SNAPSHOT_CACHE_REFRESH_INTERVAL_MS: u64 = 10 * 60_000;
 
@@ -72,6 +73,11 @@ pub(super) fn summarize(
 ) -> Option<HistoryUsageSummary> {
     if agent.id == "openclaw" {
         return Some(openclaw::summarize(window, warnings));
+    }
+    // Cursor's billing ledger is hosted: the local stores it writes are not a
+    // request ledger, so the file pipeline is never consulted for it.
+    if agent.id == "cursor" {
+        return Some(cursor::summarize(scan_params, window, warnings));
     }
     match summarize_inner(agent, scan_params, window, warnings, runtime) {
         Ok(summary) => Some(summary),

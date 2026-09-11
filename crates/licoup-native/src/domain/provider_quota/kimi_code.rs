@@ -170,6 +170,7 @@ fn normalize_counter_window(
             .and_then(Value::as_str)
             .map(str::to_owned),
         reset_description,
+        ..QuotaWindow::default()
     })
 }
 
