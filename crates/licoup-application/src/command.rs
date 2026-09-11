@@ -243,6 +243,15 @@ impl SubagentCommand {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchRequest {
+    /// The conversation the target lives in.
+    ///
+    /// A membership claim already supplies it and must not name a different
+    /// one; the facade rejects that. The in-process local admin has no
+    /// conversation of its own, so it names one here — exactly as the existing
+    /// surfaces do (`conversationId` on the MCP tool, the desktop's selected
+    /// conversation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     /// Exactly one of `membership_id` or `agent_id` addresses the target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub membership_id: Option<String>,
@@ -269,6 +278,9 @@ pub struct DispatchRequest {
 
 impl DispatchRequest {
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if let Some(conversation_id) = &self.conversation_id {
+            stable_id("conversation_id", conversation_id)?;
+        }
         if self.membership_id.is_none() && self.agent_id.is_none() {
             return Err(ApplicationFailure::invalid_request("target"));
         }
@@ -287,7 +299,10 @@ impl DispatchRequest {
         }
         if let Some(directory) = &self.working_directory {
             bounded_non_empty("working_directory", directory, MAX_WORKING_DIRECTORY_BYTES)?;
-            if !directory.starts_with('/') {
+            // The platform's own notion of absolute, so a Windows path is not
+            // rejected by a Unix-shaped check. This is what the native dispatch
+            // path already enforces, and Windows is a supported platform.
+            if !std::path::Path::new(directory).is_absolute() {
                 return Err(ApplicationFailure::invalid_request("working_directory"));
             }
         }
@@ -310,6 +325,9 @@ pub enum TaskType {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelRequest {
+    /// The conversation the target lives in. See [`DispatchRequest`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub membership_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -318,8 +336,17 @@ pub struct CancelRequest {
 
 impl CancelRequest {
     pub fn validate(&self) -> Result<(), ApplicationFailure> {
+        if let Some(conversation_id) = &self.conversation_id {
+            stable_id("conversation_id", conversation_id)?;
+        }
         if self.membership_id.is_none() && self.agent_id.is_none() {
             return Err(ApplicationFailure::invalid_request("target"));
+        }
+        if let Some(membership_id) = &self.membership_id {
+            stable_id("membership_id", membership_id)?;
+        }
+        if let Some(agent_id) = &self.agent_id {
+            provider("agent_id", agent_id)?;
         }
         Ok(())
     }
@@ -486,17 +513,16 @@ impl ApplicationCommand {
                 AssistantCommand::WorkflowInspect { .. }
                 | AssistantCommand::WorkflowCancel { .. } => None,
             },
-            // A dispatch names its target, not its conversation: the target is
-            // resolved *inside* the caller's own conversation, which is what
-            // makes cross-conversation work impossible. The claim supplies the
-            // conversation, so there is nothing to bind here.
-            Self::Subagent(
-                SubagentCommand::List
-                | SubagentCommand::Probe { .. }
-                | SubagentCommand::Delegate(_)
-                | SubagentCommand::Continue(_)
-                | SubagentCommand::Cancel(_),
-            ) => None,
+            // A dispatch addresses a conversation: a membership claim supplies
+            // its own and may not name another, while the in-process local admin
+            // names one. Either way the facade binds it before verification.
+            Self::Subagent(command) => match command {
+                SubagentCommand::List | SubagentCommand::Probe { .. } => None,
+                SubagentCommand::Delegate(request) | SubagentCommand::Continue(request) => {
+                    request.conversation_id.as_deref()
+                }
+                SubagentCommand::Cancel(request) => request.conversation_id.as_deref(),
+            },
             Self::Conversation(command) => match command {
                 ConversationCommand::Get { conversation_id } => Some(conversation_id.as_str()),
                 ConversationCommand::List { .. }
