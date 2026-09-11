@@ -243,6 +243,30 @@ fn provider_quota_codex_source_normalizes_synthetic_hosted_payload() {
 }
 
 #[test]
+fn provider_quota_codex_source_normalizes_hosted_reserve_window() {
+    let root = temp_root("codex-hosted-reserve");
+    let (auth_path, access_token) = write_codex_auth(&root);
+    let payload = json!({
+        "rate_limit": {
+            "primary_window": {"used_percent": 100.0},
+            "secondary_window": {"used_percent": 100.0}
+        },
+        "additional_rate_limits": [{
+            "metered_feature": "base_model_inference",
+            "limit_name": "gpt-reserve",
+            "rate_limit": {"primary_window": {"used_percent": 48.0}}
+        }]
+    });
+    let source = codex_source_with_payload(auth_path, access_token, payload);
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+
+    assert_eq!(snapshot.windows.len(), 3);
+    assert_eq!(snapshot.windows[2].label, "Luna Reserve");
+    assert_eq!(snapshot.windows[2].used_percent, 48.0);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn provider_quota_codex_source_falls_back_to_app_server_lane() {
     let payload = json!({
         "rateLimits": {
@@ -268,6 +292,36 @@ fn provider_quota_codex_source_falls_back_to_app_server_lane() {
         snapshot.windows[0].resets_at.as_deref(),
         Some("2033-05-18T03:33:20Z")
     );
+}
+
+#[test]
+fn provider_quota_codex_source_exposes_the_backend_reserve_window() {
+    let payload = json!({
+        "rateLimits": {
+            "primary": {"usedPercent": 100.0, "windowMinutes": 300},
+            "secondary": {"usedPercent": 100.0, "windowMinutes": 10080}
+        },
+        "rateLimitsByLimitId": {
+            "base_model_inference": {
+                "limitId": "base_model_inference",
+                "limitName": "gpt-reserve",
+                "primary": {"usedPercent": 48.0, "windowMinutes": 300}
+            }
+        }
+    });
+    let source = codex::CodexSource::for_testing(
+        Some(temp_root("codex-reserve").join("absent-auth.json")),
+        Some(PathBuf::from("fixture-codex-executable")),
+        Box::new(|_, _| Err(QuotaFetchError::new("quota_endpoint_request_failed"))),
+        Box::new(move |_| Ok(payload.clone())),
+    );
+
+    let snapshot = source.fetch_snapshot(fixed_now()).unwrap();
+    assert_eq!(snapshot.windows.len(), 3);
+    assert_eq!(snapshot.windows[0].label, "session");
+    assert_eq!(snapshot.windows[1].label, "weekly");
+    assert_eq!(snapshot.windows[2].label, "Luna Reserve");
+    assert_eq!(snapshot.windows[2].used_percent, 48.0);
 }
 
 #[test]
@@ -297,6 +351,14 @@ fn provider_quota_codex_app_server_response_skips_notifications() {
         Some(17.0)
     );
     assert!(codex::parse_rate_limits_response(b"{}").is_err());
+    let rejected = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": {"code": -32602, "message": "invalid params"}
+    }))
+    .unwrap();
+    let error = codex::parse_rate_limits_response(&rejected).unwrap_err();
+    assert_eq!(error.code, "codex_app_server_capability_rejected");
 }
 
 #[test]
