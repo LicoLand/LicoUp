@@ -21,6 +21,7 @@ const networkTokensByExtension = Object.freeze({
 });
 
 const reviewedRustEgressFiles = Object.freeze([
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
   "crates/licoup-native/src/domain/client_update/github_source.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
@@ -112,6 +113,12 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
 
 test("reviewed runtime owners retain direction, endpoint, and data bounds", async () => {
   const expectations = new Map([
+    ["crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs", [
+      'EVENTS_URL: &str = "https://cursor.com/api/dashboard/get-filtered-usage-events"',
+      "is_https_or_loopback_http_url(EVENTS_URL)",
+      "MAX_PAGES", "MAX_PAGE_BYTES", ".take(MAX_PAGE_BYTES.saturating_add(1))",
+      '"Origin"',
+    ]],
     ["crates/licoup-native/src/domain/lico_agent/transport.rs", [
       'strip_prefix("http://")', 'host != "127.0.0.1"',
       "TcpStream::connect_timeout", "set_read_timeout", "Content-Length",

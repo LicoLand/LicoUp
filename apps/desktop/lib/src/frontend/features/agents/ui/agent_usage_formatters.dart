@@ -86,6 +86,32 @@ String agentUsageWarningLabel(String value, LicoStrings strings) {
       strings.isChinese ? '原生历史扫描失败' : 'Native history scan failed',
     'target_scan_failed' =>
       strings.isChinese ? '智能体检测失败' : 'Agent detection failed',
+    // Hosted Cursor ledger. The session codes mean the local Cursor sign-in
+    // could not be used, never that usage was invented.
+    'cursor_usage_request_failed' =>
+      strings.isChinese ? 'Cursor 用量接口请求失败' : 'Cursor usage request failed',
+    'cursor_usage_unauthorized' =>
+      strings.isChinese ? 'Cursor 会话已被拒绝' : 'Cursor session rejected',
+    'cursor_usage_response_invalid' =>
+      strings.isChinese ? 'Cursor 用量响应无效' : 'Cursor usage response invalid',
+    'cursor_usage_response_too_large' =>
+      strings.isChinese ? 'Cursor 用量响应过大' : 'Cursor usage response too large',
+    'cursor_usage_pagination_incomplete' =>
+      strings.isChinese
+          ? 'Cursor 用量分页不完整，已放弃本次统计'
+          : 'Cursor usage paging incomplete; totals withheld',
+    'cursor_usage_timeout' =>
+      strings.isChinese ? 'Cursor 用量拉取超时' : 'Cursor usage fetch timed out',
+    'cursor_auth_token_absent' =>
+      strings.isChinese ? 'Cursor 未登录' : 'Cursor not signed in',
+    'cursor_auth_token_expired' =>
+      strings.isChinese ? 'Cursor 登录已过期' : 'Cursor session expired',
+    'cursor_auth_token_unreadable' || 'cursor_state_store_unavailable' =>
+      strings.isChinese
+          ? '无法读取 Cursor 本地会话'
+          : 'Cursor local session unreadable',
+    'cursor_auth_session_underivable' =>
+      strings.isChinese ? 'Cursor 会话凭据无效' : 'Cursor session credential invalid',
     _ => strings.isChinese ? '用量统计存在未识别警告' : 'Unrecognized usage warning',
   };
 }

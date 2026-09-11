@@ -149,6 +149,18 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             ),
             accent: agentUsageSeriesColor(colors, series.label),
           ),
+        // Hosted-ledger models with requests but no token fields stay request
+        // counts; nothing is estimated to make them look like token totals.
+        for (final label in timeline.requestOnlyShareLabels)
+          AgentUsageBarData(
+            label: label,
+            value: strings.agentUsageIncludedRequests(
+              timeline.requestCountFor(label),
+            ),
+            trailing: '—',
+            fraction: 0,
+            accent: agentUsageSeriesColor(colors, label),
+          ),
       ],
       AgentUsageChartGrouping.workflow => const <AgentUsageBarData>[],
     };

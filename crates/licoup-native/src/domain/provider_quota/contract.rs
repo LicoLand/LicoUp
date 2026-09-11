@@ -74,12 +74,21 @@ pub(super) enum QuotaStatus {
     Unavailable,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct QuotaWindow {
     pub(super) label: String,
     /// Raw provider value; may exceed 100. The UI clamps for display.
     pub(super) used_percent: f64,
+    /// Absolute usage amounts for currency-metered plans, normalized to USD by
+    /// the source so every provider shares one unit. Percent-only providers
+    /// omit all three fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) used: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) limit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) remaining: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) window_minutes: Option<u64>,
     /// RFC 3339; backfilled from the cached snapshot when a fetch omits it.

@@ -90,10 +90,10 @@ const codexUsageCache = await readJoinedText([
 const nativeUsageCache = await readJoinedText([
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser.rs",
-  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
@@ -178,7 +178,7 @@ const incrementalCacheTest = await readJoinedText([
 assertIncludes(
   nativeUsage,
   [
-    "const AGENT_USAGE_SCHEMA_VERSION: u32 = 6",
+    "const AGENT_USAGE_SCHEMA_VERSION: u32 = 7",
     'const AGENT_USAGE_MODE: &str = "local-token-usage"',
     'const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "native-metadata-first-incremental"',
     "const DEFAULT_USAGE_WINDOW_DAYS: u64 = 30",
@@ -237,7 +237,6 @@ assertIncludes(
     "native_usage_daily_models",
     "parse_append_source",
     "parse_openagent_usage_database",
-    "parse_cursor_usage_database",
     "parse_hermes_usage_database",
     "append_guard_matches",
     "pub(super) fn seal(",
@@ -247,6 +246,15 @@ assertIncludes(
     "estimated_records",
     "agent-usage-rollups-v2.sqlite3",
     "remove_legacy_cache",
+    // Cursor's ledger is hosted: local bubble counters are never projected,
+    // paging is reconciled against Cursor's own count, and a tokenless request
+    // stays a request count.
+    "cursor-hosted-usage-events",
+    "api/dashboard/get-filtered-usage-events",
+    '"Origin"',
+    "reconcile_pages",
+    "add_token_unavailable_request",
+    "hostedCoverageStart",
   ],
   "shared metadata-first native usage cache"
 );
@@ -290,7 +298,7 @@ assert(
 assertIncludes(
   usageModels,
   [
-    "static const currentSchemaVersion = 6",
+    "static const currentSchemaVersion = 7",
     "static const currentMode = 'local-token-usage'",
     "static const currentTokenSourceMode = 'native-metadata-first-incremental'",
     "validateEnvelope",
@@ -422,7 +430,7 @@ assertIncludes(
     "--history-days",
     "90",
     "rejects retained reports outside the current contract",
-    "requires schemaVersion to be the exact integer 6",
+    "requires schemaVersion to be the exact integer 7",
     "rejects malformed entries inside retained reports"
   ],
   "Dart usage service regression"
@@ -506,7 +514,7 @@ const report = {
   artifactKind: "client-local-agent-token-usage-evidence",
   scenario: "agent-usage-metering",
   contract: {
-    schemaVersion: 6,
+    schemaVersion: 7,
     mode: "local-token-usage",
     tokenSourceMode: "native-metadata-first-incremental",
     defaultScanWindowDays: 90,

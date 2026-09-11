@@ -193,7 +193,9 @@ LicoUp Adaptive Bridge 负责针对该目标的交互适配。只有目录条目
   Membership 归属、校验过的数字用量与精确覆盖率。LicoUp 负责工作流用量
   记账，Adaptive Flywheel 负责 route 选择，原生对话位置只作为私有 adapter 绑定。视图不会
   暴露 prompt、reply、tool payload、摘要、压缩或 cache 控件；原生 ledger 只保留活动工作流
-  和最新二十份终态汇总。
+  和最新二十份终态汇总。Cursor 是例外：它的用量与额度环来自账号自己的在线看板，
+  不读取本地 IDE 计数器。Cursor 未提供 token 字段的请求只计请求数；套餐、
+  Auto/API 与按需预算分开显示。
 - 日志和诊断留在本机；用户可以主动保存一份脱敏副本。
 
 不要在公开问题中附加原始日志、历史、本地路径或设备信息。

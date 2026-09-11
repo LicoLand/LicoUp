@@ -61,6 +61,9 @@ fn native_adapters_cache_estimates_when_native_counters_are_absent() {
     .unwrap();
     assert_fallback(&scan_agent(&home, &state, "copilot", true));
 
+    // Cursor never estimates from local conversation text: its ledger is
+    // hosted, so an unavailable session fails closed instead of inventing
+    // tokens from a workspace store.
     let cursor_workspace =
         home.join("Library/Application Support/Cursor/User/workspaceStorage/workspace");
     fs::create_dir_all(&cursor_workspace).unwrap();
@@ -96,7 +99,9 @@ fn native_adapters_cache_estimates_when_native_counters_are_absent() {
             .unwrap();
     }
     drop(connection);
-    assert_fallback(&scan_agent(&home, &state, "cursor", true));
+    let cursor = scan_agent(&home, &state, "cursor", true);
+    assert_eq!(cursor["agents"][0]["history"]["totalTokens"], 0);
+    assert_eq!(cursor["agents"][0]["confidence"], "unavailable");
 
     let pi_sessions = home.join(".pi/agent/sessions");
     fs::create_dir_all(&pi_sessions).unwrap();
@@ -121,7 +126,7 @@ fn native_adapters_cache_estimates_when_native_counters_are_absent() {
     .unwrap();
     assert_fallback(&scan_agent(&home, &state, "pi", true));
 
-    for agent in ["antigravity", "copilot", "cursor", "pi"] {
+    for agent in ["antigravity", "copilot", "pi"] {
         let warm = scan_agent(&home, &state, agent, false);
         assert_fallback(&warm);
         assert_eq!(warm["agents"][0]["history"]["scanCache"]["fresh"], true);
