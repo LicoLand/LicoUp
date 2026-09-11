@@ -13,7 +13,10 @@ final class UnwiredAgentHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => null;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async {
     return const AgentHubCatalogSnapshot(recipes: [], ok: false);
   }
 
@@ -91,37 +94,44 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => _cachedCatalog;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async {
     try {
       final id = recipeId.trim();
       final raw = await _invoke([
         'agent-hub',
         'catalog',
         if (id.isNotEmpty) ...['--agent-id', id],
+        // A full refresh resolves every card in this one command. The desktop
+        // transport serializes native requests through one queue, so asking per
+        // card cost a full round trip per card.
+        if (live && id.isEmpty) ...['--stdin-json', jsonEncode(_livePayload())],
       ]);
       final snapshot = _ingestCatalog(raw, merge: id.isNotEmpty);
       if (snapshot.ok) {
         return snapshot;
       }
-      if (_cachedCatalog != null) {
-        return AgentHubCatalogSnapshot(
-          recipes: _cachedCatalog!.recipes,
-          scanGeneration: _cachedCatalog!.scanGeneration,
-          ok: false,
-        );
-      }
-      return snapshot;
+      return _cachedOr(snapshot);
     } on Object {
-      if (_cachedCatalog != null) {
-        return AgentHubCatalogSnapshot(
-          recipes: _cachedCatalog!.recipes,
-          scanGeneration: _cachedCatalog!.scanGeneration,
-          ok: false,
-        );
-      }
-      return const AgentHubCatalogSnapshot(recipes: [], ok: false);
+      return _cachedOr(const AgentHubCatalogSnapshot(recipes: [], ok: false));
     }
   }
+
+  AgentHubCatalogSnapshot _cachedOr(AgentHubCatalogSnapshot fallback) {
+    final cached = _cachedCatalog;
+    if (cached == null) {
+      return fallback;
+    }
+    return AgentHubCatalogSnapshot(
+      recipes: cached.recipes,
+      scanGeneration: cached.scanGeneration,
+      ok: false,
+    );
+  }
+
+  Map<String, dynamic> _livePayload() => <String, dynamic>{'liveLookup': true};
 
   @override
   Future<AgentHubOperationResult> plan(AgentHubPlanRequest request) async {
