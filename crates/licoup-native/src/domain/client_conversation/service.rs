@@ -1,6 +1,6 @@
 use super::{
-    ConversationStore, DirectTurn, ImageAttachment, ImageAttachmentReference, MembershipAccess,
-    MembershipStatus, NewEventPart, Principal, PrincipalKind,
+    ConversationStore, DirectTurn, DispatchState, ImageAttachment, ImageAttachmentReference,
+    MembershipAccess, MembershipStatus, NewEventPart, Principal, PrincipalKind,
 };
 use crate::domain::assistant_continuity::ContinuityHost;
 use crate::domain::assistant_continuity::cognition::{
@@ -1072,7 +1072,7 @@ impl ConversationService {
         // Routing only steers into a turn that can still receive work. The
         // host's raw view may still list a turn the store has closed, and
         // steering into one of those would drop the message silently.
-        let active = self.routable_turns(conversation_id);
+        let active = self.routable_turns(conversation_id)?;
         let assistant_ids = if mention_ids.is_empty() {
             let conversation = self.store.get(conversation_id)?;
             conversation
@@ -1165,7 +1165,9 @@ impl ConversationService {
                     merge_live_turn(&mut live_turns, live);
                 }
             }
-            for turn in self.active_turns_for(conversation_id) {
+            // The projection offers exactly what routing accepted, so a closed
+            // handle is never handed back to a client as an attachable turn.
+            for turn in &active {
                 merge_live_turn(&mut live_turns, turn.to_json());
             }
         } else if active.len() == 1 {
@@ -1317,24 +1319,39 @@ impl ConversationService {
     /// between steering an existing turn and starting one, so an unreconciled
     /// entry silently swallows the message — it is steered into a turn that
     /// will never run. A turn the store has closed is therefore not routable.
-    fn routable_turns(&self, conversation_id: &str) -> Vec<ActiveTurnRef> {
-        self.active_turns_for(conversation_id)
-            .into_iter()
-            .filter(|turn| !self.store_turn_is_closed(&turn.turn_handle))
-            .collect()
+    fn routable_turns(&self, conversation_id: &str) -> Result<Vec<ActiveTurnRef>> {
+        let mut routable = Vec::new();
+        for turn in self.active_turns_for(conversation_id) {
+            if !self.store_turn_is_closed(&turn.turn_handle)? {
+                routable.push(turn);
+            }
+        }
+        Ok(routable)
     }
 
     /// Whether the durable record already closed this turn.
     ///
-    /// An unknown turn counts as open: the store is the authority on turns it
-    /// knows, and absence is not evidence that work stopped. A read failure
-    /// likewise keeps the host's view rather than dropping a live turn on a
-    /// transient error.
-    fn store_turn_is_closed(&self, turn_handle: &str) -> bool {
-        self.store
-            .direct_turn(turn_handle)
-            .map(|turn| turn.state.is_terminal())
-            .unwrap_or(false)
+    /// The host names a turn by its dispatch id, so the dispatch record is the
+    /// first durable entry for exactly that handle: a settled dispatch is what
+    /// a cold-recovered host keeps offering after its process memory stops
+    /// matching the store. A refused launch settles the direct turn without
+    /// ever opening a dispatch, so the direct record is consulted too.
+    ///
+    /// A handle no record names counts as open: the store is an authority only
+    /// over what it knows, and absence is not evidence that work stopped. A
+    /// read that *fails* is reported rather than read as "still open", so a
+    /// store that cannot answer can never silently swallow a message.
+    fn store_turn_is_closed(&self, turn_handle: &str) -> Result<bool> {
+        if let Some(dispatch) = self.store.dispatch_record(turn_handle)? {
+            return Ok(matches!(
+                dispatch.state,
+                DispatchState::Completed | DispatchState::Failed | DispatchState::Cancelled
+            ));
+        }
+        let Some(turn) = self.store.direct_turn_record(turn_handle)? else {
+            return Ok(false);
+        };
+        Ok(turn.state.is_terminal())
     }
 
     fn steer_active_turn(&self, turn: &ActiveTurnRef, text: &str) -> SteerDisposition {
@@ -2214,6 +2231,7 @@ fn principal_from_value(value: &Value) -> Result<Principal> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::client_conversation::DispatchSessionMode;
     use std::sync::{Condvar, Mutex};
 
     /// Releases the runtime barrier even when an assertion fails first, so a
@@ -4002,6 +4020,72 @@ mod tests {
             follow_up["directTurns"][0]["id"],
             closed["directTurns"][0]["id"]
         );
+        assert!(
+            !follow_up["turns"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|turn| turn["turnHandle"] == closed["directTurns"][0]["id"]),
+            "a closed handle must not come back as an attachable turn"
+        );
+    }
+
+    #[test]
+    fn a_follow_up_never_steers_into_a_closed_dispatch_without_a_direct_turn() {
+        let started = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_started = Arc::clone(&started);
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let host_turns = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let host_view = Arc::clone(&host_turns);
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap())
+            .with_native_turn_sender(move |params| {
+                captured_started.lock().unwrap().push(params.clone());
+                Ok(accepted_receipt(params))
+            })
+            .with_active_turns(move |_| json!({"turns": host_view.lock().unwrap().clone()}))
+            .with_steer_turn(move |params| {
+                captured_steers.lock().unwrap().push(params.clone());
+                Ok(json!({"ok": true, "status": "accepted"}))
+            });
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        // A dispatch the host can still name that never had a direct turn of
+        // its own — the shape child-work and subagent dispatches take — already
+        // settled in the durable record.
+        let closed = service
+            .store()
+            .create_dispatch(
+                &conversation_id,
+                &agent_id,
+                "send",
+                DispatchSessionMode::New,
+            )
+            .unwrap();
+        service
+            .store()
+            .update_dispatch(&closed.id, DispatchState::Completed, None, None)
+            .unwrap();
+        host_turns.lock().unwrap().push(json!({
+            "turnHandle": closed.id,
+            "conversationId": conversation_id,
+            "membershipId": agent_id,
+            "agent": "one"
+        }));
+        let posted = persist_then_dispatch(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One run"
+            }),
+        );
+        assert!(
+            steers.lock().unwrap().is_empty(),
+            "a settled dispatch can never receive a steer"
+        );
+        assert_eq!(started.lock().unwrap().len(), 1);
+        assert_eq!(posted["directTurns"][0]["state"], "running");
     }
 
     #[test]
