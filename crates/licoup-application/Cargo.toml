@@ -1,0 +1,12 @@
+[package]
+name = "licoup-application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Protocol-neutral by construction: only serialization is allowed here. The
+# dependency-boundary test in this crate's tests/ enforces it.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
