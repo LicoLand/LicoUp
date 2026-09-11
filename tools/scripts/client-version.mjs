@@ -11,6 +11,7 @@ const versionManifestSchema = "v0.0.1:client-version-manifest-1";
 export const cargoWorkspaceVersionPackages = Object.freeze([
   "licoup-agent-adapters",
   "licoup-agent-runtime",
+  "licoup-application",
   "licoup-client-state",
   "licoup-conversation",
   "licoup-endpoint-core",
