@@ -113,9 +113,15 @@ fn native_adapters_prefer_exact_metadata_from_bounded_standard_stores() {
         cursor["agents"][0]["history"]["source"],
         "cursor-hosted-usage-events"
     );
-    assert!(cursor["warnings"].as_array().unwrap().iter().any(|warning| {
-        warning["code"] == "cursor_auth_token_unreadable" && warning["agentId"] == "cursor"
-    }));
+    assert!(
+        cursor["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                warning["code"] == "cursor_auth_token_unreadable" && warning["agentId"] == "cursor"
+            })
+    );
 
     fs::remove_dir_all(home).unwrap();
     fs::remove_dir_all(state).unwrap();

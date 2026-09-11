@@ -184,9 +184,7 @@ fn event_token_usage(event: &Value) -> Option<EventTokens> {
     let output = number_field(usage, &["outputTokens"]).unwrap_or(0);
     let cache_read = number_field(usage, &["cacheReadTokens"]).unwrap_or(0);
     let cache_write = number_field(usage, &["cacheWriteTokens"]).unwrap_or(0);
-    let prompt = input
-        .saturating_add(cache_read)
-        .saturating_add(cache_write);
+    let prompt = input.saturating_add(cache_read).saturating_add(cache_write);
     let completion = output;
     let total = prompt.saturating_add(completion);
     if total == 0 {
@@ -293,7 +291,9 @@ struct EventsPage {
 /// shape — including an error envelope — is rejected so it can never read as
 /// confirmed-empty usage.
 fn parse_events_page(payload: &Value) -> Result<EventsPage, HostedUsageFailure> {
-    let object = payload.as_object().ok_or(HostedUsageFailure::ResponseInvalid)?;
+    let object = payload
+        .as_object()
+        .ok_or(HostedUsageFailure::ResponseInvalid)?;
     let total = match object.get("totalUsageEventsCount") {
         None => None,
         Some(value) => {
@@ -454,9 +454,7 @@ fn parse_coverage(report: &Value, window: &UsageWindow) -> Option<HostedCoverage
         .and_then(Value::as_str)
         .and_then(parse_day)
         .map(format_day)?;
-    let sealed_through = parse_day(&report_day)?
-        .previous_day()
-        .map(format_day)?;
+    let sealed_through = parse_day(&report_day)?.previous_day().map(format_day)?;
     let mut days = BTreeMap::new();
     for entry in history.get("dailyUsage")?.as_array()? {
         if let Some((day, usage)) = parse_retained_day(entry) {
@@ -619,7 +617,11 @@ mod tests {
         // 2026-07-15T10:00:00Z is 2026-07-15 18:00 in UTC+08:00.
         let summary = aggregate_events(
             &[
-                event(1_784_080_800_000, "cursor-grok-4.6-xhigh-fast", Some((864, 319, 126_848))),
+                event(
+                    1_784_080_800_000,
+                    "cursor-grok-4.6-xhigh-fast",
+                    Some((864, 319, 126_848)),
+                ),
                 event(1_784_081_160_000, "grok-bot-automation", None),
             ],
             &window(),
@@ -696,7 +698,10 @@ mod tests {
         // A total the pages cannot explain fails closed.
         assert_eq!(
             reconcile_pages(
-                vec![vec![json!({"timestamp": "1"})], vec![json!({"timestamp": "2"})]],
+                vec![
+                    vec![json!({"timestamp": "1"})],
+                    vec![json!({"timestamp": "2"})]
+                ],
                 Some(5)
             )
             .unwrap_err(),
@@ -707,7 +712,10 @@ mod tests {
         // Several pages without an authoritative count cannot be reconciled.
         assert!(
             reconcile_pages(
-                vec![vec![json!({"timestamp": "1"})], vec![json!({"timestamp": "2"})]],
+                vec![
+                    vec![json!({"timestamp": "1"})],
+                    vec![json!({"timestamp": "2"})]
+                ],
                 None
             )
             .is_err()
