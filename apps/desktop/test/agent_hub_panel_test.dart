@@ -192,6 +192,7 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.latestVersions = const {},
     this.seedCache,
     this.warehouseSnapshot,
+    this.liveSnapshot,
     this.catalogFuture,
     this.lifecycleGate,
     this.liveDelay,
@@ -208,6 +209,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Map<String, String> latestVersions;
   final AgentHubCatalogSnapshot? seedCache;
   final AgentHubCatalogSnapshot? warehouseSnapshot;
+
+  /// When set, the batched live pass answers with this snapshot instead of the
+  /// full one, so tests can drive a partial or failed batch.
+  final AgentHubCatalogSnapshot? liveSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
 
   /// When set, the install lifecycle step waits on this completer so tests
@@ -254,6 +259,11 @@ final class _FakeHubEngine implements AgentHubEnginePort {
         final gate = liveDelay;
         if (gate != null) {
           await gate.future;
+        }
+        final partial = liveSnapshot;
+        if (partial != null) {
+          _cache = partial;
+          return partial;
         }
         // The batched live pass resolves the real card state; the static
         // warehouse snapshot only serves the first paint.
@@ -670,6 +680,40 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  /// A partial batched answer must not shrink the catalog: a card missing from
+  /// the batch reads as "this Agent disappeared" rather than "its live state is
+  /// unknown". Every member returns, with the warehouse card for the one the
+  /// batch omitted.
+  testWidgets('a partial live batch keeps every card from the first paint', (
+    tester,
+  ) async {
+    final warehouse = _snapshot();
+    final batch = AgentHubCatalogSnapshot(
+      recipes: warehouse.recipes
+          .where((recipe) => recipe.id == 'codex')
+          .toList(),
+      scanGeneration: warehouse.scanGeneration,
+      ok: true,
+    );
+    final engine = _FakeHubEngine(
+      warehouseSnapshot: warehouse,
+      liveSnapshot: batch,
+    );
+    await _pumpHub(tester, _harness(engine));
+
+    expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
+    for (final id in _ids) {
+      expect(
+        find.byKey(Key('agent-hub-card-$id')),
+        findsOneWidget,
+        reason: 'card $id must survive a partial batch',
+      );
+    }
+    // Order follows the first paint, not the batch.
+    expect(_cardOrder(tester), _ids);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('intro opens the agent detail and back returns to the catalog', (
     tester,
