@@ -89,6 +89,7 @@ pub(in crate::platform) enum ProtocolEffect {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum ProtocolPhase {
     AwaitInitialize,
+    AwaitRateLimits,
     AwaitThread,
     AwaitThreadUnarchive,
     AwaitTurnStart,

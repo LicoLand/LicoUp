@@ -2,7 +2,7 @@ use super::CodexParser;
 use super::helpers::response_is_error;
 use crate::platform::codex_app_server::config::spark_default_reasoning_effort;
 use crate::platform::codex_app_server::limits::{
-    THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
+    ACCOUNT_RATE_LIMITS_REQUEST_ID, THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
@@ -16,6 +16,93 @@ use std::path::Path;
 pub(in crate::platform) enum RolloutIdentityError {
     Unavailable,
     Missing,
+}
+
+const LUNA_MODEL: &str = "gpt-5.6-luna";
+const LUNA_MODEL_ALIAS: &str = "gpt-5-6-luna";
+const LUNA_RESERVE_MODEL: &str = "gpt-reserve";
+const LUNA_RESERVE_BANNER: &str = "luna_reserve";
+const RESERVE_LIMIT_ID: &str = "base_model_inference";
+
+fn is_luna_model(model: &str) -> bool {
+    let model = model.trim();
+    model.eq_ignore_ascii_case(LUNA_MODEL) || model.eq_ignore_ascii_case(LUNA_MODEL_ALIAS)
+}
+
+fn models_match(left: &str, right: &str) -> bool {
+    left.trim().eq_ignore_ascii_case(right.trim()) || (is_luna_model(left) && is_luna_model(right))
+}
+
+fn field_text<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn reserve_limit_snapshot(result: &Value) -> Option<&Value> {
+    let limits = result
+        .get("rateLimitsByLimitId")
+        .or_else(|| result.get("rate_limits_by_limit_id"))?
+        .as_object()?;
+    limits.iter().find_map(|(key, snapshot)| {
+        let is_reserve = key.eq_ignore_ascii_case(RESERVE_LIMIT_ID)
+            || key.eq_ignore_ascii_case(LUNA_RESERVE_MODEL)
+            || field_text(snapshot, &["limitId", "limit_id"])
+                .is_some_and(|value| value.eq_ignore_ascii_case(RESERVE_LIMIT_ID))
+            || field_text(snapshot, &["limitName", "limit_name"])
+                .is_some_and(|value| value.eq_ignore_ascii_case(LUNA_RESERVE_MODEL));
+        is_reserve.then_some(snapshot)
+    })
+}
+
+/// The account response is the authority for Reserve eligibility. Percentages alone are not
+/// enough: the backend-owned banner and Reserve bucket must agree before changing the wire model
+/// for the current turn. `ordinaryUsageAllowed` is optional on older app-server responses, so its
+/// absence must not override an explicit Reserve grant.
+fn authorized_luna_reserve_model(result: &Value, requested_model: Option<&str>) -> Option<String> {
+    if result
+        .get("ordinaryUsageAllowed")
+        .or_else(|| result.get("ordinary_usage_allowed"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return None;
+    }
+
+    let banner = result
+        .get("rateLimitUpsell")
+        .or_else(|| result.get("rate_limit_upsell"))?;
+    if field_text(banner, &["banner_type", "bannerType"]) != Some(LUNA_RESERVE_BANNER) {
+        return None;
+    }
+
+    let reserve_snapshot = reserve_limit_snapshot(result)?;
+    let normal_model = field_text(reserve_snapshot, &["normalModelSlug", "normal_model_slug"])
+        .or_else(|| field_text(result, &["normalModelSlug", "normal_model_slug"]));
+    let expected_model = normal_model.unwrap_or(LUNA_MODEL);
+    if !is_luna_model(expected_model) {
+        return None;
+    }
+    if requested_model.is_none() && normal_model.is_none() {
+        return None;
+    }
+    if let Some(requested_model) = requested_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        && !models_match(requested_model, expected_model)
+    {
+        return None;
+    }
+
+    let blocked_model = field_text(banner, &["blocked_model_slug", "blockedModelSlug"]);
+    if let Some(blocked_model) = blocked_model
+        && !models_match(blocked_model, expected_model)
+    {
+        return None;
+    }
+
+    Some(LUNA_RESERVE_MODEL.to_owned())
 }
 
 /// Resolve the native identity from the rollout record itself. A source path is
@@ -78,11 +165,55 @@ impl CodexParser {
             ))];
         }
 
+        let mut effects = vec![ProtocolEffect::Send(json!({"method": "initialized"}))];
+        if self.config.model.as_deref().is_none_or(is_luna_model) {
+            self.phase = ProtocolPhase::AwaitRateLimits;
+            effects.push(ProtocolEffect::Send(self.account_rate_limits_request(true)));
+        } else {
+            self.phase = ProtocolPhase::AwaitThread;
+            effects.push(ProtocolEffect::Send(self.thread_request()));
+        }
+        effects
+    }
+
+    fn account_rate_limits_request(&self, supports_luna_reserve: bool) -> Value {
+        let params = if supports_luna_reserve {
+            json!({"supportsLunaReserve": true})
+        } else {
+            Value::Null
+        };
+        json!({
+            "id": ACCOUNT_RATE_LIMITS_REQUEST_ID,
+            "method": "account/rateLimits/read",
+            "params": params
+        })
+    }
+
+    pub(super) fn handle_rate_limits_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
+        if response_is_error(message) {
+            let capability_rejected = message
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_i64)
+                .is_some_and(|code| matches!(code, -32600 | -32602));
+            if capability_rejected && !self.rate_limits_fallback_attempted {
+                self.rate_limits_fallback_attempted = true;
+                return vec![ProtocolEffect::Send(
+                    self.account_rate_limits_request(false),
+                )];
+            }
+            return self.start_thread_after_rate_limits();
+        }
+
+        self.turn_model_override = message
+            .get("result")
+            .and_then(|result| authorized_luna_reserve_model(result, self.config.model.as_deref()));
+        self.start_thread_after_rate_limits()
+    }
+
+    fn start_thread_after_rate_limits(&mut self) -> Vec<ProtocolEffect> {
         self.phase = ProtocolPhase::AwaitThread;
-        vec![
-            ProtocolEffect::Send(json!({"method": "initialized"})),
-            ProtocolEffect::Send(self.thread_request()),
-        ]
+        vec![ProtocolEffect::Send(self.thread_request())]
     }
 
     fn thread_request(&self) -> Value {
@@ -290,7 +421,11 @@ impl CodexParser {
             }));
         }
         params.insert("input".to_string(), json!(input));
-        if let Some(model) = self.config.model.as_ref() {
+        if let Some(model) = self
+            .turn_model_override
+            .as_ref()
+            .or(self.config.model.as_ref())
+        {
             params.insert("model".to_string(), json!(model));
         }
         let effort = self

@@ -7,7 +7,8 @@ use self::helpers::request_id_matches;
 use super::{AdapterContract, NativeLineParser};
 use crate::platform::codex_app_server::config::ProtocolConfig;
 use crate::platform::codex_app_server::limits::{
-    INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
+    ACCOUNT_RATE_LIMITS_REQUEST_ID, INITIALIZE_REQUEST_ID, THREAD_REQUEST_ID,
+    THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{
     EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolPhase,
@@ -61,6 +62,8 @@ pub(in crate::platform) struct CodexParser {
     observed_processing_items: HashSet<String>,
     unidentified_processing_items: usize,
     unarchive_attempted: bool,
+    rate_limits_fallback_attempted: bool,
+    turn_model_override: Option<String>,
 }
 
 pub(in crate::platform) enum CodexEffect {
@@ -130,6 +133,8 @@ impl CodexParser {
             observed_processing_items: HashSet::new(),
             unidentified_processing_items: 0,
             unarchive_attempted: false,
+            rate_limits_fallback_attempted: false,
+            turn_model_override: None,
         }
     }
 
@@ -156,6 +161,11 @@ impl CodexParser {
                 if request_id_matches(&message, INITIALIZE_REQUEST_ID) =>
             {
                 self.handle_initialize_response(&message)
+            }
+            ProtocolPhase::AwaitRateLimits
+                if request_id_matches(&message, ACCOUNT_RATE_LIMITS_REQUEST_ID) =>
+            {
+                self.handle_rate_limits_response(&message)
             }
             ProtocolPhase::AwaitThread if request_id_matches(&message, THREAD_REQUEST_ID) => {
                 self.handle_thread_response(&message)
