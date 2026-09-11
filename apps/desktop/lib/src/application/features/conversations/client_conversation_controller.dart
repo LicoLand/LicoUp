@@ -21,25 +21,36 @@ final class ClientConversationController extends ApplicationStateOwner {
     void Function(String conversationId)? onSelectionChanged,
     ClientMemoryDiagnosticJournal? memoryJournal,
     Duration? pendingNoticePollInterval,
+    Duration? activityEchoInterval,
   }) : _runner = runner,
        _service = service,
        _onSelectionChanged = onSelectionChanged,
        _memoryJournal = memoryJournal,
        _pendingNoticePollInterval =
-           pendingNoticePollInterval ?? defaultPendingNoticePollInterval;
+           pendingNoticePollInterval ?? defaultPendingNoticePollInterval,
+       _activityEchoInterval =
+           activityEchoInterval ?? defaultActivityEchoInterval;
 
   /// Matches [ConversationRefreshPolicy.backgroundInterval] for idle surfaces.
   static const Duration defaultPendingNoticePollInterval = Duration(
     seconds: 30,
   );
 
+  /// The activity echo reads the selected conversation, so it runs on its own
+  /// timer. The notice poll has a narrower contract — it may only ask for
+  /// pending notices — and folding a transcript read into it would break that.
+  static const Duration defaultActivityEchoInterval = Duration(seconds: 30);
+
   final AgentCommandRunner _runner;
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
   final ClientMemoryDiagnosticJournal? _memoryJournal;
   final Duration _pendingNoticePollInterval;
+  final Duration _activityEchoInterval;
   Timer? _pendingNoticeTimer;
+  Timer? _activityEchoTimer;
   Future<void>? _pendingNoticePoll;
+  Future<void>? _selectedActivityPoll;
   bool _flushingCompletionNoticeAcks = false;
   final Set<String> _pendingAckNotificationIds = <String>{};
 
@@ -303,6 +314,73 @@ final class ClientConversationController extends ApplicationStateOwner {
     unawaited(pollPendingCompletionNotices());
   }
 
+  void _startActivityEchoPoll() {
+    _activityEchoTimer?.cancel();
+    if (_disposed) return;
+    _activityEchoTimer = Timer.periodic(_activityEchoInterval, (_) {
+      unawaited(pollSelectedConversationActivity());
+    });
+    unawaited(pollSelectedConversationActivity());
+  }
+
+  /// Picks up events another actor appended to the selected conversation.
+  ///
+  /// Work can reach a conversation without this client asking: an external
+  /// dispatch, a peer client, a subagent, or a settling Flywheel step. Every
+  /// reload path is otherwise user-driven, so such events stayed invisible
+  /// until the next interaction — the conversation looked stalled while an
+  /// Agent was in fact working in it.
+  Future<void> pollSelectedConversationActivity() async {
+    if (_disposed || _selectedActivityPoll != null) return;
+    final future = _pollSelectedConversationActivityOnce();
+    _selectedActivityPoll = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_selectedActivityPoll, future)) {
+        _selectedActivityPoll = null;
+      }
+    }
+  }
+
+  Future<void> _pollSelectedConversationActivityOnce() async {
+    final id = _selectedConversationId;
+    if (_loading || id.isEmpty) return;
+    final cached = _conversationCache[id];
+    if (cached == null) return;
+    final Map<String, dynamic> latest;
+    try {
+      latest = _objectMap(
+        await _service.execute(_runner, {
+          'action': 'conversation.get',
+          'conversationId': id,
+        }),
+      );
+    } on ClientConversationServiceFailure {
+      return;
+    }
+    if (_disposed || _loading || _selectedConversationId != id) return;
+    // The read is cheap; the reload is not. Only a real append justifies it,
+    // and the resulting change also re-syncs the live turn observers, which is
+    // what carries an Agent's in-flight output to the surface.
+    final observed = ClientConversation.fromJson(latest);
+    if (observed.revision == cached.conversation.revision &&
+        observed.eventCount == cached.conversation.eventCount) {
+      return;
+    }
+    // This snapshot is already the fresh record, so the transcript is read
+    // against it directly instead of repeating the same `conversation.get`.
+    try {
+      await _applySelectedRaw(id, latest);
+    } on ClientConversationServiceFailure {
+      // A background reconcile must not raise an unhandled async error, and
+      // must not paint a failure banner over work the user did not start. The
+      // next tick retries on its own.
+      return;
+    }
+    if (!_disposed) _publishChange();
+  }
+
   /// Lifecycle-owned pending-notice poll. The initialize timer calls this;
   /// tests may await one tick without advancing the widget-test clock.
   Future<void> pollPendingCompletionNotices() async {
@@ -398,6 +476,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       if (!_disposed && succeeded) {
         _initialized = true;
         _startPendingNoticePoll();
+        _startActivityEchoPoll();
       }
     } finally {
       _initialization = null;
@@ -1185,6 +1264,15 @@ final class ClientConversationController extends ApplicationStateOwner {
         'conversationId': id,
       }),
     );
+    await _applySelectedRaw(id, raw);
+  }
+
+  /// Applies one already-read conversation snapshot: reads the transcript page
+  /// for that revision, updates the cache, and replaces the selected surface.
+  ///
+  /// Split from [_loadSelected] so a caller that already holds a fresh
+  /// `conversation.get` result does not read the same record twice.
+  Future<void> _applySelectedRaw(String id, Map<String, dynamic> raw) async {
     final conversation = ClientConversation.fromJson(raw);
     final stagedTaskViews = _maps(raw['taskViews']);
     final afterSequence = conversation.eventCount > 50
@@ -1356,6 +1444,8 @@ final class ClientConversationController extends ApplicationStateOwner {
     _disposed = true;
     _pendingNoticeTimer?.cancel();
     _pendingNoticeTimer = null;
+    _activityEchoTimer?.cancel();
+    _activityEchoTimer = null;
     if (_memoryConversationOpen) {
       _selectedConversationId = '';
       _liveTurns = const [];
