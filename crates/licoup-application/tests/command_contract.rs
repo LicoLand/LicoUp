@@ -49,6 +49,7 @@ fn every_command_family_round_trips_through_json_unchanged() {
             agent_id: "codex".into(),
         }),
         ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+            conversation_id: Some("conversation:one".into()),
             membership_id: Some("membership:worker".into()),
             agent_id: None,
             prompt: "review the diff".into(),
@@ -67,6 +68,7 @@ fn every_command_family_round_trips_through_json_unchanged() {
             ..DispatchRequest::default()
         })),
         ApplicationCommand::Subagent(SubagentCommand::Cancel(licoup_application::CancelRequest {
+            conversation_id: Some("conversation:one".into()),
             agent_id: Some("cursor".into()),
             membership_id: None,
         })),
@@ -444,7 +446,6 @@ struct Trace {
 struct FixturePorts {
     trace: Arc<Trace>,
     verify_fails: bool,
-    verify_ok: bool,
 }
 
 impl FixturePorts {
@@ -516,7 +517,6 @@ fn facade(verify_fails: bool) -> (ApplicationFacade, FixturePorts) {
     let ports = FixturePorts {
         trace: Arc::new(Trace::default()),
         verify_fails,
-        verify_ok: !verify_fails,
     };
     let application = ApplicationPorts::new(
         Arc::new(ports.clone()),
@@ -627,6 +627,104 @@ fn a_local_admin_claim_is_not_conversation_scoped() {
     assert_eq!(
         ports.calls(),
         vec!["verify".to_owned(), "conversation".to_owned()]
+    );
+}
+
+#[test]
+fn a_local_admin_dispatch_names_its_conversation() {
+    // The in-process caller has no conversation of its own, so the dispatch
+    // itself has to name one — without this the CLI could not delegate at all.
+    let (facade, ports) = facade(false);
+    let claim = ActorClaim::local_admin("membership:owner");
+    let command = ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+        conversation_id: Some("conversation:one".into()),
+        agent_id: Some("codex".into()),
+        prompt: "review the diff".into(),
+        ..DispatchRequest::default()
+    }));
+
+    assert!(command.validate().is_ok());
+    assert_eq!(command.conversation_id(), Some("conversation:one"));
+    assert!(facade.execute(&claim, &command).is_ok());
+    assert_eq!(
+        ports.calls(),
+        vec!["verify".to_owned(), "subagent".to_owned()]
+    );
+}
+
+#[test]
+fn a_membership_cannot_dispatch_into_another_conversation() {
+    // The native tool accepts an optional conversationId and rejects a mismatch
+    // with subagent_cross_conversation_rejected. The facade must refuse the same
+    // thing before verification, so neither interface can reach a port with a
+    // cross-conversation dispatch.
+    let (facade, ports) = facade(false);
+    let claim = ActorClaim::membership("codex", "conversation:one", "membership:codex");
+    let command = ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+        conversation_id: Some("conversation:two".into()),
+        agent_id: Some("cursor".into()),
+        prompt: "work elsewhere".into(),
+        ..DispatchRequest::default()
+    }));
+
+    let failure = facade
+        .execute(&claim, &command)
+        .expect_err("must be refused");
+    assert_eq!(failure.code, "actor_conversation_mismatch");
+    assert!(
+        ports.calls().is_empty(),
+        "binding is decided before verification"
+    );
+}
+
+#[test]
+fn a_membership_dispatch_into_its_own_conversation_is_allowed() {
+    let (facade, _) = facade(false);
+    let claim = ActorClaim::membership("codex", "conversation:one", "membership:codex");
+    let command = ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+        conversation_id: Some("conversation:one".into()),
+        agent_id: Some("cursor".into()),
+        prompt: "review the diff".into(),
+        ..DispatchRequest::default()
+    }));
+
+    assert!(facade.execute(&claim, &command).is_ok());
+}
+
+#[test]
+fn a_working_directory_is_judged_by_the_platforms_own_rule() {
+    // A Unix-shaped `starts_with('/')` check would reject every Windows path;
+    // the native dispatch path uses the platform rule, so this must too.
+    let absolute = if cfg!(windows) {
+        r"C:\workspace"
+    } else {
+        "/synthetic/workspace"
+    };
+    assert!(
+        ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+            agent_id: Some("codex".into()),
+            prompt: "work".into(),
+            working_directory: Some(absolute.into()),
+            ..DispatchRequest::default()
+        }))
+        .validate()
+        .is_ok(),
+        "an absolute {absolute} path must be accepted"
+    );
+
+    let relative = ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
+        agent_id: Some("codex".into()),
+        prompt: "work".into(),
+        working_directory: Some("workspace".into()),
+        ..DispatchRequest::default()
+    }));
+    assert_eq!(
+        relative
+            .validate()
+            .expect_err("relative must be refused")
+            .field
+            .as_deref(),
+        Some("working_directory")
     );
 }
 
