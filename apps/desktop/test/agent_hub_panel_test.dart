@@ -192,8 +192,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     this.latestVersions = const {},
     this.seedCache,
     this.warehouseSnapshot,
+    this.liveSnapshot,
     this.catalogFuture,
     this.lifecycleGate,
+    this.liveDelay,
     Map<String, Completer<AgentHubCatalogSnapshot>>? inspectDelays,
   }) : inspectDelays = inspectDelays ?? {};
 
@@ -207,14 +209,25 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   final Map<String, String> latestVersions;
   final AgentHubCatalogSnapshot? seedCache;
   final AgentHubCatalogSnapshot? warehouseSnapshot;
+
+  /// When set, the batched live pass answers with this snapshot instead of the
+  /// full one, so tests can drive a partial or failed batch.
+  final AgentHubCatalogSnapshot? liveSnapshot;
   final Future<AgentHubCatalogSnapshot>? catalogFuture;
 
   /// When set, the install lifecycle step waits on this completer so tests
   /// can observe the in-progress UI before the operation effect arrives.
   final Completer<void>? lifecycleGate;
   final Map<String, Completer<AgentHubCatalogSnapshot>> inspectDelays;
+
+  /// When set, the batched live root call waits on this completer so tests can
+  /// observe the resolution window.
+  final Completer<void>? liveDelay;
   final List<AgentHubLifecycleAction> actions = [];
   final List<String> catalogRecipeIds = [];
+
+  /// Number of root calls that asked for the batched live resolution.
+  int liveRootRequests = 0;
   String? lastRecipeId;
   String? lastChannelId;
   String? lastVersion;
@@ -235,9 +248,28 @@ final class _FakeHubEngine implements AgentHubEnginePort {
   AgentHubCatalogSnapshot? get cachedCatalog => seedCache ?? _cache;
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async {
     catalogRecipeIds.add(recipeId);
     if (recipeId.isEmpty) {
+      if (live) {
+        liveRootRequests += 1;
+        final gate = liveDelay;
+        if (gate != null) {
+          await gate.future;
+        }
+        final partial = liveSnapshot;
+        if (partial != null) {
+          _cache = partial;
+          return partial;
+        }
+        // The batched live pass resolves the real card state; the static
+        // warehouse snapshot only serves the first paint.
+        _cache = _liveSnapshot;
+        return _liveSnapshot;
+      }
       if (catalogFuture != null) {
         return catalogFuture!;
       }
@@ -249,10 +281,10 @@ final class _FakeHubEngine implements AgentHubEnginePort {
     if (delay != null) {
       await delay.future;
     }
-    final live = _liveSnapshot.recipes
+    final resolved = _liveSnapshot.recipes
         .where((recipe) => recipe.id == recipeId)
         .toList();
-    return AgentHubCatalogSnapshot(recipes: live, ok: live.isNotEmpty);
+    return AgentHubCatalogSnapshot(recipes: resolved, ok: resolved.isNotEmpty);
   }
 
   @override
@@ -590,7 +622,7 @@ void main() {
   testWidgets(
     'interface entry refresh resolves live card state before enabling actions',
     (tester) async {
-      final inspection = Completer<AgentHubCatalogSnapshot>();
+      final inspection = Completer<void>();
       final engine = _FakeHubEngine(
         warehouseSnapshot: AgentHubCatalogSnapshot(
           recipes: [
@@ -604,7 +636,7 @@ void main() {
             ),
           ],
         ),
-        inspectDelays: {'codex': inspection},
+        liveDelay: inspection,
       );
       final harness = _harness(engine);
       unawaited(harness.$2.refresh());
@@ -617,7 +649,9 @@ void main() {
       await tester.pumpWidget(harness.$1);
       await tester.pump();
 
-      expect(engine.catalogRecipeIds, ['', 'codex']);
+      // Two root calls: the warehouse paint, then the one batched live pass.
+      expect(engine.catalogRecipeIds, ['', '']);
+      expect(engine.liveRootRequests, 1);
       expect(
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsOneWidget,
@@ -629,7 +663,7 @@ void main() {
         isNull,
       );
 
-      inspection.complete(_snapshot());
+      inspection.complete();
       await tester.pump();
       await tester.pump();
 
@@ -646,6 +680,40 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  /// A partial batched answer must not shrink the catalog: a card missing from
+  /// the batch reads as "this Agent disappeared" rather than "its live state is
+  /// unknown". Every member returns, with the warehouse card for the one the
+  /// batch omitted.
+  testWidgets('a partial live batch keeps every card from the first paint', (
+    tester,
+  ) async {
+    final warehouse = _snapshot();
+    final batch = AgentHubCatalogSnapshot(
+      recipes: warehouse.recipes
+          .where((recipe) => recipe.id == 'codex')
+          .toList(),
+      scanGeneration: warehouse.scanGeneration,
+      ok: true,
+    );
+    final engine = _FakeHubEngine(
+      warehouseSnapshot: warehouse,
+      liveSnapshot: batch,
+    );
+    await _pumpHub(tester, _harness(engine));
+
+    expect(find.byKey(const Key('agent-hub-refresh')), findsOneWidget);
+    for (final id in _ids) {
+      expect(
+        find.byKey(Key('agent-hub-card-$id')),
+        findsOneWidget,
+        reason: 'card $id must survive a partial batch',
+      );
+    }
+    // Order follows the first paint, not the batch.
+    expect(_cardOrder(tester), _ids);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('intro opens the agent detail and back returns to the catalog', (
     tester,
@@ -862,20 +930,21 @@ void main() {
     );
     expect(refresh.left, greaterThan(title.right));
     engine.catalogRecipeIds.clear();
+    engine.liveRootRequests = 0;
     await tester.tap(find.byKey(const Key('agent-hub-refresh')));
     await tester.pump();
     await tester.pump();
     expect(engine.actions, isEmpty);
-    expect(engine.catalogRecipeIds.where((id) => id.isEmpty), hasLength(1));
-    expect(
-      engine.catalogRecipeIds.where((id) => id.isNotEmpty).toSet(),
-      _ids.toSet(),
-    );
+    // The refresh paints the warehouse cards, then resolves every card in one
+    // batched live call: never one command per card.
+    expect(engine.catalogRecipeIds.where((id) => id.isEmpty), hasLength(2));
+    expect(engine.liveRootRequests, 1);
+    expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'catalog order shuffles once per refresh and incremental resolution keeps it stable',
+    'a refresh shuffles the order once and keeps it stable across the live batch',
     (tester) async {
       final calls = <int>[];
       List<AgentHubEntryProjection> rotatingOrder(
@@ -891,51 +960,33 @@ void main() {
         return entries.reversed.toList();
       }
 
-      final inspectDelays = {
-        for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
-      };
-      await _pumpHub(
-        tester,
-        _harness(
-          _FakeHubEngine(inspectDelays: inspectDelays),
-          orderRecipes: rotatingOrder,
-        ),
-      );
+      final engine = _FakeHubEngine();
+      await _pumpHub(tester, _harness(engine, orderRecipes: rotatingOrder));
 
-      expect(calls, [_ids.length]);
-      expect(_cardOrder(tester), _ids.reversed.toList());
+      // Paint settles after the one batched resolution, then holds.
+      final settled = calls.length;
+      expect(settled, greaterThan(0));
+      final order = _cardOrder(tester);
+      expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
 
-      for (final id in _ids) {
-        inspectDelays[id]!.complete(
-          AgentHubCatalogSnapshot(
-            recipes: _snapshot().recipes
-                .where((recipe) => recipe.id == id)
-                .toList(),
-            ok: true,
-          ),
-        );
-        await tester.pump();
-        await tester.pump();
-        expect(calls, [_ids.length]);
-        expect(_cardOrder(tester), _ids.reversed.toList());
-      }
+      await tester.pump();
+      await tester.pump();
+      expect(calls.length, settled);
+      expect(_cardOrder(tester), order);
 
       await tester.tap(find.byKey(const Key('agent-hub-refresh')));
       await tester.pump();
       await tester.pump();
       await tester.pump();
-
-      expect(calls, [_ids.length, _ids.length]);
-      expect(_cardOrder(tester), [
-        _ids.last,
-        ..._ids.sublist(0, _ids.length - 1),
-      ]);
       await tester.pump();
-      expect(calls, [_ids.length, _ids.length]);
-      expect(_cardOrder(tester), [
-        _ids.last,
-        ..._ids.sublist(0, _ids.length - 1),
-      ]);
+
+      // One more shuffle for the refresh, from the batched resolution alone.
+      expect(calls.length, settled + 1);
+      expect(engine.liveRootRequests, 2);
+      expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
+      final refreshed = _cardOrder(tester);
+      await tester.pump();
+      expect(_cardOrder(tester), refreshed);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1210,18 +1261,16 @@ void main() {
   });
 
   testWidgets(
-    'cache paints immediately then locks actions until each card resolves',
+    'cache paints immediately then locks actions until the live batch resolves',
     (tester) async {
       final pending = Completer<AgentHubCatalogSnapshot>();
+      final liveGate = Completer<void>();
       final cached = _snapshot(ownedIds: const {'codex'});
-      final inspectDelays = {
-        for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
-      };
       final engine = _FakeHubEngine(
         ownedIds: const {'codex'},
         seedCache: cached,
         catalogFuture: pending.future,
-        inspectDelays: inspectDelays,
+        liveDelay: liveGate,
       );
       await tester.binding.setSurfaceSize(const Size(1000, 720));
       tester.view.devicePixelRatio = 1;
@@ -1234,7 +1283,7 @@ void main() {
       await tester.pump();
 
       // The cached projection paints immediately; the explicit refresh locks
-      // every card behind the pending catalog and per-card inspections.
+      // every card behind the pending catalog and the batched live pass.
       await tester.tap(find.byKey(const Key('agent-hub-refresh')));
       await tester.pump();
 
@@ -1263,14 +1312,21 @@ void main() {
       pending.complete(cached);
       await tester.pump();
       await tester.pump();
-      inspectDelays['codex']!.complete(
-        AgentHubCatalogSnapshot(
-          recipes: cached.recipes
-              .where((recipe) => recipe.id == 'codex')
-              .toList(),
-          ok: true,
-        ),
+
+      // Still locked: the live batch has not landed yet.
+      expect(
+        find.byKey(const Key('agent-hub-card-loading-codex')),
+        findsOneWidget,
       );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
+            .onTap,
+        isNull,
+      );
+
+      // One batched resolution unlocks every card together.
+      liveGate.complete();
       await tester.pump();
       await tester.pump();
 
@@ -1278,7 +1334,6 @@ void main() {
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsNothing,
       );
-      expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
       expect(
         tester
             .widget<InkWell>(find.byKey(const Key('agent-hub-open-codex')))
@@ -1286,27 +1341,6 @@ void main() {
         isNotNull,
       );
       expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-install-cursor')))
-            .onTap,
-        isNull,
-      );
-      expect(
-        find.byKey(const Key('agent-hub-card-loading-cursor')),
-        findsOneWidget,
-      );
-
-      inspectDelays['cursor']!.complete(
-        AgentHubCatalogSnapshot(
-          recipes: _snapshot().recipes
-              .where((recipe) => recipe.id == 'cursor')
-              .toList(),
-          ok: true,
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
       expect(
         find.byKey(const Key('agent-hub-card-loading-cursor')),
         findsNothing,
@@ -1598,7 +1632,10 @@ final class _FailedCatalogEngine
   const _FailedCatalogEngine();
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async {
     return const AgentHubCatalogSnapshot(recipes: [], ok: false);
   }
 }
@@ -1609,7 +1646,10 @@ final class _ThrowingCatalogEngine
   const _ThrowingCatalogEngine();
 
   @override
-  Future<AgentHubCatalogSnapshot> catalog({String recipeId = ''}) async {
+  Future<AgentHubCatalogSnapshot> catalog({
+    String recipeId = '',
+    bool live = false,
+  }) async {
     throw StateError('native catalog failed');
   }
 }

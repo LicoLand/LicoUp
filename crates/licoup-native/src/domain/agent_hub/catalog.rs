@@ -19,9 +19,21 @@ pub fn catalog(params: &Value) -> Result<Value> {
     let warehouse = recipes::warehouse()?;
     let members = agent_catalog::supported_membership(agent_catalog::extra_ids_from_params(params));
     let requested = requested_agent_id(params, &members)?;
-    let facts = discovery_facts(params, requested.as_deref())?;
     let ownerships = ownership::load(&store)?;
-    let live_lookup = requested.is_some() && params.get("discoveryCandidates").is_none();
+    // A full refresh asks for every card's live state in one command. The
+    // desktop transport runs native requests through one serialized queue, so
+    // resolving N cards costs far more as N round trips than as one command that
+    // resolves N cards; the per-card work itself is unchanged.
+    let live_members = params.get("liveLookup").and_then(Value::as_bool) == Some(true);
+    // A supplied snapshot already carries the facts; nothing is inspected on top
+    // of it, batched or otherwise.
+    let supplied_snapshot = params.get("discoveryCandidates").is_some();
+    let live_lookup = (requested.is_some() || live_members) && !supplied_snapshot;
+    let facts = if live_members && requested.is_none() && !supplied_snapshot {
+        member_facts(params, &members)
+    } else {
+        discovery_facts(params, requested.as_deref())?
+    };
     let package_roots = live_lookup
         .then(|| package_versions::package_roots(params))
         .unwrap_or_default();
@@ -43,6 +55,25 @@ pub fn catalog(params: &Value) -> Result<Value> {
                 true,
             )]
         }
+        // A batched live refresh resolves each member the way its own per-card
+        // request would, so the resulting cards are the same ones the client
+        // used to collect one command at a time.
+        None if live_members => members
+            .iter()
+            .map(|entry| {
+                project_member_card(
+                    entry,
+                    &warehouse,
+                    &facts,
+                    &ownerships,
+                    &capabilities,
+                    live_lookup,
+                    &package_roots,
+                    params,
+                    true,
+                )
+            })
+            .collect::<Vec<_>>(),
         None => members
             .iter()
             .map(|entry| {
@@ -72,6 +103,18 @@ pub fn catalog(params: &Value) -> Result<Value> {
         "pluginManagementBoundary": warehouse.manifest.plugin_management_boundary,
         "cards": cards
     }))
+}
+
+/// Live facts for every member, in membership order.
+///
+/// One member's inspection failing must not fail the refresh: the per-card path
+/// this replaces isolated that failure to the one card, so a member without a
+/// fact simply projects from its static metadata.
+fn member_facts(params: &Value, members: &[AgentCatalogEntry]) -> Vec<DiscoveryFact> {
+    members
+        .iter()
+        .filter_map(|entry| live_fact(params, &entry.id).ok().flatten())
+        .collect()
 }
 
 fn project_member_card(
