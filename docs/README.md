@@ -27,6 +27,8 @@ authority.
 - [Continuous Assistant target architecture](architecture/CONTINUOUS-ASSISTANT.md) · [持续 Assistant 目标架构](architecture/CONTINUOUS-ASSISTANT.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
+- [Interface surface baseline](architecture/INTERFACE-SURFACE-BASELINE.md) ·
+  [接口表面基线](architecture/INTERFACE-SURFACE-BASELINE.zh-CN.md)
 - [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
   [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
