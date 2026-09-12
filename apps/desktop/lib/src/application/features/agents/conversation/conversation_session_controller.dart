@@ -12,6 +12,8 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
+const int _conversationMessagePageSize = 20;
+
 /// Desktop history paging plus user-driven session and agent selection.
 mixin AgentConversationSessionController
     on
@@ -85,7 +87,7 @@ mixin AgentConversationSessionController
         sessionId: sessionId,
         offset: 0,
         pageSize: 1,
-        messageLimit: 50,
+        messageLimit: _conversationMessagePageSize,
       );
       AgentConversationSession? refreshed;
       for (final session in page.sessions) {
@@ -111,11 +113,13 @@ mixin AgentConversationSessionController
           )
           .firstOrNull;
       if (previousExact != null && previousExact.messages.isNotEmpty) {
-        refreshed = previousExact.mergeExactMessagePage(
+        refreshed = await _mergeLatestConversationMessagePage(
+          agentId,
+          previousExact,
           refreshed,
-          allowMessageRevisions: true,
         );
       }
+      if (!canApplyConversationRequest(agentId, sequence)) return;
       final next = insertConversationSessionByUpdatedAt(previous, refreshed);
       if (conversationSessionListsEquivalent(previous, next)) {
         return;
@@ -155,10 +159,13 @@ mixin AgentConversationSessionController
     final bind = _historyBindFor(agentId);
     // The sidebar hands over the display id, while the native reader matches
     // the stable native session id. Resolving against the local catalog keeps
-    // an exact-session read on the full transcript instead of falling back to
-    // the 50-message browse preview (which drops cards placed mid-conversation).
+    // an exact-session read on the requested message page instead of falling
+    // back to the browse preview.
     final resolvedSessionId =
         _resolveNativeSessionIdForRead(agentId, sessionId) ?? sessionId;
+    final effectiveMessageLimit = resolvedSessionId.isEmpty
+        ? messageLimit
+        : messageLimit ?? _conversationMessagePageSize;
     try {
       final streamedByIdentity = <String, AgentConversationSession>{};
       var hasMore = false;
@@ -169,7 +176,7 @@ mixin AgentConversationSessionController
         limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
         offset: offset,
         messageBefore: messageBefore,
-        messageLimit: messageLimit,
+        messageLimit: effectiveMessageLimit,
         bind: bind,
       )) {
         final identity = session.nativeSessionId.trim().isNotEmpty
@@ -215,7 +222,7 @@ mixin AgentConversationSessionController
           limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
           offset: offset,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: effectiveMessageLimit,
           bind: bind,
         ),
       );
@@ -446,6 +453,165 @@ mixin AgentConversationSessionController
   Future<void> loadEarlierConversationMessages() =>
       _loadSelectedConversationMessagePage(earlier: true);
 
+  String get selectedConversationChildHistoryScope =>
+      '$selectedConversationAgentId\u0000${selectedConversationSession?.nativeSessionId ?? ''}';
+
+  Future<void> loadChildConversationMessages(
+    String childSessionId, {
+    bool earlier = false,
+  }) async {
+    final agentId = selectedConversationAgentId.trim();
+    final parent = selectedConversationSession;
+    if (agentWorkspaceDisposed || agentId.isEmpty || parent == null) return;
+    final scope = selectedConversationChildHistoryScope;
+    if (conversationChildHistoryScope != scope) {
+      conversationChildHistoryScope = scope;
+      conversationChildSessions = const {};
+      conversationChildLoadingSessions.clear();
+      conversationChildPageErrors = const {};
+    }
+    // Only a child explicitly supplied by native lineage is addressable here.
+    final pending = <AgentConversationMessage>[
+      ...parent.messages,
+      ...selectedLiveConversationMessages,
+      for (final child in conversationChildSessions.values) ...child.messages,
+    ];
+    AgentConversationMessage? recordedChild;
+    while (pending.isNotEmpty) {
+      final message = pending.removeLast();
+      if (message.childSessionId == childSessionId) {
+        recordedChild = message;
+        break;
+      }
+      pending.addAll(message.childMessages);
+    }
+    if (recordedChild == null || childSessionId.isEmpty) return;
+    final previous = conversationChildSessions[childSessionId];
+    if (earlier && previous?.messagePage.hasEarlier != true) return;
+    if (!earlier &&
+        previous != null &&
+        previous.sourceMessageCount >= recordedChild.childMessageCount &&
+        previous.sourceRevision == recordedChild.childSourceRevision) {
+      return;
+    }
+    if (!conversationChildLoadingSessions.add(childSessionId)) return;
+    conversationChildPageErrors = {...conversationChildPageErrors}
+      ..remove(childSessionId);
+    agentWorkspaceNotifyActiveConversationChanged();
+    agentWorkspaceNotifyStateChanged();
+    try {
+      final before = earlier ? previous!.messagePage.nextBefore : '';
+      final AgentConversationSession incoming;
+      if (agentWorkspaceMobileRuntime) {
+        final described = await describeMobileConversationSession(
+          agentId,
+          childSessionId,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        if (described == null) {
+          throw const FormatException('native_history_session_not_found');
+        }
+        incoming = described;
+      } else {
+        final page = await readConversationSessionPage(
+          agentId,
+          sessionId: childSessionId,
+          offset: 0,
+          pageSize: 1,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        incoming = page.sessions.single;
+      }
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      final merged = previous == null
+          ? incoming
+          : earlier
+          ? previous.mergeExactMessagePage(
+              incoming,
+              allowMessageRevisions: true,
+            )
+          : await _mergeLatestConversationMessagePage(
+              agentId,
+              previous,
+              incoming,
+            );
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      conversationChildSessions = {
+        ...conversationChildSessions,
+        childSessionId: merged,
+      };
+    } on Object catch (error) {
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      conversationChildPageErrors = {
+        ...conversationChildPageErrors,
+        childSessionId: _conversationMessagePageErrorCode(error),
+      };
+    } finally {
+      if (!agentWorkspaceDisposed && conversationChildHistoryScope == scope) {
+        conversationChildLoadingSessions.remove(childSessionId);
+        agentWorkspaceNotifyActiveConversationChanged();
+        agentWorkspaceNotifyStateChanged();
+      }
+    }
+  }
+
+  Future<AgentConversationSession> _mergeLatestConversationMessagePage(
+    String agentId,
+    AgentConversationSession previous,
+    AgentConversationSession incoming,
+  ) async {
+    var latest = incoming;
+    // A busy native turn can append more than one page between observations.
+    // Fill only that gap, in ordinary 20-message pages, before joining it to
+    // the reader's retained history.
+    while (previous.messages.isNotEmpty &&
+        previous.messagePage.endExclusive < latest.messagePage.start) {
+      final before = latest.messagePage.nextBefore;
+      final AgentConversationSession earlier;
+      if (agentWorkspaceMobileRuntime) {
+        final described = await describeMobileConversationSession(
+          agentId,
+          latest.nativeSessionId,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        if (described == null) {
+          throw const FormatException('native_history_session_not_found');
+        }
+        earlier = described;
+      } else {
+        final page = await readConversationSessionPage(
+          agentId,
+          sessionId: latest.nativeSessionId,
+          offset: 0,
+          pageSize: 1,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        earlier = page.sessions.single;
+      }
+      if (earlier.messagePage.start >= latest.messagePage.start) {
+        throw const FormatException('native_history_message_page_gap');
+      }
+      latest = latest.mergeExactMessagePage(
+        earlier,
+        allowMessageRevisions: true,
+      );
+    }
+    return previous.mergeExactMessagePage(latest, allowMessageRevisions: true);
+  }
+
   Future<void> _loadSelectedConversationMessagePage({
     required bool earlier,
   }) async {
@@ -462,9 +628,6 @@ mixin AgentConversationSessionController
         if (entry.key != key) entry.key: entry.value,
     };
     agentWorkspaceNotifyStateChanged();
-    final completedContinuations =
-        conversationMessagePageContinuationCounts[key] ?? 0;
-    final messageLimit = earlier && completedContinuations > 0 ? 100 : 50;
     final messageBefore = earlier ? selected.messagePage.nextBefore : '';
     try {
       final AgentConversationSession incoming;
@@ -473,7 +636,7 @@ mixin AgentConversationSessionController
           agentId,
           nativeSessionId,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: _conversationMessagePageSize,
         );
         if (described == null) {
           throw const FormatException('native_history_session_not_found');
@@ -486,7 +649,7 @@ mixin AgentConversationSessionController
           offset: 0,
           pageSize: 1,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: _conversationMessagePageSize,
         );
         incoming = page.sessions.single;
       }
@@ -498,18 +661,22 @@ mixin AgentConversationSessionController
       }
       final current = selectedConversationSession!;
       final merged = earlier
-          ? current.mergeExactMessagePage(incoming)
+          ? current.mergeExactMessagePage(incoming, allowMessageRevisions: true)
           : (current.messagePage.start < incoming.messagePage.start ||
                 current.messages.length > incoming.messages.length)
-          ? current.mergeExactMessagePage(incoming, allowMessageRevisions: true)
+          ? await _mergeLatestConversationMessagePage(
+              agentId,
+              current,
+              incoming,
+            )
           : incoming;
-      _replaceConversationSession(agentId, merged);
-      if (earlier) {
-        conversationMessagePageContinuationCounts = {
-          ...conversationMessagePageContinuationCounts,
-          key: completedContinuations + 1,
-        };
+      if (agentWorkspaceDisposed ||
+          selectedConversationAgentId.trim() != agentId ||
+          selectedConversationSession?.nativeSessionId.trim() !=
+              nativeSessionId) {
+        return;
       }
+      _replaceConversationSession(agentId, merged);
       lastError = '';
     } on Object catch (error) {
       if (agentWorkspaceDisposed) return;

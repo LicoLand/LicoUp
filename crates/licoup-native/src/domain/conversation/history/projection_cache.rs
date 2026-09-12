@@ -13,15 +13,16 @@
 use crate::domain::conversation::parameters::text_param;
 use crate::domain::conversation::paths::expand_home;
 use crate::platform::paths::portable_data_dir;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) const HISTORY_PROJECTION_CACHE_SCHEMA: &str = "licoup.history-projection-cache/v3";
+pub(crate) const HISTORY_PROJECTION_CACHE_SCHEMA: &str = "licoup.history-projection-cache/v5";
 pub(crate) const MAX_PROJECTION_CACHE_ENTRIES: usize = 256;
 pub(crate) const MAX_PROJECTION_CACHE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_PROJECTION_CACHE_FILE_BYTES: usize = MAX_PROJECTION_CACHE_BYTES + 4096;
@@ -46,7 +47,7 @@ impl SourceFingerprint {
     }
 }
 
-fn modified_ns(metadata: &fs::Metadata) -> u64 {
+pub(super) fn modified_ns(metadata: &fs::Metadata) -> u64 {
     metadata
         .modified()
         .ok()
@@ -84,6 +85,7 @@ struct CacheFile {
 pub(crate) struct HistoryProjectionCache {
     file_path: Option<PathBuf>,
     entries: BTreeMap<String, CacheEntry>,
+    removed_keys: HashSet<String>,
     bytes: usize,
     dirty: bool,
     /// Fail-closed discards (schema mismatch, corruption, ambiguous keys).
@@ -96,6 +98,7 @@ impl HistoryProjectionCache {
         let mut cache = Self {
             file_path,
             entries: BTreeMap::new(),
+            removed_keys: HashSet::new(),
             bytes: 0,
             dirty: false,
             discard_count: 0,
@@ -125,6 +128,7 @@ impl HistoryProjectionCache {
 
     pub(crate) fn insert(&mut self, key: ProjectionCacheKey, sessions: Vec<Value>) {
         let key_string = key_string(&key);
+        self.removed_keys.remove(&key_string);
         if let Some(previous) = self.entries.remove(&key_string) {
             self.bytes = self.bytes.saturating_sub(previous.serialized_bytes());
         }
@@ -147,6 +151,46 @@ impl HistoryProjectionCache {
         let Some(path) = self.file_path.clone() else {
             return;
         };
+        if let Some(parent) = path.parent()
+            && fs::create_dir_all(parent).is_err()
+        {
+            return;
+        }
+        let Ok(lock) = private_cache_file(&path.with_extension("lock"), false) else {
+            return;
+        };
+        if lock.lock_exclusive().is_err() {
+            return;
+        }
+        // Only publication is serialized. Independent readers hydrate in
+        // parallel, then merge the latest on-disk entries before atomic rename.
+        let mut latest = Self {
+            file_path: None,
+            entries: BTreeMap::new(),
+            removed_keys: HashSet::new(),
+            bytes: 0,
+            dirty: false,
+            discard_count: 0,
+        };
+        latest.load(&path);
+        for (key, entry) in latest.entries {
+            if self.removed_keys.contains(&key) {
+                continue;
+            }
+            if self
+                .entries
+                .get(&key)
+                .is_none_or(|current| current.last_used_ns < entry.last_used_ns)
+            {
+                self.entries.insert(key, entry);
+            }
+        }
+        self.bytes = self
+            .entries
+            .values()
+            .map(CacheEntry::serialized_bytes)
+            .sum();
+        self.enforce_bounds();
         let file = CacheFile {
             schema: HISTORY_PROJECTION_CACHE_SCHEMA.to_string(),
             entries: self.entries.values().cloned().collect(),
@@ -154,12 +198,14 @@ impl HistoryProjectionCache {
         let Ok(serialized) = serde_json::to_vec(&file) else {
             return;
         };
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
         let temporary = path.with_extension("json.tmp");
-        if fs::write(&temporary, &serialized).is_ok() && fs::rename(&temporary, &path).is_ok() {
+        if private_cache_file(&temporary, true)
+            .and_then(|mut file| file.write_all(&serialized))
+            .is_ok()
+            && fs::rename(&temporary, &path).is_ok()
+        {
             self.dirty = false;
+            self.removed_keys.clear();
         }
     }
 
@@ -226,6 +272,7 @@ impl HistoryProjectionCache {
     fn evict(&mut self, key: &str) {
         if let Some(entry) = self.entries.remove(key) {
             self.bytes = self.bytes.saturating_sub(entry.serialized_bytes());
+            self.removed_keys.insert(key.to_string());
             self.dirty = true;
         }
     }
@@ -245,6 +292,21 @@ impl HistoryProjectionCache {
             self.evict(&oldest);
         }
     }
+}
+
+fn private_cache_file(path: &Path, truncate: bool) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(truncate);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
 }
 
 impl CacheEntry {
@@ -353,6 +415,53 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_readers_merge_independent_projections_at_publication() {
+        let root = temp_dir("concurrent-publish");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let mut workers = Vec::new();
+        let mut keys = Vec::new();
+        for index in 0..4 {
+            let source = root.join(format!("source-{index}.jsonl"));
+            fs::write(&source, "{}\n").unwrap();
+            let key = key_for(&[&source]);
+            keys.push(key.clone());
+            let root = root.clone();
+            let barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                let mut cache = open_in(&root);
+                cache.insert(
+                    key,
+                    vec![json!({"nativeSessionId": format!("session-{index}"), "messages": []})],
+                );
+                // All readers opened before any publisher acquires its lock.
+                barrier.wait();
+                cache.save();
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let mut cache = open_in(&root);
+        assert_eq!(cache.entry_count(), 4);
+        for key in keys {
+            assert!(cache.get(&key).is_some());
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(root.join(HISTORY_PROJECTION_CACHE_FILE))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn changed_source_stat_invalidates_the_entry() {
         let root = temp_dir("invalidate");
         let source = root.join("rollout.jsonl");
@@ -379,6 +488,8 @@ mod tests {
             "a size or modification change must miss and evict"
         );
         assert_eq!(reopened.entry_count(), 0);
+        reopened.save();
+        assert_eq!(open_in(&root).entry_count(), 0);
         fs::remove_dir_all(&root).unwrap();
     }
 

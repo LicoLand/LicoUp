@@ -45,6 +45,10 @@ final class FilePresentationPreferencesRepository
   Future<PresentationPreferences> setLocalePreference(String preference) =>
       _update((current) => current.copyWith(localePreference: preference));
 
+  @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) =>
+      _update((current) => current.copyWith(reduceMotion: enabled));
+
   Future<PresentationPreferences> _update(
     PresentationPreferences Function(PresentationPreferences current) mutate,
   ) => _enqueue(() async {

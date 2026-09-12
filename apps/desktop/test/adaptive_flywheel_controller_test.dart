@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/strategy.g.dart'
     show
         StrategyWorkflowDiagnosticActualKind,
@@ -22,6 +23,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import 'fixtures/adaptive_flywheel/adaptive_flywheel_binding_fixture.dart';
+import 'support/fake_conversation_transport.dart';
 
 void main() {
   test('generated workflow diagnostics close fields and scalar bounds', () {
@@ -193,9 +195,13 @@ void main() {
     final runner = _StrategyRunner();
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     clientController.scannedTargets = [
       _target('codex', callable: true),
       _target('unadapted', callable: false),
@@ -299,9 +305,13 @@ void main() {
     final runner = _StrategyRunner(definitions: const []);
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     final bindings = AdaptiveFlywheelBindingFixture(clientController);
     addTearDown(() async {
       await bindings.close();
@@ -363,9 +373,13 @@ void main() {
       final runner = _StrategyRunner(definitions: const []);
       final agentService = AgentService(
         processIo: runner,
+        conversationNativePort: FakeConversationTransport().native,
         persistentStdioRpcEnabled: false,
       );
-      final clientController = ClientController(agentService: agentService);
+      final clientController = ClientController(
+        agentService: agentService,
+        conversationNativePort: runner,
+      );
       clientController.scannedTargets = [_target('codex', callable: true)];
       final bindings = AdaptiveFlywheelBindingFixture(clientController);
       addTearDown(() async {
@@ -481,9 +495,13 @@ void main() {
     );
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     final bindings = AdaptiveFlywheelBindingFixture(clientController);
     addTearDown(() async {
       await bindings.close();
@@ -572,7 +590,10 @@ void main() {
 }
 
 final class _StrategyRunner
-    implements AgentCommandRunner, AdaptiveFlywheelGateway {
+    implements
+        AgentCommandRunner,
+        AdaptiveFlywheelGateway,
+        ClientConversationNativePort {
   _StrategyRunner({
     this.includeRuntime = true,
     List<Map<String, dynamic>>? definitions,
@@ -604,12 +625,6 @@ final class _StrategyRunner
     List<String> args,
     String stdinText,
   ) async {
-    if (args.first == 'conversation') {
-      expectSync(args, ['conversation', 'execute', '--stdin-json', 'true']);
-      final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
-      conversationRequests.add(request);
-      return {'ok': true, 'result': _conversationResult(request)};
-    }
     expectSync(args, ['strategy', 'execute', '--stdin-json', 'true']);
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
@@ -633,6 +648,15 @@ final class _StrategyRunner
       _ => throw StateError('unexpected action $action'),
     };
     return {'ok': true, 'result': result};
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
+  ) async {
+    final request = command.payload;
+    conversationRequests.add(request);
+    return {'ok': true, 'result': _conversationResult(request)};
   }
 
   Object _conversationResult(Map<String, dynamic> request) {

@@ -19,9 +19,10 @@ import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayPanel extends StatefulWidget {
-  const MobileRelayPanel({super.key, required this.binding});
+  const MobileRelayPanel({super.key, required this.binding, this.chatChannels});
 
   final MobileRelayBinding binding;
+  final Widget? chatChannels;
 
   @override
   State<MobileRelayPanel> createState() => _MobileRelayPanelState();
@@ -133,6 +134,10 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
               projection: projection,
               intents: widget.binding.intents,
             ),
+          ],
+          if (widget.chatChannels != null) ...[
+            const _MobileRelayDivider(),
+            widget.chatChannels!,
           ],
           if (projection.secureMeshCapabilities != null) ...[
             const _MobileRelayDivider(),

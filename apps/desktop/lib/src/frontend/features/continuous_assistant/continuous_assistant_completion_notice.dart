@@ -4,9 +4,7 @@ import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_keys.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_labels.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_task_view.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_surfaces.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Renders a supplied [ContinuityGoalCompletionTransition].
@@ -39,10 +37,7 @@ final class ContinuousAssistantCompletionNotice extends StatelessWidget {
         toLifecycle: transition.toLifecycle.wireName,
       ),
       button: task != null && onOpenChild != null,
-      child: LicoSurface(
-        tone: LicoSurfaceTone.accent,
-        radius: LicoRadius.chip,
-        padding: const EdgeInsets.all(LicoContentSpacing.compact),
+      child: ContinuousCompletionSurface(
         child: InkWell(
           key: ContinuousAssistantKeys.notice(transition.notificationId),
           onTap: task == null || onOpenChild == null

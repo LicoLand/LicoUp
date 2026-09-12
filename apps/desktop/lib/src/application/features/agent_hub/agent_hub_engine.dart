@@ -104,9 +104,7 @@ final class NativeAgentHubEngine implements AgentHubEnginePort {
         'agent-hub',
         'catalog',
         if (id.isNotEmpty) ...['--agent-id', id],
-        // A full refresh resolves every card in this one command. The desktop
-        // transport serializes native requests through one queue, so asking per
-        // card cost a full round trip per card.
+        // Per-Agent lookups are independently scheduled by the read lane.
         if (live && id.isEmpty) ...['--stdin-json', jsonEncode(_livePayload())],
       ]);
       final snapshot = _ingestCatalog(raw, merge: id.isNotEmpty);

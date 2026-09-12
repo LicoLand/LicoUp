@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/composition/agent_conversation_gateway_adapter.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'support/fake_conversation_transport.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
 
 void main() {
@@ -45,8 +46,11 @@ void main() {
   test('replacement gateway discovers and attaches the active turn', () async {
     final runner = _RuntimeRunner();
     final gateway = AgentConversationGatewayAdapter(
-      service: const AgentConversationService(),
-      runner: runner,
+      service: AgentConversationService(native: runner.native),
+      runner: AgentService(
+        stdioRpcTransport: runner,
+        persistentStdioRpcEnabled: true,
+      ),
     );
     final persistent = gateway as PersistentAgentConversationGateway;
 
@@ -89,15 +93,47 @@ void main() {
   });
 
   test(
+    'attach transport failure reaches the application error contract',
+    () async {
+      final peer = FakeConversationTransport(
+        events: (_, _) async* {
+          throw const LicoClientRpcException('transport_failed');
+        },
+      );
+      final runner = AgentService(stdioRpcTransport: peer);
+      addTearDown(runner.dispose);
+      final gateway = AgentConversationGatewayAdapter(
+        service: AgentConversationService(native: peer.native),
+        runner: runner,
+      );
+      await expectLater(
+        gateway
+            .attachActiveTurn(
+              turnHandle: 'turn-1',
+              conversationId: 'conversation-1',
+            )
+            .toList(),
+        throwsA(
+          isA<AgentDispatchStreamException>().having(
+            (error) => error.failureCode,
+            'code',
+            'transport_failed',
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
     'failed attach terminal carries a structured failure transition',
     () async {
-      final events = await const AgentConversationService()
-          .attachActiveTurn(
-            runner: _FailedRuntimeRunner(),
-            turnHandle: 'turn-1',
-            conversationId: 'conversation-1',
-          )
-          .toList();
+      final events =
+          await AgentConversationService(native: _FailedRuntimeRunner().native)
+              .attachActiveTurn(
+                turnHandle: 'turn-1',
+                conversationId: 'conversation-1',
+              )
+              .toList();
 
       expect(events.single.kind, 'dispatch.turn.failed');
       expect(events.single.payload['terminalTransition'], {
@@ -109,23 +145,19 @@ void main() {
   );
 }
 
-class _RuntimeRunner implements AgentCommandRunner {
+class _RuntimeRunner extends FakeConversationTransport {
   String attachedHandle = '';
   String attachedConversationId = '';
   final controls = <String>[];
   Map<String, dynamic> activeRequest = const {};
 
   @override
-  Future<Map<String, dynamic>> runCli(List<String> args) async => const {};
-
-  @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeStructured(
+    String method,
+    Map<String, dynamic> request,
   ) async {
-    final operation = args[2];
+    final operation = method.split('.').last;
     if (operation == 'steer' || operation == 'cancel') {
-      final request = jsonDecode(stdinText) as Map<String, dynamic>;
       controls.add(
         '$operation:${request['turnHandle']}:${request['conversationId']}',
       );
@@ -135,7 +167,7 @@ class _RuntimeRunner implements AgentCommandRunner {
       };
     }
     expect(operation, 'active');
-    activeRequest = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    activeRequest = Map<String, dynamic>.from(request);
     return {
       'turns': [
         {
@@ -151,16 +183,10 @@ class _RuntimeRunner implements AgentCommandRunner {
   }
 
   @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
   ) async* {
-    expect(args[2], 'attach');
-    final request = jsonDecode(stdinText) as Map<String, dynamic>;
+    expect(request['_rpcOperation'], 'attach');
     attachedHandle = request['turnHandle'].toString();
     attachedConversationId = request['conversationId'].toString();
     yield {
@@ -183,9 +209,8 @@ class _RuntimeRunner implements AgentCommandRunner {
 
 final class _FailedRuntimeRunner extends _RuntimeRunner {
   @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
   ) async* {
     yield {
       'event': 'done',

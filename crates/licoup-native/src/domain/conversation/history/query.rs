@@ -193,15 +193,30 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     let roots = history_roots(adapter, params);
     let mut sessions = Vec::<Value>::new();
     let mut discovery_options = scan_config.discovery_options();
+    let codex_lineage = (adapter == HistoryAdapter::Codex)
+        .then(|| super::catalog::codex_spawn_lineage(params))
+        .unwrap_or_default();
     // Codex runs each delegated task as its own thread in its own rollout, so a
     // single-conversation read must pull those rollouts into scope or the
     // conversation shows none of the work it delegated.
     if adapter == HistoryAdapter::Codex && !discovery_options.exact_session_ids.is_empty() {
         let delegated = super::catalog::codex_delegated_thread_ids(
-            params,
+            &codex_lineage,
             &discovery_options.exact_session_ids,
         );
         discovery_options.exact_session_ids.extend(delegated);
+    }
+    if let Some(requested) = scan_config.single_session_id() {
+        if matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode) {
+            discovery_options.exact_session_ids.extend(
+                super::catalog::delegated_transcript_owner_ids(adapter, params, requested),
+            );
+        }
+        if adapter == HistoryAdapter::KimiCode {
+            discovery_options
+                .exact_session_ids
+                .push(super::kimi::kimi_code_conversation_id(requested).to_string());
+        }
     }
     let discovery = discover_history_files(adapter, &roots, discovery_options);
     let mut skipped = discovery.skipped;
@@ -221,13 +236,27 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
                 continue;
             }
         };
-        let parsed = parse_history_file(
-            adapter,
-            &candidate.path,
-            &candidate.source_kind,
-            &metadata,
-            scan_config.clone(),
-        );
+        let parsed = (adapter == HistoryAdapter::Codex && requested.is_some())
+            .then(|| {
+                super::codex::parse_codex_rollout_bounded_sessions(
+                    &candidate.path,
+                    &candidate.source_kind,
+                    &metadata,
+                    scan_config.clone(),
+                    DEFAULT_HISTORY_MESSAGE_LIMIT,
+                    requested,
+                )
+            })
+            .flatten()
+            .unwrap_or_else(|| {
+                parse_history_file(
+                    adapter,
+                    &candidate.path,
+                    &candidate.source_kind,
+                    &metadata,
+                    scan_config.clone(),
+                )
+            });
         if let Some(requested) = requested
             && exact_hydration_locator_matches(&candidate.path, requested)
             && parsed.iter().any(|session| {
@@ -245,10 +274,9 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     if adapter == HistoryAdapter::Codex && !scan_config.has_single_session_filter() {
         apply_codex_session_index_titles(params, &mut sessions);
     }
-    // The thread database is the only place Codex records which conversation
-    // spawned a delegated thread.
+    // Preserve database lineage alongside explicit rollout-header lineage.
     if adapter == HistoryAdapter::Codex {
-        super::catalog::apply_codex_spawn_lineage(params, &mut sessions);
+        super::catalog::apply_codex_spawn_lineage(params, &codex_lineage, &mut sessions);
     }
     if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode) {
         super::catalog::apply_openagent_parent_lineage(adapter, params, &mut sessions);
@@ -412,7 +440,7 @@ fn apply_exact_message_page(session: &mut Value, params: &Value) -> Result<()> {
     };
     let limit = number_param(params, "messageLimit")
         .map(|value| value as usize)
-        .unwrap_or(50);
+        .unwrap_or(DEFAULT_HISTORY_MESSAGE_LIMIT);
     let start = end.saturating_sub(limit);
     let page = messages[start..end].to_vec();
     let next_before = (start > 0)
@@ -422,6 +450,7 @@ fn apply_exact_message_page(session: &mut Value, params: &Value) -> Result<()> {
         .and_then(Value::as_str)
         .map(str::to_string);
     object.insert("messages".to_string(), Value::Array(page));
+    retain_message_page_semantics(object);
     object.insert("messageCount".to_string(), json!(total));
     object.insert("sourceMessageCount".to_string(), json!(total));
     object.insert(
@@ -436,6 +465,31 @@ fn apply_exact_message_page(session: &mut Value, params: &Value) -> Result<()> {
         }),
     );
     Ok(())
+}
+
+/// Semantic thread/execution events are alternate projections of these same
+/// message identities. A page must not carry a second complete transcript.
+pub(super) fn retain_message_page_semantics(object: &mut serde_json::Map<String, Value>) {
+    let ids = object
+        .get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|message| message.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<std::collections::HashSet<_>>();
+    if let Some(semantic) = object.get_mut("semantic").and_then(Value::as_object_mut) {
+        for key in ["thread", "execution"] {
+            if let Some(events) = semantic.get_mut(key).and_then(Value::as_array_mut) {
+                events.retain(|event| {
+                    event
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| ids.contains(id))
+                });
+            }
+        }
+    }
 }
 
 /// Browse-mode lists (no search terms, no explicit session selection, no root

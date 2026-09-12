@@ -63,9 +63,7 @@ final class PluginManagementProjectionProducer
     AdapterPluginController plugins,
     OptionalCollaborationController collaboration,
   ) {
-    final failure = plugins.lastErrorCode.isNotEmpty
-        ? plugins.lastErrorCode
-        : collaboration.errorCode;
+    final failure = plugins.lastErrorCode;
     final state = collaboration.state;
     final catalog = collaboration.workflowCatalog;
     final workflows = [
@@ -114,7 +112,7 @@ final class PluginManagementProjectionProducer
       ),
       phase: failure.isNotEmpty
           ? PresentationPhase.failed
-          : plugins.busy || collaboration.busy
+          : plugins.busy
           ? PresentationPhase.loading
           : PresentationPhase.ready,
       notice: failure.isEmpty

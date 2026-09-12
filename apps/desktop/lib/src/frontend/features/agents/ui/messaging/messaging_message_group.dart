@@ -23,12 +23,13 @@ import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 
 /// One author group in the messaging participant flow: a header row with the
 /// author avatar, display name, and AGENT badge for agent authors, followed
 /// by every message in the group. Messages render with the shared markdown
 /// content renderer inside a readable message bubble. Hovering a row applies
-/// a subtle [LicoSurface] highlight and reveals that message's copy action
+/// a subtle surface highlight and reveals that message's copy action
 /// outside the bubble at its bottom-left corner and its timestamp outside the
 /// bubble at its bottom-right corner.
 class MessagingMessageGroup extends StatelessWidget {
@@ -48,6 +49,7 @@ class MessagingMessageGroup extends StatelessWidget {
     this.onCopyText,
     this.onRetryMessage,
     this.onDeleteMessage,
+    this.scrollController,
   });
 
   final bool authorIsUser;
@@ -78,6 +80,7 @@ class MessagingMessageGroup extends StatelessWidget {
   /// This author's native/local conversation id, revealed on message hover
   /// immediately before the timestamp (agent bubbles only).
   final String conversationId;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -183,16 +186,20 @@ class MessagingMessageGroup extends StatelessWidget {
             key: ValueKey<String>(
               'messaging-group-message-${messages[index].id}-${messages[index].createdAt}',
             ),
-            child: _MessagingGroupMessageRow(
-              message: messages[index],
-              adapter: adapter,
-              authorIsUser: authorIsUser,
-              agentKey: bubbleGlowKey,
-              conversationId: conversationId,
-              isStreaming: streamingMessageIds.contains(messages[index].id),
-              onCopyText: onCopyText,
-              onRetryMessage: onRetryMessage,
-              onDeleteMessage: onDeleteMessage,
+            child: ReadingPositionAnchor(
+              controller: scrollController,
+              anchorId: (messages[index].id, messages[index].createdAt),
+              child: _MessagingGroupMessageRow(
+                message: messages[index],
+                adapter: adapter,
+                authorIsUser: authorIsUser,
+                agentKey: bubbleGlowKey,
+                conversationId: conversationId,
+                isStreaming: streamingMessageIds.contains(messages[index].id),
+                onCopyText: onCopyText,
+                onRetryMessage: onRetryMessage,
+                onDeleteMessage: onDeleteMessage,
+              ),
             ),
           ),
           if (index != messages.length - 1)

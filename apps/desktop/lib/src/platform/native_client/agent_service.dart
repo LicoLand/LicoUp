@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/contracts/mcp_adapter.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_catalog_actions.dart';
 import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
 import 'package:licoup/src/platform/native_client/native_command_router.dart';
+import 'package:licoup/src/platform/native_client/native_conversation_port.dart';
 import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:licoup/src/platform/native_client/native_state_actions.dart';
@@ -45,6 +47,7 @@ class AgentService
     NativeCliProcessContext? processContext,
     NativeCommandExecutor? oneShotCommandExecutor,
     NativeStdioRpcTransport? stdioRpcTransport,
+    ConversationNativePort? conversationNativePort,
     AgentCommandRunner? processIo,
     NativeCommandActions? commandActions,
     bool? persistentStdioRpcEnabled,
@@ -66,6 +69,13 @@ class AgentService
     final rpcTransport =
         stdioRpcTransport ??
         NativeStdioRpcClient(processContext: runtimeContext);
+    _conversationNativePort =
+        conversationNativePort ??
+        StdioConversationNativePort(
+          transport: rpcTransport,
+          desktopRuntime:
+              Platform.isMacOS || Platform.isLinux || Platform.isWindows,
+        );
     final persistentEnabled =
         persistentStdioRpcEnabled ??
         ((Platform.isMacOS || Platform.isLinux || Platform.isWindows) &&
@@ -107,6 +117,7 @@ class AgentService
   }
 
   late final NativeCommandExecutor _commandExecutor;
+  late final ConversationNativePort _conversationNativePort;
   late final NativeStdioRpcTransport _stdioRpcTransport;
   late final AgentCommandRunner _processIo;
   late final NativeCommandActions _commandActions;
@@ -116,6 +127,8 @@ class AgentService
 
   static const List<String> packagedScanTargetIds =
       NativeCommandActions.packagedScanTargetIds;
+
+  ConversationNativePort get conversationNativePort => _conversationNativePort;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) =>

@@ -50,9 +50,6 @@ class _LicoTopEdgePulseState extends State<LicoTopEdgePulse>
   @override
   void didUpdateWidget(covariant LicoTopEdgePulse oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.duration != widget.duration) {
-      _controller.duration = widget.duration;
-    }
     if (oldWidget.enabled != widget.enabled ||
         oldWidget.duration != widget.duration) {
       _syncAnimation();
@@ -61,13 +58,17 @@ class _LicoTopEdgePulseState extends State<LicoTopEdgePulse>
 
   void _syncAnimation() {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    if (!widget.enabled || reduceMotion) {
+    if (!widget.enabled ||
+        reduceMotion ||
+        !TickerMode.valuesOf(context).enabled) {
       _controller
         ..stop()
         ..value = 0;
       return;
     }
-    if (!_controller.isAnimating) {
+    final duration = context.motion(widget.duration);
+    if (!_controller.isAnimating || _controller.duration != duration) {
+      _controller.duration = duration;
       _controller.repeat();
     }
   }
@@ -171,6 +172,17 @@ class _LicoTopEdgePulsePainter extends CustomPainter {
       stops: const [0.0, 0.45, 0.8, 1.0],
     ).createShader(band);
     canvas.drawRect(band, Paint()..shader = shader);
+    // Six deterministic silver parsing grains follow the stream head. No
+    // random allocation, text layout, blur layer or idle ticker is involved.
+    for (var index = 0; index < 6; index += 1) {
+      final x = head - index * 11;
+      final alpha = (1 - index / 6) * 0.9;
+      canvas.drawCircle(
+        Offset(x, strokeWidth / 2),
+        strokeWidth * (index == 0 ? 0.48 : 0.28),
+        Paint()..color = color.withValues(alpha: alpha),
+      );
+    }
     canvas.restore();
   }
 
@@ -217,12 +229,15 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disable = MediaQuery.disableAnimationsOf(context);
+    final disable = !context.allowsAmbientMotion;
+    final duration = context.motion(LicoMotion.loopShort);
     if (disable) {
       _controller.stop();
       _controller.value = 0;
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
+    } else if (!_controller.isAnimating || _controller.duration != duration) {
+      _controller
+        ..duration = duration
+        ..repeat();
     }
   }
 
@@ -342,12 +357,15 @@ class _LicoShimmerMaskState extends State<LicoShimmerMask>
   }
 
   void _syncAnimation() {
-    final disable = MediaQuery.disableAnimationsOf(context) || !widget.enabled;
+    final disable = !context.allowsAmbientMotion || !widget.enabled;
+    final duration = context.motion(LicoMotion.loopLong);
     if (disable) {
       _controller.stop();
       _controller.value = 0.5;
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
+    } else if (!_controller.isAnimating || _controller.duration != duration) {
+      _controller
+        ..duration = duration
+        ..repeat();
     }
   }
 

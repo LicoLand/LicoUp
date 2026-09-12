@@ -8,6 +8,7 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)
 
 const productionRoots = Object.freeze([
   ["crates/licoup-native/src", ".rs"],
+  ["crates/licoup-mcp/src", ".rs"],
   ["apps/desktop/lib", ".dart"],
   ["apps/desktop/android/app/src/main", ".kt"],
   ["apps/desktop/ios/Runner", ".swift"],
@@ -21,6 +22,8 @@ const networkTokensByExtension = Object.freeze({
 });
 
 const reviewedRustEgressFiles = Object.freeze([
+  "crates/licoup-mcp/src/lifecycle.rs",
+  "crates/licoup-mcp/src/transport.rs",
   "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
   "crates/licoup-native/src/domain/client_update/github_source.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
@@ -37,7 +40,6 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/platform/local_service/http.rs",
   "crates/licoup-native/src/platform/local_service/sse.rs",
   "crates/licoup-native/src/platform/mcp_streamable_http.rs",
-  "crates/licoup-native/src/platform/subagent_mcp_supervisor.rs",
 ]);
 
 async function sourceFiles(relativeRoot, extension) {

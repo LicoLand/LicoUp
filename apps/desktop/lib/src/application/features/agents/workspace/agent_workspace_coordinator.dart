@@ -159,7 +159,10 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   final Set<String> conversationSessionLoadMoreTargets = <String>{};
   final Set<String> conversationMessagePageLoadingKeys = <String>{};
   Map<String, String> conversationMessagePageErrors = const {};
-  Map<String, int> conversationMessagePageContinuationCounts = const {};
+  String conversationChildHistoryScope = '';
+  Map<String, AgentConversationSession> conversationChildSessions = const {};
+  final Set<String> conversationChildLoadingSessions = <String>{};
+  Map<String, String> conversationChildPageErrors = const {};
   Map<String, int> conversationSessionLoadMoreCountsByAgent = const {};
   Map<String, String> _selectedConversationSessionIdsByAgent = const {};
 

@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_section_projection.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
+import 'package:licoup/src/frontend/shared/ui/base_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
@@ -105,9 +105,9 @@ class _ArchivedConversationsSettingsSectionState
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
     final presentation = layoutSettingsPresentationOf(context);
-    return ProjectionBuilder<SettingsProjection, SettingsProjection>(
+    return ProjectionBuilder<SettingsProjection, ArchivedSettingsSelection>(
       source: widget.binding.projection,
-      select: _settingsIdentity,
+      select: ArchivedSettingsSelection.from,
       builder: (context, projection) {
         final archived = projection.archivedConversations;
         final query = _searchController.text.trim().toLowerCase();
@@ -171,7 +171,7 @@ class _ArchivedConversationsSettingsSectionState
                   ),
                   const SizedBox(height: LicoContentSpacing.item),
                   if (hasFailure) ...[
-                    LicoSurface(
+                    _ArchivedConversationSurface(
                       key: const Key('archived-conversation-failure'),
                       tone: LicoSurfaceTone.danger,
                       elevation: LicoElevation.flat,
@@ -194,8 +194,7 @@ class _ArchivedConversationsSettingsSectionState
                           ),
                           if (failureStage == 'archived-list')
                             TextButton(
-                              onPressed:
-                                  projection.phase == PresentationPhase.applying
+                              onPressed: projection.loading
                                   ? null
                                   : () => widget.binding.intents.send(
                                       const RefreshArchivedConversations(),
@@ -207,11 +206,10 @@ class _ArchivedConversationsSettingsSectionState
                     ),
                     const SizedBox(height: LicoContentSpacing.item),
                   ],
-                  if (projection.phase == PresentationPhase.applying &&
-                      archived.isEmpty)
+                  if (projection.loading && archived.isEmpty)
                     const _ArchivedConversationsLoading()
                   else if (visible.isEmpty)
-                    LicoSurface(
+                    _ArchivedConversationSurface(
                       elevation: LicoElevation.flat,
                       child: LicoEmptyState(
                         key: const Key('archived-conversation-empty'),
@@ -224,7 +222,7 @@ class _ArchivedConversationsSettingsSectionState
                       ),
                     )
                   else
-                    LicoSurface(
+                    _ArchivedConversationSurface(
                       key: const Key('archived-conversation-list'),
                       elevation: LicoElevation.flat,
                       padding: EdgeInsets.zero,
@@ -264,7 +262,7 @@ class _ArchivedConversationsLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    return LicoSurface(
+    return _ArchivedConversationSurface(
       key: const Key('archived-conversation-loading'),
       elevation: LicoElevation.flat,
       padding: const EdgeInsets.all(LicoContentSpacing.section),
@@ -387,4 +385,12 @@ class _ArchivedConversationRow extends StatelessWidget {
   }
 }
 
-SettingsProjection _settingsIdentity(SettingsProjection value) => value;
+final class _ArchivedConversationSurface extends BaseSurface {
+  const _ArchivedConversationSurface({
+    super.key,
+    required super.child,
+    super.tone,
+    super.elevation,
+    super.padding,
+  });
+}

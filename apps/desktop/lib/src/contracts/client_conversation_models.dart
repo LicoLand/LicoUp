@@ -313,6 +313,8 @@ final class ClientConversationEventPage {
     required this.events,
     required this.nextCursor,
     required this.totalCount,
+    this.hasEarlier = false,
+    this.nextBeforeSequence,
   });
 
   factory ClientConversationEventPage.fromJson(Map<String, dynamic> json) =>
@@ -322,11 +324,15 @@ final class ClientConversationEventPage {
         ).map(ClientConversationEvent.fromJson).toList(growable: false),
         nextCursor: (json['nextCursor'] ?? '').toString(),
         totalCount: _integer(json['totalCount']),
+        hasEarlier: json['hasEarlier'] == true,
+        nextBeforeSequence: (json['nextBeforeSequence'] as num?)?.toInt(),
       );
 
   final List<ClientConversationEvent> events;
   final String nextCursor;
   final int totalCount;
+  final bool hasEarlier;
+  final int? nextBeforeSequence;
 }
 
 final class ClientConversationGroupMemberDraft {

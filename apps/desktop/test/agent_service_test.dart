@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -5,7 +6,7 @@ import 'dart:typed_data';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 
 void main() {
   test('target candidate parses target adapter scan shape', () {
@@ -501,26 +502,20 @@ done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
       addTearDown(service.dispose);
-      const args = [
-        'agent',
-        'conversation',
-        'send',
-        '--stdin-json',
-        'true',
-        '--stream-events',
-        'true',
-      ];
-
-      final first = await service
-          .streamCliJsonLinesWithStdin(
-            args,
-            '{"agent":"claude-code","text":"one","streamEvents":true}',
+      final native = service.conversationNativePort;
+      final first = await native
+          .send(
+            const AgentConversationSessionScope(agentId: 'claude-code'),
+            text: 'one',
           )
           .toList();
-      final second = await service
-          .streamCliJsonLinesWithStdin(
-            args,
-            '{"agent":"claude-code","text":"two","sessionId":"native-session","streamEvents":true}',
+      final second = await native
+          .send(
+            const AgentConversationSessionScope(
+              agentId: 'claude-code',
+              sessionId: 'native-session',
+            ),
+            text: 'two',
           )
           .toList();
 
@@ -579,7 +574,7 @@ while IFS= read -r line; do
       printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-1","turnStatus":"completed"}}\n' "$id" "$workflow"
       ;;
     *'"method":"agent.conversation.open"'*) operation=open ;;
-    *'"method":"agent.conversation.history"'*) operation=history ;;
+    *'"method":"execute"'*'"args":["state","get","settings"]'*) operation=settings ;;
     *'"method":"agent.conversation.cleanup"'*) operation=cleanup ;;
     *'"method":"agent.conversation.capabilities"'*) operation=capabilities ;;
     *) operation=unexpected ;;
@@ -593,39 +588,26 @@ done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
       addTearDown(service.dispose);
-      for (final operation in const ['open', 'capabilities', 'history']) {
-        final result = await service.runCliWithStdin([
-          'agent',
-          'conversation',
-          operation,
-          '--stdin-json',
-          'true',
-        ], '{"agent":"claude-code","sessionId":"native-session"}');
-        expect(result['operation'], operation);
-      }
-      final streamed = await service.streamCliJsonLinesWithStdin(
-        const [
-          'agent',
-          'conversation',
-          'send',
-          '--stdin-json',
-          'true',
-          '--stream-events',
-          'true',
-        ],
-        '{"agent":"claude-code","sessionId":"native-session","text":"bounded"}',
-      ).toList();
+      final native = service.conversationNativePort;
+      const session = AgentConversationSessionScope(
+        agentId: 'claude-code',
+        sessionId: 'native-session',
+      );
+      expect((await native.open(session))['operation'], 'open');
+      expect(
+        (await native.capabilities(session.agentId))['operation'],
+        'capabilities',
+      );
+      expect(
+        (await service.runCli(const ['state', 'get', 'settings']))['operation'],
+        'settings',
+      );
+      final streamed = await native.send(session, text: 'bounded').toList();
       expect(streamed.map((event) => event['event']), [
         'agent.message.chunk',
         'done',
       ]);
-      final cleanup = await service.runCliWithStdin(const [
-        'agent',
-        'conversation',
-        'cleanup',
-        '--stdin-json',
-        'true',
-      ], '{"agent":"claude-code","sessionId":"native-session"}');
+      final cleanup = await native.cleanup(session);
       expect(cleanup['operation'], 'cleanup');
       await service.dispose();
 
@@ -643,7 +625,7 @@ done
       expect(operations.map((row) => row.split(':').first), [
         'open',
         'capabilities',
-        'history',
+        'settings',
         'send',
         'cleanup',
       ]);
@@ -690,15 +672,16 @@ done
     addTearDown(service.dispose);
 
     await expectLater(
-      service.streamCliJsonLinesWithStdin(const [
-        'agent',
-        'conversation',
-        'send',
-      ], '{"agent":"claude-code","text":"one"}').toList(),
+      service.conversationNativePort
+          .send(
+            const AgentConversationSessionScope(agentId: 'claude-code'),
+            text: 'one',
+          )
+          .toList(),
       throwsA(
-        isA<AgentDispatchStreamException>().having(
-          (error) => error.failureCode,
-          'failureCode',
+        isA<NativeConversationException>().having(
+          (error) => error.code,
+          'code',
           'invalid_response',
         ),
       ),
@@ -708,43 +691,47 @@ done
   test(
     'macOS conversation RPC rejects duplicate terminal before reuse',
     () async {
-      if (!Platform.isMacOS) {
-        return;
-      }
-      final tempDir = await Directory.systemTemp.createTemp(
-        'lico-rpc-terminal-',
+      final processes = <_ConversationProcess>[];
+      final lanes = <List<String>>[];
+      final service = AgentService(
+        resolveCliBinary: () async => File('/synthetic/licoup'),
+        startCliExecutable: (executable, arguments, environment) async {
+          lanes.add(List.of(arguments));
+          final process = _ConversationProcess(
+            duplicateTerminal: processes.isEmpty,
+            turnId: 'turn-${processes.length + 1}',
+          );
+          processes.add(process);
+          return process;
+        },
       );
-      addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/licoup');
-      final marker = File('${tempDir.path}/rpc-events.log');
-      await _writeExecutable(cli, r'''#!/bin/sh
-dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
-marker="$dir/rpc-events.log"
-printf 'started\n' >> "$marker"
-while IFS= read -r line; do
-  id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
-  workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
-  case "$line" in
-    *'"method":"shutdown"'*) exit 0 ;;
-  esac
-  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-1"}}\n' "$id" "$workflow"
-  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-duplicate"}}\n' "$id" "$workflow"
-done
-''');
-      final service = AgentService(resolveCliBinary: () async => cli);
       addTearDown(service.dispose);
+      final native = service.conversationNativePort;
+      const session = AgentConversationSessionScope(
+        agentId: 'claude-code',
+        sessionId: 'native-session',
+      );
+      final first = await native.send(session, text: 'one').toList();
+      expect(first.single['turnId'], 'turn-1');
+      final second = await native.send(session, text: 'two').toList();
+      expect(second.single['turnId'], 'turn-2');
 
-      final result = await service.streamCliJsonLinesWithStdin(const [
-        'agent',
-        'conversation',
-        'send',
-      ], '{"agent":"claude-code","text":"one"}').toList();
-      expect(result, hasLength(1));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      await service.runCli(const ['state', 'get', 'settings']);
-
-      final events = await marker.readAsLines();
-      expect(events.where((event) => event == 'started'), hasLength(2));
+      expect(lanes, [
+        ['rpc', 'conversation'],
+        ['rpc', 'conversation'],
+      ]);
+      expect(processes.first.killed, isTrue);
+      expect(processes.last.killed, isFalse);
+      expect(
+        processes.map((process) => process.requests.single['method']),
+        everyElement('agent.conversation.send'),
+      );
+      expect(
+        processes
+            .map((process) => process.requests.single['workflowId'])
+            .toSet(),
+        hasLength(1),
+      );
     },
   );
 
@@ -767,15 +754,16 @@ fi
       addTearDown(service.dispose);
 
       await expectLater(
-        service.streamCliJsonLinesWithStdin(const [
-          'agent',
-          'conversation',
-          'send',
-        ], '{"agent":"claude-code","text":"one"}').toList(),
+        service.conversationNativePort
+            .send(
+              const AgentConversationSessionScope(agentId: 'claude-code'),
+              text: 'one',
+            )
+            .toList(),
         throwsA(
-          isA<AgentDispatchStreamException>().having(
-            (error) => error.failureCode,
-            'failureCode',
+          isA<NativeConversationException>().having(
+            (error) => error.code,
+            'code',
             'transport_failed',
           ),
         ),
@@ -937,6 +925,77 @@ final class _RecordingStructuredTransport implements NativeStdioRpcTransport {
   Stream<Map<String, dynamic>> streamConversation(
     Map<String, dynamic> request,
   ) => const Stream.empty();
+}
+
+/// Delivers both terminal frames in one stdout chunk, so the session has
+/// processed the duplicate before the first send completes. No timer or
+/// unrelated command connection participates in the reuse assertion.
+final class _ConversationProcess implements Process {
+  _ConversationProcess({
+    required bool duplicateTerminal,
+    required String turnId,
+  }) {
+    stdin = IOSink(_input.sink);
+    _input.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+          final request = jsonDecode(line) as Map<String, dynamic>;
+          requests.add(request);
+          Map<String, dynamic> terminal(int sequence, String id) => {
+            'protocol': 'licoup.stdio.v1',
+            'id': request['id'],
+            'workflowId': request['workflowId'],
+            'kind': 'terminal',
+            'sequence': sequence,
+            'ok': true,
+            'result': {
+              'ok': true,
+              'nativeSessionId': 'native-session',
+              'turnId': id,
+            },
+          };
+          _output.add(
+            utf8.encode(
+              [
+                jsonEncode(terminal(1, turnId)),
+                if (duplicateTerminal)
+                  jsonEncode(terminal(2, 'turn-duplicate')),
+                '',
+              ].join('\n'),
+            ),
+          );
+        });
+  }
+
+  final _input = StreamController<List<int>>();
+  final _output = StreamController<List<int>>();
+  final _errors = StreamController<List<int>>();
+  final _exited = Completer<int>();
+  final requests = <Map<String, dynamic>>[];
+  bool killed = false;
+
+  @override
+  late final IOSink stdin;
+  @override
+  Stream<List<int>> get stdout => _output.stream;
+  @override
+  Stream<List<int>> get stderr => _errors.stream;
+  @override
+  Future<int> get exitCode => _exited.future;
+  @override
+  int get pid => 1;
+
+  @override
+  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    killed = true;
+    if (!_exited.isCompleted) {
+      unawaited(_output.close());
+      unawaited(_errors.close());
+      _exited.complete(0);
+    }
+    return true;
+  }
 }
 
 Future<void> _writeExecutable(File file, String source) async {

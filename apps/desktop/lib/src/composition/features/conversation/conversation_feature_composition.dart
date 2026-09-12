@@ -152,14 +152,17 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       case StartConversationSession():
         _controller.clientConversationController.clearSelection();
         _controller.startNewConversationSession();
-      case LoadEarlierConversationEvents():
+      case LoadEarlierConversationEvents(:final conversationId):
         if (_controller
             .clientConversationController
             .selectedConversationId
             .isNotEmpty) {
           _run(
             () async {
-              await _controller.clientConversationController.reloadSelected();
+              final owner = _controller.clientConversationController;
+              if (owner.selectedConversationId == conversationId) {
+                await owner.loadEarlierEvents();
+              }
             },
             trace,
             stage: 'canonical-load-earlier',
@@ -171,6 +174,15 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             stage: 'native-load-earlier',
           );
         }
+      case LoadChildConversationMessages(:final childSessionId, :final earlier):
+        _run(
+          () => _controller.loadChildConversationMessages(
+            childSessionId,
+            earlier: earlier,
+          ),
+          trace,
+          stage: 'native-child-messages',
+        );
       case PostConversationMessage(
         :final conversationId,
         :final content,

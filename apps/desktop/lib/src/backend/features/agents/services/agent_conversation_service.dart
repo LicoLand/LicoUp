@@ -5,77 +5,44 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 
 export 'package:licoup/src/contracts/agent_conversation_models.dart';
 export 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 export 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
-/// Desktop still sends timeoutMs 0. Native treats that as "use the writable
-/// policy default" unless the caller sets timeoutUnbounded.
-const _policyDefaultDispatchTimeoutMs = 0;
-
-Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
-  final acceptanceMode = bind.acceptanceMode.trim();
-  if (acceptanceMode.isEmpty) {
-    return const {};
-  }
-  return {
-    'acceptanceMode': acceptanceMode,
-    'timeoutMs': _policyDefaultDispatchTimeoutMs,
-  };
-}
-
-Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
-  return <String, dynamic>{
-    if (bind.permissionMode.trim().isNotEmpty)
-      'permissionMode': bind.permissionMode.trim(),
-    if (bind.allowedTools.isNotEmpty)
-      'allowedTools': List<String>.unmodifiable(bind.allowedTools),
-    if (bind.sessionPath.trim().isNotEmpty)
-      'sessionPath': bind.sessionPath.trim(),
-    if (bind.workingDirectory.trim().isNotEmpty)
-      'workingDirectory': bind.workingDirectory.trim(),
-    if (bind.binaryPath.trim().isNotEmpty) 'binaryPath': bind.binaryPath.trim(),
-    if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-    if (bind.reasoningEffort.trim().isNotEmpty)
-      'reasoningEffort': bind.reasoningEffort.trim(),
-    if (bind.licoProfile.trim().isNotEmpty)
-      'licoProfile': bind.licoProfile.trim(),
-    if (bind.runtimeConnection.isNotEmpty)
-      if (bind.runtimeConnection.isNotEmpty)
-        'runtimeConnection': bind.runtimeConnection,
-  };
-}
-
 /// Backend adapter that implements the unified [AgentConversationLane] over the
 /// sidecar. Conversation callers consume this contract instead of owning
 /// native conversation command shapes.
 class AgentConversationService implements AgentConversationLane {
   const AgentConversationService({
+    AgentConversationNativePort? native,
     AgentConversationArchiveService archiveService =
         const AgentConversationArchiveService(),
-  }) : _archiveService = archiveService;
+  }) : _native = native,
+       _archiveService = archiveService;
 
   final AgentConversationArchiveService _archiveService;
+  final AgentConversationNativePort? _native;
+
+  AgentConversationNativePort get _conversation =>
+      _native ??
+      (throw const NativeConversationException(
+        'conversation_native_unavailable',
+      ));
 
   Future<List<Map<String, dynamic>>> activeTurns({
-    required AgentCommandRunner runner,
     required String agentId,
     String sessionId = '',
     String conversationId = '',
     Duration waitForChange = Duration.zero,
   }) async {
-    final waitForChangeMs = waitForChange.inMilliseconds.clamp(0, 2000);
-    final output = await runner.runCliWithStdin(
-      const ['agent', 'conversation', 'active', '--stdin-json', 'true'],
-      jsonEncode({
-        'agent': agentId.trim(),
-        if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
-        if (conversationId.trim().isNotEmpty)
-          'conversationId': conversationId.trim(),
-        if (waitForChangeMs > 0) 'waitForChangeMs': waitForChangeMs,
-      }),
+    final output = await _conversation.active(
+      agentId: agentId,
+      sessionId: sessionId,
+      conversationId: conversationId,
+      waitForChange: waitForChange,
     );
     final turns = output['turns'];
     if (turns is! List) return const [];
@@ -86,26 +53,16 @@ class AgentConversationService implements AgentConversationLane {
   }
 
   Stream<AgentDispatchEvent> attachActiveTurn({
-    required AgentCommandRunner runner,
     required String turnHandle,
     required String conversationId,
     int afterCursor = 0,
   }) async* {
-    await for (final line in runner.streamCliJsonLinesWithStdin(
-      const [
-        'agent',
-        'conversation',
-        'attach',
-        '--stdin-json',
-        'true',
-        '--stream-events',
-        'true',
-      ],
-      jsonEncode({
-        'turnHandle': turnHandle.trim(),
-        'conversationId': conversationId.trim(),
-        'afterCursor': afterCursor,
-      }),
+    await for (final line in _conversation.attach(
+      PersistentConversationTurnScope(
+        turnHandle: turnHandle,
+        conversationId: conversationId,
+      ),
+      afterCursor: afterCursor,
     )) {
       final eventName = (line['event'] ?? '').toString();
       if (eventName == 'done' ||
@@ -157,7 +114,6 @@ class AgentConversationService implements AgentConversationLane {
   }
 
   Future<AgentDispatchTurnResult> steerActiveTurn({
-    required AgentCommandRunner runner,
     required String turnHandle,
     required String conversationId,
     required String text,
@@ -172,13 +128,12 @@ class AgentConversationService implements AgentConversationLane {
       );
     }
     try {
-      final result = await runner.runCliWithStdin(
-        const ['agent', 'conversation', 'steer', '--stdin-json', 'true'],
-        jsonEncode({
-          'turnHandle': handle,
-          'conversationId': scope,
-          'text': guidance,
-        }),
+      final result = await _conversation.steer(
+        PersistentConversationTurnScope(
+          turnHandle: handle,
+          conversationId: scope,
+        ),
+        text: guidance,
       );
       final ok = result['ok'] == true;
       final nested = result['error'];
@@ -204,7 +159,6 @@ class AgentConversationService implements AgentConversationLane {
   }
 
   Future<AgentDispatchCancelResult> cancelActiveTurn({
-    required AgentCommandRunner runner,
     required String turnHandle,
     required String conversationId,
   }) async {
@@ -218,13 +172,12 @@ class AgentConversationService implements AgentConversationLane {
       );
     }
     try {
-      final result = await runner.runCliWithStdin(const [
-        'agent',
-        'conversation',
-        'cancel',
-        '--stdin-json',
-        'true',
-      ], jsonEncode({'turnHandle': handle, 'conversationId': scope}));
+      final result = await _conversation.cancel(
+        PersistentConversationTurnScope(
+          turnHandle: handle,
+          conversationId: scope,
+        ),
+      );
       final ok = result['ok'] == true;
       final nested = result['error'];
       final code = nested is Map
@@ -565,7 +518,6 @@ class AgentConversationService implements AgentConversationLane {
 
   @override
   Future<AgentDispatchSession> openOrResume({
-    required AgentCommandRunner runner,
     required String agentId,
     String sessionId = '',
     AgentDispatchBind bind = const AgentDispatchBind(),
@@ -575,13 +527,12 @@ class AgentConversationService implements AgentConversationLane {
     if (normalizedAgent.isEmpty) {
       throw const AgentDispatchOpenException('agent_id_required');
     }
-    final result = await runner.runCliWithStdin(
-      const ['agent', 'conversation', 'open', '--stdin-json', 'true'],
-      jsonEncode(<String, dynamic>{
-        'agent': normalizedAgent,
-        if (normalizedSession.isNotEmpty) 'sessionId': normalizedSession,
-        ..._bindDispatchFields(bind),
-      }),
+    final result = await _conversation.open(
+      AgentConversationSessionScope(
+        agentId: normalizedAgent,
+        sessionId: normalizedSession,
+      ),
+      bind: bind,
     );
     if (result['ok'] != true) {
       final error = result['error'];
@@ -614,7 +565,6 @@ class AgentConversationService implements AgentConversationLane {
 
   @override
   Future<AgentDispatchTurnResult> send({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
@@ -623,7 +573,6 @@ class AgentConversationService implements AgentConversationLane {
   }) async {
     AgentDispatchTurnResult? result;
     await for (final event in sendStreaming(
-      runner: runner,
       agentId: agentId,
       text: text,
       sessionId: sessionId,
@@ -668,37 +617,20 @@ class AgentConversationService implements AgentConversationLane {
   /// terminal `dispatch.turn.completed` or `dispatch.turn.failed` event.
   @override
   Stream<AgentDispatchEvent> sendStreaming({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
     List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
-    final request = <String, dynamic>{
-      'agent': agentId,
-      'text': text,
-      'streamEvents': true,
-      'timeoutMs': _policyDefaultDispatchTimeoutMs,
-      if (attachments.isNotEmpty)
-        'attachments': [
-          for (final attachment in attachments) attachment.toJson(),
-        ],
-      if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
-      ..._bindDispatchFields(bind),
-      ..._acceptanceDispatchFields(bind),
-    };
     var streamSessionId = sessionId.trim();
 
-    await for (final line in runner.streamCliJsonLinesWithStdin([
-      'agent',
-      'conversation',
-      'send',
-      '--stdin-json',
-      'true',
-      '--stream-events',
-      'true',
-    ], jsonEncode(request))) {
+    await for (final line in _conversation.send(
+      AgentConversationSessionScope(agentId: agentId, sessionId: sessionId),
+      text: text,
+      attachments: attachments,
+      bind: bind,
+    )) {
       final eventName = (line['event'] ?? '').toString();
       final lineSession = (line['sessionId'] ?? '').toString().trim();
       // One native stream is one native turn: the first frame that declares
@@ -749,7 +681,6 @@ class AgentConversationService implements AgentConversationLane {
   }
 
   Future<AgentDispatchTurnResult> steer({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
@@ -772,15 +703,16 @@ class AgentConversationService implements AgentConversationLane {
       );
     }
     try {
-      final result = await runner.runCliWithStdin(
-        const ['agent', 'conversation', 'steer', '--stdin-json', 'true'],
-        jsonEncode(<String, dynamic>{
-          'agent': normalizedAgent,
-          'text': normalizedText,
-          'sessionId': normalizedSession,
-          'turnId': normalizedTurn,
-          ..._bindDispatchFields(bind),
-        }),
+      final result = await _conversation.steer(
+        AgentSessionTurnScope(
+          session: AgentConversationSessionScope(
+            agentId: normalizedAgent,
+            sessionId: normalizedSession,
+          ),
+          turnId: normalizedTurn,
+        ),
+        text: normalizedText,
+        bind: bind,
       );
       final ok = result['ok'] == true;
       final nested = result['error'];
@@ -808,20 +740,7 @@ class AgentConversationService implements AgentConversationLane {
   }
 
   @override
-  Stream<AgentDispatchEvent> stream({
-    required AgentCommandRunner runner,
-    required String agentId,
-    required String sessionId,
-    String turnId = '',
-  }) async* {
-    // Progressive turn echo is bound to send (--stream-events). This transport
-    // lane emits only native events; it never fabricates a binding event.
-    return;
-  }
-
-  @override
   Future<AgentDispatchCancelResult> cancel({
-    required AgentCommandRunner runner,
     required String agentId,
     required String sessionId,
     String turnId = '',
@@ -836,13 +755,14 @@ class AgentConversationService implements AgentConversationLane {
       );
     }
     try {
-      final result = await runner.runCliWithStdin(
-        const ['agent', 'conversation', 'cancel', '--stdin-json', 'true'],
-        jsonEncode({
-          'agent': normalizedAgent,
-          'sessionId': normalizedSession,
-          if (turnId.trim().isNotEmpty) 'turnId': turnId.trim(),
-        }),
+      final result = await _conversation.cancel(
+        AgentSessionTurnScope(
+          session: AgentConversationSessionScope(
+            agentId: normalizedAgent,
+            sessionId: normalizedSession,
+          ),
+          turnId: turnId,
+        ),
       );
       final ok = result['ok'] == true;
       final nested = result['error'];
@@ -865,7 +785,6 @@ class AgentConversationService implements AgentConversationLane {
 
   @override
   Future<AgentDispatchCleanupResult> cleanup({
-    required AgentCommandRunner runner,
     required String agentId,
     required String sessionId,
   }) async {
@@ -879,9 +798,11 @@ class AgentConversationService implements AgentConversationLane {
       );
     }
     try {
-      final result = await runner.runCliWithStdin(
-        const ['agent', 'conversation', 'cleanup', '--stdin-json', 'true'],
-        jsonEncode({'agent': normalizedAgent, 'sessionId': normalizedSession}),
+      final result = await _conversation.cleanup(
+        AgentConversationSessionScope(
+          agentId: normalizedAgent,
+          sessionId: normalizedSession,
+        ),
       );
       final ok = result['ok'] == true;
       final nested = result['error'];
@@ -906,19 +827,14 @@ class AgentConversationService implements AgentConversationLane {
 
   @override
   Future<AgentDispatchCapabilities> capabilities({
-    required AgentCommandRunner runner,
     required String agentId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     final normalizedAgent = agentId.trim();
     try {
-      final result = await runner.runCliWithStdin(
-        const ['agent', 'conversation', 'capabilities', '--stdin-json', 'true'],
-        jsonEncode({
-          'agent': normalizedAgent,
-          if (bind.runtimeConnection.isNotEmpty)
-            'runtimeConnection': bind.runtimeConnection,
-        }),
+      final result = await _conversation.capabilities(
+        normalizedAgent,
+        bind: bind,
       );
       if (result['ok'] != true || result['capabilities'] is! Map) {
         throw const FormatException('native capabilities unavailable');

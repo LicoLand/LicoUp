@@ -1,232 +1,132 @@
 # LicoUp Subagent MCP
 
-English · [简体中文](subagent-mcp.zh-CN.md) · [Agent adapter architecture](../architecture/AGENT-ADAPTERS-ARCHITECTURE.md)
+| Reference | Document |
+| --- | --- |
+| Localization | [简体中文](subagent-mcp.zh-CN.md) |
+| Native façade | [Native CLI](../architecture/NATIVE-CLI.md) |
+| Provider execution and registration | [Agent adapters](../architecture/AGENT-ADAPTERS-ARCHITECTURE.md) |
+| Public schema | [Subagent MCP schema](../../schemas/subagent_mcp/subagent_mcp.schema.json) |
 
-The implemented authority is `domain/subagent_mcp`, the parameterized
-`core/mcp` engine, `licoup-agent-runtime`, `licoup-agent-adapters`, and the
-private Canonical Conversation store. The public contract is frozen by
-`schemas/subagent_mcp/subagent_mcp.schema.json`.
+## Module boundary
 
-## Common contract
+`crates/licoup-mcp` owns the optional public MCP service and stdio connector.
+It is independently buildable using published Rust dependencies; it has no
+native, Flutter, domain-crate, or source-path dependency. Its only connection
+to LicoUp is the public `licoup.stdio.v1` process contract of the installed
+native CLI. The outbound MCP client adapter remains a separate native capability.
 
-- Primary protocol revision: `2025-06-18`; compatible inbound revision:
-  `2025-11-25`
-- Server: `lico-up-subagents` `0.13.0`
-- Transport: a desktop-owned authenticated loopback Streamable HTTP service
-- Provider entry: one tool-free stdio connector
-- Mesh callers: the Agents the adapter registry admits as callers. A connector
-  declares its Agent through `--caller` or `LICOUP_MCP_CALLER_PROVIDER`; the
-  set is never enumerated in code or prose, so it cannot drift from the registry
-  that mints the seats
+The native `domain/subagents` application owns caller Membership checks,
+provider execution admission, durable dispatch claims, continuation, cancellation,
+and receipts. Canonical Conversation and PersistentTurn retain their existing
+stores, scheduler, history, runtime bindings, and protected-effect authority.
+The MCP module owns no second copy of those authorities.
 
-The exact ordered tool catalog is:
+```mermaid
+flowchart LR
+  Agent[Configured MCP caller] --> Connector[Independent stdio connector]
+  Connector --> Service[Authenticated loopback MCP process]
+  Service --> CLI[Public native CLI sessions]
+  CLI --> Core[Native Subagents and PersistentTurn]
+  Local[Local CLI and desktop] --> Core
+```
 
-1. `lico_assistant_profiles`
-2. `lico_assistant_workflow_execute`
-3. `lico_assistant_workflow_inspect`
-4. `lico_assistant_workflow_cancel`
-5. `lico_subagents_list`
-6. `lico_subagent_probe`
-7. `lico_subagent_delegate`
-8. `lico_subagent_continue`
-9. `lico_subagent_cancel`
+## Remote interface
 
-All input schemas are closed. The connector contains no catalog or provider
-logic and performs one HTTP attempt for each stdio frame.
+The server is `lico-up-subagents` version `0.14.0`. It negotiates revision
+`2025-06-18` or `2025-11-25`. Its complete ordered tool allowlist is:
 
-## Software-use guidance
+| Tool | Operation |
+| --- | --- |
+| `lico_subagents_list` | Read admitted target inventory |
+| `lico_subagent_probe` | Read one target's readiness and capability projection |
+| `lico_subagent_delegate` | Admit a new Membership-scoped turn |
+| `lico_subagent_continue` | Continue through the private native runtime binding |
+| `lico_subagent_cancel` | Request cancellation of the exact active claim |
 
-The client bundles one `licoup-guide` Skill for the tools below. See the
-[usage guide boundary](../functionality/ADAPTIVE-FLYWHEEL.md#licoup-usage-guide).
-The MCP service exposes operations, not a development-policy or model-preset
-catalog. The transport server name is independent of the Skill name.
+Tool schemas come from `licoup subagents catalog`; the independent adapter
+selects exactly these five names and rejects every other operation. All input
+schemas are closed. The connector declares its provider with `--caller` or
+`LICOUP_MCP_CALLER_PROVIDER`. The native adapter registry supplies the admitted
+caller set; neither the MCP process nor its connector maintains a provider list.
 
-## Assistant Profiles and temporary workflows
+Assistant Profiles, Assistant workflows, full Conversation operations, and all
+other native capabilities remain available through the [local CLI](../architecture/NATIVE-CLI.md).
+They are not remotely exposed by this MCP service. The bundled `licoup-guide`
+routes callers to the appropriate interface.
 
-The first four tools preserve the designated-Assistant contract. Only the
-exact active Agent Membership currently designated as the Conversation's
-Assistant may read ranked Membership Profiles or execute, inspect, and cancel
-an Assistant-authored temporary workflow. Inspect and cancel recover the
-stored Conversation and Assistant Membership from the run before authorizing
-the caller; a caller cannot select a different authority through tool input.
+## Independent lifecycle and development
 
-Workflow execution accepts closed workflow, binding, filter, input, and
-idempotency fields. Every referenced binding must resolve to an active target
-Membership with an installed executable `runtime.message.send` route before
-the persistent host is asked to admit the run. The persistent Conversation host remains the sole
-workflow and turn owner; the MCP service does not create a second scheduler,
-history, or terminal-output store. Native identities, paths, prompts, and Agent
-output remain outside Profile and workflow receipts.
+The packaged executable is `lico-subagent-mcp`. The local native façade manages
+it with `licoup mcp start`, `stop`, `status`, and `reload`. `start` and `reload`
+accept `--binary` to select a separately built module executable. They ensure
+the native host is available without requiring Flutter. Normal desktop host
+startup also starts the optional module; failure degrades MCP availability and
+does not stop the native host.
 
-Three optional `lico_assistant_workflow_execute` fields carry the master
-agent's decision for a callback-mode Graph edge: `decision` (`advance`,
-`return`, or `terminate`), `callbackStateId`, and `callbackStateVisit`. When
-an Assistant-run workflow settles a callback edge, the run parks durably
-instead of entering the declared target, the execute call returns
-`callback_decision_required` with the pending callback list, and the master
-Membership receives a `strategy-callback-request` conversation event naming
-this answer channel. The decision rides the same idempotent execute call —
-same Conversation, Membership, workflow, bindings, input, and idempotency
-key — so a replayed decision is stale and settles nothing. `advance` enters
-the declared target, `return` re-enters the completed state, and `terminate`
-cancels the run.
+For independent module development:
 
-Every settled effect reports one identifier-only master notice on the
-Conversation timeline: `strategy-flow-settled` when the Graph continues along
-`flow` edges (including a run that reaches terminal success through flow),
-`strategy-callback-request` when a callback parks the run, and
-`strategy-terminal-outcome` for the typed terminal failure. A notice carries
-identifiers only — run, state, visit, edge mode, and the answer channel when
-one exists — and never worker transcripts, prompts, paths, or tool output.
-When the designated Assistant's turn has already settled, the notice opens
-one new Assistant turn whose input is that identifier event alone; while a
-turn of that membership is in flight the notice stays timeline-only and no
-second turn is stacked. A `flow` notice never rewrites its edge into a park.
+```sh
+node tools/scripts/cargo-client.mjs build -p licoup-mcp
+licoup mcp reload --binary <built-lico-subagent-mcp>
+```
+
+The module also accepts `service start|stop|status|reload` directly. Its native
+CLI executable is explicitly supplied in `LICOUP_CLI_BINARY`; state is scoped by
+`LICOUP_PORTABLE_DIR`. A reusable bounded pool of public CLI sessions carries
+admissions. Cancellation has its own reserved transport session, so a slow
+inventory or admission request cannot occupy its channel.
+
+Stop authenticates a private control request, stops accepting new frames, and
+drains accepted requests before releasing the service lease. Reload then starts
+the selected executable. A connector renews its MCP handshake when discovery
+changes; it never replays a tool call with an uncertain effect. Native turns,
+claims, workflows, and history survive module stop or reload. No module timer
+cancels a turn. OS lease liveness settles stale discovery after a service crash,
+without killing a process by an untrusted PID.
 
 ## Authority and lineage
 
-Every effect is bound to an authenticated caller Membership and an exact target
-Membership in the same Canonical Conversation. Both must be active Agent
-Memberships. The store commits a durable dispatch claim before target runtime
-work starts. It rejects self-calls, duplicate active edges, cross-Conversation
-calls, repeated ancestors, cycles, and depth above four without starting an
-Agent effect.
+Every effect requires an authenticated caller and exact same-Conversation
+active Agent Memberships. The native store commits a durable claim before
+provider work starts. It rejects self-calls, duplicate active edges,
+cross-Conversation calls, repeated ancestors, cycles, and depth above four.
+Continue resolves the private adapter-owned native identity; callers do not
+supply or receive a native session or path. Uncertain cancellation remains
+`reconciliation-required`.
 
-Inbound `tools/call` for `lico_subagent_delegate`, `lico_subagent_continue`,
-and `lico_subagent_cancel` is recorded on Canonical Conversation as
-`subagent_mcp_inbound`. Mesh proof reads those rows together with
-`subagent_dispatch_claims` and the target Membership PersistentTurn. It does
-not scrape the caller Agent's conversation or projected `tool-call` parts.
-
-Delegation always opens a Membership-scoped PersistentTurn. Continue resolves
-the adapter-owned native identity from the private runtime binding; callers do
-not submit or receive a native session or path. Cancel addresses only an active
-claim. An uncertain native cancellation becomes `reconciliation-required` and
-is never reported as completed.
-
-## Registry, admission, and readiness
-
-`McpCallerIntegration` owns provider registration, install, identity,
-readiness, removal, and fresh-session behavior. `SubagentRuntimeAdapter` owns
-capabilities, exact native identity, send, continue, observe, active cancel,
-cleanup, and transition projection. One registry joins both ports. The MCP
-application has no provider branch.
-
-Execution admission is separate from conversation-readiness observation. It
-requires an exact provider identity, a registered adapter, the requested
-operation capability, and an installed executable `runtime.message.send`
-route. The authenticated direct MCP caller, same-Conversation active non-self
-Memberships, durable claim rules, selected model, and service health remain
-independent fail-closed gates. Once admitted, the first discovery, binding,
-authentication, permission, launch, protocol, session, model, dispatch, or
-readback failure keeps its typed stage contract.
-
-Conversation readiness never synthesizes transport or permission and never
-vetoes execution. It remains observational input only for
-`lico_subagent_probe` and other inventory projections.
-
-`lico_subagents_list` and `lico_subagent_probe` are read-only inventory and
-readiness surfaces. They inspect the exact Codex, Cursor, and Antigravity
-targets without launching a provider, refreshing history, opening a model
-owner, or persisting discovery state. Their projection is limited to safe
-provider, status, driver, readiness, capability, and blocker facts.
-
-## Provider behavior
-
-| Provider | Caller registration | Target lane | Guidance | Active control |
-| --- | --- | --- | --- | --- |
-| Codex | External `lico-up-codex` package `0.2.0` | App Server stdio JSON-RPC | native `developerInstructions` | native steer and interrupt |
-| Cursor | namespaced user MCP entry | create-chat/resume CLI over PTY | one ordinary unmarked ephemeral prefix | supervised active cancel, then exact resume |
-| Antigravity | namespaced user MCP entry | OAuth/permission preflight, Hook receipt, CLI over PTY | one ordinary unmarked ephemeral prefix | supervised active cancel, then Hook-bound resume |
-
-Cursor and Antigravity never receive `privateInstructions`. Generated guidance
-is removed before driver invocation and is not stored in visible Event/Part.
-Exact user Event text remains canonical.
+Delegate, continue, and cancel record `subagent_mcp_inbound` evidence on the
+Canonical Conversation together with dispatch claims and the owning
+PersistentTurn. These durable event names remain native data-format contracts.
+Read-only list and probe do not launch a provider, inject prompts, refresh
+history, or create another runtime authority.
 
 ## Local security and privacy
 
-The HTTP listener binds only to loopback. Private discovery contains an
-ephemeral per-provider bearer token and is hardened under client state. MCP
-sessions and connection counts are bounded. Shutdown removes only the discovery
-generation owned by that supervisor.
+The service binds only numeric loopback. Each request must use the exact Host,
+omit browser Origin, and authenticate before session lookup or any effect.
+Private discovery contains one ephemeral bearer token for each admitted caller
+and a separate control token. Tool callers cannot use the control endpoint.
+The control token never enters public tool output or connector diagnostics.
+Discovery writes are private and atomic; shutdown removes only its own generation.
 
-Discovery publishes exactly one token per admitted caller, so the token map is
-the membership set. The connector reads its own seat back from that set: a
-declared Agent without one is refused before the first stdio frame, and the
-refusal names both the cause and the callers the service does admit. A name that
-is no Assistant at all is reported separately from an Assistant that exists but
-has no mesh seat. The token map is validated structurally, so a caller set this
-build does not recognise is admitted as a document rather than rejected as a
-corrupt one.
+Connection, session, and admitted-request counts are bounded. HTTP input framing
+and health checks may bound transport I/O; accepted native work has no adapter
+execution deadline. Protocol cancellation ends observation only; the explicit
+`lico_subagent_cancel` operation is required to interrupt an Agent.
 
-Registration changes require one digest-bound, single-use approval. Cursor and
-Antigravity mutate only the namespaced LicoUp-owned entry; a foreign entry, a
-sibling entry for the same connector under any other key, multiple Antigravity
-config candidates, or a changed config fails closed.
-The same approval delivers the embedded `licoup-guide` Skill through the
-provider's user Skill Hub root, where foreign Skill content also fails closed,
-and republishes it on the shared `~/.agents/skills` surface. That shared copy is
-a copy rather than a link, and is not byte-verified, because one file there
-serves every installed connector version.
-Public responses omit config bodies, credentials, endpoints, native sessions,
-paths, prompts, and Agent output.
+Provider registration still requires its existing digest-bound, single-use
+approval. Namespaced entries, foreign-content checks, platform authentication,
+OS permissions, native key custody, and protected-effect approvals remain in
+the native owners. Remote suitability grants no authority to open a public
+listener, change an endpoint, weaken authentication, or transfer additional data.
+Configured connectors use the existing authenticated local transport under
+their existing authority.
 
-## Independent verification routes
+## Verification
 
-`tests/product-e2e/cli/subagent-mcp/upstream.mjs` verifies startup recognition.
-It first initializes the desktop-owned service and checks the exact ordered
-tool catalog. It then runs the standalone Codex, Cursor, and Antigravity
-startup probes concurrently. Each probe reads only the provider's standard MCP
-startup/list/registry surface: it sends no turn, opens no conversation, and
-does not install, remove, or rewrite configuration. This verification does not
-depend on a Codex custom plugin. Codex receives one process-local standard MCP
-declaration through its configuration override and the override is never
-persisted. Cursor and Antigravity use their supported read-only `mcp list`
-commands; if the owned registration is absent, they report
-`installer_configuration_required` without changing provider configuration.
-
-`tests/product-e2e/cli/subagent-mcp/downstream.mjs` is a separate direct-effect
-route. Its default is a zero-effect preflight. Only explicit `--live` execution
-may prepare a local verification Conversation and send one authenticated
-`lico_subagent_delegate` request directly to the Streamable HTTP service for
-each unverified target. No Caller Agent process or Caller Agent conversation is
-started. Pass requires the matching inbound delegate record, durable dispatch
-claim, selected target Membership, and its PersistentTurn dispatch state; Agent
-output is neither read nor retained.
-
-Preflight resolves the three installed Agent versions, executable
-`runtime.message.send` routes, and reported model inventories through the
-existing LicoUp target and Agent Hub surfaces. Agent Hub invokes the existing
-bounded `--version` recipe against the exact target-discovery executable
-binding, including Cursor's bound `cursor-agent`; it never rescans `PATH` or
-projects the binding into a card or receipt. Conversation readiness is not an
-admission input. The verifier then validates the MCP service with each non-self
-caller identity that would be used. Missing or unsafe versions, a missing
-executable route, an unavailable approved model, or unhealthy service state
-therefore stops before Conversation creation or paid work.
-
-Live selection admits only the first available approved low-cost model: Codex
-uses `gpt-5.3-codex-spark`, then `gpt-5.4-mini`; Cursor uses `composer-2.5`;
-Antigravity uses the configured Gemini 3.7 Flash alias. There is no Auto or
-expensive fallback. The primary candidate for each Agent comes from the shared
-conversation-verification model authority; only the Codex Mini fallback is
-added at this route boundary. The live route holds one exclusive untracked
-lease while it performs the final Manifest reread and target record write. It
-skips an exact passing App Version, Target Agent, and Target Agent Version
-credential before Conversation creation or payment, performs at most one
-`tools/call` per remaining target, never retries internally, and never breaks
-another live lease by timeout. A structured `licoup.mcp.error.v1` result is
-retained only when its code, stage, retryability, and recovery are in the closed
-safe sets; only its allowlisted reason code may enter Notes.
-
-The latest-App-Version Manifest is
-`tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml`. Its key is App
-Version plus Target Agent, with at most one Codex, Cursor, and Antigravity row.
-Skip also requires the current Target Agent Version and `Results: passed`.
-Rows have exactly App Version, Caller Agent, Caller Agent Version, Target Agent,
-Target Agent Version, Results, and Notes, in that order. Caller fields identify
-the authenticated non-self Membership. Results is `passed` or `failed`; Notes
-is empty or an allowlisted reason code. Writes are atomic, and the closed parser
-rejects duplicate, extra, reordered, or unsafe values. Endpoints, tokens,
-prompts, local identifiers, paths, native identities, models, and runtime
-content never enter the Manifest or console receipt.
+| Scope | Maintained route |
+| --- | --- |
+| Public transport and tool expectations | [Interop manifest](../../tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml) |
+| Caller-side protocol acceptance | [Upstream interop](../../tests/product-e2e/cli/subagent-mcp/upstream.mjs) |
+| Native target execution and control | [Downstream interop](../../tests/product-e2e/cli/subagent-mcp/downstream.mjs) |
+| Independent process lifecycle, recovery and cancellation isolation | [Module lifecycle tests](../../crates/licoup-mcp/tests/lifecycle.rs) |

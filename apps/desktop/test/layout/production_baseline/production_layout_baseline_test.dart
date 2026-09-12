@@ -7,11 +7,13 @@ import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
+import '../../support/bundled_font_loader.dart';
 
 void main() {
   final composition = BuiltInLayoutComposition();
 
   setUpAll(() async {
+    await loadBundledVisualFonts();
     // Keep isolated and suite runs on the same production adapter. Otherwise
     // the first case can paint with the fallback while later cases reuse the
     // asynchronously loaded adapter cache.

@@ -53,6 +53,7 @@ final class AgentHubEntryProjection {
     required this.owned,
     required this.installable,
     required this.busy,
+    this.resolutionFailed = false,
     required this.primaryAction,
     required this.actionStateLabel,
     required this.versionLabel,
@@ -70,6 +71,7 @@ final class AgentHubEntryProjection {
   final bool owned;
   final bool installable;
   final bool busy;
+  final bool resolutionFailed;
   final String primaryAction;
   final String actionStateLabel;
   final String versionLabel;
@@ -105,6 +107,7 @@ final class AgentHubEntryProjection {
           other.owned == owned &&
           other.installable == installable &&
           other.busy == busy &&
+          other.resolutionFailed == resolutionFailed &&
           other.primaryAction == primaryAction &&
           other.actionStateLabel == actionStateLabel &&
           other.versionLabel == versionLabel &&
@@ -123,6 +126,7 @@ final class AgentHubEntryProjection {
     owned,
     installable,
     busy,
+    resolutionFailed,
     primaryAction,
     actionStateLabel,
     versionLabel,

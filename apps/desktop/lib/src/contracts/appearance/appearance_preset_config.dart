@@ -118,87 +118,71 @@ const builtInAppearancePresetAssetPaths = [
   'assets/appearance-presets/lico-soda-light.json',
 ];
 
-/// The built-in appearance presets.
-///
-/// `lico-soda` and `lico-soda-light` share one brand identity — lemon fill,
-/// soda-blue interaction — so following the system appearance changes the
-/// surface temperature without ever changing the brand color.
-///
-/// Every value here is verified by `test/theme_test.dart`, which is the
-/// authority: if a hex fails a contrast or surface-step constraint, change the
-/// hex rather than relaxing the constraint.
+/// Built-in Orbital theme styles. Runtime appearance is a token projection;
+/// layouts and functional bindings are independent owners.
 const builtInAppearancePresetConfigs = [
   AppearancePresetConfig(
     schemaVersion: appearancePresetSchemaVersion,
-    id: AppearancePresetIds.defaultSystem,
+    id: 'default-system',
     label: {'en': 'System Default', 'zh-CN': '跟随系统'},
     mode: AppearancePresetMode.system,
-    lightPresetId: AppearancePresetIds.licoSodaLight,
-    darkPresetId: AppearancePresetIds.licoSoda,
+    lightPresetId: 'lico-soda-light',
+    darkPresetId: 'lico-soda',
   ),
   AppearancePresetConfig(
     schemaVersion: appearancePresetSchemaVersion,
-    id: AppearancePresetIds.licoSoda,
-    label: {'en': 'LicoUp Dark', 'zh-CN': 'LicoUp 暗黑'},
+    id: 'lico-soda',
+    label: {'en': 'Orbital · Dark', 'zh-CN': '轨道 · 深色'},
     mode: AppearancePresetMode.dark,
     tokens: {
-      // Near-neutral cool ink. Chroma is held at 0.004-0.009 OKLCH: the
-      // previous ramp sat at 0.019-0.026, which is the dusty-slate band and
-      // read as haze over the whole interface. A clean ground is what lets a
-      // vivid accent actually look vivid.
-      'bg-inset': '#040405',
-      'bg-base': '#0e0f12',
-      'bg-surface': '#1c1c20',
-      'bg-subtle': '#2a2a2f',
-      'bg-raised': '#3a3a3f',
-      'border-subtle': '#323337',
-      'border-strong': '#56565b',
-      'text-primary': '#f4f4f7',
-      'text-secondary': '#cccdd0',
-      'text-muted': '#a6a7aa',
-      'text-disabled': '#6c6c70',
-      // Lemon at 96% of the maximum chroma sRGB allows at this lightness.
-      // Fill and mark only; never a text color.
-      'brand': '#e1ec28',
-      'brand-strong': '#f3fe4f',
-      // A computed 9% lemon wash. Hand-picking this produced olive mud.
+      'bg-inset': '#030304',
+      'bg-base': '#0e0f11',
+      'bg-surface': '#1b1c1f',
+      'bg-subtle': '#292a2e',
+      'bg-raised': '#393a3f',
+      'border-subtle': '#37383d',
+      'border-strong': '#5c5d64',
+      'text-primary': '#f4f5f7',
+      'text-secondary': '#ced0d5',
+      'text-muted': '#acadb3',
+      'text-disabled': '#73747c',
+      'brand': '#e7f22e',
+      'brand-strong': '#f0fc51',
       'brand-subtle': '#2e2f21',
       'brand-border': '#878d24',
       'text-on-brand': '#171800',
-      // Electric soda cyan at 97% of maximum chroma. Carries interaction.
-      'accent': '#21dcf1',
-      'accent-strong': '#87effe',
-      'accent-surface': '#1d3339',
-      'accent-border': '#1e838f',
-      'text-on-accent': '#00191e',
+      'accent': '#cbd0d9',
+      'accent-strong': '#f1f4f9',
+      'accent-surface': '#282b31',
+      'accent-border': '#7e8490',
+      'text-on-accent': '#121419',
       'success': '#2be18e',
       'warning': '#feae36',
       'danger': '#fb5f5b',
       'hover-overlay': 'rgba(244, 244, 247, 0.07)',
       'pressed-overlay': 'rgba(244, 244, 247, 0.12)',
       'selected-surface': '#2a2a2f',
-      // Luminosity is part of the brand's energy, not decoration.
-      'brand-glow': 'rgba(225, 236, 40, 0.22)',
-      'accent-glow': 'rgba(33, 220, 241, 0.26)',
+      'brand-glow': 'rgba(231, 242, 46, 0.18)',
+      'accent-glow': 'rgba(203, 208, 217, 0.18)',
       'skeleton-base': '#2a2a2f',
       'skeleton-highlight': '#3a3a3f',
+      'font-family': 'geist',
+      'icon-style': 'outlined',
+      'motion-scale': '1',
+      'surface-opacity': '1',
+      'component-finish': 'crisp',
     },
   ),
   AppearancePresetConfig(
     schemaVersion: appearancePresetSchemaVersion,
-    id: AppearancePresetIds.licoSodaLight,
-    label: {'en': 'LicoUp Light', 'zh-CN': 'LicoUp 明亮'},
+    id: 'lico-soda-light',
+    label: {'en': 'Orbital · Light', 'zh-CN': '轨道 · 浅色'},
     mode: AppearancePresetMode.light,
     tokens: {
-      // Light mode inverts the ramp: the window is the darkest neutral so
-      // white cards visibly float on it. The previous light preset put the
-      // window at #f4f4f6 against white cards, a contrast of 1.098, and the
-      // whole surface read as white mush with no card edges.
       'bg-inset': '#dddde2',
       'bg-base': '#eaebee',
       'bg-surface': '#ffffff',
       'bg-subtle': '#f5f6f9',
-      // Near white, tone has no room left, so the top step uses shadow.
       'bg-raised': '#ffffff',
       'border-subtle': '#d1d2d8',
       'border-strong': '#a6a7ae',
@@ -211,10 +195,10 @@ const builtInAppearancePresetConfigs = [
       'brand-subtle': '#f5f8c5',
       'brand-border': '#bfc744',
       'text-on-brand': '#1b1d00',
-      'accent': '#007d8a',
-      'accent-strong': '#0d5f68',
-      'accent-surface': '#deeef0',
-      'accent-border': '#67c8d6',
+      'accent': '#4f596a',
+      'accent-strong': '#303a4b',
+      'accent-surface': '#e9ebef',
+      'accent-border': '#9aa2af',
       'text-on-accent': '#ffffff',
       'success': '#158351',
       'warning': '#9c660c',
@@ -223,9 +207,14 @@ const builtInAppearancePresetConfigs = [
       'pressed-overlay': 'rgba(26, 26, 32, 0.09)',
       'selected-surface': '#eeeef1',
       'brand-glow': 'rgba(217, 227, 32, 0.30)',
-      'accent-glow': 'rgba(0, 125, 138, 0.22)',
+      'accent-glow': 'rgba(79, 89, 106, 0.15)',
       'skeleton-base': '#eeeef1',
       'skeleton-highlight': '#ffffff',
+      'font-family': 'geist',
+      'icon-style': 'outlined',
+      'motion-scale': '1',
+      'surface-opacity': '1',
+      'component-finish': 'crisp',
     },
   ),
 ];
@@ -306,7 +295,7 @@ AppearancePresetValidationResult validateAppearancePresetConfig(Object? value) {
           continue;
         }
         if (tokenValue is! String ||
-            !_allowedTokenValuePattern.hasMatch(tokenValue)) {
+            !_validAppearanceTokenValue(key, tokenValue)) {
           errors.add('tokens.$key has an invalid CSS token value');
           continue;
         }
@@ -424,3 +413,14 @@ const _requiredSchemaTwoTokens = [
   'accent-border',
   'text-on-accent',
 ];
+
+/// Visual-only tokens deliberately have no dimensions, ordering, destinations,
+/// callbacks or runtime authority. Unknown CSS tokens retain existing parsing.
+bool _validAppearanceTokenValue(String key, String value) => switch (key) {
+  'font-family' => const {'geist', 'system'}.contains(value),
+  'icon-style' => const {'outlined', 'rounded'}.contains(value),
+  'motion-scale' => const {'0.75', '1', '1.25'}.contains(value),
+  'surface-opacity' => const {'0.85', '0.9', '0.95', '1'}.contains(value),
+  'component-finish' => const {'crisp', 'glass'}.contains(value),
+  _ => _allowedTokenValuePattern.hasMatch(value),
+};

@@ -763,6 +763,10 @@ final class _TestPresentationPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences = _preferences.copyWith(reduceMotion: enabled);
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       _preferences = _preferences.copyWith(appearancePresetId: id);
 
@@ -893,7 +897,6 @@ class _NoopConversationService extends AgentConversationService {
 
   @override
   Future<AgentDispatchTurnResult> send({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,

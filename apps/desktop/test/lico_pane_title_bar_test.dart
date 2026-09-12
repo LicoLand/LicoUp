@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
@@ -6,6 +7,28 @@ import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  testWidgets('icon action accepts keyboard activation', (tester) async {
+    var activations = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(),
+        home: Scaffold(
+          body: LicoIconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () => activations++,
+          ),
+        ),
+      ),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    expect(activations, 1);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    expect(activations, 2);
+  });
+
   testWidgets('pane title and refresh share one vertical centerline', (
     tester,
   ) async {

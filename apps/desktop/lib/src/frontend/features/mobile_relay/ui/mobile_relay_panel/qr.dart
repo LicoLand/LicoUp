@@ -42,58 +42,69 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
                 ? null
                 : () => unawaited(onGenerate()),
             borderRadius: BorderRadius.circular(LicoRadius.card),
-            child: Ink(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                color: hasQr ? Colors.white : placeholderFill,
-                borderRadius: BorderRadius.circular(LicoRadius.card),
-                border: Border.all(
-                  color: hasQr
-                      ? colors.line.withAlpha(40)
-                      : const Color(0xFF3A3A40),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 220),
+              child: Ink(
+                width: 220,
+                height: hasQr ? 220 : null,
+                decoration: BoxDecoration(
+                  color: hasQr ? Colors.white : placeholderFill,
+                  borderRadius: BorderRadius.circular(LicoRadius.card),
+                  border: Border.all(
+                    color: hasQr
+                        ? colors.line.withAlpha(40)
+                        : const Color(0xFF3A3A40),
+                  ),
                 ),
-              ),
-              child: hasQr
-                  ? Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: QrImageView(
-                        data: inviteText,
-                        version: QrVersions.auto,
-                        errorCorrectionLevel: QrErrorCorrectLevel.M,
-                        padding: EdgeInsets.zero,
-                        backgroundColor: Colors.white,
-                      ),
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (busy)
-                          const SizedBox.square(
-                            dimension: 28,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        else
-                          Icon(
-                            Icons.qr_code_2_rounded,
-                            size: 96,
-                            color: colors.textMuted.withAlpha(160),
-                          ),
-                        const SizedBox(height: 14),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            strings.tapToGeneratePairingQr,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: colors.textMuted,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
+                child: hasQr
+                    ? Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: QrImageView(
+                          data: inviteText,
+                          version: QrVersions.auto,
+                          errorCorrectionLevel: QrErrorCorrectLevel.M,
+                          padding: EdgeInsets.zero,
+                          backgroundColor: Colors.white,
                         ),
-                      ],
-                    ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (busy)
+                              const SizedBox.square(
+                                dimension: 28,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            else
+                              Icon(
+                                Icons.qr_code_2_rounded,
+                                size: 96,
+                                color: colors.textMuted.withAlpha(160),
+                              ),
+                            const SizedBox(height: 14),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              child: Text(
+                                strings.tapToGeneratePairingQr,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: colors.textMuted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
             ),
           ),
         ),

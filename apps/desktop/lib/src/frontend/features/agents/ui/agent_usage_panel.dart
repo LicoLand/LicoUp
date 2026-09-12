@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
@@ -87,9 +89,9 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    return ProjectionBuilder<MonitoringProjection, MonitoringProjection>(
+    return ProjectionBuilder<MonitoringProjection, _UsageView>(
       source: widget.binding.projection,
-      select: (projection) => projection,
+      select: _UsageView.new,
       // The standard feature-page structure: pane title bar (统计面板 +
       // refresh) above, usage charts as the content body below.
       builder: (context, projection) => LicoPaneScaffold(
@@ -105,10 +107,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
           padding: EdgeInsets.zero,
           child: AgentUsageCharts(
             report: projection.report,
-            detectedAgentIds: {
-              for (final target in projection.detectedTargets)
-                if (target.status != 'not-detected') target.target,
-            },
+            detectedAgentIds: projection.detectedAgentIds,
             windowDays: projection.historyDays,
             windowBusy: projection.refreshing,
             onWindowChanged: (days) =>
@@ -118,4 +117,37 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
       ),
     );
   }
+}
+
+/// Quota and diagnostics arrivals do not rebuild the usage chart subtree.
+final class _UsageView {
+  _UsageView(MonitoringProjection projection)
+    : report = projection.report,
+      historyDays = projection.historyDays,
+      refreshing = projection.refreshing,
+      detectedAgentIds = {
+        for (final target in projection.detectedTargets)
+          if (target.status != 'not-detected') target.target,
+      };
+
+  final AgentUsageReport? report;
+  final int historyDays;
+  final bool refreshing;
+  final Set<String> detectedAgentIds;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _UsageView &&
+      identical(report, other.report) &&
+      historyDays == other.historyDays &&
+      refreshing == other.refreshing &&
+      setEquals(detectedAgentIds, other.detectedAgentIds);
+
+  @override
+  int get hashCode => Object.hash(
+    report,
+    historyDays,
+    refreshing,
+    Object.hashAllUnordered(detectedAgentIds),
+  );
 }

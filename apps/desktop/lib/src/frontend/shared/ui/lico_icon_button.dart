@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -131,6 +133,7 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
         enabled: enabled,
         selected: widget.selected,
         label: widget.tooltip,
+        onTap: enabled ? widget.onPressed : null,
         child: MouseRegion(
           cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
           onEnter: (_) => setState(() => _hovered = true),
@@ -138,80 +141,103 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
             _hovered = false;
             _pressed = false;
           }),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-            onTapUp: enabled
-                ? (_) {
-                    setState(() => _pressed = false);
-                    widget.onPressed!();
-                  }
-                : null,
-            onTapCancel: () => setState(() => _pressed = false),
-            child: AnimatedContainer(
-              duration: context.motion(LicoMotion.micro),
-              curve: LicoMotion.standard,
-              width: widget.size.extent,
-              height: widget.size.extent,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                color: _fill(colors, enabled: enabled, active: active),
-                border: _border(colors, enabled: enabled, active: active),
-                // A brand-tone control emits light. This is what makes the
-                // single most important action in a view read as energetic
-                // rather than merely coloured.
-                boxShadow: widget.tone == LicoIconButtonTone.brand && enabled
-                    ? [
-                        BoxShadow(
-                          color: colors.brandGlow,
-                          blurRadius: active ? 18 : 12,
-                          spreadRadius: active ? 1 : 0,
-                        ),
-                      ]
-                    : widget.selected
-                    ? [BoxShadow(color: colors.accentGlow, blurRadius: 10)]
-                    : null,
+          child: FocusableActionDetector(
+            enabled: enabled,
+            shortcuts: const {
+              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+            },
+            actions: {
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) {
+                  widget.onPressed?.call();
+                  return null;
+                },
               ),
-              child: Stack(
-                clipBehavior: Clip.none,
+            },
+            onShowFocusHighlight: (focused) =>
+                setState(() => _hovered = focused),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: enabled
+                  ? (_) => setState(() => _pressed = true)
+                  : null,
+              onTapUp: enabled
+                  ? (_) {
+                      setState(() => _pressed = false);
+                      widget.onPressed!();
+                    }
+                  : null,
+              onTapCancel: () => setState(() => _pressed = false),
+              child: AnimatedContainer(
+                duration: context.motion(LicoMotion.micro),
+                curve: LicoMotion.standard,
+                width: widget.size.extent,
+                height: widget.size.extent,
                 alignment: Alignment.center,
-                children: [
-                  if (widget.busy)
-                    SizedBox(
-                      width: widget.size.iconSize,
-                      height: widget.size.iconSize,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colors.textMuted,
+                decoration: BoxDecoration(
+                  borderRadius: borderRadius,
+                  color: _fill(colors, enabled: enabled, active: active),
+                  border: _border(colors, enabled: enabled, active: active),
+                  // A brand-tone control emits light. This is what makes the
+                  // single most important action in a view read as energetic
+                  // rather than merely coloured.
+                  boxShadow: widget.tone == LicoIconButtonTone.brand && enabled
+                      ? [
+                          BoxShadow(
+                            color: colors.brandGlow,
+                            blurRadius: active ? 18 : 12,
+                            spreadRadius: active ? 1 : 0,
+                          ),
+                        ]
+                      : widget.selected
+                      ? [BoxShadow(color: colors.accentGlow, blurRadius: 10)]
+                      : null,
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    if (widget.busy)
+                      SizedBox(
+                        width: widget.size.iconSize,
+                        height: widget.size.iconSize,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.textMuted,
+                        ),
+                      )
+                    else
+                      IconTheme.merge(
+                        data: IconThemeData(
+                          size: widget.size.iconSize,
+                          color: _iconColor(
+                            colors,
+                            enabled: enabled,
+                            active: active,
+                          ),
+                        ),
+                        child:
+                            widget.icon is Icon &&
+                                (widget.icon as Icon).icon != null
+                            ? _themedIcon(context, widget.icon as Icon)
+                            : widget.icon,
                       ),
-                    )
-                  else
-                    IconTheme.merge(
-                      data: IconThemeData(
-                        size: widget.size.iconSize,
-                        color: _iconColor(
-                          colors,
-                          enabled: enabled,
-                          active: active,
+                    if (widget.badge)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: colors.accent,
+                          ),
                         ),
                       ),
-                      child: widget.icon,
-                    ),
-                  if (widget.badge)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: colors.accent,
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -219,6 +245,20 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
       ),
     );
   }
+
+  Widget _themedIcon(BuildContext context, Icon icon) => Icon(
+    context.appearanceVisuals.iconFor(icon.icon!),
+    size: icon.size,
+    color: icon.color,
+    fill: icon.fill,
+    weight: icon.weight,
+    grade: icon.grade,
+    opticalSize: icon.opticalSize,
+    shadows: icon.shadows,
+    applyTextScaling: icon.applyTextScaling,
+    semanticLabel: icon.semanticLabel,
+    textDirection: icon.textDirection,
+  );
 
   Color _fill(
     LicoThemeColors colors, {

@@ -214,6 +214,7 @@ void main() {
         'layoutProfileId': 'atlas',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
+        'reduceMotion': false,
       });
       expect(decoded.toJson(), isNot(contains('surface')));
       expect(decoded.toJson(), isNot(contains('viewport')));

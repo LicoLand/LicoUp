@@ -17,6 +17,9 @@ import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_card.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_scoped_state_fixture.dart';
@@ -49,7 +52,7 @@ void main() {
     final fixture = _settingsFixture();
     await _pumpSettings(tester, fixture, locale: const Locale('zh'));
 
-    expect(find.text('外观预设'), findsOneWidget);
+    expect(find.text('主题风格'), findsOneWidget);
     expect(
       find.byKey(const Key('settings-appearance-dropdown')),
       findsOneWidget,
@@ -68,7 +71,7 @@ void main() {
         )
         .toList();
     expect(dropdowns, hasLength(2));
-    expect(dropdowns.map((dropdown) => dropdown.locked).toSet(), {true, false});
+    expect(dropdowns.every((dropdown) => !dropdown.locked), isTrue);
   });
 
   testWidgets('storage paths and archive section remain reachable', (
@@ -143,7 +146,7 @@ void main() {
       locale: const Locale('zh'),
       height: 1400,
     );
-    const expected = ['通用', '外观', '更新', '启动', '工具', '存储', '诊断', '归档'];
+    const expected = ['通用', '外观', '更新', '启动', '存储', '诊断', '归档'];
     final labels = tester
         .widgetList<Text>(find.byType(Text))
         .where((candidate) => candidate.style?.fontSize == 12.5)
@@ -160,8 +163,8 @@ void main() {
     await _pumpSettings(tester, fixture, height: 720);
 
     await tester.tap(find.text('Startup').first);
-    for (var frame = 0; frame < 8; frame += 1) {
-      await tester.pump(const Duration(milliseconds: 250));
+    for (var frame = 0; frame < 24; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
     }
 
     expect(find.text('Enable auto-start'), findsOneWidget);
@@ -263,7 +266,7 @@ void main() {
     final dropdown = tester.widget<SettingsDropdownList<String>>(
       find.byKey(const Key('settings-appearance-dropdown')),
     );
-    expect(dropdown.locked, isTrue);
+    expect(dropdown.locked, isFalse);
     expect(dropdown.enabled, isTrue);
     expect(
       dropdown.items.map((item) => item.value).toSet().intersection(const {
@@ -273,8 +276,14 @@ void main() {
       }),
       const {'lico-soda'},
     );
-    expect(find.text('LicoUp Dark'), findsOneWidget);
-    expect(find.text('LicoUp Light'), findsNothing);
+    expect(
+      find.text(
+        dropdown.items
+            .singleWhere((item) => item.value == AppearancePresetIds.licoSoda)
+            .label,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('settings index follows scroll and returns to General', (
@@ -310,6 +319,146 @@ void main() {
     await tester.tap(find.text('General').first);
     await tester.pump(const Duration(milliseconds: 500));
     expect(indexForeground('General'), colors.textOnPrimary);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unrelated catalog changes preserve mounted settings controls', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture);
+    final localeBefore = tester.widget(
+      find.byKey(const Key('settings-locale-dropdown')),
+    );
+    final appearanceBefore = tester.widget(
+      find.byKey(const Key('settings-appearance-dropdown')),
+    );
+    final layoutBefore = tester.widget(
+      find.byKey(const Key('layout-profile-selector')),
+    );
+    fixture.source.publish(
+      settingsProjectionFixture(
+        catalog: const SettingsCatalogProjection(
+          phase: SettingsCatalogPhase.reconciling,
+          reasonCode: 'catalog_changed',
+          busy: true,
+          partitionCount: 2,
+          pendingInvalidationCount: 1,
+          appliedCohortCount: 3,
+          uiObservedRevision: 9,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      identical(
+        tester.widget(find.byKey(const Key('settings-locale-dropdown'))),
+        localeBefore,
+      ),
+      isTrue,
+    );
+    expect(
+      identical(
+        tester.widget(find.byKey(const Key('settings-appearance-dropdown'))),
+        appearanceBefore,
+      ),
+      isTrue,
+    );
+    expect(
+      identical(
+        tester.widget(find.byKey(const Key('layout-profile-selector'))),
+        layoutBefore,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('layout readiness does not block language or theme controls', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    fixture.source.publish(
+      settingsProjectionFixture(
+        layoutPhase: PresentationPhase.loading,
+        phase: PresentationPhase.loading,
+      ),
+    );
+    await _pumpSettings(tester, fixture);
+    expect(find.byKey(const Key('layout-selector-loading')), findsOneWidget);
+    await tester.tap(find.text('Light'));
+    await tester.pump();
+    expect(
+      fixture.intents.values
+          .whereType<SetAppearancePreference>()
+          .single
+          .presetId,
+      AppearancePresetIds.licoSodaLight,
+    );
+    expect(fixture.intents.values.whereType<SetLayoutPreference>(), isEmpty);
+  });
+
+  testWidgets(
+    'macOS motion follows the system and other desktop systems can reduce motion',
+    (tester) async {
+      var fixture = _settingsFixture();
+      await _pumpSettings(tester, fixture, disableAnimations: true);
+      final systemControl = tester.widget<ListTile>(
+        find.byKey(const Key('settings-reduce-motion')),
+      );
+      expect(systemControl.onTap, isNull);
+      expect(find.text('On · Managed by system'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      fixture = _settingsFixture();
+      await _pumpSettings(tester, fixture, platform: TargetPlatform.linux);
+      final control = tester.widget<SwitchListTile>(
+        find.byKey(const Key('settings-reduce-motion')),
+      );
+      expect(control.onChanged, isNotNull);
+      await tester.tap(find.byKey(const Key('settings-reduce-motion')));
+      await tester.pump();
+      expect(
+        fixture.intents.values
+            .whereType<SetReduceMotionPreference>()
+            .single
+            .enabled,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets('diagnostics keeps log export without resource cards', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    await _pumpSettings(tester, fixture);
+    await tester.tap(find.text('Diagnostics').first);
+    for (var frame = 0; frame < 24; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('Export Logs'), findsOneWidget);
+    expect(find.byType(ClientResourceUsageCard), findsNothing);
+    expect(find.text('Tools'), findsNothing);
+  });
+
+  testWidgets('an empty theme catalog leaves general and layout available', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    fixture.source.publish(
+      settingsProjectionFixture(appearancePresets: const []),
+    );
+    await _pumpSettings(tester, fixture);
+    expect(find.byKey(const Key('settings-locale-dropdown')), findsOneWidget);
+    expect(find.byKey(const Key('layout-profile-selector')), findsOneWidget);
+    expect(
+      tester
+          .widget<SettingsDropdownList<String>>(
+            find.byKey(const Key('settings-appearance-dropdown')),
+          )
+          .enabled,
+      isFalse,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -378,12 +527,20 @@ Future<void> _pumpSettings(
   fixture, {
   Locale locale = const Locale('en'),
   double height = 900,
+  TargetPlatform platform = TargetPlatform.macOS,
+  bool disableAnimations = false,
 }) async {
   addTearDown(fixture.source.dispose);
   await tester.pumpWidget(
     MaterialApp(
-      builder: (context, child) =>
-          FixtureLayoutPresentationScope(child: child!),
+      builder: (context, child) => FixtureLayoutPresentationScope(
+        child: MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(disableAnimations: disableAnimations),
+          child: child!,
+        ),
+      ),
       locale: locale,
       supportedLocales: LicoStrings.supportedLocales,
       localizationsDelegates: const [
@@ -393,7 +550,7 @@ Future<void> _pumpSettings(
       ],
       theme: buildLicoTheme(
         platformBrightness: Brightness.dark,
-      ).copyWith(platform: TargetPlatform.macOS),
+      ).copyWith(platform: platform),
       home: Scaffold(
         body: SizedBox(
           width: 980,

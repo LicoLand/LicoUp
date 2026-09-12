@@ -1,6 +1,7 @@
 //! Bounded, fail-closed native CLI admission and execution.
 
 use anyhow::Result;
+use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -18,6 +19,7 @@ mod gateway;
 mod llm_gateway;
 mod mcp;
 mod mobile;
+pub mod native_rpc;
 mod opencode_serve;
 mod provider_quota;
 mod resource_usage;
@@ -26,6 +28,7 @@ mod skill;
 mod snapshots;
 mod state;
 mod strategy;
+mod subagents;
 mod targets;
 
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
@@ -41,25 +44,29 @@ pub enum CliExecution {
     Streamed,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RequiredArgumentKind {
     Json,
     Text,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CommandCardinality {
     Exact,
     Options,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OptionArity {
     Boolean,
     Value,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OptionConstraintKind {
     AtLeastOne,
     ConditionalRequired,
@@ -67,7 +74,7 @@ pub enum OptionConstraintKind {
     OneOf,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct RequiredArgumentSpec {
     name: &'static str,
     kind: RequiredArgumentKind,
@@ -83,7 +90,8 @@ impl RequiredArgumentSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OptionSpec {
     name: &'static str,
     arity: OptionArity,
@@ -114,7 +122,8 @@ impl OptionSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OptionConstraintSpec {
     kind: OptionConstraintKind,
     members: &'static [&'static str],
@@ -145,15 +154,19 @@ impl OptionConstraintSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CliCommandSchema {
+    #[serde(skip)]
     source_module: &'static str,
+    #[serde(skip)]
     handler_name: &'static str,
     path: &'static [&'static str],
     required_positionals: &'static [RequiredArgumentSpec],
     options: &'static [OptionSpec],
     constraints: &'static [OptionConstraintSpec],
     cardinality: CommandCardinality,
+    help: &'static str,
 }
 
 impl CliCommandSchema {
@@ -183,6 +196,10 @@ impl CliCommandSchema {
 
     pub fn cardinality(&self) -> CommandCardinality {
         self.cardinality
+    }
+
+    pub fn help(&self) -> &'static str {
+        self.help
     }
 }
 
@@ -296,6 +313,7 @@ impl CommandDef {
             options: self.options,
             constraints: self.constraints,
             cardinality: self.cardinality,
+            help: self.help,
         }
     }
 }
@@ -337,17 +355,31 @@ impl CommandTable {
                     .iter()
                     .map(|argument| format!(" <{}>", argument.name))
                     .collect::<String>();
-                let options = if definition.options.is_empty() {
-                    String::new()
-                } else {
-                    " [options]".to_string()
-                };
+                let options = definition
+                    .options
+                    .iter()
+                    .map(|option| {
+                        let value = match option.arity {
+                            OptionArity::Boolean => String::new(),
+                            OptionArity::Value => match option.value_kind {
+                                RequiredArgumentKind::Json => " <JSON>".to_owned(),
+                                RequiredArgumentKind::Text => " <VALUE>".to_owned(),
+                            },
+                        };
+                        let repeat = if option.repeatable { "..." } else { "" };
+                        if option.required {
+                            format!(" --{}{value}{repeat}", option.name)
+                        } else {
+                            format!(" [--{}{value}{repeat}]", option.name)
+                        }
+                    })
+                    .collect::<String>();
                 let help = if definition.help.is_empty() {
                     String::new()
                 } else {
                     format!("  — {}", definition.help)
                 };
-                format!("  {path}{required}{options}{help}")
+                format!("  licoup {path}{required}{options}{help}")
             })
             .collect()
     }
@@ -513,7 +545,7 @@ impl AdmittedCommand {
         self.option_json.remove(name)
     }
 
-    fn execute(self) -> Result<CliExecution> {
+    pub fn execute(self) -> Result<CliExecution> {
         (self.handler)(self)
     }
 }
@@ -731,6 +763,28 @@ pub fn cli_command_schemas() -> Vec<CliCommandSchema> {
     build_command_table().schemas()
 }
 
+/// Human help and machine discovery are projections of the admission registry.
+pub fn cli_command_help() -> Vec<String> {
+    build_command_table().help_text()
+}
+
+fn handle_commands(_command: AdmittedCommand) -> Result<CliExecution> {
+    use crate::contracts::conversation_protocol::{
+        CONVERSATION_PROTOCOL_METHODS, CONVERSATION_PROTOCOL_VERSION,
+    };
+    Ok(CliExecution::Json(json!({
+        "schema": "licoup.cli-catalog/v1",
+        "commands": cli_command_schemas(),
+        "rpc": {
+            "protocol": CONVERSATION_PROTOCOL_VERSION,
+            "methods": CONVERSATION_PROTOCOL_METHODS,
+            "stream": ["rpc", "conversation"],
+            "bridge": ["rpc", "stdio"],
+            "call": ["rpc", "call"],
+        },
+    })))
+}
+
 pub fn admit_cli_command(args: Vec<String>) -> Result<AdmittedCommand> {
     build_command_table().admit(args)
 }
@@ -740,7 +794,6 @@ pub fn execute_cli(args: Vec<String>) -> Result<CliExecution> {
         args.as_slice(),
         [value] if matches!(value.as_str(), "help" | "--help" | "-h")
     ) {
-        let _ = build_command_table().help_text();
         return Ok(CliExecution::Usage);
     }
     admit_cli_command(args)?.execute()
@@ -893,6 +946,121 @@ const UPDATE_ROUTE_CONSTRAINTS: &[OptionConstraintSpec] = &[
 
 fn build_command_table() -> CommandTable {
     let mut table = CommandTable::new();
+    table.register_command(CommandSpec {
+        source_module: "mod.rs",
+        handler_name: "handle_commands",
+        path: &["commands"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: handle_commands,
+        help: "Discover every native CLI command, admitted option, and generated RPC method as JSON.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "native_rpc.rs",
+        handler_name: "handle_rpc_call",
+        path: &["rpc", "call"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "method",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: native_rpc::handle_rpc_call,
+        help: "Call a generated native RPC method through the durable host; print every response frame as NDJSON.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_subagents_catalog",
+        path: &["subagents", "catalog"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: subagents::handle_subagents_catalog,
+        help: "Discover admitted callers and native Subagents operations.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_subagents_execute",
+        path: &["subagents", "execute"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: subagents::handle_subagents_execute,
+        help: "Execute a native Subagents operation with its admitted caller scope and protected-effect checks.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_mcp_start",
+        path: &["mcp", "start"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: subagents::handle_mcp_start,
+        help: "Start the independent local Subagents MCP process.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_mcp_stop",
+        path: &["mcp", "stop"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: subagents::handle_mcp_stop,
+        help: "Stop the independent local Subagents MCP process.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_mcp_reload",
+        path: &["mcp", "reload"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: subagents::handle_mcp_reload,
+        help: "Reload the independent local Subagents MCP process.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "subagents.rs",
+        handler_name: "handle_mcp_status",
+        path: &["mcp", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: subagents::handle_mcp_status,
+        help: "Read the independent local Subagents MCP process status.",
+    });
     table.register_command(CommandSpec {
         source_module: "adapter.rs",
         handler_name: "handle_catalog",
@@ -3290,7 +3458,7 @@ fn build_command_table() -> CommandTable {
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: secure_mesh::handle_secure_mesh,
-        help: "",
+        help: "Evaluate device trust; caller state is advisory and cannot authorize.",
     });
     table.register_command(CommandSpec {
         source_module: "secure_mesh.rs",

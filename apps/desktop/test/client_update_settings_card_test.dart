@@ -13,6 +13,39 @@ import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
+  testWidgets('update actions share dimensions on wide and narrow screens', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    for (final width in [800.0, 360.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 700));
+      await _pumpCard(tester, fixture);
+      final actions = [
+        'client-update-check-github',
+        'client-update-download-local',
+        'client-update-apply-restart',
+      ].map((key) => find.byKey(Key(key))).toList();
+      final sizes = actions.map(tester.getSize).toSet();
+      expect(sizes, hasLength(1));
+      expect(sizes.single.height, 40);
+      final positions = actions.map(tester.getTopLeft).toList();
+      if (width > 560) {
+        expect(positions.map((position) => position.dy).toSet(), hasLength(1));
+      } else {
+        expect(positions.map((position) => position.dx).toSet(), hasLength(1));
+      }
+      expect(tester.takeException(), isNull);
+    }
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('shows three actions, version, and public source address', (
     tester,
   ) async {

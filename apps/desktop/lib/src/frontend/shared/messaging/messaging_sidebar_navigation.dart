@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
@@ -290,6 +291,7 @@ final class _MessagingSidebarNavButtonState
       button: true,
       selected: selected,
       label: widget.label,
+      onTap: widget.onPressed,
       child: Tooltip(
         message: widget.label,
         waitDuration: LicoMotion.tooltipWait,
@@ -297,52 +299,65 @@ final class _MessagingSidebarNavButtonState
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onPressed,
-            child: AnimatedContainer(
-              duration: LicoMotion.micro,
-              curve: LicoMotion.standard,
-              // 8.5 margins make the button exactly square at the default
-              // sidebar width; wider columns stretch it wider than square.
-              margin: const EdgeInsets.symmetric(
-                horizontal:
-                    MessagingDesktopMetrics.sidebarBottomNavButtonMargin,
+          child: FocusableActionDetector(
+            shortcuts: const {
+              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+            },
+            actions: {
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) {
+                  widget.onPressed();
+                  return null;
+                },
               ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: LicoContentSpacing.inline,
-                vertical: LicoContentSpacing.compact,
-              ),
-              decoration: BoxDecoration(
-                color: selected
-                    ? colors.primary
-                    : _hovered
-                    ? colors.hoverOverlay
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(LicoRadius.chip),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    messagingSidebarNavIcon(widget.item),
-                    size: 20,
-                    color: foreground,
-                  ),
-                  const SizedBox(height: LicoContentSpacing.inline),
-                  Text(
-                    widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
+            },
+            onShowFocusHighlight: (focused) =>
+                setState(() => _hovered = focused),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onPressed,
+              child: AnimatedContainer(
+                duration: context.motion(LicoMotion.micro),
+                curve: LicoMotion.standard,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 2,
+                  vertical: LicoContentSpacing.compact,
+                ),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? colors.primary
+                      : _hovered
+                      ? colors.hoverOverlay
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      messagingSidebarNavIcon(widget.item),
+                      size: 20,
                       color: foreground,
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      height: 1.1,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: LicoContentSpacing.inline),
+                    Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 10,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -387,7 +402,7 @@ final class _MessagingSidebarIndexRowState
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: LicoMotion.micro,
+          duration: context.motion(LicoMotion.micro),
           curve: LicoMotion.standard,
           margin: const EdgeInsets.only(bottom: LicoContentSpacing.compact),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -484,8 +499,8 @@ final class MessagingFeatureOrderScope extends InheritedWidget {
       !identical(oldWidget.portableData, portableData);
 }
 
-/// The seven-entry 功能 list: 智能体中心, 模型网关, 移动配对, 统计面板, 插件管理,
-/// 技能一览, 聊天频道 in the frozen default order. Long-press drag reorders
+/// The 功能 list hosts Agent center, model gateway, mobile pairing and
+/// statistics. Long-press drag reorders
 /// entries vertically and the custom order persists through
 /// `dashboard-feature-order.json`.
 final class MessagingFeatureSidebarList extends StatefulWidget {
@@ -510,9 +525,6 @@ final class _MessagingFeatureSidebarListState
     MessagingFeatureItem.modelGateway,
     MessagingFeatureItem.mobilePairing,
     MessagingFeatureItem.statsPanel,
-    MessagingFeatureItem.pluginManagement,
-    MessagingFeatureItem.skillHub,
-    MessagingFeatureItem.chatChannels,
   ];
 
   late List<MessagingFeatureItem> _order = _itemsFor(
@@ -548,7 +560,9 @@ final class _MessagingFeatureSidebarListState
     final ordered = <MessagingFeatureItem>[];
     for (final id in ids) {
       final item = byName[id];
-      if (item != null && !ordered.contains(item)) {
+      if (item != null &&
+          _defaultItems.contains(item) &&
+          !ordered.contains(item)) {
         ordered.add(item);
       }
     }

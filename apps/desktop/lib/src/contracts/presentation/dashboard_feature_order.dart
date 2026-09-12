@@ -4,14 +4,11 @@
 final class DashboardFeatureOrder {
   const DashboardFeatureOrder._();
 
-  /// The seven frozen 功能 entries in their default order.
+  /// The visible 功能 entries in their default order.
   static const defaultOrder = <String>[
     'agentHub',
     'modelGateway',
     'mobilePairing',
     'statsPanel',
-    'pluginManagement',
-    'skillHub',
-    'chatChannels',
   ];
 }

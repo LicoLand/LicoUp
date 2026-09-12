@@ -4,16 +4,18 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('series colors preserve known and stable fallback assignments', () {
+  test('series colors remain stable inside one cohesive gradient', () {
     final colors = buildLicoTheme().extension<LicoThemeColors>()!;
     final first = agentUsageSeriesColor(colors, 'unlisted-model-v7');
     final second = agentUsageSeriesColor(colors, 'unlisted-model-v7');
 
-    expect(agentUsageSeriesColor(colors, 'Codex'), const Color(0xFF38BDF8));
-    expect(
-      agentUsageSeriesColor(colors, 'Claude Code'),
-      const Color(0xFFF59E0B),
-    );
+    final ramp = {
+      for (var step = 0; step < 9; step++)
+        Color.lerp(colors.textSecondary, colors.primary, step / 8),
+    };
+    for (final label in ['Codex', 'Claude Code', 'unlisted-model-v7']) {
+      expect(ramp, contains(agentUsageSeriesColor(colors, label)));
+    }
     expect(first, second);
     expect(agentUsageSeriesColor(colors, ''), colors.primaryStrong);
   });

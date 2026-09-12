@@ -12,11 +12,11 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:3fa6299268214ef4789a9d410487657c42ebd38078e330b8dd21d1168d79f8e8"
+      "digest": "sha256:f7ea5771a9ecca57e21b7b5074ca8bfc6b7f01170e52837994fdb48e3a47a58f"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:fa4911a579e1a03f858da9989b520591f1ed79fbec205552cfd140f9beeae480"
+      "digest": "sha256:839df52951e85f21127c29eaceacd48fddaed71d93be76fa865cb128553d89c8"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
@@ -58,7 +58,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/preview/dashboard_desktop_preview.dart",
-      "digest": "sha256:7af4413db75ce8f746f306df8b30a697db9aa11dcb132b2434e299e38168c077"
+      "digest": "sha256:9d40fb050ff09fc6dcd286298b2f11b564c527726c31dd812e68ee67645fd44f"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_content_region.dart",
@@ -106,11 +106,11 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/production-baseline/agents.png",
-      "digest": "sha256:09b3d9c25ecd35b81fd5644b823d8bdadf3d3c54ab07caced64cfa0fe10f1dda"
+      "digest": "sha256:39e927aa4b68c7c56327b85965badd89d5bec8d95d96b7f743eba3553bb11932"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/desktop/production-baseline/settings.png",
-      "digest": "sha256:fe7c84f30a759cc318fc1cc2c2fdac8a7fdf3809450f7ff02ae59bc7ccda230f"
+      "digest": "sha256:d6182a4ea0d63f4a18cb47de1abe3c050e1098f46d91d04205910dfa25a73e68"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_bundle_test.dart",
@@ -118,7 +118,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_shell_test.dart",
-      "digest": "sha256:4a85d419297904a87e51de5b6fc497f8233c28534b060d45a8d470607194944c"
+      "digest": "sha256:997e2d59cd6aa985bd64713b309830acf0ff6b8f69b66e1de06c8c2673398d55"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_desktop_test_harness.dart",
@@ -126,11 +126,11 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_feature_list_test.dart",
-      "digest": "sha256:26d7169e21bc1452746c4c5697c73f946ad93d3890397e710724d659bf40bb57"
+      "digest": "sha256:4d74bf76abc057dcfd82766860d86a4c060c48e1757e928076c8ba36013fe260"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_interaction_golden_test.dart",
-      "digest": "sha256:87f0f966883bd5b7c22e94103bded928caacb238444dc3f7564fafa20550ce9d"
+      "digest": "sha256:5bb0dff8d11e320feb9108d34cb97bd5e54fe4368fd31525c2d532778ff8d1f1"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/dashboard_main_content_card_test.dart",
@@ -138,20 +138,20 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_features_reorder_restored.png",
-      "digest": "sha256:b9692d146603f12c5429ea01b221e875c2d53e56d0cda768f731aa84f3e0429a"
+      "digest": "sha256:9dc386678e463d7a670be8091a82d2c8b7c3fc23a90d97833198703bc660a62b"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_features_reordered.png",
-      "digest": "sha256:b9692d146603f12c5429ea01b221e875c2d53e56d0cda768f731aa84f3e0429a"
+      "digest": "sha256:9dc386678e463d7a670be8091a82d2c8b7c3fc23a90d97833198703bc660a62b"
     },
     {
-      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_models_chat_channels_pane.png",
-      "digest": "sha256:35f7b6bffb029e79a8cffcce4f9d772947474df37e2a8267423b2939fe5856cc"
+      "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_mobile_pairing_channels.png",
+      "digest": "sha256:749e46d9bf38f9cb5cdd498bd3488135f3ff10742270eb76fcaa3e96a1c20766"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/desktop/goldens/dashboard_models_gateway_pane.png",
-      "digest": "sha256:45d449166326cbb4195e7f5fd53fb56ddcc333bc36e993a1361513af71ab1cca"
+      "digest": "sha256:5eac2fad4725fd9d2d66fd0afd28f926a8ced5823842c37f7143e854b99de448"
     }
   ],
-  "manifestDigest": "sha256:be140537da0a46d0ea9e1ab0ad9261c484ada55f6599bcfd5a91bd4ff7c22fdd"
+  "manifestDigest": "sha256:d2eb404d63e432d72dd5dfe4bf3139756ef31257f27cca539a97deb28938eff2"
 }

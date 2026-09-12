@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 
@@ -47,6 +49,7 @@ import 'package:licoup/src/presentation/environment/environment_projection.dart'
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
@@ -58,6 +61,7 @@ final class ClientAppComposition {
   factory ClientAppComposition({
     ClientController? controller,
     CausalFrameTelemetry? telemetry,
+    Stream<bool>? systemReduceMotionChanges,
   }) {
     AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
       loadJson: DefaultAgentRenderAdapterJsonSource().loadAdapterJson,
@@ -81,6 +85,10 @@ final class ClientAppComposition {
       resolvedController,
       layout,
       resolvedTelemetry,
+      systemReduceMotionChanges ??
+          (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS
+              ? const MacosReduceMotionChannel().changes
+              : const Stream<bool>.empty()),
     );
   }
 
@@ -117,8 +125,12 @@ final class ClientAppComposition {
     );
   }
 
-  ClientAppComposition._(this._controller, this._layout, this.telemetry)
-    : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
+  ClientAppComposition._(
+    this._controller,
+    this._layout,
+    this.telemetry,
+    Stream<bool> systemReduceMotionChanges,
+  ) : _projectionTracing = CausalProjectionSourceRegistry(telemetry) {
     final beginRendererIntent = telemetry?.beginRendererIntent;
     final runtimeSurface = _controller.mobileClientRuntimePlatform
         ? LayoutRuntimeSurface.mobile
@@ -144,6 +156,9 @@ final class ClientAppComposition {
       navigation: _controller.navigationController,
       layoutManager: _controller.layoutManager,
       environment: _environment,
+    );
+    _systemReduceMotionSubscription = systemReduceMotionChanges.listen(
+      _environment.replaceSystemReduceMotion,
     );
     _shellEffects = ShellEffectProducer();
     _shellIntents = ShellIntentAdapter(
@@ -327,6 +342,7 @@ final class ClientAppComposition {
   final CausalProjectionSourceRegistry _projectionTracing;
   late final ShellProjectionProducer _shellProjection;
   late final EnvironmentProjectionSource _environment;
+  late final StreamSubscription<bool> _systemReduceMotionSubscription;
   late final ShellEffectProducer _shellEffects;
   late final ShellIntentAdapter _shellIntents;
   late final AgentsFeatureComposition _agents;
@@ -402,6 +418,7 @@ final class ClientAppComposition {
     _monitoring.close,
     _agents.close,
     _shellProjection.dispose,
+    _systemReduceMotionSubscription.cancel,
     _environment.dispose,
     _shellEffects.dispose,
     _controller.close,

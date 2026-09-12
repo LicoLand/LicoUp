@@ -103,13 +103,9 @@ test("frozen schema, generated bindings, and MCP catalog stay closed", () => {
   assert.match(dart, /bool _continuityBool\(/);
 
   const mcp = readJson(mcpSchemaPath);
-  assert.equal(mcp.properties.tools.minItems, 10);
-  assert.equal(mcp.properties.tools.maxItems, 10);
+  assert.equal(mcp.properties.tools.minItems, 5);
+  assert.equal(mcp.properties.tools.maxItems, 5);
   assert.deepEqual(mcp.properties.tools.prefixItems, [
-    { const: "lico_assistant_profiles" },
-    { const: "lico_assistant_workflow_execute" },
-    { const: "lico_assistant_workflow_inspect" },
-    { const: "lico_assistant_workflow_cancel" },
     { const: "lico_subagents_list" },
     { const: "lico_subagent_probe" },
     { const: "lico_subagent_delegate" },

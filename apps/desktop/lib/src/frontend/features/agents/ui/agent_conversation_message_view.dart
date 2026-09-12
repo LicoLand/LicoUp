@@ -28,6 +28,7 @@ class AgentConversationMessageList extends StatefulWidget {
     required this.session,
     required this.target,
     this.messagePageLoading = false,
+    this.hasEarlierMessages,
     this.messagePageError = '',
     this.onLoadEarlier,
     this.turnActive = false,
@@ -50,6 +51,7 @@ class AgentConversationMessageList extends StatefulWidget {
   final AgentConversationSession? session;
   final TargetCandidate target;
   final bool messagePageLoading;
+  final bool? hasEarlierMessages;
   final String messagePageError;
   final Future<void> Function()? onLoadEarlier;
   final bool turnActive;
@@ -94,7 +96,12 @@ class AgentConversationMessageList extends StatefulWidget {
 
 class AgentConversationMessageListState
     extends State<AgentConversationMessageList> {
+  bool get _hasEarlierMessages =>
+      widget.hasEarlierMessages ??
+      widget.session?.messagePage.hasEarlier ??
+      false;
   bool _showDiagnostics = false;
+  final _messageMergeCache = ConversationMessageMergeCache();
   late Future<AgentRenderAdapter> _adapterFuture;
   (AgentRenderAdapterRegistry, String, String, String, String)?
   _adapterResolutionKey;
@@ -138,15 +145,19 @@ class AgentConversationMessageListState
   @override
   void didUpdateWidget(covariant AgentConversationMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncAdapterFuture();
-    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
-      // The incoming history page lands at the far (oldest) end, which is
-      // already position-stable; skip exactly one reading-position hold.
-      final controller = _effectiveScrollController;
-      if (controller is ReadingPositionScrollController) {
-        controller.notifyFarEndAppend();
+    final readingController = _effectiveScrollController;
+    if (readingController is ReadingPositionScrollController) {
+      final sameConversation =
+          oldWidget.target.target == widget.target.target &&
+          oldWidget.session?.id == widget.session?.id &&
+          oldWidget.session?.nativeSessionId == widget.session?.nativeSessionId;
+      if (sameConversation) {
+        readingController.captureReadingAnchor();
+      } else {
+        readingController.clearReadingAnchor();
       }
     }
+    _syncAdapterFuture();
     final timelineChanged = _syncTimelineCache();
     if (timelineChanged || oldWidget.turnActive != widget.turnActive) {
       _syncActiveProcessStorageKey();
@@ -201,7 +212,7 @@ class AgentConversationMessageListState
       return true;
     }
 
-    final messages = mergeConversationReadbackAndLiveMessages(
+    final messages = _messageMergeCache.merge(
       session?.messages ?? const [],
       widget.liveMessages,
     );
@@ -421,7 +432,7 @@ class AgentConversationMessageListState
             bottomOverlayInset: widget.bottomOverlayInset,
             messagePageLoading: widget.messagePageLoading,
             messagePageError: widget.messagePageError,
-            hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
+            hasEarlier: _hasEarlierMessages,
             onLoadEarlier: widget.onLoadEarlier,
             onCopyText: widget.onCopyText,
             onRetryMessage: widget.onRetryMessage,
@@ -429,7 +440,7 @@ class AgentConversationMessageListState
           );
         }
         final showPageRow =
-            (widget.session?.messagePage.hasEarlier ?? false) ||
+            _hasEarlierMessages ||
             widget.messagePageLoading ||
             widget.messagePageError.isNotEmpty;
         return NotificationListener<ScrollNotification>(
@@ -487,8 +498,14 @@ class AgentConversationMessageListState
         _pageRequestInFlight) {
       return false;
     }
+    final movingEarlier = switch (notification) {
+      ScrollUpdateNotification(:final scrollDelta) => (scrollDelta ?? 0) > 0,
+      OverscrollNotification(:final overscroll) => overscroll > 0,
+      _ => false,
+    };
+    if (!movingEarlier) return false;
     final metrics = notification.metrics;
-    if (!(widget.session?.messagePage.hasEarlier ?? false)) {
+    if (!_hasEarlierMessages) {
       return false;
     }
     // Start the page one full viewport ahead of the oldest loaded edge so the
@@ -591,14 +608,19 @@ class AgentConversationMessageListState
     };
     // A streamed reply changes one item per frame. Without a repaint
     // boundary per item the whole visible transcript repaints with it.
-    return Padding(
+    return ReadingPositionAnchor(
       key: ValueKey<String>(item.storageKey),
-      padding: EdgeInsets.only(
-        bottom: index + 1 < _timelineItems.length + _footerCount
-            ? LicoContentSpacing.item
-            : 0,
+      controller: _effectiveScrollController,
+      anchorId: item.storageKey,
+      isRow: true,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: index + 1 < _timelineItems.length + _footerCount
+              ? LicoContentSpacing.item
+              : 0,
+        ),
+        child: RepaintBoundary(child: content),
       ),
-      child: RepaintBoundary(child: content),
     );
   }
 }
@@ -643,58 +665,45 @@ final class _ConversationEarlierPageRow extends StatelessWidget {
   }
 }
 
-/// One-slot identity for [mergeConversationReadbackAndLiveMessages]. A
-/// streamed pane republishes new list wrappers every frame while ids and
-/// text are unchanged; returning the same merged instance skips the O(n)
-/// copies and the O(n²) tail walk.
-({int readBack, int live})? _mergeConversationIdentity;
-List<AgentConversationMessage>? _mergedConversationMessages;
+/// One pane's last merge. Messages are immutable, so reference comparison
+/// includes child content, attachments, and metadata without hashing their
+/// contents or retaining another pane's conversation.
+final class ConversationMessageMergeCache {
+  List<AgentConversationMessage> _readBack = const [];
+  List<AgentConversationMessage> _live = const [];
+  List<AgentConversationMessage>? _merged;
 
-int _conversationMergeListIdentity(List<AgentConversationMessage> messages) {
-  if (messages.isEmpty) {
-    return 0;
+  List<AgentConversationMessage> merge(
+    List<AgentConversationMessage> readBack,
+    List<AgentConversationMessage> live,
+  ) {
+    final cached = _merged;
+    if (cached != null &&
+        _sameMessages(_readBack, readBack) &&
+        _sameMessages(_live, live)) {
+      return cached;
+    }
+    _readBack = readBack;
+    _live = live;
+    return _merged = mergeConversationReadbackAndLiveMessages(readBack, live);
   }
-  var hash = messages.length;
-  hash = Object.hash(
-    hash,
-    messages.first.id,
-    messages.first.text.length,
-    messages.last.id,
-    messages.last.text.length,
-  );
-  for (final message in messages) {
-    hash = Object.hash(
-      hash,
-      message.id,
-      message.text.hashCode,
-      message.stableIdentity,
-      message.cardType,
-    );
+
+  static bool _sameMessages(
+    List<AgentConversationMessage> previous,
+    List<AgentConversationMessage> next,
+  ) {
+    if (identical(previous, next)) return true;
+    if (previous.length != next.length) return false;
+    for (var index = 0; index < next.length; index += 1) {
+      if (!identical(previous[index], next[index])) return false;
+    }
+    return true;
   }
-  return hash;
 }
 
 /// Keeps a completed live turn visible until readback arrives without briefly
 /// rendering the same user/assistant pair twice during convergence.
 List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
-  List<AgentConversationMessage> readBack,
-  List<AgentConversationMessage> live,
-) {
-  final identity = (
-    readBack: _conversationMergeListIdentity(readBack),
-    live: _conversationMergeListIdentity(live),
-  );
-  final cached = _mergedConversationMessages;
-  if (cached != null && _mergeConversationIdentity == identity) {
-    return cached;
-  }
-  final merged = _mergeConversationReadbackAndLiveMessages(readBack, live);
-  _mergeConversationIdentity = identity;
-  _mergedConversationMessages = merged;
-  return merged;
-}
-
-List<AgentConversationMessage> _mergeConversationReadbackAndLiveMessages(
   List<AgentConversationMessage> readBack,
   List<AgentConversationMessage> live,
 ) {

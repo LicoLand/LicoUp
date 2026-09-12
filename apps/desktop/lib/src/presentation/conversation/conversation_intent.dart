@@ -56,6 +56,17 @@ final class LoadEarlierConversationEvents extends ConversationIntent {
   final String conversationId;
 }
 
+final class LoadChildConversationMessages extends ConversationIntent {
+  const LoadChildConversationMessages(
+    this.childSessionId, {
+    this.earlier = false,
+    super.trace,
+  });
+
+  final String childSessionId;
+  final bool earlier;
+}
+
 final class PostConversationMessage extends ConversationIntent {
   PostConversationMessage({
     required this.conversationId,

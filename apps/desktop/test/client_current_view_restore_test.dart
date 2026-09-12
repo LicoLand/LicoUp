@@ -1,3 +1,4 @@
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 
@@ -55,17 +56,21 @@ void main() {
     adapterStatus: 'implemented',
   );
 
-  ClientController newController({FakeAgentService? agentService}) {
+  ClientController newController({_CurrentViewAgentService? agentService}) {
+    final service = agentService ?? _CurrentViewAgentService();
     final controller = ClientController(
       portableData: portableData,
-      agentService: agentService ?? _CurrentViewAgentService(),
+      agentService: service,
+      conversationNativePort: service,
       currentViewTracker: tracker,
     );
     controllers.add(controller);
     return controller;
   }
 
-  ClientController relaunchController({FakeAgentService? agentService}) {
+  ClientController relaunchController({
+    _CurrentViewAgentService? agentService,
+  }) {
     tracker = ClientCurrentViewTracker();
     trackers.add(tracker);
     return newController(agentService: agentService);
@@ -295,31 +300,27 @@ Future<void> awaitNativeModelCatalogSettled(ClientController controller) async {
   }
 }
 
-final class _CurrentViewAgentService extends FakeAgentService {
+final class _CurrentViewAgentService extends FakeAgentService
+    implements ClientConversationNativePort {
   static const groupId = 'conversation:local';
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    if (args.isNotEmpty && args.first == 'conversation') {
-      final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
-      return {
-        'ok': true,
-        'result': switch (request['action']) {
-          'conversation.list' => [_groupSummary],
-          'conversation.get' => _groupConversation,
-          'conversation.events.page' => const {
-            'events': <Map<String, dynamic>>[],
-            'nextCursor': null,
-            'totalCount': 0,
-          },
-          _ => const <String, dynamic>{},
+    return {
+      'ok': true,
+      'result': switch (command.action) {
+        'conversation.list' => [_groupSummary],
+        'conversation.get' => _groupConversation,
+        'conversation.events.page' => const {
+          'events': <Map<String, dynamic>>[],
+          'nextCursor': null,
+          'totalCount': 0,
         },
-      };
-    }
-    return super.runCliWithStdin(args, stdinText);
+        _ => const <String, dynamic>{},
+      },
+    };
   }
 }
 

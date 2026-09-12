@@ -17,6 +17,7 @@ final class AgentConversationPaneState {
     this.recentSessionsHasMore = false,
     this.recentSessionsLoadingMore = false,
     this.messagePageLoading = false,
+    this.hasEarlierMessages,
     this.messagePageError = '',
     required this.turnActive,
     this.inputEnabled = true,
@@ -77,6 +78,7 @@ final class AgentConversationPaneState {
   final bool recentSessionsHasMore;
   final bool recentSessionsLoadingMore;
   final bool messagePageLoading;
+  final bool? hasEarlierMessages;
   final String messagePageError;
   final bool turnActive;
   final bool inputEnabled;

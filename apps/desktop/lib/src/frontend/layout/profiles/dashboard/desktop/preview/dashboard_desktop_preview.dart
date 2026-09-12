@@ -26,11 +26,8 @@ const DashboardDesktopPreviewMetadata dashboardDesktopPreviewMetadata =
 Widget buildDashboardDesktopPreview(BuildContext context) =>
     const DashboardDesktopPreview();
 
-/// A deterministic, non-interactive layout-picker thumbnail of the Dashboard
-/// shell. The live shell uses the clear window veil for the content region and
-/// gutters; this preview approximates structure with flat palette fills for
-/// the list column and chat canvas, with a traffic-light hint at the list
-/// column's top-left.
+/// Dashboard's floating sidebar, bottom navigation, and open conversation
+/// canvas at the layout picker's fixed preview scale.
 final class DashboardDesktopPreview extends StatelessWidget {
   const DashboardDesktopPreview({super.key});
 
@@ -66,17 +63,6 @@ final class DashboardDesktopPreview extends StatelessWidget {
                 ),
                 child: Container(
                   key: const ValueKey<String>('dashboard-preview-main-card'),
-                  decoration: BoxDecoration(
-                    color: colors.isDark ? colors.surface : colors.surfaceLow,
-                    borderRadius: BorderRadius.circular(
-                      constraints.maxHeight * 0.06,
-                    ),
-                    border: Border.all(
-                      color: colors.line.withAlpha(100),
-                      width: 0.5,
-                    ),
-                  ),
-                  clipBehavior: Clip.antiAlias,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -84,6 +70,7 @@ final class DashboardDesktopPreview extends StatelessWidget {
                         width: constraints.maxWidth * 0.32,
                         child: _PreviewListColumn(colors: colors),
                       ),
+                      SizedBox(width: constraints.maxWidth * 0.025),
                       Expanded(child: _PreviewChatCanvas(colors: colors)),
                     ],
                   ),
@@ -107,9 +94,8 @@ final class _PreviewListColumn extends StatelessWidget {
     key: const ValueKey<String>('dashboard-preview-list-column'),
     decoration: BoxDecoration(
       color: colors.isDark ? colors.surface : colors.surfaceLow,
-      border: Border(
-        right: BorderSide(color: colors.line.withAlpha(80), width: 0.5),
-      ),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: colors.line.withAlpha(120), width: 0.5),
     ),
     child: LayoutBuilder(
       builder: (context, constraints) {
@@ -138,7 +124,17 @@ final class _PreviewListColumn extends StatelessWidget {
                   ],
                 ),
               ),
-              for (var index = 0; index < 5; index++) ...[
+              Container(
+                key: const ValueKey<String>('dashboard-preview-search'),
+                height: unit * 1.2,
+                margin: EdgeInsets.only(bottom: unit),
+                decoration: BoxDecoration(
+                  color: colors.surfaceLow,
+                  border: Border.all(color: colors.line, width: 0.5),
+                  borderRadius: BorderRadius.circular(unit * 0.6),
+                ),
+              ),
+              for (var index = 0; index < 4; index++) ...[
                 Row(
                   children: [
                     Container(
@@ -174,6 +170,27 @@ final class _PreviewListColumn extends StatelessWidget {
                 ),
                 SizedBox(height: unit * 0.9),
               ],
+              const Spacer(),
+              Row(
+                key: const ValueKey<String>(
+                  'dashboard-preview-bottom-navigation',
+                ),
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  for (final icon in [
+                    Icons.apps_outlined,
+                    Icons.forum_outlined,
+                    Icons.settings_outlined,
+                  ])
+                    Icon(
+                      icon,
+                      size: unit * 1.1,
+                      color: icon == Icons.forum_outlined
+                          ? colors.primaryStrong
+                          : colors.textMuted,
+                    ),
+                ],
+              ),
             ],
           ),
         );
@@ -190,7 +207,7 @@ final class _PreviewChatCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ColoredBox(
     key: const ValueKey<String>('dashboard-preview-chat-canvas'),
-    color: colors.isDark ? colors.surfaceLow : colors.surface,
+    color: colors.background,
     child: LayoutBuilder(
       builder: (context, constraints) {
         final unit = constraints.maxHeight / 18;

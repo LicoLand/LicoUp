@@ -3,6 +3,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_surface.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
@@ -102,8 +103,10 @@ class SkillCollection extends StatelessWidget {
     required this.projection,
     required this.intents,
     required this.selectedCategory,
+    this.agentId,
   });
 
+  final String? agentId;
   final SkillHubProjection projection;
   final IntentSink<SkillHubIntent> intents;
   final String selectedCategory;
@@ -111,7 +114,13 @@ class SkillCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skills = filterAndRankSkillProjections(
-      skills: projection.skills,
+      skills: agentId == null
+          ? projection.skills
+          : projection.skills
+                .where(
+                  (skill) => skill.agents.any((agent) => agent.id == agentId),
+                )
+                .toList(growable: false),
       category: selectedCategory,
       query: projection.query,
     );
@@ -127,7 +136,11 @@ class SkillCollection extends StatelessWidget {
         child: LicoEmptyState(
           icon: Icons.extension_outlined,
           iconSize: 64,
-          title: LicoStrings.of(context).noSkillsFound,
+          title: projection.phase == PresentationPhase.failed
+              ? (LicoStrings.of(context).isChinese
+                    ? '技能加载失败'
+                    : 'Skills could not be loaded')
+              : LicoStrings.of(context).noSkillsFound,
           message: LicoStrings.of(context).refreshSkillsHint,
           padding: const EdgeInsets.all(32),
         ),
@@ -170,50 +183,52 @@ final class _SkillCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return Card(
+    return SkillSurface(
       key: Key('skill-card-${skill.id}'),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _showDetails(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SkillCardHeader(skill: skill, intents: intents),
-                    const SizedBox(height: 12),
-                    SkillCardTitle(title: skill.name, color: colors.text),
-                    if (skill.author.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        skill.author,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: true,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.textMuted,
-                          height: 1.2,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showDetails(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SkillCardHeader(skill: skill, intents: intents),
+                      const SizedBox(height: 12),
+                      SkillCardTitle(title: skill.name, color: colors.text),
+                      if (skill.author.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          skill.author,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.textMuted,
+                            height: 1.2,
+                          ),
                         ),
+                      ],
+                      const SizedBox(height: 6),
+                      SkillCardDescription(
+                        text: skill.description.isEmpty
+                            ? strings.noDescription
+                            : skill.description,
+                        color: colors.textMuted,
                       ),
                     ],
-                    const SizedBox(height: 6),
-                    SkillCardDescription(
-                      text: skill.description.isEmpty
-                          ? strings.noDescription
-                          : skill.description,
-                      color: colors.textMuted,
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            SkillCardFooter(skill: skill),
-          ],
+              SkillCardFooter(skill: skill),
+            ],
+          ),
         ),
       ),
     );
