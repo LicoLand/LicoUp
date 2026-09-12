@@ -45,6 +45,7 @@ import {
   buildRulesets,
   boundedRead,
   identityStatusContext,
+  cutoffRulesetName,
   planRulesetApply,
   promotionRulesetNames,
   promotionRequiredStatusContexts,
@@ -144,13 +145,15 @@ test("pull request identity workflow requires a User or verified GitHub merge se
 
 test("branch-scoped Rulesets cover identity, every promotion edge, and push publication", () => {
   const integrationId = 15368;
-  const rulesets = buildRulesets(integrationId);
-  assert.equal(rulesets.length, 5);
+  const appleIntegrationId = 27182;
+  const rulesets = buildRulesets(integrationId, appleIntegrationId);
+  assert.equal(rulesets.length, 6);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
     [
       allBranchesRulesetName,
       ...Object.values(promotionRulesetNames),
+      cutoffRulesetName,
       sensitivePublicationRulesetName,
     ],
   );
@@ -161,6 +164,7 @@ test("branch-scoped Rulesets cover identity, every promotion edge, and push publ
 
   const [identityRuleset, ...rest] = rulesets;
   const promotionRulesets = rest.slice(0, 3);
+  const cutoffRuleset = rest[3];
   const pushRuleset = rest.at(-1);
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
@@ -199,12 +203,16 @@ test("branch-scoped Rulesets cover identity, every promotion edge, and push publ
     const statusRule = promotionRuleset.rules.find(
       ({ type }) => type === "required_status_checks",
     );
-    assert.deepEqual(statusRule.parameters.required_status_checks,
-      promotionRequiredStatusContexts[branch]
-        .map((context) => ({ context, integration_id: integrationId })));
+    const expectedChecks = promotionRequiredStatusContexts[branch]
+      .map((context) => ({ context, integration_id: integrationId }));
+    if (branch === "stable") expectedChecks.push({ context: "Apple Release ready", integration_id: appleIntegrationId });
+    assert.deepEqual(statusRule.parameters.required_status_checks, expectedChecks);
     assert.deepEqual(promotionRuleset.conditions.ref_name.include,
       [`refs/heads/${branch}`]);
   }
+  assert.deepEqual(cutoffRuleset.conditions.ref_name.include, ["refs/heads/nightly-cutoff/*"]);
+  assert.deepEqual(cutoffRuleset.rules.map(({ type }) => type), ["deletion", "update"]);
+  assert.equal(cutoffRuleset.rules[1].parameters.update_allows_fetch_and_merge, false);
 
   assert.equal(pushRuleset.target, "push");
   assert.equal(Object.hasOwn(pushRuleset, "conditions"), false);
@@ -546,33 +554,34 @@ test("push Ruleset capability requires an internal/private Team or Enterprise re
 });
 
 test("unsupported public push target still plans branch authorities", () => {
-  const plan = planRulesetApply({ visibility: "public", plan: { name: "free" } }, 15368);
+  const plan = planRulesetApply({ visibility: "public", plan: { name: "free" } }, 15368, 27182);
   assert.equal(plan.status, "branch-only");
   assert.equal(plan.code, "PUSH_RULESET_UNSUPPORTED");
   assert.deepEqual(plan.desired.map(({ name }) => name),
-    [allBranchesRulesetName, ...Object.values(promotionRulesetNames)]);
+    [allBranchesRulesetName, ...Object.values(promotionRulesetNames), cutoffRulesetName]);
   assert.ok(plan.desired.every(({ target }) => target === "branch"));
 });
 
-test("supported push target plans all five Rulesets in deterministic order", () => {
+test("supported push target plans all managed Rulesets in deterministic order", () => {
   const calls = [];
   const recorder = { apply(payload) { calls.push(payload.name); } };
   for (const planName of ["team", "enterprise"]) {
-    const plan = planRulesetApply({ visibility: "private", plan: { name: planName } }, 15368);
+    const plan = planRulesetApply({ visibility: "private", plan: { name: planName } }, 15368, 27182);
     assert.equal(plan.status, "supported");
     assert.deepEqual(plan.desired.map(({ name }) => name),
       [
         allBranchesRulesetName,
         ...Object.values(promotionRulesetNames),
+        cutoffRulesetName,
         sensitivePublicationRulesetName,
       ]);
-    assert.deepEqual(plan.desired.slice(0, 4).map(({ target }) => target),
-      ["branch", "branch", "branch", "branch"]);
-    assert.equal(plan.desired[4].target, "push");
-    assert.deepEqual(plan.desired[4].bypass_actors, []);
+    assert.deepEqual(plan.desired.slice(0, 5).map(({ target }) => target),
+      ["branch", "branch", "branch", "branch", "branch"]);
+    assert.equal(plan.desired[5].target, "push");
+    assert.deepEqual(plan.desired[5].bypass_actors, []);
     for (const payload of plan.desired) recorder.apply(payload);
   }
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 12);
 });
 
 test("release remains the required default branch", () => {

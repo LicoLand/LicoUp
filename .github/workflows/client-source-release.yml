@@ -20,6 +20,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Mint release automation App token
+        id: automation-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.LICOUP_RELEASE_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.LICOUP_RELEASE_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-workflows: write
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
@@ -28,7 +36,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
-      - name: Publish exact source
+      - name: Prepare exact source draft
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.automation-token.outputs.token }}
         run: node tools/scripts/client-source-release.mjs

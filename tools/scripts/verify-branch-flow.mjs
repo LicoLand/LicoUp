@@ -7,10 +7,11 @@ import { pathToFileURL } from "node:url";
 
 export const LONG_LIVED_BRANCHES = Object.freeze(["nightly", "stable", "release"]);
 export const MACOS_CANDIDATE = "macos-release-candidate";
+export const CUTOFF_PATTERN = /^nightly-cutoff\/\d{4}-\d{2}-\d{2}$/u;
 const LONG_LIVED = new Set(LONG_LIVED_BRANCHES);
 const RETIRED = new Set(["main", "master"]);
 const ZERO_OID = "0".repeat(40);
-const DIRECT_UPSTREAM = Object.freeze({ stable: "nightly", release: "stable" });
+const DIRECT_UPSTREAM = Object.freeze({ release: "stable" });
 
 function identity(payload) {
   return {
@@ -54,6 +55,9 @@ export function evaluateBranchFlow({
       ? { ok: true, code: "temporary-to-nightly" }
       : { ok: false, code: "nightly-source-invalid" };
   }
+  if (base === "stable") return CUTOFF_PATTERN.test(head)
+    ? { ok: true, code: "cutoff-to-stable" }
+    : { ok: false, code: "stable-source-invalid" };
   const required = DIRECT_UPSTREAM[base];
   return head === required
     ? { ok: true, code: `${required}-to-${base}` }
@@ -91,13 +95,26 @@ function isAncestor(ancestor, descendant) {
   }
 }
 
+function commitTree(commit) {
+  return git(["rev-parse", `${commit}^{tree}`]);
+}
+
+function resolveCutoffTips() {
+  try {
+    return git(["for-each-ref", "--format=%(objectname)", "refs/remotes/origin/nightly-cutoff/"])
+      .split(/\s+/u).filter(Boolean);
+  } catch { return []; }
+}
+
 export function verifyProtectedPushTopology({
   branch,
   before,
   after,
   commitParents = parents,
   branchTip = resolveBranch,
-  ancestor = isAncestor
+  ancestor = isAncestor,
+  cutoffTips = [],
+  candidateTree = commitTree
 } = {}) {
   if (!LONG_LIVED.has(branch)) return { ok: false, code: "protected-branch-invalid" };
   if (!before || !after || before === ZERO_OID || after === ZERO_OID) {
@@ -118,10 +135,16 @@ export function verifyProtectedPushTopology({
     }
     return { ok: true, code: "temporary-merge-advanced-nightly" };
   }
+  if (branch === "stable") {
+    if (!Array.isArray(cutoffTips) || !cutoffTips.includes(mergedHead)) return { ok: false, code: "promotion-source-cutoff-mismatch" };
+    return candidateTree(after) === candidateTree(mergedHead)
+      ? { ok: true, code: "cutoff-merge-advanced-stable" }
+      : { ok: false, code: "promotion-tree-mismatch" };
+  }
   const upstream = DIRECT_UPSTREAM[branch];
   const tip = branchTip(upstream);
   if (!tip) return { ok: false, code: "promotion-source-missing" };
-  return mergedHead === tip
+  return mergedHead === tip && candidateTree(after) === candidateTree(mergedHead)
     ? { ok: true, code: `${upstream}-merge-advanced-${branch}` }
     : { ok: false, code: "promotion-source-tip-mismatch" };
 }
@@ -149,7 +172,7 @@ function sameRepositoryPayload(base, head) {
 export function runSelfTest() {
   const policyCases = [
     ["temporary to nightly", true, "nightly", "agent/security-review"],
-    ["nightly to stable", true, "stable", "nightly"],
+    ["cutoff to stable", true, "stable", "nightly-cutoff/2026-09-05"],
     ["stable to release", true, "release", "stable"],
     ["stable to nightly", false, "nightly", "stable"],
     ["temporary to stable", false, "stable", "agent/security-review"],
@@ -184,7 +207,7 @@ export function runSelfTest() {
   const tips = { nightly: "nightly-tip", stable: "stable-tip", release: "release-tip" };
   const topologyCases = [
     ["temporary merge", true, "nightly", ["old-nightly", "feature-tip"]],
-    ["nightly promotion", true, "stable", ["old-stable", "nightly-tip"]],
+    ["cutoff promotion", true, "stable", ["old-stable", "cutoff-tip"]],
     ["stable promotion", true, "release", ["old-release", "stable-tip"]],
     ["direct commit", false, "nightly", ["old-nightly"]],
     ["wrong stable source", false, "stable", ["old-stable", "feature-tip"]],
@@ -197,7 +220,9 @@ export function runSelfTest() {
       after: "after",
       commitParents: () => commitParents,
       branchTip: (name) => tips[name] || "",
-      ancestor: (candidate, tip) => candidate === tip
+      ancestor: (candidate, tip) => candidate === tip,
+      cutoffTips: ["cutoff-tip"],
+      candidateTree: value => value === "after" || value === "cutoff-tip" || value === "stable-tip" ? "candidate-tree" : value,
     });
     if (result.ok !== expected) throw new Error(`topology fixture failed: ${label}`);
   }
@@ -233,7 +258,8 @@ function verifyCurrentEvent() {
       : verifyProtectedPushTopology({
       branch: process.env.GITHUB_REF_NAME || "",
       before: payload.before || "",
-      after: payload.after || process.env.GITHUB_SHA || ""
+      after: payload.after || process.env.GITHUB_SHA || "",
+      cutoffTips: resolveCutoffTips()
     });
     console[topology.ok ? "log" : "error"](`[branch-flow] ${topology.code}`);
     if (!topology.ok) process.exitCode = 1;

@@ -27,7 +27,7 @@ jobs:
           TARGET_REPOSITORY: ${{ github.repository }}
         run: |
           test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"
-          test "$HEAD_BRANCH" = nightly
+          case "$HEAD_BRANCH" in nightly-cutoff/????-??-??) ;; *) exit 1 ;; esac
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0

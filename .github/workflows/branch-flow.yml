@@ -27,6 +27,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          fetch-tags: true
+      - name: Fetch immutable cutoff refs
+        run: git fetch --no-tags origin '+refs/heads/nightly-cutoff/*:refs/remotes/origin/nightly-cutoff/*'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"

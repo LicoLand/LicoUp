@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { acceptedPromotion, execute, publishSource } from '../../../tools/scripts/client-source-release.mjs';
+import { acceptedPromotion, execute, prepareSourceDraft } from '../../../tools/scripts/client-source-release.mjs';
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'source-fixture-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -27,18 +27,19 @@ async function fixture(t) {
       let value;
       if (args[1].endsWith('/git/ref/tags/v0.1.1')) value = state.tag && { object: { sha: state.tag } };
       else if (args[1].endsWith('/releases/tags/v0.1.1')) value = state.release;
+      else if (args[1].endsWith('/releases/1')) value = state.release;
       else if (args[1].endsWith('/git/ref/heads/release')) value = { object: { sha: revision } };
       else assert.fail('unexpected read');
       return value ? { ok: true, output: JSON.stringify(value) } : { ok: false, output: '(HTTP 404)' };
     }
+    if (args[0] === 'api' && args[1].endsWith('/releases?per_page=100')) return JSON.stringify(state.release ? [state.release] : []);
     if (args[0] === 'api' && args[1].endsWith('/assets?per_page=100')) return JSON.stringify([...state.assets.keys()].map(name => ({ name, size: 1 })));
     if (args[0] === 'api' && args[1] === '--method') {
       state.writes.push(args[2] + ':' + args[3].split('/').at(-1));
       if (args[2] === 'POST' && args[3].endsWith('/git/refs')) { assert.equal(state.tag, null); state.tag = revision; return '{}'; }
       if (args[2] === 'POST' && args[3].endsWith('/releases')) {
-        assert.equal(state.release, null); state.release = { id: 1, tag_name: 'v0.1.1', name: 'LicoUp 0.1.1', body: `apple-release-source:v1:${revision}`, draft: true, prerelease: false }; return JSON.stringify(state.release);
+        assert.equal(state.release, null); state.release = { id: 1, tag_name: 'v0.1.1', target_commitish: revision, name: 'LicoUp 0.1.1', body: `apple-release-source:v1:${revision}`, draft: true, prerelease: false }; return JSON.stringify(state.release);
       }
-      if (args[2] === 'PATCH' && args[3].endsWith('/releases/1')) { state.release.draft = false; return '{}'; }
       assert.fail('unexpected mutation');
     }
     if (args[0] === 'release' && args[1] === 'upload') {
@@ -50,28 +51,28 @@ async function fixture(t) {
     }
     assert.fail('unexpected operation');
   };
-  return { root, event, state, run, publish: () => publishSource({ event, eventName: 'pull_request', cwd: root, run }) };
+  return { root, event, state, run, publish: () => prepareSourceDraft({ event, eventName: 'pull_request', cwd: root, run }) };
 }
-test('accepted exact merge creates source pair and public retry preserves platform assets', async t => {
-  const f = await fixture(t); assert.equal((await f.publish()).ok, true); assert.equal(f.state.assets.size, 2);
+test('accepted exact merge prepares source pair in a draft and retry preserves platform assets', async t => {
+  const f = await fixture(t); const receipt = await f.publish(); assert.equal(receipt.ok, true); assert.equal(receipt.sourcePublished, false); assert.equal(f.state.release.draft, true); assert.equal(f.state.assets.size, 2);
   for (const name of ['LicoUp-macos-arm64.dmg','LicoUp-macos-arm64.dmg.sha256','LicoUp-macos-arm64-update.zip','LicoUp-macos-arm64-update.zip.sha256','LicoUp-update-manifest.json']) f.state.assets.set(name, Buffer.from('synthetic'));
   f.state.writes = []; await f.publish(); assert.deepEqual(f.state.writes, []); assert.equal(f.state.assets.size, 7);
 });
-test('partial exact draft completes without replacing present assets', async t => {
+test('partial exact draft completes without replacing present assets or publishing', async t => {
   const f = await fixture(t); await f.publish(); f.state.release.draft = true;
   f.state.assets.delete('LicoUp-source-v0.1.1.tar.gz.sha256'); f.state.writes = [];
-  await f.publish(); assert.deepEqual(f.state.writes, ['upload:LicoUp-source-v0.1.1.tar.gz.sha256','PATCH:1']);
+  await f.publish(); assert.deepEqual(f.state.writes, ['upload:LicoUp-source-v0.1.1.tar.gz.sha256']); assert.equal(f.state.release.draft, true);
 });
 test('rejected events and wrong parent cannot mutate', async t => {
   const f = await fixture(t);
   for (const change of [event => { event.pull_request.merged = false; }, event => { event.pull_request.head.ref = 'nightly'; },
     event => { event.pull_request.head.repo = { full_name: 'fork/repository' }; }, event => { event.pull_request.head.sha = 'a'.repeat(40); }]) {
     const event = structuredClone(f.event); change(event);
-    await assert.rejects(publishSource({ event, eventName: 'pull_request', cwd: f.root, run: f.run }));
+    await assert.rejects(prepareSourceDraft({ event, eventName: 'pull_request', cwd: f.root, run: f.run }));
   }
   assert.throws(() => acceptedPromotion(f.event, 'push')); assert.deepEqual(f.state.writes, []);
 });
-test('public source/tag/metadata conflicts are immutable failures', async t => {
+test('draft source/tag/metadata conflicts fail closed', async t => {
   const f = await fixture(t); await f.publish(); f.state.writes = [];
   f.state.tag = 'f'.repeat(40); await assert.rejects(f.publish(), { code: 'source_tag_conflict' });
   f.state.tag = f.event.pull_request.merge_commit_sha; f.state.release.body = 'foreign';
@@ -80,6 +81,14 @@ test('public source/tag/metadata conflicts are immutable failures', async t => {
   f.state.assets.set('LicoUp-source-v0.1.1.tar.gz', Buffer.from('foreign source'));
   await assert.rejects(f.publish(), { code: 'source_asset_conflict' });
   f.state.assets.delete('LicoUp-source-v0.1.1.tar.gz');
+  f.state.writes = []; await f.publish();
+  assert.deepEqual(f.state.writes, ['upload:LicoUp-source-v0.1.1.tar.gz']);
+});
+test('published complete release is a verified no-op while incomplete publication fails', async t => {
+  const f = await fixture(t); await f.publish();
+  for (const name of ['LicoUp-macos-arm64.dmg','LicoUp-macos-arm64.dmg.sha256','LicoUp-macos-arm64-update.zip','LicoUp-macos-arm64-update.zip.sha256','LicoUp-update-manifest.json']) f.state.assets.set(name, Buffer.from('synthetic'));
+  f.state.release.draft = false; f.state.writes = [];
+  const receipt = await f.publish(); assert.equal(receipt.sourcePublished, true); assert.deepEqual(f.state.writes, []);
+  f.state.assets.delete('LicoUp-update-manifest.json');
   await assert.rejects(f.publish(), { code: 'source_public_asset_missing' });
-  assert.deepEqual(f.state.writes, []);
 });
