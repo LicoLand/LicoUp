@@ -4,17 +4,19 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { candidateMaturity, REQUIRED_PLATFORM_ASSETS, verifyAppCheck, verifyRelease } from "./client-weekly-release.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
 const actionBranchPattern = /^(feature|fix|docs|refactor|test|chore)\/[A-Za-z0-9._/-]+$/u;
+const cutoffBranchPattern = /^nightly-cutoff\/\d{4}-\d{2}-\d{2}$/u;
 
 // Train cuts one snapshot onto `release`. Later `nightly` commits are a later
 // cut, not the in-flight version. Public publish remains `origin/release` only.
 // These edges do not freeze ordinary merges into `nightly`.
 export const releaseTrainEdges = Object.freeze([
   Object.freeze({ head: "current", base: "nightly", aggregate: "Client required" }),
-  Object.freeze({ head: "nightly", base: "stable", aggregate: "Stable client" }),
+  Object.freeze({ head: "nightly-cutoff/YYYY-MM-DD", base: "stable", aggregate: "Stable client" }),
   Object.freeze({ head: "stable", base: "release", aggregate: "Release ready" }),
 ]);
 
@@ -42,7 +44,7 @@ export function promotionPlan(head, base) {
   let aggregate;
   if (base === "nightly" && actionBranchPattern.test(head)) {
     aggregate = "Client required";
-  } else if (base === "stable" && head === "nightly") {
+  } else if (base === "stable" && cutoffBranchPattern.test(head)) {
     aggregate = "Stable client";
   } else if (base === "release" && head === "stable") {
     aggregate = "Release ready";
@@ -54,7 +56,7 @@ export function promotionPlan(head, base) {
 
 export function inferPromotionBase(head) {
   if (actionBranchPattern.test(head)) return "nightly";
-  if (head === "nightly") return "stable";
+  if (cutoffBranchPattern.test(head)) return "stable";
   if (head === "stable") return "release";
   reject("promotion_source_has_no_next_edge");
 }
@@ -72,6 +74,19 @@ export function requiredCheckRegistered(rollup, aggregate) {
   return rollup.some((entry) =>
     entry !== null && typeof entry === "object" &&
     (entry.name === aggregate || entry.context === aggregate));
+}
+
+export function reconcileRequiredChecks(rollup, required) {
+  if (!Array.isArray(rollup) || !Array.isArray(required) || required.length === 0) reject("promotion_check_response_invalid");
+  for (const context of required) {
+    const matches = rollup.filter(entry => entry?.name === context || entry?.context === context);
+    if (matches.length === 0) return Object.freeze({ status: "pending", context });
+    if (matches.length > 1) reject("promotion_check_ambiguous");
+    const state = matches[0].conclusion || matches[0].state || matches[0].status;
+    if (["failure", "FAILED", "error", "cancelled", "timed_out"].includes(state)) return Object.freeze({ status: "failed", context });
+    if (!["success", "SUCCESS"].includes(state)) return Object.freeze({ status: "pending", context });
+  }
+  return Object.freeze({ status: "complete" });
 }
 
 function run(command, args, { capture = false, allowFailure = false } = {}) {
@@ -156,45 +171,53 @@ function pushTemporaryBranch(plan) {
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
-function waitForRequiredCheckRegistration(plan, number) {
-  const deadline = Date.now() + 10 * 60 * 1000;
-  for (;;) {
-    const output = run("gh", [
-      "pr", "view", number, "--repo", repository, "--json", "statusCheckRollup",
-    ], { capture: true });
-    let rollup;
-    try {
-      rollup = JSON.parse(output || "{}").statusCheckRollup;
-    } catch {
-      reject("promotion_check_response_invalid");
-    }
-    if (requiredCheckRegistered(rollup, plan.aggregate)) return;
-    if (Date.now() >= deadline) reject("promotion_check_registration_timeout");
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
-  }
-}
-
-function waitAndMerge(plan, pullRequest) {
+function reconcileAndMerge(plan, pullRequest, expectedHead) {
   const number = String(pullRequest.number || "");
   if (!/^[1-9][0-9]*$/u.test(number)) reject("promotion_pull_request_invalid");
-  waitForRequiredCheckRegistration(plan, number);
-  run("gh", [
-    "pr", "checks", number, "--repo", repository, "--required", "--watch",
-    "--fail-fast", "--interval", "10",
-  ]);
-  run("gh", ["pr", "merge", number, "--repo", repository, "--merge"]);
+  const output = run("gh", ["pr", "view", number, "--repo", repository, "--json", "statusCheckRollup"], { capture: true });
+  let rollup;
+  try { rollup = JSON.parse(output || "{}").statusCheckRollup; } catch { reject("promotion_check_response_invalid"); }
+  const required = plan.base === "stable"
+    ? ["Branch flow", "Commit identity", "Auditor", "Stable client", "Monthly candidate ready", "Apple Release ready"]
+    : ["Branch flow", "Commit identity", "Auditor", plan.aggregate];
+  const state = reconcileRequiredChecks(rollup, required);
+  if (state.status !== "complete") return { number, ...state };
+  run("gh", ["pr", "merge", number, "--repo", repository, "--merge", "--match-head-commit", expectedHead]);
   const mergedAt = run("gh", [
     "pr", "view", number, "--repo", repository, "--json", "mergedAt", "--jq", ".mergedAt",
   ], { capture: true });
   if (mergedAt === "" || mergedAt === "null") reject("promotion_merge_not_confirmed");
-  return number;
+  return { number, status: "merged" };
 }
 
 function printReceipt(receipt) {
   process.stdout.write(`${JSON.stringify({ ...receipt, privateDataIncluded: false })}\n`);
 }
 
-function advance(head, base) {
+export function candidateTagForRef(head) {
+  if (!cutoffBranchPattern.test(head)) reject("candidate_ref_invalid");
+  return `nightly-candidate-${head.slice("nightly-cutoff/".length, -3)}`;
+}
+
+export function validateCandidateRemote(plan, values) {
+  const revision = run("gh", ["api", `repos/${repository}/git/ref/heads/${encodeURIComponent(plan.head)}`, "--jq", ".object.sha"], { capture: true });
+  if (plan.base !== "stable") return revision;
+  const tag = candidateTagForRef(plan.head);
+  const tagRevision = run("gh", ["api", `repos/${repository}/git/ref/tags/${tag}`, "--jq", ".object.sha"], { capture: true });
+  if (revision !== tagRevision) reject("candidate_release_source_mismatch");
+  let release, checks;
+  try {
+    release = JSON.parse(run("gh", ["api", `repos/${repository}/releases/tags/${tag}`], { capture: true }));
+    checks = JSON.parse(run("gh", ["api", `repos/${repository}/commits/${revision}/check-runs`, "--jq", ".check_runs"], { capture: true }));
+  } catch { reject("candidate_evidence_invalid"); }
+  verifyRelease(release, { tag, revision, assets: REQUIRED_PLATFORM_ASSETS });
+  if (Date.now() < Date.parse(candidateMaturity(release.published_at))) reject("candidate_immature");
+  verifyAppCheck(checks, { name: "Apple Release ready", revision,
+    appId: Number(values["apple-app-id"] || process.env.LICOUP_APPLE_RELEASE_APP_ID) });
+  return revision;
+}
+
+function advance(head, base, values = {}) {
   const plan = promotionPlan(head, base);
   pushTemporaryBranch(plan);
   const status = compareStatus(plan.head, plan.base);
@@ -203,9 +226,11 @@ function advance(head, base) {
     return;
   }
   if (!hasPromotableCommits(status)) reject("promotion_topology_not_ahead");
+  const expectedHead = validateCandidateRemote(plan, values);
   const pullRequest = openPullRequest(plan);
-  const number = waitAndMerge(plan, pullRequest);
-  printReceipt({ ok: true, status: "merged", head, base, pullRequestNumber: number });
+  const result = reconcileAndMerge(plan, pullRequest, expectedHead);
+  printReceipt({ ok: true, status: result.status, head, base, pullRequestNumber: result.number, pendingContext: result.context });
+  return result.status;
 }
 
 function parseArgs(argv) {
@@ -230,18 +255,21 @@ function main() {
     return;
   }
   assertRepositoryAccess();
+  if (command === "validate") {
+    const plan = promotionPlan(head, values.base || inferPromotionBase(head));
+    printReceipt({ ok: true, command, head, base: plan.base, revision: validateCandidateRemote(plan, values), status: "candidate-ready" });
+    return;
+  }
   if (command === "advance") {
-    advance(head, values.base || inferPromotionBase(head));
+    advance(head, values.base || inferPromotionBase(head), values);
     return;
   }
   if (command === "train") {
     if (!actionBranchPattern.test(head)) reject("promotion_train_source_invalid");
     // One authorized cut: action-prefixed → nightly → stable → release.
     // Do not run this again to fold later nightly into an in-flight publish.
-    advance(head, "nightly");
-    advance("nightly", "stable");
-    advance("stable", "release");
-    printReceipt({ ok: true, command, status: "release-branch-promoted" });
+    const status = advance(head, "nightly", values);
+    printReceipt({ ok: true, command, status: status === "merged" ? "nightly-updated-awaiting-monthly-candidate" : status });
     return;
   }
   reject("promotion_command_invalid");
