@@ -3226,6 +3226,70 @@ mod tests {
         executable
     }
 
+    /// Wait until the runtime has persisted the `dispatch.turn.bound` frame for
+    /// an admitted native turn. That frame is emitted only once the official
+    /// lane's process-local in-flight control channel is registered, so it is
+    /// the first observable point at which a live steer can be accepted. The
+    /// runtime reports the native `turnId` earlier (as soon as the app-server
+    /// acknowledges `turn/start`), so polling `inspect_turn` alone leaves a
+    /// window in which a steer is answered `session_unavailable`.
+    fn wait_for_bound_native_turn(
+        service: &ConversationService,
+        child_conversation_id: &str,
+        child_membership_id: &str,
+        dispatch_id: &str,
+        expected_turn_id: &str,
+    ) {
+        const NATIVE_TURN_BIND_WAIT: Duration = Duration::from_secs(20);
+        let deadline = Instant::now() + NATIVE_TURN_BIND_WAIT;
+        while !native_turn_is_bound(
+            service,
+            child_conversation_id,
+            child_membership_id,
+            dispatch_id,
+            expected_turn_id,
+        ) {
+            assert!(
+                Instant::now() < deadline,
+                "waited {NATIVE_TURN_BIND_WAIT:?} for admitted native turn {expected_turn_id} to \
+                 bind its live control channel (no dispatch.turn.bound frame persisted for \
+                 dispatch {dispatch_id})"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn native_turn_is_bound(
+        service: &ConversationService,
+        child_conversation_id: &str,
+        child_membership_id: &str,
+        dispatch_id: &str,
+        expected_turn_id: &str,
+    ) -> bool {
+        let Ok(Some(turn_event)) = service
+            .store()
+            .agent_turn_event_for_dispatch(child_conversation_id, dispatch_id)
+        else {
+            return false;
+        };
+        let scope = licoup_native::domain::client_conversation::ConversationRuntimeScope {
+            dispatch_id: dispatch_id.to_owned(),
+            conversation_id: child_conversation_id.to_owned(),
+            membership_id: child_membership_id.to_owned(),
+            event_id: turn_event.id,
+        };
+        service
+            .store()
+            .runtime_frames_after(&scope, 0, i64::MAX as u64, 512)
+            .map(|frames| {
+                frames.iter().any(|frame| {
+                    frame.get("event").and_then(Value::as_str) == Some("dispatch.turn.bound")
+                        && frame.get("turnId").and_then(Value::as_str) == Some(expected_turn_id)
+                })
+            })
+            .unwrap_or(false)
+    }
+
     fn with_test_executable(params: &Value, executable: &std::path::Path) -> Value {
         let mut value = params.clone();
         if let Some(object) = value.as_object_mut() {
@@ -4036,6 +4100,11 @@ mod tests {
             Some(turn_id.clone()),
             "live native turn must bind before control"
         );
+        // The runtime reports the native turn id as soon as the app-server
+        // acknowledges `turn/start`, but the lane only registers its live
+        // in-flight control channel later. Wait for the bound frame so the
+        // reopened host can actually steer the admitted turn.
+        wait_for_bound_native_turn(&service, &child_id, &child_member, &dispatch_id, &turn_id);
         assert_eq!(start_count.load(Ordering::SeqCst), 1);
         let send_runtime = runtime.clone();
         let active_runtime = runtime.clone();
