@@ -289,10 +289,12 @@ final class SettingsAutostartProjection {
 final class SettingsProjection {
   SettingsProjection({
     required this.appearancePresetId,
+    this.reduceMotion = false,
     required Iterable<SettingsAppearancePresetProjection> appearancePresets,
     required Iterable<PresentationChoice> localeChoices,
     required Iterable<PresentationChoice> layoutChoices,
     required Iterable<ArchivedConversationProjection> archivedConversations,
+    this.archivedConversationsLoading = false,
     required this.layoutPhase,
     required this.layoutFailureReasonCode,
     required this.appearancePresetDirectoryPath,
@@ -313,10 +315,12 @@ final class SettingsProjection {
        archivedConversations = immutablePresentationList(archivedConversations);
 
   final String appearancePresetId;
+  final bool reduceMotion;
   final List<SettingsAppearancePresetProjection> appearancePresets;
   final List<PresentationChoice> localeChoices;
   final List<PresentationChoice> layoutChoices;
   final List<ArchivedConversationProjection> archivedConversations;
+  final bool archivedConversationsLoading;
   final PresentationPhase layoutPhase;
   final String layoutFailureReasonCode;
   final String appearancePresetDirectoryPath;

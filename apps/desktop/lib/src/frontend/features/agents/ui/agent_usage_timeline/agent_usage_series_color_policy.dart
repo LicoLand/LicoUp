@@ -6,37 +6,12 @@ Color agentUsageSeriesColor(LicoThemeColors colors, String label) {
   if (key.isEmpty) {
     return colors.primaryStrong;
   }
-  final known = switch (key) {
-    'codex' || 'chatgptdesktop' => const Color(0xFF38BDF8),
-    'claude' || 'claudecode' || 'claudecodecli' => const Color(0xFFF59E0B),
-    'opencode' || 'opencodecli' => const Color(0xFF22C55E),
-    'kilocode' || 'kilocodecli' || 'kilo' => const Color(0xFFA78BFA),
-    'antigravity' || 'antigravityide' => const Color(0xFFF472B6),
-    'githubcopilot' ||
-    'githubcopilotplugin' ||
-    'copilot' => const Color(0xFF06B6D4),
-    'cursor' || 'cursoride' => const Color(0xFFF97316),
-    'kimicodecli' => const Color(0xFF84CC16),
-    'kimidesktop' => const Color(0xFF60A5FA),
-    'vscode' || 'visualstudiocode' => const Color(0xFF3B82F6),
-    _ => null,
-  };
-  if (known != null) {
-    return known;
-  }
-  const palette = [
-    Color(0xFF38BDF8),
-    Color(0xFFF59E0B),
-    Color(0xFF22C55E),
-    Color(0xFF8B5CF6),
-    Color(0xFF06B6D4),
-    Color(0xFFF97316),
-    Color(0xFFEC4899),
-    Color(0xFF84CC16),
-    Color(0xFF60A5FA),
-    Color(0xFFF43F5E),
-  ];
-  return palette[_stableUsageColorIndex(key, palette.length)];
+  // Every series belongs to one silver-to-electric-yellow ramp. Labels keep
+  // their stable position as data arrives; status colors are never chart data.
+  final t = _stableUsageColorIndex(key, 9) / 8;
+  final start = colors.isDark ? colors.textSecondary : colors.accent;
+  final end = colors.isDark ? colors.primary : colors.primaryStrong;
+  return Color.lerp(start, end, t)!;
 }
 
 String _usageColorKey(String label) {

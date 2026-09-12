@@ -8,13 +8,17 @@ This document defines the technical specification for **Tier 2: Bridging Contrac
 
 1. **Desktop stdio RPC**:
    - Flutter reaches the persistent Rust native host through the `licoup.stdio.v1` bidirectional frame.
-   - Stateful conversation operations (`conversation.message.post`, `conversation.dispatch.after-post`, `agent.conversation.send`, `attach`, `steer`, `cancel`) use explicit structured RPC methods with typed parameters and results.
+   - Application composition binds the Agent conversation service and canonical conversation service to `AgentConversationNativePort` and `ClientConversationNativePort`. Their semantic operations carry session and turn identity types plus opaque native payloads; services do not accept a command runner for stateful operations.
+   - The platform implementation alone encodes these operations as structured method-and-parameter frames. Agent operations use generated `agent.conversation.*` methods; canonical requests use generated `client.conversation.execute` with the requested action in its payload. `ConversationProtocolMethod`, generated from the native protocol registry, remains the method authority.
    - Stateful operations **strictly never use a CLI argument array** as their client-to-native transport.
+   - Generic command and process entry points reject the stateful `agent conversation` and `conversation` namespaces. Disabling persistent stateless execution or injecting a one-shot executor cannot redirect a stateful operation to a subprocess. Test fixtures inject semantic ports or structured transports explicitly.
 2. **Mobile Platform FFI**:
    - On Android and iOS, communication passes through C-ABI FFI command boundaries (`android_ffi.rs`, `ios_ffi.rs`), invoking Rust functional core services in-process without shell processes.
+   - The desktop local conversation port reports an unavailable runtime on mobile. Mobile conversation routing continues through the approved secure relay and FFI paths; it never launches the desktop host.
 3. **Stateless Commands**:
    - The same RPC frame carries bounded stateless queries as `method: "execute"` with an argument array (e.g., catalog and target queries parsed via the public CLI command model).
-   - One-shot execution exists only for injected executors and tests when the persistent host is unavailable; it is never the product transport for a stateful turn.
+   - Explicit catalog, report, skill, pairing, and native history queries share at most four lazily opened persistent read connections. Each available connection takes the next eligible query from the shared priority queue and publishes its result independently. The transport does not cache results or impose a query deadline. Native cache publication preserves concurrent readers; mutations and process-owned services keep their ordered lane, and conversation observers keep their host connection. Disposal rejects new reads, drains accepted work, and closes each connection as it becomes idle.
+   - Explicitly injected executors and tests may use one-shot stateless execution; it is never the transport for a stateful turn.
 4. **Security & Secrets**:
    - Credential create and update requests rewrite private input onto stdin before process launch.
    - Secret values never enter command-line arguments, reports, or the public frame projection.
@@ -23,6 +27,9 @@ This document defines the technical specification for **Tier 2: Bridging Contrac
 
 The implementation authorities for the Bridging Contract Layer are:
 - **Client Native Transport**: `apps/desktop/lib/src/platform/native_client/`
+- **Semantic Conversation Ports**: `apps/desktop/lib/src/contracts/conversation_native_port.dart`
+- **Platform Conversation Encoding**: `apps/desktop/lib/src/platform/native_client/native_conversation_port.dart`
 - **Client Agent Services**: `apps/desktop/lib/src/backend/features/agents/services/`
+- **Canonical Conversation Service**: `apps/desktop/lib/src/backend/features/conversations/services/client_conversation_service.dart`
 - **Native Frame Router**: `crates/licoup-native/src/bin/licoup/stdio_rpc/`
 - **Mobile FFI Bridges**: `crates/licoup-native/src/ffi/` (`android_ffi.rs`, `ios_ffi.rs`)

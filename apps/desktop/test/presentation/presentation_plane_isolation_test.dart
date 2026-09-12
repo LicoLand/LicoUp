@@ -213,6 +213,10 @@ final class _MemoryPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      value = value.copyWith(reduceMotion: enabled);
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       value = value.copyWith(appearancePresetId: id);
 

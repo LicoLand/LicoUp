@@ -12,11 +12,13 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
     required this.timeline,
     required this.colors,
     required this.hoveredSnapshotIndex,
+    required this.labelStyle,
   });
 
   final AgentUsageTimelineData timeline;
   final LicoThemeColors colors;
   final int? hoveredSnapshotIndex;
+  final TextStyle labelStyle;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -270,18 +272,12 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
 
   void _paintAxisLabel(Canvas canvas, String label, Offset offset) {
     final painter = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout(maxWidth: 40);
     painter.paint(canvas, offset);
+    painter.dispose();
   }
 
   void _paintXAxisLabels(
@@ -300,23 +296,18 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
           .toDouble();
       final rect = Rect.fromLTWH(left, y, painter.width, painter.height);
       if (painted.any((existing) => existing.inflate(10).overlaps(rect))) {
+        painter.dispose();
         continue;
       }
       painter.paint(canvas, rect.topLeft);
+      painter.dispose();
       painted.add(rect);
     }
   }
 
   TextPainter _xAxisLabelPainter(String label) {
     return TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
@@ -327,6 +318,7 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
   bool shouldRepaint(covariant AgentUsageWaveChartPainter oldDelegate) {
     return oldDelegate.timeline != timeline ||
         oldDelegate.colors != colors ||
+        oldDelegate.labelStyle != labelStyle ||
         oldDelegate.hoveredSnapshotIndex != hoveredSnapshotIndex;
   }
 }

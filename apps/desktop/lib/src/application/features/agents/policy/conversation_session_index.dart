@@ -111,6 +111,7 @@ bool conversationSessionsEquivalent(
       left.parentSessionId != right.parentSessionId ||
       left.lineageRootId != right.lineageRootId ||
       left.sourceKind != right.sourceKind ||
+      left.sourceRevision != right.sourceRevision ||
       left.importMode != right.importMode ||
       left.sourceTool != right.sourceTool ||
       left.sourceClient != right.sourceClient ||
@@ -160,6 +161,14 @@ bool conversationMessageListsEquivalent(
             leftMessage.stableIdentity != rightMessage.stableIdentity ||
             leftMessage.childMessagesTruncated !=
                 rightMessage.childMessagesTruncated ||
+            leftMessage.childSessionId != rightMessage.childSessionId ||
+            leftMessage.childMessageCount != rightMessage.childMessageCount ||
+            leftMessage.childSourceRevision !=
+                rightMessage.childSourceRevision ||
+            leftMessage.childMessagePage?.nextBefore !=
+                rightMessage.childMessagePage?.nextBefore ||
+            leftMessage.childMessagePage?.hasEarlier !=
+                rightMessage.childMessagePage?.hasEarlier ||
             !conversationMessageListsEquivalent(
               leftMessage.childMessages,
               rightMessage.childMessages,

@@ -452,6 +452,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   bool _atLatest = true;
   List<MessagingFlowEntry>? _cachedEntries;
   List<ConversationTimelineItem>? _cachedItems;
+  Map<String, int> _cachedEntryIndexes = const {};
   bool _pageRequestInFlight = false;
 
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
@@ -474,18 +475,18 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   void didUpdateWidget(MessagingParticipantFlow oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final readingController = _scrollController;
+    if (readingController is ReadingPositionScrollController) {
+      if (oldWidget.sessionKey == widget.sessionKey) {
+        readingController.captureReadingAnchor();
+      } else {
+        readingController.clearReadingAnchor();
+      }
+    }
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
       _atLatest = true;
       _pageRequestInFlight = false;
-    }
-    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
-      // The incoming history page lands at the far (oldest) end, which is
-      // already position-stable; skip exactly one reading-position hold.
-      final controller = _scrollController;
-      if (controller is ReadingPositionScrollController) {
-        controller.notifyFarEndAppend();
-      }
     }
     if (oldWidget.activeProcessStorageKey != widget.activeProcessStorageKey ||
         oldWidget.preferPeerAgents != widget.preferPeerAgents) {
@@ -549,6 +550,12 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     if (notification.depth != 0) {
       return false;
     }
+    final movingEarlier = switch (notification) {
+      ScrollUpdateNotification(:final scrollDelta) => (scrollDelta ?? 0) > 0,
+      OverscrollNotification(:final overscroll) => overscroll > 0,
+      _ => false,
+    };
+    if (!movingEarlier) return false;
     final metrics = notification.metrics;
     if (!widget.hasEarlier ||
         widget.messagePageLoading ||
@@ -604,8 +611,23 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     final display = entries.reversed.toList(growable: false);
     _cachedItems = items;
     _cachedEntries = display;
+    _cachedEntryIndexes = {
+      for (var index = 0; index < display.length; index += 1)
+        _entryKey(display[index]): index,
+    };
     return display;
   }
+
+  String _entryKey(MessagingFlowEntry entry) => switch (entry) {
+    MessagingFlowDayDivider(:final day) => 'day-$day',
+    MessagingFlowMessageGroup(:final messages) =>
+      'message-${messages.first.id}-${messages.first.createdAt}',
+    MessagingFlowProcess(:final item) => item.storageKey,
+    MessagingFlowLog(:final item) => item.storageKey,
+    MessagingFlowRuntimeUpdate(:final item) => item.storageKey,
+    MessagingFlowSubagent(:final item) => item.storageKey,
+    MessagingFlowTruncation(:final item) => item.storageKey,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -626,6 +648,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               'messaging-participant-flow-${widget.sessionKey}',
             ),
             reverse: true,
+            findChildIndexCallback: (key) =>
+                key is ValueKey<String> ? _cachedEntryIndexes[key.value] : null,
             scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
@@ -654,7 +678,16 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               // A streamed reply changes one entry per frame. Without a
               // repaint boundary per entry the whole visible flow
               // repaints with it.
-              return RepaintBoundary(child: _entryContent(context, entry));
+              final entryKey = _entryKey(entry);
+              return ReadingPositionAnchor(
+                key: ValueKey<String>(entryKey),
+                controller: entry is MessagingFlowMessageGroup
+                    ? null
+                    : _scrollController,
+                anchorId: entryKey,
+                isRow: true,
+                child: RepaintBoundary(child: _entryContent(context, entry)),
+              );
             },
           ),
           if (!_atLatest)
@@ -692,6 +725,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         Padding(
           padding: LicoContentSpacing.peerItem,
           child: MessagingMessageGroup(
+            scrollController: _scrollController,
             authorIsUser: authorIsUser,
             participantLabel: participantLabel,
             participantRole: participantRole,

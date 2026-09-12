@@ -78,7 +78,7 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       ClientSection.agentHub,
       strings.agentHub,
       Icons.auto_awesome_outlined,
-      const ['agent', 'hub', '智能体中心', '适配'],
+      const ['agent', 'hub', 'plugin', 'skill', '智能体中心', '适配', '插件', '技能'],
     ),
     section(
       ClientSection.agents,
@@ -93,22 +93,19 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       const ['token', 'usage', 'chart', 'monitoring', '用量', '统计', '图表'],
     ),
     section(
-      ClientSection.skillHub,
-      strings.skillHub,
-      Icons.library_books_outlined,
-      const ['skill', 'hub', '技能'],
-    ),
-    section(
-      ClientSection.pluginManagement,
-      strings.pluginManagement,
-      Icons.extension_outlined,
-      const ['plugin', 'adapter', '插件', '适配器'],
-    ),
-    section(
       ClientSection.mobileRelay,
-      strings.mobileRelay,
+      strings.mobilePairing,
       Icons.phonelink_outlined,
-      const ['mobile', 'relay', 'pair', '配对', '通信'],
+      const [
+        'mobile',
+        'relay',
+        'pair',
+        'channel',
+        'telegram',
+        '配对',
+        '通信',
+        '聊天频道',
+      ],
     ),
     section(ClientSection.models, strings.keys, Icons.key_outlined, const [
       'model',

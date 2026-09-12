@@ -633,6 +633,17 @@ sequenceDiagram
 
 ## 12. 可信历史与恢复边界
 
+规范 `conversation.events.page` 按序号升序返回事件，默认每页 20 条、最多 100 条。
+`latest: true` 读取最新保留事件；`beforeSequence` 以独占序号锚点读取更早一页。
+两者均使用索引降序查询，只反转已选中的当前页。`afterSequence` 继续独立支持尾部
+增量与精确事件锚点读取；省略全部选择器时，从头向前读取。有效选择器互斥，组合
+冲突返回 `invalid_request`。`hasEarlier` 与可空的 `nextBeforeSequence` 表示是否
+还有更早的保留事件；仅存在更早事件时，后者才是当前页首条事件的序号。
+`nextCursor` 继续返回当前页末条事件序号的字符串，供向前读取使用；空页返回 null。
+`totalCount` 是保留行数，不能充当序号游标，删除事件可能留下序号空洞。桌面端打开
+最新 20 条事件，向前滚动时每次读取更早 20 条；精确任务卡片锚点读取与这个连续分页
+窗口独立。
+
 规范 Conversation 历史仍由 LicoUp 本地的 `ConversationStore` 持有。服务商管理的
 云端历史是另一条保留对象来源，只有在取得服务商授权后，才可以投影到会话体验中。
 

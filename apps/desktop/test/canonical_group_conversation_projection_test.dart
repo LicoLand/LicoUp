@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -1182,7 +1181,7 @@ void main() {
     tester,
   ) async {
     final runner = _DialogConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     final dialog = _DialogConversationBinding(controller);
     final targets = [_target('codex', 'Codex')];
     await tester.pumpWidget(
@@ -1241,7 +1240,7 @@ void main() {
     tester,
   ) async {
     final controller = ClientConversationController(
-      runner: _FailingDialogConversationRunner(),
+      native: _FailingDialogConversationRunner(),
     );
     final dialog = _DialogConversationBinding(controller);
     await tester.pumpWidget(
@@ -1335,17 +1334,16 @@ final class _DialogConversationBinding
   }
 }
 
-final class _DialogConversationRunner implements AgentCommandRunner {
+final class _DialogConversationRunner implements ClientConversationNativePort {
   final _create = Completer<void>();
 
   void completeCreate() => _create.complete();
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     final action = request['action'];
     if (action == 'conversation.create') await _create.future;
     return {
@@ -1398,45 +1396,17 @@ final class _DialogConversationRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
-final class _FailingDialogConversationRunner implements AgentCommandRunner {
+final class _FailingDialogConversationRunner
+    implements ClientConversationNativePort {
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async => {
     'ok': false,
     'error': {'code': 'synthetic_create_failed'},
   };
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 TargetCandidate _target(String id, String label) => TargetCandidate(

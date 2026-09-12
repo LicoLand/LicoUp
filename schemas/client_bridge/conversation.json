@@ -2,7 +2,7 @@
   "title": "ConversationBridge",
   "version": 1,
   "maxRequestBytes": 1048576,
-  "defaultEventPageSize": 50,
+  "defaultEventPageSize": 20,
   "maxEventPageSize": 100,
   "actions": [
     "conversation.create",

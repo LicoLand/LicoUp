@@ -620,10 +620,10 @@
     },
     {
       "id": "static-endpoint-only-payload-cli-route-is-absent",
-      "file": "crates/licoup-native/src/bin/licoup/presentation.rs",
+      "file": "crates/licoup-native/src/ffi/commands/mod.rs",
       "forbiddenTokens": [
-        "payload seal",
-        "payload open",
+        "\"payload\", \"seal\"",
+        "\"payload\", \"open\"",
         "key-base64url",
         "contentKeyBase64url",
         "includeBodyBase64url"

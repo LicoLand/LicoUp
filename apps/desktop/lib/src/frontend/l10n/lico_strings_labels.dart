@@ -842,7 +842,7 @@ extension LicoStringsLabels on LicoStrings {
   String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
   String get appearanceDay => isChinese ? '明亮' : 'Light';
   String get appearanceNight => isChinese ? '暗黑' : 'Dark';
-  String get appearancePreset => isChinese ? '外观预设' : 'Appearance Preset';
+  String get appearancePreset => isChinese ? '主题风格' : 'Theme style';
   String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
   String get layoutProfileDescription => isChinese
       ? '选择整套组件风格、页面排布与交互外观。'
@@ -868,10 +868,10 @@ extension LicoStringsLabels on LicoStrings {
   };
 
   String get appearancePresetDirectory =>
-      isChinese ? '外观预设目录' : 'Appearance Preset Directory';
+      isChinese ? '主题目录' : 'Theme directory';
   String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
-      isChinese ? '$count 个外观预设配置无效' : '$count invalid preset configs';
+      isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
   String get portableData =>
       isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';

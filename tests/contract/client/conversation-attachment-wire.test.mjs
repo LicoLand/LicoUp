@@ -9,7 +9,7 @@ const read = (relative) => fs.readFile(path.join(root, relative), "utf8");
 
 test("conversation attachments use one typed Dart-to-Rust wire", async () => {
   const dartContract = "apps/desktop/lib/src/contracts/agent_conversation_attachment.dart";
-  const dartService = "apps/desktop/lib/src/backend/features/agents/services/agent_conversation_service.dart";
+  const dartService = "apps/desktop/lib/src/platform/native_client/native_conversation_port.dart";
   const rustParams = "crates/licoup-native/src/platform/runtime_adapters/params.rs";
   const codexSession = "crates/licoup-native/src/platform/native_agent_parser/adapters/codex/session.rs";
   const [contract, service, params, session] = await Promise.all(
@@ -26,16 +26,20 @@ test("conversation attachments use one typed Dart-to-Rust wire", async () => {
   assert.doesNotMatch(service, /data:image|attach-url|base64Encode/u);
 });
 
-test("frontend image rendering depends on the byte-reader contract, never dart:io", async () => {
+test("frontend image rendering keeps byte reads behind composition, never dart:io", async () => {
   const rendererPath = "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_image_attachments.dart";
   const workspacePath = "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart";
-  const [renderer, workspace] = await Promise.all([
+  const compositionPath = "apps/desktop/lib/src/composition/features/conversation/conversation_feature_composition.dart";
+  const [renderer, workspace, composition] = await Promise.all([
     read(rendererPath),
     read(workspacePath),
+    read(compositionPath),
   ]);
 
-  assert.match(renderer, /ConversationImageByteReaderScope/u);
-  assert.match(workspace, /conversationImageByteReader/u);
+  assert.match(renderer, /ConversationImageLoaderScope/u);
+  assert.match(renderer, /ConversationImageLoaderScope\.maybeOf\(context\)/u);
+  assert.match(composition, /conversationImageByteReader/u);
+  assert.match(composition, /cacheAttachmentBytes\(bytesById/u);
   assert.doesNotMatch(renderer, /dart:io|File\s*\(/u);
   assert.doesNotMatch(workspace, /dart:io|File\s*\(/u);
 });

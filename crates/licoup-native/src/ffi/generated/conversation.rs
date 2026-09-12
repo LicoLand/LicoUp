@@ -114,7 +114,7 @@ pub enum ConversationFailureCode {
 
 pub const CONVERSATION_BRIDGE_SCHEMA_VERSION: &str = "lico.conversation.v1";
 pub const CONVERSATION_BRIDGE_MAX_REQUEST_BYTES: usize = 1048576;
-pub const CONVERSATION_BRIDGE_DEFAULT_EVENT_PAGE_SIZE: usize = 50;
+pub const CONVERSATION_BRIDGE_DEFAULT_EVENT_PAGE_SIZE: usize = 20;
 pub const CONVERSATION_BRIDGE_MAX_EVENT_PAGE_SIZE: usize = 100;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

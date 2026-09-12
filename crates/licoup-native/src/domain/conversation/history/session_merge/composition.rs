@@ -9,12 +9,14 @@ pub(crate) fn finalize_history_sessions(
     sessions: Vec<Value>,
     scan_config: &HistoryScanConfig,
 ) -> Vec<Value> {
-    let sessions = merge_delegated_subagent_sessions(sessions);
+    let sessions = merge_delegated_subagent_sessions(sessions, scan_config.single_session_id());
     let sessions = merge_codex_rollout_lineage_sessions(sessions);
     sessions
         .into_iter()
-        .filter(|session| !session_is_delegated_subagent(session))
-        .filter(history_session_has_user_authored_message)
+        .filter(|session| {
+            session_is_delegated_subagent(session)
+                || history_session_has_user_authored_message(session)
+        })
         .filter(|session| scan_config.matches_session(session))
         .map(|session| scan_config.compact_session_for_archive_discovery(session))
         .collect()

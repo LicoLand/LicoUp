@@ -1,3 +1,5 @@
+import 'agent_conversation_message_page.dart';
+
 enum AgentConversationMessageKind {
   user,
   assistant,
@@ -44,6 +46,10 @@ class AgentConversationMessage {
     this.participantLabel = '',
     this.participantRole = '',
     this.childMessagesTruncated = false,
+    this.childSessionId = '',
+    this.childMessageCount = 0,
+    this.childSourceRevision = '',
+    this.childMessagePage,
     this.childMessages = const [],
     this.images = const [],
     this.deliveryState = AgentConversationMessageDeliveryState.ordinary,
@@ -64,6 +70,10 @@ class AgentConversationMessage {
   final String participantLabel;
   final String participantRole;
   final bool childMessagesTruncated;
+  final String childSessionId;
+  final int childMessageCount;
+  final String childSourceRevision;
+  final AgentConversationMessagePage? childMessagePage;
   final List<AgentConversationMessage> childMessages;
 
   /// Typed image attachments carried by the message (for example a pasted
@@ -160,6 +170,10 @@ class AgentConversationMessage {
       participantLabel: resolvedLabel,
       participantRole: resolvedRole,
       childMessagesTruncated: childMessagesTruncated,
+      childSessionId: childSessionId,
+      childMessageCount: childMessageCount,
+      childSourceRevision: childSourceRevision,
+      childMessagePage: childMessagePage,
       childMessages: childMessages,
       images: images,
       deliveryState: deliveryState,
@@ -183,6 +197,12 @@ class AgentConversationMessage {
       if (participantLabel.isNotEmpty) 'participantLabel': participantLabel,
       if (participantRole.isNotEmpty) 'participantRole': participantRole,
       if (childMessagesTruncated) 'childMessagesTruncated': true,
+      if (childSessionId.isNotEmpty) 'childSessionId': childSessionId,
+      if (childMessageCount > 0) 'childMessageCount': childMessageCount,
+      if (childSourceRevision.isNotEmpty)
+        'childSourceRevision': childSourceRevision,
+      if (childMessagePage != null)
+        'childMessagePage': childMessagePage!.toJson(),
       if (images.isNotEmpty)
         'images': [for (final image in images) image.toJson()],
       if (deliveryState != AgentConversationMessageDeliveryState.ordinary)

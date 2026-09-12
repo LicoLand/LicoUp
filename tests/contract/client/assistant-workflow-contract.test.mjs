@@ -19,7 +19,7 @@ const flywheelService = read("crates/licoup-native/src/domain/adaptive_flywheel/
 const strategyStore = read("crates/licoup-native/src/domain/adaptive_flywheel/store.rs");
 const usage = read("crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs");
 const policy = read("crates/licoup-native/src/platform/client_state/policy.rs");
-const subagentMcp = read("crates/licoup-native/src/domain/subagent_mcp/mod.rs");
+const subagents = read("crates/licoup-native/src/domain/subagents/mod.rs");
 const conversationContract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const strategyContract = JSON.parse(read("schemas/client_bridge/strategy.json"));
 const bundledSkill = read("crates/licoup-native/resources/licoup-guide/SKILL.md");
@@ -85,7 +85,7 @@ test("Profile snapshots derive only from named existing authorities", () => {
   const documentedTools = [...prompt.matchAll(/`(lico_[a-z_]+)`/gu)].map((match) => match[1]);
   assert.ok(documentedTools.length > 0);
   for (const tool of documentedTools) {
-    assert.ok(subagentMcp.includes(`"${tool}"`), `guide tool is available: ${tool}`);
+    assert.ok(subagents.includes(`"${tool}"`), `guide tool is available: ${tool}`);
   }
   assert.match(usage, /graph-usage-ledger-v2\.sqlite3/u);
   assert.match(usage, /licoup\.graph-usage-report\.v2/u);
@@ -193,7 +193,7 @@ test("bridge contracts expose Assistant/Profile actions and typed failures", () 
   }
 });
 
-test("subagent MCP surface is closed and exposes the Assistant facade and software operations", () => {
+test("local native Subagent catalog exposes the Assistant workflow facade", () => {
   const assistantTools = [
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
@@ -201,17 +201,17 @@ test("subagent MCP surface is closed and exposes the Assistant facade and softwa
     "lico_assistant_workflow_cancel",
   ];
   for (const name of assistantTools) {
-    assert.match(subagentMcp, new RegExp(`"${name}"`, "u"), name);
+    assert.match(subagents, new RegExp(`"${name}"`, "u"), name);
   }
-  const catalog = subagentMcp.slice(
-    subagentMcp.indexOf("pub const TOOL_NAMES"),
-    subagentMcp.indexOf("pub fn server_definition"),
+  const catalog = subagents.slice(
+    subagents.indexOf("pub const TOOL_NAMES"),
+    subagents.indexOf("pub fn tool_catalog"),
   );
   assert.deepEqual(
     [...catalog.matchAll(/"(lico_assistant_[^"]+)"/gu)].map((match) => match[1]),
     assistantTools,
   );
-  assert.match(subagentMcp, /"additionalProperties": false/u);
+  assert.match(subagents, /"additionalProperties": false/u);
   assert.doesNotMatch(catalog, /conversationPath/u);
   assert.doesNotMatch(catalog, /sessionMode/u);
   for (const pattern of FORBIDDEN_PRIVATE) {

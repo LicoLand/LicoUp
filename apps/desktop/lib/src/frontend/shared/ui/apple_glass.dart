@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Translucent glass surface with continuous-feeling corners and a hairline
@@ -83,17 +84,21 @@ class AppleGlassSurface extends StatelessWidget {
         ? (focusedBorderWidth ?? AppleControlMetrics.searchFocusRingWidth)
         : AppleControlMetrics.hairline;
 
-    return Material(
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: borderRadius,
-        side: BorderSide(color: border, width: borderWidth),
-      ),
+    // Opaque controls do not need a backdrop read. Translucent overlays keep
+    // blur only when a caller explicitly requests a translucent fill.
+    final content = fillAlpha != null && blurSigma > 0
+        ? BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+            child: ColoredBox(color: fill, child: child),
+          )
+        : child;
+    return _GlassControlSurface(
+      fill: fillAlpha != null && blurSigma > 0 ? Colors.transparent : fill,
+      stroke: border,
+      borderRadius: borderRadius,
+      strokeWidth: borderWidth,
       clipBehavior: clipBehavior,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: ColoredBox(color: fill, child: child),
-      ),
+      child: content,
     );
   }
 }
@@ -118,4 +123,15 @@ BoxDecoration appleGlassControlDecoration({
     borderRadius: borderRadius,
     border: Border.all(color: border, width: AppleControlMetrics.hairline),
   );
+}
+
+final class _GlassControlSurface extends BaseControlSurface {
+  const _GlassControlSurface({
+    required super.fill,
+    required super.stroke,
+    required super.borderRadius,
+    required super.strokeWidth,
+    required super.clipBehavior,
+    required super.child,
+  });
 }

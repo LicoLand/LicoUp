@@ -86,9 +86,9 @@ Assistant 是在同一原生 Conversation 中对你的目标负责到底的长�
 要么提交一份带准确 Membership 绑定的有界临时 workflow Graph。Graph 在任何 Agent 效果
 之前先编译并预检：结构、额度、model、Agent、Skill、环境与能力问题先返回稳定 typed
 错误；readiness 与既有 Authority 问题也在效果前返回；无法预检的运行期失败返回给 Assistant，
-它可以直接继续或编写后续 Graph。MCP
-的四个 Assistant 工具负责 Profile 排序，以及临时工作流的执行（含内部预检与持久准入）、
-查看和显式取消。MCP 绑定的 Agent 必须是准确且活动的指定 Assistant Membership；它不能
+它可以直接继续或编写后续 Graph。原生 CLI 的 Assistant 命令负责 Profile 排序，
+以及临时工作流的执行（含内部预检与持久准入）、查看和显式取消。
+调用的 Agent 必须是准确且活动的指定 Assistant Membership；它不能
 选择 route、绑定原生会话或创建隐藏参与者。不同工作流可以并发执行，每个工作流与
 Membership turn 保持有序。
 

@@ -1,9 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 
 /// Work reaches a Canonical Conversation from actors this client never asked:
 /// an external dispatch, a peer client, a subagent, or a settling Flywheel
@@ -16,7 +14,7 @@ void main() {
     () async {
       final runner = _ActivityRunner();
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(hours: 1),
         activityEchoInterval: const Duration(hours: 1),
       );
@@ -48,7 +46,7 @@ void main() {
     () async {
       final runner = _ActivityRunner();
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(hours: 1),
         activityEchoInterval: const Duration(hours: 1),
       );
@@ -74,7 +72,7 @@ void main() {
   test('an unchanged conversation is not reloaded', () async {
     final runner = _ActivityRunner();
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
       activityEchoInterval: const Duration(hours: 1),
     );
@@ -96,7 +94,7 @@ void main() {
   test('no selected conversation leaves the poll inert', () async {
     final runner = _ActivityRunner();
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
       activityEchoInterval: const Duration(hours: 1),
     );
@@ -116,7 +114,7 @@ void main() {
   test('the notice poll does not read the conversation', () async {
     final runner = _ActivityRunner();
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
       activityEchoInterval: const Duration(hours: 1),
     );
@@ -141,7 +139,7 @@ void main() {
   });
 }
 
-final class _ActivityRunner implements AgentCommandRunner {
+final class _ActivityRunner implements ClientConversationNativePort {
   final List<Map<String, dynamic>> requests = <Map<String, dynamic>>[];
   int eventPageReads = 0;
   int conversationReads = 0;
@@ -155,11 +153,10 @@ final class _ActivityRunner implements AgentCommandRunner {
   }
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     return switch (request['action']) {
       'conversation.list' => _ok(
@@ -191,20 +188,6 @@ final class _ActivityRunner implements AgentCommandRunner {
       _ => _ok(const <String, dynamic>{}),
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 
   Map<String, dynamic> _ok(Object? result) => <String, dynamic>{
     'ok': true,

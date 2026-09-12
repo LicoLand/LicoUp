@@ -532,6 +532,13 @@ final class FakePreferencesRepository
       });
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) =>
+      _enqueue(() async {
+        preferences = preferences.copyWith(reduceMotion: enabled);
+        return preferences;
+      });
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) =>
       _enqueue(() async {
         preferences = preferences.copyWith(appearancePresetId: id);

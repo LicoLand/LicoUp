@@ -118,6 +118,7 @@ AppearanceProjection resolveAppearanceProjection(
 ) => AppearanceProjection(
   presetId: appearance.presetId,
   fontPreference: appearance.fontPreference,
+  reduceMotion: appearance.reduceMotion,
   presets: appearance.presets.map(
     ShellProjectionProducer._projectAppearancePreset,
   ),

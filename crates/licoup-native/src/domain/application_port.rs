@@ -8,7 +8,7 @@
 //! Two properties are load-bearing:
 //!
 //! - Durable work reaches the *already running* conversation host through
-//!   [`crate::platform::subagent_mcp_host_client::execute_existing`]. With no
+//!   [`crate::platform::conversation_host_client::execute_existing`]. With no
 //!   host running the call fails closed with
 //!   `persistent_conversation_transport_required`. This adapter never opens a
 //!   process-local `ConversationService`, so a one-shot CLI process cannot
@@ -163,7 +163,7 @@ fn read_outcome(operation: Operation, payload: Value) -> CommandOutcome {
 /// is the nested `result`. Publishing the envelope verbatim would leak the
 /// transport into a versioned payload.
 fn host_read(params: Value) -> Result<Value, ApplicationFailure> {
-    let response = crate::platform::subagent_mcp_host_client::execute_existing(
+    let response = crate::platform::conversation_host_client::execute_existing(
         CONVERSATION_HOST_METHOD,
         &params,
     )

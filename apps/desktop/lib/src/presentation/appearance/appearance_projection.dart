@@ -47,11 +47,13 @@ final class AppearanceProjection {
   AppearanceProjection({
     required this.presetId,
     this.fontPreference = 'system',
+    this.reduceMotion = false,
     required Iterable<AppearancePresetProjection> presets,
   }) : presets = immutablePresentationList(presets);
 
   final String presetId;
   final String fontPreference;
+  final bool reduceMotion;
   final List<AppearancePresetProjection> presets;
 
   @override
@@ -60,9 +62,14 @@ final class AppearanceProjection {
       other is AppearanceProjection &&
           other.presetId == presetId &&
           other.fontPreference == fontPreference &&
+          other.reduceMotion == reduceMotion &&
           samePresentationList(other.presets, presets);
 
   @override
-  int get hashCode =>
-      Object.hash(presetId, fontPreference, Object.hashAll(presets));
+  int get hashCode => Object.hash(
+    presetId,
+    fontPreference,
+    reduceMotion,
+    Object.hashAll(presets),
+  );
 }

@@ -20,7 +20,10 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import '../support/bundled_font_loader.dart';
+
 void main() {
+  setUpAll(loadBundledVisualFonts);
   group('roster quota rings', () {
     testWidgets(
       'live ring clamps above 100, stale ring dims, source-less avatar has no ring',

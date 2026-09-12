@@ -59,6 +59,23 @@ npm run client:artifacts:prune
 下载的依赖。未纳管的旧目标只会被报告，不会自动删除。测试异常退出后，结构完整的失效
 租约会先经过保护宽限期，之后才进入可回收状态；格式错误或被篡改的记录始终关闭失败。
 
+## 最终验证前的格式化
+
+所有开发者和智能体完成写入后，必须先运行受影响的格式化工具，再执行最终回归。
+这是固定的准备步骤，也适用于智能体辅助开发。审阅格式化差异后，再启动选定的检查。
+
+```bash
+npm run client:format              # 同时修改 Flutter 和 Rust
+npm run client:format:flutter      # 仅 Flutter 改动
+npm run client:format:rust         # 仅 Rust 改动
+```
+
+统一入口复用 `dart format` 和 `cargo fmt --all`，不增加格式化依赖。Dart 的处理范围
+与现有 Flutter 格式检查相同，为 `lib` 和 `test`；Rust 覆盖工作区。只使用受影响的
+入口，纯文档或 Node 改动不需要这些工具链。其他开发者仍在写入时不得运行格式化；
+后续修复再次改动源码时，在验证前格式化受影响的源码。CI 和回归通道仍只检查格式，
+报告遗漏，不静默修改正在验证的源码。格式化不会暂存文件或创建提交。
+
 ## 本地客户端验证
 
 客户端修复或行为变更（包括打包的 Agent Prompt 或 Skill）完成后，构建 macOS 一次，

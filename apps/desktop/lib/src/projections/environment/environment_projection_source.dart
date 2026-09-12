@@ -42,6 +42,14 @@ final class EnvironmentProjectionSource
     return true;
   }
 
+  void replaceSystemReduceMotion(bool enabled) => replace(
+    EnvironmentState(
+      environment: _state.environment,
+      runtimeSurface: _state.runtimeSurface,
+      systemReduceMotion: enabled,
+    ),
+  );
+
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;

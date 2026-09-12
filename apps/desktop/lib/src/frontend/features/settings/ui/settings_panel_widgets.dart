@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart'
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 
@@ -238,7 +239,7 @@ class _DayNightSegment extends StatelessWidget {
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(7),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: context.motion(LicoMotion.micro),
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(vertical: 7),
           decoration: BoxDecoration(

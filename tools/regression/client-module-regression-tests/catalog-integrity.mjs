@@ -180,6 +180,7 @@ test("catalog maps every Flutter, Rust, and platform-host source file", async ()
     ...await sourceFiles("crates/licoup-native/src", ".rs"),
     ...await sourceFiles("crates/licoup-native/tests", ".rs"),
     ...await sourceFiles("crates/lico-catalog-convergence/src", ".rs"),
+    ...await sourceFiles("crates/licoup-mcp/src", ".rs"),
     ...await sourceFiles("apps/desktop/android/app/src/main", ".kt"),
     ...await sourceFiles("apps/desktop/ios/Runner", ".swift"),
     ...await sourceFiles("apps/desktop/macos", ".swift"),

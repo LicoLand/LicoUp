@@ -60,89 +60,96 @@ void main() {
       expect(alternateShellDisposals, 1);
     });
 
-    await tester.pumpWidget(
-      _testApp(
-        Row(
-          children: [
-            Expanded(
-              child: _DisposalProbe(
-                onDisposed: () => productionShellDisposals += 1,
-                child: ClientShell(
-                  binding: composition.binding,
-                  renderer: composition.renderer,
-                ),
-              ),
-            ),
-            Expanded(
-              child: _DisposalProbe(
-                onDisposed: () => alternateShellDisposals += 1,
-                child: ReplacementShell(
-                  binding: composition.binding,
-                  conversation: composition.conversation,
-                  onEffect: (effect) => replacementHandledEffects.add(
-                    effect.runtimeType.toString(),
+    try {
+      await tester.pumpWidget(
+        _testApp(
+          Row(
+            children: [
+              Expanded(
+                child: _DisposalProbe(
+                  onDisposed: () => productionShellDisposals += 1,
+                  child: ClientShell(
+                    binding: composition.binding,
+                    renderer: composition.renderer,
                   ),
-                  onAgentsReset: () => alternateAgentsResets += 1,
-                  onDisposed: () {},
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: _DisposalProbe(
+                  onDisposed: () => alternateShellDisposals += 1,
+                  child: ReplacementShell(
+                    binding: composition.binding,
+                    conversation: composition.conversation,
+                    onEffect: (effect) => replacementHandledEffects.add(
+                      effect.runtimeType.toString(),
+                    ),
+                    onAgentsReset: () => alternateAgentsResets += 1,
+                    onDisposed: () {},
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
 
-    final conversationId =
-        composition.conversation.composer.current.conversationId;
-    composition.conversation.intents.send(
-      UpdateConversationDraft(conversationId, 'replacement-proof'),
-    );
-    composition.binding.intents.send(
-      const SelectShellDestination(ClientSection.agents),
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('replacement-nav-settings')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('replacement-nav-agents')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
+      final conversationId =
+          composition.conversation.composer.current.conversationId;
+      composition.conversation.intents.send(
+        UpdateConversationDraft(conversationId, 'replacement-proof'),
+      );
+      composition.binding.intents.send(
+        const SelectShellDestination(ClientSection.agents),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('replacement-nav-settings')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('replacement-nav-agents')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
 
-    composition.settings.intents.send(const SetLayoutPreference('desktop'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
-    expect(find.byKey(const Key('replacement-layout-desktop')), findsOne);
-    composition.settings.intents.send(const SetLayoutPreference('dashboard'));
-    composition.settings.intents.send(
-      const SetAppearancePreference('lico-soda'),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
+      composition.settings.intents.send(const SetLayoutPreference('desktop'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.byKey(const Key('replacement-layout-desktop')), findsOne);
+      composition.settings.intents.send(const SetLayoutPreference('dashboard'));
+      composition.settings.intents.send(
+        const SetAppearancePreference('lico-soda'),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
 
-    final outcome = _capture(composition, emittedEffects);
-    expect(outcome.navigation, 'agents');
-    expect(outcome.layout, startsWith('dashboard:'));
-    expect(outcome.environment, '590.0:760.0');
-    expect(outcome.conversation, '$conversationId:replacement-proof');
-    expect(outcome.status, isNotEmpty);
-    expect(outcome.appearance, 'lico-soda');
-    expect(outcome.locale, LocalePreference.english);
-    expect(replacementHandledEffects, emittedEffects);
-    expect(emittedEffects, ['ShellDestinationReselected']);
-    expect(navigationChanges, ['settings', 'agents']);
-    expect(alternateAgentsResets, 1);
-    expect(find.byKey(const Key('replacement-destination')), findsOneWidget);
-    expect(find.byKey(const Key('replacement-conversation')), findsOneWidget);
-    expect(find.byType(ClientShell), findsOneWidget);
-    expect(
-      find.byKey(const Key('replacement-layout-dashboard')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('replacement-appearance-lico-soda')),
-      findsOneWidget,
-    );
+      final outcome = _capture(composition, emittedEffects);
+      expect(outcome.navigation, 'agents');
+      expect(outcome.layout, startsWith('dashboard:'));
+      expect(outcome.environment, '590.0:760.0');
+      expect(outcome.conversation, '$conversationId:replacement-proof');
+      expect(outcome.status, isNotEmpty);
+      expect(outcome.appearance, 'lico-soda');
+      expect(outcome.locale, LocalePreference.english);
+      expect(replacementHandledEffects, emittedEffects);
+      expect(emittedEffects, ['ShellDestinationReselected']);
+      expect(navigationChanges, ['settings', 'agents']);
+      expect(alternateAgentsResets, 1);
+      expect(find.byKey(const Key('replacement-destination')), findsOneWidget);
+      expect(find.byKey(const Key('replacement-conversation')), findsOneWidget);
+      expect(find.byType(ClientShell), findsOneWidget);
+      expect(
+        find.byKey(const Key('replacement-layout-dashboard')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('replacement-appearance-lico-soda')),
+        findsOneWidget,
+      );
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      // Closing the owned graph drains real persistence I/O before the
+      // widget binding checks for pending periodic work.
+      await tester.runAsync(composition.dispose);
+    }
   });
 }
 

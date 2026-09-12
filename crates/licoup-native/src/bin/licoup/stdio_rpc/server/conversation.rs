@@ -1202,7 +1202,7 @@ impl PersistentConversationRuntime {
                 return;
             }
         }
-        let Some(params) = licoup_native::domain::subagent_mcp::subagent_callback_plan(
+        let Some(params) = licoup_native::domain::subagents::subagent_callback_plan(
             &self.inner.store,
             claim,
             state,
@@ -2548,7 +2548,7 @@ mod tests {
             .into_iter()
             .filter(|event| {
                 event.causation_id.as_deref()
-                    == Some(licoup_native::domain::subagent_mcp::CALLBACK_CAUSATION_ID)
+                    == Some(licoup_native::domain::subagents::CALLBACK_CAUSATION_ID)
             })
             .collect()
     }

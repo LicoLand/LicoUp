@@ -20,10 +20,9 @@ pub fn catalog(params: &Value) -> Result<Value> {
     let members = agent_catalog::supported_membership(agent_catalog::extra_ids_from_params(params));
     let requested = requested_agent_id(params, &members)?;
     let ownerships = ownership::load(&store)?;
-    // A full refresh asks for every card's live state in one command. The
-    // desktop transport runs native requests through one serialized queue, so
-    // resolving N cards costs far more as N round trips than as one command that
-    // resolves N cards; the per-card work itself is unchanged.
+    // A full live lookup remains available to native callers. The desktop
+    // schedules per-Agent catalog reads independently and publishes each card
+    // as it arrives.
     let live_members = params.get("liveLookup").and_then(Value::as_bool) == Some(true);
     // A supplied snapshot already carries the facts; nothing is inspected on top
     // of it, batched or otherwise.

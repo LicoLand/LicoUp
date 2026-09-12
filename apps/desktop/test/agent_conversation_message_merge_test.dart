@@ -29,14 +29,20 @@ void main() {
           },
         });
 
-    var accumulated = page(203, 253, 253);
-    accumulated = accumulated.mergeExactMessagePage(page(153, 203, 253));
-    accumulated = accumulated.mergeExactMessagePage(page(53, 153, 253));
-    accumulated = accumulated.mergeExactMessagePage(page(0, 53, 253));
+    var accumulated = page(233, 253, 253);
+    for (var end = 233; end > 0; end -= 20) {
+      accumulated = accumulated.mergeExactMessagePage(
+        page((end - 20).clamp(0, end), end, 253),
+      );
+    }
 
     expect(accumulated.messages, hasLength(253));
     expect(accumulated.messages.first.id, 'message-0');
     expect(accumulated.messages.last.id, 'message-252');
+    expect(
+      accumulated.messages.map((message) => message.id).toSet(),
+      hasLength(253),
+    );
     expect(accumulated.messagePage.hasEarlier, isFalse);
     expect(accumulated.messagePage.start, 0);
   });
@@ -379,6 +385,7 @@ void main() {
   test(
     'merge cache returns the same list instance when identity is unchanged',
     () {
+      final cache = ConversationMessageMergeCache();
       final persisted = [
         _message('native-user', 'user', 'hello'),
         _message('native-assistant', 'assistant', 'world'),
@@ -388,8 +395,8 @@ void main() {
         _message('live-assistant', 'assistant', 'world'),
       ];
 
-      final first = mergeConversationReadbackAndLiveMessages(persisted, live);
-      final second = mergeConversationReadbackAndLiveMessages(
+      final first = cache.merge(persisted, live);
+      final second = cache.merge(
         List<AgentConversationMessage>.of(persisted),
         List<AgentConversationMessage>.of(live),
       );
@@ -400,10 +407,7 @@ void main() {
         live[0],
         _message('live-assistant', 'assistant', 'world!'),
       ];
-      final rematched = mergeConversationReadbackAndLiveMessages(
-        persisted,
-        grownLive,
-      );
+      final rematched = cache.merge(persisted, grownLive);
       expect(identical(rematched, first), isFalse);
       expect(rematched.map((message) => message.id), [
         'native-user',
@@ -411,6 +415,29 @@ void main() {
         'live-user',
         'live-assistant',
       ]);
+    },
+  );
+
+  test(
+    'merge cache refreshes native child content without a parent text change',
+    () {
+      final cache = ConversationMessageMergeCache();
+      AgentConversationMessage task(String childText) =>
+          AgentConversationMessage(
+            id: 'native-child-task',
+            role: 'subagent',
+            text: 'Worker',
+            createdAt: '2026-07-23T00:00:00Z',
+            childMessages: [
+              _message('native-child-reply', 'assistant', childText),
+            ],
+          );
+      final first = cache.merge([task('Partial result')], const []);
+      final next = cache.merge([task('Complete result')], const []);
+
+      expect(first.single.childMessages.single.text, 'Partial result');
+      expect(next.single.childMessages.single.text, 'Complete result');
+      expect(identical(first, next), isFalse);
     },
   );
 }

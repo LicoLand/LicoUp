@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_section_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -33,14 +34,17 @@ final class LayoutProfileSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<SettingsProjection, SettingsProjection>(
+    return ProjectionBuilder<SettingsProjection, LayoutSettingsSelection>(
       source: binding.projection,
-      select: _settingsIdentity,
+      select: LayoutSettingsSelection.from,
       builder: _buildProjection,
     );
   }
 
-  Widget _buildProjection(BuildContext context, SettingsProjection settings) {
+  Widget _buildProjection(
+    BuildContext context,
+    LayoutSettingsSelection settings,
+  ) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
     final choices = {
@@ -48,7 +52,11 @@ final class LayoutProfileSelector extends StatelessWidget {
     };
     final profiles = registry.definitions.values
         .map((definition) => definition.profile)
-        .where((profile) => choices.containsKey(profile.id.value))
+        .where(
+          (profile) =>
+              choices.containsKey(profile.id.value) &&
+              registry.definition(profile.id).bundles.containsKey(surface),
+        )
         .toList(growable: false);
     final committing = settings.layoutPhase == PresentationPhase.applying;
     final loading = settings.layoutPhase == PresentationPhase.loading;
@@ -82,76 +90,79 @@ final class LayoutProfileSelector extends StatelessWidget {
                   progress: false,
                   color: colors.error,
                 ),
-              FocusTraversalGroup(
-                policy: OrderedTraversalPolicy(),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    const gap = LicoContentSpacing.item;
-                    final gridPadding = presentation.selectorGridPadding
-                        .resolve(Directionality.of(context));
-                    final available =
-                        constraints.maxWidth - gridPadding.horizontal;
-                    final columnCount = _layoutColumnCapacity(
-                      available,
-                    ).clamp(1, profiles.length).toInt();
-                    final itemWidth =
-                        (available - gap * (columnCount - 1)) / columnCount;
-                    Widget optionAt(int index) => SizedBox(
-                      width: itemWidth,
-                      child: FocusTraversalOrder(
-                        order: NumericFocusOrder(index.toDouble()),
-                        child: _LayoutProfileOption(
-                          profile: profiles[index],
-                          preview: registry
-                              .definition(profiles[index].id)
-                              .bundles[surface]!
-                              .previewBuilder(context),
-                          label: profiles[index].label.resolve(
-                            strings.locale.languageCode,
+              if (profiles.isNotEmpty)
+                FocusTraversalGroup(
+                  policy: OrderedTraversalPolicy(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      const gap = LicoContentSpacing.item;
+                      final gridPadding = presentation.selectorGridPadding
+                          .resolve(Directionality.of(context));
+                      final available =
+                          constraints.maxWidth - gridPadding.horizontal;
+                      final columnCount = _layoutColumnCapacity(
+                        available,
+                      ).clamp(1, profiles.length).toInt();
+                      final itemWidth =
+                          (available - gap * (columnCount - 1)) / columnCount;
+                      Widget optionAt(int index) => SizedBox(
+                        width: itemWidth,
+                        child: FocusTraversalOrder(
+                          order: NumericFocusOrder(index.toDouble()),
+                          child: _LayoutProfileOption(
+                            profile: profiles[index],
+                            preview: registry
+                                .definition(profiles[index].id)
+                                .bundles[surface]!
+                                .previewBuilder(context),
+                            label: profiles[index].label.resolve(
+                              strings.locale.languageCode,
+                            ),
+                            currentLabel: strings.currentLayout,
+                            selected:
+                                choices[profiles[index].id.value]!.selected,
+                            committed:
+                                choices[profiles[index].id.value]!.selected,
+                            // Enabled state comes from the layout manager's
+                            // per-profile selection choices (both built-in
+                            // desktop layouts are selectable).
+                            enabled:
+                                !committing &&
+                                choices[profiles[index].id.value]!.enabled,
+                            reducedMotion: reducedMotion,
+                            onPressed: () {
+                              binding.intents.send(
+                                SetLayoutPreference(profiles[index].id.value),
+                              );
+                            },
                           ),
-                          currentLabel: strings.currentLayout,
-                          selected: choices[profiles[index].id.value]!.selected,
-                          committed:
-                              choices[profiles[index].id.value]!.selected,
-                          // Enabled state comes from the layout manager's
-                          // per-profile selection choices (both built-in
-                          // desktop layouts are selectable).
-                          enabled:
-                              !committing &&
-                              choices[profiles[index].id.value]!.enabled,
-                          reducedMotion: reducedMotion,
-                          onPressed: () {
-                            binding.intents.send(
-                              SetLayoutPreference(profiles[index].id.value),
-                            );
-                          },
                         ),
-                      ),
-                    );
-                    final options = profiles.length <= _eagerProfileOptionLimit
-                        ? Wrap(
-                            spacing: gap,
-                            runSpacing: gap,
-                            children: [
-                              for (
-                                var index = 0;
-                                index < profiles.length;
-                                index++
-                              )
-                                optionAt(index),
-                            ],
-                          )
-                        : _VirtualizedLayoutProfileGrid(
-                            itemCount: profiles.length,
-                            columnCount: columnCount,
-                            itemWidth: itemWidth,
-                            gap: gap,
-                            itemBuilder: optionAt,
-                          );
-                    return Padding(padding: gridPadding, child: options);
-                  },
+                      );
+                      final options =
+                          profiles.length <= _eagerProfileOptionLimit
+                          ? Wrap(
+                              spacing: gap,
+                              runSpacing: gap,
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < profiles.length;
+                                  index++
+                                )
+                                  optionAt(index),
+                              ],
+                            )
+                          : _VirtualizedLayoutProfileGrid(
+                              itemCount: profiles.length,
+                              columnCount: columnCount,
+                              itemWidth: itemWidth,
+                              gap: gap,
+                              itemBuilder: optionAt,
+                            );
+                      return Padding(padding: gridPadding, child: options);
+                    },
+                  ),
                 ),
-              ),
               const SizedBox(height: LicoContentSpacing.item),
               if (committing)
                 _LayoutSelectorStatus(
@@ -167,8 +178,6 @@ final class LayoutProfileSelector extends StatelessWidget {
     );
   }
 }
-
-SettingsProjection _settingsIdentity(SettingsProjection value) => value;
 
 String _layoutErrorLabel(
   LicoStrings strings,
@@ -211,7 +220,7 @@ final class _VirtualizedLayoutProfileGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final rowCount = (itemCount / columnCount).ceil();
     final visibleRows = rowCount.clamp(1, _virtualizedVisibleRows).toInt();
-    final itemHeight = itemWidth * (10 / 16) + 50;
+    final itemHeight = itemWidth * (10 / 16) + 52;
     final height = visibleRows * itemHeight + (visibleRows - 1) * gap;
     return SizedBox(
       height: height,
@@ -286,7 +295,7 @@ final class _LayoutProfileOption extends StatelessWidget {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               color: selected ? colors.surface : colors.surfaceLow,
-              border: Border.all(color: borderColor, width: selected ? 2 : 1),
+              border: Border.all(color: borderColor, width: 1),
               borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             clipBehavior: Clip.antiAlias,
@@ -312,9 +321,9 @@ final class _LayoutProfileOption extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: AspectRatio(
-                            aspectRatio: 16 / 8,
+                            aspectRatio: 16 / 10,
                             child: FittedBox(
-                              fit: BoxFit.cover,
+                              fit: BoxFit.contain,
                               alignment: Alignment.topCenter,
                               child: SizedBox(
                                 width: 320,

@@ -50,7 +50,7 @@ final class JourneySession {
   Future<void> start() async {
     controller = ClientController(
       agentService: FakeAgentService(),
-      conversationCommandRunner: bridge,
+      conversationNativePort: bridge,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     conversation = ConversationFeatureComposition(controller);
