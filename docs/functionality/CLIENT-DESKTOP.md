@@ -27,8 +27,11 @@ Built-in capabilities are limited to:
 5. the six product scenarios defined below.
 
 Capabilities outside this scope are not built into the client, registered as
-commands, or shown in navigation. The default UI modules are **Agents**, **Token
-Usage**, **Skill Hub**, **Mobile Relay**, and **Settings**.
+commands, or shown in navigation. The default UI destinations are **Conversations**, **Agent Center**, **Statistics**,
+**Model Gateway**, **Mobile Pairing**, and **Settings**. Agent detail retains
+Plugin and Skill management. Mobile Pairing includes Chat Channels.
+[Design system](DESIGN-SYSTEM.md) owns navigation presentation, theme styles,
+fonts, motion, component styling and independent loading behavior.
 
 ## Mandatory External-Transfer Contract
 
@@ -55,7 +58,7 @@ requires a separate direct approval for each file.
 | --- | --- |
 | Flutter contracts | Defines ports, values, and cross-layer messages without depending on application, frontend, backend, or platform implementations. |
 | Flutter application | Owns use cases and narrow controllers; one feature must not reach another feature's storage or UI implementation. |
-| Flutter frontend | Consumes application/contracts only and contains no native process, filesystem, network, or protocol implementation. |
+| Flutter frontend | Consumes named presentation Bindings and contracts, and contains no application, backend, native process, filesystem, network, or protocol implementation. |
 | Flutter platform/backend | Implements narrow contracts and returns bounded business projections rather than raw process output. |
 | Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |

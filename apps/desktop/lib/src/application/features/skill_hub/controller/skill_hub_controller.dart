@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
@@ -41,6 +43,9 @@ class SkillHubController extends ApplicationStateOwner {
   final DateTime Function() _now;
 
   DateTime? _lastRefreshedAt;
+  List<Map<String, dynamic>> _localSkills = const [];
+  final Map<String, List<Map<String, dynamic>>> _agentSkills = {};
+  final Map<String, List<Map<String, dynamic>>> _agentPairings = {};
 
   List<Map<String, dynamic>> pairings = const [];
   List<Map<String, dynamic>> skills = const [];
@@ -66,6 +71,12 @@ class SkillHubController extends ApplicationStateOwner {
         .where((skill) => (skill['path'] ?? '').toString() != normalizedPath)
         .toList(growable: false);
     if (remaining.length == skills.length) return;
+    bool retained(Map<String, dynamic> skill) =>
+        (skill['path'] ?? '').toString() != normalizedPath;
+    _localSkills = _localSkills.where(retained).toList(growable: false);
+    _agentSkills.updateAll(
+      (_, values) => values.where(retained).toList(growable: false),
+    );
     skills = List.unmodifiable(remaining);
     publishChange();
   }
@@ -112,43 +123,84 @@ class SkillHubController extends ApplicationStateOwner {
         final ids = detected
             .map((target) => target.target)
             .toList(growable: false);
-        final catalog = SkillHubSkillCatalogBuilder(detectedAgentIds: ids);
-
-        final localSkillsFuture = _localCatalogSource.scan(
-          detectedAgentIds: ids,
-        );
-        final pairingFutures = [
-          for (final target in detected)
-            _listPairingsIsolated(target.target, selectedAgent),
-        ];
-        final skillFutures = [
-          for (final target in detected)
-            _listSkillsIsolated(target.target, selectedAgent),
-        ];
-        final localSkills = await localSkillsFuture;
-        for (final skill in localSkills) {
-          catalog.addOrMergeSkill(skill, isPublic: skill['isPublic'] == true);
+        _agentSkills.removeWhere((id, _) => !ids.contains(id));
+        _agentPairings.removeWhere((id, _) => !ids.contains(id));
+        final settled = Completer<void>();
+        var pending = 1 + detected.length * 2;
+        var selectedFailed = false;
+        Object? localFailure;
+        void completeSource() {
+          pending--;
+          if (pending == 0) settled.complete();
         }
-        final pairingResults = await Future.wait(pairingFutures);
-        final skillResults = await Future.wait(skillFutures);
-        if (pairingResults.any((result) => result.selectedFailed) ||
-            skillResults.any((result) => result.selectedFailed)) {
+
+        void publishSkills() {
+          final catalog = SkillHubSkillCatalogBuilder(detectedAgentIds: ids);
+          // Source order stays deterministic even when completion order changes.
+          for (final skill in _localSkills) {
+            catalog.addOrMergeSkill(skill, isPublic: skill['isPublic'] == true);
+          }
+          for (final id in ids) {
+            for (final skill
+                in _agentSkills[id] ?? const <Map<String, dynamic>>[]) {
+              catalog.addOrMergeSkill(skill, agentId: id);
+            }
+          }
+          catalog.ensureAgentAttribution();
+          skills = List.unmodifiable(
+            catalog.skills.map((skill) => Map<String, dynamic>.from(skill)),
+          );
+          publishChange();
+        }
+
+        unawaited(
+          _localCatalogSource
+              .scan(detectedAgentIds: ids)
+              .then(
+                (value) {
+                  _localSkills = value;
+                  publishSkills();
+                },
+                onError: (Object error) {
+                  localFailure = error;
+                },
+              )
+              .whenComplete(completeSource),
+        );
+        for (final target in detected) {
+          final id = target.target;
+          unawaited(
+            _listPairingsIsolated(id)
+                .then((result) {
+                  selectedFailed =
+                      selectedFailed || (result.failed && id == selectedAgent);
+                  if (!result.failed) {
+                    _agentPairings[id] = result.values;
+                  }
+                  pairings = List.unmodifiable([
+                    for (final id in ids) ...?_agentPairings[id],
+                  ]);
+                  publishChange();
+                })
+                .whenComplete(completeSource),
+          );
+          unawaited(
+            _listSkillsIsolated(id)
+                .then((result) {
+                  selectedFailed =
+                      selectedFailed || (result.failed && id == selectedAgent);
+                  if (!result.failed) _agentSkills[id] = result.values;
+                  publishSkills();
+                })
+                .whenComplete(completeSource),
+          );
+        }
+        // Publication happens in each source callback, including local scan.
+        // Completion only releases the existing refresh workflow lock.
+        await settled.future;
+        if (selectedFailed || localFailure != null) {
           throw const _SelectedSkillHubAgentUnavailable();
         }
-        final allPairings = <Map<String, dynamic>>[
-          for (final result in pairingResults) ...result.values,
-        ];
-        for (var index = 0; index < skillResults.length; index += 1) {
-          final agentId = detected[index].target;
-          for (final skill in skillResults[index].values) {
-            catalog.addOrMergeSkill(skill, agentId: agentId);
-          }
-        }
-        catalog.ensureAgentAttribution();
-        pairings = List.unmodifiable(allPairings);
-        skills = List.unmodifiable(
-          catalog.skills.map((skill) => Map<String, dynamic>.from(skill)),
-        );
         actionResult = {
           'ok': true,
           'agent': selectedAgent,
@@ -174,33 +226,24 @@ class SkillHubController extends ApplicationStateOwner {
       _lastRefreshedAt != null &&
       _now().difference(_lastRefreshedAt!) < refreshFreshnessWindow;
 
-  Future<({List<Map<String, dynamic>> values, bool selectedFailed})>
-  _listPairingsIsolated(String agentId, String selectedAgent) async {
+  Future<({List<Map<String, dynamic>> values, bool failed})>
+  _listPairingsIsolated(String agentId) async {
     try {
       return (
         values: await _gateway.listPairings(agent: agentId),
-        selectedFailed: false,
+        failed: false,
       );
     } catch (_) {
-      return (
-        values: const <Map<String, dynamic>>[],
-        selectedFailed: agentId == selectedAgent,
-      );
+      return (values: const <Map<String, dynamic>>[], failed: true);
     }
   }
 
-  Future<({List<Map<String, dynamic>> values, bool selectedFailed})>
-  _listSkillsIsolated(String agentId, String selectedAgent) async {
+  Future<({List<Map<String, dynamic>> values, bool failed})>
+  _listSkillsIsolated(String agentId) async {
     try {
-      return (
-        values: await _gateway.listSkills(agent: agentId),
-        selectedFailed: false,
-      );
+      return (values: await _gateway.listSkills(agent: agentId), failed: false);
     } catch (_) {
-      return (
-        values: const <Map<String, dynamic>>[],
-        selectedFailed: agentId == selectedAgent,
-      );
+      return (values: const <Map<String, dynamic>>[], failed: true);
     }
   }
 

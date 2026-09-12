@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
@@ -11,25 +12,29 @@ import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 class SettingsLogExportTile extends StatelessWidget {
-  const SettingsLogExportTile({
-    super.key,
-    required this.binding,
-    required this.projection,
-  });
+  const SettingsLogExportTile({super.key, required this.binding});
 
   final SettingsBinding binding;
-  final SettingsProjection projection;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ProjectionBuilder<SettingsProjection, ({String path, bool busy})>(
+        source: binding.projection,
+        select: (projection) => (
+          path: projection.clientLogExportPath,
+          busy: projection.exportingClientLogs,
+        ),
+        builder: (context, projection) =>
+            _buildTile(context, projection.path, projection.busy),
+      );
+
+  Widget _buildTile(BuildContext context, String exportPath, bool busy) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final exportedPath = projection.clientLogExportPath.trim();
+    final exportedPath = exportPath.trim();
     final exportButton = FilledButton.tonalIcon(
-      onPressed: projection.exportingClientLogs
-          ? null
-          : () => unawaited(_chooseAndExport(context)),
-      icon: projection.exportingClientLogs
+      onPressed: busy ? null : () => unawaited(_chooseAndExport(context)),
+      icon: busy
           ? const SizedBox(
               width: 16,
               height: 16,

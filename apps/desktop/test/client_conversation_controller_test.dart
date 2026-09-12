@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 
 void main() {
@@ -12,7 +12,7 @@ void main() {
     'posts one Event and dispatches with conversation and event identity only',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       expect(controller.groupConversations.map((item) => item.id), [
@@ -48,7 +48,7 @@ void main() {
     'plain text posts without mentions and never resolves them client-side',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -70,7 +70,7 @@ void main() {
     'creates a group from one person and one Agent in one native action',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.createGroup(
         title: 'Review room',
@@ -102,7 +102,7 @@ void main() {
     'selection binds immediately and reuses the loaded conversation snapshot',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -141,7 +141,7 @@ void main() {
     'controller lifecycle performs no default-group membership writes',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       expect(controller.groupConversations, isNotEmpty);
@@ -173,7 +173,7 @@ void main() {
     'an explicit roster mention adds a newly discovered Agent once',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -219,7 +219,7 @@ void main() {
     () async {
       final gate = Completer<void>();
       final runner = _ConversationRunner(gate: gate);
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       var notifications = 0;
       controller.changes.listen((_) => notifications += 1);
 
@@ -245,7 +245,7 @@ void main() {
     'writes the canonical conversation pin state and refreshes the list',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       expect(controller.groupConversations.single.pinned, isTrue);
@@ -266,7 +266,7 @@ void main() {
     'archives the requested canonical conversation without reselection',
     () async {
       final runner = _ConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       expect(
@@ -288,7 +288,7 @@ void main() {
     'lists archived conversations and restores one canonical item',
     () async {
       final runner = _ConversationRunner(groupArchived: true);
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
 
       await controller.initialize();
       expect(controller.groupConversations, isEmpty);
@@ -312,7 +312,7 @@ void main() {
 
   test('surfaces an explicit group-operation failure on the banner fields', () {
     final controller = ClientConversationController(
-      runner: _ConversationRunner(),
+      native: _ConversationRunner(),
     );
     controller.surfaceFailure(
       'strategy/start',
@@ -339,7 +339,7 @@ void main() {
     'keeps the structured resolution for a persisted usage-limit failure',
     () {
       final controller = ClientConversationController(
-        runner: _ConversationRunner(),
+        native: _ConversationRunner(),
       );
       controller.surfaceFailure(
         'turn/completed',
@@ -371,7 +371,7 @@ void main() {
 
   test('records a copyable failure ref when post transport fails', () async {
     final runner = _ConversationRunner()..failPostCode = 'transport_failed';
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
 
@@ -403,7 +403,7 @@ void main() {
           },
         ]
         ..dispatchPending = true;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
@@ -428,7 +428,7 @@ void main() {
     () async {
       final runner = _ConversationRunner()
         ..failDispatchCode = 'transport_failed';
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
@@ -460,7 +460,7 @@ void main() {
     'does not synthesize a code for an untyped dispatch exception',
     () async {
       final runner = _ConversationRunner()..throwUntypedDispatch = true;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
@@ -473,7 +473,7 @@ void main() {
 
   test('classifies a malformed post result as an invalid response', () async {
     final runner = _ConversationRunner()..malformedPost = true;
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
 
@@ -488,7 +488,7 @@ void main() {
       final runner = _ConversationRunner()
         ..strategyRevision = 'rev-auth'
         ..dispatchPending = true;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
@@ -509,7 +509,7 @@ void main() {
         },
       ]
       ..dispatchPending = true;
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
     expect(await controller.postMessage('hello @Codex'), isTrue);
@@ -521,7 +521,7 @@ void main() {
 
   test('posted user message is loaded before dispatch starts', () async {
     final runner = _ConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
     runner.requests.clear();
@@ -547,7 +547,7 @@ void main() {
     'failed message retry reposts its content then deletes the settled attempt',
     () async {
       final runner = _ConversationRunner()..includeFailedTurn = true;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
@@ -581,7 +581,7 @@ void main() {
 
   test('clears group history through the canonical store action', () async {
     final runner = _ConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
 
@@ -616,7 +616,7 @@ void main() {
         },
       ]
       ..dispatchPending = true;
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
     expect(await controller.postMessage('hello @Codex'), isTrue);
@@ -633,7 +633,7 @@ void main() {
 
   test('deletes a local message through the canonical store action', () async {
     final runner = _ConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
 
@@ -651,7 +651,7 @@ void main() {
   });
 }
 
-final class _ConversationRunner implements AgentCommandRunner {
+final class _ConversationRunner implements ClientConversationNativePort {
   _ConversationRunner({this.groupArchived = false, this.gate});
   final List<Map<String, dynamic>> requests = [];
   bool groupPinned = true;
@@ -672,13 +672,11 @@ final class _ConversationRunner implements AgentCommandRunner {
   List<Map<String, dynamic>> postTurns = const [];
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
     await gate?.future;
-    expect(args, ['conversation', 'execute', '--stdin-json', 'true']);
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = request['action'];
     if (action == 'conversation.pin.set') {
@@ -800,20 +798,6 @@ final class _ConversationRunner implements AgentCommandRunner {
       ),
     _summary(id: 'conversation:direct', members: 2),
   ];
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _summary({

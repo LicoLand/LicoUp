@@ -515,7 +515,10 @@ fn cursor_adapter_folds_subagent_composers_into_parent_session_cards() {
     assert_eq!(card["cardType"], "subagent");
     assert_eq!(card["cardTitle"], "Explore the cursor parser");
     assert_eq!(card["collapsed"], true);
-    let child_messages = card["messages"].as_array().unwrap();
+    assert!(card["messages"].as_array().unwrap().is_empty());
+    assert_eq!(card["childMessageCount"], 2);
+    let child = conversation_list(&json!({"agent": "cursor", "root": display_path(&dir), "sessionId": card["childSessionId"]})).unwrap();
+    let child_messages = child["sessions"][0]["messages"].as_array().unwrap();
     assert_eq!(child_messages.len(), 2);
     assert_eq!(child_messages[0]["role"], "user");
     assert_eq!(child_messages[0]["text"], "Map the cursor history parser.");

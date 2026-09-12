@@ -70,6 +70,27 @@ targets are reported but are not deleted automatically. After an abnormal test
 exit, a structurally valid dead lease remains protected for a grace period and
 only then becomes reclaimable; malformed or tampered records always fail closed.
 
+## Format before final verification
+
+Once all writers have finished, run the affected formatters before the final
+regression. This is a required preparation step, including for Agent-assisted
+work. Review the formatting diff, then run the selected checks.
+
+```bash
+npm run client:format              # Flutter and Rust changes together
+npm run client:format:flutter      # Flutter changes only
+npm run client:format:rust         # Rust changes only
+```
+
+The shared entry reuses `dart format` for the same `lib` and `test` roots as
+the Flutter format check, and `cargo fmt --all` for the Rust workspace. It adds
+no formatter dependency. Use only the relevant entry; documentation and Node-only
+changes do not require these toolchains. Do not format while another writer is
+still editing. If later repairs change source, format those affected sources
+again before verification. CI and regression lanes remain check-only: they
+report formatting omissions rather than silently changing the source being
+verified. Formatting does not stage files or create a commit.
+
 ## Local client verification
 
 After a client fix or behavior change, including a bundled Agent prompt or

@@ -1,100 +1,12 @@
 import 'dart:convert';
 
 import 'agent_conversation_message.dart';
+import 'agent_conversation_message_page.dart';
 import 'agent_conversation_message_parser.dart';
 import 'agent_conversation_privacy_projection.dart';
 import 'agent_conversation_semantic.dart';
 
-final class AgentConversationMessagePage {
-  const AgentConversationMessagePage({
-    required this.start,
-    required this.endExclusive,
-    required this.returned,
-    required this.total,
-    required this.hasEarlier,
-    required this.nextBefore,
-  });
-
-  const AgentConversationMessagePage.empty()
-    : start = 0,
-      endExclusive = 0,
-      returned = 0,
-      total = 0,
-      hasEarlier = false,
-      nextBefore = '';
-
-  final int start;
-  final int endExclusive;
-  final int returned;
-  final int total;
-  final bool hasEarlier;
-  final String nextBefore;
-
-  factory AgentConversationMessagePage.fromJson(
-    Object? raw, {
-    required int messageCount,
-    required int sourceMessageCount,
-    required String firstMessageId,
-  }) {
-    if (raw == null) {
-      final total = sourceMessageCount < messageCount
-          ? messageCount
-          : sourceMessageCount;
-      final start = total - messageCount;
-      return AgentConversationMessagePage(
-        start: start,
-        endExclusive: total,
-        returned: messageCount,
-        total: total,
-        hasEarlier: start > 0,
-        nextBefore: start > 0 ? firstMessageId : '',
-      );
-    }
-    if (raw is! Map) {
-      throw const FormatException('native_history_message_page_invalid');
-    }
-    final page = Map<String, dynamic>.from(raw);
-    int integer(String key) => switch (page[key]) {
-      final int value => value,
-      final num value => value.toInt(),
-      _ => -1,
-    };
-    final start = integer('start');
-    final endExclusive = integer('endExclusive');
-    final returned = integer('returned');
-    final total = integer('total');
-    final hasEarlier = page['hasEarlier'];
-    final nextBefore = (page['nextBefore'] ?? '').toString().trim();
-    if (start < 0 ||
-        endExclusive < start ||
-        returned < 0 ||
-        total < endExclusive ||
-        returned != messageCount ||
-        endExclusive - start != returned ||
-        hasEarlier is! bool ||
-        (hasEarlier && (start == 0 || nextBefore.isEmpty)) ||
-        (!hasEarlier && start != 0)) {
-      throw const FormatException('native_history_message_page_invalid');
-    }
-    return AgentConversationMessagePage(
-      start: start,
-      endExclusive: endExclusive,
-      returned: returned,
-      total: total,
-      hasEarlier: hasEarlier,
-      nextBefore: hasEarlier ? nextBefore : '',
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'start': start,
-    'endExclusive': endExclusive,
-    'returned': returned,
-    'total': total,
-    'hasEarlier': hasEarlier,
-    if (nextBefore.isNotEmpty) 'nextBefore': nextBefore,
-  };
-}
+export 'agent_conversation_message_page.dart';
 
 class AgentConversationSession {
   const AgentConversationSession({
@@ -110,6 +22,7 @@ class AgentConversationSession {
     this.parentSessionId = '',
     this.lineageRootId = '',
     this.sourceKind = '',
+    this.sourceRevision = '',
     this.importMode = '',
     this.sourceTool = '',
     this.sourceClient = '',
@@ -140,6 +53,7 @@ class AgentConversationSession {
   final String parentSessionId;
   final String lineageRootId;
   final String sourceKind;
+  final String sourceRevision;
   final String importMode;
   final String sourceTool;
   final String sourceClient;
@@ -213,6 +127,7 @@ class AgentConversationSession {
       parentSessionId: parentSessionId,
       lineageRootId: lineageRootId,
       sourceKind: sourceKind,
+      sourceRevision: sourceRevision,
       importMode: importMode,
       sourceTool: sourceTool,
       sourceClient: sourceClient,
@@ -248,6 +163,7 @@ class AgentConversationSession {
       parentSessionId: parentSessionId,
       lineageRootId: lineageRootId,
       sourceKind: sourceKind,
+      sourceRevision: sourceRevision,
       importMode: importMode,
       sourceTool: sourceTool,
       sourceClient: sourceClient,
@@ -356,6 +272,10 @@ class AgentConversationSession {
       messages: List<AgentConversationMessage>.unmodifiable(merged),
       messagePage: page,
       sourceMessageCount: page.total,
+      messageSourceRevision:
+          incoming.messagePage.endExclusive >= messagePage.endExclusive
+          ? incoming.sourceRevision
+          : sourceRevision,
     );
   }
 
@@ -374,6 +294,7 @@ class AgentConversationSession {
       messages: messages,
       messagePage: messagePage,
       sourceMessageCount: sourceMessageCount,
+      messageSourceRevision: sourceRevision,
     );
   }
 
@@ -382,6 +303,7 @@ class AgentConversationSession {
     required List<AgentConversationMessage> messages,
     required AgentConversationMessagePage messagePage,
     required int sourceMessageCount,
+    String? messageSourceRevision,
   }) {
     return AgentConversationSession(
       id: metadata.id,
@@ -396,6 +318,7 @@ class AgentConversationSession {
       parentSessionId: metadata.parentSessionId,
       lineageRootId: metadata.lineageRootId,
       sourceKind: metadata.sourceKind,
+      sourceRevision: messageSourceRevision ?? metadata.sourceRevision,
       importMode: metadata.importMode,
       sourceTool: metadata.sourceTool,
       sourceClient: metadata.sourceClient,
@@ -512,6 +435,7 @@ class AgentConversationSession {
       parentSessionId: (json['parentSessionId'] ?? '').toString(),
       lineageRootId: (json['lineageRootId'] ?? '').toString(),
       sourceKind: (json['sourceKind'] ?? '').toString(),
+      sourceRevision: (json['sourceRevision'] ?? '').toString(),
       importMode: (json['importMode'] ?? '').toString(),
       sourceTool: sourceTool,
       sourceClient: sourceClient,
@@ -561,6 +485,7 @@ class AgentConversationSession {
       'parentSessionId': parentSessionId,
       'lineageRootId': lineageRootId,
       'sourceKind': sourceKind,
+      if (sourceRevision.isNotEmpty) 'sourceRevision': sourceRevision,
       'importMode': importMode,
       'sourceTool': sourceTool,
       'sourceClient': sourceClient,

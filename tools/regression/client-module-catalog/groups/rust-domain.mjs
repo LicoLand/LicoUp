@@ -14,13 +14,13 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::adaptive_flywheel::"),
     }),
   defineModule({
-      id: "rust.domain.subagent-mcp",
+      id: "rust.domain.subagents",
       kind: "rust-domain",
-      summary: "Authenticated Assistant and Subagent MCP application and exact Membership delegation",
+      summary: "Native Assistant and Subagent application with exact Membership delegation",
       inputs: [
-        "crates/licoup-native/src/domain/subagent_mcp/**",
+        "crates/licoup-native/src/domain/subagents/**",
       ],
-      command: rustLayer("domain::subagent_mcp::"),
+      command: rustLayer("domain::subagents::"),
     }),
   defineModule({
       id: "rust.domain.agent-intelligence-catalog",
@@ -73,6 +73,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Canonical Conversation messaging, membership, indexed events, direct mentions, and migration",
       inputs: [
+        "crates/licoup-conversation/src/client_conversation/mod.rs",
+        "crates/licoup-conversation/src/store/mod.rs",
+        "crates/licoup-conversation/src/store/events.rs",
+        "crates/licoup-conversation/src/lib.rs",
+        "crates/licoup-native/src/domain/application_port.rs",
         "crates/licoup-native/src/domain/client_conversation/**",
       ],
       command: rustLayer("domain::client_conversation::"),

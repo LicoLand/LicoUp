@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -11,6 +12,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import 'presentation/composed_client_shell_test_helper.dart';
+import 'support/fake_conversation_transport.dart';
 
 void main() {
   testWidgets(
@@ -25,6 +27,9 @@ void main() {
 
       final controller = ClientController(
         agentService: _UiAgentService(),
+        conversationNativePort: FakeConversationTransport(
+          command: (_, _) async => {'ok': true, 'turns': [], 'result': []},
+        ).native,
         presentationPreferencesRepository: _JourneyPreferencesRepository(),
       );
       addTearDown(controller.dispose);
@@ -80,21 +85,32 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      // A 功能 row opens plugin management.
-      await tester.tap(
+      // Plugins and skills are reached through Agent detail.
+      expect(
         find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
-      );
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(controller.currentSection, ClientSection.pluginManagement);
-      expect(
-        find.byKey(const Key('dashboard-desktop-destination-pluginManagement')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
-        tester.takeException(),
-        isNull,
-        reason: 'plugins list must fit at 200% text scale',
+        find.byKey(const Key('messaging-sidebar-list-skillHub')),
+        findsNothing,
       );
+      for (final (feature, destination) in const [
+        ('modelGateway', ClientSection.models),
+        ('mobilePairing', ClientSection.mobileRelay),
+      ]) {
+        await tester.tap(find.byKey(Key('messaging-sidebar-list-$feature')));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(controller.currentSection, destination);
+        expect(
+          find.byKey(Key('dashboard-desktop-destination-${destination.name}')),
+          findsOneWidget,
+        );
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '$feature must fit at 200% text scale',
+        );
+      }
 
       // 设置 opens settings.
       await tester.tap(find.byKey(const Key('messaging-sidebar-nav-settings')));
@@ -137,10 +153,12 @@ void main() {
       expect(controller.currentSection, ClientSection.settings);
       expect(tester.takeException(), isNull);
 
-      // The whole round trip (功能 → 插件 → 设置 → 统计 → 对话 → 设置) never
-      // remounted the agents pane.
+      // The full feature/settings/conversation round trip never remounted
+      // the agents pane.
       expect(identical(agentsElementOnLand, agentsElement()), isTrue);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(controller.close);
     },
   );
 
@@ -266,6 +284,17 @@ final class _UiAgentService extends AgentService {
   _UiAgentService() : super(persistentStdioRpcEnabled: false);
 
   @override
+  Future<ClientStateGetResult> getClientState(
+    ClientStateGetRequest request,
+  ) async => ClientStateGetResult(
+    collection: request.collection,
+    document: ClientStateDocument(
+      schemaVersion: clientStateSchemaVersion,
+      collection: request.collection,
+    ),
+  );
+
+  @override
   Future<Map<String, dynamic>> runCli(List<String> args) async => const {
     'ok': true,
     'schemaVersion': 'lico.adapter-plugin-catalog.v1',
@@ -284,6 +313,10 @@ final class _JourneyPreferencesRepository
   @override
   Future<PresentationPreferencesLoadResult> load() async =>
       PresentationPreferencesLoadResult(preferences: _preferences);
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences = _preferences.copyWith(reduceMotion: enabled);
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

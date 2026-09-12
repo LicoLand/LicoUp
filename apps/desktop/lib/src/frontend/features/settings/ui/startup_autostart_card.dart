@@ -95,11 +95,6 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: LicoContentSpacing.inline / 2),
-                    Text(
-                      strings.startupAutostartHint,
-                      style: TextStyle(fontSize: 11, color: colors.textMuted),
-                    ),
                   ],
                 ),
               ),

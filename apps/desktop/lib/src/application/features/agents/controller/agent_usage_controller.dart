@@ -54,6 +54,8 @@ final class AgentUsageController extends ApplicationStateOwner {
   int historyDays = defaultAgentUsageDisplayHistoryDays;
 
   AgentUsageReport? _nativeProjection;
+  AgentUsageReport? _viewportSource;
+  int? _viewportDays;
   Timer? _pollingTimer;
   final Set<Object> _pollingOwners = <Object>{};
   final Object _defaultPollingOwner = Object();
@@ -215,6 +217,13 @@ final class AgentUsageController extends ApplicationStateOwner {
   }
 
   void _applyViewport() {
+    if (identical(_viewportSource, _nativeProjection) &&
+        _viewportDays == historyDays &&
+        report != null) {
+      return;
+    }
+    _viewportSource = _nativeProjection;
+    _viewportDays = historyDays;
     report = projectViewport(_nativeProjection, historyDays);
   }
 

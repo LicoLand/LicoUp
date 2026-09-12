@@ -47,10 +47,7 @@ void main() {
         AppearancePresetIds.licoSodaLight,
       ]),
     );
-    expect(
-      findAppearancePresetConfig(owner.presetId, owner.presets).labelFor('en'),
-      'LicoUp Dark',
-    );
+    expect(owner.presetId, AppearancePresetIds.licoSoda);
     expect(
       owner.applyCatalog(
         configs: const [],

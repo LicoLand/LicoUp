@@ -67,13 +67,13 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
   }
 });
 
-test("Subagent MCP startup integration test keeps one bounded Rust selection", () => {
+test("Independent MCP lifecycle tests use the standalone crate regression", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/tests/subagent_mcp_startup.rs",
-  ])), ["rust.bin.licoup.subagent-mcp-startup"]);
+    "crates/licoup-mcp/tests/lifecycle.rs",
+  ])), ["regression.subagent-mcp-common", "rust.core.mcp-server"]);
   const module = CLIENT_MODULE_CATALOG.find((candidate) =>
-    candidate.id === "rust.bin.licoup.subagent-mcp-startup");
-  assert.deepEqual(module.command.args.slice(-2), ["--test", "subagent_mcp_startup"]);
+    candidate.id === "rust.core.mcp-server");
+  assert.deepEqual(module.command.args, ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"]);
 });
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {

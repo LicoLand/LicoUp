@@ -64,12 +64,37 @@ fn main() -> Result<()> {
         return conversation_host::serve_host();
     }
     let args = materialize_private_stdin_json(args, io::stdin().lock())?;
-    match licoup_native::ffi::commands::execute_cli(args)? {
+    match execute_local_cli(args)? {
         licoup_native::ffi::commands::CliExecution::Usage => print_usage(),
         licoup_native::ffi::commands::CliExecution::Json(value) => print_json(&value),
         licoup_native::ffi::commands::CliExecution::Streamed => {}
     }
     Ok(())
+}
+
+/// Compose native command admission with the persistent host without Flutter.
+fn execute_local_cli(args: Vec<String>) -> Result<licoup_native::ffi::commands::CliExecution> {
+    use licoup_native::ffi::commands::{admit_cli_command, execute_cli, native_rpc};
+    if matches!(args.as_slice(), [value] if matches!(value.as_str(), "help" | "--help" | "-h")) {
+        return execute_cli(args);
+    }
+    let command = admit_cli_command(args)?;
+    if let Some((request, output)) = native_rpc::request_for_command(&command)? {
+        let stream =
+            conversation_host::connect_for_cli(command.option_flag("require-running-host"))?;
+        return native_rpc::execute_host_call(stream, request, io::stdout().lock(), output);
+    }
+    let requires_host = matches!(
+        command.path(),
+        ["subagents", "execute"] | ["conversation", "list"] | ["mcp", "start" | "reload"]
+    ) || (command.path() == ["conversation", "get"]
+        && command
+            .option_text("conversation-id")
+            .is_some_and(|value| !value.trim().is_empty()));
+    if requires_host {
+        drop(conversation_host::connect_for_cli(false)?);
+    }
+    command.execute()
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Static specular edge light for clear-glass surfaces: a thin rim of one
@@ -82,11 +83,11 @@ class GlassEdgeLightPainter extends CustomPainter {
       canvas.restore();
     }
     if (rimWidth > 0) {
-      final rim = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = rimWidth
-        ..color = rimColor;
-      canvas.drawRRect(rrect.deflate(rimWidth / 2), rim);
+      ContinuousStrokePainter(
+        borderRadius: borderRadius,
+        color: rimColor,
+        width: rimWidth,
+      ).paint(canvas, size);
     }
   }
 

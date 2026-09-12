@@ -241,8 +241,9 @@ final class CanonicalGroupBindingFixture {
             sendStateLabel: event.finalized ? 'finalized' : 'streaming',
           ),
       ],
-      hasEarlier:
-          selected != null && selected.eventCount > controller.events.length,
+      hasEarlier: controller.hasEarlierEvents,
+      earlierLoading: controller.loadingEarlierEvents,
+      earlierError: controller.earlierEventsError,
       assistantModel: assistantModel,
       assistantReasoningEffort: assistantReasoningEffort,
       failureStage: controller.failureStage,
@@ -338,6 +339,8 @@ final class CanonicalGroupBindingFixture {
     controller.recentParticipantAgentIds,
     controller.archivedConversations,
     controller.loading,
+    controller.loadingEarlierEvents,
+    controller.earlierEventsError,
     controller.sending,
     controller.failureStage,
     controller.failureCode,
@@ -992,8 +995,12 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         unawaited(_createGroup(title, members, intent));
       case StartConversationSession():
         controller.clearSelection();
-      case LoadEarlierConversationEvents():
-        unawaited(controller.reloadSelected());
+      case LoadEarlierConversationEvents(:final conversationId):
+        if (controller.selectedConversationId == conversationId) {
+          unawaited(controller.loadEarlierEvents());
+        }
+      case LoadChildConversationMessages():
+        break;
       case PostConversationMessage(:final content, :final dispatchCanonical):
         unawaited(_post(content, dispatchCanonical, intent));
       case UpdateConversationDraft(:final draft):

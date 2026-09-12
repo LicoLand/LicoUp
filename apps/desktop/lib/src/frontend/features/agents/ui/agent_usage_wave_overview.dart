@@ -196,6 +196,12 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
                   child: CustomPaint(
                     size: size,
                     painter: AgentUsageWaveChartPainter(
+                      labelStyle: Theme.of(context).textTheme.labelSmall!
+                          .copyWith(
+                            color: colors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                       timeline: widget.timeline,
                       colors: colors,
                       hoveredSnapshotIndex: _hoveredSnapshotIndex,

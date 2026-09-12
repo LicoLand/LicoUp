@@ -1,12 +1,6 @@
-/// Unified agent conversation dispatch lane (REQ-ACD-001).
-///
-/// Production callers (direct, orchestrated, mobile-relay) must use this
-/// contract instead of one-shot `agent message send` stdin forks.
-/// Implementation is owned by [AgentConversationService] once the Dart
-/// dispatch implementation node lands; this file is the architecture scaffold.
+/// Semantic agent conversation dispatch lane. Its implementation binds a
+/// native conversation port once; callers never supply command runners.
 library;
-
-import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 /// Working-directory / binary / model bind for a dispatch call.
 final class AgentDispatchBind {
@@ -170,14 +164,12 @@ final class AgentDispatchEvent {
 /// Single dispatch lane for all conversation send paths.
 abstract class AgentConversationLane {
   Future<AgentDispatchSession> openOrResume({
-    required AgentCommandRunner runner,
     required String agentId,
     String sessionId = '',
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
   Future<AgentDispatchTurnResult> send({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
@@ -185,35 +177,24 @@ abstract class AgentConversationLane {
   });
 
   Stream<AgentDispatchEvent> sendStreaming({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
-  Stream<AgentDispatchEvent> stream({
-    required AgentCommandRunner runner,
-    required String agentId,
-    required String sessionId,
-    String turnId = '',
-  });
-
   Future<AgentDispatchCancelResult> cancel({
-    required AgentCommandRunner runner,
     required String agentId,
     required String sessionId,
     String turnId = '',
   });
 
   Future<AgentDispatchCleanupResult> cleanup({
-    required AgentCommandRunner runner,
     required String agentId,
     required String sessionId,
   });
 
   Future<AgentDispatchCapabilities> capabilities({
-    required AgentCommandRunner runner,
     required String agentId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   });

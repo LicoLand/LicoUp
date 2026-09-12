@@ -19,6 +19,7 @@ final class PresentationPreferences {
     required LayoutProfileId layoutProfileId,
     required String appearancePresetId,
     required String localePreference,
+    bool reduceMotion = false,
   }) {
     final appearance = appearancePresetId.trim();
     final locale = localePreference.trim();
@@ -32,6 +33,7 @@ final class PresentationPreferences {
       layoutProfileId: layoutProfileId,
       appearancePresetId: appearance,
       localePreference: locale,
+      reduceMotion: reduceMotion,
     );
   }
 
@@ -46,6 +48,7 @@ final class PresentationPreferences {
     final rawLayout = json['layoutProfileId'];
     final rawAppearance = json['appearancePresetId'];
     final rawLocale = json['localePreference'];
+    final rawReduceMotion = json['reduceMotion'];
     return PresentationPreferences(
       layoutProfileId: rawLayout is String && rawLayout.trim().isNotEmpty
           ? LayoutProfileId.parse(resolveLegacyLayoutProfileId(rawLayout))
@@ -57,6 +60,7 @@ final class PresentationPreferences {
       localePreference: rawLocale is String && rawLocale.trim().isNotEmpty
           ? rawLocale
           : fallback.localePreference,
+      reduceMotion: rawReduceMotion is bool ? rawReduceMotion : false,
     );
   }
 
@@ -64,6 +68,7 @@ final class PresentationPreferences {
     required this.layoutProfileId,
     required this.appearancePresetId,
     required this.localePreference,
+    required this.reduceMotion,
   });
 
   static const schemaVersion = 1;
@@ -93,16 +98,19 @@ final class PresentationPreferences {
   final LayoutProfileId layoutProfileId;
   final String appearancePresetId;
   final String localePreference;
+  final bool reduceMotion;
 
   PresentationPreferences copyWith({
     LayoutProfileId? layoutProfileId,
     String? appearancePresetId,
     String? localePreference,
+    bool? reduceMotion,
   }) {
     return PresentationPreferences(
       layoutProfileId: layoutProfileId ?? this.layoutProfileId,
       appearancePresetId: appearancePresetId ?? this.appearancePresetId,
       localePreference: localePreference ?? this.localePreference,
+      reduceMotion: reduceMotion ?? this.reduceMotion,
     );
   }
 
@@ -111,6 +119,7 @@ final class PresentationPreferences {
     'layoutProfileId': layoutProfileId.value,
     'appearancePresetId': appearancePresetId,
     'localePreference': localePreference,
+    'reduceMotion': reduceMotion,
   };
 
   @override
@@ -119,11 +128,16 @@ final class PresentationPreferences {
       other is PresentationPreferences &&
           other.layoutProfileId == layoutProfileId &&
           other.appearancePresetId == appearancePresetId &&
-          other.localePreference == localePreference;
+          other.localePreference == localePreference &&
+          other.reduceMotion == reduceMotion;
 
   @override
-  int get hashCode =>
-      Object.hash(layoutProfileId, appearancePresetId, localePreference);
+  int get hashCode => Object.hash(
+    layoutProfileId,
+    appearancePresetId,
+    localePreference,
+    reduceMotion,
+  );
 }
 
 final class PresentationPreferencesLoadResult {
@@ -146,4 +160,6 @@ abstract interface class PresentationPreferencesRepository {
   Future<PresentationPreferences> setAppearancePreset(String id);
 
   Future<PresentationPreferences> setLocalePreference(String preference);
+
+  Future<PresentationPreferences> setReduceMotion(bool enabled);
 }

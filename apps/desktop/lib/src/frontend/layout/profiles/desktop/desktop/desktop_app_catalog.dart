@@ -17,18 +17,15 @@ enum DesktopAppId {
   modelsChatChannels,
 }
 
-/// The seven floating feature apps in frozen catalog order.
+/// The visible floating feature apps in frozen catalog order.
 const List<DesktopAppId> desktopFloatingApps = <DesktopAppId>[
   DesktopAppId.agentHub,
-  DesktopAppId.skillHub,
-  DesktopAppId.pluginManagement,
   DesktopAppId.monitoring,
   DesktopAppId.modelsGateway,
   DesktopAppId.mobileRelay,
-  DesktopAppId.modelsChatChannels,
 ];
 
-/// The Launchpad built-in catalog: the seven feature apps plus 对话.
+/// The Launchpad built-in catalog: the visible feature apps plus 对话.
 const List<DesktopAppId> desktopLaunchpadBuiltinApps = <DesktopAppId>[
   ...desktopFloatingApps,
   DesktopAppId.conversation,
@@ -79,7 +76,7 @@ String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
 };
 
 DesktopAppId? desktopAppByName(String name) {
-  for (final app in DesktopAppId.values) {
+  for (final app in desktopLaunchpadBuiltinApps) {
     if (app.name == name) return app;
   }
   return null;

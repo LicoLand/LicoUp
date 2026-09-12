@@ -185,7 +185,7 @@ void main() {
 
     // The feature group leads; conversation hits follow.
     expect(find.text('功能'), findsOneWidget);
-    expect(find.text('技能中心'), findsOneWidget);
+    expect(find.text('智能体中心'), findsOneWidget);
     expect(find.text('Skill cleanup'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('功能')).dy,
@@ -196,7 +196,7 @@ void main() {
     await tester.pump();
 
     expect(closed, isTrue);
-    expect(jumpedTo, ClientSection.skillHub);
+    expect(jumpedTo, ClientSection.agentHub);
     expect(controller.selectedConversationSessionId, isNot('c1'));
     expect(tester.takeException(), isNull);
   });

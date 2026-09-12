@@ -23,8 +23,7 @@ Widget buildDesktopDesktopPreview(BuildContext context) =>
     const DesktopDesktopPreview();
 
 /// A deterministic, non-interactive layout-picker thumbnail of the Desktop
-/// shell: one huge main canvas with a pure black rounded-rectangle dock bar
-/// beneath it.
+/// shell: the conversation canvas above its persistent bottom dock.
 final class DesktopDesktopPreview extends StatelessWidget {
   const DesktopDesktopPreview({super.key});
 
@@ -66,6 +65,92 @@ final class DesktopDesktopPreview extends StatelessWidget {
                       color: colors.surfaceSunken,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: colors.line.withAlpha(90)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            key: const ValueKey<String>(
+                              'desktop-preview-conversation-list',
+                            ),
+                            width: 76,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    for (var index = 0; index < 3; index++)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 3,
+                                        ),
+                                        child: Icon(
+                                          Icons.circle,
+                                          size: 4,
+                                          color: colors.textMuted,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                for (var index = 0; index < 4; index++)
+                                  Container(
+                                    height: 12,
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    decoration: BoxDecoration(
+                                      color: index == 0
+                                          ? colors.primary.withAlpha(45)
+                                          : colors.line.withAlpha(90),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var index = 0; index < 3; index++)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      top: 10,
+                                      bottom: 10,
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: index == 1 ? 0.7 : 0.9,
+                                      child: Container(
+                                        height: 5,
+                                        color: colors.textMuted.withAlpha(70),
+                                      ),
+                                    ),
+                                  ),
+                                const Spacer(),
+                                Container(
+                                  key: const ValueKey<String>(
+                                    'desktop-preview-composer',
+                                  ),
+                                  height: 17,
+                                  decoration: BoxDecoration(
+                                    color: colors.surface,
+                                    borderRadius: BorderRadius.circular(5),
+                                    border: Border.all(color: colors.line),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
@@ -33,7 +32,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -100,7 +99,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -157,7 +156,7 @@ void main() {
     final unconfiguredRunner = _AssistantSurfaceRunner()
       ..assistantMembershipId = '';
     final unconfiguredController = ClientConversationController(
-      runner: unconfiguredRunner,
+      native: unconfiguredRunner,
     );
     addTearDown(unconfiguredController.dispose);
     await unconfiguredController.initialize();
@@ -188,7 +187,7 @@ void main() {
 
     // Paused: configured assistant, toggle tapped off.
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -237,7 +236,7 @@ void main() {
         },
       ]
       ..dispatchPending = true;
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -306,7 +305,7 @@ void main() {
         ..dispatchPending = true;
       final persistent = _PersistentGateway();
       addTearDown(persistent.dispose);
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -376,7 +375,7 @@ void main() {
       ],
     );
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -418,7 +417,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -475,7 +474,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -588,7 +587,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -704,7 +703,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -775,7 +774,7 @@ void main() {
 
       final runner = _AssistantSurfaceRunner();
       final originalAgentId = runner.assistantAgentId;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -851,7 +850,7 @@ void main() {
       ..dispatchPending = true;
     final persistent = _PersistentGateway();
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -908,7 +907,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -1005,7 +1004,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -1170,7 +1169,7 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
 /// the membership left (and clears the assistant designation), add re-joins
 /// the same principal under a fresh Membership id with a default Profile, and
 /// assistant.set enforces the current conversation revision.
-final class _AssistantSurfaceRunner implements AgentCommandRunner {
+final class _AssistantSurfaceRunner implements ClientConversationNativePort {
   final List<Map<String, dynamic>> requests = [];
   int revision = 2;
   String assistantMembershipId = 'membership:codex';
@@ -1271,11 +1270,10 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
       _memberships.where((membership) => membership['status'] == 'active');
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = (request['action'] ?? '').toString();
     switch (action) {
@@ -1448,20 +1446,6 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _membership({

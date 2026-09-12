@@ -1,5 +1,5 @@
 use super::runtime_driver_profile;
-use crate::platform::subagent_mcp_host_client;
+use crate::platform::conversation_host_client;
 use licoup_agent_runtime::{
     AdapterFailure, CallerRegistrationPlan, CallerRegistrationReceipt, DurableNativeBinding,
     ExecutionAdmissionEvidence, InstructionPolicy, McpCallerIntegration, NativeResumeIdentity,
@@ -508,7 +508,7 @@ impl HostSubagentRuntime {
         params: Value,
         dispatch_id: &str,
     ) -> Result<RuntimeDispatchReceipt, AdapterFailure> {
-        let response = subagent_mcp_host_client::execute("agent.conversation.dispatch", &params)
+        let response = conversation_host_client::execute("agent.conversation.dispatch", &params)
             .map_err(project_host_dispatch_failure)?;
         if response.get("accepted").and_then(Value::as_bool) != Some(true)
             || response.get("turnHandle").and_then(Value::as_str) != Some(dispatch_id)
@@ -712,7 +712,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
     }
 
     fn observe(&self, dispatch_id: &str) -> Result<RuntimeObservation, AdapterFailure> {
-        let response = subagent_mcp_host_client::execute_read_only(
+        let response = conversation_host_client::execute_read_only(
             "agent.conversation.active",
             &json!({"agent": self.provider.as_str(), "waitForChangeMs": 0}),
         )
@@ -756,7 +756,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
                 "persistent-turn/cancel",
             ));
         }
-        let active = subagent_mcp_host_client::execute_read_only(
+        let active = conversation_host_client::execute_read_only(
             "agent.conversation.active",
             &json!({"agent": self.provider.as_str(), "waitForChangeMs": 0}),
         )
@@ -776,7 +776,7 @@ impl SubagentRuntimeAdapter for HostSubagentRuntime {
             .ok_or_else(|| {
                 AdapterFailure::permanent("subagent_turn_not_active", "persistent-turn/cancel")
             })?;
-        let response = subagent_mcp_host_client::execute(
+        let response = conversation_host_client::execute(
             "agent.conversation.cancel",
             &json!({
                 "turnHandle": dispatch_id,

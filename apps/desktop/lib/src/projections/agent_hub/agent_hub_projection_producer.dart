@@ -37,14 +37,6 @@ final class AgentHubProjectionProducer
     if (_disposed) return;
     if (_controller.busy && !_wasBusy) _refreshRevision++;
     _wasBusy = _controller.busy;
-    // The controller publishes once after the final entry resolves and again
-    // when the enclosing refresh settles. The intermediate all-resolved /
-    // still-loading snapshot has no stable visual meaning.
-    if (_controller.busy &&
-        !_controller.resolving &&
-        (_controller.catalog?.recipes.isNotEmpty ?? false)) {
-      return;
-    }
     final next = _read(_controller, _refreshRevision);
     if (next == _current) return;
     _current = next;
@@ -81,6 +73,7 @@ final class AgentHubProjectionProducer
             owned: recipe.isOwned,
             installable: recipe.installable,
             busy: controller.isRecipeResolving(recipe.id),
+            resolutionFailed: controller.isRecipeFailed(recipe.id),
             primaryAction: recipe.primaryAction,
             actionStateLabel: recipe.lifecycle,
             versionLabel: recipe.versionLabel,

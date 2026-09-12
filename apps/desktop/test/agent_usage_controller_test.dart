@@ -9,6 +9,31 @@ import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
 
 void main() {
+  test(
+    'cached usage publishes while its fresh scan is still pending',
+    () async {
+      final gateway = _FakeUsageGateway();
+      gateway.reportsResult = [_reportWithDailyUsage(windowDays: 30)];
+      final gate = Completer<void>();
+      gateway.scanGate = gate;
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+      final changes = <AgentUsageReport?>[];
+      final subscription = controller.changes.listen((_) {
+        changes.add(controller.report);
+      });
+      addTearDown(subscription.cancel);
+      final pending = controller.ensureLoadedAndFresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(gateway.scanCalls, 1);
+      expect(gate.isCompleted, isFalse);
+      expect(controller.report?.totalTokens, greaterThan(0));
+      expect(changes.whereType<AgentUsageReport>(), isNotEmpty);
+      gate.complete();
+      await pending;
+    },
+  );
+
   test('shares one in-flight scan and keeps bounded report history', () async {
     final gateway = _FakeUsageGateway();
     final gate = Completer<void>();

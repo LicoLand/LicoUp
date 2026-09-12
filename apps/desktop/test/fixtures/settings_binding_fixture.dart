@@ -82,10 +82,12 @@ final class RecordingSettingsEffects implements EffectSource<SettingsEffect> {
 
 SettingsProjection settingsProjectionFixture({
   String appearanceId = AppearancePresetIds.licoSoda,
+  List<SettingsAppearancePresetProjection>? appearancePresets,
   String locale = 'system',
   String layoutId = 'dashboard',
   List<PresentationChoice>? layoutChoices,
   List<ArchivedConversationProjection> archived = const [],
+  bool archivedConversationsLoading = false,
   PresentationPhase layoutPhase = PresentationPhase.ready,
   String layoutFailureReasonCode = '',
   String appearancePresetDirectoryPath = 'test-data/appearance',
@@ -115,21 +117,23 @@ SettingsProjection settingsProjectionFixture({
   PresentationNotice? notice,
 }) => SettingsProjection(
   appearancePresetId: appearanceId,
-  appearancePresets: [
-    for (final preset in builtInAppearancePresetConfigs)
-      SettingsAppearancePresetProjection(
-        id: preset.id,
-        englishLabel: preset.labelFor(),
-        chineseLabel: preset.labelFor('zh-CN'),
-        mode: switch (preset.mode) {
-          AppearancePresetMode.system => SettingsAppearanceMode.system,
-          AppearancePresetMode.light => SettingsAppearanceMode.light,
-          AppearancePresetMode.dark => SettingsAppearanceMode.dark,
-        },
-        lightPresetId: preset.lightPresetId ?? '',
-        darkPresetId: preset.darkPresetId ?? '',
-      ),
-  ],
+  appearancePresets:
+      appearancePresets ??
+      [
+        for (final preset in builtInAppearancePresetConfigs)
+          SettingsAppearancePresetProjection(
+            id: preset.id,
+            englishLabel: preset.labelFor(),
+            chineseLabel: preset.labelFor('zh-CN'),
+            mode: switch (preset.mode) {
+              AppearancePresetMode.system => SettingsAppearanceMode.system,
+              AppearancePresetMode.light => SettingsAppearanceMode.light,
+              AppearancePresetMode.dark => SettingsAppearanceMode.dark,
+            },
+            lightPresetId: preset.lightPresetId ?? '',
+            darkPresetId: preset.darkPresetId ?? '',
+          ),
+      ],
   localeChoices: [
     for (final value in const ['system', 'zh', 'en'])
       PresentationChoice(id: value, label: value, selected: value == locale),
@@ -150,6 +154,7 @@ SettingsProjection settingsProjectionFixture({
         ),
       ],
   archivedConversations: archived,
+  archivedConversationsLoading: archivedConversationsLoading,
   layoutPhase: layoutPhase,
   layoutFailureReasonCode: layoutFailureReasonCode,
   appearancePresetDirectoryPath: appearancePresetDirectoryPath,

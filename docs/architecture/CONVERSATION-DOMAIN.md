@@ -632,6 +632,21 @@ sequenceDiagram
 
 ## 12. Trusted History and Recovery Boundary
 
+The canonical `conversation.events.page` action returns ascending events with a
+default page size of 20 (maximum 100). `latest: true` reads the newest retained
+events; `beforeSequence` reads the preceding page with an exclusive sequence
+anchor. Both use descending indexed reads and reverse only the selected page.
+`afterSequence` remains an independent forward read for incremental updates and
+exact event anchors; omitting all selectors reads forward from the beginning.
+Active selectors are mutually exclusive and invalid combinations return
+`invalid_request`. `hasEarlier` and nullable `nextBeforeSequence` describe earlier
+retained rows; the latter is the first returned sequence only when earlier rows
+exist. `nextCursor` remains the last returned sequence as a string for forward
+reads, or null for an empty page. `totalCount` counts retained rows and is never a
+sequence cursor: deleted events can leave gaps. The desktop opens the latest 20
+events and requests 20 earlier events when scrolling back; exact task-card anchor
+reads remain separate from that contiguous page window.
+
 Canonical Conversation history remains owned by LicoUp's local
 `ConversationStore`. Provider-managed cloud history is a separate retained
 object source and may be projected into the conversation experience only after

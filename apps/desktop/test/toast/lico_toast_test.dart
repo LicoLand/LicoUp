@@ -15,6 +15,7 @@ void main() {
     Locale locale = const Locale('en'),
     ValueNotifier<LicoToastNoticesSnapshot>? notices,
     ValueChanged<ChromeOperationNotificationProjection>? onActivate,
+    bool reducedMotion = false,
     required Widget child,
   }) {
     return tester.pumpWidget(
@@ -27,6 +28,12 @@ void main() {
           GlobalWidgetsLocalizations.delegate,
         ],
         theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(disableAnimations: reducedMotion),
+          child: child!,
+        ),
         home: LicoToastHost(
           child: LicoToastNoticesListener(
             notices: notices ?? ValueNotifier(const LicoToastNoticesSnapshot()),
@@ -146,6 +153,76 @@ void main() {
   });
 
   group('dismissal', () {
+    testWidgets('reduced toast appears immediately and keeps its dwell time', (
+      tester,
+    ) async {
+      await pumpHostApp(tester, reducedMotion: true, child: contextProbe());
+      showLicoToast(
+        tester.element(find.byKey(const Key('toast-context'))),
+        message: 'readable',
+        showDuration: const Duration(seconds: 1),
+      );
+      await tester.pump();
+      final fade = tester.widget<FadeTransition>(
+        find
+            .ancestor(
+              of: find.byType(LicoToast),
+              matching: find.byType(FadeTransition),
+            )
+            .first,
+      );
+      expect(fade.opacity.value, 1);
+      expect(fade.opacity.status, AnimationStatus.completed);
+      await tester.pump(const Duration(milliseconds: 999));
+      expect(find.text('readable'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(find.text('readable'), findsNothing);
+    });
+
+    testWidgets('runtime reduction finishes entrance without replaying it', (
+      tester,
+    ) async {
+      await pumpHostApp(tester, child: contextProbe());
+      showLicoToast(
+        tester.element(find.byKey(const Key('toast-context'))),
+        message: 'moving',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      final fade = tester.widget<FadeTransition>(
+        find
+            .ancestor(
+              of: find.byType(LicoToast),
+              matching: find.byType(FadeTransition),
+            )
+            .first,
+      );
+      expect(fade.opacity.value, inExclusiveRange(0, 1));
+      await pumpHostApp(tester, reducedMotion: true, child: contextProbe());
+      expect(fade.opacity.value, 1);
+      expect(fade.opacity.status, AnimationStatus.completed);
+      await pumpHostApp(tester, child: contextProbe());
+      expect(fade.opacity.value, 1);
+      expect(fade.opacity.status, AnimationStatus.completed);
+      expect(find.text('moving'), findsOneWidget);
+    });
+
+    testWidgets('runtime reduction completes a toast already dismissing', (
+      tester,
+    ) async {
+      await pumpHostApp(tester, child: contextProbe());
+      await showToast(tester, 'leaving');
+      await tester.tap(find.text('leaving'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(find.text('leaving'), findsOneWidget);
+      await pumpHostApp(tester, reducedMotion: true, child: contextProbe());
+      await tester.pump();
+      expect(find.text('leaving'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a toast auto-dismisses after its duration', (tester) async {
       await pumpHostApp(tester, child: contextProbe());
 

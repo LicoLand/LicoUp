@@ -151,16 +151,7 @@ mixin ClientLifecycleFacade
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
         presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
-    // System-following and light themes are not ready yet, so a configured
-    // brightness that lands on them falls back to the dark theme at startup.
-    final resolvedAppearancePresetId = switch (appearanceBrightnessSelectionFor(
-      requestedAppearancePresetId,
-      appearancePresetConfigs,
-    )) {
-      AppearanceBrightnessSelection.system ||
-      AppearanceBrightnessSelection.light => AppearancePresetIds.licoSoda,
-      _ => requestedAppearancePresetId,
-    };
+    final resolvedAppearancePresetId = requestedAppearancePresetId;
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
@@ -172,6 +163,9 @@ mixin ClientLifecycleFacade
     }
     localePreference = LocalePreference.normalize(
       presentation?.localePreference ?? LocalePreference.system,
+    );
+    appearancePreferenceOwner.replaceReduceMotion(
+      presentation?.reduceMotion ?? false,
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();

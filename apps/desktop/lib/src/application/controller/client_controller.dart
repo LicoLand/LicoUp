@@ -85,7 +85,7 @@ import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.
 import 'package:licoup/src/platform/documents/plan_document_reader.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/presentation/client_current_view_store.dart';
@@ -160,7 +160,7 @@ class ClientController extends AgentConversationController
     Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
     LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
     ApplicationDiagnosticSink? applicationDiagnosticSink,
-    AgentCommandRunner? conversationCommandRunner,
+    ClientConversationNativePort? conversationNativePort,
     Duration? pendingNoticePollInterval,
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
@@ -170,8 +170,6 @@ class ClientController extends AgentConversationController
                  .dataDirectory()
                  .then((directory) => directory.path),
            ),
-       conversationService =
-           conversationService ?? const AgentConversationService(),
        agentUsageService = agentUsageService ?? const AgentUsageService(),
        clientUpdateService = clientUpdateService ?? const ClientUpdateService(),
        mobileRelayService = mobileRelayService ?? const MobileRelayService(),
@@ -218,6 +216,11 @@ class ClientController extends AgentConversationController
        diagnosticSink = applicationDiagnosticSink ?? _discardDiagnostic,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
+    this.conversationService =
+        conversationService ??
+        AgentConversationService(
+          native: this.agentService.conversationNativePort,
+        );
     final preferredLayout =
         this.runtimePlatformBridge.isMacos ||
             this.runtimePlatformBridge.isWindows ||
@@ -302,7 +305,8 @@ class ClientController extends AgentConversationController
       sink: ClientMemoryDiagnosticLog(portableData: this.portableData),
     );
     clientConversationController = ClientConversationController(
-      runner: conversationCommandRunner ?? this.agentService,
+      native:
+          conversationNativePort ?? this.agentService.conversationNativePort,
       onSelectionChanged: recordCurrentGroupConversationView,
       memoryJournal: clientMemoryDiagnosticJournal,
       pendingNoticePollInterval: pendingNoticePollInterval,
@@ -327,7 +331,7 @@ class ClientController extends AgentConversationController
   final AgentService agentService;
   @override
   final LlmVaultAuthorization llmVaultAuthorization = LlmVaultAuthorization();
-  final AgentConversationService conversationService;
+  late final AgentConversationService conversationService;
   final AgentUsageService agentUsageService;
   final ClientUpdateService clientUpdateService;
   final MobileRelayService mobileRelayService;

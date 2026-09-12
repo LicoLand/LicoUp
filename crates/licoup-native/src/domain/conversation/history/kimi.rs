@@ -476,6 +476,13 @@ pub(super) fn kimi_code_usage_message(path: &Path, index: usize, value: &Value) 
     Some(message)
 }
 
+/// Native delegated identities append the agent slot to the conversation id.
+pub(super) fn kimi_code_conversation_id(native_session_id: &str) -> &str {
+    native_session_id
+        .split_once(':')
+        .map_or(native_session_id, |(session, _)| session)
+}
+
 pub(super) fn kimi_code_native_session_id(path: &Path) -> String {
     let agent_id = path
         .parent()

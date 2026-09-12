@@ -4,12 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/bundled_font_loader.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_effect.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_intent.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'fixtures/skill_hub_binding_fixture.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
-import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_summary_visit.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
@@ -277,11 +287,12 @@ final class _FakeHubEngine implements AgentHubEnginePort {
       _cache = snapshot;
       return snapshot;
     }
+    if (liveDelay != null) await liveDelay!.future;
     final delay = inspectDelays[recipeId];
     if (delay != null) {
-      await delay.future;
+      return delay.future;
     }
-    final resolved = _liveSnapshot.recipes
+    final resolved = (liveSnapshot ?? _liveSnapshot).recipes
         .where((recipe) => recipe.id == recipeId)
         .toList();
     return AgentHubCatalogSnapshot(recipes: resolved, ok: resolved.isNotEmpty);
@@ -397,6 +408,8 @@ _HubHarness _harness(
   AgentHubExternalOpener? openHomepage,
   ValueChanged<String>? onOpenAgent,
   _AgentHubCatalogOrder? orderRecipes,
+  PluginManagementBinding? plugins,
+  SkillHubBinding? skills,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   final feature = AgentHubRendererBindingFixture(controller);
@@ -424,6 +437,8 @@ _HubHarness _harness(
           height: 720,
           child: AgentHubPanel(
             binding: feature.binding,
+            plugins: plugins,
+            skills: skills,
             openHomepage: openHomepage ?? (_) async {},
             onOpenAgent: onOpenAgent,
             orderEntries: orderRecipes ?? (entries) => entries,
@@ -473,6 +488,8 @@ List<String> _cardOrder(WidgetTester tester) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(loadBundledVisualFonts);
   test(
     'Agent Hub semantic projection keeps every supported agent once',
     () async {
@@ -504,6 +521,41 @@ void main() {
     expect(controller.failed, isTrue);
     expect(controller.busy, isFalse);
   });
+
+  test(
+    'Agent inspections publish independently and isolate failures',
+    () async {
+      final codex = Completer<AgentHubCatalogSnapshot>();
+      final cursor = Completer<AgentHubCatalogSnapshot>();
+      final owner = AgentHubCatalogController(
+        engine: _FakeHubEngine(
+          inspectDelays: {'codex': codex, 'cursor': cursor},
+        ),
+      );
+      addTearDown(owner.dispose);
+      final refresh = owner.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(owner.isRecipeResolving('codex'), isTrue);
+      expect(owner.isRecipeResolving('cursor'), isTrue);
+      expect(owner.isRecipeResolving('opencode'), isFalse);
+      cursor.complete(
+        AgentHubCatalogSnapshot(
+          recipes: _recipes().where((recipe) => recipe.id == 'cursor').toList(),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(owner.isRecipeResolving('cursor'), isFalse);
+      await owner.refreshRecipe('cursor');
+      expect(owner.isRecipeResolving('codex'), isTrue);
+      expect(owner.isRecipeResolving('codex'), isTrue);
+      expect(owner.catalog!.recipes, hasLength(_ids.length));
+      codex.complete(const AgentHubCatalogSnapshot(recipes: [], ok: false));
+      await refresh;
+      expect(owner.isRecipeFailed('codex'), isTrue);
+      expect(owner.isRecipeFailed('cursor'), isFalse);
+      expect(owner.catalog!.recipes, hasLength(_ids.length));
+    },
+  );
 
   testWidgets('Agent Hub renders native portrait recipe cards', (tester) async {
     await _pumpHub(tester, _harness(_FakeHubEngine()));
@@ -649,9 +701,9 @@ void main() {
       await tester.pumpWidget(harness.$1);
       await tester.pump();
 
-      // Two root calls: the warehouse paint, then the one batched live pass.
-      expect(engine.catalogRecipeIds, ['', '']);
-      expect(engine.liveRootRequests, 1);
+      // The warehouse paint is followed by an independent Agent inspection.
+      expect(engine.catalogRecipeIds, ['', 'codex']);
+      expect(engine.liveRootRequests, 0);
       expect(
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsOneWidget,
@@ -681,11 +733,7 @@ void main() {
     },
   );
 
-  /// A partial batched answer must not shrink the catalog: a card missing from
-  /// the batch reads as "this Agent disappeared" rather than "its live state is
-  /// unknown". Every member returns, with the warehouse card for the one the
-  /// batch omitted.
-  testWidgets('a partial live batch keeps every card from the first paint', (
+  testWidgets('failed Agent inspections preserve cards from the first paint', (
     tester,
   ) async {
     final warehouse = _snapshot();
@@ -710,7 +758,7 @@ void main() {
         reason: 'card $id must survive a partial batch',
       );
     }
-    // Order follows the first paint, not the batch.
+    // Order follows the first catalog paint.
     expect(_cardOrder(tester), _ids);
     expect(tester.takeException(), isNull);
   });
@@ -724,18 +772,18 @@ void main() {
     expect(find.byKey(const Key('agent-hub-detail-codex')), findsOneWidget);
     expect(find.byKey(const Key('agent-hub-card-codex')), findsNothing);
     expect(find.byKey(const Key('agent-hub-back')), findsOneWidget);
-    expect(find.text('Agent Hub'), findsNothing);
+    expect(find.text('Agent Hub'), findsOneWidget);
     expect(find.text('Codex'), findsWidgets);
-    expect(find.byKey(const Key('agent-hub-adaptation-codex')), findsOneWidget);
-    expect(find.text('Deep'), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-adaptation-codex')), findsNothing);
+    expect(find.text('Official description'), findsNothing);
     expect(find.byKey(const Key('agent-hub-visit-codex')), findsOneWidget);
-    expect(find.byKey(const Key('agent-hub-channel-codex')), findsOneWidget);
-    expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-channel-codex')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
     expect(find.text('Install'), findsOneWidget);
-    expect(find.text('Update'), findsOneWidget);
-    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('Update'), findsNothing);
+    expect(find.text('Chat'), findsNothing);
     expect(find.text('Open'), findsNothing);
-    expect(find.text('Uninstall'), findsOneWidget);
+    expect(find.text('Uninstall'), findsNothing);
 
     await tester.tap(find.byKey(const Key('agent-hub-back')));
     await tester.pump();
@@ -744,6 +792,67 @@ void main() {
     expect(find.byKey(const Key('agent-hub-back')), findsNothing);
     expect(find.text('Agent Hub'), findsOneWidget);
     expect(find.text('Uninstall'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('detail keeps Agent skills usable while plugins are loading', (
+    tester,
+  ) async {
+    final skillFixture = SkillHubBindingFixture(
+      skills: [
+        skillHubFixtureSkill(
+          id: 'codex-review',
+          name: 'Codex Review',
+          isPublic: false,
+          path: '/synthetic/skills/codex-review',
+          agents: const [SkillAgentProjection(id: 'codex', label: 'Codex')],
+        ),
+        skillHubFixtureSkill(
+          id: 'cursor-review',
+          name: 'Cursor Review',
+          isPublic: false,
+          path: '/synthetic/skills/cursor-review',
+          agents: const [SkillAgentProjection(id: 'cursor', label: 'Cursor')],
+        ),
+      ],
+    );
+    final effects = SemanticEffectChannel<PluginManagementEffect>();
+    addTearDown(skillFixture.dispose);
+    addTearDown(effects.dispose);
+    final plugins = PluginManagementBinding(
+      projection: _StaticProjection(
+        PluginManagementProjection(
+          plugins: const [],
+          workflows: const [],
+          phase: PresentationPhase.loading,
+        ),
+      ),
+      intents: SemanticIntentChannel<PluginManagementIntent>((_) {}),
+      effects: effects,
+    );
+    await _pumpHub(
+      tester,
+      _harness(
+        _FakeHubEngine(),
+        plugins: plugins,
+        skills: skillFixture.binding,
+      ),
+    );
+    await _openDetail(tester, 'codex');
+    await expectLater(
+      find.byType(Scaffold),
+      matchesGoldenFile('goldens/agent_hub_official_detail.png'),
+    );
+    await tester.tap(find.byKey(const Key('agent-hub-detail-tab-1')));
+    await tester.pump();
+    expect(find.byKey(const Key('adapter-plugin-loading')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('agent-hub-detail-tab-2')));
+    await tester.pump();
+    expect(find.byKey(const Key('skill-card-codex-review')), findsOneWidget);
+    expect(find.byKey(const Key('skill-card-cursor-review')), findsNothing);
+    await tester.tap(find.byKey(const Key('skill-card-codex-review')));
+    await tester.pump();
+    expect(find.byKey(const Key('skill-detail-dialog')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -782,43 +891,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('description keeps visit on the last visible line', (
+  testWidgets('detail shows the full official description and source link', (
     tester,
   ) async {
     await _pumpHub(tester, _harness(_FakeHubEngine()));
     await _openDetail(tester, 'cursor');
-
-    final summary = tester.getRect(
+    final description = tester.widget<Text>(
       find.byKey(const Key('agent-hub-summary-cursor')),
     );
-    final visit = tester.getRect(
-      find.byKey(const Key('agent-hub-visit-cursor')),
-    );
-    final paragraph = tester.renderObject<RenderParagraph>(
-      find.byKey(const Key('agent-hub-summary-cursor')),
-    );
-    final boxes = paragraph.getBoxesForSelection(
-      TextSelection(
-        baseOffset: 0,
-        extentOffset: paragraph.text.toPlainText().length,
-      ),
-    );
-    expect(
-      _summaryLineCount(boxes),
-      lessThanOrEqualTo(AgentHubSummaryVisit.maxLines),
-    );
-    expect(paragraph.maxLines, AgentHubSummaryVisit.maxLines);
-    expect(paragraph.text.toPlainText(), contains('...'));
-    expect(visit.top, greaterThanOrEqualTo(summary.top - 2));
-    expect(visit.bottom, lessThanOrEqualTo(summary.bottom + 4));
-    expect(visit.left, greaterThan(summary.left));
-    expect(visit.height, lessThan(24));
+    expect(description.data, _summaries['cursor']);
+    expect(description.maxLines, isNull);
+    expect(find.byKey(const Key('agent-hub-visit-cursor')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('package-manager chip and version share one centerline', (
-    tester,
-  ) async {
+  testWidgets('detail keeps the installed version visible', (tester) async {
     await _pumpHub(
       tester,
       _harness(
@@ -830,16 +917,12 @@ void main() {
     );
     await _openDetail(tester, 'codex');
 
-    final chip = tester.getRect(
-      find.byKey(const Key('agent-hub-channel-codex')),
-    );
-    final version = tester.getRect(
-      find.byKey(const Key('agent-hub-version-codex')),
-    );
-    expect(chip.center.dy, closeTo(version.center.dy, 1));
+    expect(find.byKey(const Key('agent-hub-channel-codex')), findsNothing);
     expect(
-      find.byKey(const Key('agent-hub-channel-version-codex')),
-      findsOneWidget,
+      tester
+          .widget<Text>(find.byKey(const Key('agent-hub-version-codex')))
+          .data,
+      '0.147.0',
     );
     expect(tester.takeException(), isNull);
   });
@@ -935,16 +1018,18 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(engine.actions, isEmpty);
-    // The refresh paints the warehouse cards, then resolves every card in one
-    // batched live call: never one command per card.
-    expect(engine.catalogRecipeIds.where((id) => id.isEmpty), hasLength(2));
-    expect(engine.liveRootRequests, 1);
-    expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
+    // Each Agent receives a separate status lookup after the catalog paint.
+    expect(engine.catalogRecipeIds.where((id) => id.isEmpty), hasLength(1));
+    expect(engine.liveRootRequests, 0);
+    expect(
+      engine.catalogRecipeIds.where((id) => id.isNotEmpty),
+      unorderedEquals(_ids),
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'a refresh shuffles the order once and keeps it stable across the live batch',
+    'a refresh shuffles once and keeps order across independent results',
     (tester) async {
       final calls = <int>[];
       List<AgentHubEntryProjection> rotatingOrder(
@@ -963,11 +1048,14 @@ void main() {
       final engine = _FakeHubEngine();
       await _pumpHub(tester, _harness(engine, orderRecipes: rotatingOrder));
 
-      // Paint settles after the one batched resolution, then holds.
+      // Each Agent publishes independently without reordering the catalog.
       final settled = calls.length;
       expect(settled, greaterThan(0));
       final order = _cardOrder(tester);
-      expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
+      expect(
+        engine.catalogRecipeIds.where((id) => id.isNotEmpty).length,
+        _ids.length,
+      );
 
       await tester.pump();
       await tester.pump();
@@ -980,10 +1068,13 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // One more shuffle for the refresh, from the batched resolution alone.
+      // One more shuffle for the new refresh.
       expect(calls.length, settled + 1);
-      expect(engine.liveRootRequests, 2);
-      expect(engine.catalogRecipeIds.where((id) => id.isNotEmpty), isEmpty);
+      expect(engine.liveRootRequests, 0);
+      expect(
+        engine.catalogRecipeIds.where((id) => id.isNotEmpty).length,
+        _ids.length * 2,
+      );
       final refreshed = _cardOrder(tester);
       await tester.pump();
       expect(_cardOrder(tester), refreshed);
@@ -1066,31 +1157,13 @@ void main() {
     expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsNothing);
 
     await _openDetail(tester, 'codex');
-    final detail = tester.getRect(
-      find.byKey(const Key('agent-hub-detail-codex')),
+    final openAction = tester.getRect(
+      find.byKey(const Key('agent-hub-open-codex')),
     );
-    final chip = tester.getRect(
-      find.byKey(const Key('agent-hub-channel-codex')),
-    );
-    final detailInstall = tester.getRect(
-      find.byKey(const Key('agent-hub-install-codex')),
-    );
-    final update = tester.getRect(
-      find.byKey(const Key('agent-hub-update-codex')),
-    );
-    final uninstall = tester.getRect(
-      find.byKey(const Key('agent-hub-uninstall-codex')),
-    );
-    expect(chip.left - detail.left, closeTo(LicoContentSpacing.item, 0.5));
-    expect(
-      detailInstall.left - detail.left,
-      closeTo(LicoContentSpacing.item, 0.5),
-    );
-    expect(
-      detail.bottom - uninstall.bottom,
-      closeTo(LicoContentSpacing.compact, 1),
-    );
-    expect(uninstall.left, greaterThan(update.right));
+    expect(openAction.height, greaterThanOrEqualTo(36));
+    expect(find.byKey(const Key('agent-hub-uninstall-codex')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-update-codex')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1214,16 +1287,7 @@ void main() {
             .borderRadius,
         const BorderRadius.all(Radius.circular(999)),
       );
-      expect(
-        (tester
-                    .widget<Container>(
-                      find.byKey(const Key('agent-hub-channel-codex')),
-                    )
-                    .decoration
-                as BoxDecoration)
-            .borderRadius,
-        const BorderRadius.all(Radius.circular(999)),
-      );
+      expect(find.byKey(const Key('agent-hub-channel-codex')), findsNothing);
       expect(
         find.descendant(
           of: find.byKey(const Key('agent-hub-uninstall-codex')),
@@ -1659,10 +1723,18 @@ int _summaryLineCount(List<TextBox> boxes) {
   var count = 0;
   var last = -100.0;
   for (final top in tops) {
-    if (top - last > AgentHubSummaryVisit.fontSize) {
+    if (top - last > 12) {
       count++;
       last = top;
     }
   }
   return count;
+}
+
+final class _StaticProjection<P> implements ProjectionSource<P> {
+  const _StaticProjection(this.current);
+  @override
+  final P current;
+  @override
+  Stream<ProjectionUpdate<P>> get changes => const Stream.empty();
 }

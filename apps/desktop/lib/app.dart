@@ -12,6 +12,7 @@ import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/appearance/appearance_preset_config.dart';
 import 'src/frontend/appearance/appearance_projection_adapter.dart';
 import 'src/frontend/shared/ui/theme.dart';
+import 'src/frontend/shared/ui/lico_motion_scope.dart';
 import 'src/frontend/shell/client_shell.dart';
 import 'src/frontend/binding/shell_renderer_port.dart';
 import 'src/presentation/appearance/appearance_projection.dart';
@@ -123,6 +124,19 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
               GlobalCupertinoLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
             ],
+            builder: (context, child) =>
+                ProjectionBuilder<EnvironmentProjection, bool>(
+                  source: _composition.binding.environment,
+                  select: _systemReduceMotion,
+                  builder: (context, systemReduceMotion) => LicoMotionScope(
+                    reduceMotion: appearance.reduceMotion,
+                    systemReduceMotion: systemReduceMotion,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
+            // Theme changes are atomic visual updates; this also prevents the
+            // MaterialApp-owned AnimatedTheme from outrunning the motion scope.
+            themeAnimationDuration: Duration.zero,
             themeMode: themeModeForAppearance(presetId, presets),
             theme: buildLicoTheme(
               presetId: presetId,
@@ -158,3 +172,6 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
 AppearanceProjection _appearanceProjection(AppearanceProjection value) => value;
 
 LocaleProjection _localeProjection(LocaleProjection value) => value;
+
+bool _systemReduceMotion(EnvironmentProjection value) =>
+    value.systemReduceMotion;

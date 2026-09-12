@@ -2,21 +2,25 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/disclosures.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/native_subagent_history_scope.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/base_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-
-/// Deepest delegated task nesting the card renders inline. Beyond it a task is
-/// summarized by its header only, so one runaway task cannot build an
-/// unbounded widget tree.
-const int _maxInlineSubagentDepth = 4;
 
 /// Height cap of the expanded card body. The delegated task content scrolls
 /// inside this bounded frame like a page, instead of stretching the whole
 /// conversation to the length of one subagent run.
 const double _maxExpandedCardHeight = 320;
+
+/// Native lineage cards own this treatment while the base supplies the active
+/// theme's fill, opacity and continuous outline.
+final class AgentConversationSubagentSurface extends BaseSurface {
+  const AgentConversationSubagentSurface({super.key, required super.child})
+    : super(radius: AppleControlMetrics.menuCornerRadius);
+}
 
 class AgentConversationSubagentCardBlock extends StatefulWidget {
   const AgentConversationSubagentCardBlock({
@@ -24,17 +28,11 @@ class AgentConversationSubagentCardBlock extends StatefulWidget {
     required this.message,
     required this.adapter,
     this.fullWidth = false,
-    this.depth = 0,
   });
 
   final AgentConversationMessage message;
   final AgentRenderAdapter adapter;
   final bool fullWidth;
-
-  /// Nesting level of this card inside the conversation. A delegated task that
-  /// delegated further renders its children one level in, so the lineage stays
-  /// readable instead of collapsing into one flat list.
-  final int depth;
 
   @override
   State<AgentConversationSubagentCardBlock> createState() =>
@@ -44,30 +42,92 @@ class AgentConversationSubagentCardBlock extends StatefulWidget {
 class _AgentConversationSubagentCardBlockState
     extends State<AgentConversationSubagentCardBlock> {
   late bool _expanded = !widget.message.collapsed;
+  final _scrollController = ScrollController();
+  (String, int, String)? _requestedChildVersion;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _requestInitialPage();
+  }
+
+  @override
+  void didUpdateWidget(AgentConversationSubagentCardBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.childMessageCount !=
+            widget.message.childMessageCount ||
+        oldWidget.message.childSessionId != widget.message.childSessionId) {
+      _requestInitialPage();
+    } else if (oldWidget.message.childSourceRevision !=
+        widget.message.childSourceRevision) {
+      _requestInitialPage();
+    }
+  }
+
+  void _requestInitialPage() {
+    final childId = widget.message.childSessionId;
+    final scope = NativeSubagentHistoryScope.maybeOf(context, childId);
+    final version = (
+      childId,
+      widget.message.childMessageCount,
+      widget.message.childSourceRevision,
+    );
+    if (!_expanded ||
+        childId.isEmpty ||
+        scope == null ||
+        _requestedChildVersion == version) {
+      return;
+    }
+    final history = scope.histories[childId];
+    if (history?.loading == true ||
+        history?.errorCode.isNotEmpty == true ||
+        (history?.session != null &&
+            history!.session!.sourceMessageCount >=
+                widget.message.childMessageCount &&
+            history.session!.sourceRevision ==
+                widget.message.childSourceRevision)) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _expanded) {
+        _requestedChildVersion = version;
+        scope.onLoad(childId, false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final children = widget.message.childMessages;
+    final childId = widget.message.childSessionId;
+    final scope = NativeSubagentHistoryScope.maybeOf(context, childId);
+    final history = scope?.histories[childId];
+    final children = history?.session?.messages ?? widget.message.childMessages;
+    final canLoad = childId.isNotEmpty && scope != null;
+    final loading = history?.loading ?? false;
+    final errorCode = history?.errorCode ?? '';
+    final page =
+        history?.session?.messagePage ?? widget.message.childMessagePage;
     final title = widget.message.cardTitle.trim().isEmpty
         ? strings.subagentTask
         : widget.message.cardTitle.trim();
-    final subtitle = _subtitle(strings, children);
+    final subtitle = _subtitle(
+      strings,
+      children,
+      history?.session?.sourceMessageCount,
+    );
     final preview = conversationMessagePreviewText(widget.message.text);
-    final canExpandInline =
-        children.isNotEmpty && widget.depth < _maxInlineSubagentDepth;
-    final card = DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(colors.isDark ? 18 : 24),
-        borderRadius: BorderRadius.circular(
-          AppleControlMetrics.menuCornerRadius,
-        ),
-        border: Border.all(
-          color: Colors.white.withAlpha(colors.isDark ? 48 : 70),
-          width: AppleControlMetrics.hairline,
-        ),
-      ),
+    // Native lineage owns the tree. Build each descendant only when its
+    // parent is expanded so every recorded task remains reachable.
+    final canExpandInline = children.isNotEmpty || canLoad;
+    final card = AgentConversationSubagentSurface(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,7 +137,10 @@ class _AgentConversationSubagentCardBlockState
               AppleControlMetrics.menuCornerRadius,
             ),
             onTap: canExpandInline
-                ? () => setState(() => _expanded = !_expanded)
+                ? () {
+                    setState(() => _expanded = !_expanded);
+                    _requestInitialPage();
+                  }
                 : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -154,17 +217,35 @@ class _AgentConversationSubagentCardBlockState
                 constraints: const BoxConstraints(
                   maxHeight: _maxExpandedCardHeight,
                 ),
-                child: SingleChildScrollView(
-                  child: _SubagentChildList(
-                    children: children,
-                    adapter: widget.adapter,
-                    depth: widget.depth,
-                  ),
-                ),
+                child: children.isEmpty
+                    ? Center(
+                        child: loading || (canLoad && history == null)
+                            ? const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              )
+                            : errorCode.isNotEmpty
+                            ? _ChildHistoryPageControl(
+                                loading: false,
+                                errorCode: errorCode,
+                                onLoad: () => scope!.onLoad(childId, false),
+                              )
+                            : Text(strings.noMessagesInHistory),
+                      )
+                    : _SubagentChildList(
+                        children: children,
+                        adapter: widget.adapter,
+                        controller: _scrollController,
+                        loading: loading,
+                        errorCode: errorCode,
+                        onLoadEarlier: canLoad && (page?.hasEarlier ?? false)
+                            ? () => scope.onLoad(childId, true)
+                            : null,
+                      ),
               ),
             ),
           ],
-          if (widget.message.childMessagesTruncated)
+          if (widget.message.childMessagesTruncated && !canLoad)
             Padding(
               padding: const EdgeInsets.fromLTRB(44, 0, 14, 10),
               child: Text(
@@ -195,6 +276,7 @@ class _AgentConversationSubagentCardBlockState
   String _subtitle(
     LicoStrings strings,
     List<AgentConversationMessage> children,
+    int? sourceMessageCount,
   ) {
     final declared = widget.message.cardSubtitle.trim();
     final toolCalls = children
@@ -207,7 +289,12 @@ class _AgentConversationSubagentCardBlockState
     final nested = children.where((child) => child.isSubagentCard).length;
     final parts = <String>[
       if (declared.isNotEmpty) declared,
-      strings.subagentSteps(children.length),
+      strings.subagentSteps(
+        sourceMessageCount ??
+            (widget.message.childSessionId.isNotEmpty
+                ? widget.message.childMessageCount
+                : children.length),
+      ),
       if (toolCalls > 0) strings.subagentToolCalls(toolCalls),
       if (nested > 0) strings.subagentNestedTasks(nested),
     ];
@@ -219,12 +306,18 @@ class _SubagentChildList extends StatelessWidget {
   const _SubagentChildList({
     required this.children,
     required this.adapter,
-    required this.depth,
+    required this.controller,
+    required this.loading,
+    required this.errorCode,
+    this.onLoadEarlier,
   });
 
   final List<AgentConversationMessage> children;
   final AgentRenderAdapter adapter;
-  final int depth;
+  final ScrollController controller;
+  final bool loading;
+  final String errorCode;
+  final VoidCallback? onLoadEarlier;
 
   @override
   Widget build(BuildContext context) {
@@ -236,7 +329,9 @@ class _SubagentChildList extends StatelessWidget {
       if (pendingSteps.isEmpty) {
         return;
       }
-      rows.add(_SubagentStepRun(steps: List.of(pendingSteps)));
+      rows.add(
+        _SubagentStepRun(steps: List.of(pendingSteps), adapter: adapter),
+      );
       pendingSteps = <AgentConversationMessage>[];
     }
 
@@ -249,7 +344,6 @@ class _SubagentChildList extends StatelessWidget {
             message: child,
             adapter: adapter,
             fullWidth: true,
-            depth: depth + 1,
           ),
         );
         continue;
@@ -269,17 +363,86 @@ class _SubagentChildList extends StatelessWidget {
     }
     flushSteps();
 
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        final delta = switch (notification) {
+          ScrollUpdateNotification(:final scrollDelta) => scrollDelta ?? 0,
+          OverscrollNotification(:final overscroll) => overscroll,
+          _ => 0.0,
+        };
+        if (notification.depth == 0 &&
+            delta > 0 &&
+            !loading &&
+            errorCode.isEmpty &&
+            notification.metrics.extentAfter < 120) {
+          onLoadEarlier?.call();
+        }
+        return false;
+      },
+      child: ListView.separated(
+        controller: controller,
+        reverse: true,
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount:
+            rows.length +
+            (onLoadEarlier != null || loading || errorCode.isNotEmpty ? 1 : 0),
+        separatorBuilder: (context, index) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(height: 1, color: colors.line),
+        ),
+        itemBuilder: (context, index) => index < rows.length
+            ? rows[rows.length - 1 - index]
+            : _ChildHistoryPageControl(
+                loading: loading,
+                errorCode: errorCode,
+                onLoad: onLoadEarlier,
+              ),
+      ),
+    );
+  }
+}
+
+class _ChildHistoryPageControl extends StatelessWidget {
+  const _ChildHistoryPageControl({
+    required this.loading,
+    required this.errorCode,
+    required this.onLoad,
+  });
+
+  final bool loading;
+  final String errorCode;
+  final VoidCallback? onLoad;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        for (var index = 0; index < rows.length; index++) ...[
-          rows[index],
-          if (index != rows.length - 1)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Divider(height: 1, color: colors.line),
-            ),
-        ],
+        if (errorCode.isNotEmpty)
+          Text(errorCode, style: Theme.of(context).textTheme.bodySmall),
+        SizedBox(
+          height: 40,
+          child: loading
+              ? const Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : TextButton.icon(
+                  onPressed: onLoad,
+                  icon: Icon(
+                    errorCode.isEmpty ? Icons.expand_less : Icons.refresh,
+                    size: 16,
+                  ),
+                  label: Text(
+                    errorCode.isEmpty ? strings.earlier : strings.retry,
+                  ),
+                ),
+        ),
       ],
     );
   }
@@ -289,9 +452,10 @@ class _SubagentChildList extends StatelessWidget {
 /// Collapsed by default: the task's outcome matters more than each step, and an
 /// exploration task can be hundreds of steps long.
 class _SubagentStepRun extends StatefulWidget {
-  const _SubagentStepRun({required this.steps});
+  const _SubagentStepRun({required this.steps, required this.adapter});
 
   final List<AgentConversationMessage> steps;
+  final AgentRenderAdapter adapter;
 
   @override
   State<_SubagentStepRun> createState() => _SubagentStepRunState();
@@ -347,15 +511,9 @@ class _SubagentStepRunState extends State<_SubagentStepRun> {
                   for (final step in widget.steps)
                     Padding(
                       padding: const EdgeInsets.only(left: 18, top: 6),
-                      child: Text(
-                        _stepLabel(step),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 11.5,
-                          height: 1.3,
-                        ),
+                      child: _SubagentChildMessageBlock(
+                        message: step,
+                        adapter: widget.adapter,
                       ),
                     ),
               ],
@@ -364,15 +522,6 @@ class _SubagentStepRunState extends State<_SubagentStepRun> {
         ),
       ),
     );
-  }
-
-  String _stepLabel(AgentConversationMessage step) {
-    final title = step.cardTitle.trim();
-    if (title.isNotEmpty) {
-      return title;
-    }
-    final text = step.text.trim();
-    return text.isEmpty ? step.role : conversationMessagePreviewText(text);
   }
 }
 
@@ -397,6 +546,7 @@ class _SubagentChildMessageBlock extends StatelessWidget {
       blockBackground: agentConversationToneColor(colors, adapter.quoteTone),
       borderColor: colors.line,
       renderStyle: adapter.markdownStyle,
+      images: message.images,
     );
   }
 }

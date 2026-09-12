@@ -1,6 +1,53 @@
 use super::test_support::*;
 
 #[test]
+fn source_revision_tracks_wal_only_changes_without_exposing_paths() {
+    let dir = temp_dir("source-revision-wal");
+    let path = dir.join("source.sqlite");
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA journal_mode=WAL;
+         PRAGMA wal_autocheckpoint=0;
+         CREATE TABLE retained (body TEXT);
+         INSERT INTO retained VALUES ('before');
+         PRAGMA wal_checkpoint(TRUNCATE);",
+        )
+        .unwrap();
+    let before_metadata = fs::metadata(&path).unwrap();
+    let project = |metadata: &fs::Metadata| {
+        session_from_messages(
+            HistoryAdapter::Codex,
+            &path,
+            metadata,
+            "synthetic",
+            "one".into(),
+            vec![],
+        )
+    };
+    let before = project(&before_metadata);
+    connection
+        .execute("UPDATE retained SET body='after!'", [])
+        .unwrap();
+    let after_metadata = fs::metadata(&path).unwrap();
+    assert_eq!(before_metadata.len(), after_metadata.len());
+    assert_eq!(
+        before_metadata.modified().unwrap(),
+        after_metadata.modified().unwrap()
+    );
+    let after = project(&after_metadata);
+    assert_eq!(before["updatedAt"], after["updatedAt"]);
+    assert_ne!(before["sourceRevision"], after["sourceRevision"]);
+    assert!(
+        after["sourceRevision"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || matches!(ch, ':' | ';'))
+    );
+}
+
+#[test]
 fn codex_adapter_skips_local_command_caveats_for_titles() {
     let dir = temp_dir("codex-readable-title");
     let sessions = dir.join("sessions");

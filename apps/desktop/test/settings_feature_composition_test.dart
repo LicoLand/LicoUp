@@ -8,6 +8,7 @@ import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_effect.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/layout_host_test_fixtures.dart';
@@ -60,6 +61,27 @@ void main() {
         AppearancePresetIds.licoSodaLight,
       );
 
+      final motionUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(const SetReduceMotionPreference(true));
+      await motionUpdate;
+      expect(controller.reduceMotion, isTrue);
+      expect(preferences.value.reduceMotion, isTrue);
+      expect(feature.binding.projection.current.reduceMotion, isTrue);
+
+      final resetMotionUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(const SetReduceMotionPreference(false));
+      await resetMotionUpdate;
+      expect(controller.reduceMotion, isFalse);
+      expect(preferences.value.reduceMotion, isFalse);
+      expect(feature.binding.projection.current.reduceMotion, isFalse);
+
+      preferences.failMotionWrite = true;
+      final rejected = feature.binding.effects.effects.first;
+      feature.binding.intents.send(const SetReduceMotionPreference(true));
+      expect(await rejected, isA<SettingsActionRejected>());
+      expect(controller.reduceMotion, isFalse);
+      expect(preferences.value.reduceMotion, isFalse);
+
       await feature.dispose();
       await feature.dispose();
     },
@@ -68,6 +90,7 @@ void main() {
 
 final class _SettingsPreferencesRepository
     implements PresentationPreferencesRepository {
+  bool failMotionWrite = false;
   PresentationPreferences value = PresentationPreferences(
     layoutProfileId: LayoutProfileId.parse('dashboard'),
     appearancePresetId: AppearancePresetIds.licoSodaLight,
@@ -77,6 +100,12 @@ final class _SettingsPreferencesRepository
   @override
   Future<PresentationPreferencesLoadResult> load() async =>
       PresentationPreferencesLoadResult(preferences: value);
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
+    if (failMotionWrite) throw StateError('synthetic_write_failure');
+    return value = value.copyWith(reduceMotion: enabled);
+  }
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>

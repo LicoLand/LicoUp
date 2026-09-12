@@ -737,6 +737,23 @@ NativeConversationCatalogProjection _readNativeCatalog(
     nativeSessions: sessions,
     agentCatalogs: catalogs,
     runningSessionIds: runningSessionIds,
+    childHistories: [
+      if (controller.conversationChildHistoryScope ==
+          controller.selectedConversationChildHistoryScope)
+        for (final childId in {
+          ...controller.conversationChildSessions.keys,
+          ...controller.conversationChildLoadingSessions,
+          ...controller.conversationChildPageErrors.keys,
+        })
+          NativeChildConversationProjection(
+            sessionId: childId,
+            session: controller.conversationChildSessions[childId],
+            loading: controller.conversationChildLoadingSessions.contains(
+              childId,
+            ),
+            errorCode: controller.conversationChildPageErrors[childId] ?? '',
+          ),
+    ],
     loadingMore: controller.isLoadingMoreSelectedConversationSessions,
     messagePageLoading: controller.isLoadingEarlierSelectedConversationMessages,
     messagePageError: controller.selectedConversationMessagePageError,
@@ -810,8 +827,9 @@ CanonicalConversationProjection _readCanonical(
           sendStateLabel: event.finalized ? 'finalized' : 'streaming',
         ),
     ],
-    hasEarlier:
-        conversation != null && conversation.eventCount > owner.events.length,
+    hasEarlier: owner.hasEarlierEvents,
+    earlierLoading: owner.loadingEarlierEvents,
+    earlierError: owner.earlierEventsError,
     phase: owner.loading
         ? PresentationPhase.loading
         : owner.failureCode.isNotEmpty

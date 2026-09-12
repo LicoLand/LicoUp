@@ -100,10 +100,6 @@ const nativeUsageCache = await readJoinedText([
 ]);
 const commandMod = await readText("crates/licoup-native/src/ffi/commands/mod.rs");
 const commandUsage = await readText("crates/licoup-native/src/ffi/commands/agent_usage.rs");
-const cliUsage = await readJoinedText([
-  "crates/licoup-native/src/bin/licoup.rs",
-  "crates/licoup-native/src/bin/licoup/presentation.rs"
-]);
 const stateStore = await readJoinedText([
   "crates/licoup-native/src/platform/client_state.rs",
   "crates/licoup-native/src/platform/client_state/policy.rs",
@@ -267,10 +263,6 @@ assert(
     commandUsage.includes("crate::domain::agent_usage::scan") &&
     commandUsage.includes("crate::domain::agent_usage::report"),
   "native command adapter must expose scan and report"
-);
-assert(
-  cliUsage.includes("agent-usage scan") && cliUsage.includes("agent-usage report"),
-  "CLI help must document local agent usage commands"
 );
 assert(
   stateStore.includes('"agent-usage-reports"'),

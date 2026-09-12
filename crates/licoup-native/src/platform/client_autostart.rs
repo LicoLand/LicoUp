@@ -241,11 +241,7 @@ fn mcp_binaries_present() -> Result<bool> {
         None => return Ok(false),
     };
     let subagent = dir.join(format!("lico-subagent-mcp{}", std::env::consts::EXE_SUFFIX));
-    let conversation = dir.join(format!(
-        "lico-conversation-mcp{}",
-        std::env::consts::EXE_SUFFIX
-    ));
-    Ok(subagent.is_file() && conversation.is_file())
+    Ok(subagent.is_file())
 }
 
 fn platform_supported() -> bool {

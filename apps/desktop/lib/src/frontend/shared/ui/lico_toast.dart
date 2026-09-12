@@ -351,8 +351,10 @@ class _LicoToastItemView extends StatefulWidget {
 class _LicoToastItemViewState extends State<_LicoToastItemView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final CurvedAnimation _entrance;
   Timer? _autoDismissTimer;
   bool _dismissing = false;
+  bool _entered = false;
 
   @override
   void initState() {
@@ -361,13 +363,34 @@ class _LicoToastItemViewState extends State<_LicoToastItemView>
       vsync: this,
       duration: LicoMotion.medium,
       reverseDuration: LicoMotion.short,
-    )..forward();
+    );
+    _entrance = CurvedAnimation(
+      parent: _controller,
+      curve: LicoMotion.standard,
+      reverseCurve: LicoMotion.accelerate,
+    );
     _autoDismissTimer = Timer(widget.item.showDuration, _dismiss);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final duration = context.motion(LicoMotion.medium);
+    _controller
+      ..duration = duration
+      ..reverseDuration = context.motion(LicoMotion.short);
+    if (duration == Duration.zero) {
+      _controller.value = _dismissing ? 0 : 1;
+    } else if (!_entered) {
+      _controller.forward();
+    }
+    _entered = true;
   }
 
   @override
   void dispose() {
     _autoDismissTimer?.cancel();
+    _entrance.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -378,23 +401,20 @@ class _LicoToastItemViewState extends State<_LicoToastItemView>
       return;
     }
     _dismissing = true;
-    _controller.reverse().whenComplete(widget.onDismissed);
+    _controller.reverse().whenCompleteOrCancel(() {
+      if (mounted && _controller.isDismissed) widget.onDismissed();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final entrance = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
     return FadeTransition(
-      opacity: entrance,
+      opacity: _entrance,
       child: SlideTransition(
         position: Tween<Offset>(
           begin: const Offset(0, 0.08),
           end: Offset.zero,
-        ).animate(entrance),
+        ).animate(_entrance),
         child: LicoToast(
           key: ValueKey<String>('lico-toast-${widget.item.id}'),
           message: widget.item.message,

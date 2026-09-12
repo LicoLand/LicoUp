@@ -212,7 +212,7 @@ enum ConversationActionKind {
 
 const String conversationBridgeSchemaVersion = 'lico.conversation.v1';
 const int conversationBridgeMaxRequestBytes = 1048576;
-const int conversationBridgeDefaultEventPageSize = 50;
+const int conversationBridgeDefaultEventPageSize = 20;
 const int conversationBridgeMaxEventPageSize = 100;
 
 const String continuityBridgeSchemaVersion = "lico.continuous-assistant.v1";

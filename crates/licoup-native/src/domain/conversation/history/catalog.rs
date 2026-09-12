@@ -8,9 +8,9 @@
 //! (match terms), archive discovery, single-session readback, and root overrides
 //! keep the legacy full-scan path in `query.rs`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -21,7 +21,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use super::codex::{
-    CodexRuntimeObservation, parse_codex_rollout_browse_sessions, rollout_session_id_from_filename,
+    CodexRuntimeObservation, parse_codex_rollout_bounded_sessions, rollout_session_id_from_filename,
 };
 use super::cursor_openagent::codec::{open_read_only_connection, sqlite_table_exists};
 use super::cursor_openagent::{
@@ -29,7 +29,8 @@ use super::cursor_openagent::{
 };
 use super::delegated_transcripts::{
     CURSOR_TRANSCRIPTS_DIRECTORY, delegated_file_is_transcript, delegated_task_label,
-    delegated_task_prompt_text, transcript_conversation_id, transcript_is_delegated,
+    delegated_task_prompt_text, delegated_transcript_lineage, transcript_conversation_id,
+    transcript_is_delegated,
 };
 use super::project_workspace::bounded_project_workspace;
 use super::projection_cache::{HistoryProjectionCache, ProjectionCacheKey, SourceFingerprint};
@@ -77,11 +78,6 @@ pub(crate) enum CatalogHydration {
     TranscriptWithDelegatedTasks {
         transcript: PathBuf,
         delegated: Vec<PathBuf>,
-        /// Conversation the delegated transcripts belong to, for stores whose
-        /// layout does not encode lineage in the path. Cursor and Claude Code
-        /// leave this empty because their transcript path already names the
-        /// conversation; Codex records lineage in its thread database instead.
-        delegated_parent_session_id: Option<String>,
     },
     /// Metadata-only entry; the page keeps a stub session.
     None,
@@ -219,6 +215,31 @@ pub(crate) fn load_session_catalog(
     catalog
 }
 
+/// Resolve a task's recorded layout owner before directory pruning. This reads
+/// catalog metadata only and keeps the eventual exact parse in one conversation.
+pub(crate) fn delegated_transcript_owner_ids(
+    adapter: HistoryAdapter,
+    params: &Value,
+    requested: &str,
+) -> Vec<String> {
+    let catalog = load_session_catalog(adapter, params, SystemTime::now());
+    catalog
+        .sessions
+        .into_iter()
+        .flat_map(|entry| {
+            let paths = match entry.hydrate {
+                CatalogHydration::TranscriptWithDelegatedTasks { delegated, .. } => delegated,
+                CatalogHydration::File(path) => vec![path],
+                _ => Vec::new(),
+            };
+            paths.into_iter().filter_map(|path| {
+                let (child, parent) = delegated_transcript_lineage(&path)?;
+                (child == requested).then_some(parent)
+            })
+        })
+        .collect()
+}
+
 fn sort_and_dedupe_catalog(adapter: HistoryAdapter, sessions: &mut Vec<CatalogSession>) {
     sessions.sort_by(|left, right| {
         catalog_content_rank(right)
@@ -325,7 +346,7 @@ fn catalog_dedupe_key(adapter: HistoryAdapter, entry: &CatalogSession) -> String
 
 /// Browse pages return a newest-message preview with exact continuation facts.
 /// Message text is never rewritten; selecting a row enters exact paging.
-const CATALOG_HYDRATED_MESSAGE_CAP: usize = 50;
+const CATALOG_HYDRATED_MESSAGE_CAP: usize = super::DEFAULT_HISTORY_MESSAGE_LIMIT;
 
 fn hydrate_catalog_page(
     adapter: HistoryAdapter,
@@ -362,7 +383,6 @@ fn hydrate_catalog_page(
             CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript,
                 delegated,
-                delegated_parent_session_id,
             } => {
                 let unit = units.entry(transcript.clone()).or_insert_with(|| {
                     (
@@ -370,7 +390,6 @@ fn hydrate_catalog_page(
                         CatalogHydration::TranscriptWithDelegatedTasks {
                             transcript: transcript.clone(),
                             delegated: delegated.clone(),
-                            delegated_parent_session_id: delegated_parent_session_id.clone(),
                         },
                         Vec::new(),
                     )
@@ -491,19 +510,7 @@ fn hydrate_catalog_page(
                         }),
                     );
                 }
-                // Long execution traces follow the same browse bound as the
-                // message list; the full trace stays in the session read path.
-                if let Some(semantic) = object.get_mut("semantic").and_then(Value::as_object_mut) {
-                    for key in ["execution", "thread"] {
-                        if let Some(entries) = semantic.get_mut(key).and_then(Value::as_array_mut) {
-                            let overflow =
-                                entries.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
-                            if overflow > 0 {
-                                entries.drain(0..overflow);
-                            }
-                        }
-                    }
-                }
+                super::query::retain_message_page_semantics(object);
             }
             resolved.insert(*index, session);
         }
@@ -580,37 +587,16 @@ fn catalog_cache_projection(mut sessions: Vec<Value>) -> Vec<Value> {
                 "nextBefore": next_before
             }),
         );
-        if let Some(semantic) = object.get_mut("semantic").and_then(Value::as_object_mut) {
-            for key in ["execution", "thread"] {
-                if let Some(entries) = semantic.get_mut(key).and_then(Value::as_array_mut) {
-                    let overflow = entries.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
-                    if overflow > 0 {
-                        entries.drain(0..overflow);
-                    }
-                }
-            }
-        }
+        super::query::retain_message_page_semantics(object);
     }
     sessions
 }
 
 fn trim_browse_messages(messages: &mut Vec<Value>) {
-    // Delegated cards are part of the browse contract, not tail content. Until
-    // cards have an independent descriptor channel, retain the complete
-    // top-level order whenever a conversation has one so no card creates a
-    // non-contiguous message page.
-    if messages.iter().any(message_is_subagent_card) {
-        return;
-    }
     let overflow = messages.len().saturating_sub(CATALOG_HYDRATED_MESSAGE_CAP);
     if overflow > 0 {
         messages.drain(0..overflow);
     }
-}
-
-fn message_is_subagent_card(message: &Value) -> bool {
-    message.get("role").and_then(Value::as_str) == Some("subagent")
-        || message.get("cardType").and_then(Value::as_str) == Some("subagent")
 }
 
 /// Hydration unit key of one catalog entry, when it has content to parse.
@@ -674,11 +660,7 @@ fn parse_catalog_unit(
         CatalogHydration::TranscriptWithDelegatedTasks {
             transcript,
             delegated,
-            delegated_parent_session_id,
         } => {
-            // Curated delegated labels are read once per unit and only when the
-            // store actually keeps them outside the transcript.
-            let mut declared_labels: Option<BTreeMap<String, CodexDelegatedLabel>> = None;
             if let Ok(metadata) = fs::metadata(transcript) {
                 sessions.extend(parse_history_file(
                     adapter,
@@ -688,24 +670,12 @@ fn parse_catalog_unit(
                     scan_config.clone(),
                 ));
             }
-            // Cursor and Claude Code transcripts are marked by the parser from
-            // their path. A store that records lineage elsewhere supplies the
-            // conversation identity here instead.
             for child in delegated {
                 let Ok(metadata) = fs::metadata(child) else {
                     continue;
                 };
-                let mut child_sessions =
+                let child_sessions =
                     parse_catalog_history_file(adapter, child, source_kind, &metadata, scan_config);
-                if let Some(parent_session_id) = delegated_parent_session_id.as_deref() {
-                    let labels =
-                        declared_labels.get_or_insert_with(|| codex_delegated_labels(params));
-                    mark_declared_delegated_sessions(
-                        &mut child_sessions,
-                        parent_session_id,
-                        labels,
-                    );
-                }
                 sessions.extend(child_sessions);
             }
         }
@@ -715,6 +685,10 @@ fn parse_catalog_unit(
     }
     if sessions.is_empty() {
         return sessions;
+    }
+    if adapter == HistoryAdapter::Codex {
+        let parents = codex_database_spawn_lineage(params);
+        apply_codex_spawn_lineage(params, &parents, &mut sessions);
     }
     if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode) {
         apply_openagent_parent_lineage(adapter, params, &mut sessions);
@@ -730,61 +704,29 @@ fn parse_catalog_history_file(
     scan_config: &HistoryScanConfig,
 ) -> Vec<Value> {
     if adapter == HistoryAdapter::Codex {
-        return parse_codex_rollout_browse_sessions(
+        return parse_codex_rollout_bounded_sessions(
             path,
             source_kind,
             metadata,
             scan_config.clone(),
             CATALOG_HYDRATED_MESSAGE_CAP,
+            None,
         )
         .unwrap_or_default();
     }
     parse_history_file(adapter, path, source_kind, metadata, scan_config.clone())
 }
 
-/// Mark delegated sessions whose lineage the store declares outside the
-/// transcript, so the shared merge folds them into their conversation.
-///
-/// Codex records one thread per delegated task and keeps the parent/child edge
-/// in its thread database, so nothing in the child rollout says which
-/// conversation spawned it.
-fn mark_declared_delegated_sessions(
-    sessions: &mut [Value],
-    parent_session_id: &str,
-    labels: &BTreeMap<String, CodexDelegatedLabel>,
-) {
-    for session in sessions.iter_mut() {
-        let own_id = session
-            .get("nativeSessionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        if own_id == parent_session_id {
-            continue;
-        }
-        let declared = labels.get(&own_id).cloned().unwrap_or_default();
-        let title = declared.title.or_else(|| declared_delegated_title(session));
-        let Some(object) = session.as_object_mut() else {
-            continue;
-        };
-        object.insert("delegatedSubagent".to_string(), json!(true));
-        object.insert("parentSessionId".to_string(), json!(parent_session_id));
-        if let Some(title) = title {
-            object
-                .entry("subagentTitle".to_string())
-                .or_insert_with(|| json!(title));
-        }
-        if let Some(role) = declared.role {
-            object
-                .entry("subagentType".to_string())
-                .or_insert_with(|| json!(role));
-        }
-    }
-}
-
 /// Task label from the instruction the conversation handed the delegated agent.
 fn declared_delegated_title(session: &Value) -> Option<String> {
-    delegated_task_label(delegated_task_prompt_text(session)?)
+    delegated_task_prompt_text(session)
+        .and_then(delegated_task_label)
+        .or_else(|| {
+            session
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 fn kimi_wire_files(session_dir: &Path) -> Vec<PathBuf> {
@@ -897,7 +839,7 @@ fn projection_cache_key(
             adapter_id,
             source_kind,
             kind: "file".to_string(),
-            sources: vec![SourceFingerprint::from_path(path)?],
+            sources: catalog_source_fingerprints(path)?,
             authority: None,
         }),
         CatalogHydration::KimiWireDirectory(directory) => {
@@ -929,7 +871,12 @@ fn projection_cache_key(
             let authority = (adapter == HistoryAdapter::Codex)
                 .then(|| codex_state_database(params))
                 .flatten()
-                .and_then(|path| SourceFingerprint::from_path(&path));
+                .and_then(|path| {
+                    let mut fingerprints = catalog_source_fingerprints(&path)?;
+                    let database = fingerprints.remove(0);
+                    sources.extend(fingerprints);
+                    Some(database)
+                });
             Some(ProjectionCacheKey {
                 adapter_id,
                 source_kind,
@@ -940,6 +887,24 @@ fn projection_cache_key(
         }
         CatalogHydration::None => None,
     }
+}
+
+fn catalog_source_fingerprints(path: &Path) -> Option<Vec<SourceFingerprint>> {
+    let mut sources = vec![SourceFingerprint::from_path(path)?];
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "db" | "sqlite" | "sqlite3" | "vscdb"))
+    {
+        // A committed SQLite write can live entirely in WAL while the main
+        // database's size and modification time stay unchanged.
+        let mut wal = path.as_os_str().to_os_string();
+        wal.push("-wal");
+        if let Some(fingerprint) = SourceFingerprint::from_path(Path::new(&wal)) {
+            sources.push(fingerprint);
+        }
+    }
+    Some(sources)
 }
 
 // ---------------------------------------------------------------------------
@@ -955,6 +920,9 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
     };
     let sessions_dir = sessions_root.path.clone();
     let mut known_ids = HashSet::<String>::new();
+    let mut parents_by_child = newest_codex_state_database(&sessions_dir)
+        .and_then(|path| read_codex_spawn_edges(&path))
+        .unwrap_or_default();
     if let Some(state_db) = newest_codex_state_database(&sessions_dir) {
         match read_codex_state_threads(&state_db, cutoff) {
             Ok(entries) => {
@@ -963,9 +931,7 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
                 // thread folded into its conversation. Otherwise the rollout scan
                 // below re-adds it as its own row.
                 known_ids.extend(entries.iter().map(|entry| entry.native_session_id.clone()));
-                catalog
-                    .sessions
-                    .extend(fold_codex_delegated_threads(&state_db, entries));
+                catalog.sessions.extend(entries);
             }
             Err(skip) => catalog.skipped.push(skip),
         }
@@ -989,7 +955,8 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
         if candidate.modified_at < cutoff {
             continue;
         }
-        let (recorded_identity, working_directory) = codex_rollout_header_facts(&candidate.path);
+        let (recorded_identity, working_directory, parent) =
+            codex_rollout_header_facts(&candidate.path);
         // The rollout header owns native identity. The filename UUID is only
         // the layout fallback for a header that records none, so a rollout
         // whose record id differs from its file stem still opens itself.
@@ -998,6 +965,9 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
         else {
             continue;
         };
+        if let Some(parent) = parent {
+            parents_by_child.entry(session_id.clone()).or_insert(parent);
+        }
         if !known_ids.insert(session_id.clone()) {
             continue;
         }
@@ -1015,6 +985,8 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
             hydrate: CatalogHydration::File(candidate.path),
         });
     }
+    catalog.sessions =
+        fold_codex_delegated_threads(&parents_by_child, std::mem::take(&mut catalog.sessions));
 }
 
 /// Fold Codex delegated threads into the conversation that spawned them.
@@ -1023,12 +995,9 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
 /// `thread_spawn_edges`. Without reading that graph every delegated task occupies
 /// its own browse row and its conversation shows none of the work it delegated.
 fn fold_codex_delegated_threads(
-    state_db: &Path,
+    parents_by_child: &BTreeMap<String, String>,
     entries: Vec<CatalogSession>,
 ) -> Vec<CatalogSession> {
-    let Some(parents_by_child) = read_codex_spawn_edges(state_db) else {
-        return entries;
-    };
     if parents_by_child.is_empty() {
         return entries;
     }
@@ -1036,10 +1005,11 @@ fn fold_codex_delegated_threads(
         .iter()
         .map(|entry| (entry.native_session_id.clone(), entry.source_path.clone()))
         .collect::<BTreeMap<_, _>>();
+    let present = rollout_by_id.keys().cloned().collect::<HashSet<_>>();
     let mut roots_by_child = BTreeMap::<String, String>::new();
     let mut delegated_by_parent = BTreeMap::<String, Vec<PathBuf>>::new();
     for child in rollout_by_id.keys() {
-        let root = explicit_lineage_root(child, &parents_by_child);
+        let root = explicit_lineage_root(child, parents_by_child, &present);
         if root == *child || !rollout_by_id.contains_key(&root) {
             continue;
         }
@@ -1062,20 +1032,26 @@ fn fold_codex_delegated_threads(
             entry.hydrate = CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript: entry.source_path.clone(),
                 delegated,
-                delegated_parent_session_id: Some(entry.native_session_id.clone()),
             };
             entry
         })
         .collect()
 }
 
-fn explicit_lineage_root(session_id: &str, parents_by_child: &BTreeMap<String, String>) -> String {
+fn explicit_lineage_root(
+    session_id: &str,
+    parents_by_child: &BTreeMap<String, String>,
+    present: &HashSet<String>,
+) -> String {
     let mut current = session_id.to_string();
     let mut visited = HashSet::new();
     while visited.insert(current.clone()) {
         let Some(parent) = parents_by_child.get(&current) else {
             return current;
         };
+        if !present.contains(parent) {
+            return current;
+        }
         current.clone_from(parent);
     }
     // A cycle has no authoritative root. Leave every member standalone.
@@ -1085,17 +1061,15 @@ fn explicit_lineage_root(session_id: &str, parents_by_child: &BTreeMap<String, S
 /// Mark every parsed Codex session the thread database records as delegated, so
 /// the shared merge folds it into its conversation on read paths that build no
 /// catalog.
-pub(crate) fn apply_codex_spawn_lineage(params: &Value, sessions: &mut [Value]) {
-    let parents_by_child = codex_spawn_lineage(params);
+pub(crate) fn apply_codex_spawn_lineage(
+    params: &Value,
+    parents_by_child: &BTreeMap<String, String>,
+    sessions: &mut [Value],
+) {
     if parents_by_child.is_empty() {
         return;
     }
     let labels = codex_delegated_labels(params);
-    let present = sessions
-        .iter()
-        .filter_map(|session| session.get("nativeSessionId").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect::<HashSet<_>>();
     for session in sessions.iter_mut() {
         let Some(own_id) = session
             .get("nativeSessionId")
@@ -1107,11 +1081,6 @@ pub(crate) fn apply_codex_spawn_lineage(params: &Value, sessions: &mut [Value]) 
         let Some(parent) = parents_by_child.get(&own_id) else {
             continue;
         };
-        // A delegated thread whose conversation is out of scope keeps its own
-        // entry so the work stays reachable.
-        if !present.contains(parent.as_str()) {
-            continue;
-        }
         let declared = labels.get(&own_id).cloned().unwrap_or_default();
         let title = declared.title.or_else(|| declared_delegated_title(session));
         let Some(object) = session.as_object_mut() else {
@@ -1134,40 +1103,51 @@ pub(crate) fn apply_codex_spawn_lineage(params: &Value, sessions: &mut [Value]) 
 
 /// Delegated thread ids the requested Codex conversations spawned, so a
 /// single-conversation read can pull their rollouts into scope.
-pub(crate) fn codex_delegated_thread_ids(params: &Value, requested: &[String]) -> Vec<String> {
-    if requested.is_empty() {
-        return Vec::new();
+pub(crate) fn codex_delegated_thread_ids(
+    parents_by_child: &BTreeMap<String, String>,
+    requested: &[String],
+) -> Vec<String> {
+    let mut children_by_parent = BTreeMap::<&str, Vec<&str>>::new();
+    for (child, parent) in parents_by_child {
+        children_by_parent.entry(parent).or_default().push(child);
     }
-    let Some(state_db) = history_roots(HistoryAdapter::Codex, params)
+    let mut wanted = requested.iter().map(String::as_str).collect::<HashSet<_>>();
+    let mut pending = requested
         .iter()
-        .find(|root| root.source_kind == "codex-session-store")
-        .and_then(|root| newest_codex_state_database(&root.path))
-    else {
-        return Vec::new();
-    };
-    let Some(parents_by_child) = read_codex_spawn_edges(&state_db) else {
-        return Vec::new();
-    };
-    let mut wanted = requested.iter().cloned().collect::<HashSet<_>>();
+        .map(String::as_str)
+        .collect::<VecDeque<_>>();
     let mut children = Vec::new();
-    loop {
-        let mut changed = false;
-        for (child, parent) in &parents_by_child {
-            if wanted.contains(parent) && wanted.insert(child.clone()) {
-                children.push(child.clone());
-                changed = true;
+    while let Some(parent) = pending.pop_front() {
+        for child in children_by_parent.get(parent).into_iter().flatten() {
+            if wanted.insert(child) {
+                pending.push_back(child);
+                children.push((*child).to_string());
             }
-        }
-        if !changed {
-            break;
         }
     }
     children
 }
 
 /// Parent thread of each Codex conversation, for read paths that carry no
-/// catalog. Returns an empty map when the database has no lineage table.
+/// catalog. Database edges take precedence over explicit rollout-header edges.
 pub(crate) fn codex_spawn_lineage(params: &Value) -> BTreeMap<String, String> {
+    let mut parents = codex_database_spawn_lineage(params);
+    let roots = history_roots(HistoryAdapter::Codex, params);
+    let discovery = discover_history_files(
+        HistoryAdapter::Codex,
+        &roots,
+        HistoryDiscoveryOptions::default(),
+    );
+    for candidate in discovery.candidates {
+        let (id, _, parent) = codex_rollout_header_facts(&candidate.path);
+        if let (Some(id), Some(parent)) = (id, parent) {
+            parents.entry(id).or_insert(parent);
+        }
+    }
+    parents
+}
+
+fn codex_database_spawn_lineage(params: &Value) -> BTreeMap<String, String> {
     codex_state_database(params)
         .and_then(|state_db| read_codex_spawn_edges(&state_db))
         .unwrap_or_default()
@@ -1283,13 +1263,12 @@ fn read_codex_spawn_edges(state_db: &Path) -> Option<BTreeMap<String, String>> {
 /// UUID is only a layout fallback for a header that names no identity. Only
 /// the bounded head of the file is read; the header is always the first
 /// record.
-fn codex_rollout_header_facts(path: &Path) -> (Option<String>, Option<String>) {
-    let (identity, cwd) = (|| {
+fn codex_rollout_header_facts(path: &Path) -> (Option<String>, Option<String>, Option<String>) {
+    (|| {
         let file = fs::File::open(path).ok()?;
         let mut head = Vec::new();
-        BufReader::new(file)
-            .take(MAX_TITLE_PROBE_BYTES)
-            .read_to_end(&mut head)
+        BufReader::new(file.take(MAX_TITLE_PROBE_BYTES))
+            .read_until(b'\n', &mut head)
             .ok()?;
         let head = String::from_utf8_lossy(&head);
         let line = head.lines().next()?;
@@ -1309,10 +1288,13 @@ fn codex_rollout_header_facts(path: &Path) -> (Option<String>, Option<String>) {
             .get("cwd")
             .and_then(Value::as_str)
             .and_then(bounded_project_workspace);
-        Some((identity, cwd))
+        let parent = identity.as_deref().and_then(|id| {
+            let (parent, delegated, _) = super::codex::codex_rollout_lineage(payload, id);
+            delegated.then_some(parent).flatten()
+        });
+        Some((identity, cwd, parent))
     })()
-    .unwrap_or((None, None));
-    (identity, cwd)
+    .unwrap_or((None, None, None))
 }
 
 fn newest_codex_state_database(sessions_dir: &Path) -> Option<PathBuf> {
@@ -1459,20 +1441,15 @@ fn read_openagent_sessions(
         }
     };
     let mut sql = format!(
-        "SELECT id, {}, {}, {}, {}, time_updated FROM session WHERE time_updated >= ?1",
+        "SELECT id, {}, {}, {}, {}, time_updated, {} FROM session WHERE time_updated >= ?1",
         optional_column("title"),
         optional_column("directory"),
         optional_column("model"),
         optional_column("time_created"),
+        optional_column("parent_id"),
     );
     if columns.contains("time_archived") {
         sql.push_str(" AND (time_archived IS NULL OR time_archived = 0)");
-    }
-    if matches!(adapter, HistoryAdapter::KiloCode | HistoryAdapter::OpenCode)
-        && columns.contains("parent_id")
-    {
-        // Sub-agent sessions stay reachable through their parent's transcript.
-        sql.push_str(" AND parent_id IS NULL");
     }
     sql.push_str(" ORDER BY time_updated DESC, id ASC");
     let cutoff_millis = cutoff
@@ -1484,38 +1461,61 @@ fn read_openagent_sessions(
         .map_err(|_| fail("openagent_state_schema_unrecognized"))?;
     let rows = statement
         .query_map([cutoff_millis], |row| {
-            Ok(CatalogSession {
-                native_session_id: row.get(0)?,
-                source_path: db_path.to_path_buf(),
-                source_kind: match adapter {
-                    HistoryAdapter::KiloCode => "kilo-session-database".to_string(),
-                    _ => "opencode-session-database".to_string(),
+            Ok((
+                CatalogSession {
+                    native_session_id: row.get(0)?,
+                    source_path: db_path.to_path_buf(),
+                    source_kind: match adapter {
+                        HistoryAdapter::KiloCode => "kilo-session-database".to_string(),
+                        _ => "opencode-session-database".to_string(),
+                    },
+                    title: row
+                        .get::<_, Option<String>>(1)?
+                        .filter(|value| !value.trim().is_empty()),
+                    created_at: row.get::<_, Option<i64>>(4)?.and_then(epoch_to_system_time),
+                    updated_at: row.get::<_, Option<i64>>(5)?.and_then(epoch_to_system_time),
+                    working_directory: row
+                        .get::<_, Option<String>>(2)?
+                        .as_deref()
+                        .and_then(bounded_project_workspace),
+                    message_count: None,
+                    model: row
+                        .get::<_, Option<String>>(3)?
+                        .filter(|value| !value.trim().is_empty()),
+                    // The session store holds the conversation too, so the browse row
+                    // carries its messages instead of rendering as an empty row.
+                    running: false,
+                    hydrate: CatalogHydration::File(db_path.to_path_buf()),
                 },
-                title: row
-                    .get::<_, Option<String>>(1)?
-                    .filter(|value| !value.trim().is_empty()),
-                created_at: row.get::<_, Option<i64>>(4)?.and_then(epoch_to_system_time),
-                updated_at: row.get::<_, Option<i64>>(5)?.and_then(epoch_to_system_time),
-                working_directory: row
-                    .get::<_, Option<String>>(2)?
-                    .as_deref()
-                    .and_then(bounded_project_workspace),
-                message_count: None,
-                model: row
-                    .get::<_, Option<String>>(3)?
-                    .filter(|value| !value.trim().is_empty()),
-                // The session store holds the conversation too, so the browse row
-                // carries its messages instead of rendering as an empty row.
-                running: false,
-                hydrate: CatalogHydration::File(db_path.to_path_buf()),
-            })
+                row.get::<_, Option<String>>(6)?,
+            ))
         })
         .map_err(|_| fail("openagent_state_read_failed"))?;
     let mut entries = Vec::new();
     for row in rows {
         entries.push(row.map_err(|_| fail("openagent_state_read_failed"))?);
     }
-    Ok(entries)
+    let parents = entries
+        .iter()
+        .filter_map(|(entry, parent)| {
+            parent
+                .as_ref()
+                .filter(|parent| !parent.trim().is_empty())
+                .map(|parent| (entry.native_session_id.clone(), parent.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let present = entries
+        .iter()
+        .map(|(entry, _)| entry.native_session_id.clone())
+        .collect::<HashSet<_>>();
+    Ok(entries
+        .into_iter()
+        .filter_map(|(entry, _)| {
+            (explicit_lineage_root(&entry.native_session_id, &parents, &present)
+                == entry.native_session_id)
+                .then_some(entry)
+        })
+        .collect())
 }
 
 /// Apply the same explicit `session.parent_id` relation used by browse catalog
@@ -1563,11 +1563,6 @@ pub(crate) fn apply_openagent_parent_lineage(
     if parents.is_empty() {
         return;
     }
-    let present = sessions
-        .iter()
-        .filter_map(|session| session.get("nativeSessionId").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect::<HashSet<_>>();
     for session in sessions.iter_mut() {
         let Some(id) = session
             .get("nativeSessionId")
@@ -1576,10 +1571,7 @@ pub(crate) fn apply_openagent_parent_lineage(
         else {
             continue;
         };
-        let Some(parent) = parents
-            .get(&id)
-            .filter(|parent| present.contains(parent.as_str()))
-        else {
+        let Some(parent) = parents.get(&id) else {
             continue;
         };
         if let Some(object) = session.as_object_mut() {
@@ -2154,24 +2146,26 @@ fn push_delegated_transcript_units(
             continue;
         }
         let Some(transcript) = unit.transcript else {
-            // A delegated transcript whose conversation is gone keeps its own
-            // entry so the work stays reachable.
-            let Some((_, orphan)) = unit.delegated.first().cloned() else {
-                continue;
-            };
-            catalog.sessions.push(CatalogSession {
-                native_session_id,
-                source_path: orphan.clone(),
-                source_kind: unit.source_kind,
-                title: None,
-                created_at: None,
-                updated_at: Some(unit.modified_at),
-                working_directory: working_directory.map(str::to_string),
-                message_count: None,
-                model: None,
-                running: false,
-                hydrate: CatalogHydration::File(orphan),
-            });
+            // Every orphan keeps its task identity. The missing parent's id
+            // cannot name any of these separate hydration units.
+            for (updated_at, orphan) in unit.delegated {
+                let Some((task_id, _)) = delegated_transcript_lineage(&orphan) else {
+                    continue;
+                };
+                catalog.sessions.push(CatalogSession {
+                    native_session_id: task_id,
+                    source_path: orphan.clone(),
+                    source_kind: unit.source_kind.clone(),
+                    title: None,
+                    created_at: None,
+                    updated_at: Some(updated_at),
+                    working_directory: working_directory.map(str::to_string),
+                    message_count: None,
+                    model: None,
+                    running: false,
+                    hydrate: CatalogHydration::File(orphan),
+                });
+            }
             continue;
         };
         catalog.sessions.push(CatalogSession {
@@ -2188,7 +2182,6 @@ fn push_delegated_transcript_units(
             hydrate: CatalogHydration::TranscriptWithDelegatedTasks {
                 transcript,
                 delegated: unit.delegated.into_iter().map(|(_, path)| path).collect(),
-                delegated_parent_session_id: None,
             },
         });
     }

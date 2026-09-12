@@ -971,7 +971,8 @@ void main() {
     );
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('更新'), findsOneWidget);
-    expect(find.text('工具'), findsOneWidget);
+    expect(find.text('通用'), findsOneWidget);
+    expect(find.text('工具'), findsNothing);
     expect(find.text('存储'), findsOneWidget);
     expect(find.text('诊断'), findsOneWidget);
     expect(find.text('启动'), findsOneWidget);

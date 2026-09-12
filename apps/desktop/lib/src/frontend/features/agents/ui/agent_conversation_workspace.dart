@@ -16,6 +16,7 @@ import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/native_subagent_history_scope.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
@@ -1075,11 +1076,20 @@ class _AgentConversationWorkspaceState
                 native.runningSessionIds.contains(candidate.id),
           )
         : ConversationPaneHeader(state: headerState, actions: headerActions);
-    return AgentConversationActivePane(
-      state: state,
-      actions: actions,
-      header: header,
-      framed: mobile,
+    return NativeSubagentHistoryScope(
+      key: ValueKey(
+        'native-children-${target.target}-${session?.nativeSessionId ?? ''}',
+      ),
+      histories: native.childHistories,
+      onLoad: (childId, earlier) => widget.conversation.intents.send(
+        LoadChildConversationMessages(childId, earlier: earlier),
+      ),
+      child: AgentConversationActivePane(
+        state: state,
+        actions: actions,
+        header: header,
+        framed: mobile,
+      ),
     );
   }
 

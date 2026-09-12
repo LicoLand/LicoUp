@@ -31,10 +31,10 @@ mod recovery;
 pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
 pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
-pub use events::EventRepository;
+pub use events::{EventPagePosition, EventRepository};
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 
-pub const DEFAULT_EVENT_PAGE_SIZE: usize = 50;
+pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
 pub const MAX_EVENT_PAGE_SIZE: usize = 100;
 /// Bounded conversation SQLite pool size. Long-running processes reuse at
 /// most this many configured connections; acquisition blocks on a condition
@@ -2352,10 +2352,23 @@ impl ConversationStore {
         after_sequence: Option<i64>,
         requested_limit: usize,
     ) -> StoreResult<EventPage> {
+        self.page_events_window(
+            conversation_id,
+            EventPagePosition::After(after_sequence.unwrap_or(0)),
+            requested_limit,
+        )
+    }
+
+    pub fn page_events_window(
+        &self,
+        conversation_id: &str,
+        position: EventPagePosition,
+        requested_limit: usize,
+    ) -> StoreResult<EventPage> {
         validate_identifier(conversation_id, "conversation_id")?;
         let limit = requested_limit.clamp(1, MAX_EVENT_PAGE_SIZE);
         self.with_connection(|connection| {
-            page_events_inner(connection, conversation_id, after_sequence, limit)
+            page_events_window_inner(connection, conversation_id, position, limit)
         })
     }
 
@@ -4789,19 +4802,40 @@ fn page_events_inner(
     after_sequence: Option<i64>,
     limit: usize,
 ) -> StoreResult<EventPage> {
+    page_events_window_inner(
+        connection,
+        conversation_id,
+        EventPagePosition::After(after_sequence.unwrap_or(0)),
+        limit,
+    )
+}
+
+fn page_events_window_inner(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    position: EventPagePosition,
+    limit: usize,
+) -> StoreResult<EventPage> {
     ensure_conversation(connection, conversation_id)?;
-    let cursor = after_sequence.unwrap_or(0);
-    let mut statement = connection.prepare(
+    let (operator, order, cursor) = match position {
+        EventPagePosition::After(sequence) => (">", "ASC", sequence),
+        EventPagePosition::Before(sequence) => ("<", "DESC", sequence),
+        EventPagePosition::Latest => ("<=", "DESC", i64::MAX),
+    };
+    let mut statement = connection.prepare(&format!(
         "SELECT id, conversation_id, sequence, author_membership_id, kind,
          causation_id, correlation_id, created_at, finalized
-         FROM events WHERE conversation_id=?1 AND sequence>?2
-         ORDER BY sequence ASC LIMIT ?3",
-    )?;
+         FROM events WHERE conversation_id=?1 AND sequence {operator} ?2
+         ORDER BY sequence {order} LIMIT ?3"
+    ))?;
     let rows = statement.query_map(
         params![conversation_id, cursor, limit as i64],
         event_from_row,
     )?;
     let mut events = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    if !matches!(position, EventPagePosition::After(_)) {
+        events.reverse();
+    }
     let event_ids = events
         .iter()
         .map(|event| event.id.clone())
@@ -4812,16 +4846,21 @@ fn page_events_inner(
             event.parts.clone_from(parts);
         }
     }
-    let total_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM events WHERE conversation_id=?1",
-        params![conversation_id],
-        |row| row.get(0),
+    let first_sequence = events.first().map(|event| event.sequence);
+    let (total_count, has_earlier): (i64, bool) = connection.query_row(
+        "SELECT COUNT(*), EXISTS(
+           SELECT 1 FROM events WHERE conversation_id=?1 AND sequence<?2
+         ) FROM events WHERE conversation_id=?1",
+        params![conversation_id, first_sequence],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let next_cursor = events.last().map(|event| event.sequence.to_string());
     Ok(EventPage {
         events,
         next_cursor,
         total_count,
+        has_earlier,
+        next_before_sequence: first_sequence.filter(|_| has_earlier),
     })
 }
 
@@ -6645,18 +6684,26 @@ mod tests {
                 .unwrap();
         }
         let mut page_delta: Option<usize> = None;
-        for limit in [10usize, 50, 100] {
-            let before = store.counters().queries();
-            let page = store.page_events(&conversation.id, None, limit).unwrap();
-            let delta = store.counters().queries() - before;
-            assert_eq!(page.events.len(), limit.min(120));
-            for event in &page.events {
-                if event.kind == EventKind::Message {
-                    assert_eq!(event.parts.len(), 2);
+        for position in [
+            EventPagePosition::After(0),
+            EventPagePosition::Latest,
+            EventPagePosition::Before(121),
+        ] {
+            for limit in [10usize, 20, 100] {
+                let before = store.counters().queries();
+                let page = store
+                    .page_events_window(&conversation.id, position, limit)
+                    .unwrap();
+                let delta = store.counters().queries() - before;
+                assert_eq!(page.events.len(), limit.min(120));
+                for event in &page.events {
+                    if event.kind == EventKind::Message {
+                        assert_eq!(event.parts.len(), 2);
+                    }
                 }
+                assert_eq!(delta, 4, "page of {limit} events must cost 4 statements");
+                page_delta = Some(delta);
             }
-            assert_eq!(delta, 4, "page of {limit} events must cost 4 statements");
-            page_delta = Some(delta);
         }
         let mut search_delta: Option<usize> = None;
         for limit in [10usize, 50, 100] {
@@ -6975,6 +7022,121 @@ mod tests {
             .unwrap();
         assert_eq!(second.events.len(), 5);
         assert_eq!(store.search("searchable-token", 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn event_pages_use_retained_sequence_anchors_for_latest_older_and_tail() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Sparse pages", owner()).unwrap();
+        let append = || {
+            store
+                .append_event(
+                    &conversation.id,
+                    None,
+                    EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: "retained complete content".into(),
+                    }],
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap()
+        };
+        for _ in 0..65 {
+            append();
+        }
+        store
+            .with_connection(|connection| {
+                connection.execute(
+                    "DELETE FROM events WHERE conversation_id=?1 AND sequence % 3 = 0",
+                    [&conversation.id],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let retained: Vec<i64> = (1..=65).filter(|sequence| sequence % 3 != 0).collect();
+        let mut position = EventPagePosition::Latest;
+        let mut recovered = Vec::new();
+        let mut end = retained.len();
+        let mut latest_cursor = None;
+        loop {
+            let page = store
+                .page_events_window(&conversation.id, position, DEFAULT_EVENT_PAGE_SIZE)
+                .unwrap();
+            let sequences: Vec<_> = page.events.iter().map(|event| event.sequence).collect();
+            let start = end.saturating_sub(20);
+            assert_eq!(sequences, retained[start..end]);
+            assert_eq!(page.total_count, retained.len() as i64);
+            assert_eq!(page.next_cursor, sequences.last().map(ToString::to_string));
+            assert_eq!(page.has_earlier, start > 0);
+            assert!(page.events.iter().all(|event| {
+                event.parts.len() == 1 && event.parts[0].content == "retained complete content"
+            }));
+            if latest_cursor.is_none() {
+                latest_cursor = page.next_cursor.clone();
+            }
+            recovered.splice(0..0, sequences);
+            let Some(before) = page.next_before_sequence else {
+                assert!(!page.has_earlier);
+                break;
+            };
+            assert_eq!(before, retained[start]);
+            position = EventPagePosition::Before(before);
+            end = start;
+        }
+        assert_eq!(recovered, retained);
+
+        // A deleted anchor is still a valid exclusive sequence boundary.
+        let page = store
+            .page_events_window(&conversation.id, EventPagePosition::Before(36), 20)
+            .unwrap();
+        assert_eq!(page.events.len(), 20);
+        assert_eq!(page.events.last().unwrap().sequence, 35);
+
+        let appended = [append(), append()];
+        let tail = store
+            .page_events(
+                &conversation.id,
+                latest_cursor.and_then(|cursor| cursor.parse().ok()),
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            tail.events
+                .iter()
+                .map(|event| &event.id)
+                .collect::<Vec<_>>(),
+            appended.iter().map(|event| &event.id).collect::<Vec<_>>()
+        );
+        assert_eq!(tail.total_count, retained.len() as i64 + 2);
+        assert!(tail.has_earlier);
+        assert_eq!(tail.next_before_sequence, Some(appended[0].sequence));
+        let empty = store
+            .page_events(&conversation.id, Some(appended[1].sequence), 20)
+            .unwrap();
+        assert!(empty.events.is_empty());
+        assert_eq!(empty.next_cursor, None);
+        assert!(!empty.has_earlier);
+        assert_eq!(empty.next_before_sequence, None);
+    }
+
+    #[test]
+    fn event_pages_have_no_earlier_cursor_without_retained_rows() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Empty pages", owner()).unwrap();
+        for position in [EventPagePosition::Latest, EventPagePosition::Before(1)] {
+            let page = store
+                .page_events_window(&conversation.id, position, 20)
+                .unwrap();
+            assert!(page.events.is_empty());
+            assert_eq!(page.total_count, 0);
+            assert_eq!(page.next_cursor, None);
+            assert!(!page.has_earlier);
+            assert_eq!(page.next_before_sequence, None);
+        }
     }
 
     #[test]
