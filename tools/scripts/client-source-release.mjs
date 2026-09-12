@@ -36,7 +36,7 @@ async function digest(file) {
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
 }
-export async function publishSource({ event, eventName, cwd = process.cwd(), run = execute }) {
+export async function prepareSourceDraft({ event, eventName, cwd = process.cwd(), run = execute }) {
   const { repository, revision, head } = acceptedPromotion(event, eventName);
   const git = args => run('git', args, { cwd });
   if (await git(['rev-parse', 'HEAD']) !== revision) fail('source_checkout_mismatch');
@@ -54,14 +54,19 @@ export async function publishSource({ event, eventName, cwd = process.cwd(), run
     if (/\(HTTP 404\)/u.test(response.output)) return null;
     fail('source_remote_ambiguous');
   };
-  const [tagState, releaseState] = await Promise.all([
-    observe(`repos/${repository}/git/ref/tags/${tag}`), observe(`repos/${repository}/releases/tags/${tag}`),
+  const [tagState, releaseList] = await Promise.all([
+    observe(`repos/${repository}/git/ref/tags/${tag}`),
+    gh(['api', `repos/${repository}/releases?per_page=100`]).then(value => JSON.parse(value)),
   ]);
+  if (!Array.isArray(releaseList)) fail('source_remote_ambiguous');
+  const matchingReleases = releaseList.filter(candidate => candidate?.tag_name === tag);
+  if (matchingReleases.length > 1) fail('source_release_conflict');
+  const releaseState = matchingReleases[0] || null;
   const remoteTag = tagState?.object?.sha;
   if (tagState && remoteTag !== revision) fail('source_tag_conflict');
   let release = releaseState;
   if (release && (!remoteTag || release.tag_name !== tag || release.name !== title || release.body !== marker ||
-      release.prerelease !== false || typeof release.draft !== 'boolean')) fail('source_release_conflict');
+      release.prerelease !== false || typeof release.draft !== 'boolean' || release.target_commitish !== revision)) fail('source_release_conflict');
   if (!remoteTag) {
     const tip = await observe(`repos/${repository}/git/ref/heads/release`);
     if (tip?.object?.sha !== revision) fail('source_release_tip_moved');
@@ -74,7 +79,7 @@ export async function publishSource({ event, eventName, cwd = process.cwd(), run
     await writeFile(path.join(root, checksum), `${expectedDigest}  ${archive}\n`);
     if (!remoteTag) await gh(['api', '--method', 'POST', `repos/${repository}/git/refs`, '-f', `ref=refs/tags/${tag}`, '-f', `sha=${revision}`]);
     if (!release) {
-      release = JSON.parse(await gh(['api', '--method', 'POST', `repos/${repository}/releases`, '-f', `tag_name=${tag}`, '-f', `name=${title}`, '-f', `body=${marker}`, '-F', 'draft=true', '-F', 'prerelease=false']));
+      release = JSON.parse(await gh(['api', '--method', 'POST', `repos/${repository}/releases`, '-f', `tag_name=${tag}`, '-f', `target_commitish=${revision}`, '-f', `name=${title}`, '-f', `body=${marker}`, '-F', 'draft=true', '-F', 'prerelease=false']));
 
     }
     const assets = JSON.parse(await gh(['api', `repos/${repository}/releases/${release.id}/assets?per_page=100`]));
@@ -87,7 +92,8 @@ export async function publishSource({ event, eventName, cwd = process.cwd(), run
       await gh(['release', 'download', tag, '--pattern', name, '--dir', downloaded, '--repo', repository]);
       if ((await stat(path.join(downloaded, name))).size <= 0 || await digest(path.join(downloaded, name)) !== await digest(path.join(root, name))) fail('source_asset_conflict');
     };
-    // Validate every existing immutable asset before completing a partial draft.
+    // Existing source files must match byte-for-byte. Missing source files may
+    // be appended only while the Release is still a draft.
     for (const name of [archive, checksum]) {
       if (assets.some(a => a.name === name)) await verify(name);
       else if (!release.draft) fail('source_public_asset_missing');
@@ -97,14 +103,14 @@ export async function publishSource({ event, eventName, cwd = process.cwd(), run
       await gh(['release', 'upload', tag, path.join(root, name), '--repo', repository]);
       await verify(name);
     }
-    if (release.draft) await gh(['api', '--method', 'PATCH', `repos/${repository}/releases/${release.id}`, '-F', 'draft=false']);
-    const published = await observe(`repos/${repository}/releases/tags/${tag}`);
-    if (published?.draft !== false || published?.prerelease !== false || published?.tag_name !== tag ||
-        published?.name !== title || published?.body !== marker) fail('source_publication_unverified');
-    return { ok: true, sourcePublished: true, privateDataIncluded: false };
+    const prepared = await observe(`repos/${repository}/releases/${release.id}`);
+    if (typeof prepared?.draft !== 'boolean' || prepared?.prerelease !== false || prepared?.tag_name !== tag ||
+        prepared?.target_commitish !== revision || prepared?.name !== title || prepared?.body !== marker) fail('source_draft_unverified');
+    if (!prepared.draft && (assets.length !== allowed.size || [...allowed].some(name => !assets.some(asset => asset.name === name)))) fail('source_public_asset_missing');
+    return { ok: true, sourceDraftPrepared: prepared.draft, sourcePublished: !prepared.draft, releaseId: release.id, privateDataIncluded: false };
   } finally { await rm(root, { recursive: true, force: true }); }
 }
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  try { console.log(JSON.stringify(await publishSource({ event: JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8')), eventName: process.env.GITHUB_EVENT_NAME }))); }
+  try { console.log(JSON.stringify(await prepareSourceDraft({ event: JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8')), eventName: process.env.GITHUB_EVENT_NAME }))); }
   catch (error) { console.error(JSON.stringify({ ok: false, code: /^source_[a-z_]+$/u.test(error?.code || '') ? error.code : 'source_publication_failed', privateDataIncluded: false })); process.exitCode = 1; }
 }
