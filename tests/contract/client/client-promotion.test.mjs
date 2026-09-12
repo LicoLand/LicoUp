@@ -6,13 +6,14 @@ import {
   hasPromotableCommits,
   inferPromotionBase,
   promotionPlan,
+  reconcileRequiredChecks,
   releaseTrainEdges,
   requiredCheckRegistered,
 } from "../../../tools/scripts/client-promotion.mjs";
 
 test("promotion planner accepts only the three repository promotion edges", () => {
   assert.equal(promotionPlan("fix/example", "nightly").aggregate, "Client required");
-  assert.equal(promotionPlan("nightly", "stable").aggregate, "Stable client");
+  assert.equal(promotionPlan("nightly-cutoff/2026-09-05", "stable").aggregate, "Stable client");
   assert.equal(promotionPlan("stable", "release").aggregate, "Release ready");
   for (const [head, base] of [
     ["fix/example", "stable"],
@@ -80,7 +81,7 @@ test("promotion planner rejects unsafe or non-action branch names", () => {
 
 test("promotion base inference follows the release train without a default-branch shortcut", () => {
   assert.equal(inferPromotionBase("refactor/promotion-gates"), "nightly");
-  assert.equal(inferPromotionBase("nightly"), "stable");
+  assert.equal(inferPromotionBase("nightly-cutoff/2026-09-05"), "stable");
   assert.equal(inferPromotionBase("stable"), "release");
   assert.throws(
     () => inferPromotionBase("release"),
@@ -90,7 +91,15 @@ test("promotion base inference follows the release train without a default-branc
   assert.deepEqual(releaseTrainEdges.map(({ head, base, aggregate }) =>
     `${head}->${base}:${aggregate}`), [
     "current->nightly:Client required",
-    "nightly->stable:Stable client",
+    "nightly-cutoff/YYYY-MM-DD->stable:Stable client",
     "stable->release:Release ready",
   ]);
+});
+
+test("required checks reconcile without a wall-clock deadline", () => {
+  const required = ["Branch flow", "Apple Release ready"];
+  assert.deepEqual(reconcileRequiredChecks([], required), { status: "pending", context: "Branch flow" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }], required), { status: "pending", context: "Apple Release ready" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "Apple Release ready", conclusion: "failure" }], required), { status: "failed", context: "Apple Release ready" });
+  assert.deepEqual(reconcileRequiredChecks([{ name: "Branch flow", conclusion: "success" }, { name: "Apple Release ready", conclusion: "success" }], required), { status: "complete" });
 });

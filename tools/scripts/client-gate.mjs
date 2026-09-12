@@ -289,7 +289,7 @@ function validatePromotionTopology() {
     "HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}",
     "TARGET_REPOSITORY: ${{ github.repository }}",
     'test "$HEAD_REPOSITORY" = "$TARGET_REPOSITORY"',
-    'test "$HEAD_BRANCH" = nightly',
+    'case "$HEAD_BRANCH" in nightly-cutoff/????-??-??) ;; *) exit 1 ;; esac',
     'test "$(uname -m)" = arm64',
     "LICO_CLIENT_RELEASE_TARGETS: macos-arm64",
     "npm run client:build -- --platform macos",
@@ -387,6 +387,25 @@ function validatePromotionTopology() {
     "secrets.",
   ]) {
     assertExcludes(ready, token, `release readiness must be build-free: ${token}`);
+  }
+}
+
+function validateWeeklyReleaseTopology() {
+  const weekly = readText(".github/workflows/client-weekly-release.yml");
+  for (const token of [
+    "name: Weekly release coordinator",
+    "if: vars.LICOUP_RELEASE_AUTOMATION_ENABLED == 'true'",
+    "types: [client-release-result]",
+    "node tools/scripts/client-weekly-release.mjs",
+  ]) {
+    assertIncludes(weekly, token, `weekly release coordinator is missing: ${token}`);
+  }
+  // The coordinator mutates release state, so no job may run without the
+  // repository explicitly enabling it.
+  const gated = weekly.split("if: vars.LICOUP_RELEASE_AUTOMATION_ENABLED == 'true'").length - 1;
+  const jobs = workflowJobIds(weekly).length;
+  if (gated !== jobs) {
+    fail("every weekly release coordinator job must be gated on LICOUP_RELEASE_AUTOMATION_ENABLED");
   }
 }
 
@@ -495,6 +514,7 @@ export function validateClientGateTopology() {
   validatePackageTopology();
   validateCiTopology();
   validatePromotionTopology();
+  validateWeeklyReleaseTopology();
   validateReadmeFastPathTopology();
   validateDelegatedApplePublicationTopology();
   validateSourcePublicationTopology();
