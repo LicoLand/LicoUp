@@ -399,15 +399,13 @@ fn project_with(
     capabilities.dedup();
     let mut skills = authority.skills(&agent_id);
     if is_assistant
-        && !super::ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE
-            .trim()
-            .is_empty()
+        && !super::LICOUP_GUIDE_SKILL_SOURCE.trim().is_empty()
         && intent
             .skill_references
             .iter()
-            .any(|skill| skill == super::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID)
+            .any(|skill| skill == super::LICOUP_GUIDE_SKILL_ID)
     {
-        let bundled = super::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned();
+        let bundled = super::LICOUP_GUIDE_SKILL_ID.to_owned();
         if !skills.contains(&bundled) {
             skills.push(bundled);
         }
@@ -568,8 +566,8 @@ impl ProfileSnapshotAuthority for ProductionSnapshotAuthority {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, MembershipAccess, MembershipStatus, Principal,
-        PrincipalKind, ProfileResponsibility, assistant_workflow_authoring_prompt,
+        LICOUP_GUIDE_SKILL_ID, MembershipAccess, MembershipStatus, Principal, PrincipalKind,
+        ProfileResponsibility,
     };
     use super::*;
 
@@ -621,7 +619,7 @@ mod tests {
             preferred_capabilities: vec!["caller-preference".to_owned()],
             skill_references: vec![
                 "caller-asserted-skill".to_owned(),
-                ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned(),
+                LICOUP_GUIDE_SKILL_ID.to_owned(),
             ],
             preferred_model: Some("caller-model".to_owned()),
             preferred_reasoning_effort: Some("high".to_owned()),
@@ -652,16 +650,7 @@ mod tests {
                 .skills
                 .contains(&"caller-asserted-skill".to_owned())
         );
-        assert!(
-            snapshot
-                .skills
-                .contains(&ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned())
-        );
-        let assistant_prompt = assistant_workflow_authoring_prompt();
-        assert!(assistant_prompt.len() <= 256);
-        assert!(assistant_prompt.contains("Understand and complete the user's request."));
-        assert!(assistant_prompt.contains("use tools freely"));
-        assert!(!assistant_prompt.contains("must not"));
+        assert!(snapshot.skills.contains(&LICOUP_GUIDE_SKILL_ID.to_owned()));
         assert_eq!(snapshot.environment.as_deref(), Some("local"));
         assert_eq!(snapshot.readiness.as_deref(), Some("ready"));
         assert_eq!(

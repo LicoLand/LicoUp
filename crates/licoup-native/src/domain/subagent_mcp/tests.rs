@@ -20,7 +20,7 @@ fn frozen_server_and_ordered_closed_catalog_are_exact() {
     assert_eq!(definition.protocol_revision, "2025-06-18");
     assert_eq!(definition.compatible_protocol_revisions, &["2025-11-25"]);
     assert_eq!(definition.server_name, "lico-up-subagents");
-    assert_eq!(definition.server_version, "0.12.0");
+    assert_eq!(definition.server_version, "0.13.0");
     let catalog = tool_catalog();
     assert_eq!(
         catalog
@@ -659,7 +659,7 @@ impl crate::domain::client_conversation::ProfileSnapshotAuthority for ReadyProfi
         Some(3)
     }
     fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
-        vec![crate::domain::client_conversation::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned()]
+        vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
     }
 }
 
@@ -712,86 +712,6 @@ fn invoke(
         name,
         arguments.as_object().unwrap(),
     )
-}
-
-#[test]
-fn workflow_policy_discovery_reads_bundled_guidance_without_membership_or_adapters() {
-    let app = SubagentMcpApplication::new(
-        Arc::new(FixtureHost {
-            store: ConversationStore::open_in_memory().unwrap(),
-            providers: BTreeMap::new(),
-        }),
-        AdapterRegistry::empty(),
-        Arc::new(FixtureTargets),
-    );
-    let mut caller = CallerContext {
-        provider_id: ProviderId::parse("codex").unwrap(),
-        conversation_id: None,
-        membership_id: None,
-        parent_dispatch_id: None,
-        authenticated: true,
-    };
-    let tool_name = "lico_assistant_workflow_policy";
-    let catalog = invoke(&app, &caller, tool_name, json!({})).unwrap();
-    let summaries = catalog["policies"].as_array().unwrap();
-    assert_eq!(summaries.len(), 1);
-    assert!(summaries[0].get("instructions").is_none());
-    assert!(summaries[0].get("modelPresets").is_none());
-    let arguments = json!({"policyId": summaries[0]["id"]});
-    assert!(validate_tool_arguments(
-        tool_name,
-        arguments.as_object().unwrap()
-    ));
-    let policy = invoke(&app, &caller, tool_name, arguments).unwrap();
-    assert_eq!(policy["id"], summaries[0]["id"]);
-    assert!(
-        policy["instructions"]
-            .as_str()
-            .unwrap()
-            .contains("# Better Plan")
-    );
-    assert_eq!(policy["modelPresets"]["schemaVersion"], 1);
-    assert_eq!(policy["modelPresets"]["assistant"], "designated-assistant");
-    assert_eq!(policy["modelPresets"]["candidateUse"], "ordered-fallback");
-    let roles = policy["modelPresets"]["roles"].as_array().unwrap();
-    let frontend = roles
-        .iter()
-        .find(|role| role["role"] == "frontend-worker")
-        .unwrap();
-    assert_eq!(
-        frontend["candidates"][1],
-        json!({
-            "modelName": "GPT-6 Astra", "reasoningEffort": "medium"
-        })
-    );
-    let reviewer = roles
-        .iter()
-        .find(|role| role["role"] == "reviewer")
-        .unwrap();
-    assert_eq!(reviewer["candidates"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        invoke(&app, &caller, tool_name, json!({"policyId": "missing"}))
-            .unwrap_err()
-            .code,
-        "workflow_policy_not_found"
-    );
-    for invalid in [
-        json!({"policyId": " "}),
-        json!({"policyId": null}),
-        json!({"execute": true}),
-    ] {
-        assert!(!validate_tool_arguments(
-            tool_name,
-            invalid.as_object().unwrap()
-        ));
-    }
-    caller.authenticated = false;
-    assert_eq!(
-        invoke(&app, &caller, tool_name, json!({}))
-            .unwrap_err()
-            .code,
-        "caller_authentication_required"
-    );
 }
 
 #[test]

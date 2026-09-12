@@ -1,10 +1,10 @@
 use super::{
-    ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, Conversation, ConversationClearReport,
-    ConversationDispatch, ConversationEvent, ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID,
-    DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn, DispatchSessionMode, DispatchState, EventKind,
-    EventPage, EventPart, EventPartKind, ImageAttachment, Membership, MembershipAccess, Principal,
-    PrincipalKind, PrivateRuntimeBinding, ProfileIntent, ProfileIntentUpdate,
-    ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
+    Conversation, ConversationClearReport, ConversationDispatch, ConversationEvent,
+    ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
+    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind,
+    ImageAttachment, LICOUP_GUIDE_SKILL_ID, Membership, MembershipAccess, Principal, PrincipalKind,
+    PrivateRuntimeBinding, ProfileIntent, ProfileIntentUpdate, ProfileResponsibility,
+    RuntimeBinding, SourceLink, TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -44,7 +44,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-const CURRENT_SCHEMA_VERSION: &str = "12";
+pub const CURRENT_SCHEMA_VERSION: &str = "13";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -559,8 +559,7 @@ impl DirectTurnExecutionContext {
     /// Private request-only guidance for the canonical Assistant membership.
     /// The value is derived at dispatch time and is never stored as Event text.
     pub fn private_instructions(&self) -> Option<&'static str> {
-        self.is_assistant
-            .then(super::assistant_workflow_authoring_prompt)
+        self.is_assistant.then(super::direct_assistant_guidance)
     }
 }
 
@@ -3665,7 +3664,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3733,6 +3732,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if current_schema_version == "11" {
         migrate_membership_convergence_v12(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "12" {
+        migrate_licoup_guide_profile_references_v13(connection)?;
     }
     ensure_column(
         connection,
@@ -4008,9 +4015,7 @@ fn migrate_profile_intent_v8(connection: &mut Connection) -> StoreResult<()> {
              JOIN conversations c ON c.id=m.conversation_id
              LEFT JOIN membership_profiles_v7_draft d ON d.membership_id=m.id
              WHERE m.status='active' AND p.kind='agent'",
-            params![serde_json::to_string(&vec![
-                ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
-            ])?],
+            params![serde_json::to_string(&vec![LICOUP_GUIDE_SKILL_ID])?],
         )?;
         transaction.execute_batch(
             "DROP TABLE membership_profiles_v7_draft;
@@ -4089,6 +4094,54 @@ fn migrate_membership_convergence_v12(connection: &mut Connection) -> StoreResul
     transaction.execute(
         "INSERT INTO schema_meta(key, value) VALUES ('version', '12')
          ON CONFLICT(key) DO UPDATE SET value='12'",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Version 13 moves the retired bundled Assistant Skill reference to the
+/// single product-owned LicoUp guide. Only Assistant Profiles are rewritten;
+/// every unrelated user-selected reference keeps its original order.
+fn migrate_licoup_guide_profile_references_v13(connection: &mut Connection) -> StoreResult<()> {
+    const RETIRED_SKILL_ID: &str = "assistant-workflow-authoring";
+
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let profiles = {
+        let mut statement = transaction.prepare(
+            "SELECT membership_id, skill_references
+             FROM membership_profiles
+             WHERE responsibility='assistant'",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (membership_id, encoded) in profiles {
+        let current = serde_json::from_str::<Vec<String>>(&encoded)?;
+        let mut migrated = current
+            .iter()
+            .filter(|reference| {
+                reference.as_str() != RETIRED_SKILL_ID
+                    && reference.as_str() != LICOUP_GUIDE_SKILL_ID
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        migrated.push(LICOUP_GUIDE_SKILL_ID.to_owned());
+        if migrated != current {
+            transaction.execute(
+                "UPDATE membership_profiles
+                 SET revision=revision+1, skill_references=?2
+                 WHERE membership_id=?1",
+                params![membership_id, serde_json::to_string(&migrated)?],
+            )?;
+        }
+    }
+    transaction.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', '13')
+         ON CONFLICT(key) DO UPDATE SET value='13'",
         [],
     )?;
     transaction.commit()?;
@@ -5594,11 +5647,11 @@ fn normalized_skill_references(
 ) -> Vec<String> {
     let mut normalized = references
         .iter()
-        .filter(|reference| reference.as_str() != ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID)
+        .filter(|reference| reference.as_str() != LICOUP_GUIDE_SKILL_ID)
         .cloned()
         .collect::<Vec<_>>();
     if responsibility == ProfileResponsibility::Assistant {
-        normalized.push(ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned());
+        normalized.push(LICOUP_GUIDE_SKILL_ID.to_owned());
     }
     normalized.sort();
     normalized.dedup();
@@ -7657,7 +7710,7 @@ mod tests {
         let custom_before = snapshot_group(&root, "custom-group");
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -7804,7 +7857,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -7836,7 +7889,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -7864,7 +7917,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -8249,7 +8302,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let migrated = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         let matching = migrated
             .get(&conversation_id)
             .unwrap()
@@ -8822,7 +8875,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -8832,7 +8885,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "12");
+        assert_eq!(schema_version(&root), "13");
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

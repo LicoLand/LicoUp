@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const root = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (relative) => readFileSync(path.join(root, relative), "utf8");
-const exists = (relative) => existsSync(path.join(root, relative));
 
 const decision0003 = read("docs/adrs/0003-group-conversation-agent-profile.md");
 const decision0004 = read("docs/adrs/0004-assistant-authored-flexible-workflows.md");
@@ -23,9 +22,7 @@ const policy = read("crates/licoup-native/src/platform/client_state/policy.rs");
 const subagentMcp = read("crates/licoup-native/src/domain/subagent_mcp/mod.rs");
 const conversationContract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const strategyContract = JSON.parse(read("schemas/client_bridge/strategy.json"));
-const bundledSkill = exists("crates/licoup-native/resources/assistant-workflow-authoring/SKILL.md")
-  ? read("crates/licoup-native/resources/assistant-workflow-authoring/SKILL.md")
-  : "";
+const bundledSkill = read("crates/licoup-native/resources/licoup-guide/SKILL.md");
 
 const FORBIDDEN_PRIVATE = [
   /prompt body/u,
@@ -43,14 +40,14 @@ test("ADR 0003 is historical and ADR 0004 freezes the Assistant boundary", () =>
   // default usage to a follow-up decision.
   assert.match(decision0003, /intentionally unspecified|follow-up decision|left open/u);
   assert.match(decision0004, /assistant-temporary/u);
-  assert.match(decision0004, /assistant-workflow-authoring/u);
+  assert.match(decision0004, /licoup-guide/u);
   assert.match(decision0005, /Automatic adaptation/u);
   assert.match(decision0005, /DeepSeek Harness/u);
 });
 
 test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
-  assert.equal(conversationDomain.includes('ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring"'), true);
-  assert.match(domain, /include_str!\([\s\S]*assistant-workflow-authoring\/SKILL\.md/u);
+  assert.equal(conversationDomain.includes('LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide"'), true);
+  assert.match(domain, /include_str!\([\s\S]*licoup-guide\/SKILL\.md/u);
   assert.match(store, /CREATE TABLE IF NOT EXISTS membership_profiles/u);
   assert.match(store, /CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx/u);
   assert.match(store, /assistant_membership_id TEXT REFERENCES memberships\(id\)/u);
@@ -81,15 +78,15 @@ test("Profile snapshots derive only from named existing authorities", () => {
   );
   assert.match(profile, /skill_hub::skill_list/u);
   // The Assistant Profile references one concise, product-owned coordinator Skill.
-  assert.match(profile, /ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID/u);
+  assert.match(profile, /LICOUP_GUIDE_SKILL_ID/u);
   const prompt = bundledSkill.split("\n---\n").at(-1).trim();
-  assert.ok(Buffer.byteLength(prompt, "utf8") <= 256);
-  assert.match(prompt, /Understand and complete the user's request/u);
-  assert.match(prompt, /use tools freely/u);
-  assert.match(prompt, /existing workflow/u);
-  assert.match(prompt, /write one/u);
-  assert.match(prompt, /Keep going until it is done/u);
-  assert.doesNotMatch(prompt, /\b(?:must not|never|do not|only)\b/iu);
+  assert.ok(prompt.length > 0);
+  assert.match(bundledSkill, /^name: licoup-guide$/mu);
+  const documentedTools = [...prompt.matchAll(/`(lico_[a-z_]+)`/gu)].map((match) => match[1]);
+  assert.ok(documentedTools.length > 0);
+  for (const tool of documentedTools) {
+    assert.ok(subagentMcp.includes(`"${tool}"`), `guide tool is available: ${tool}`);
+  }
   assert.match(usage, /graph-usage-ledger-v2\.sqlite3/u);
   assert.match(usage, /licoup\.graph-usage-report\.v2/u);
   assert.doesNotMatch(policy, /assistant-workflow-usage/u);
@@ -196,13 +193,12 @@ test("bridge contracts expose Assistant/Profile actions and typed failures", () 
   }
 });
 
-test("subagent MCP surface is closed and exposes the Assistant facade and policy discovery", () => {
+test("subagent MCP surface is closed and exposes the Assistant facade and software operations", () => {
   const assistantTools = [
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
     "lico_assistant_workflow_inspect",
     "lico_assistant_workflow_cancel",
-    "lico_assistant_workflow_policy",
   ];
   for (const name of assistantTools) {
     assert.match(subagentMcp, new RegExp(`"${name}"`, "u"), name);

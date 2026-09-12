@@ -695,21 +695,20 @@ fn a_membership_dispatch_into_its_own_conversation_is_allowed() {
 fn a_working_directory_is_judged_by_the_platforms_own_rule() {
     // A Unix-shaped `starts_with('/')` check would reject every Windows path;
     // the native dispatch path uses the platform rule, so this must too.
-    let absolute = if cfg!(windows) {
-        r"C:\workspace"
-    } else {
-        "/synthetic/workspace"
-    };
+    let absolute = std::env::temp_dir()
+        .join("licoup-contract-workspace")
+        .to_string_lossy()
+        .into_owned();
     assert!(
         ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {
             agent_id: Some("codex".into()),
             prompt: "work".into(),
-            working_directory: Some(absolute.into()),
+            working_directory: Some(absolute),
             ..DispatchRequest::default()
         }))
         .validate()
         .is_ok(),
-        "an absolute {absolute} path must be accepted"
+        "an absolute platform-native path must be accepted"
     );
 
     let relative = ApplicationCommand::Subagent(SubagentCommand::Delegate(DispatchRequest {

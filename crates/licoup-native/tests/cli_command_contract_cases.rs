@@ -1,6 +1,6 @@
 //! Frozen acceptance cases for native CLI command admission.
 //!
-//! The Better Plan acceptance designer owns the executable cases in this file.
+//! Executable acceptance cases for the CLI command contract.
 
 use anyhow::Error;
 use licoup_native::ffi::commands::{
