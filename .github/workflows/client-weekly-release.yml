@@ -1,0 +1,93 @@
+name: Weekly release coordinator
+
+on:
+  schedule:
+    - cron: "0 4 * * 6"
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Reconciliation operation
+        required: true
+        default: reconcile
+        type: choice
+        options: [reconcile, maturity]
+      slot:
+        description: Shanghai Saturday slot (YYYY-MM-DD)
+        required: false
+        type: string
+  repository_dispatch:
+    types: [client-release-result]
+  pull_request:
+    branches: [stable]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-weekly-release
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: vars.LICOUP_RELEASE_AUTOMATION_ENABLED == 'true' && github.event_name != 'pull_request'
+    name: Weekly release coordinator
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      checks: read
+    steps:
+      - name: Mint release automation App token
+        id: automation-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.LICOUP_RELEASE_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.LICOUP_RELEASE_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-checks: read
+          permission-workflows: write
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - name: Reconcile verified GitHub evidence
+        env:
+          GH_TOKEN: ${{ steps.automation-token.outputs.token }}
+          LICOUP_RELEASE_AUTOMATION_ENABLED: ${{ vars.LICOUP_RELEASE_AUTOMATION_ENABLED }}
+          LICOUP_APPLE_RELEASE_APP_ID: ${{ vars.LICOUP_APPLE_RELEASE_APP_ID }}
+          LICOUP_APPLE_RELEASE_BOT_LOGIN: ${{ vars.LICOUP_APPLE_RELEASE_BOT_LOGIN }}
+        run: node tools/scripts/client-weekly-release.mjs
+  candidate-ready:
+    if: vars.LICOUP_RELEASE_AUTOMATION_ENABLED == 'true' && github.event_name == 'pull_request'
+    name: Monthly candidate ready
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Mint release automation App token
+        id: automation-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.LICOUP_RELEASE_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.LICOUP_RELEASE_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: read
+          permission-checks: read
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - name: Verify immutable monthly candidate
+        env:
+          GH_TOKEN: ${{ steps.automation-token.outputs.token }}
+          LICOUP_APPLE_RELEASE_APP_ID: ${{ vars.LICOUP_APPLE_RELEASE_APP_ID }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: node tools/scripts/client-promotion.mjs validate --head "$HEAD_BRANCH" --base stable
