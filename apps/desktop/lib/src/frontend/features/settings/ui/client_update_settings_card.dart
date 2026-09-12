@@ -145,12 +145,18 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
               child: Semantics(
                 liveRegion: true,
                 child: Text(
-                  _updatePhaseLabel(status.phase, strings.isChinese),
+                  _updatePhaseLabel(
+                    status.phase,
+                    strings.isChinese,
+                    errorCode: status.errorCode,
+                  ),
                   key: const Key('client-update-status'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: status.phase == ClientUpdatePhase.failed
-                        ? colors.error
-                        : colors.textSecondary,
+                    color: switch (status.phase) {
+                      ClientUpdatePhase.upToDate => colors.success,
+                      ClientUpdatePhase.failed => colors.error,
+                      _ => colors.textSecondary,
+                    },
                   ),
                 ),
               ),
@@ -313,11 +319,16 @@ class _InfoLine extends StatelessWidget {
 
 String _updatePhaseLabel(
   ClientUpdatePhase phase,
-  bool chinese,
-) => switch (phase) {
+  bool chinese, {
+  String errorCode = '',
+}) => switch (phase) {
   ClientUpdatePhase.idle => '',
   ClientUpdatePhase.checking => chinese ? '正在检查更新…' : 'Checking for updates…',
   ClientUpdatePhase.upToDate => chinese ? '已是最新版本' : 'Up to date',
+  ClientUpdatePhase.unavailable =>
+    chinese
+        ? '当前发布尚未提供更新资料'
+        : 'Update information is not available for this release',
   ClientUpdatePhase.updateAvailable => chinese ? '有可用更新' : 'Update available',
   ClientUpdatePhase.downloading => chinese ? '正在下载…' : 'Downloading…',
   ClientUpdatePhase.downloaded => chinese ? '下载完成' : 'Downloaded',
@@ -325,6 +336,15 @@ String _updatePhaseLabel(
   ClientUpdatePhase.verified || ClientUpdatePhase.applyPlanned =>
     chinese ? '已验证，可以更新并重启' : 'Verified and ready to restart',
   ClientUpdatePhase.applied => chinese ? '更新已安装' : 'Update installed',
-  ClientUpdatePhase.failed =>
-    chinese ? '更新失败，请重试' : 'Update failed. Try again.',
+  ClientUpdatePhase.failed => switch (errorCode) {
+    'client_update_check_failed' =>
+      chinese ? '无法检查更新，请重试' : 'Could not check for updates. Try again.',
+    'client_update_download_failed' =>
+      chinese ? '下载失败，请重试' : 'Download failed. Try again.',
+    'client_update_verify_failed' =>
+      chinese ? '更新包验证失败，请重新下载' : 'Verification failed. Download again.',
+    'client_update_apply_failed' =>
+      chinese ? '安装失败，请重试' : 'Installation failed. Try again.',
+    _ => chinese ? '更新未完成，请重试' : 'Update incomplete. Try again.',
+  },
 };

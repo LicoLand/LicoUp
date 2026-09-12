@@ -493,27 +493,7 @@ fn parse_retained_day(entry: &Value) -> Option<(String, DailyUsageSummary)> {
     if usage.total_tokens == 0 && usage.request_count == 0 {
         return None;
     }
-    if let Some(models) = entry.get("modelTokenUsage").and_then(Value::as_object) {
-        for (model, value) in models {
-            if model.trim().is_empty() {
-                continue;
-            }
-            usage.model_usage.insert(
-                model.clone(),
-                super::super::contract::ModelTokenUsageSummary {
-                    prompt_tokens: number_field(value, &["promptTokens"]).unwrap_or(0),
-                    cached_input_tokens: number_field(value, &["cachedInputTokens"]).unwrap_or(0),
-                    completion_tokens: number_field(value, &["completionTokens"]).unwrap_or(0),
-                    total_tokens: number_field(value, &["totalTokens"]).unwrap_or(0),
-                    estimated_prompt_tokens: 0,
-                    estimated_completion_tokens: 0,
-                    request_count: number_field(value, &["requestCount"]).unwrap_or(0),
-                    token_unavailable_requests: number_field(value, &["tokenUnavailableRequests"])
-                        .unwrap_or(0),
-                },
-            );
-        }
-    }
+    usage.model_usage = super::super::model_identity::raw_model_usage(entry);
     Some((day, usage))
 }
 

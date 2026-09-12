@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -934,6 +935,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final trackpad in [false, true]) {
+    testWidgets(
+      '${trackpad ? 'trackpad' : 'touch'} release keeps sidebar momentum alive',
+      (tester) async {
+        await _pumpSidebar(
+          tester,
+          targets: [_target('codex', 'Codex')],
+          sessionsByAgent: {
+            'codex': [
+              for (var index = 0; index < 80; index += 1)
+                _session(
+                  'session-$index',
+                  'codex',
+                  'Session $index',
+                  updatedHoursAgo: 1,
+                ),
+            ],
+          },
+          onSelectSession: (_, _) {},
+        );
+        final list = find.byKey(
+          const Key('agents-sidebar-conversation-scroll'),
+        );
+        final scrollable = tester.state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)),
+        );
+        if (trackpad) {
+          await tester.trackpadFling(list, const Offset(0, -240), 1800);
+        } else {
+          await tester.fling(list, const Offset(0, -240), 1800);
+        }
+        await tester.pump();
+        final releasedAt = scrollable.position.pixels;
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(scrollable.position.pixels, greaterThan(releasedAt + 30));
+        await tester.pumpAndSettle();
+        expect(scrollable.position.outOfRange, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('scrolling the sidebar pauses decorative row animations', (
     tester,
   ) async {
@@ -993,6 +1036,18 @@ void main() {
       resumed = rotation.turns.value != value;
     }
     expect(resumed, isTrue);
+    // Wheel signals can begin and end in the same frame; their notifications
+    // must not leave the decorative ticker gate latched on.
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(find.byType(ListView)),
+        scrollDelta: const Offset(0, -20),
+      ),
+    );
+    await tester.pump();
+    final afterWheel = rotation.turns.value;
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(rotation.turns.value, isNot(afterWheel));
     expect(tester.takeException(), isNull);
   });
 }

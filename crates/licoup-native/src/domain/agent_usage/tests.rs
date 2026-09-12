@@ -154,11 +154,11 @@ fn command_kimi_code_keeps_exact_turn_and_session_usage_with_model_dimension() {
     assert_eq!(history["totalTokens"], 220);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 2);
     assert_eq!(
-        history["dailyUsage"][0]["modelUsage"]["kimi-code/kimi-for-coding"],
+        history["dailyUsage"][0]["modelUsage"]["kimi-for-coding"],
         220
     );
     assert_eq!(
-        history["dailyUsage"][0]["modelTokenUsage"]["kimi-code/kimi-for-coding"]["cachedInputTokens"],
+        history["dailyUsage"][0]["modelTokenUsage"]["kimi-for-coding"]["cachedInputTokens"],
         30
     );
     fs::remove_dir_all(history_root).unwrap();

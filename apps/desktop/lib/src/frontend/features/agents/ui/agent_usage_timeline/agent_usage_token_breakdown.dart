@@ -1,3 +1,5 @@
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+
 import 'agent_usage_display_names.dart';
 import 'agent_usage_source_parser.dart';
 
@@ -7,6 +9,7 @@ class AgentUsageModelTokens {
     required this.breakdown,
     this.requestCount = 0,
     this.tokenUnavailableRequests = 0,
+    this.variants = const {},
   });
 
   final double totalTokens;
@@ -19,6 +22,7 @@ class AgentUsageModelTokens {
 
   /// Requests counted here that carried no token fields at all.
   final int tokenUnavailableRequests;
+  final Map<String, AgentUsageModelVariant> variants;
 
   AgentUsageModelTokens merge(AgentUsageModelTokens other) {
     return AgentUsageModelTokens(
@@ -27,6 +31,11 @@ class AgentUsageModelTokens {
       requestCount: requestCount + other.requestCount,
       tokenUnavailableRequests:
           tokenUnavailableRequests + other.tokenUnavailableRequests,
+      variants: {
+        ...variants,
+        for (final entry in other.variants.entries)
+          entry.key: variants[entry.key]?.merge(entry.value) ?? entry.value,
+      },
     );
   }
 
@@ -36,6 +45,7 @@ class AgentUsageModelTokens {
       breakdown: value,
       requestCount: requestCount,
       tokenUnavailableRequests: tokenUnavailableRequests,
+      variants: variants,
     );
   }
 }
@@ -129,6 +139,7 @@ void mergeAgentUsageModelValues(
           breakdown: agentUsageTokenBreakdown(source, totalTokens: tokens),
           requestCount: requests,
           tokenUnavailableRequests: agentUsageTokenUnavailableRequests(source),
+          variants: _modelVariants(source),
         );
         values.update(
           modelName,
@@ -155,6 +166,7 @@ void mergeAgentUsageModelValues(
         tokenUnavailableRequests: agentUsageTokenUnavailableRequests(
           entry.value,
         ),
+        variants: _modelVariants(entry.value),
       );
       values.update(
         label,
@@ -299,4 +311,16 @@ double _firstUsageToken(Map<dynamic, dynamic> source, List<String> keys) {
     }
   }
   return 0;
+}
+
+Map<String, AgentUsageModelVariant> _modelVariants(Object? source) {
+  if (source is! Map || source['variants'] is! Map) return const {};
+  return Map.unmodifiable({
+    for (final entry in (source['variants'] as Map).entries)
+      if (entry.key is String && entry.value is Map<String, dynamic>)
+        entry.key as String: AgentUsageModelVariant.fromJson(
+          entry.key as String,
+          entry.value,
+        ),
+  });
 }

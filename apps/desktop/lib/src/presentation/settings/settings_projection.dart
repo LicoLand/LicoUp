@@ -106,6 +106,7 @@ final class SettingsClientUpdateProjection {
     required this.githubReleaseUrl,
     required this.artifactSha256,
     required this.updateAvailable,
+    this.errorCode = '',
   });
 
   final ClientUpdatePhase phase;
@@ -116,6 +117,7 @@ final class SettingsClientUpdateProjection {
   final String githubReleaseUrl;
   final String artifactSha256;
   final bool updateAvailable;
+  final String errorCode;
 
   @override
   bool operator ==(Object other) =>
@@ -128,7 +130,8 @@ final class SettingsClientUpdateProjection {
           other.availableVersion == availableVersion &&
           other.githubReleaseUrl == githubReleaseUrl &&
           other.artifactSha256 == artifactSha256 &&
-          other.updateAvailable == updateAvailable;
+          other.updateAvailable == updateAvailable &&
+          other.errorCode == errorCode;
 
   @override
   int get hashCode => Object.hash(
@@ -140,6 +143,7 @@ final class SettingsClientUpdateProjection {
     githubReleaseUrl,
     artifactSha256,
     updateAvailable,
+    errorCode,
   );
 }
 

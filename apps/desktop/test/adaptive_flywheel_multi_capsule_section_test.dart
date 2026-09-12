@@ -67,6 +67,64 @@ Future<void> _pumpSection(
 }
 
 void main() {
+  testWidgets(
+    'Assistant preserves native model order and English effort labels',
+    (tester) async {
+      await _pumpSection(
+        tester,
+        targets: [
+          _target(
+            id: 'codex',
+            label: 'Codex',
+            models: const [
+              {
+                'name': 'gpt-6-astra',
+                'displayName': 'GPT-6 Astra',
+                'providerId': 'openai',
+                'provider': 'OpenAI',
+                'codingScore': 92,
+                'taskTags': ['frontend', 'backend'],
+                'reasoningEfforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+              },
+              {
+                'name': 'gpt-5.6-sol',
+                'displayName': 'GPT-5.6 Sol',
+                'providerId': 'openai',
+                'provider': 'OpenAI',
+              },
+              {
+                'name': 'gateway/gpt-7',
+                'displayName': 'GPT-7',
+                'providerId': 'gateway',
+                'provider': 'Gateway',
+              },
+            ],
+          ),
+        ],
+      );
+      await tester.tap(find.byKey(const Key('flywheel-actors-add')));
+      await tester.pumpAndSettle();
+      final astra = find.text('GPT-6 Astra');
+      final sol = find.text('GPT-5.6 Sol');
+      final custom = find.text('GPT-7');
+      expect(tester.getTopLeft(astra).dy, lessThan(tester.getTopLeft(sol).dy));
+      expect(tester.getTopLeft(sol).dy, lessThan(tester.getTopLeft(custom).dy));
+      for (final text in ['Low', 'Medium', 'High', 'Extra High', 'Max']) {
+        expect(find.text(text), findsOneWidget);
+      }
+      expect(find.textContaining('92'), findsNothing);
+      expect(find.textContaining('frontend'), findsNothing);
+      expect(find.text('xhigh'), findsNothing);
+      expect(find.text('低'), findsNothing);
+      await tester.tap(sol);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('flywheel-actors-settings-card')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('hides the reasoning-effort card when the catalog has none', (
     tester,
   ) async {

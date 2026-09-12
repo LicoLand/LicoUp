@@ -139,7 +139,11 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
         canvas,
         topOffsets: topOffsets,
         bottomOffsets: bottomOffsets,
-        color: agentUsageSeriesColor(colors, series.label),
+        color: agentUsageSeriesColor(
+          colors,
+          series.label,
+          grouping: timeline.grouping,
+        ),
       );
     }
   }
@@ -208,6 +212,7 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
           ..color = agentUsageSeriesColor(
             colors,
             series.label,
+            grouping: timeline.grouping,
           ).withValues(alpha: 0.72)
           ..style = PaintingStyle.fill,
       );

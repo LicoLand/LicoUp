@@ -15,11 +15,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
+use semver::Version;
 use serde_json::{Value, json};
 use ureq::{Agent, AgentBuilder};
 
 use super::{
-    constants::MAX_UPDATE_METADATA_BYTES,
+    constants::{CLIENT_UPDATE_MODE, MAX_UPDATE_METADATA_BYTES},
     download::download_result_json,
     params::{json_text, validate_public_identifier},
     selection::require_available_selection,
@@ -49,9 +50,12 @@ const REDIRECT_ALLOWED_HOSTS: &[&str] = &[
 /// `check --source github`: fetch the signed update manifest from the latest
 /// GitHub release, verify it with the bundled keys, and select the highest
 /// eligible release for this client. A fresh cache (6 h TTL) skips the network
-/// hop; a stale cache is only a fallback when the network fetch fails.
+/// hop. Once refreshed, a fetch or verification failure stays a failure.
 pub(super) fn check_github(params: &Value) -> Result<Value> {
     let repo = github_repo(params)?;
+    // A new observation replaces the previous check, including when it fails.
+    // Cached manifests alone cannot authorize download, verify, or apply.
+    super::receipt::bind_check_result(params, &json!({"updateAvailable": false}))?;
     let cached = read_cached_release(params)?;
     if let Some(cached) = cached.as_ref() {
         if is_fresh(cached.checked_at) {
@@ -69,14 +73,23 @@ pub(super) fn check_github(params: &Value) -> Result<Value> {
     }
     let target_track = super::params::target_release_track(params)?;
     let release = fetch_release_metadata(&repo, &github_api_base(params), target_track)?;
-    let tag = required_release_text(&release, "tag_name", "GitHub release tag")?.to_string();
+    let tag = release
+        .get("tag_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
     let release_url = release
         .get("html_url")
         .and_then(Value::as_str)
         .map(str::trim)
         .unwrap_or_default()
         .to_string();
-    let asset = manifest_asset(&release)?;
+    let Some(asset) = manifest_asset(&release)? else {
+        let checked = check_without_manifest(params, &repo, &release, &tag, &release_url)?;
+        return bind_github_check(params, decorate_check(checked, tag, release_url, None));
+    };
+    ensure!(!tag.is_empty(), "GitHub release tag is required");
     let asset_url = required_release_text(
         asset,
         "browser_download_url",
@@ -86,22 +99,62 @@ pub(super) fn check_github(params: &Value) -> Result<Value> {
     let raw = fetch_bounded_bytes(&update_agent(), &asset_url, MAX_UPDATE_METADATA_BYTES)?;
     let manifest: Value =
         serde_json::from_slice(&raw).context("GitHub release update manifest is not valid JSON")?;
-    match verify_with_document(params, &manifest) {
-        Ok(checked) => {
-            write_cache(params, &manifest, &tag, &release_url)?;
-            bind_github_check(params, decorate_check(checked, tag, release_url, None))
-        }
-        Err(error) => {
-            if let Some(cached) = cached {
-                let checked = verify_with_document(params, &cached.manifest)?;
-                return bind_github_check(
-                    params,
-                    decorate_check(checked, cached.tag, cached.url, Some(cached.age)),
-                );
-            }
-            Err(error)
-        }
-    }
+    let checked = verify_with_document(params, &manifest)?;
+    write_cache(params, &manifest, &tag, &release_url)?;
+    bind_github_check(params, decorate_check(checked, tag, release_url, None))
+}
+
+fn check_without_manifest(
+    params: &Value,
+    repo: &str,
+    release: &Value,
+    tag: &str,
+    release_url: &str,
+) -> Result<Value> {
+    use crate::domain::client_state_migration::ReleaseTrack;
+
+    let running_track = ReleaseTrack::running()?;
+    let target_track = super::params::target_release_track(params)?;
+    let running_version = super::params::product_version(params)?;
+    let current = Version::parse(&running_version)
+        .context("current client version is not valid semantic versioning")?;
+    let no_newer_release = target_track == ReleaseTrack::Stable
+        && stable_metadata_has_no_newer_release(repo, release, tag, release_url, &current);
+    Ok(json!({
+        "ok": true,
+        "mode": CLIENT_UPDATE_MODE,
+        "phase": if no_newer_release { "upToDate" } else { "unavailable" },
+        "runningReleaseTrack": running_track.as_str(),
+        "targetReleaseTrack": target_track.as_str(),
+        "runningVersion": running_version,
+        "updateAvailable": false,
+        "errorCode": if no_newer_release { "" } else { "client_update_metadata_unavailable" },
+        "availabilityEvidence": "publishedReleaseMetadata",
+        "productionReady": false,
+        "publicMetadataOnly": true,
+        "storeCredentialsRequired": false,
+    }))
+}
+
+pub(super) fn stable_metadata_has_no_newer_release(
+    repo: &str,
+    release: &Value,
+    tag: &str,
+    release_url: &str,
+    current: &Version,
+) -> bool {
+    let published = tag
+        .strip_prefix('v')
+        .and_then(|tag| Version::parse(tag).ok());
+    // This is a public version observation, never a verified update selection.
+    // In particular the replaceable `nightly` tag cannot establish precedence.
+    repo == DEFAULT_REPO
+        && release.get("draft") == Some(&Value::Bool(false))
+        && release.get("prerelease") == Some(&Value::Bool(false))
+        && release_url == format!("https://github.com/{repo}/releases/tag/{tag}")
+        && published.is_some_and(|version| {
+            version.pre.is_empty() && !version.cmp_precedence(current).is_gt()
+        })
 }
 
 /// `download --source github`: stream the selected artifact from its signed
@@ -205,15 +258,14 @@ fn github_api_base(params: &Value) -> String {
     json_text(params, &["githubApiBase"]).unwrap_or_else(|| DEFAULT_API_BASE.to_string())
 }
 
-fn manifest_asset(release: &Value) -> Result<&Value> {
+fn manifest_asset(release: &Value) -> Result<Option<&Value>> {
     let assets = release
         .get("assets")
         .and_then(Value::as_array)
         .ok_or_else(|| anyhow!("GitHub release assets are required"))?;
-    assets
+    Ok(assets
         .iter()
-        .find(|asset| asset.get("name").and_then(Value::as_str) == Some(UPDATE_MANIFEST_ASSET))
-        .ok_or_else(|| anyhow!("GitHub release does not contain the update manifest asset"))
+        .find(|asset| asset.get("name").and_then(Value::as_str) == Some(UPDATE_MANIFEST_ASSET)))
 }
 
 fn required_release_text<'a>(value: &'a Value, field: &str, label: &str) -> Result<&'a str> {

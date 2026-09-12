@@ -69,6 +69,8 @@ pub(super) fn provider_label_from_provider_id(provider_id: &str) -> Option<Strin
         "gemini" | "google" => "Google".to_string(),
         "kilo" => "Kilo".to_string(),
         "kimi" | "moonshot" => "Moonshot".to_string(),
+        "kimi-code" => "Kimi Code".to_string(),
+        "xai" => "xAI".to_string(),
         "nvidia" => "NVIDIA".to_string(),
         _ => normalized
             .split(['-', '_'])

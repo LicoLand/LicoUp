@@ -220,6 +220,20 @@ with the named main conversation kept separate from subordinate totals. It
 shows numeric prompt, cached-input, completion, total, and exact-coverage facts
 only.
 
+The native report groups known model identities across source applications,
+reasoning efforts and speed modes. Each canonical `modelTokenUsage` entry
+retains numeric `variants` for its source's effort and speed breakdown. Raw
+incremental caches keep their original keys, while new and retained report
+projections use the same grouping. A provider-only label is unattributed usage,
+not a model; genuine unknown model names remain independent. Missing effort
+evidence stays `Unspecified`.
+
+The [design system](DESIGN-SYSTEM.md) owns the Agent and model palettes and the
+expandable source-share presentation. The waveform shows up to ten series;
+the share list keeps its fifteen-row limit, with one Others row for unattributed
+usage and any overflow. Source disclosure never changes the selected window or
+the underlying counts.
+
 LicoUp is the scheduling authority and Adaptive Flywheel is the route-selection
 authority. A raw native conversation location is handed to a selected adapter
 privately; it is never part of the desktop report. The native ledger keeps active

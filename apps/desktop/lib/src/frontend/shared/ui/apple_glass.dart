@@ -22,6 +22,7 @@ class AppleGlassSurface extends StatelessWidget {
     this.focusColor,
     this.idleBorderColor,
     this.focusedBorderWidth,
+    this.drawRim = true,
     this.clipBehavior = Clip.antiAlias,
   }) : _brandFocusDefault = false;
 
@@ -43,6 +44,7 @@ class AppleGlassSurface extends StatelessWidget {
        ),
        focusedBorderWidth = AppleControlMetrics.searchFocusRingWidth,
        idleBorderColor = null,
+       drawRim = true,
        _brandFocusDefault = true;
 
   final Widget child;
@@ -56,6 +58,7 @@ class AppleGlassSurface extends StatelessWidget {
   /// Unfocused hairline color (e.g. warning outline). Ignored while focused.
   final Color? idleBorderColor;
   final double? focusedBorderWidth;
+  final bool drawRim;
   final Clip clipBehavior;
   final bool _brandFocusDefault;
 
@@ -96,7 +99,7 @@ class AppleGlassSurface extends StatelessWidget {
       fill: fillAlpha != null && blurSigma > 0 ? Colors.transparent : fill,
       stroke: border,
       borderRadius: borderRadius,
-      strokeWidth: borderWidth,
+      strokeWidth: drawRim ? borderWidth : 0,
       clipBehavior: clipBehavior,
       child: content,
     );

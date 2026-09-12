@@ -467,11 +467,8 @@ final class _CanonicalGroupAssistantActionsState
               child: Semantics(
                 button: true,
                 label: strings.assistantActionsTooltip,
-                child: Material(
-                  color: colors.surfaceRaised,
-                  shape: CircleBorder(
-                    side: BorderSide(color: colors.line, width: 1),
-                  ),
+                child: MessagingConversationOverlayGlass(
+                  borderRadius: BorderRadius.circular(999),
                   child: InkWell(
                     key: const Key('canonical-group-assistant-actions-trigger'),
                     customBorder: const CircleBorder(),

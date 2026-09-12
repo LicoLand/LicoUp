@@ -176,6 +176,7 @@ final class SettingsProjectionProducer
         githubReleaseUrl: update.githubReleaseUrl,
         artifactSha256: update.artifactSha256,
         updateAvailable: update.updateAvailable,
+        errorCode: update.errorCode,
       ),
       clientUpdateRepo: controller.clientUpdateRepo,
       catalog: SettingsCatalogProjection(
