@@ -100,24 +100,105 @@ fn write_host_generation() -> Result<()> {
     Ok(())
 }
 
-fn host_is_current() -> bool {
+/// What the local ownership record says about a host for this state root.
+///
+/// The record is written by whichever host last acquired the listener, so it
+/// can be out of date while a live host serves: a host that exits without
+/// rewriting it leaves a dead pid behind, and a host that takes the listener
+/// over replaces the record only once it is serving. Callers need the three
+/// cases apart, because "the record is out of date" and "no host exists" call
+/// for opposite reactions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostOwnership {
+    /// This executable's generation, and the host it names is still running.
+    Current,
+    /// This executable's generation, but the host it names is gone. A live
+    /// host may still be serving under another process; only the endpoint can
+    /// say, so this is not evidence that nobody is there.
+    Stale,
+    /// Nothing this process may claim: no record, an unreadable one, another
+    /// generation, or another client's host.
+    Absent,
+}
+
+impl HostOwnership {
+    /// Whether the record names a live host this process may speak for.
+    const fn is_current(self) -> bool {
+        matches!(self, Self::Current)
+    }
+}
+
+/// Classify one record against this executable and client.
+///
+/// `liveness` is injected so every outcome can be tested without spawning a
+/// host: a live pid, a dead one, and an unreadable one are one closure apart.
+fn classify_host_ownership(
+    record: Option<(String, Option<u32>, Option<u32>)>,
+    generation: &str,
+    expected_client: Option<u32>,
+    liveness: impl Fn(u32) -> ProcessLiveness,
+) -> HostOwnership {
+    let Some((recorded, host_pid, recorded_client)) = record else {
+        return HostOwnership::Absent;
+    };
+    if recorded != generation {
+        return HostOwnership::Absent;
+    }
+    // Another client of the same generation owns this host.
+    if let Some(expected) = expected_client
+        && recorded_client != Some(expected)
+    {
+        return HostOwnership::Absent;
+    }
+    let Some(host_pid) = host_pid else {
+        return HostOwnership::Stale;
+    };
+    if liveness(host_pid) == ProcessLiveness::Dead {
+        return HostOwnership::Stale;
+    }
+    HostOwnership::Current
+}
+
+fn host_ownership() -> HostOwnership {
     let Ok(generation) = executable_generation() else {
-        return false;
+        return HostOwnership::Absent;
     };
-    let Some((recorded, Some(host_pid), recorded_client)) = read_host_generation_record() else {
-        return false;
-    };
-    if recorded != generation || process_liveness(host_pid) == ProcessLiveness::Dead {
-        return false;
-    }
-    match configured_client_pid() {
-        None => true,
-        Some(expected) => recorded_client == Some(expected),
-    }
+    classify_host_ownership(
+        read_host_generation_record(),
+        &generation,
+        configured_client_pid(),
+        process_liveness,
+    )
+}
+
+/// Whether the record names a live host of this executable that this process
+/// may speak for. Prefer [`host_ownership`] where a stale record must be told
+/// apart from no record.
+fn host_is_current() -> bool {
+    host_ownership().is_current()
 }
 
 fn endpoint_accepts_connections() -> bool {
     licoup_native::platform::conversation_host_transport::connect().is_ok()
+}
+
+/// Whether any host is still answering, asked repeatedly until `window` runs
+/// out.
+///
+/// One refused connect is not proof that nobody is serving: a host can miss a
+/// single probe while it is busy. The listener takeover asks over a window so
+/// it never displaces a live host on one unlucky attempt.
+fn endpoint_accepts_connections_within(window: Duration) -> bool {
+    let deadline = Instant::now() + window;
+    loop {
+        if endpoint_accepts_connections() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(CONNECT_RETRY);
+    }
 }
 
 fn wait_for_current_or_released_endpoint() -> Option<Stream> {
@@ -137,7 +218,11 @@ fn wait_for_current_or_released_endpoint() -> Option<Stream> {
 }
 
 fn connect_or_start() -> Result<Stream> {
-    if host_is_current() {
+    if host_ownership() != HostOwnership::Absent {
+        // The record names this executable's generation, whether or not the
+        // host process it names is still alive. A record that is merely out of
+        // date must not cost the stale wait against a reachable host, so try
+        // the endpoint first and let it decide.
         if let Ok(stream) = licoup_native::platform::conversation_host_transport::connect() {
             return Ok(stream);
         }
@@ -256,7 +341,10 @@ pub(super) fn ensure_host_for_desktop_start() {
     if configured_client_pid().is_none() {
         return;
     }
-    if host_is_current() && endpoint_accepts_connections() {
+    // A record this process can claim — current or out of date — plus an
+    // endpoint that accepts means a host is already serving. Spawning would
+    // only collide with it.
+    if host_ownership() != HostOwnership::Absent && endpoint_accepts_connections() {
         return;
     }
     let _ = spawn_host();
@@ -340,10 +428,14 @@ pub(super) fn serve_host() -> Result<()> {
     {
         Ok(listener) => listener,
         Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
-            if host_is_current() {
+            if host_ownership() == HostOwnership::Current {
                 return Ok(());
             }
-            if endpoint_accepts_connections() {
+            // A record that is stale, absent, or another owner's says nothing
+            // about whether the listener is free, so the endpoint decides —
+            // and it is asked over a window, because a busy host that misses
+            // one probe must not lose its listener to a starting host.
+            if endpoint_accepts_connections_within(STALE_HOST_WAIT) {
                 return Err(error).context("conversation host listener already active");
             }
             ListenerOptions::new()
@@ -574,6 +666,107 @@ mod tests {
         let generation = executable_generation().unwrap();
         assert!(valid_host_generation(&generation));
         assert_eq!(generation, executable_generation().unwrap());
+    }
+
+    /// The generation every ownership case below is classified against.
+    const OWNERSHIP_GENERATION: &str = "0123456789abcdef";
+
+    fn ownership_record(
+        host_pid: Option<u32>,
+        client_pid: Option<u32>,
+    ) -> (String, Option<u32>, Option<u32>) {
+        (OWNERSHIP_GENERATION.to_owned(), host_pid, client_pid)
+    }
+
+    #[test]
+    fn a_record_naming_a_live_host_is_current() {
+        assert!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), Some(99))),
+                OWNERSHIP_GENERATION,
+                Some(99),
+                |_| ProcessLiveness::Alive,
+            )
+            .is_current()
+        );
+        // A process this machine cannot inspect is not proof of death.
+        assert!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), None)),
+                OWNERSHIP_GENERATION,
+                None,
+                |_| ProcessLiveness::Unknown,
+            )
+            .is_current()
+        );
+    }
+
+    #[test]
+    fn an_out_of_date_record_is_stale_rather_than_no_host() {
+        // #325: the host the record names is gone while a live host serves the
+        // same root. That is an out-of-date record, not an absent one, and the
+        // two demand opposite reactions from the caller.
+        let stale = classify_host_ownership(
+            Some(ownership_record(Some(4242), Some(99))),
+            OWNERSHIP_GENERATION,
+            Some(99),
+            |_| ProcessLiveness::Dead,
+        );
+        assert_eq!(stale, HostOwnership::Stale);
+        assert!(!stale.is_current());
+
+        let absent = classify_host_ownership(None, OWNERSHIP_GENERATION, Some(99), |_| {
+            ProcessLiveness::Dead
+        });
+        assert_eq!(absent, HostOwnership::Absent);
+        assert!(!absent.is_current());
+    }
+
+    #[test]
+    fn a_record_without_a_host_pid_is_stale_rather_than_absent() {
+        let ownership = classify_host_ownership(
+            Some(ownership_record(None, None)),
+            OWNERSHIP_GENERATION,
+            None,
+            |_| ProcessLiveness::Alive,
+        );
+        assert_eq!(ownership, HostOwnership::Stale);
+        assert!(!ownership.is_current());
+    }
+
+    #[test]
+    fn a_record_for_another_generation_or_client_is_absent() {
+        assert_eq!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), Some(99))),
+                "fedcba9876543210",
+                Some(99),
+                |_| ProcessLiveness::Alive,
+            ),
+            HostOwnership::Absent
+        );
+        // The same generation, but another client owns the host.
+        assert_eq!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), Some(7))),
+                OWNERSHIP_GENERATION,
+                Some(99),
+                |_| ProcessLiveness::Alive,
+            ),
+            HostOwnership::Absent
+        );
+    }
+
+    #[test]
+    fn a_takeover_probe_gives_up_when_no_host_answers() {
+        let root = std::env::temp_dir().join(format!("lico-ca-ownership-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let previous =
+            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+        let answered = endpoint_accepts_connections_within(Duration::from_millis(60));
+        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(!answered, "a fresh root has no host to answer");
     }
 
     #[test]
