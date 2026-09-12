@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// Agent-side message bubble: dark readability veil with a thin neutral
-/// hairline at rest. On hover the **edge light** fades in, in the speaking
+/// Agent-side message bubble: profile-owned opaque material when requested,
+/// or a readability veil with a thin neutral hairline at rest. On hover the **edge light** fades in, in the speaking
 /// agent's brand hue — light lives on the rim, never in the fill. This
 /// replaces the former solid `accentSurface` tint, which read as a flat 底色
 /// slab on the glass canvas.
@@ -33,7 +34,9 @@ class MessagingAgentBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final isDark = colors.isDark;
+    final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
     var fill = MessagingDesktopMetrics.agentBubbleVeilFill(isDark: isDark);
+    if (opaque) fill = colors.surface.withValues(alpha: 1);
     if (hovered) {
       fill = Color.alphaBlend(colors.hoverOverlay, fill);
     }

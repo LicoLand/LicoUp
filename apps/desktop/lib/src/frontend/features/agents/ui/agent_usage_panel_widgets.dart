@@ -164,19 +164,26 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
           ),
       ],
       AgentUsageChartGrouping.model => [
-        for (final series in timeline.series)
+        for (final label in timeline.shareSeriesLabels)
           AgentUsageBarData(
-            label: series.label,
-            value: formatAgentUsageNumber(timeline.totalFor(series.label)),
+            label: label,
+            value: formatAgentUsageNumber(timeline.shareTotalFor(label)),
             trailing: formatAgentUsagePercent(
-              timeline.totalFor(series.label),
+              timeline.shareTotalFor(label),
               timeline.groupTotal,
             ),
             fraction: agentUsageShareFraction(
-              timeline.totalFor(series.label),
+              timeline.shareTotalFor(label),
               timeline.groupTotal,
             ),
-            accent: agentUsageSeriesColor(colors, series.label),
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
           ),
         // Hosted-ledger models with requests but no token fields stay request
         // counts; nothing is estimated to make them look like token totals.
@@ -188,7 +195,14 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             ),
             trailing: '—',
             fraction: 0,
-            accent: agentUsageSeriesColor(colors, label),
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
           ),
       ],
       AgentUsageChartGrouping.workflow => const <AgentUsageBarData>[],

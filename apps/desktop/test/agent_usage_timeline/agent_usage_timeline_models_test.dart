@@ -55,6 +55,30 @@ void main() {
     expect(labels.last, agentUsageOverflowSeriesLabel);
   });
 
+  test('unattributed usage and overflow share one conserved Others row', () {
+    final totals = {
+      'Others': 1000.0,
+      for (var index = 0; index < 16; index++) 'Model $index': 10.0,
+    };
+    final labels = agentUsageRankedShareLabels(totals);
+    final timeline = AgentUsageTimelineData(
+      snapshots: const [],
+      series: const [],
+      seriesTotals: totals,
+      shareSeriesLabels: labels,
+      groupTotal: 1160,
+      hasDailyBreakdown: true,
+    );
+    expect(labels.where((label) => label == 'Others'), hasLength(1));
+    expect(
+      labels.fold<double>(
+        0,
+        (sum, label) => sum + timeline.shareTotalFor(label),
+      ),
+      1160,
+    );
+  });
+
   test('share totals aggregate overflow into Others', () {
     const timeline = AgentUsageTimelineData(
       snapshots: [],

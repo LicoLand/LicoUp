@@ -16,6 +16,7 @@ class GlassEdgeLight extends StatelessWidget {
     required this.child,
     this.sheenExtent = MessagingDesktopMetrics.glassEdgeSheenExtent,
     this.rimWidth = MessagingDesktopMetrics.glassEdgeRimWidth,
+    this.rimColor,
   });
 
   final Widget child;
@@ -27,6 +28,7 @@ class GlassEdgeLight extends StatelessWidget {
 
   /// Crisp rim stroke width.
   final double rimWidth;
+  final Color? rimColor;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,9 @@ class GlassEdgeLight extends StatelessWidget {
     return CustomPaint(
       foregroundPainter: GlassEdgeLightPainter(
         borderRadius: borderRadius,
-        rimColor: MessagingDesktopMetrics.glassEdgeRimColor(isDark: isDark),
+        rimColor:
+            rimColor ??
+            MessagingDesktopMetrics.glassEdgeRimColor(isDark: isDark),
         sheenGradient: MessagingDesktopMetrics.glassEdgeSheenGradient(
           isDark: isDark,
         ),

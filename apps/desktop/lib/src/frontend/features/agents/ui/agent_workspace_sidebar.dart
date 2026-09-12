@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_list_refresh.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -59,8 +60,7 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
   final VoidCallback? onArchive;
   final VoidCallback? onAddTarget;
 
-  /// Reloads the conversation list. Wired to the header refresh button that
-  /// sits immediately left of the manual-target actions button.
+  /// Reloads the conversation catalog through its owning intent.
   final VoidCallback? onRefresh;
   final bool allowManualTargetActions;
   final bool scanning;
@@ -208,14 +208,26 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
             ),
           Expanded(
             child: widget.targets.isEmpty
-                ? _SidebarEmptyAgents(
-                    scanning: widget.scanning,
-                    adding: widget.adding,
-                    allowManualTargetActions: widget.allowManualTargetActions,
-                    onAddTarget: widget.onAddTarget,
+                ? MessagingListRefresh(
+                    onRefresh: widget.onRefresh,
+                    refreshing: widget.refreshing,
+                    child: ListView(
+                      physics: messagingListScrollPhysics,
+                      children: [
+                        _SidebarEmptyAgents(
+                          scanning: widget.scanning,
+                          adding: widget.adding,
+                          allowManualTargetActions:
+                              widget.allowManualTargetActions,
+                          onAddTarget: widget.onAddTarget,
+                        ),
+                      ],
+                    ),
                   )
                 : SidebarConversationListView(
                     entries: entries,
+                    onRefresh: widget.onRefresh,
+                    refreshing: widget.refreshing,
                     selectedSessionId: widget.selectedSessionId,
                     earlierExpanded: _earlierExpanded,
                     showAgentIcons: true,
@@ -676,6 +688,8 @@ class SidebarConversationListView extends StatefulWidget {
     this.otherConversationsExpanded = false,
     this.onToggleOtherConversations,
     this.showAgentIcons = true,
+    this.onRefresh,
+    this.refreshing = false,
   });
 
   final List<SidebarConversationEntry> entries;
@@ -696,6 +710,8 @@ class SidebarConversationListView extends StatefulWidget {
   final bool otherConversationsExpanded;
   final VoidCallback? onToggleOtherConversations;
   final bool showAgentIcons;
+  final VoidCallback? onRefresh;
+  final bool refreshing;
 
   @override
   State<SidebarConversationListView> createState() =>
@@ -721,6 +737,8 @@ class _SidebarConversationListViewState
   /// Decorative row animations (pulse dots, running spinners) pause while the
   /// list scrolls; data keeps flowing because this only gates tickers.
   bool _scrollActive = false;
+  bool _requestedScrollActive = false;
+  bool _scrollStateScheduled = false;
 
   List<SidebarListItem> _resolveItems() {
     final now = DateTime.now();
@@ -819,12 +837,13 @@ class _SidebarConversationListViewState
   }
 
   void _setScrollActive(bool active) {
-    if (_scrollActive == active) {
-      return;
-    }
+    _requestedScrollActive = active;
+    if (_scrollStateScheduled) return;
+    _scrollStateScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scrollActive != active) {
-        setState(() => _scrollActive = active);
+      _scrollStateScheduled = false;
+      if (mounted && _scrollActive != _requestedScrollActive) {
+        setState(() => _scrollActive = _requestedScrollActive);
       }
     });
   }
@@ -833,28 +852,36 @@ class _SidebarConversationListViewState
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    if (widget.entries.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-        child: Text(
-          strings.noConversationsYet,
-          style: TextStyle(color: colors.textMuted, fontSize: 12),
-        ),
-      );
-    }
     final items = _resolveItems();
-    return NotificationListener<ScrollNotification>(
-      onNotification: _handleScrollNotification,
-      child: TickerMode(
-        enabled: !_scrollActive,
+    return MessagingListRefresh(
+      onRefresh: widget.onRefresh,
+      refreshing: widget.refreshing,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
         child: ListView.builder(
+          key: const Key('agents-sidebar-conversation-scroll'),
+          physics: messagingListScrollPhysics,
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
           scrollCacheExtent: const ScrollCacheExtent.pixels(400),
-          itemCount: items.length,
+          itemCount: items.isEmpty ? 1 : items.length,
           itemBuilder: (context, index) {
+            if (items.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+                child: Text(
+                  strings.noConversationsYet,
+                  style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+              );
+            }
             final item = items[index];
             return switch (item) {
-              SidebarConversationRowItem() => _buildRow(item),
+              SidebarConversationRowItem() => TickerMode(
+                // Never mute the ListView: Scrollable uses that ticker for
+                // release momentum and the overscroll return spring.
+                enabled: !_scrollActive,
+                child: _buildRow(item),
+              ),
               SidebarSectionHeaderItem() => _buildHeader(item),
             };
           },

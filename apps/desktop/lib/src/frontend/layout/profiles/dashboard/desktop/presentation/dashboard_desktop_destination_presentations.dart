@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart'
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 /// Destinations whose body sits flush on the clear window veil inside the
@@ -69,7 +70,7 @@ final class DashboardDesktopAgentsPresentation
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => ConversationMaterialScope(key: key, opaqueBubbles: true, child: child);
 
   @override
   Widget frameSidebar(
@@ -85,17 +86,10 @@ final class DashboardDesktopAgentsPresentation
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
-          color: MessagingDesktopMetrics.conversationListCardFill(
-            isDark: colors.isDark,
-          ),
+          // 90% transparency means 10% surface alpha. Do not inherit a
+          // global card opacity: conversation bubbles carry their own material.
+          color: colors.surface.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(radius),
-          border: Border.all(
-            color: MessagingDesktopMetrics.conversationListCardBorder(
-              colors.line,
-              isDark: colors.isDark,
-            ),
-            width: MessagingDesktopMetrics.hairline,
-          ),
           boxShadow: MessagingDesktopMetrics.conversationListCardShadows(
             isDark: colors.isDark,
           ),
@@ -169,7 +163,7 @@ final class DashboardDesktopSettingsPresentation
     BuildContext context, {
     required Key key,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => ConversationMaterialScope(key: key, opaqueBubbles: true, child: child);
 
   @override
   Widget frameSelector(BuildContext context, {required Widget child}) => child;

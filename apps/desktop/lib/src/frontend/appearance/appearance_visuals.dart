@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 
+enum ComposerActivityEffect { breathing, pulse }
+
 /// Runtime visual values. Geometry and functionality never enter this type.
 class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
   const AppearanceVisuals({
@@ -10,6 +12,7 @@ class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
     this.motionScale = 1,
     this.surfaceOpacity = 1,
     this.glassFinish = false,
+    this.composerActivityEffect = ComposerActivityEffect.breathing,
   });
 
   factory AppearanceVisuals.fromTokens(Map<String, String> tokens) =>
@@ -19,6 +22,9 @@ class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
         motionScale: double.tryParse(tokens['motion-scale'] ?? '') ?? 1,
         surfaceOpacity: double.tryParse(tokens['surface-opacity'] ?? '') ?? 1,
         glassFinish: tokens['component-finish'] == 'glass',
+        composerActivityEffect: tokens['composer-activity-effect'] == 'pulse'
+            ? ComposerActivityEffect.pulse
+            : ComposerActivityEffect.breathing,
       );
 
   final bool useSystemFont;
@@ -26,6 +32,7 @@ class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
   final double motionScale;
   final double surfaceOpacity;
   final bool glassFinish;
+  final ComposerActivityEffect composerActivityEffect;
 
   String? get fontFamily => useSystemFont ? null : LicoTypography.sansFamily;
 
@@ -61,12 +68,15 @@ class AppearanceVisuals extends ThemeExtension<AppearanceVisuals> {
     double? motionScale,
     double? surfaceOpacity,
     bool? glassFinish,
+    ComposerActivityEffect? composerActivityEffect,
   }) => AppearanceVisuals(
     useSystemFont: useSystemFont ?? this.useSystemFont,
     roundedIcons: roundedIcons ?? this.roundedIcons,
     motionScale: motionScale ?? this.motionScale,
     surfaceOpacity: surfaceOpacity ?? this.surfaceOpacity,
     glassFinish: glassFinish ?? this.glassFinish,
+    composerActivityEffect:
+        composerActivityEffect ?? this.composerActivityEffect,
   );
 
   @override

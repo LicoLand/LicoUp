@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'agent_usage_token_breakdown.dart';
+
 enum AgentUsageChartGrouping { agent, model, workflow }
 
 const int agentUsageWaveSeriesLimit = 10;
@@ -16,8 +18,12 @@ class AgentUsageTimelineData {
     required this.hasDailyBreakdown,
     this.requestCounts = const {},
     this.requestOnlyShareLabels = const [],
+    this.grouping = AgentUsageChartGrouping.agent,
+    this.modelSources = const {},
   });
 
+  final AgentUsageChartGrouping grouping;
+  final Map<String, List<AgentUsageModelSource>> modelSources;
   final List<AgentUsageSnapshot> snapshots;
   final List<AgentUsageSeries> series;
   final Map<String, double> seriesTotals;
@@ -73,9 +79,15 @@ List<String> agentUsageRankedShareLabels(
   if (ranked.length <= maxNamed) {
     return [for (final entry in ranked) entry.key];
   }
-  final visible = [for (final entry in ranked.take(maxNamed - 1)) entry.key];
+  final visible = [
+    for (final entry
+        in ranked
+            .where((entry) => entry.key != agentUsageOverflowSeriesLabel)
+            .take(maxNamed - 1))
+      entry.key,
+  ];
   final remainder = ranked
-      .skip(maxNamed - 1)
+      .where((entry) => !visible.contains(entry.key))
       .fold<double>(0, (sum, entry) => sum + entry.value);
   if (remainder > 0) {
     visible.add(agentUsageOverflowSeriesLabel);
@@ -97,4 +109,16 @@ class AgentUsageSeries {
   const AgentUsageSeries({required this.label});
 
   final String label;
+}
+
+class AgentUsageModelSource {
+  const AgentUsageModelSource({
+    required this.agentId,
+    required this.label,
+    required this.usage,
+  });
+
+  final String agentId;
+  final String label;
+  final AgentUsageModelTokens usage;
 }

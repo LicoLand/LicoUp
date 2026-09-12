@@ -40,10 +40,9 @@ void main() {
                 'date': '2026-07-21',
                 'totalTokens': 26_171_535,
                 'modelUsage': {
-                  'grok-4.5': 17_404_328,
+                  'grok-4.5': 17_630_031,
                   'claude-fable-5': 1_561_773,
-                  'composer-2.5-fast': 6_984_030,
-                  'grok-4.5-fast-xhigh': 225_703,
+                  'composer-2.5': 6_984_030,
                 },
               },
             ],
@@ -65,7 +64,7 @@ void main() {
     expect(timeline.shareSeriesLabels, contains('Grok 4.5'));
     expect(timeline.shareSeriesLabels, contains('Claude Fable 5'));
     expect(timeline.shareSeriesLabels, contains('Composer 2.5'));
-    expect(timeline.shareTotalFor('Grok 4.5'), 17_404_328);
+    expect(timeline.shareTotalFor('Grok 4.5'), 17_630_031);
     expect(timeline.shareTotalFor('Claude Fable 5'), 1_561_773);
     expect(timeline.shareTotalFor('Composer 2.5'), 6_984_030);
   });

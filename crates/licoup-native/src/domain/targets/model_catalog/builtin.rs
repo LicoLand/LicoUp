@@ -81,6 +81,21 @@ pub(super) fn apply_builtin_model_catalog_overlay(
     }
 }
 
+/// A pinned native alias inherits only the efforts of its admitted model.
+pub(super) fn builtin_reasoning_efforts(target: &str, model: &str) -> Vec<String> {
+    builtin_catalog()
+        .agents
+        .get(target)
+        .and_then(|agent| {
+            agent
+                .models
+                .iter()
+                .find(|row| row.matches(model.trim_end_matches("[1m]")))
+        })
+        .map(|row| row.reasoning_efforts.clone())
+        .unwrap_or_default()
+}
+
 pub(crate) const BUILTIN_FALLBACK_SOURCE: &str = "builtin-fallback";
 
 /// Cold-start model list when no live scan and no persisted archive exist.
@@ -107,6 +122,7 @@ pub(crate) fn builtin_cold_start_catalog(target: &str) -> Option<Value> {
         return None;
     }
     Some(build_model_catalog(
+        target,
         entries,
         BTreeSet::from([BUILTIN_FALLBACK_SOURCE.to_string()]),
         Vec::new(),

@@ -727,6 +727,21 @@ class _AgentConversationWorkspaceState
       ),
     );
 
+    void refreshSidebarCatalog() {
+      // Read current projections, not the last rendered snapshot: a second
+      // gesture must not redispatch during the frame before loading paints.
+      if (widget.conversation.nativeCatalog.current.phase ==
+              PresentationPhase.loading ||
+          widget.conversation.canonicalEvents.current.phase ==
+              PresentationPhase.loading) {
+        return;
+      }
+      widget.conversation.intents.send(const RefreshConversationCatalog());
+    }
+
+    final sidebarRefreshing =
+        native.phase == PresentationPhase.loading ||
+        canonical.phase == PresentationPhase.loading;
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     if (strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList) {
       return MessagingContactList(
@@ -767,6 +782,7 @@ class _AgentConversationWorkspaceState
         onNewConversation: () =>
             widget.conversation.intents.send(const StartConversationSession()),
         onSearch: widget.onSearch,
+        onRefresh: refreshSidebarCatalog,
         onOpenWelcome: _showWelcomePage,
         showConversationList: showConversationList,
         conversationListTargets: conversationListTargets,
@@ -788,7 +804,7 @@ class _AgentConversationWorkspaceState
             widget.agents.intents.send(ToggleAgentPinned(agentId)),
         priorityAgentId: conversationListPriorityAgentId,
         scanning: agents.scanning,
-        loading: native.phase == PresentationPhase.loading,
+        loading: sidebarRefreshing,
         activeDestination: ClientSection.agents,
         onSelectDestination: widget.onSelectDestination,
       );
@@ -813,11 +829,10 @@ class _AgentConversationWorkspaceState
         ),
       ),
       onAddTarget: widget.onAddTarget,
-      onRefresh: () =>
-          widget.conversation.intents.send(const RefreshConversationCatalog()),
+      onRefresh: refreshSidebarCatalog,
       scanning: agents.scanning,
       adding: agents.adding,
-      refreshing: native.phase == PresentationPhase.loading,
+      refreshing: sidebarRefreshing,
       allowManualTargetActions: widget.allowManualTargetActions,
     );
     return Column(

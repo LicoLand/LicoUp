@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
@@ -29,6 +30,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.initialDraft,
     this.hasAttachments = false,
     required this.busy,
+    this.activityVisible,
     required this.enabled,
     this.cancelEnabled = false,
     required this.modelOptions,
@@ -61,6 +63,9 @@ class RuntimeMessageComposer extends StatefulWidget {
   final String initialDraft;
   final bool hasAttachments;
   final bool busy;
+
+  /// Visual activity may include history loading without changing send state.
+  final bool? activityVisible;
   final bool enabled;
   final bool cancelEnabled;
   final List<String> modelOptions;
@@ -485,6 +490,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final interactive = widget.enabled;
     final canSend = interactive && (_hasText || widget.hasAttachments);
     final canCancel = widget.cancelEnabled && widget.onCancel != null;
+    final activity = widget.activityVisible ?? widget.busy;
     final fieldBody = Padding(
       padding: const EdgeInsets.all(LicoRadius.composerInset),
       child: Column(
@@ -596,23 +602,31 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                   : LicoRadius.composerField,
             ),
           ),
-          duration: LicoMotion.micro,
+          duration: context.motion(LicoMotion.micro),
           curve: Curves.easeOut,
           builder: (context, radius, child) {
-            return widget.floatingMatteCapsule
+            final surface = widget.floatingMatteCapsule
                 ? Material(
                     color: Colors.transparent,
                     child: MessagingConversationOverlayGlass(
                       borderRadius: radius,
                       focused: _focused && interactive,
+                      drawRim: !activity,
                       child: child!,
                     ),
                   )
                 : AppleGlassSurface(
                     borderRadius: radius,
                     focused: _focused && interactive,
+                    drawRim: !activity,
                     child: child!,
                   );
+            return ComposerActivityBorder(
+              active: activity,
+              borderRadius: radius,
+              color: colors.primaryStrong,
+              child: surface,
+            );
           },
           child: fieldBody,
         ),

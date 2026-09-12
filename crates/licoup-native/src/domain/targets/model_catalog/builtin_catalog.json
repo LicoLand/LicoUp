@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "last_updated": "2026-09-13",
   "description": "Built-in per-agent model -> reasoning effort reference table. Rows are curated from official vendor documentation and override scanned reasoningEfforts for matching models. A model present in a scan but missing here keeps its scanned data; rows for models not present in a scan are never injected. An empty reasoningEfforts array means the vendor officially documents no configurable effort levels for that model. Order is ascending strength and becomes the picker order.",
   "agents": {
     "codex": {
@@ -44,6 +44,16 @@
     },
     "claude-code": {
       "models": [
+        {
+          "name": "claude-fable-5-1",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "source": "https://code.claude.com/docs/en/model-config"
+        },
+        {
+          "name": "claude-opus-5",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "source": "https://code.claude.com/docs/en/model-config"
+        },
         {
           "name": "claude-fable-5",
           "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],

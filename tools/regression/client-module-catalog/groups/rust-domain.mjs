@@ -230,6 +230,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/command.rs",
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
         "crates/licoup-native/src/domain/agent_usage/incremental.rs",
+        "crates/licoup-native/src/domain/agent_usage/model_identity.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
         "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
@@ -2343,8 +2344,11 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Local model catalog orchestration and test composition",
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/builtin.rs",
+        "crates/licoup-native/src/domain/targets/model_catalog/builtin_catalog.json",
+        "crates/licoup-native/src/domain/targets/model_catalog/kimi.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/mod.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/pi.rs",
+        "crates/licoup-native/src/domain/targets/model_catalog/presentation.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/tests.rs",
       ],
       command: rustLayer("domain::targets::model_catalog::tests::"),
@@ -2397,7 +2401,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.targets.model-catalog.claude-code",
       kind: "rust-domain",
-      summary: "Claude Code configured current-model projection",
+      summary: "Claude Code admitted model aliases, configured providers, and allowlist projection",
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/claude.rs",
       ],

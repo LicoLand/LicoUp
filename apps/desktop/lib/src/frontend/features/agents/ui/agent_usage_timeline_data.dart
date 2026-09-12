@@ -9,6 +9,7 @@ export 'agent_usage_timeline/agent_usage_timeline_builder.dart'
 export 'agent_usage_timeline/agent_usage_timeline_models.dart'
     show
         AgentUsageChartGrouping,
+        AgentUsageModelSource,
         AgentUsageSeries,
         AgentUsageSnapshot,
         AgentUsageTimelineData,

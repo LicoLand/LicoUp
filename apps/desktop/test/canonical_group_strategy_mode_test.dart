@@ -18,7 +18,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'support/canonical_group/canonical_group_binding_fixture.dart';
@@ -705,10 +705,8 @@ void main() {
       expect(find.byKey(const Key('canonical-group-failure')), findsNothing);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
       controller.dispose();
@@ -757,10 +755,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
 
@@ -769,10 +765,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
       controller.dispose();
@@ -832,10 +826,8 @@ void main() {
       expect(find.text('streaming token'), findsOneWidget);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isTrue,
       );
       controller.dispose();
@@ -1368,10 +1360,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
 
@@ -1383,10 +1373,8 @@ void main() {
       expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isTrue,
       );
       controller.dispose();

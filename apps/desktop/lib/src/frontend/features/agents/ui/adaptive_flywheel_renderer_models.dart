@@ -81,14 +81,13 @@ List<AgentOrchestrationModelGroup> agentOrchestrationCommanderModelGroups(
 ) {
   final models = agentOrchestrationCommanderModels(target);
   if (models.isEmpty) return const [];
-  final entries = _modelEntries(target.modelCatalog);
+  final entryByModel = <String, Map<String, dynamic>>{
+    for (final entry in _modelEntries(target.modelCatalog))
+      for (final name in _modelNames(entry)) name: entry,
+  };
   final grouped = <String, ({String id, String label, List<String> models})>{};
   for (final model in models) {
-    final entry = entries.cast<Map<String, dynamic>?>().firstWhere(
-      (candidate) =>
-          candidate != null && _modelNames(candidate).contains(model),
-      orElse: () => null,
-    );
+    final entry = entryByModel[model];
     final id = _firstString(entry, const [
       'providerId',
       'providerID',
@@ -101,13 +100,13 @@ List<AgentOrchestrationModelGroup> agentOrchestrationCommanderModelGroups(
       'providerLabel',
       'provider_label',
     ]);
-    final key = (id.isNotEmpty ? id : label).toLowerCase();
-    final current = grouped[key];
-    grouped[key] = (
-      id: current?.id ?? id,
-      label: current?.label ?? label,
-      models: [...?current?.models, model],
+    final visibleLabel = label.isEmpty ? id : label;
+    final key = (id.isNotEmpty ? id : visibleLabel).toLowerCase();
+    final group = grouped.putIfAbsent(
+      key,
+      () => (id: id, label: visibleLabel, models: <String>[]),
     );
+    group.models.add(model);
   }
   return List.unmodifiable([
     for (final group in grouped.values)
@@ -139,43 +138,11 @@ String agentOrchestrationModelDisplayName(
   return normalized;
 }
 
-/// Picker label that renders allowlisted catalog facts already on the model
-/// catalog row. Flutter does not copy a second intelligence table.
+/// Scores and capability tags are native planning data, not picker copy.
 String agentOrchestrationModelPickerLabel(
   TargetCandidate target,
   String modelName,
-) {
-  final display = agentOrchestrationModelDisplayName(target, modelName);
-  final annotation = agentOrchestrationModelCatalogAnnotation(
-    target,
-    modelName,
-  );
-  return annotation.isEmpty ? display : '$display · $annotation';
-}
-
-String agentOrchestrationModelCatalogAnnotation(
-  TargetCandidate target,
-  String modelName,
-) {
-  for (final entry in _modelEntries(target.modelCatalog)) {
-    if (!_modelNames(entry).contains(modelName.trim())) continue;
-    final parts = <String>[];
-    final score =
-        entry['codingScore'] ??
-        entry['intelligenceIndex'] ??
-        entry['coding_score'];
-    if (score is num) parts.add(score.toString());
-    final tags = entry['taskTags'] ?? entry['task_tags'];
-    if (tags is Iterable) {
-      for (final tag in tags) {
-        final value = tag.toString().trim();
-        if (value.isNotEmpty && !parts.contains(value)) parts.add(value);
-      }
-    }
-    return parts.join(' · ');
-  }
-  return '';
-}
+) => agentOrchestrationModelDisplayName(target, modelName);
 
 List<String> agentOrchestrationReasoningEffortsFor(TargetCandidate target) =>
     _dedupe([
@@ -193,7 +160,7 @@ List<String> agentOrchestrationReasoningEffortsForModel(
       .where((entry) => _modelNames(entry).contains(modelName.trim()))
       .expand(_reasoningEfforts);
   final result = _dedupe(matching);
-  return result.isEmpty
+  return _modelEntries(target.modelCatalog).isEmpty
       ? agentOrchestrationReasoningEffortsFor(target)
       : result;
 }

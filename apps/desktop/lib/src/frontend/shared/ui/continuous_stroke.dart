@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 
+/// Normalize oversize stadium radii before insetting the centerline. Insetting
+/// an unnormalized radius makes short capsule ends diverge from straight sides.
+RRect continuousStrokeRRect(
+  Size size,
+  BorderRadius borderRadius,
+  double width,
+) => borderRadius.toRRect(Offset.zero & size).scaleRadii().deflate(width / 2);
+
 /// One path owns all four sides and corner arcs. The stroke is inset so clips
 /// never shave off a half stroke at the capsule's straight/curved joins.
 class ContinuousStrokePainter extends CustomPainter {
@@ -16,9 +24,8 @@ class ContinuousStrokePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty || width <= 0 || color.a == 0) return;
-    final rect = borderRadius.toRRect(Offset.zero & size).scaleRadii();
     canvas.drawRRect(
-      rect.deflate(width / 2),
+      continuousStrokeRRect(size, borderRadius, width),
       Paint()
         ..isAntiAlias = true
         ..style = PaintingStyle.stroke

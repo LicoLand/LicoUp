@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// Frosted user message bubble: transparent fill, shared blur, and a thin
-/// neutral hairline at rest. On hover the **edge light** fades in — a thin
+/// User message surface: profile-owned opaque material when requested, or
+/// frosted transparent glass with a thin neutral hairline at rest. On hover the **edge light** fades in — a thin
 /// bright rim plus a lamp-like field in the shared white light (Kiro-style).
 /// Never brand/primary: lemon rims read as olive 泛黄 on the dark chat canvas.
 class MessagingUserBubbleGlass extends StatelessWidget {
@@ -30,7 +31,9 @@ class MessagingUserBubbleGlass extends StatelessWidget {
     final colors = context.licoColors;
     final isDark = colors.isDark;
     final sigma = MessagingDesktopMetrics.userBubbleGlassBlurSigma;
+    final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
     var fill = MessagingDesktopMetrics.userBubbleGlassFill(isDark: isDark);
+    if (opaque) fill = colors.surface.withValues(alpha: 1);
     if (hovered) {
       fill = Color.alphaBlend(colors.hoverOverlay, fill);
     }
@@ -38,28 +41,31 @@ class MessagingUserBubbleGlass extends StatelessWidget {
       colors.line,
       isDark: isDark,
     );
+    final content = AnimatedContainer(
+      duration: context.motion(LicoMotion.micro),
+      curve: LicoMotion.standard,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: hovered ? restingBorder.withAlpha(0) : restingBorder,
+          width: MessagingDesktopMetrics.hairline,
+        ),
+      ),
+      child: child,
+    );
     return MessagingBubbleEdgeGlow(
       borderRadius: borderRadius,
       lit: hovered,
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: AnimatedContainer(
-            duration: context.motion(LicoMotion.micro),
-            curve: LicoMotion.standard,
-            padding: padding,
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: borderRadius,
-              border: Border.all(
-                color: hovered ? restingBorder.withAlpha(0) : restingBorder,
-                width: MessagingDesktopMetrics.hairline,
+        child: opaque
+            ? content
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                child: content,
               ),
-            ),
-            child: child,
-          ),
-        ),
       ),
     );
   }

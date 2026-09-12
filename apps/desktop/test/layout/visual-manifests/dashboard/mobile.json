@@ -46,7 +46,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_agents_destination.dart",
-      "digest": "sha256:e51cc870ec894a518682266d3eb875b513b3faba6dbf6b84004c8ef23a831c1d"
+      "digest": "sha256:b18c982f6158858eb775238bf20b6e69e918ea9279e1815a3328e855d1653a27"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_pairing_destination.dart",
@@ -81,5 +81,5 @@
       "digest": "sha256:32cb32b81a4bbf991fd36e4a09ad612aaddb3ceccdf616b28a0d59de8dc2cbc2"
     }
   ],
-  "manifestDigest": "sha256:4850fea9b800ec8214348b4adf4b145e1f97403e24ce9a66d58d96dbf174b226"
+  "manifestDigest": "sha256:293be1dd6506acb40f0ec1e6d18da2424f9e56405f8a0067efafe9f88192a67a"
 }

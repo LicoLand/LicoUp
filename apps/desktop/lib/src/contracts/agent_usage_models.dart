@@ -652,3 +652,51 @@ String _tokenConfidence(List<AgentUsageAgentSummary> agents) {
   }
   return '';
 }
+
+/// Numeric-only native usage for a reasoning/speed variant within a model.
+/// The core supplies the English variant label and canonical model identity.
+class AgentUsageModelVariant {
+  const AgentUsageModelVariant({
+    required this.label,
+    required this.totalTokens,
+    this.promptTokens = 0,
+    this.cachedInputTokens = 0,
+    this.completionTokens = 0,
+    this.requestCount = 0,
+    this.tokenUnavailableRequests = 0,
+  });
+
+  final String label;
+  final int totalTokens;
+  final int promptTokens;
+  final int cachedInputTokens;
+  final int completionTokens;
+  final int requestCount;
+  final int tokenUnavailableRequests;
+
+  factory AgentUsageModelVariant.fromJson(String label, Object? raw) {
+    final value = _map(raw);
+    int count(String key) => _int(value[key]).clamp(0, 0x7fffffffffffffff);
+    return AgentUsageModelVariant(
+      label: label,
+      totalTokens: count('totalTokens'),
+      promptTokens: count('promptTokens'),
+      cachedInputTokens: count('cachedInputTokens'),
+      completionTokens: count('completionTokens'),
+      requestCount: count('requestCount'),
+      tokenUnavailableRequests: count('tokenUnavailableRequests'),
+    );
+  }
+
+  AgentUsageModelVariant merge(AgentUsageModelVariant other) =>
+      AgentUsageModelVariant(
+        label: label,
+        totalTokens: totalTokens + other.totalTokens,
+        promptTokens: promptTokens + other.promptTokens,
+        cachedInputTokens: cachedInputTokens + other.cachedInputTokens,
+        completionTokens: completionTokens + other.completionTokens,
+        requestCount: requestCount + other.requestCount,
+        tokenUnavailableRequests:
+            tokenUnavailableRequests + other.tokenUnavailableRequests,
+      );
+}
