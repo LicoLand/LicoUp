@@ -13,6 +13,7 @@ mod autostart;
 mod client_conversation;
 mod client_update;
 mod collaboration;
+mod conversation_surface;
 mod gateway;
 mod llm_gateway;
 mod mcp;
@@ -1298,6 +1299,40 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: client_conversation::handle_conversation_execute,
         help: "Execute a canonical Conversation action.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "conversation_surface.rs",
+        handler_name: "handle_conversation_list",
+        path: &["conversation", "list"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "include-archived",
+            arity: OptionArity::Boolean,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: conversation_surface::handle_conversation_list,
+        help: "List canonical conversations through the durable host. --include-archived also returns archived conversations.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "conversation_surface.rs",
+        handler_name: "handle_conversation_get",
+        path: &["conversation", "get"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "conversation-id",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: conversation_surface::handle_conversation_get,
+        help: "Read one canonical conversation through the durable host.",
     });
     table.register_command(CommandSpec {
         source_module: "strategy.rs",
