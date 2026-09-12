@@ -29,13 +29,12 @@ const TOOLS = [
   "lico_subagent_delegate",
   "lico_subagent_continue",
   "lico_subagent_cancel",
-  "lico_assistant_workflow_policy",
 ];
 
 test("common application freezes protocol, server identity, and ordered catalog", () => {
   assert.match(application, /PROTOCOL_REVISION: &str = "2025-06-18"/u);
   assert.match(application, /SERVER_NAME: &str = "lico-up-subagents"/u);
-  assert.match(application, /SERVER_VERSION: &str = "0.12.0"/u);
+  assert.match(application, /SERVER_VERSION: &str = "0.13.0"/u);
   const list = application.slice(
     application.indexOf("pub const TOOL_NAMES"),
     application.indexOf("pub fn server_definition"),

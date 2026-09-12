@@ -3398,10 +3398,7 @@ mod tests {
 
         fn skill_names(&mut self, _agent_id: &str) -> Vec<String> {
             *self.calls.lock().unwrap().entry("skills").or_default() += 1;
-            vec![
-                crate::domain::client_conversation::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
-                    .to_owned(),
-            ]
+            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 
@@ -3478,10 +3475,7 @@ mod tests {
                     .unwrap();
                 self.mutated = true;
             }
-            vec![
-                crate::domain::client_conversation::ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID
-                    .to_owned(),
-            ]
+            vec![crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID.to_owned()]
         }
     }
 

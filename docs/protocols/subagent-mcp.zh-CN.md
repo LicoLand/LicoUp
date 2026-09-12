@@ -10,7 +10,7 @@ Conversation store 共同组成。公开契约冻结在
 ## 公共契约
 
 - 主协议修订：`2025-06-18`；兼容入站修订：`2025-11-25`
-- 服务器：`lico-up-subagents` `0.12.0`
+- 服务器：`lico-up-subagents` `0.13.0`
 - 传输：桌面客户端托管的已认证回环 Streamable HTTP 服务
 - 供应商入口：不含工具定义的轻量 stdio connector
 - Mesh caller：由适配器注册表接纳为 caller 的 Agent。connector 通过 `--caller`
@@ -28,26 +28,15 @@ Conversation store 共同组成。公开契约冻结在
 7. `lico_subagent_delegate`
 8. `lico_subagent_continue`
 9. `lico_subagent_cancel`
-10. `lico_assistant_workflow_policy`
 
 所有输入 schema 都是封闭的。connector 不含目录与供应商逻辑；每个 stdio
 帧只执行一次 HTTP 尝试。
 
-## 内置工作流策略发现
+## 软件使用指导
 
-`lico_assistant_workflow_policy` 是只读的发现与读取工具。已认证 caller 可传入
-`{}` 获取 `policies` 摘要数组，再传入 `{"policyId":"better-plan"}` 获取选中
-策略的 `id`、`name`、`version`、`description`、`instructions` 与 `modelPresets`。
-未知 id 返回 `workflow_policy_not_found`，阶段为 `workflow-policy/read`。
-可选 id 必须是有界非空字符串；额外参数会被拒绝。
-
-内置 Better Plan 描述 Designer、Worker 和独立 Reviewer 的职责。模型预设声明
-`schemaVersion: 1`，包含
-`assistant`、`candidateUse` 与有序 `roles`；每个角色的有序 `candidates` 包含
-`modelName` 和 `reasoningEffort`。名称是语义建议，执行前须结合当前 Agent 目录
-与 Profile 解析。读取策略不要求 Conversation Membership，不创建 run、不改变
-绑定，也不赋予执行权限，由 Assistant 判断何时采用。参见
-[内置策略](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md#内置-assistant-策略)。
+客户端只内置一个 `licoup-guide` Skill 来指导以下工具的使用，边界见
+[使用指南](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md#licoup-使用指南)。
+MCP 服务只暴露软件操作，不提供开发策略或模型预设目录；传输服务名称与 Skill 名称独立。
 
 ## Assistant Profile 与临时工作流
 
@@ -146,7 +135,7 @@ connector 从该集合读回自己的席位：已声明但无席位的 Agent 会
 注册变更要求一次 digest 绑定且只能消费一次的批准。Cursor 与 Antigravity 只修改
 LicoUp 命名空间且确认归属的 entry；外来 entry、同一连接器挂在其它任意 key 下的条目、
 多个 Antigravity 配置候选或配置发生变化都会 fail closed。同一次批准还会通过供应商
-user Skill Hub root 交付内嵌的 `lico-up-subagents` Skill（外来 Skill 内容同样
+user Skill Hub root 交付内嵌的 `licoup-guide` Skill（外来 Skill 内容同样
 fail closed），并在共享的 `~/.agents/skills` 表面重新发布同一份内容。该共享副本是
 拷贝而非链接，且不做逐字节校验，因为该处一个文件服务所有已安装的连接器版本。
 公开响应不包含配置正文、凭据、endpoint、原生 session、

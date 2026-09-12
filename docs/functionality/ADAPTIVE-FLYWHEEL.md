@@ -7,8 +7,8 @@ runtime. A strategy is a user-imported JSON state-machine Graph plus an ordered
 candidate chain for each actor slot. The Graph alone decides whether one run is
 a one-shot pipeline, a branching workflow, or an Agent Loop with back-edges.
 The engine infers no topology from a strategy name and ships no built-in
-executable Graph. Separately, the Assistant can discover built-in authoring
-policies and recommended model presets.
+executable Graph. The bundled LicoUp guide explains how to use its existing
+operations.
 
 ## Strategy sources
 
@@ -28,35 +28,20 @@ or its original filesystem path.
 
 The engine does not auto-register a package or reserve a strategy identity.
 Neutral slot identifiers such as `entry` and `worker-a` are valid. Actual Agent
-bindings belong to the user's configuration; advisory model recommendations
-do not bind slots or change execution rules.
+bindings belong to the user's configuration and the active Membership Profiles.
 
-## Built-in Assistant policies
+## LicoUp usage guide
 
-The read-only `lico_assistant_workflow_policy` tool lists policy summaries with
-`{}` and returns instructions and structured model presets with
-`{"policyId":"better-plan"}`. The Assistant discovers and adopts a policy when
-useful, then uses existing tools to carry out the work. There is no preset
-picker, automatic global binding, or preinstalled executable Graph.
+The bundled [licoup-guide](../../crates/licoup-native/resources/licoup-guide/SKILL.md)
+is LicoUp's single software-use Skill. It guides the designated Assistant and
+other Agents through existing conversation, delegation, and workflow tools.
+Reading it grants no execution authority and selects no development process
+or model preset. Exact Agent catalogs and active Membership Profiles remain
+authoritative for availability, models, reasoning effort, and permissions.
 
-Better Plan assigns design to a strong Designer, bounded implementation to
-Workers, and independent final audit and in-scope repair to a fresh Reviewer.
-The Assistant preserves user intent, chooses the task organization, diagnoses
-repeated rework, and owns closure. Multiple independent Reviewer opinions are
-optional; an ordered fallback list is not parallel review or consensus.
-
-The bundled [policy](../../crates/licoup-native/resources/workflow-policies/better-plan/SKILL.md)
-and [model presets](../../crates/licoup-native/resources/workflow-policies/better-plan/model-presets.json)
-are product assets. Presets name models semantically and preserve ordered
-reasoning preferences, including the frontend-specific route. The current
-Agent catalog and Membership Profiles remain authoritative for exact model
-identifiers, supported effort, readiness, and authority. These recommendations
-do not change the designated Assistant or guarantee that a model is installed.
-
-The protocol-neutral policy accessor owns no run state, binding, or scheduler.
-Reading guidance has no execution effect. Applying it to an Assistant-temporary
-run retains the failure and admission behavior described below; the Assistant
-must decide whether and how to use a later candidate after reconciling a failure.
+Development Skills are maintained in lico-dev. Independent planning frameworks,
+including Better Plan, are installed
+and maintained separately; LicoUp does not embed their instructions or presets.
 
 ## Graph and execution
 
