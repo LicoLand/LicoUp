@@ -796,7 +796,12 @@ fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
     let database_present = regular_file_present(&database)?;
     let completion_present = regular_file_present(&completion_marker)?;
     let legacy_present = canonical_legacy_state_present(root)?;
-    probe_sqlite_meta(&database, "schema_meta", "version", "12")?;
+    probe_sqlite_meta(
+        &database,
+        "schema_meta",
+        "version",
+        licoup_conversation::store::CURRENT_SCHEMA_VERSION,
+    )?;
     if !database_present {
         ensure!(!completion_present, "unsupported_state_shape");
         return Ok(AuthoritativeProbe {
@@ -817,7 +822,7 @@ fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
         "unsupported_state_shape"
     );
     // Frontier version 1 means "this conversation store exists". The inner
-    // SQLite schema (11 → 12) is an in-store upgrade. Reporting 0 for an
+    // SQLite schema advances through in-store upgrades. Reporting 0 for an
     // older-but-known schema fights the already-written domain marker and
     // blocks startup admission with unsupported_state_shape.
     Ok(AuthoritativeProbe {
@@ -827,19 +832,34 @@ fn probe_canonical_conversation(root: &Path) -> Result<AuthoritativeProbe> {
 }
 
 /// When the conversation domain is already admitted, still apply a newer
-/// inner SQLite schema so `ConversationStore::open` is not left on v11.
+/// inner SQLite schema before `ConversationStore::open` serves the store.
 fn upgrade_canonical_conversation_schema(root: &Path) -> Result<()> {
     let database = root.join("client-state/conversations/conversations.sqlite3");
     if !regular_file_present(&database)? {
         return Ok(());
     }
-    if probe_sqlite_meta(&database, "schema_meta", "version", "12")?.version == 1 {
+    if probe_sqlite_meta(
+        &database,
+        "schema_meta",
+        "version",
+        licoup_conversation::store::CURRENT_SCHEMA_VERSION,
+    )?
+    .version
+        == 1
+    {
         return Ok(());
     }
     crate::domain::client_conversation::ConversationStore::open_for_migration(root)
         .context("migration_step_failed")?;
     ensure!(
-        probe_sqlite_meta(&database, "schema_meta", "version", "12")?.version == 1,
+        probe_sqlite_meta(
+            &database,
+            "schema_meta",
+            "version",
+            licoup_conversation::store::CURRENT_SCHEMA_VERSION,
+        )?
+        .version
+            == 1,
         "migration_postcondition_failed"
     );
     Ok(())
@@ -1768,7 +1788,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "12");
+        assert_eq!(version, licoup_conversation::store::CURRENT_SCHEMA_VERSION);
         let _ = fs::remove_dir_all(root);
     }
 }

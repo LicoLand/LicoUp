@@ -28,11 +28,11 @@
     and projected as allowlisted opaque ids, enums, numbers and booleans only.
     An unknown required fact rejects; an unknown optional price or score
     ranks after known values and stays visibly unknown.
-  - The designated Assistant references one product-owned workflow-authoring
-    Skill by default at `crates/licoup-native/resources/assistant-workflow-authoring/SKILL.md`.
-    The client never installs or mutates a third-party Agent skill root;
-    unavailable native Skill/tool support is a typed no-effect admission
-    failure.
+  - The designated Assistant references the product-owned `licoup-guide`
+    software-use Skill at `crates/licoup-native/resources/licoup-guide/SKILL.md`.
+    It shares guidance with provider registration; registration remains an
+    explicitly approved operation. Development processes and third-party
+    planning Skills are maintained outside the client.
   - Candidate discovery hard-filters Membership, Authority, privacy/location,
     readiness, model, Skill, environment and capability constraints, then
     applies one stable lexicographic order. No weighted score, second route
