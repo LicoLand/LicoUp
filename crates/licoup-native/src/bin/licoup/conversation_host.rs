@@ -8,13 +8,14 @@
 //! applies only when that owner pid is unset (CLI and tests).
 
 use anyhow::{Context, Result, anyhow};
+use fs2::FileExt;
 use interprocess::local_socket::{
     ListenerNonblockingMode, ListenerOptions, SendHalf, Stream, traits::Stream as _,
 };
 use std::{
     env,
-    fs::{self, OpenOptions},
-    io::{self, BufReader, Read, Write},
+    fs::{self, File, OpenOptions},
+    io::{self, BufReader, ErrorKind, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -40,6 +41,50 @@ fn host_generation_path(root: &Path) -> PathBuf {
     root.join("client-state")
         .join("conversation-runtime")
         .join("host-generation")
+}
+
+/// The lock that says which process owns this root's listener right now.
+///
+/// Deliberately separate from the record on disk: the record says who *did*
+/// own the listener, this says who owns it, and the OS releases it when the
+/// owning process dies.
+fn host_owner_lock_path(root: &Path) -> PathBuf {
+    root.join("client-state")
+        .join("conversation-runtime")
+        .join("host-owner.lock")
+}
+
+/// The exclusive advisory lock a serving host holds for its whole lifetime.
+///
+/// The kernel drops it when the holding process dies, so it is the ownership
+/// proof the record can only approximate, and it serializes the takeover: a
+/// host may only create or take the listener while it holds this lock, so two
+/// hosts can never both conclude that nobody owns the root.
+struct HostOwnerLock {
+    file: File,
+}
+
+impl HostOwnerLock {
+    /// Take the root's ownership lock, or `None` when a live host holds it.
+    fn acquire() -> Result<Option<Self>> {
+        let root = licoup_native::platform::paths::portable_data_dir()?;
+        let path = host_owner_lock_path(&root);
+        if let Some(parent) = path.parent() {
+            licoup_native::platform::file_security::ensure_private_dir(parent)?;
+        }
+        let file = licoup_native::platform::file_security::open_private_lock_file(&path)?;
+        match file.try_lock_exclusive() {
+            Ok(()) => Ok(Some(Self { file })),
+            Err(error) if error.kind() == ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error).context("conversation host unavailable"),
+        }
+    }
+}
+
+impl Drop for HostOwnerLock {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.file);
+    }
 }
 
 fn executable_generation() -> io::Result<String> {
@@ -422,6 +467,21 @@ fn shutdown_upload(_sender: &SendHalf) -> io::Result<()> {
 }
 
 pub(super) fn serve_host() -> Result<()> {
+    // Ownership is proven here, not read from the record. Take the lock before
+    // touching the listener, so the takeover below can never race another host
+    // deciding at the same moment that nobody owns this root. The lock lives
+    // until this function returns, which is the whole service lifetime.
+    let _owner_lock = match HostOwnerLock::acquire()? {
+        Some(lock) => lock,
+        None => {
+            // A live host owns this root, whatever the record says. Our own is
+            // a quiet exit; another client's or generation's fails closed.
+            return match host_ownership() {
+                HostOwnership::Current => Ok(()),
+                _ => Err(anyhow!("conversation host listener already active")),
+            };
+        }
+    };
     let name = licoup_native::platform::conversation_host_transport::endpoint_name()?;
     let listener = match ListenerOptions::new()
         .name(name)
@@ -434,10 +494,12 @@ pub(super) fn serve_host() -> Result<()> {
             if host_ownership() == HostOwnership::Current {
                 return Ok(());
             }
-            // A record that is stale, absent, or another owner's says nothing
-            // about whether the listener is free, so the endpoint decides —
-            // and it is asked over a window, because a busy host that misses
-            // one probe must not lose its listener to a starting host.
+            // This host already holds the ownership lock, so no other host that
+            // speaks for this root is alive to race here: the listener outlived
+            // its owner. The probe still asks the endpoint first, which covers
+            // a host old enough to predate the lock — and it is asked over a
+            // window, because a busy host that misses one probe must not lose
+            // its listener to a starting host.
             if endpoint_accepts_connections_within(STALE_HOST_WAIT) {
                 return Err(error).context("conversation host listener already active");
             }
@@ -783,6 +845,26 @@ mod tests {
         licoup_native::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(&root);
         assert!(!answered, "a fresh root has no host to answer");
+    }
+
+    #[test]
+    fn the_ownership_lock_admits_one_host_at_a_time() {
+        let root =
+            std::env::temp_dir().join(format!("lico-ca-owner-lock-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let previous =
+            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+        let owner = HostOwnerLock::acquire().unwrap();
+        assert!(owner.is_some(), "a fresh root has no owner");
+        // A second host cannot reach the listener while the first holds the
+        // lock, so the takeover path is unreachable for it.
+        assert!(HostOwnerLock::acquire().unwrap().is_none());
+        // The owner going away releases the lock — the same thing the kernel
+        // does when the owning process dies — so the next host may take over.
+        drop(owner);
+        assert!(HostOwnerLock::acquire().unwrap().is_some());
+        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
