@@ -144,15 +144,18 @@ fn classify_host_ownership(
     if recorded != generation {
         return HostOwnership::Absent;
     }
-    // Another client of the same generation owns this host.
+    // A record that names no host says nothing about another client's
+    // ownership, so it stays an out-of-date record for this generation.
+    let Some(host_pid) = host_pid else {
+        return HostOwnership::Stale;
+    };
+    // Another client of the same generation owns the host this names, live or
+    // not: this process may not claim it.
     if let Some(expected) = expected_client
         && recorded_client != Some(expected)
     {
         return HostOwnership::Absent;
     }
-    let Some(host_pid) = host_pid else {
-        return HostOwnership::Stale;
-    };
     if liveness(host_pid) == ProcessLiveness::Dead {
         return HostOwnership::Stale;
     }
@@ -732,6 +735,16 @@ mod tests {
         );
         assert_eq!(ownership, HostOwnership::Stale);
         assert!(!ownership.is_current());
+        // A record that names no host also says nothing about another client,
+        // so a client-bound process must still read it as out of date rather
+        // than as someone else's host.
+        let bound_to_a_client = classify_host_ownership(
+            Some(ownership_record(None, None)),
+            OWNERSHIP_GENERATION,
+            Some(99),
+            |_| ProcessLiveness::Alive,
+        );
+        assert_eq!(bound_to_a_client, HostOwnership::Stale);
     }
 
     #[test]
@@ -745,16 +758,19 @@ mod tests {
             ),
             HostOwnership::Absent
         );
-        // The same generation, but another client owns the host.
-        assert_eq!(
-            classify_host_ownership(
-                Some(ownership_record(Some(4242), Some(7))),
-                OWNERSHIP_GENERATION,
-                Some(99),
-                |_| ProcessLiveness::Alive,
-            ),
-            HostOwnership::Absent
-        );
+        // The same generation, but another client owns the host — whether the
+        // host it names is still running or not.
+        for liveness in [ProcessLiveness::Alive, ProcessLiveness::Dead] {
+            assert_eq!(
+                classify_host_ownership(
+                    Some(ownership_record(Some(4242), Some(7))),
+                    OWNERSHIP_GENERATION,
+                    Some(99),
+                    |_| liveness,
+                ),
+                HostOwnership::Absent
+            );
+        }
     }
 
     #[test]
