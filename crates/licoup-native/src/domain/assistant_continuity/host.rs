@@ -2421,7 +2421,7 @@ impl ContinuityHost {
             parent_conversation_id: Some(parent_conversation_id),
             assembly: Some(&prepared.assembly),
             orientation: Some(&prepared.manifest),
-            include_authoring_skill: true,
+            include_licoup_guide: true,
         })?;
         let started = start(&params).map_err(|_| source_unavailable())?;
         let dispatch_id = started

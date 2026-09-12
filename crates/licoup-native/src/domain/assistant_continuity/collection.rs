@@ -345,7 +345,7 @@ fn observe_case(
         parent_conversation_id: None,
         assembly: None,
         orientation: None,
-        include_authoring_skill: false,
+        include_licoup_guide: false,
     })?;
     params["evaluationSessionId"] = json!(request.session_id);
     params["evaluationCaseId"] = json!(case.case_id);

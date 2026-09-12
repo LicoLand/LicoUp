@@ -13,7 +13,7 @@ pub(crate) const SERVER_KEY: &str = "land.lico.licoup.subagents";
 const ENTRY_SCHEMA: &str = "licoup.subagent-mcp-registration.v2";
 const MANAGED_BY: &str = "LicoUp";
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
-const SKILL_SOURCE: &str = include_str!("../../resources/subagent-mesh/SKILL.md");
+const SKILL_SOURCE: &str = crate::domain::client_conversation::LICOUP_GUIDE_SKILL_SOURCE;
 
 fn cursor_context_environment() -> Value {
     json!({
@@ -369,7 +369,9 @@ fn resolve_skill_path(kind: ProviderConfigKind) -> Result<PathBuf, RegistrationE
         ProviderConfigKind::Antigravity => home.join(".gemini").join("config").join("skills"),
         ProviderConfigKind::ClaudeCode => home.join(".claude").join("skills"),
     };
-    Ok(root.join("lico-up-subagents").join("SKILL.md"))
+    Ok(root
+        .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
+        .join("SKILL.md"))
 }
 
 /// The cross-Agent shared Skill surface. Agents that subscribe to it receive
@@ -383,7 +385,7 @@ fn shared_skill_path() -> Result<PathBuf, RegistrationError> {
 fn shared_skill_path_in(home: &Path) -> PathBuf {
     home.join(".agents")
         .join("skills")
-        .join("lico-up-subagents")
+        .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
         .join("SKILL.md")
 }
 
@@ -864,9 +866,9 @@ mod tests {
         fs::write(&connector, b"synthetic connector").unwrap();
         let config_path = root.join("mcp.json");
         let config_digest = digest_bytes(b"<absent>");
-        let skill_path = root.join("skills/lico-up-subagents/SKILL.md");
+        let skill_path = root.join("skills/licoup-guide/SKILL.md");
         let skill_digest = digest_bytes(b"<absent>");
-        let shared_skill_path = root.join("shared/skills/lico-up-subagents/SKILL.md");
+        let shared_skill_path = root.join("shared/skills/licoup-guide/SKILL.md");
         let digest = plan_digest(
             ProviderConfigKind::Cursor,
             &connector,
@@ -912,9 +914,9 @@ mod tests {
         let config_source = br#"{"mcpServers":{"other":{"command":"other"}}}"#;
         fs::write(&config_path, config_source).unwrap();
         let config_digest = digest_bytes(config_source);
-        let skill_path = root.join("skills/lico-up-subagents/SKILL.md");
+        let skill_path = root.join("skills/licoup-guide/SKILL.md");
         let skill_digest = digest_bytes(b"<absent>");
-        let shared_skill_path = root.join("shared/skills/lico-up-subagents/SKILL.md");
+        let shared_skill_path = root.join("shared/skills/licoup-guide/SKILL.md");
         let digest = plan_digest(
             ProviderConfigKind::Cursor,
             &connector,
@@ -958,7 +960,7 @@ mod tests {
             shared,
             root.join(".agents")
                 .join("skills")
-                .join("lico-up-subagents")
+                .join(crate::domain::client_conversation::LICOUP_GUIDE_SKILL_ID)
                 .join("SKILL.md")
         );
         assert_eq!(publish_shared_skill(&shared), Some(shared.clone()));

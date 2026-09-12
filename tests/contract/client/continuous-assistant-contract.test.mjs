@@ -115,7 +115,6 @@ test("frozen schema, generated bindings, and MCP catalog stay closed", () => {
     { const: "lico_subagent_delegate" },
     { const: "lico_subagent_continue" },
     { const: "lico_subagent_cancel" },
-    { const: "lico_assistant_workflow_policy" },
   ]);
 });
 
