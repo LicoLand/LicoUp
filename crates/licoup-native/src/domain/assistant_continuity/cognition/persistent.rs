@@ -15,9 +15,7 @@ use licoup_conversation::{
 };
 use serde_json::{Value, json};
 
-use crate::domain::client_conversation::{
-    ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE, dispatch_attachments_param,
-};
+use crate::domain::client_conversation::{LICOUP_GUIDE_SKILL_SOURCE, dispatch_attachments_param};
 use crate::platform::runtime_adapters::{
     GeneratedInstructionDelivery, RuntimeAdapterError, compose_generated_instruction_delivery,
 };
@@ -107,7 +105,7 @@ impl CognitionInvoker for PersistentTurnCognition {
                 .map(|review| review.parent_conversation_id.as_str()),
             assembly: Some(&request.assembly),
             orientation: Some(&request.orientation),
-            include_authoring_skill: true,
+            include_licoup_guide: true,
         })?;
         match (self.complete_turn)(&params) {
             Ok(value) => {
@@ -155,7 +153,7 @@ pub(crate) struct AdmittedTurnRequest<'a> {
     pub parent_conversation_id: Option<&'a str>,
     pub assembly: Option<&'a super::types::AssemblySnapshot>,
     pub orientation: Option<&'a ContinuityContextManifest>,
-    pub include_authoring_skill: bool,
+    pub include_licoup_guide: bool,
 }
 
 pub(crate) fn compose_admitted_turn_params(
@@ -186,7 +184,7 @@ pub(crate) fn compose_admitted_turn_params(
             request.store,
             assembly,
             orientation,
-            request.include_authoring_skill,
+            request.include_licoup_guide,
             request.continuity_kind == "user-posted",
             native_role
                 .as_ref()
@@ -551,13 +549,13 @@ pub(crate) fn compose_continuity_guidance(
     store: &ConversationStore,
     assembly: &super::types::AssemblySnapshot,
     orientation: &ContinuityContextManifest,
-    include_authoring_skill: bool,
+    include_licoup_guide: bool,
     include_response_contract: bool,
     native_role_instructions: Option<&str>,
 ) -> String {
     let mut guidance = String::new();
-    if include_authoring_skill {
-        guidance.push_str(ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE);
+    if include_licoup_guide {
+        guidance.push_str(LICOUP_GUIDE_SKILL_SOURCE);
     }
     if include_response_contract {
         push_block(&mut guidance, PROPOSAL_RESPONSE_CONTRACT);

@@ -23,16 +23,5 @@ pub use service::{ConversationService, PersistentRuntimePorts, dispatch_attachme
 
 /// Product-owned private dispatch guidance remains composed by the native host
 /// and is never written into Conversation Event text.
-pub(crate) const ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE: &str =
-    include_str!("../../../resources/assistant-workflow-authoring/SKILL.md");
-
-#[cfg(test)]
-pub(crate) fn assistant_workflow_authoring_prompt() -> &'static str {
-    let source = ASSISTANT_WORKFLOW_AUTHORING_SKILL_SOURCE.trim();
-    source
-        .strip_prefix("---\n")
-        .and_then(|rest| rest.split_once("\n---\n"))
-        .map(|(_, prompt)| prompt.trim())
-        .filter(|prompt| !prompt.is_empty())
-        .unwrap_or(source)
-}
+pub(crate) const LICOUP_GUIDE_SKILL_SOURCE: &str =
+    include_str!("../../../resources/licoup-guide/SKILL.md");
