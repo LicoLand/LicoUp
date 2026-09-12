@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 162;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 164;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1823,6 +1823,20 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ],
         constraints: &[],
     });
+    add_authority_routes(
+        &mut routes,
+        "conversation_surface.rs",
+        "handle_conversation_list",
+        &["conversation list"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "conversation_surface.rs",
+        "handle_conversation_get",
+        &["conversation get"],
+        Options,
+    );
     routes.push(RouteAuthority {
         module: "strategy.rs",
         handler: "handle_strategy_execute",
@@ -2768,6 +2782,8 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("stdin-json", Json, true),
             boolean_option("require-running-host"),
         ],
+        "conversation list" => &[boolean_option("include-archived")],
+        "conversation get" => &[value_option("conversation-id", Text, true)],
         "strategy execute" => &[value_option("stdin-json", Json, true)],
         "agents pair request"
         | "agents pair approve"
