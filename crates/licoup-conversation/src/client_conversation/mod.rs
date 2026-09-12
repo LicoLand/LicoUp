@@ -10,11 +10,11 @@ pub const DEFAULT_LOCAL_AGENT_GROUP_TITLE: &str = "Local";
 pub const MAX_PROFILE_CAPABILITIES: usize = 32;
 pub const MAX_PROFILE_SKILLS: usize = 32;
 pub const MAX_PROFILE_FIELD_BYTES: usize = 128;
-pub const ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID: &str = "assistant-workflow-authoring";
-const ASSISTANT_WORKFLOW_AUTHORING_PROMPT: &str = "Respond directly to the user's request. Use tools only when the current request requires them. Do not start, resume, or invent unrelated work. Finish the requested response and return it.";
+pub const LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide";
+const DIRECT_ASSISTANT_GUIDANCE: &str = "Respond directly to the user's request. Use tools only when the current request requires them. Do not start, resume, or invent unrelated work. Finish the requested response and return it.";
 
-pub(crate) fn assistant_workflow_authoring_prompt() -> &'static str {
-    ASSISTANT_WORKFLOW_AUTHORING_PROMPT
+pub(crate) fn direct_assistant_guidance() -> &'static str {
+    DIRECT_ASSISTANT_GUIDANCE
 }
 
 pub const PERSISTENT_TRANSPORT_REQUIRED: &str = "persistent_conversation_transport_required";

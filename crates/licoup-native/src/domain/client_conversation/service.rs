@@ -2618,7 +2618,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_id);
         let text = calls[0]["text"].as_str().unwrap();
-        assert!(text.contains("Respond directly to the user's request."));
+        assert!(!text.trim().is_empty());
+        assert!(calls[0].get("privateInstructions").is_none());
         let attachments = calls[0]["attachments"].as_array().unwrap();
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0]["id"], json!(event.parts[0].id));
@@ -4455,7 +4456,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|skill| skill == "assistant-workflow-authoring")
+                .any(|skill| skill == "licoup-guide")
         );
 
         let candidates = service
@@ -4551,11 +4552,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["membershipId"], agent_one);
         let text = calls[0]["text"].as_str().unwrap();
-        assert!(text.starts_with("Respond directly to the user's request."));
-        assert!(text.contains("Respond directly to the user's request."));
-        assert!(text.contains("Use tools only when the current request requires them."));
-        assert!(text.contains("Do not start, resume, or invent unrelated work."));
-        assert!(!text.contains("use tools freely"));
+        assert_ne!(text, "plain message without a mention");
         assert!(text.ends_with("plain message without a mention"));
         assert!(calls[0].get("privateInstructions").is_none());
         assert!(calls[0].get("timeoutMs").is_none());

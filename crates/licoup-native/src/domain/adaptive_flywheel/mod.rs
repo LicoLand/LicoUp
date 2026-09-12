@@ -10,7 +10,6 @@ mod conformance;
 mod definition;
 mod graph;
 mod package;
-mod policy;
 mod reducer;
 mod service;
 mod store;
@@ -32,10 +31,6 @@ pub use definition::{
 };
 pub use graph::{CompiledWorkflow, compile_persisted_workflow, compile_workflow};
 pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};
-pub use policy::{
-    ModelPreference, ModelPresets, RolePreset, WorkflowPolicy, WorkflowPolicySummary,
-    builtin_workflow_policies, builtin_workflow_policy,
-};
 pub use reducer::{
     CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
 };

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 const CLI_BIN: &str = env!("CARGO_BIN_EXE_licoup-cli");
 const CONNECTOR_BIN: &str = env!("CARGO_BIN_EXE_lico-subagent-mcp");
 
-const FROZEN_TOOLS: [&str; 10] = [
+const FROZEN_TOOLS: [&str; 9] = [
     "lico_assistant_profiles",
     "lico_assistant_workflow_execute",
     "lico_assistant_workflow_inspect",
@@ -26,7 +26,6 @@ const FROZEN_TOOLS: [&str; 10] = [
     "lico_subagent_delegate",
     "lico_subagent_continue",
     "lico_subagent_cancel",
-    "lico_assistant_workflow_policy",
 ];
 
 fn temp_root(tag: &str) -> PathBuf {
@@ -208,7 +207,7 @@ fn fresh_desktop_bridge_lane_exposes_discovery_and_frozen_catalog_before_any_con
         initialize
             .pointer("/serverInfo/version")
             .and_then(Value::as_str),
-        Some("0.12.0")
+        Some("0.13.0")
     );
     let tools = frames
         .iter()

@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::domain::client_conversation::{
-    ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID, CandidateFilters, MembershipProfileSnapshot,
-    ProfileResponsibility, rank_candidates,
+    CandidateFilters, LICOUP_GUIDE_SKILL_ID, MembershipProfileSnapshot, ProfileResponsibility,
+    rank_candidates,
 };
 
 use super::{
@@ -474,7 +474,7 @@ pub fn preflight_assistant_graph(
         !assistant
             .skills
             .iter()
-            .any(|skill| skill == ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID)
+            .any(|skill| skill == LICOUP_GUIDE_SKILL_ID)
             || !conversation_driver_available(assistant)
     }) {
         checks.push(check_at(
@@ -928,7 +928,7 @@ mod tests {
             required_capabilities: vec!["conversationDriver:supported".to_owned()],
             preferred_capabilities: Vec::new(),
             skill_references: if responsibility == ProfileResponsibility::Assistant {
-                vec![ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned()]
+                vec![LICOUP_GUIDE_SKILL_ID.to_owned()]
             } else {
                 Vec::new()
             },
@@ -938,7 +938,7 @@ mod tests {
             model: Some("model-a".to_owned()),
             capabilities: vec!["conversationDriver:supported".to_owned()],
             skills: if responsibility == ProfileResponsibility::Assistant {
-                vec![ASSISTANT_WORKFLOW_AUTHORING_SKILL_ID.to_owned()]
+                vec![LICOUP_GUIDE_SKILL_ID.to_owned()]
             } else {
                 Vec::new()
             },

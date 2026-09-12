@@ -36,15 +36,15 @@ Agent static checks are independently scheduled after one shared inventory
 contract, and aggregated Node tests attribute failures through anonymous input
 indexes, so one Agent or test file does not invalidate its whole peer batch.
 
-Starting a complete regression expands the current verification closure to
-every problem it reveals. Do not hand off with a known failure, stale golden,
-layout overflow, timeout, or flaky test from that run. Diagnose and fix its
-canonical owner, add or tighten a focused regression, and inspect visual diffs
-before updating any golden. During repair, rerun only the affected slices; when
-all reported problems are closed, run one final complete regression and require
-it to pass. If an external condition makes closure impossible, stop and obtain
-an explicit maintainer decision instead of calling the problem pre-existing or
-out of scope.
+After all intended changes, source review, in-scope repairs, and focused checks
+are complete, run the selected complete regression once. If it fails, diagnose
+and report the cause, effect, and concrete repair and verification proposal.
+The developer decides subsequent repairs and whether to rerun that regression;
+do not automatically widen scope, repair, or repeat it. Continue independent
+authorized work and report required checks that remain incomplete. Ordinary
+implementation and focused-test failures within the accepted scope can be
+fixed directly. Promotion failures follow the separate
+[promotion gates](docs/releases/PROMOTION-GATES.md).
 
 ```bash
 npm run client:gate:source
@@ -69,6 +69,45 @@ the next build can continue to reuse downloaded dependencies. Unmanaged legacy
 targets are reported but are not deleted automatically. After an abnormal test
 exit, a structurally valid dead lease remains protected for a grace period and
 only then becomes reclaimable; malformed or tampered records always fail closed.
+
+## Local client verification
+
+After a client fix or behavior change, including a bundled Agent prompt or
+Skill change, build macOS once and verify that exact installed output:
+
+```bash
+npm run client:build -- --platform macos
+npm run client:install:macos -- --launch-installed --verify-stable
+```
+
+Do not substitute `client:run:macos`; it rebuilds. Ordinary documentation and
+tests without product binary impact do not require a client build or launch.
+Honor an explicit request to skip installation and report the remaining
+verification. Local installation does not authorize signing, notarization,
+source promotion, public publication, or production changes.
+
+## Agent guidance
+
+Keep AGENTS.md to stable boundaries and task links. Shared development Skills
+are maintained in `lico-dev`; this repository bundles only `licoup-guide` for
+operating LicoUp. Independent planning Skills remain with their own projects.
+Read a Skill only when explicitly requested or when its
+purpose and trigger match the actual task; a project or model name alone is
+not a trigger. Skill descriptions state purpose, trigger, and exclusions.
+Keep SKILL.md as a minimal route to task-specific references or existing tools.
+A bundled Skill must remain usable with the resources its loader supplies.
+
+User instructions override Skill guidelines. Ordinary authorized work proceeds
+without repeated approval; obtain any missing authorization before the actual
+protected or irreversible effect. Reading a runbook or an example does not
+authorize its operations. If guidance blocks work, identify its exact source,
+quote the relevant rule, and explain what decision or authority is missing.
+
+Scale planning and tests to the change. Delegate only useful independent work,
+with clear ownership and no fast mode. Allow at least a 10-minute observation
+window for ordinary delegated work and 30 minutes for large work, split into
+host-supported waits with progress updates. These windows are not deadlines;
+a wait returning does not prove completion or permit cancellation.
 
 ## Agent-assisted contribution
 
