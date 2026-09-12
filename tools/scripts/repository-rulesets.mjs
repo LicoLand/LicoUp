@@ -9,6 +9,7 @@ import { sensitiveRulesetExtensions } from "./lib/repository-sensitive-file-poli
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
 const sensitivePublicationRulesetName = "LicoUp sensitive publication — all pushes";
+const cutoffRulesetName = "LicoUp immutable nightly cutoffs";
 // Push Rulesets are hostable on private or internal Team/Enterprise
 // repositories. Branch protection remains independently deployable when the
 // host cannot provide this optional push-only control.
@@ -20,7 +21,7 @@ const leadingPromotionStatusContexts = Object.freeze([
 ]);
 const promotionRequiredStatusContexts = Object.freeze({
   nightly: Object.freeze([...leadingPromotionStatusContexts, "Client required", "Auditor"]),
-  stable: Object.freeze([...leadingPromotionStatusContexts, "Stable client", "Auditor"]),
+  stable: Object.freeze([...leadingPromotionStatusContexts, "Stable client", "Monthly candidate ready", "Auditor"]),
   release: Object.freeze([...leadingPromotionStatusContexts, "Release ready", "Auditor"]),
 });
 const promotionRulesetNames = Object.freeze({
@@ -120,9 +121,12 @@ function requiredStatusChecksRule(actionsIntegrationId, contexts) {
   };
 }
 
-export function buildRulesets(actionsIntegrationId) {
+export function buildRulesets(actionsIntegrationId, appleIntegrationId) {
   if (!Number.isSafeInteger(actionsIntegrationId) || actionsIntegrationId <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
+  }
+  if (!Number.isSafeInteger(appleIntegrationId) || appleIntegrationId <= 0 || appleIntegrationId === actionsIntegrationId) {
+    reject("APPLE_INTEGRATION_INVALID", "The Apple Release App integration ID is invalid.");
   }
   const identityRuleset = {
       name: allBranchesRulesetName,
@@ -178,9 +182,21 @@ export function buildRulesets(actionsIntegrationId) {
             required_review_thread_resolution: true,
           },
         },
-        requiredStatusChecksRule(actionsIntegrationId, promotionRequiredStatusContexts[branch]),
+        branch === "stable"
+          ? { type: "required_status_checks", parameters: { do_not_enforce_on_create: true,
+            required_status_checks: [...promotionRequiredStatusContexts[branch].map(context => ({ context, integration_id: actionsIntegrationId })),
+              { context: "Apple Release ready", integration_id: appleIntegrationId }], strict_required_status_checks_policy: true } }
+          : requiredStatusChecksRule(actionsIntegrationId, promotionRequiredStatusContexts[branch]),
       ],
     }));
+  const cutoffRuleset = {
+    name: cutoffRulesetName,
+    target: "branch",
+    enforcement: "active",
+    bypass_actors: [],
+    conditions: { ref_name: { include: ["refs/heads/nightly-cutoff/*"], exclude: [] } },
+    rules: [{ type: "deletion" }, { type: "update", parameters: { update_allows_fetch_and_merge: false } }],
+  };
   const sensitivePublicationRuleset = {
       name: sensitivePublicationRulesetName,
       target: "push",
@@ -195,7 +211,7 @@ export function buildRulesets(actionsIntegrationId) {
         },
       ],
     };
-  return [identityRuleset, ...promotionRulesets, sensitivePublicationRuleset];
+  return [identityRuleset, ...promotionRulesets, cutoffRuleset, sensitivePublicationRuleset];
 }
 
 export function pushRulesetCapability(repositoryDetails) {
@@ -208,8 +224,8 @@ export function pushRulesetCapability(repositoryDetails) {
 
 // Push protection is optional because GitHub does not expose it for public
 // repositories. Branch authorities are always planned and applied.
-export function planRulesetApply(repositoryDetails, actionsIntegrationId) {
-  const desired = buildRulesets(actionsIntegrationId);
+export function planRulesetApply(repositoryDetails, actionsIntegrationId, appleIntegrationId) {
+  const desired = buildRulesets(actionsIntegrationId, appleIntegrationId);
   const pushSupported = pushRulesetCapability(repositoryDetails);
   return Object.freeze({
     status: pushSupported ? "supported" : "branch-only",
@@ -288,6 +304,16 @@ function actionsIntegrationId() {
   if (!Number.isSafeInteger(id) || id <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
   }
+  return id;
+}
+
+function appleReleaseIntegrationId() {
+  const raw = ghRead(["api", `repos/${repository}/actions/variables/LICOUP_APPLE_RELEASE_APP_ID`, "--jq", ".value"], {
+    code: "APPLE_INTEGRATION_UNAVAILABLE",
+    message: "The configured Apple Release App integration ID could not be resolved.",
+  });
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id <= 0) reject("APPLE_INTEGRATION_INVALID", "The Apple Release App integration ID is invalid.");
   return id;
 }
 
@@ -394,8 +420,9 @@ function verify({ repositoryDetails, desired } = {}) {
   const details = repositoryDetails || assertRepositoryAccess({ requireAdmin: false });
   assertReleaseDefaultBranch(details);
   const integrationId = actionsIntegrationId();
-  const plan = planRulesetApply(details, integrationId);
-  const expected = desired || buildRulesets(integrationId);
+  const appleId = appleReleaseIntegrationId();
+  const plan = planRulesetApply(details, integrationId, appleId);
+  const expected = desired || buildRulesets(integrationId, appleId);
   const branchPayloads = expected.filter((payload) => payload.target === "branch");
   const summaries = repositoryRulesets();
   const activeBranchNames = summaries
@@ -429,7 +456,8 @@ function apply() {
   const repositoryDetails = assertRepositoryAccess({ requireAdmin: true });
   assertReleaseDefaultBranch(repositoryDetails);
   const integrationId = actionsIntegrationId();
-  const plan = planRulesetApply(repositoryDetails, integrationId);
+  const appleId = appleReleaseIntegrationId();
+  const plan = planRulesetApply(repositoryDetails, integrationId, appleId);
   const existing = repositoryRulesets();
   const desired = plan.desired;
   for (const payload of desired) {
@@ -470,6 +498,7 @@ export {
   allBranchesRulesetName,
   sensitivePublicationRulesetName,
   identityStatusContext,
+  cutoffRulesetName,
   promotionRulesetNames,
   promotionRequiredStatusContexts,
 };
