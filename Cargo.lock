@@ -2096,6 +2096,7 @@ dependencies = [
  "lico-catalog-convergence",
  "licoup-agent-adapters",
  "licoup-agent-runtime",
+ "licoup-application",
  "licoup-client-state",
  "licoup-conversation",
  "licoup-endpoint-core",
