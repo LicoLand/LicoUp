@@ -31,9 +31,9 @@ void main() {
       expect(missingCache.isExact, isTrue);
       expect(missingCache.cachedInputTokens, 0);
       expect(estimated.isExact, isFalse);
-      expect(models.keys, ['GPT 5.5']);
-      expect(models['GPT 5.5']?.totalTokens, 550);
-      expect(models['GPT 5.5']?.breakdown.isExact, isFalse);
+      expect(models.keys, ['GPT-5.5']);
+      expect(models['GPT-5.5']?.totalTokens, 550);
+      expect(models['GPT-5.5']?.breakdown.isExact, isFalse);
     },
   );
 }

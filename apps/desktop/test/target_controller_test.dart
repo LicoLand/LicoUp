@@ -110,9 +110,9 @@ void main() {
     );
   });
 
-  test('Claude current model is a settled native catalog', () {
+  test('Claude settings model list is a settled native catalog', () {
     final target = _target('claude-code').withModelCatalog({
-      'sources': ['claude-current'],
+      'sources': ['claude-settings'],
       'models': [
         {'name': 'configured-current-model'},
       ],

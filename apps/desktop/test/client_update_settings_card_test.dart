@@ -135,6 +135,17 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture);
+    final currentStatus = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(currentStatus.data, 'Up to date');
+    expect(
+      currentStatus.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .success,
+    );
     expect(find.byKey(const Key('client-update-release-track')), findsNothing);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
@@ -150,6 +161,9 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('无法检查更新，请重试'), findsOneWidget);
+    expect(find.text('更新失败，请重试'), findsNothing);
+    expect(find.text('已是最新版本'), findsNothing);
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
@@ -171,6 +185,36 @@ void main() {
     await _pumpCard(tester, fixture);
     await tester.tap(find.byKey(const Key('client-update-apply-restart')));
     expect(fixture.intents.values.whereType<ApplyClientUpdate>(), hasLength(1));
+  });
+
+  testWidgets('unavailable update metadata is neutral and retryable', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.unavailable,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        errorCode: 'client_update_metadata_unavailable',
+      ),
+    );
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('当前发布尚未提供更新资料'), findsOneWidget);
+    expect(find.text('已是最新版本'), findsNothing);
+    final status = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(
+      status.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .textSecondary,
+    );
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(_onPressed(tester, 'client-update-download-local'), isNull);
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 }
 

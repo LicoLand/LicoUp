@@ -22,6 +22,16 @@ migration frontier. Human migration notes are descriptive only. The caller
 cannot override the running version, running track, frontier, or migration
 steps.
 
+A successful check of the canonical public Stable release can establish that
+its version is equal to or older than the running version even when that
+release has no update manifest. This is a published-version observation only:
+it carries no verified key, artifact or replacement receipt. A missing manifest
+for a newer, unknown or Nightly version is reported as unavailable metadata.
+If a manifest is present, its signed verification remains mandatory regardless
+of the release tag. Network and integrity failures remain failures; a stale
+cache cannot conceal a failed verification. Starting a new check clears any
+previous candidate receipt before adopting its result.
+
 Before replacement, native update verification writes a claim bound to the
 selected version, target track, exact frontier, and artifact receipt. The new
 binary must match that claim before migration admission; a mismatch blocks

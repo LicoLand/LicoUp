@@ -94,7 +94,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/desktop/desktop/production-baseline/agents.png",
-      "digest": "sha256:591394ad1acb69463513c4aaf62e2fdc5aca30a18f99ea346dc41ef8b3333343"
+      "digest": "sha256:a5cda70c7923b1bd43d653d90b20e2b245cd6da2a29d856b759e9bf82bcbe31e"
     },
     {
       "path": "apps/desktop/test/goldens/layout/desktop/desktop/production-baseline/settings.png",
@@ -117,5 +117,5 @@
       "digest": "sha256:f3bef4b5073c11c6d0de0c6269f50cc38891c75bf4e3b23360e44d9f0ee06683"
     }
   ],
-  "manifestDigest": "sha256:94bd7f68c50a5d7cf63fd93837cf657980d9f3a71cb27d65f8fe139d8d11ada1"
+  "manifestDigest": "sha256:77909413e86ff61547ee65c30c0dedf5bc8bc1afbe81f132ed62b4ec40bd456c"
 }

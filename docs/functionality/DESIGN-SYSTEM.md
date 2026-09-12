@@ -49,12 +49,20 @@ The optional visual tokens are intentionally bounded:
 | `motion-scale` | `0.75`, `1`, `1.25` | Shared motion durations |
 | `surface-opacity` | `0.85`, `0.9`, `0.95`, `1` | Surface fill opacity |
 | `component-finish` | `crisp`, `glass` | Static surface sheen |
+| `composer-activity-effect` | `breathing`, `pulse` | Working composer outline; breathing is the default |
 
 Color tokens continue to define the semantic palette. These tokens cannot
 supply widths, spacing, component order, destinations, callbacks or commands.
 Geometry remains in layout/profile and shared component metrics. A custom
 style therefore changes the presentation of the current layout, never its
 functional structure.
+
+Dashboard assigns transparency by component role: its sidebar is 90%
+transparent (10% fill opacity), while conversation bubbles are fully opaque.
+Sidebar transparency affects its background, not the legibility of its text,
+icons or focus state. These Dashboard roles do not change another layout's
+surface treatment. A shared opacity multiplier must not make message bubbles
+translucent.
 
 ## Typography and content
 
@@ -73,8 +81,10 @@ A title names the current task or destination. Labels name controls. Secondary
 copy is reserved for a factual distinction that affects a decision. Repeated
 subtitles and descriptions of obvious controls are omitted. Errors, warnings,
 permission context and non-obvious behavior remain visible. Icon actions have
-a tooltip, semantic name and keyboard activation; status never relies on color
-alone. Text and buttons align on the same content edges.
+a semantic name and keyboard activation; an unlabeled icon also has a tooltip.
+Primary navigation already has visible text, so it does not repeat that text
+in a hover bubble. Status never relies on color alone. Text and buttons align
+on the same content edges.
 
 Body, supporting and metadata colors clear 4.5:1 against their intended
 surfaces. Meaningful non-text graphics clear 3:1. Electric yellow is a fill and
@@ -92,6 +102,10 @@ feature's local treatment cannot silently alter other feature types.
 all four edges and corner arcs. Search capsules, glass controls and structural
 rims share it. A capsule outline must not be assembled from separate line and
 arc widgets or painted twice by a Material border and an overlay rim.
+The sidebar, conversation header and composer must also avoid a second outline
+from an enclosing surface. Visual review includes the straight-to-curve joins,
+all four sidebar corners and the navigation divider. The composer's attachment
+button uses the same glass control treatment as its neighboring controls.
 
 | Shared metric | Value |
 | --- | ---: |
@@ -123,12 +137,19 @@ the existing install/update controls. The detail page provides Overview,
 Plugins and Skills. Descriptions come from official Agent sources maintained
 in the catalog; subjective ratings, rankings and adaptation-depth opinions do
 not appear. Plugin and Skill views use the selected Agent context.
+The three detail destinations form one compact, integrated selector. Selection
+and content transitions share the motion policy and preserve the detail page's
+identity and context.
 
 Settings builds and subscribes to the section being used. Locale, theme,
 layout, storage, archive, updater and logs select their own projection fields.
 The updater aligns its current/available versions, status and actions with
 consistent button dimensions. Resource collection continues in its existing
 owner while resource cards and the obsolete tool-catalog setting remain hidden.
+An update check distinguishes an available update, no newer published version,
+missing update metadata and an actual failed operation. Confirmed current
+versions use green status text with a readable label. A failed network request
+or failed integrity verification must not appear as an up-to-date result.
 
 Layout previews are produced by each registered layout profile. They depict
 that profile's actual navigation, sidebar and detail/composer placement and
@@ -145,9 +166,44 @@ fresh scan completes. Errors belong to their owning result or notification.
 
 Statistics selects only usage data and relevant controls. Quota or diagnostic
 updates do not rebuild its chart subtree. Usage viewport projections and chart
-series are cached by their actual data, grouping and display window. Charts
-use a single silver-to-yellow series ramp with stable label assignments.
+series are cached by their actual data, grouping and display window. Color
+assignments remain stable across refreshes, windows and source ordering.
 Labels, values and tooltips identify series independently of hue.
+
+Agent charts use a rainbow palette. Antigravity, Kimi Code and GitHub Copilot
+use distinct blue-to-purple colors; Kilo Code uses yellow and Claude Code uses
+orange. Other Agents receive fixed, distinct assignments. Existing brand colors
+take precedence over arbitrary chart order.
+
+Model charts use shades within the model developer's color family. Stronger
+models use deeper shades; for Claude's orange family the order is Fable, Opus,
+Sonnet and Haiku, from deepest to lightest, when those models are present.
+Color never changes the model's availability or capabilities.
+
+One canonical model has one usage row across source applications, reasoning
+efforts and speed modes. A source name such as Cursor is not a model name.
+An expandable row uses a right-pointing disclosure arrow when closed and a
+downward arrow when open. Its expanded view shows a segmented source-share bar
+and the corresponding numeric usage below. Hovering a source segment exposes
+that source's effort and speed breakdown. Unknown attribution remains unknown;
+it is not assigned to a guessed model. Native usage reporting owns identity and
+numeric aggregation; the renderer owns color and disclosure state.
+
+## Assistant model selection
+
+The model picker displays names without scores, task tags or capability prose.
+Official models precede custom-provider models. Within each provider group,
+numeric model versions sort from newest to oldest; textual sorting must not
+place version 5.9 ahead of 5.10. Product names retain their spacing, including
+`GPT-6 Astra`.
+
+Provider groups remain visible for multi-provider Agents, including Antigravity
+and Kimi Code. Claude Code exposes its admitted model catalog, rather than only
+the configured default. Discovery and native capability contracts determine
+which models and efforts are available; presentation does not invent them.
+Reasoning labels use English and ascending intensity: Low, Medium, High,
+Extra High and Max. `Extra High` is the display label for the native `xhigh`
+value; changing the label does not change the dispatched value.
 
 This approach follows Flutter's guidance to localize rebuilds, retain unchanged
 children and build long lists lazily. Paint-only activity uses repaint
@@ -185,6 +241,13 @@ Message text remains selectable and copyable. Process metadata stays distinct
 from authored content. Sender identity, activity, copy and disclosure controls
 retain semantics and keyboard access across layout profiles.
 
+Conversation lists keep their scroll simulation active after a gesture ends.
+Release velocity produces inertia, and overscroll springs back into range.
+Pulling beyond the refresh threshold dispatches one refresh and shows its
+activity without holding the list at a negative offset. The authoritative
+loading state controls completion; a decorative ticker pause must not stop
+the Scrollable's own simulation.
+
 ## Motion and accessibility
 
 Silver-white parsing grains and flowing highlights indicate active work. They
@@ -192,6 +255,13 @@ are deterministic, bounded paint operations over an existing small surface.
 There is no idle particle field or continuous animation after the activity
 ends. Offstage tickers and reduced-motion tickers stop; the activity remains
 legible as a static state.
+
+Conversation work is shown on the composer's existing outline, with breathing
+as the default treatment and a pulse as an alternate theme effect. The effect
+can change while the app is running without changing the active conversation
+or turn. A separate progress strip above the conversation is not used. The
+outline keeps one geometric stroke in every animation phase; reduced motion
+shows a static working state.
 
 Reduced motion follows the system by default. On macOS, the native environment
 observes `NSWorkspace.accessibilityDisplayShouldReduceMotion` initially and on

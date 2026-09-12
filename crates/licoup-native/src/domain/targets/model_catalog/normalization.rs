@@ -500,26 +500,39 @@ pub(super) fn canonical_model_display_name(value: &str) -> String {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("gpt-") {
-        return format!("GPT-{}", canonical_hyphen_suffix(&lower[4..]));
+        return format!("GPT-{}", canonical_space_suffix(&lower[4..]));
     }
     if lower.starts_with("deepseek-") {
         return format!("DeepSeek {}", canonical_space_suffix(&lower[9..]));
     }
+    for (prefix, brand) in [
+        ("claude-", "Claude"),
+        ("gemini-", "Gemini"),
+        ("kimi-", "Kimi"),
+        ("grok-", "Grok"),
+    ] {
+        if let Some(suffix) = lower.strip_prefix(prefix) {
+            let mut display = brand.to_string();
+            let mut previous_numeric = false;
+            for part in suffix.split('-').filter(|part| !part.is_empty()) {
+                let numeric = part.chars().all(|ch| ch.is_ascii_digit());
+                display.push(if numeric && previous_numeric {
+                    '.'
+                } else {
+                    ' '
+                });
+                display.push_str(&canonical_model_part(part));
+                previous_numeric = numeric;
+            }
+            return display;
+        }
+    }
     trimmed.to_string()
-}
-
-pub(super) fn canonical_hyphen_suffix(value: &str) -> String {
-    value
-        .split('-')
-        .filter(|part| !part.is_empty())
-        .map(canonical_model_part)
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 pub(super) fn canonical_space_suffix(value: &str) -> String {
     value
-        .split('-')
+        .split(['-', ' '])
         .filter(|part| !part.is_empty())
         .map(canonical_model_part)
         .collect::<Vec<_>>()

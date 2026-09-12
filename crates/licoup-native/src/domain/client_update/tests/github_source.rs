@@ -57,6 +57,7 @@ fn redirect_host_allowlist_rejects_foreign_hosts_and_accepts_github_and_loopback
 
 enum FixtureReply {
     Body(String),
+    Status(u16),
 }
 
 struct FixtureRoute {
@@ -102,6 +103,13 @@ fn serve(routes: impl FnOnce(&str) -> Vec<FixtureRoute>) -> FixtureServer {
                     stream
                         .write_all(body.as_bytes())
                         .expect("write fixture body");
+                }
+                FixtureReply::Status(status) => {
+                    write!(
+                        stream,
+                        "HTTP/1.1 {status} Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                    )
+                    .expect("write fixture status");
                 }
             }
         }
@@ -246,45 +254,228 @@ fn client_update_github_check_reports_up_to_date_when_no_eligible_release() {
 }
 
 #[test]
-fn client_update_github_check_rejects_missing_manifest_asset() {
+fn client_update_github_check_distinguishes_unavailable_metadata_from_no_new_release() {
+    for (tag, track, phase) in [
+        ("v0.0.0", "stable", "upToDate"),
+        ("v999.0.0", "stable", "unavailable"),
+        ("", "stable", "unavailable"),
+        ("not-a-version", "stable", "unavailable"),
+        ("nightly", "nightly", "unavailable"),
+        ("v0.0.0", "nightly", "unavailable"),
+    ] {
+        let fixture = UpdateFixture::new();
+        let state_root = fixture.root.join("state");
+        let server = serve(|_| {
+            vec![FixtureRoute {
+                path: format!(
+                    "/repos/LicoLand/LicoUp/releases/{}",
+                    if track == "stable" {
+                        "latest"
+                    } else {
+                        "tags/nightly"
+                    }
+                ),
+                reply: FixtureReply::Body(
+                    serde_json::to_string(&release_without_manifest(tag)).unwrap(),
+                ),
+            }]
+        });
+        let mut params = github_params(&server, &fixture, &state_root);
+        params["targetReleaseTrack"] = json!(track);
+        let checked = super::super::github_source::check_github(&params).unwrap();
+        assert_eq!(checked["phase"], phase);
+        assert_eq!(checked["updateAvailable"], false);
+        assert_eq!(checked["availabilityEvidence"], "publishedReleaseMetadata");
+        for field in [
+            "artifactReceipt",
+            "artifact",
+            "verifiedKeyIds",
+            "manifestSha256",
+        ] {
+            assert!(
+                checked.get(field).is_none(),
+                "unsigned observation contains {field}"
+            );
+        }
+        if phase == "unavailable" {
+            assert_eq!(checked["errorCode"], "client_update_metadata_unavailable");
+        }
+        assert!(!state_root.join("active-artifact-receipt.json").exists());
+        server.finish();
+    }
+}
+
+fn release_without_manifest(tag: &str) -> Value {
+    json!({
+        "tag_name": tag,
+        "html_url": format!("https://github.com/LicoLand/LicoUp/releases/tag/{tag}"),
+        "draft": false,
+        "prerelease": false,
+        "assets": [],
+    })
+}
+
+#[test]
+fn client_update_github_public_version_observation_requires_canonical_stable_metadata() {
+    use super::super::github_source::stable_metadata_has_no_newer_release;
+    let current = semver::Version::parse("1.2.3+installed").unwrap();
+    for (tag, expected) in [
+        ("v1.2.3", true),
+        ("v1.2.3+published", true),
+        ("v1.2.2", true),
+        ("v1.2.4", false),
+        ("v1.2.3-rc.1", false),
+        ("nightly", false),
+        ("", false),
+    ] {
+        let release = release_without_manifest(tag);
+        assert_eq!(
+            stable_metadata_has_no_newer_release(
+                "LicoLand/LicoUp",
+                &release,
+                tag,
+                release["html_url"].as_str().unwrap(),
+                &current
+            ),
+            expected
+        );
+    }
+    let tag = "v1.2.3";
+    let release = release_without_manifest(tag);
+    let url = release["html_url"].as_str().unwrap();
+    for field in ["draft", "prerelease"] {
+        let mut invalid = release.clone();
+        invalid[field] = json!(true);
+        assert!(!stable_metadata_has_no_newer_release(
+            "LicoLand/LicoUp",
+            &invalid,
+            tag,
+            url,
+            &current
+        ));
+    }
+    assert!(!stable_metadata_has_no_newer_release(
+        "Other/Repo",
+        &release,
+        tag,
+        url,
+        &current
+    ));
+    assert!(!stable_metadata_has_no_newer_release(
+        "LicoLand/LicoUp",
+        &release,
+        tag,
+        "https://example.invalid/release",
+        &current
+    ));
+}
+
+#[test]
+fn client_update_github_check_keeps_http_failures_as_failures() {
+    for status in [401, 403, 404, 500] {
+        let fixture = UpdateFixture::new();
+        let state_root = fixture.root.join("state");
+        let server = serve(|_| {
+            vec![FixtureRoute {
+                path: "/repos/LicoLand/LicoUp/releases/latest".to_string(),
+                reply: FixtureReply::Status(status),
+            }]
+        });
+        let params = github_params(&server, &fixture, &state_root);
+        assert!(super::super::github_source::check_github(&params).is_err());
+        server.finish();
+    }
+}
+
+#[test]
+fn client_update_github_no_update_observation_invalidates_previous_artifact_receipt() {
     let fixture = UpdateFixture::new();
     let state_root = fixture.root.join("state");
+    let signed = fixture.manifest();
+    let server = serve(manifest_routes(signed));
+    let params = github_params(&server, &fixture, &state_root);
+    super::super::github_source::check_github(&params).unwrap();
+    server.finish();
+    assert!(state_root.join("active-artifact-receipt.json").exists());
+    expire_cache(&state_root);
     let server = serve(|_| {
         vec![FixtureRoute {
             path: "/repos/LicoLand/LicoUp/releases/latest".to_string(),
             reply: FixtureReply::Body(
-                serde_json::to_string(&json!({
-                    "tag_name": "v0.2.0",
-                    "html_url": "https://github.com/LicoLand/LicoUp/releases/tag/v0.2.0",
-                    "assets": [],
-                }))
-                .unwrap(),
+                serde_json::to_string(&release_without_manifest("v0.0.0")).unwrap(),
             ),
         }]
     });
     let params = github_params(&server, &fixture, &state_root);
-    let error = super::super::github_source::check_github(&params)
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("update manifest asset"));
+    let checked = super::super::github_source::check_github(&params).unwrap();
+    assert_eq!(checked["phase"], "upToDate");
+    assert!(!state_root.join("active-artifact-receipt.json").exists());
+    let mut download_params = params;
+    download_params
+        .as_object_mut()
+        .unwrap()
+        .remove("targetReleaseTrack");
+    assert!(
+        super::super::github_source::download_github(&download_params)
+            .unwrap_err()
+            .to_string()
+            .contains("signed check receipt is required")
+    );
     server.finish();
+}
+
+fn expire_cache(state_root: &std::path::Path) {
+    let path = state_root.join("client-update-github/stable/manifest.json");
+    let contents = fs::read_to_string(&path).unwrap();
+    let (entry, manifest) = contents.split_once('\n').unwrap();
+    let mut entry: Value = serde_json::from_str(entry).unwrap();
+    entry["checkedAtEpochSeconds"] = json!(0);
+    fs::write(
+        path,
+        format!("{}\n{manifest}", serde_json::to_string(&entry).unwrap()),
+    )
+    .unwrap();
 }
 
 #[test]
 fn client_update_github_check_rejects_tampered_manifest() {
     let fixture = UpdateFixture::new();
     let mut manifest = fixture.sign_manifest(
-        fixture.unsigned_manifest(json!([release("999.0.0", fixture.artifact(TARGET_ID)),])),
+        fixture.unsigned_manifest(json!([release("0.0.0", fixture.artifact(TARGET_ID)),])),
     );
-    manifest["releases"][0]["version"] = json!("1.0.0-tampered");
     let state_root = fixture.root.join("state");
-    let server = serve(manifest_routes(manifest));
+    let server = serve(manifest_routes(manifest.clone()));
+    let params = github_params(&server, &fixture, &state_root);
+    let cached = super::super::github_source::check_github(&params).unwrap();
+    assert_eq!(cached["phase"], "upToDate");
+    server.finish();
+    expire_cache(&state_root);
+
+    manifest["releases"][0]["releaseNotesUrl"] = json!("https://updates.invalid/tampered");
+    let server = serve(|base| {
+        let mut release = release_without_manifest("v0.0.0");
+        release["assets"] = json!([{
+            "name": "LicoUp-update-manifest.json",
+            "browser_download_url": format!("{base}/manifest.json"),
+        }]);
+        vec![
+            FixtureRoute {
+                path: "/repos/LicoLand/LicoUp/releases/latest".to_string(),
+                reply: FixtureReply::Body(serde_json::to_string(&release).unwrap()),
+            },
+            FixtureRoute {
+                path: "/manifest.json".to_string(),
+                reply: FixtureReply::Body(serde_json::to_string(&manifest).unwrap()),
+            },
+        ]
+    });
 
     let params = github_params(&server, &fixture, &state_root);
     let error = super::super::github_source::check_github(&params)
         .unwrap_err()
         .to_string();
     assert!(error.contains("verification failed") || error.contains("signature"));
+    assert!(!state_root.join("active-artifact-receipt.json").exists());
     server.finish();
 }
 

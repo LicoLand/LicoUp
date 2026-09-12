@@ -422,5 +422,6 @@ bool _validAppearanceTokenValue(String key, String value) => switch (key) {
   'motion-scale' => const {'0.75', '1', '1.25'}.contains(value),
   'surface-opacity' => const {'0.85', '0.9', '0.95', '1'}.contains(value),
   'component-finish' => const {'crisp', 'glass'}.contains(value),
+  'composer-activity-effect' => const {'breathing', 'pulse'}.contains(value),
   _ => _allowedTokenValuePattern.hasMatch(value),
 };

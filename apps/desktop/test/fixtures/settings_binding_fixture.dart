@@ -173,6 +173,7 @@ SettingsProjection settingsProjectionFixture({
     githubReleaseUrl: clientUpdateStatus.githubReleaseUrl,
     artifactSha256: clientUpdateStatus.artifactSha256,
     updateAvailable: clientUpdateStatus.updateAvailable,
+    errorCode: clientUpdateStatus.errorCode,
   ),
   clientUpdateRepo: clientUpdateRepo,
   catalog: catalog,

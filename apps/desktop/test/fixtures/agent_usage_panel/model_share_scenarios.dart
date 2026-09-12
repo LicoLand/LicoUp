@@ -9,64 +9,68 @@ import 'monitoring_binding_fixture.dart';
 import 'usage_panel_fixtures.dart';
 
 void registerAgentUsageModelShareScenarios() {
-  testWidgets('model share keeps a stable top ten and full model denominator', (
-    tester,
-  ) async {
-    final controller = ClientController(agentService: UsageAgentService());
-    controller
-      ..scannedTargets = testTargets(['codex'])
-      ..agentUsageReport = equalModelUsageReport();
-    final monitoring = MonitoringBindingFixture(controller);
-    addTearDown(() async {
-      await monitoring.close();
-      controller.dispose();
-    });
+  testWidgets(
+    'model share includes the full ranked list beyond the ten chart series',
+    (tester) async {
+      final controller = ClientController(agentService: UsageAgentService());
+      controller
+        ..scannedTargets = testTargets(['codex'])
+        ..agentUsageReport = equalModelUsageReport();
+      final monitoring = MonitoringBindingFixture(controller);
+      addTearDown(() async {
+        await monitoring.close();
+        controller.dispose();
+      });
 
-    await tester.pumpWidget(
-      usageTestApp(
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 980,
-          height: 620,
-          child: AgentUsagePanel(binding: monitoring.binding, autoLoad: false),
+      await tester.pumpWidget(
+        usageTestApp(
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: SizedBox(
+            width: 980,
+            height: 620,
+            child: AgentUsagePanel(
+              binding: monitoring.binding,
+              autoLoad: false,
+            ),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('By Model'));
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('By Model'));
+      await tester.pumpAndSettle();
 
-    final tokenShare = find.byKey(const ValueKey('agent-usage-token-share'));
-    final firstModel = find.descendant(
-      of: tokenShare,
-      matching: find.text('Model A'),
-    );
-    final secondModel = find.descendant(
-      of: tokenShare,
-      matching: find.text('Model B'),
-    );
+      final tokenShare = find.byKey(const ValueKey('agent-usage-token-share'));
+      final firstModel = find.descendant(
+        of: tokenShare,
+        matching: find.text('Model A'),
+      );
+      final secondModel = find.descendant(
+        of: tokenShare,
+        matching: find.text('Model B'),
+      );
 
-    expect(firstModel, findsOneWidget);
-    expect(secondModel, findsOneWidget);
-    expect(
-      tester.getTopLeft(firstModel).dy,
-      lessThan(tester.getTopLeft(secondModel).dy),
-    );
-    expect(
-      find.descendant(of: tokenShare, matching: find.text('Model J')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: tokenShare, matching: find.text('Model K')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: tokenShare, matching: find.text('9%')),
-      findsNWidgets(10),
-    );
-  });
+      expect(firstModel, findsOneWidget);
+      expect(secondModel, findsOneWidget);
+      expect(
+        tester.getTopLeft(firstModel).dy,
+        lessThan(tester.getTopLeft(secondModel).dy),
+      );
+      expect(
+        find.descendant(of: tokenShare, matching: find.text('Model J')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: tokenShare, matching: find.text('Model K')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: tokenShare, matching: find.text('9%')),
+        findsNWidgets(11),
+      );
+    },
+  );
 
   testWidgets(
     'usage names models formally and excludes the generic VS Code host',
@@ -117,8 +121,8 @@ void registerAgentUsageModelShareScenarios() {
       await tester.pumpAndSettle();
 
       for (final label in const [
-        'GPT 5.5',
-        'GPT 5.6 Sol',
+        'GPT-5.5',
+        'GPT-5.6 Sol',
         'Claude Opus 4.6',
         'DeepSeek V4 Flash',
         'DeepSeek V4 Pro',
@@ -177,7 +181,7 @@ void registerAgentUsageModelShareScenarios() {
       await tester.pumpAndSettle();
 
       expect(progressFillFactor(tester, 'Total'), closeTo(1.0, 0.01));
-      expect(progressFillFactor(tester, 'GPT 5.5'), closeTo(0.55, 0.01));
+      expect(progressFillFactor(tester, 'GPT-5.5'), closeTo(0.55, 0.01));
       expect(
         progressFillFactor(tester, 'Claude Sonnet 4'),
         closeTo(0.45, 0.01),

@@ -1029,12 +1029,17 @@ extension LicoStringsLabels on LicoStrings {
   String get reasoningEffort => isChinese ? '思考强度' : 'Reasoning Effort';
   String reasoningEffortOptionLabel(String value, String fallback) {
     return switch (value.trim().toLowerCase()) {
-      '' => isChinese ? '自动' : 'Auto',
-      'low' => isChinese ? '低' : 'Low',
-      'medium' => isChinese ? '中' : 'Medium',
-      'high' => isChinese ? '高' : 'High',
-      'enabled' => isChinese ? '启用' : 'Enabled',
-      'disabled' => isChinese ? '关闭' : 'Disabled',
+      '' => 'Auto',
+      'low' => 'Low',
+      'medium' => 'Medium',
+      'high' => 'High',
+      'xhigh' || 'extra_high' || 'extra high' => 'Extra High',
+      'max' => 'Max',
+      'ultra' => 'Ultra',
+      'minimal' => 'Minimal',
+      'none' => 'None',
+      'enabled' => 'Enabled',
+      'disabled' => 'Disabled',
       _ => fallback,
     };
   }

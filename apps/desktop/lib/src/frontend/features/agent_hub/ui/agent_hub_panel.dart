@@ -7,6 +7,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_install_dialog.dart';
+import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_detail_tabs.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_uninstall_dialog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
@@ -344,34 +345,19 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (index, label) in [
-                  strings.isChinese ? '概览' : 'Overview',
-                  if (widget.plugins != null) strings.pluginsNav,
-                  if (widget.skills != null) strings.skillsNav,
-                ].indexed)
-                  ChoiceChip(
-                    key: Key('agent-hub-detail-tab-$index'),
-                    label: Text(label),
-                    selected: _detailTab == index,
-                    showCheckmark: false,
-                    selectedColor: context.licoColors.primary,
-                    labelStyle: TextStyle(
-                      color: _detailTab == index
-                          ? context.licoColors.textOnPrimary
-                          : context.licoColors.text,
-                    ),
-                    onSelected: (_) => setState(() => _detailTab = index),
-                  ),
+            child: AgentHubDetailTabs(
+              labels: [
+                strings.isChinese ? '概览' : 'Overview',
+                if (widget.plugins != null) strings.pluginsNav,
+                if (widget.skills != null) strings.skillsNav,
               ],
+              selectedIndex: _detailTab,
+              onSelected: (index) => setState(() => _detailTab = index),
             ),
           ),
           Expanded(
-            child: IndexedStack(
-              index: _detailTab,
+            child: AgentHubDetailTabView(
+              selectedIndex: _detailTab,
               children: [
                 SingleChildScrollView(child: overview),
                 if (widget.plugins != null)

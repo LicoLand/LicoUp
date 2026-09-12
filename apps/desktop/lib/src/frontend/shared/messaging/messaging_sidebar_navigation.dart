@@ -292,72 +292,66 @@ final class _MessagingSidebarNavButtonState
       selected: selected,
       label: widget.label,
       onTap: widget.onPressed,
-      child: Tooltip(
-        message: widget.label,
-        waitDuration: LicoMotion.tooltipWait,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: FocusableActionDetector(
-            shortcuts: const {
-              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-            },
-            actions: {
-              ActivateIntent: CallbackAction<ActivateIntent>(
-                onInvoke: (_) {
-                  widget.onPressed();
-                  return null;
-                },
+      excludeSemantics: true,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: FocusableActionDetector(
+          shortcuts: const {
+            SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+          },
+          actions: {
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                widget.onPressed();
+                return null;
+              },
+            ),
+          },
+          onShowFocusHighlight: (focused) => setState(() => _hovered = focused),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onPressed,
+            child: AnimatedContainer(
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 2,
+                vertical: LicoContentSpacing.compact,
               ),
-            },
-            onShowFocusHighlight: (focused) =>
-                setState(() => _hovered = focused),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onPressed,
-              child: AnimatedContainer(
-                duration: context.motion(LicoMotion.micro),
-                curve: LicoMotion.standard,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 2,
-                  vertical: LicoContentSpacing.compact,
-                ),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? colors.primary
-                      : _hovered
-                      ? colors.hoverOverlay
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(LicoRadius.chip),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      messagingSidebarNavIcon(widget.item),
-                      size: 20,
+              decoration: BoxDecoration(
+                color: selected
+                    ? colors.primary
+                    : _hovered
+                    ? colors.hoverOverlay
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(LicoRadius.chip),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    messagingSidebarNavIcon(widget.item),
+                    size: 20,
+                    color: foreground,
+                  ),
+                  const SizedBox(height: LicoContentSpacing.inline),
+                  Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
                       color: foreground,
+                      fontSize: 10,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      height: 1.1,
                     ),
-                    const SizedBox(height: LicoContentSpacing.inline),
-                    Text(
-                      widget.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 10,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

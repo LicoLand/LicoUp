@@ -54,7 +54,7 @@ void main() {
     expect(find.text('Codex'), findsAtLeastNWidgets(1));
     await tester.tap(find.text('By Model'));
     await tester.pumpAndSettle();
-    expect(find.text('GPT 5.5'), findsAtLeastNWidgets(1));
+    expect(find.text('GPT-5.5'), findsAtLeastNWidgets(1));
   });
 
   testWidgets('usage share combines forms from the same source product', (

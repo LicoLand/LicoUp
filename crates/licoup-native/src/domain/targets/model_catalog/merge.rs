@@ -152,7 +152,7 @@ pub(super) fn collapse_kimi_code_qualified_duplicates(
         .iter()
         .filter_map(|(key, entry)| {
             let (provider, model) = entry.name.split_once('/')?;
-            if !provider.eq_ignore_ascii_case("kimi-code") {
+            if !provider.eq_ignore_ascii_case("kimi-code") || entry.sources.contains("config") {
                 return None;
             }
             canonical_keys
@@ -175,13 +175,14 @@ pub(super) fn collapse_kimi_code_qualified_duplicates(
 }
 
 pub(super) fn build_model_catalog(
+    target: &str,
     entries: BTreeMap<String, ModelCatalogEntry>,
     sources: BTreeSet<String>,
     diagnostics: Vec<Value>,
     default_model: Option<String>,
 ) -> Value {
-    let models = entries
-        .into_values()
+    let models = presentation::ordered_model_entries(target, entries)
+        .into_iter()
         .map(model_catalog_entry_json)
         .collect::<Vec<_>>();
     let status = if !models.is_empty() {

@@ -6,6 +6,7 @@ mod attribution;
 mod command;
 mod contract;
 mod incremental;
+mod model_identity;
 mod persistence;
 mod window;
 pub(crate) mod workflow_ledger;

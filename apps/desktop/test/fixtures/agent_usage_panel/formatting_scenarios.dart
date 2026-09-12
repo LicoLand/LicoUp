@@ -68,7 +68,7 @@ void registerAgentUsageFormattingScenarios() {
     );
     final gptModel = find.descendant(
       of: tokenShare,
-      matching: find.text('GPT 5.4'),
+      matching: find.text('GPT-5.4'),
     );
     final deepseekModel = find.descendant(
       of: tokenShare,
@@ -116,7 +116,7 @@ void registerAgentUsageFormattingScenarios() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('GPT 5.4')),
+      find.descendant(of: tokenShare, matching: find.text('GPT-5.4')),
       findsNothing,
     );
 

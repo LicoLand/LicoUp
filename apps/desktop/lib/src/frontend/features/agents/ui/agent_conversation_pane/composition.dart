@@ -13,8 +13,8 @@ import 'package:licoup/src/frontend/features/agents/ui/lico_plan_document_panel.
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -47,51 +47,57 @@ class AgentConversationActivePane extends StatelessWidget {
     );
     final messagingFlow =
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
-    final composer = RuntimeMessageComposer(
-      // Keyed per conversation scope: a switch starts a fresh composer state
-      // seeded from that conversation's stored draft instead of relying on
-      // didUpdateWidget restores that can race the debounced draft echo.
-      key: ValueKey<String>(
-        'composer-${state.target.target}-'
-        '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
+    final composer = TickerMode(
+      enabled: !LayoutExternalComposerScope.isHosted(context),
+      child: RuntimeMessageComposer(
+        // Keyed per conversation scope: a switch starts a fresh composer state
+        // seeded from that conversation's stored draft instead of relying on
+        // didUpdateWidget restores that can race the debounced draft echo.
+        key: ValueKey<String>(
+          'composer-${state.target.target}-'
+          '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
+        ),
+        targetLabel: state.conversationLabel.trim().isNotEmpty
+            ? state.conversationLabel.trim()
+            : agentConversationTargetDisplayName(state.target),
+        initialDraft: state.composerDraft,
+        hasAttachments: state.hasAttachments,
+        busy: state.composerBusy,
+        activityVisible:
+            state.turnActive || state.loading || state.composerBusy,
+        enabled: state.composerEnabled && state.inputEnabled,
+        cancelEnabled: state.cancelEnabled,
+        modelOptions: state.modelOptions,
+        selectedModel: state.selectedModel,
+        reasoningEffortOptions: state.reasoningEffortOptions,
+        selectedReasoningEffort: state.selectedReasoningEffort,
+        onModelChanged: actions.onModelChanged,
+        onReasoningEffortChanged: actions.onReasoningEffortChanged,
+        onDraftChanged: actions.onDraftChanged,
+        onSend: actions.onSend,
+        onSlashNewConversation: actions.onNewConversation,
+        onCancel: actions.onCancel,
+        defaultModel: state.defaultModel,
+        defaultReasoningEffort: state.defaultReasoningEffort,
+        showRuntimeSettings:
+            strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
+        showWorkingDirectory: state.showWorkingDirectory,
+        workingDirectory: state.workingDirectory,
+        workingDirectorySelectable: state.workingDirectorySelectable,
+        onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
+        floatingMatteCapsule: !mobileClient && messagingFlow,
+        onAttach: actions.onAttach,
+        onPasteImage: actions.onPasteImage,
+        mentionTargets: state.participantTargets
+            .where(
+              (target) =>
+                  state.composerMentionLabels.containsKey(target.target),
+            )
+            .toList(growable: false),
+        mentionLabels: state.composerMentionLabels,
+        leading: state.composerLeading,
+        fieldLeading: state.composerFieldLeading,
       ),
-      targetLabel: state.conversationLabel.trim().isNotEmpty
-          ? state.conversationLabel.trim()
-          : agentConversationTargetDisplayName(state.target),
-      initialDraft: state.composerDraft,
-      hasAttachments: state.hasAttachments,
-      busy: state.composerBusy,
-      enabled: state.composerEnabled && state.inputEnabled,
-      cancelEnabled: state.cancelEnabled,
-      modelOptions: state.modelOptions,
-      selectedModel: state.selectedModel,
-      reasoningEffortOptions: state.reasoningEffortOptions,
-      selectedReasoningEffort: state.selectedReasoningEffort,
-      onModelChanged: actions.onModelChanged,
-      onReasoningEffortChanged: actions.onReasoningEffortChanged,
-      onDraftChanged: actions.onDraftChanged,
-      onSend: actions.onSend,
-      onSlashNewConversation: actions.onNewConversation,
-      onCancel: actions.onCancel,
-      defaultModel: state.defaultModel,
-      defaultReasoningEffort: state.defaultReasoningEffort,
-      showRuntimeSettings:
-          strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
-      showWorkingDirectory: state.showWorkingDirectory,
-      workingDirectory: state.workingDirectory,
-      workingDirectorySelectable: state.workingDirectorySelectable,
-      onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
-      floatingMatteCapsule: !mobileClient && messagingFlow,
-      onAttach: actions.onAttach,
-      onPasteImage: actions.onPasteImage,
-      mentionTargets: state.participantTargets
-          .where(
-            (target) => state.composerMentionLabels.containsKey(target.target),
-          )
-          .toList(growable: false),
-      mentionLabels: state.composerMentionLabels,
-      leading: state.composerLeading,
-      fieldLeading: state.composerFieldLeading,
     );
     final sendUnavailable = state.composerEnabled
         ? null
@@ -259,9 +265,8 @@ class AgentConversationActivePane extends StatelessWidget {
         ),
       );
     }
-    final colors = context.licoColors;
-    // Messaging: header + matte composer overlay the full-height transcript.
-    // Console keeps the classic band + running-edge divider.
+    // Messaging: header and composer overlay the full-height transcript.
+    // Execution feedback belongs to the composer border in every layout.
     final bottomDock = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -299,25 +304,19 @@ class AgentConversationActivePane extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: LicoTopEdgePulse(
-                          key: const Key('conversation-header-running-edge'),
-                          enabled: state.turnActive || state.loading,
-                          borderRadius: BorderRadius.zero,
-                          color: colors.primaryStrong,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              messages,
-                              Align(
-                                alignment: Alignment.topCenter,
-                                child: messagingHeader,
-                              ),
-                              Align(
-                                alignment: Alignment.bottomCenter,
-                                child: bottomDock,
-                              ),
-                            ],
-                          ),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            messages,
+                            Align(
+                              alignment: Alignment.topCenter,
+                              child: messagingHeader,
+                            ),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: bottomDock,
+                            ),
+                          ],
                         ),
                       ),
                       SizedBox(
@@ -332,36 +331,24 @@ class AgentConversationActivePane extends StatelessWidget {
                       ),
                     ],
                   )
-                : LicoTopEdgePulse(
-                    key: const Key('conversation-header-running-edge'),
-                    enabled: state.turnActive || state.loading,
-                    borderRadius: BorderRadius.zero,
-                    color: colors.primaryStrong,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        messages,
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: messagingHeader,
-                        ),
-                        Align(
-                          alignment: Alignment.bottomCenter,
-                          child: bottomDock,
-                        ),
-                      ],
-                    ),
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      messages,
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: messagingHeader,
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: bottomDock,
+                      ),
+                    ],
                   ),
           )
         else ...[
           header,
-          LicoTopEdgePulse(
-            key: const Key('conversation-header-running-edge'),
-            enabled: state.turnActive || state.loading,
-            borderRadius: BorderRadius.zero,
-            color: colors.primaryStrong,
-            child: const Divider(height: 2),
-          ),
+          const Divider(height: 2),
           Expanded(child: messages),
           const Divider(height: 1),
           ?sendUnavailable,

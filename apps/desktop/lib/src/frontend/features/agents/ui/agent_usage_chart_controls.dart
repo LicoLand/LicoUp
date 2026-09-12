@@ -97,7 +97,11 @@ final class AgentUsageChartTooltip extends StatelessWidget {
                           width: 8,
                           height: 8,
                           decoration: BoxDecoration(
-                            color: agentUsageSeriesColor(colors, series.label),
+                            color: agentUsageSeriesColor(
+                              colors,
+                              series.label,
+                              grouping: timeline.grouping,
+                            ),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -203,7 +207,11 @@ final class AgentUsageChartLegend extends StatelessWidget {
                 width: 7,
                 height: 7,
                 decoration: BoxDecoration(
-                  color: agentUsageSeriesColor(colors, series.label),
+                  color: agentUsageSeriesColor(
+                    colors,
+                    series.label,
+                    grouping: timeline.grouping,
+                  ),
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),

@@ -4,6 +4,7 @@ use super::contract::{
     AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE, MAX_REPORTS,
     REPORT_COLLECTION,
 };
+use super::model_identity::normalize_retained_report;
 use super::workflow_ledger::{
     WORKFLOW_LEDGER_REPORT_SCHEMA, WORKFLOW_LEDGER_RESULT_KIND, WORKFLOW_LEDGER_SCHEMA_VERSION,
 };
@@ -55,6 +56,9 @@ pub(super) fn read_retained_reports(
         .filter(|report| is_current_report(report))
         .cloned()
         .collect::<Vec<_>>();
+    for report in &mut retained_items {
+        normalize_retained_report(report);
+    }
     sort_reports_by_generated_at(&mut retained_items);
     if retained_items != stored_items {
         if let Some(object) = collection.as_object_mut() {

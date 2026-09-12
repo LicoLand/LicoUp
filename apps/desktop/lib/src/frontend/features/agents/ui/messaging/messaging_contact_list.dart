@@ -18,6 +18,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_foundation.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_list_refresh.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
@@ -44,6 +45,7 @@ class MessagingContactList extends StatefulWidget {
     required this.onSelectAgent,
     required this.onNewConversation,
     this.onSearch,
+    this.onRefresh,
     this.runningFor,
     this.groupConversations = const [],
     this.selectedGroupConversationId = '',
@@ -81,6 +83,7 @@ class MessagingContactList extends StatefulWidget {
   final ValueChanged<String> onSelectAgent;
   final VoidCallback onNewConversation;
   final VoidCallback? onSearch;
+  final VoidCallback? onRefresh;
   final bool Function(AgentConversationSession session)? runningFor;
   final List<ClientConversationSummary> groupConversations;
   final String selectedGroupConversationId;
@@ -371,7 +374,13 @@ class _MessagingContactListState extends State<MessagingContactList> {
       contextualAction: _showsConversations && widget.showConversationList
           ? _contextualActionBar()
           : null,
-      list: _sidebarBody(),
+      list: _showsConversations
+          ? MessagingListRefresh(
+              onRefresh: widget.onRefresh,
+              refreshing: widget.loading,
+              child: _sidebarBody(),
+            )
+          : _sidebarBody(),
       // The active profile decides whether its chrome already provides the
       // 功能/对话/设置 navigation: the Desktop dock does, so the
       // fullscreen-exclusive conversation app hides this Dashboard row.
@@ -513,6 +522,8 @@ class _MessagingContactListState extends State<MessagingContactList> {
     return ScrollConfiguration(
       behavior: const _MessagingSlimScrollbarBehavior(),
       child: ListView.builder(
+        key: const Key('messaging-contact-scroll'),
+        physics: messagingListScrollPhysics,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
         itemCount: listItems.length + footerCount,
         itemBuilder: (context, index) {
@@ -844,6 +855,7 @@ class _MessagingContactListEmpty extends StatelessWidget {
     final strings = LicoStrings.of(context);
     return ListView(
       key: const Key('messaging-contact-list-empty'),
+      physics: messagingListScrollPhysics,
       padding: const EdgeInsets.fromLTRB(18, 24, 18, 12),
       children: [
         Align(

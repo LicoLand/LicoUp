@@ -18,10 +18,12 @@ mod config;
 mod cursor;
 mod history;
 mod kilo;
+mod kimi;
 mod merge;
 mod normalization;
 mod opencode;
 mod pi;
+mod presentation;
 mod provider;
 mod reasoning;
 
@@ -30,7 +32,7 @@ use antigravity::{
     collect_antigravity_cli_model_catalog, remove_unsupported_antigravity_reasoning_efforts,
 };
 use builtin::apply_builtin_model_catalog_overlay;
-use claude::claude_code_current_model_catalog;
+use claude::claude_code_model_catalog;
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
@@ -88,7 +90,7 @@ pub(super) fn model_catalog_for_target(
     params: &Value,
 ) -> Value {
     if target == "claude-code" {
-        return claude_code_current_model_catalog(config_path, params);
+        return claude_code_model_catalog(config_path, params);
     }
 
     let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
@@ -143,13 +145,17 @@ pub(super) fn model_catalog_for_target(
             .unwrap_or_else(|| crate::domain::targets::scan_paths::is_other_app_container(path));
         if agent_cli_model_lookup_enabled(params) || !other_app {
             sources.insert("config".to_string());
-            let configured_default = collect_model_catalog_from_config_path(
-                path,
-                "config",
-                &mut entries,
-                &mut global_efforts,
-                &mut diagnostics,
-            );
+            let configured_default = if target == "kimi-code" {
+                kimi::collect_kimi_model_config(path, &mut entries, &mut diagnostics)
+            } else {
+                collect_model_catalog_from_config_path(
+                    path,
+                    "config",
+                    &mut entries,
+                    &mut global_efforts,
+                    &mut diagnostics,
+                )
+            };
             if default_model.is_none() {
                 default_model = configured_default;
             }
@@ -274,7 +280,7 @@ pub(super) fn model_catalog_for_target(
         remove_cursor_independent_reasoning_efforts(&mut entries);
     }
 
-    build_model_catalog(entries, sources, diagnostics, default_model)
+    build_model_catalog(target, entries, sources, diagnostics, default_model)
 }
 
 pub(super) use builtin::{BUILTIN_FALLBACK_SOURCE, builtin_cold_start_catalog};

@@ -78,7 +78,10 @@ String agentUsagePlainModelName(String value) {
   if (text.contains('/')) {
     final parts = text.split('/');
     final last = parts.last.trim();
-    if (last.isNotEmpty) {
+    if (RegExp(
+      r'^(?:gpt|claude|gemini|grok|kimi|deepseek|glm|qwen|composer|o[134])(?:[-_ ]|[0-9])',
+      caseSensitive: false,
+    ).hasMatch(last)) {
       text = last;
     }
   }
@@ -93,10 +96,6 @@ String agentUsageModelDisplayName(String value) {
   final lower = plain.toLowerCase();
   final knownName = switch (lower) {
     'cursor-auto' || 'default' => 'Cursor Auto',
-    'composer-2.5-fast' ||
-    'composer-2-5-fast' ||
-    'composer-2.5' ||
-    'composer-2-5' => 'Composer 2.5',
     'others' => 'Others',
     _ => null,
   };
@@ -117,7 +116,7 @@ String agentUsageModelDisplayName(String value) {
       (match) => '${match[1]}.${match[2]}',
     );
   }
-  return text;
+  return text.replaceFirst(RegExp(r'^GPT\s+(?=[0-9])'), 'GPT-');
 }
 
 String _agentUsageModelWord(String word) {
@@ -150,7 +149,7 @@ String _agentUsageModelWord(String word) {
     caseSensitive: false,
   ).firstMatch(word);
   if (brandedVersion != null) {
-    return '${brandedVersion.group(1)!.toUpperCase()}${brandedVersion.group(2)}';
+    return '${brandedVersion.group(1)!.toUpperCase()}${brandedVersion.group(1)!.toLowerCase() == 'gpt' ? '-' : ''}${brandedVersion.group(2)}';
   }
   if (RegExp(r'^[0-9]+(?:\.[0-9]+)*$').hasMatch(word)) {
     return word;

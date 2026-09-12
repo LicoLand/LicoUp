@@ -1,5 +1,6 @@
 //! Stable local-token-usage contract and aggregation models.
 
+use super::model_identity::project_model_usage;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -282,8 +283,13 @@ impl HistoryUsageSummary {
     fn daily_usage_json(&self) -> Vec<Value> {
         self.daily_usage
             .iter()
-            .filter(|(_, usage)| usage.total_tokens > 0)
+            .filter(|(_, usage)| usage.total_tokens > 0 || usage.request_count > 0)
             .map(|(date, usage)| {
+                let models = project_model_usage(&usage.model_usage);
+                let totals = models
+                    .iter()
+                    .map(|(name, usage)| (name, &usage["totalTokens"]))
+                    .collect::<BTreeMap<_, _>>();
                 json!({
                     "date": date,
                     "promptTokens": usage.prompt_tokens,
@@ -293,8 +299,8 @@ impl HistoryUsageSummary {
                     "messageCount": usage.message_count,
                     "requestCount": usage.request_count,
                     "tokenUnavailableRequests": usage.token_unavailable_requests,
-                    "modelUsage": usage.model_usage_totals_json(),
-                    "modelTokenUsage": usage.model_token_usage_json(),
+                    "modelUsage": totals,
+                    "modelTokenUsage": models,
                     "explicitRecords": usage.explicit_records,
                     "estimatedRecords": usage.estimated_records
                 })
@@ -468,20 +474,6 @@ impl DailyUsageSummary {
                 .or_insert(*usage);
         }
     }
-
-    fn model_usage_totals_json(&self) -> BTreeMap<String, u64> {
-        self.model_usage
-            .iter()
-            .map(|(model, usage)| (model.clone(), usage.total_tokens))
-            .collect()
-    }
-
-    fn model_token_usage_json(&self) -> BTreeMap<String, Value> {
-        self.model_usage
-            .iter()
-            .map(|(model, usage)| (model.clone(), usage.to_json()))
-            .collect()
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -530,7 +522,7 @@ impl ModelTokenUsageSummary {
         }
     }
 
-    fn merge(&mut self, other: Self) {
+    pub(super) fn merge(&mut self, other: Self) {
         self.add(
             other.prompt_tokens,
             other.cached_input_tokens,
@@ -550,7 +542,20 @@ impl ModelTokenUsageSummary {
             .saturating_add(other.token_unavailable_requests);
     }
 
-    fn to_json(self) -> Value {
+    pub(super) fn from_json(value: &Value) -> Self {
+        Self {
+            prompt_tokens: number_field(value, &["promptTokens"]).unwrap_or(0),
+            cached_input_tokens: number_field(value, &["cachedInputTokens"]).unwrap_or(0),
+            completion_tokens: number_field(value, &["completionTokens"]).unwrap_or(0),
+            total_tokens: number_field(value, &["totalTokens"]).unwrap_or(0),
+            request_count: number_field(value, &["requestCount"]).unwrap_or(0),
+            token_unavailable_requests: number_field(value, &["tokenUnavailableRequests"])
+                .unwrap_or(0),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn to_json(self) -> Value {
         json!({
             "promptTokens": self.prompt_tokens,
             "cachedInputTokens": self.cached_input_tokens,
