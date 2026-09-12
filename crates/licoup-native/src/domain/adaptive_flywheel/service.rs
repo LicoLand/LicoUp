@@ -449,7 +449,7 @@ impl StrategyService {
                     )?;
                 }
                 let snapshot = self.store.run(run_id)?;
-                self.record_graph_usage(&snapshot, None)?;
+                self.refresh_graph_usage(&snapshot, None);
                 Ok(serde_json::to_value(
                     self.store.projection_for_run(run_id)?,
                 )?)
@@ -574,7 +574,7 @@ impl StrategyService {
                     )?;
                 }
                 let snapshot = self.store.run(run_id)?;
-                self.record_graph_usage(&snapshot, None)?;
+                self.refresh_graph_usage(&snapshot, None);
                 let mut value = self.assistant_run_projection(&snapshot)?;
                 if let Some(terminal) = terminal_projection(&value) {
                     value["terminal"] = terminal;
@@ -784,7 +784,7 @@ impl StrategyService {
             // settled wait points: the master agent receives the durable
             // state and decides the run's next step as a later run input.
             if assistant_run_terminal(snapshot.status) || !snapshot.pending_callbacks.is_empty() {
-                self.record_graph_usage(&snapshot, None)?;
+                self.refresh_graph_usage(&snapshot, None);
                 let mut value = self.assistant_run_projection(&snapshot)?;
                 if let Some(receipt) = receipt {
                     value["preflight"] = json!({"accepted": true, "receipt": receipt});
@@ -1121,6 +1121,17 @@ impl StrategyService {
         Ok(())
     }
 
+    /// Refresh the usage ledger after a settlement.
+    ///
+    /// The ledger is a full rewrite of the run's commands, so a refresh that
+    /// fails is repaired by the next one. Accounting therefore never gets to
+    /// decide the run's domain outcome by aborting a drive whose effects are
+    /// already persisted — only the admission calls that run before a drive
+    /// is started stay fallible.
+    fn refresh_graph_usage(&self, snapshot: &RunSnapshot, settled: Option<(&RunCommand, &Value)>) {
+        let _ = self.record_graph_usage(snapshot, settled);
+    }
+
     fn start_drive(&self, snapshot: &RunSnapshot) -> Result<Option<Value>> {
         // Usage admission is local and deterministic, so it completes before
         // registering the first Membership turn or issuing any other effect.
@@ -1180,7 +1191,7 @@ impl StrategyService {
                 code: code.to_owned(),
             },
         )?;
-        self.record_graph_usage(&updated, None)?;
+        self.refresh_graph_usage(&updated, None);
         // Assistant-owned runs return the typed outcome on execute. Imported
         // runs owe the same settlement to the Conversation's master agent.
         if updated.assistant_membership_id.is_none() {
@@ -1340,7 +1351,7 @@ impl StrategyService {
                                     code: code.into(),
                                 },
                             )?;
-                            self.record_graph_usage(&updated, None)?;
+                            self.refresh_graph_usage(&updated, None);
                             self.recover_failed_effect(run_id, &command.id)?;
                             continue;
                         }
@@ -1352,7 +1363,7 @@ impl StrategyService {
                                 output: output.clone(),
                             },
                         )?;
-                        self.record_graph_usage(&updated, Some((&command, &output)))?;
+                        self.refresh_graph_usage(&updated, Some((&command, &output)));
                         if !group_streamed {
                             let _ = self.project_membership_event(run_id, &command, &output);
                         }
@@ -1372,7 +1383,7 @@ impl StrategyService {
                                 code: code.into(),
                             },
                         )?;
-                        self.record_graph_usage(&updated, None)?;
+                        self.refresh_graph_usage(&updated, None);
                         self.recover_failed_effect(run_id, &command.id)?;
                     }
                 }
@@ -1388,10 +1399,10 @@ impl StrategyService {
                             code,
                         },
                     )?;
-                    self.record_graph_usage(
+                    self.refresh_graph_usage(
                         &updated,
                         output.as_ref().map(|output| (&command, output)),
-                    )?;
+                    );
                 }
                 break 'drive;
             }
@@ -1410,7 +1421,7 @@ impl StrategyService {
                 code: "assistant_drive_outcome_unknown".to_owned(),
             },
         )?;
-        self.record_graph_usage(&updated, None)?;
+        self.refresh_graph_usage(&updated, None);
         if updated.assistant_membership_id.is_none() {
             let _ = self.report_master_gates(Some(&snapshot), &updated);
         }
@@ -4769,6 +4780,74 @@ mod tests {
         assert!(snapshot.pending_callbacks.is_empty());
         drop(service);
         remove_root(root);
+    }
+
+    #[test]
+    fn a_settled_park_survives_a_later_drive_failure() {
+        // #328 at the service boundary: a drive can report a failure after the
+        // callback park is already durable — a usage-ledger refresh under load
+        // did exactly that. The parked run must keep waiting with its callback
+        // intact, and the master's decision must still land.
+        let root = root();
+        let (_conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            StrategyStore::open(&root).unwrap(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_profile_snapshot_authority(fixture_profile_authority(
+            "ready",
+            Arc::new(Mutex::new(BTreeMap::new())),
+        ));
+        let mut workflow = assistant_workflow_json();
+        workflow["transitions"][0]["mode"] = json!("callback");
+        let mut request = json!({
+            "action": "strategy.assistant.workflow.execute",
+            "conversationId": conversation_id,
+            "membershipId": membership_id,
+            "workflow": workflow,
+            "bindings": [{
+                "slotId": "subagent-a",
+                "ordinal": 0,
+                "valueId": membership_id,
+                "model": "model-a",
+                "reasoningEffort": "",
+                "revision": 1
+            }],
+            "input": {"message": "hi"},
+            "idempotencyKey": "assistant-callback-drive-failure"
+        });
+        let response = service.execute(request.clone()).unwrap();
+        assert_eq!(response["result"]["status"], "waiting", "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        // The failure a loaded drive reports after the park.
+        service.settle_drive_failure(&run_id).unwrap();
+
+        let snapshot = service.store().run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Waiting);
+        assert_eq!(snapshot.pending_callbacks.len(), 1);
+        let parked = service.wait_for_assistant_terminal(&run_id, None).unwrap();
+        assert_eq!(parked["status"], json!("waiting"));
+        assert_eq!(
+            parked["terminal"]["code"],
+            json!("callback_decision_required")
+        );
+
+        request["decision"] = json!("advance");
+        request["callbackStateId"] = json!("running");
+        request["callbackStateVisit"] = json!(1);
+        let decided = service.execute(request).unwrap();
+        assert_eq!(decided["result"]["terminal"]["status"], "completed");
+        let snapshot = service.store().run(&run_id).unwrap();
+        assert_eq!(snapshot.status, StrategyRunStatus::Completed);
+        remove_drive_root(root, service);
     }
 
     #[test]

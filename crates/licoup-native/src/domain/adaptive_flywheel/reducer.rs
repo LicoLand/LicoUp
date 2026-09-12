@@ -1556,6 +1556,11 @@ impl Machine<'_> {
                 | StrategyRunStatus::Cancelled
                 | StrategyRunStatus::Blocked
                 | StrategyRunStatus::CancelInDoubt
+                // A run parked on a callback is resting, not in flight. The
+                // drive that parked it has nothing left to prove, so a failure
+                // reported after the park cannot unmake it — and clearing the
+                // pending callbacks here would strand the master's decision.
+                | StrategyRunStatus::Waiting
         ) {
             self.applied = false;
             return Ok(());
@@ -2910,6 +2915,34 @@ mod tests {
         .unwrap();
         assert!(!duplicate.applied);
         assert_eq!(duplicate.snapshot.pending_callbacks.len(), 1);
+    }
+
+    #[test]
+    fn a_drive_failure_does_not_unmake_a_parked_callback() {
+        // #328: a drive error reported after the park used to clear the pending
+        // callback and rewrite the run as cancel-in-doubt, so a loaded machine
+        // turned a legitimate wait into a terminal failure. The parked run is
+        // resting — the drive that parked it has nothing left to prove.
+        let workflow = callback_workflow(TransitionMode::Flow);
+        let (parked, _) = park_work(&workflow);
+        assert_eq!(parked.snapshot.status, StrategyRunStatus::Waiting);
+        let failed = reduce(
+            &workflow,
+            &parked.snapshot,
+            ReducerEvent::AssistantDriveFailed {
+                code: "assistant_drive_outcome_unknown".into(),
+            },
+        )
+        .unwrap();
+        assert!(
+            !failed.applied,
+            "a parked run is not settled by a drive failure"
+        );
+        assert_eq!(failed.snapshot.status, StrategyRunStatus::Waiting);
+        assert_eq!(failed.snapshot.pending_callbacks.len(), 1);
+        // The master's decision still lands after the failed drive.
+        let advanced = decide(&workflow, &failed.snapshot, CallbackDecisionKind::Advance).unwrap();
+        assert_eq!(advanced.snapshot.status, StrategyRunStatus::Completed);
     }
 
     #[test]
