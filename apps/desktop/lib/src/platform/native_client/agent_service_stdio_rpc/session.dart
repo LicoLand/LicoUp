@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
@@ -9,10 +10,10 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/sessio
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcFrame {
-  const StdioRpcFrame.data(this.bytes);
-  const StdioRpcFrame.failure() : bytes = null;
+  const StdioRpcFrame.data(this.envelope);
+  const StdioRpcFrame.failure() : envelope = null;
 
-  final Uint8List? bytes;
+  final Map<String, dynamic>? envelope;
 }
 
 class StdioRpcTransportFailure implements Exception {
@@ -21,12 +22,14 @@ class StdioRpcTransportFailure implements Exception {
 
 class StdioRpcSession {
   StdioRpcSession(this.process) {
-    _stdoutSubscription = process.stdout.listen(
-      _acceptStdoutChunk,
-      onError: (Object _, StackTrace _) => _addFrameError(),
-      onDone: _addFrameError,
-      cancelOnError: false,
-    );
+    _stdoutSubscription = process.stdout
+        .asyncMap(_acceptStdoutChunk)
+        .listen(
+          (_) {},
+          onError: (Object _, StackTrace _) => _addFrameError(),
+          onDone: _addFrameError,
+          cancelOnError: false,
+        );
     _stderrSubscription = process.stderr.listen(
       _acceptStderrChunk,
       onError: (Object _, StackTrace _) {
@@ -34,19 +37,15 @@ class StdioRpcSession {
       },
       cancelOnError: false,
     );
-    unawaited(
-      process.exitCode.then<void>(
-        (_) => _addFrameError(),
-        onError: (Object _, StackTrace _) => _addFrameError(),
-      ),
-    );
+    // EOF is delivered after asyncMap drains accepted frames. An exitCode
+    // callback can overtake a large final reply still being decoded.
   }
 
   final Process process;
   final StdioRpcLineFramer _framer = StdioRpcLineFramer(
     maxFrameBytes: stdioRpcMaxFrameBytes,
   );
-  late final StreamSubscription<List<int>> _stdoutSubscription;
+  late final StreamSubscription<void> _stdoutSubscription;
   late final StreamSubscription<List<int>> _stderrSubscription;
   final Map<String, Completer<StdioRpcFrame>> _expectedFrames = {};
   final Map<String, StdioRpcConversationExpectation> _expectedConversations =
@@ -125,7 +124,7 @@ class StdioRpcSession {
     }
   }
 
-  void _acceptStdoutChunk(List<int> chunk) {
+  Future<void> _acceptStdoutChunk(List<int> chunk) async {
     if (!usable || _closed) {
       return;
     }
@@ -135,31 +134,45 @@ class StdioRpcSession {
       _addFrameError();
       return;
     }
+    final frames = <Uint8List>[];
     _framer.accept(
       chunk,
-      onFrame: _acceptFrame,
+      onFrame: frames.add,
       onOversizedFrame: _addFrameError,
     );
+    for (final bytes in frames) {
+      if (!usable || _closed) return;
+      try {
+        // Large catalog/history replies leave the UI isolate. asyncMap pauses
+        // stdout during decoding, preserving wire order and backpressure.
+        final envelope = bytes.length >= 256 * 1024
+            ? await Isolate.run(() => decodeStdioRpcEnvelope(bytes))
+            : decodeStdioRpcEnvelope(bytes);
+        _acceptEnvelope(envelope);
+      } on StdioRpcProtocolViolation {
+        _addFrameError();
+      }
+    }
   }
 
-  void _acceptFrame(Uint8List bytes) {
+  void _acceptEnvelope(Map<String, dynamic> envelope) {
     if (!usable || _closed) {
       return;
     }
-    final requestId = stdioRpcEnvelopeRequestId(bytes);
-    if (requestId == null) {
+    final requestId = envelope['id'];
+    if (requestId is! String || requestId.isEmpty) {
       _addFrameError();
       return;
     }
     final expectedFrame = _expectedFrames.remove(requestId);
     if (expectedFrame != null) {
-      expectedFrame.complete(StdioRpcFrame.data(bytes));
+      expectedFrame.complete(StdioRpcFrame.data(envelope));
       return;
     }
     final detached = _detachedConversations[requestId];
     if (detached != null) {
       try {
-        if (detached.decode(bytes) is StdioRpcConversationTerminal) {
+        if (detached.decode(envelope) is StdioRpcConversationTerminal) {
           _detachedConversations.remove(requestId);
         }
       } on StdioRpcProtocolViolation {
@@ -176,7 +189,7 @@ class StdioRpcSession {
     final controller = expectation.controller;
     late StdioRpcConversationFrame frame;
     try {
-      frame = expectation.decoder.decode(bytes);
+      frame = expectation.decoder.decode(envelope);
     } on StdioRpcProtocolViolation {
       _expectedConversations.remove(requestId);
       if (!controller.isClosed) {

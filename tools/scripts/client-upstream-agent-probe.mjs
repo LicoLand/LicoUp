@@ -67,7 +67,7 @@ const reasonCodes = new Set([
   "agent_binary_unavailable",
   "agent_executable_unavailable",
   "capabilities_handshake_failed",
-  "deepseek_harness_jsonrpc_carrier_unverified",
+  "agent_live_harness_unavailable",
   "dispatch_lane_family_drift",
   "lico_client_executable_unavailable",
   "runtime_protocol_drift",
@@ -166,9 +166,6 @@ async function observeAgent({ entry, driver, evidenceRows, manifest }) {
   if (missingManifest) {
     row.status = "breakage";
     row.reasonCode = "adapter_manifest_missing";
-  } else if (entry.id === "deepseek-harness") {
-    row.status = "unverified";
-    row.reasonCode = "deepseek_harness_jsonrpc_carrier_unverified";
   } else if (!row.install.executablePresent) {
     row.status = "unverified";
     row.reasonCode = "agent_binary_unavailable";

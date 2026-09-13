@@ -66,8 +66,8 @@ enum MacosKeychainBackend {
 static SELECTED_KEYCHAIN_BACKEND: OnceLock<Option<MacosKeychainBackend>> = OnceLock::new();
 
 // The classic Keychain has a process-wide UI switch, independent of LAContext.
-// Serialize its temporary suppression so concurrent batches cannot restore UI
-// while another batch is still reading an item. This never changes an ACL.
+// Serialize temporary changes so migration consent cannot enable UI for a
+// concurrent ordinary batch. This never changes an ACL.
 static CLASSIC_KEYCHAIN_INTERACTION: Mutex<()> = Mutex::new(());
 
 trait ClassicKeychainInteraction {
@@ -106,7 +106,7 @@ struct ClassicInteractionRestore<'a> {
 impl Drop for ClassicInteractionRestore<'_> {
     fn drop(&mut self) {
         // Restore the exact previous state, including a caller's pre-existing
-        // UI prohibition. A failed restore leaves interaction disabled.
+        // UI prohibition. The normal path reports a failed restore.
         if let Some(was_allowed) = self.was_allowed.take() {
             let _ = self.port.set_allowed(was_allowed);
         }
@@ -117,11 +117,19 @@ fn without_classic_keychain_interaction<T>(
     port: &dyn ClassicKeychainInteraction,
     effect: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
+    with_classic_keychain_interaction(port, false, effect)
+}
+
+fn with_classic_keychain_interaction<T>(
+    port: &dyn ClassicKeychainInteraction,
+    allowed: bool,
+    effect: impl FnOnce() -> Result<T>,
+) -> Result<T> {
     let _lock = CLASSIC_KEYCHAIN_INTERACTION
         .lock()
         .map_err(|_| anyhow!("secure_mesh_keychain_interaction_control_failed"))?;
     let was_allowed = port.allowed()?;
-    port.set_allowed(false)?;
+    port.set_allowed(allowed)?;
     let mut restore = ClassicInteractionRestore {
         port,
         was_allowed: Some(was_allowed),
@@ -171,6 +179,11 @@ pub struct MacosAuthorizationContext {
     batch_binding_digest: [u8; 32],
     context: Option<crate::platform::user_presence::UserPresenceSession>,
     effect_lock: Arc<Mutex<()>>,
+    legacy_credential_migration: Option<Arc<MacosLegacyCredentialMigration>>,
+}
+
+struct MacosLegacyCredentialMigration {
+    active: AtomicBool,
 }
 
 impl MacosAuthorizationContext {
@@ -178,6 +191,11 @@ impl MacosAuthorizationContext {
         &self,
         consumed_presence: SecretStoreConsumedPresence,
     ) -> std::result::Result<MacosAuthorizedPresence, MacosPresenceError> {
+        if !self.is_active() {
+            return Err(MacosPresenceError::new(
+                "secure_mesh_presence_session_closed",
+            ));
+        }
         if !digest_matches(
             &self.batch_binding_digest,
             &consumed_presence.batch_binding_digest(),
@@ -206,6 +224,28 @@ impl MacosAuthorizationContext {
             .map(crate::platform::user_presence::UserPresenceSession::as_cf_type)
             .ok_or_else(|| anyhow!("secure_mesh_presence_native_context_unavailable"))
     }
+
+    fn is_active(&self) -> bool {
+        self.legacy_credential_migration
+            .as_ref()
+            .is_none_or(|migration| migration.active.load(Ordering::Acquire))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn migration_session_active_for_test(&self) -> bool {
+        self.legacy_credential_migration.is_some() && self.is_active()
+    }
+
+    fn with_legacy_classic_interaction<T>(&self, effect: impl FnOnce() -> Result<T>) -> Result<T> {
+        if !self.is_active() {
+            return Err(anyhow!("secure_mesh_presence_session_closed"));
+        }
+        with_classic_keychain_interaction(
+            &SystemClassicKeychainInteraction,
+            self.legacy_credential_migration.is_some(),
+            effect,
+        )
+    }
 }
 
 impl fmt::Debug for MacosAuthorizationContext {
@@ -219,7 +259,7 @@ struct MacosAuthorizedPresenceInner {
     scope_digest: [u8; 32],
     operation: SecretStoreOperation,
     handle: SecretStoreHandle,
-    expires_at: Instant,
+    expires_at: Option<Instant>,
 }
 
 pub struct MacosAuthorizedPresence(MacosAuthorizedPresenceInner);
@@ -232,7 +272,14 @@ impl MacosAuthorizedPresence {
         if self.0.operation != expected_operation {
             return Err(anyhow!("secure_mesh_presence_effect_operation_mismatch"));
         }
-        if Instant::now() >= self.0.expires_at {
+        if !self.0.authorization_context.is_active() {
+            return Err(anyhow!("secure_mesh_presence_session_closed"));
+        }
+        if self
+            .0
+            .expires_at
+            .is_some_and(|expiry| Instant::now() >= expiry)
+        {
             return Err(anyhow!("secure_mesh_presence_expired"));
         }
         Ok((self.0.authorization_context, self.0.handle))
@@ -428,7 +475,10 @@ impl MacosPresenceBatchCoordinator {
                     return false;
                 };
                 match &*state {
-                    BatchSlotState::Ready(ready) => now < ready.batch.expires_at(),
+                    BatchSlotState::Ready(ready) => {
+                        ready.authorization_context.is_active()
+                            && ready.batch.expires_at().is_none_or(|expiry| now < expiry)
+                    }
                     BatchSlotState::Pending => true,
                     BatchSlotState::Failed(_) => false,
                 }
@@ -475,8 +525,15 @@ impl MacosPresenceBatchCoordinator {
                         batch_binding_digest: batch.binding_digest(),
                         context: None,
                         effect_lock: Arc::new(Mutex::new(())),
+                        legacy_credential_migration: None,
                     });
             authorization_context.batch_binding_digest = batch.binding_digest();
+            authorization_context.legacy_credential_migration =
+                request.is_gateway_credential_migration().then(|| {
+                    Arc::new(MacosLegacyCredentialMigration {
+                        active: AtomicBool::new(true),
+                    })
+                });
             let authorization_context = Arc::new(authorization_context);
             Ok(ReadyBatch {
                 batch,
@@ -575,6 +632,18 @@ struct BoundSession {
     approved_batch: MacosApprovedPresenceBatch,
 }
 
+impl Drop for BoundSession {
+    fn drop(&mut self) {
+        if let Some(migration) = &self
+            .approved_batch
+            .authorization_context()
+            .legacy_credential_migration
+        {
+            migration.active.store(false, Ordering::Release);
+        }
+    }
+}
+
 pub struct MacosSecretStoreAccess {
     injected: bool,
     request: SecretStorePresenceBatchRequest,
@@ -632,6 +701,8 @@ impl MacosSecretStoreAccess {
         if request.reason() != self.request.reason()
             || request.operation_count() != self.request.operation_count()
             || request.allow_interaction() != self.request.allow_interaction()
+            || request.key_class() != self.request.key_class()
+            || request.caller_channel() != self.request.caller_channel()
         {
             return Err(anyhow!("secure_mesh_presence_batch_mismatch"));
         }
@@ -668,6 +739,16 @@ impl MacosSecretStoreAccess {
             .lock()
             .map_err(|_| anyhow!("secure_mesh_presence_session_unavailable"))? = Some(bound);
         Ok(session)
+    }
+
+    pub(crate) fn finish_migration_session(&self, session: &SecretStoreAuthorizationSession) {
+        if let Ok(mut bound) = self.bound_session.lock()
+            && bound
+                .as_ref()
+                .is_some_and(|bound| bound.session_id == session.session_id())
+        {
+            bound.take();
+        }
     }
 
     fn approved_for_session(
@@ -799,6 +880,11 @@ pub(crate) fn production_access(
         request.caller_channel(),
         request.allow_interaction(),
     )?;
+    if presence_request.is_gateway_credential_migration()
+        && required_keychain_backend()? != MacosKeychainBackend::DataProtection
+    {
+        return Err(anyhow!("secure_mesh_keychain_migration_target_invalid"));
+    }
     Ok(MacosSecretStoreAccess::production(presence_request))
 }
 
@@ -1171,7 +1257,9 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
             security_framework_static!(kSecReturnData, sec_key),
             CFBoolean::from(true).into_CFType(),
         ));
-        copy_secret_from_query(&pairs, MacosKeychainBackend::Classic)
+        authorization_context.with_legacy_classic_interaction(|| {
+            copy_secret_from_query_effect(&pairs, MacosKeychainBackend::Classic)
+        })
     }
 
     fn delete_legacy_classic_secret(
@@ -1185,8 +1273,11 @@ impl MacosSecItemPort for SecurityFrameworkSecItem {
             .ok_or_else(|| anyhow!("secure_mesh_keychain_migration_target_invalid"))?;
         let query = CFDictionary::from_CFType_pairs(&pairs);
         // SAFETY: query owns valid CF values for the synchronous call.
-        let status = keychain_effect(MacosKeychainBackend::Classic, || unsafe {
-            SecItemDelete(query.as_concrete_TypeRef())
+        let status = authorization_context.with_legacy_classic_interaction(|| {
+            // SAFETY: query owns valid CF values for the synchronous call.
+            keychain_effect_status(MacosKeychainBackend::Classic, unsafe {
+                SecItemDelete(query.as_concrete_TypeRef())
+            })
         })?;
         if status == errSecItemNotFound {
             Ok(())
@@ -1312,34 +1403,39 @@ fn copy_secret_from_query(
     pairs: &[(CFString, CFType)],
     backend: MacosKeychainBackend,
 ) -> Result<Option<SecretBytes>> {
-    with_keychain_backend(backend, || {
-        let query = CFDictionary::from_CFType_pairs(pairs);
-        let mut copied: CFTypeRef = ptr::null();
-        // SAFETY: query is valid and copied is an initialized out-pointer.
-        let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut copied) };
-        // Own any result before resolving status or restoring classic UI. In
-        // particular, a restore failure must drop the returned secret object.
-        let value = if copied.is_null() {
-            None
-        } else {
-            // SAFETY: SecItemCopyMatching returns its object at +1 ownership.
-            Some(unsafe { CFType::wrap_under_create_rule(copied) })
-        };
-        let status = keychain_effect_status(backend, status)?;
-        if status == errSecItemNotFound {
-            return Ok(None);
-        }
-        status_result("read", status)?;
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        let data = value
-            .downcast::<CFData>()
-            .ok_or_else(|| anyhow!("secure_mesh_keychain_data_invalid"))?;
-        SecretBytes::try_from_bytes(data.bytes().to_vec())
-            .map(Some)
-            .map_err(|_| anyhow!("secure_mesh_keychain_data_invalid"))
-    })
+    with_keychain_backend(backend, || copy_secret_from_query_effect(pairs, backend))
+}
+
+fn copy_secret_from_query_effect(
+    pairs: &[(CFString, CFType)],
+    backend: MacosKeychainBackend,
+) -> Result<Option<SecretBytes>> {
+    let query = CFDictionary::from_CFType_pairs(pairs);
+    let mut copied: CFTypeRef = ptr::null();
+    // SAFETY: query is valid and copied is an initialized out-pointer.
+    let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut copied) };
+    // Own any result before resolving status or restoring classic UI. In
+    // particular, a restore failure must drop the returned secret object.
+    let value = if copied.is_null() {
+        None
+    } else {
+        // SAFETY: SecItemCopyMatching returns its object at +1 ownership.
+        Some(unsafe { CFType::wrap_under_create_rule(copied) })
+    };
+    let status = keychain_effect_status(backend, status)?;
+    if status == errSecItemNotFound {
+        return Ok(None);
+    }
+    status_result("read", status)?;
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let data = value
+        .downcast::<CFData>()
+        .ok_or_else(|| anyhow!("secure_mesh_keychain_data_invalid"))?;
+    SecretBytes::try_from_bytes(data.bytes().to_vec())
+        .map(Some)
+        .map_err(|_| anyhow!("secure_mesh_keychain_data_invalid"))
 }
 
 fn selected_keychain_backend() -> Option<MacosKeychainBackend> {
@@ -1484,13 +1580,11 @@ impl MacosPresencePromptPort for LocalAuthenticationPrompt {
                     batch_binding_digest: [0; 32],
                     context: Some(session),
                     effect_lock,
+                    legacy_credential_migration: None,
                 });
                 Ok(PresenceDecision::Approved)
             }
             Err(error) if user_presence_was_cancelled(&error) => Ok(PresenceDecision::Cancelled),
-            Err(error) if error.to_string() == "user_presence_authorization_timed_out" => {
-                Ok(PresenceDecision::TimedOut)
-            }
             Err(_) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
         }
     }
@@ -1546,6 +1640,7 @@ fn sec_string_value(value: CFStringRef) -> CFType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::secure_mesh_secret_store::{SecretStoreCallerChannel, SecretStoreKeyClass};
     use std::cell::{Cell, RefCell};
 
     struct SyntheticInteraction {
@@ -1595,6 +1690,128 @@ mod tests {
             assert_eq!(port.allowed.get(), was_allowed);
             assert_eq!(*port.changes.borrow(), [false, was_allowed]);
         }
+    }
+
+    #[test]
+    fn legacy_migration_ui_restores_both_previous_policies_after_cancel() {
+        for was_allowed in [false, true] {
+            let port = SyntheticInteraction {
+                allowed: Cell::new(was_allowed),
+                changes: RefCell::default(),
+                fail_disable: false,
+                fail_restore: false,
+            };
+            let result = with_classic_keychain_interaction(&port, true, || {
+                assert!(port.allowed.get());
+                Err::<(), _>(anyhow!("synthetic_cancelled"))
+            });
+            assert!(result.is_err());
+            assert_eq!(port.allowed.get(), was_allowed);
+            assert_eq!(*port.changes.borrow(), [true, was_allowed]);
+        }
+    }
+
+    #[test]
+    fn migration_scope_binds_channel_and_revokes_issued_effects_on_completion() {
+        struct Prompt;
+        impl MacosPresencePromptPort for Prompt {
+            fn prompt(&mut self, _: &SecretStorePresenceBatchRequest) -> Result<PresenceDecision> {
+                Ok(PresenceDecision::Approved)
+            }
+        }
+        let now = Instant::now();
+        let request = SecretStoreAuthorizationRequest::for_scope(
+            "Synthetic migration",
+            4,
+            true,
+            SecretStoreKeyClass::GatewayCredential,
+            SecretStoreCallerChannel::GatewayCredentialMigration,
+        );
+        let batch_request = SecretStorePresenceBatchRequest::new(
+            SecretStorePresenceProvider::MacosKeychain,
+            request.key_class(),
+            4,
+            request.reason(),
+            SecretStorePresenceNonce::new("synthetic-migration-nonce").unwrap(),
+            request.caller_channel(),
+            true,
+        )
+        .unwrap();
+        let access = MacosSecretStoreAccess::new(
+            batch_request,
+            now,
+            now,
+            Box::new(Prompt),
+            Arc::new(SecurityFrameworkKeychain::new()),
+        );
+        for (key_class, caller_channel) in [
+            (
+                SecretStoreKeyClass::GatewayCredential,
+                SecretStoreCallerChannel::GatewaySidecar,
+            ),
+            (
+                SecretStoreKeyClass::DeviceIdentity,
+                SecretStoreCallerChannel::GatewayCredentialMigration,
+            ),
+        ] {
+            let wrong_request = SecretStoreAuthorizationRequest::for_scope(
+                request.reason(),
+                4,
+                true,
+                key_class,
+                caller_channel,
+            );
+            assert_ne!(wrong_request.canonical_digest(), request.canonical_digest());
+            assert_eq!(
+                access
+                    .begin_session("macos-keychain", &wrong_request)
+                    .unwrap_err()
+                    .to_string(),
+                "secure_mesh_presence_batch_mismatch"
+            );
+        }
+        let session = access.begin_session("macos-keychain", &request).unwrap();
+        let approved = access.approved_for_session(&session).unwrap();
+        let handle = SecretStoreHandle::new("synthetic-namespace", "synthetic-key").unwrap();
+        let authorized = authorize_exact_operation(
+            &approved,
+            SecretStoreOperation::Read,
+            &handle,
+            SecretStorePresencePurpose::new("synthetic-read").unwrap(),
+            now + std::time::Duration::from_secs(60),
+        )
+        .unwrap();
+        assert!(
+            approved
+                .authorization_context()
+                .migration_session_active_for_test()
+        );
+        access.finish_migration_session(&session);
+        assert!(
+            !approved
+                .authorization_context()
+                .migration_session_active_for_test()
+        );
+        assert_eq!(
+            authorized
+                .into_authorized_effect(SecretStoreOperation::Read)
+                .unwrap_err()
+                .to_string(),
+            "secure_mesh_presence_session_closed"
+        );
+        assert!(access.approved_for_session(&session).is_err());
+        assert_eq!(
+            authorize_exact_operation(
+                &approved,
+                SecretStoreOperation::Read,
+                &handle,
+                SecretStorePresencePurpose::new("synthetic-read").unwrap(),
+                now,
+            )
+            .unwrap_err()
+            .to_string(),
+            "secure_mesh_presence_session_closed"
+        );
     }
 
     #[test]
@@ -1713,15 +1930,18 @@ mod tests {
         let start = Barrier::new(2);
         let active = AtomicUsize::new(0);
         std::thread::scope(|scope| {
-            for _ in 0..2 {
-                scope.spawn(|| {
+            let port = &port;
+            let start = &start;
+            let active = &active;
+            for allow_migration_ui in [false, true] {
+                scope.spawn(move || {
                     start.wait();
                     for _ in 0..16 {
-                        without_classic_keychain_interaction(&port, || {
+                        with_classic_keychain_interaction(port, allow_migration_ui, || {
                             assert_eq!(active.fetch_add(1, Ordering::SeqCst), 0);
-                            assert!(!port.allowed()?);
+                            assert_eq!(port.allowed()?, allow_migration_ui);
                             std::thread::yield_now();
-                            assert!(!port.allowed()?);
+                            assert_eq!(port.allowed()?, allow_migration_ui);
                             assert_eq!(active.fetch_sub(1, Ordering::SeqCst), 1);
                             Ok(())
                         })

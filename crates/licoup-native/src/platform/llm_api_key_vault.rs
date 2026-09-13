@@ -71,6 +71,35 @@ impl PlatformLlmApiKeyVault {
         )
     }
 
+    /// Move every inventoried credential, including expired entries, from the
+    /// legacy macOS Keychain. Only this explicitly selected migration may ask
+    /// for native legacy ACL consent. Failed or cancelled work is retryable.
+    pub fn migrate_legacy_credentials(&self) -> Result<LlmApiKeyInventory> {
+        #[cfg(target_os = "macos")]
+        {
+            let request = gateway_migration_request();
+            self.store
+                .with_legacy_credential_migration_session(&request, |session| {
+                    let inventory = self.inventory_for_authorized_operation(session)?;
+                    for entry in &inventory.entries {
+                        self.migrate_secret(session, &credential_key(&entry.credential_id), true)?
+                            .ok_or_else(|| anyhow!("llm_api_key_inventory_inconsistent"))?;
+                    }
+                    // Metadata may already have been persisted before an earlier
+                    // attempt failed. Complete cleanup even on that retry path.
+                    let handle = self
+                        .store
+                        .handle_for_namespace(NAMESPACE, LEGACY_PROTECTED_INVENTORY_KEY)?;
+                    self.store
+                        .delete_legacy_classic_secret_with_session(session, &handle)?;
+                    self.delete_secret(session, LEGACY_PROTECTED_INVENTORY_KEY)?;
+                    Ok(inventory)
+                })
+        }
+        #[cfg(not(target_os = "macos"))]
+        Err(anyhow!("llm_api_key_legacy_migration_unsupported"))
+    }
+
     pub fn create(&self, new_key: NewLlmApiKey) -> Result<LlmApiKeyInventory> {
         ensure!(self.supported(), "llm_api_key_system_keyring_unavailable");
         let session = self.store.begin_authorized_session(&gateway_request(
@@ -221,7 +250,7 @@ impl PlatformLlmApiKeyVault {
             self.store
                 .begin_authorized_session(&SecretStoreAuthorizationRequest::for_scope(
                     "Authorize LicoUp Gateway to use model API keys",
-                    4 * (1 + MAX_LLM_API_KEYS),
+                    5 * (1 + MAX_LLM_API_KEYS) + 1,
                     true,
                     SecretStoreKeyClass::GatewayCredential,
                     SecretStoreCallerChannel::GatewaySidecar,
@@ -326,26 +355,52 @@ impl PlatformLlmApiKeyVault {
         session: &SecretStoreAuthorizationSession,
         key: &str,
     ) -> Result<Option<SecretBytes>> {
-        if let Some(secret) = self.read_secret(session, key)? {
-            return Ok(Some(secret));
-        }
         #[cfg(target_os = "macos")]
         {
-            let handle = self.store.handle_for_namespace(NAMESPACE, key)?;
-            let Some(secret) = self
-                .store
-                .get_legacy_classic_secret_with_session(session, &handle)?
-            else {
-                return Ok(None);
-            };
-            let migrated = SecretBytes::try_from_bytes(secret.expose_bytes().to_vec())?;
-            self.write_secret(session, key, migrated)?;
-            self.store
-                .delete_legacy_classic_secret_with_session(session, &handle)?;
-            return Ok(Some(secret));
+            self.migrate_secret(session, key, false)
         }
         #[cfg(not(target_os = "macos"))]
-        Ok(None)
+        self.read_secret(session, key)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn migrate_secret(
+        &self,
+        session: &SecretStoreAuthorizationSession,
+        key: &str,
+        cleanup_existing: bool,
+    ) -> Result<Option<SecretBytes>> {
+        let handle = self.store.handle_for_namespace(NAMESPACE, key)?;
+        if let Some(secret) = self.read_secret(session, key)? {
+            if cleanup_existing {
+                // A readable destination must never be overwritten. Compare
+                // the remaining source before cleanup so a failed readback or
+                // conflicting value cannot silently discard the legacy key.
+                if let Some(legacy) = self
+                    .store
+                    .get_legacy_classic_secret_with_session(session, &handle)?
+                {
+                    ensure_migration_value_matches(&secret, &legacy)?;
+                    self.store
+                        .delete_legacy_classic_secret_with_session(session, &handle)?;
+                }
+            }
+            return Ok(Some(secret));
+        }
+        let Some(secret) = self
+            .store
+            .get_legacy_classic_secret_with_session(session, &handle)?
+        else {
+            return Ok(None);
+        };
+        self.write_secret(session, key, secret.copy_for_persistent_read())?;
+        let persisted = self.read_secret(session, key)?;
+        let persisted =
+            persisted.ok_or_else(|| anyhow!("llm_api_key_migration_verification_failed"))?;
+        ensure_migration_value_matches(&persisted, &secret)?;
+        self.store
+            .delete_legacy_classic_secret_with_session(session, &handle)?;
+        Ok(Some(secret))
     }
 
     fn write_secret(
@@ -463,15 +518,36 @@ fn decode_inventory(bytes: &[u8]) -> Result<LlmApiKeyInventory> {
 fn gateway_request(reason: &str, operation_count: usize) -> SecretStoreAuthorizationRequest {
     SecretStoreAuthorizationRequest::for_scope(
         reason,
-        operation_count.saturating_add(4 * (1 + MAX_LLM_API_KEYS)),
+        operation_count.saturating_add(5 * (1 + MAX_LLM_API_KEYS)),
         true,
         SecretStoreKeyClass::GatewayCredential,
         SecretStoreCallerChannel::DesktopGui,
     )
 }
 
+#[cfg(target_os = "macos")]
+fn gateway_migration_request() -> SecretStoreAuthorizationRequest {
+    SecretStoreAuthorizationRequest::for_scope(
+        "Migrate LicoUp model API keys to protected storage",
+        5 * (1 + MAX_LLM_API_KEYS) + 3,
+        true,
+        SecretStoreKeyClass::GatewayCredential,
+        SecretStoreCallerChannel::GatewayCredentialMigration,
+    )
+}
+
 fn credential_key(credential_id: &str) -> String {
     format!("credential-{credential_id}")
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_migration_value_matches(destination: &SecretBytes, source: &SecretBytes) -> Result<()> {
+    use subtle::ConstantTimeEq;
+    ensure!(
+        bool::from(destination.expose_bytes().ct_eq(source.expose_bytes())),
+        "llm_api_key_migration_verification_failed"
+    );
+    Ok(())
 }
 
 struct FileEpochSource {
@@ -581,7 +657,7 @@ mod tests {
             let request = SecretStorePresenceBatchRequest::new(
                 SecretStorePresenceProvider::MacosKeychain,
                 SecretStoreKeyClass::GatewayCredential,
-                4 * (1 + MAX_LLM_API_KEYS),
+                5 * (1 + MAX_LLM_API_KEYS) + 1,
                 "Authorize LicoUp Gateway to use model API keys",
                 SecretStorePresenceNonce::new("synthetic-model-api-key-batch").unwrap(),
                 SecretStoreCallerChannel::GatewaySidecar,
@@ -706,3 +782,6 @@ mod tests {
         assert_eq!(vault.list().unwrap(), updated);
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod migration_tests;

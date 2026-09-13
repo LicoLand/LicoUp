@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -518,6 +520,10 @@ Future<void> _pumpPane(
   ).copyWith(platform: TargetPlatform.macOS);
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => LicoLoadingEffectScope(
+        effect: loadingEffectForId('particles'),
+        child: child!,
+      ),
       locale: const Locale('en'),
       supportedLocales: LicoStrings.supportedLocales,
       localizationsDelegates: const [

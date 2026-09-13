@@ -5,6 +5,7 @@ import {
   mkdirSync,
   renameSync,
   rmSync,
+  symlinkSync,
 } from "node:fs";
 import path from "node:path";
 
@@ -30,6 +31,7 @@ import {
   windowsBundleLayout,
 } from "./bundle-resolver/windows.mjs";
 import { copyTree } from "./source-staging.mjs";
+import { macosAppDirFromBundle, macosCustodyHelperPaths, stageMacosCustodyMetadata } from "./macos/metadata.mjs";
 
 export function assemblePackageResources(selected, skipped, options) {
   const bundle = resolveBundle(options);
@@ -173,10 +175,27 @@ function copySidecar(binaryName, bundle, options) {
     `${binaryName}${suffix}`,
   );
   if (!existsSync(source)) packageFailure("sidecar_binary_missing");
+  if (options.platform === "macos" && binaryName === "licoup-cli") {
+    return stageMacosCustodyHelper(source, bundle);
+  }
   const target = path.join(bundle.executableDir, `${binaryName}${suffix}`);
   copyFileSync(source, target);
   if (options.platform !== "windows") chmodSync(target, 0o755);
   return target;
+}
+
+export function stageMacosCustodyHelper(source, bundle) {
+  const appDir = macosAppDirFromBundle(bundle);
+  rmSync(macosCustodyHelperPaths(appDir).appPath, { recursive: true, force: true });
+  const helper = stageMacosCustodyMetadata(appDir);
+  copyFileSync(source, helper.executablePath);
+  chmodSync(helper.executablePath, 0o755);
+  // Permanent public CLI entry for existing launch agents and provider helpers.
+  // This is an alias to the sole custody executable, never a second binary.
+  const publicEntry = path.join(bundle.executableDir, "licoup-cli");
+  rmSync(publicEntry, { force: true });
+  symlinkSync("../Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli", publicEntry);
+  return helper.executablePath;
 }
 
 function copySwiftSidecar(moduleConfig, bundle, options) {

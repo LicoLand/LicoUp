@@ -59,7 +59,8 @@ class _AgentConversationActivePaneState
   bool _pendingDraftRollover = false;
 
   bool _empty(AgentConversationPaneState value) =>
-      (value.preparingNewConversation || !value.loading) &&
+      !value.loading &&
+      !value.messagePageLoading &&
       !_hasConversationContent(value.session?.messages ?? const []) &&
       !_hasConversationContent(value.liveMessages);
 

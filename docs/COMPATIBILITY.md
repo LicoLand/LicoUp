@@ -81,7 +81,7 @@ Lifecycle evidence columns describe whether the lane can emit native evidence fo
 | hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| deepseek-harness | conversation | unverified | no | deepseek-harness-sdk-stdio-jsonrpc | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| deepseek-harness | conversation | unverified | no | deepseek-harness-sdk-stdio-jsonrpc | rpc | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | lico-agent | conversation | unverified | no | lico-agent-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 
 ## Native capability inventory

@@ -35,7 +35,7 @@ Future<void> shutdownStdioRpcSession({
     final responseFuture = session.expectFrame(requestId: requestId);
     await writeStdioRpcFrame(session, frame);
     final responseFrame = await responseFuture.timeout(stdioRpcShutdownTimeout);
-    final response = responseFrame.bytes;
+    final response = responseFrame.envelope;
     acknowledged =
         response != null &&
         isStdioRpcShutdownAcknowledged(

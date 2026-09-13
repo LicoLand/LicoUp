@@ -236,6 +236,7 @@ final class ModelsProjection {
     required this.phase,
     GatewayProjection? gateway,
     Iterable<GatewayCredentialProjection> credentials = const [],
+    this.credentialMigrationPending = false,
     TelegramProjection? telegram,
     this.notice,
   }) : providers = immutablePresentationList(providers),
@@ -269,6 +270,7 @@ final class ModelsProjection {
   final PresentationPhase phase;
   final GatewayProjection gateway;
   final List<GatewayCredentialProjection> credentials;
+  final bool credentialMigrationPending;
   final TelegramProjection telegram;
   final PresentationNotice? notice;
 
@@ -282,6 +284,7 @@ final class ModelsProjection {
           other.phase == phase &&
           other.gateway == gateway &&
           samePresentationList(other.credentials, credentials) &&
+          other.credentialMigrationPending == credentialMigrationPending &&
           other.telegram == telegram &&
           other.notice == notice;
 
@@ -293,6 +296,7 @@ final class ModelsProjection {
     phase,
     gateway,
     Object.hashAll(credentials),
+    credentialMigrationPending,
     telegram,
     notice,
   );

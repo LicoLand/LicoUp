@@ -539,6 +539,13 @@ final class FakePreferencesRepository
       });
 
   @override
+  Future<PresentationPreferences> setLoadingEffect(String id) =>
+      _enqueue(() async {
+        preferences = preferences.copyWith(loadingEffectId: id);
+        return preferences;
+      });
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) =>
       _enqueue(() async {
         preferences = preferences.copyWith(appearancePresetId: id);

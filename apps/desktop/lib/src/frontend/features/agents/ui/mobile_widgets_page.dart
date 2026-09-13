@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -80,7 +81,7 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
                             ? SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(
+                                child: LicoLoadingIndicator(
                                   strokeWidth: 2,
                                   color: colors.textMuted,
                                 ),
@@ -159,7 +160,7 @@ class _TokenUsageOverviewCard extends StatelessWidget {
                 SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(
+                  child: LicoLoadingIndicator(
                     strokeWidth: 2,
                     color: colors.accent,
                   ),

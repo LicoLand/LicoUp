@@ -294,6 +294,7 @@ final class SettingsProjection {
   SettingsProjection({
     required this.appearancePresetId,
     this.reduceMotion = false,
+    this.loadingEffectId = 'spinner',
     required Iterable<SettingsAppearancePresetProjection> appearancePresets,
     required Iterable<PresentationChoice> localeChoices,
     required Iterable<PresentationChoice> layoutChoices,
@@ -320,6 +321,7 @@ final class SettingsProjection {
 
   final String appearancePresetId;
   final bool reduceMotion;
+  final String loadingEffectId;
   final List<SettingsAppearancePresetProjection> appearancePresets;
   final List<PresentationChoice> localeChoices;
   final List<PresentationChoice> layoutChoices;

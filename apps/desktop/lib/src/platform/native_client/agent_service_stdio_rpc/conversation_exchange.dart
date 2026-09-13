@@ -184,10 +184,10 @@ Future<void> _detachExecutionObservation({
     ).encode();
     await writeStdioRpcFrame(session, encoded);
     final frame = await reply;
-    final bytes = frame.bytes;
-    if (bytes != null) {
+    final envelope = frame.envelope;
+    if (envelope != null) {
       decodeStdioRpcCommandReply(
-        bytes,
+        envelope,
         requestId: detachId,
         workflowId: workflowId,
       );

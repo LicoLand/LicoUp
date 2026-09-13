@@ -118,6 +118,70 @@ fn explicit_provider_links_merge_context_agent_and_effort_wrappers() {
 }
 
 #[test]
+fn composer_speed_tiers_share_one_identity_across_catalogs_and_agents() {
+    let mut value = catalog();
+    value["models"]["cursor/composer-2.5"] = json!({"name":"Composer 2.5"});
+    value["models"]["cursor/composer-2.5-fast"] = json!({"name":"Composer 2.5 Fast"});
+    value["providers"]["relay"] = json!({"models": {
+        "composer-2.5-fast": {"base_model":"cursor/composer-2.5-fast"}
+    }});
+    let snapshot = RegistrySnapshot::from_catalog(value.clone()).unwrap();
+    assert_eq!(
+        snapshot.models.len(),
+        catalog()["models"].as_object().unwrap().len() + 1
+    );
+    assert_eq!(
+        snapshot
+            .resolve("relay/composer-2.5-fast", None)
+            .unwrap()
+            .id,
+        "cursor/composer-2.5"
+    );
+    value["models"]
+        .as_object_mut()
+        .unwrap()
+        .remove("cursor/composer-2.5");
+    let fast_only = RegistrySnapshot::from_catalog(value).unwrap();
+    for registry in [&snapshot, &fast_only, &RegistrySnapshot::empty()] {
+        for agent in [None, Some("cursor"), Some("opencode"), Some("codex")] {
+            for raw in [
+                "composer-2.5",
+                "composer-2.5-fast",
+                "cursor/composer-2.5-fast",
+                "Composer 2.5 (Fast)",
+                "Cursor Composer 2.5 Fast",
+            ] {
+                for model in [
+                    registry.resolve_with_provider(raw, Some("cursor"), agent),
+                    registry.resolve_historical(raw, Some("cursor"), agent),
+                ] {
+                    let model = model.unwrap();
+                    assert_eq!(model.id, "cursor/composer-2.5", "{raw}");
+                    assert_eq!(model.display_name, "Composer 2.5", "{raw}");
+                }
+            }
+        }
+        assert_eq!(
+            registry
+                .canonical_model("cursor/composer-2.5-fast")
+                .unwrap()
+                .id,
+            "cursor/composer-2.5"
+        );
+        for raw in [
+            "composer-2.6-fast",
+            "composer-2.5-vision",
+            "unrelated/composer-2.5-fast",
+        ] {
+            assert!(
+                registry.resolve_historical(raw, None, None).is_none(),
+                "{raw}"
+            );
+        }
+    }
+}
+
+#[test]
 fn actual_fast_versions_and_modalities_remain_distinct() {
     let snapshot = RegistrySnapshot::from_catalog(catalog()).unwrap();
     assert_eq!(

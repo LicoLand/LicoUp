@@ -16,24 +16,26 @@ void main() {
       workflowId: 'workflow-1',
     );
     final event = decoder.decode(
-      Uint8List.fromList(
-        utf8.encode(
-          jsonEncode({
-            'protocol': 'licoup.stdio.v1',
-            'id': 'request-attach',
-            'workflowId': 'workflow-1',
-            'kind': 'event',
-            'sequence': 1,
-            'event': {
-              'event': 'agent.message.chunk',
-              'sessionId': 'session-1',
-              'turnId': 'native-turn-1',
-              'turnHandle': 'turn-1',
-              'conversationId': 'conversation-1',
-              'cursor': 42,
-              'payload': {'ordinal': 42},
-            },
-          }),
+      decodeStdioRpcEnvelope(
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'protocol': 'licoup.stdio.v1',
+              'id': 'request-attach',
+              'workflowId': 'workflow-1',
+              'kind': 'event',
+              'sequence': 1,
+              'event': {
+                'event': 'agent.message.chunk',
+                'sessionId': 'session-1',
+                'turnId': 'native-turn-1',
+                'turnHandle': 'turn-1',
+                'conversationId': 'conversation-1',
+                'cursor': 42,
+                'payload': {'ordinal': 42},
+              },
+            }),
+          ),
         ),
       ),
     );

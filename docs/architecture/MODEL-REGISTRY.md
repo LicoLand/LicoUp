@@ -49,6 +49,8 @@ Conversation launch uses the official `dsh --profile sdk` entry. Model, provider
 workspace and optional reasoning effort enter through `initialize`; the selected
 effort is retained in effective settings and cannot silently change inside a
 reused SDK session. Model discovery alone does not establish conversation readiness.
+Runtime admission, Assistant instruction delivery and message publication are
+owned by [ADR 0005](../adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md).
 The official [adapter metadata](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md)
 and [SDK profile](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/sdk-app/README.md)
 own these contracts.
@@ -62,6 +64,16 @@ name alone does not identify its serving provider. Matching must be
 unique: formatting differences, an Agent wrapper, a context-window suffix, and
 request effort or speed controls cannot create a second identity for the same
 model. Versions, meaningful model variants, and different modalities stay distinct.
+
+Officially confirmed execution modes share a registry identity even when the
+public directory lists them as separate rows or has not cataloged them yet.
+[Composer 2.5 and its Fast mode](https://cursor.com/docs/models/cursor-composer-2-5)
+both resolve to `cursor/composer-2.5` across Agents, selectable catalog metadata,
+and usage reports. Retained reports also merge an earlier separate Fast identity.
+Native selectors and raw records remain unchanged; an explicit Fast suffix is
+recorded as execution speed, with actual request metadata taking precedence.
+A bare model ID does not establish whether Fast was enabled. This confirmed
+equivalence does not remove Fast from unrelated model identities.
 
 Formal provider IDs have their own namespace. Display-name aliases cannot
 override a provider ID or turn a lookup miss into another provider's selector.

@@ -485,7 +485,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<void> _initializeOnce() async {
     try {
-      final succeeded = await _refresh();
+      final succeeded = await _refresh(preloadLocal: true);
       if (!_disposed && succeeded) {
         _initialized = true;
         _startPendingNoticePoll();
@@ -500,16 +500,37 @@ final class ClientConversationController extends ApplicationStateOwner {
     await _refresh();
   }
 
-  Future<bool> _refresh() => _guard('list', () async {
-    await _refreshCatalogWithoutGuard();
-    if (_selectedConversationId.isNotEmpty &&
-        !_isListedConversation(_selectedConversationId)) {
-      _clearSelection();
-    }
-    if (_selectedConversationId.isNotEmpty) {
-      await _loadSelected();
-    }
-  });
+  Future<bool> _refresh({bool preloadLocal = false}) => _guard(
+    'list',
+    () async {
+      await _refreshCatalogWithoutGuard();
+      if (_disposed) return;
+      var warmedLocal = false;
+      // Local owns the first cold-start transcript read. Warm the same cache
+      // used by selection before any Agent discovery/history lane can start;
+      // preloading must never change the user's current conversation selection.
+      if (preloadLocal &&
+          _summaries.any(
+            (item) => item.id == ClientConversation.defaultLocalAgentGroupId,
+          ) &&
+          !_conversationCache.containsKey(
+            ClientConversation.defaultLocalAgentGroupId,
+          )) {
+        await _loadConversation(ClientConversation.defaultLocalAgentGroupId);
+        warmedLocal = true;
+      }
+      if (_selectedConversationId.isNotEmpty &&
+          !_isListedConversation(_selectedConversationId)) {
+        _clearSelection();
+      }
+      if (_selectedConversationId.isNotEmpty &&
+          !(warmedLocal &&
+              _selectedConversationId ==
+                  ClientConversation.defaultLocalAgentGroupId)) {
+        await _loadSelected();
+      }
+    },
+  );
 
   Future<void> selectConversation(String conversationId) async {
     final normalized = conversationId.trim();
@@ -1146,7 +1167,6 @@ final class ClientConversationController extends ApplicationStateOwner {
         'archived': false,
       });
       await _refreshCatalogWithoutGuard();
-      await _refreshArchivedWithoutGuard();
     });
   }
 
@@ -1218,13 +1238,21 @@ final class ClientConversationController extends ApplicationStateOwner {
   }
 
   Future<void> _refreshCatalogWithoutGuard() async {
-    _summaries = _summaryList(
+    // One native snapshot includes both partitions and their lineage. Reading
+    // the active catalog separately repeats the same store scan and counts.
+    final summaries = _summaryList(
       await _service.execute({
         'action': 'conversation.list',
-        'includeArchived': false,
+        'includeArchived': true,
       }),
     );
-    await _refreshArchivedWithoutGuard();
+    if (_disposed) return;
+    _summaries = summaries
+        .where((item) => !item.archived)
+        .toList(growable: false);
+    _archivedSummaries = summaries
+        .where((item) => item.archived)
+        .toList(growable: false);
     _discardStaleConversationSnapshots();
   }
 
@@ -1356,6 +1384,10 @@ final class ClientConversationController extends ApplicationStateOwner {
   Future<void> _loadSelected() async {
     final id = _selectedConversationId;
     if (id.isEmpty) return;
+    await _loadConversation(id);
+  }
+
+  Future<void> _loadConversation(String id) async {
     final generation = _historyGenerations[id] ?? 0;
     final raw = _objectMap(
       await _service.execute({

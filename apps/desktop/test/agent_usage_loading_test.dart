@@ -9,14 +9,14 @@ import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_globe.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'fixtures/agent_usage_panel/usage_agent_service_fakes.dart';
 
 void main() {
   testWidgets(
-    'cold usage keeps the shared globe through cache, scan, and directory read',
+    'cold usage keeps the shared lightweight indicator through cache, scan, and directory read',
     (tester) async {
       final service = _LoadingUsageService();
       final controller = ClientController(agentService: service);
@@ -28,22 +28,22 @@ void main() {
       await tester.pumpWidget(
         _app(AgentUsagePanel(binding: monitoring.binding), chinese: true),
       );
-      expect(find.byType(ConversationParticleGlobe), findsOneWidget);
+      expect(find.byType(LicoLoadingIndicator), findsOneWidget);
       expect(find.text('正在加载中'), findsOneWidget);
       expect(find.text('暂无用量报表'), findsNothing);
 
       service.reportGate.complete();
       await tester.pump();
-      expect(find.byType(ConversationParticleGlobe), findsOneWidget);
+      expect(find.byType(LicoLoadingIndicator), findsOneWidget);
       service.emptyScan = true;
       service.scanGate.complete();
       await tester.pump();
-      expect(find.byType(ConversationParticleGlobe), findsOneWidget);
+      expect(find.byType(LicoLoadingIndicator), findsOneWidget);
       expect(find.text('最新报表中没有智能体用量'), findsNothing);
 
       service.registryGate.complete();
       await tester.pump();
-      expect(find.byType(ConversationParticleGlobe), findsNothing);
+      expect(find.byType(LicoLoadingIndicator), findsNothing);
       expect(find.text('最新报表中没有智能体用量'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -81,7 +81,7 @@ void main() {
   );
 
   testWidgets(
-    'failed first scan ends the globe with a retry message, not empty data',
+    'failed first scan ends loading with a retry message, not empty data',
     (tester) async {
       final service = _LoadingUsageService()..failScan = true;
       final controller = ClientController(agentService: service);
@@ -97,7 +97,7 @@ void main() {
       service.scanGate.complete();
       service.registryGate.complete();
       await tester.pump();
-      expect(find.byType(ConversationParticleGlobe), findsNothing);
+      expect(find.byType(LicoLoadingIndicator), findsNothing);
       expect(find.text('用量加载失败，请刷新重试'), findsOneWidget);
       expect(find.text('暂无用量报表'), findsNothing);
       expect(find.byKey(const Key('agent-usage-refresh')), findsOneWidget);
@@ -117,7 +117,8 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('正在加载中'), findsOneWidget);
-    expect(find.byType(ConversationParticleGlobe), findsOneWidget);
+    expect(find.byType(LicoLoadingIndicator), findsOneWidget);
+    expect(tester.binding.transientCallbackCount, 0);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

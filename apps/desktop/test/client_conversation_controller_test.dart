@@ -9,6 +9,30 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 
 void main() {
   test(
+    'catalog reads active and archived lineage in one native snapshot',
+    () async {
+      final runner = _ConversationRunner()..historyCleared = true;
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.list',
+        ),
+        [
+          {'action': 'conversation.list', 'includeArchived': true},
+        ],
+      );
+      expect(controller.groupConversations.single.id, 'conversation:group');
+      expect(
+        controller.groupConversations.single.archivedChildren.single.id,
+        'conversation:child',
+      );
+      expect(controller.archivedConversations.single.id, 'conversation:child');
+    },
+  );
+
+  test(
     'posts one Event and dispatches with conversation and event identity only',
     () async {
       final runner = _ConversationRunner();
@@ -236,7 +260,7 @@ void main() {
         runner.requests.where(
           (request) => request['action'] == 'conversation.list',
         ),
-        hasLength(2),
+        hasLength(1),
       );
     },
   );
@@ -536,7 +560,6 @@ void main() {
       'conversation.get',
       'conversation.events.page',
       'conversation.dispatch.after-post',
-      'conversation.list',
       'conversation.list',
       'conversation.get',
       'conversation.events.page',

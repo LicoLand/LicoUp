@@ -4966,6 +4966,17 @@ fn build_command_table() -> CommandTable {
     });
     table.register_command(CommandSpec {
         source_module: "llm_gateway.rs",
+        handler_name: "handle_migrate",
+        path: &["llm-gateway", "credentials", "migrate"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_migrate,
+        help: "Migrate legacy model API keys with native Keychain approval",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
         handler_name: "handle_authorize",
         path: &["llm-gateway", "credentials", "authorize"],
         required_positionals: &[],

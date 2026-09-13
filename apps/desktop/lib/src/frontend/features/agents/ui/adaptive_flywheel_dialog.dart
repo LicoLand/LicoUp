@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
@@ -557,7 +558,7 @@ final class _AdaptiveFlywheelDialogState
                       child: _assistantSaving
                           ? const SizedBox.square(
                               dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: LicoLoadingIndicator(strokeWidth: 2),
                             )
                           : Text(strings.save),
                     ),

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -377,7 +378,7 @@ class AgentConversationMessageListState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     if ((widget.loading || widget.messagePageLoading) && !_hasMessages) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LicoLoadingIndicator());
     }
     if (!_hasMessages) {
       return Center(
@@ -637,7 +638,7 @@ final class _ConversationEarlierPageRow extends StatelessWidget {
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: LicoLoadingIndicator(strokeWidth: 2),
               )
             : errorCode.isNotEmpty
             ? TextButton.icon(

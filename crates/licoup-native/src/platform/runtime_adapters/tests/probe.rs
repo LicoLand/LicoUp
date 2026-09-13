@@ -25,14 +25,11 @@ fn codex_probe_is_static_and_does_not_launch_a_runtime() {
 }
 
 #[test]
-fn deepseek_detection_does_not_overclaim_unverified_carrier_support() {
+fn deepseek_detection_does_not_invent_an_authenticated_sdk_handshake() {
     let result = probe_runtime_driver("deepseek-harness", Path::new("dsh"), Path::new("."));
 
     assert_eq!(result["available"], true);
     assert_eq!(result["supported"], false);
     assert_eq!(result["newSession"], false);
-    assert_eq!(
-        result["errorCode"],
-        "deepseek_harness_jsonrpc_carrier_unverified"
-    );
+    assert_eq!(result["errorCode"], "deepseek_harness_initialize_required");
 }

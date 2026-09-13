@@ -491,7 +491,16 @@ fn execute_turn(
         if output_limit.is_some_and(|limit| output_bytes > limit) {
             return Err(output_limit_exceeded());
         }
-        match parser.ingest(frame) {
+        let outcome = parser.ingest(frame);
+        for message in parser.take_completed_messages() {
+            super::turn_event_emit::emit_agent_message_completed_for_unit(
+                session_id,
+                &message.turn_id,
+                &message.unit_id,
+                &message.text,
+            );
+        }
+        match outcome {
             Ok(Some(result)) => return Ok(result),
             Ok(None) => {}
             Err(TurnParseError::Incomplete) => return Err(turn_incomplete()),
@@ -731,7 +740,7 @@ mod tests {
 while IFS= read -r line; do
  case "$line" in
   *'"method":"initialize"'*) printf 'initialize %s\n' "$$" >> '{}'; printf '%s\n' '{{"jsonrpc":"2.0","id":"initialize","result":{{"serverInfo":{{"name":"deepseek-harness-sdk-runtime"}}}}}}' ;;
-  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"messageId":"%s"}}}}\n' "$request_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
+  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"messageId":"%s"}}}}\n' "$request_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; while [ ! -e '{}/progress-'"$count" ]; do sleep 0.01; done; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
   *'"method":"shutdown"'*) printf 'shutdown %s\n' "$$" >> '{}'; exit 0 ;;
  esac
 done
@@ -739,6 +748,7 @@ done
             log.display(),
             log.display(),
             log.display(),
+            root.display(),
             log.display()
         );
         fs::write(&executable, source).unwrap();
@@ -746,6 +756,23 @@ done
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).unwrap();
         let params = json!({"model":"deepseek-test","reasoningEffort":"high"});
+        let public_events = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let observed = Arc::clone(&public_events);
+        let progress_root = root.clone();
+        super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+            if event["event"] == "agent.message.completed" {
+                let mut observed = observed.lock().unwrap();
+                observed.push(event);
+                // The child cannot send idle until this live message reaches the
+                // public sink. This proves delivery is independent of terminal.
+                fs::write(
+                    progress_root.join(format!("progress-{}", observed.len())),
+                    b"",
+                )
+                .unwrap();
+            }
+        }));
+        let _stream_guard = super::super::turn_event_emit::StreamSinkGuard;
         let captures = Arc::new(Mutex::new([Vec::new(), Vec::new()]));
         let observer_for = |index: usize| {
             let captures = Arc::clone(&captures);
@@ -792,6 +819,17 @@ done
         );
         assert_eq!(first.output.rsplit('-').next(), Some("1"));
         assert_eq!(second.output.rsplit('-').next(), Some("2"));
+        {
+            let events = public_events.lock().unwrap();
+            assert_eq!(events.len(), 2);
+            for (index, event) in events.iter().enumerate() {
+                assert_eq!(event["sessionId"], "persistent-session");
+                assert_eq!(event["turnId"], format!("message-{}", index + 1));
+                assert_eq!(event["payload"]["messageUnit"], "deepseek-harness:reply:1");
+            }
+            assert_eq!(events[0]["payload"]["text"], first.output);
+            assert_eq!(events[1]["payload"]["text"], second.output);
+        }
         {
             let captures = captures.lock().unwrap();
             let first_raw = captures[0].concat();

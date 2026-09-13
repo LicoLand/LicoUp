@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/composition/client_app_composition.dart';
@@ -64,10 +66,17 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
           WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
     );
     if (widget.initializeController) {
-      unawaited(_composition.initialize());
+      final initialization = _composition.initialize();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_composition.initializeLlmGateway());
+        // A visible window does not mean Local's startup reads have finished.
+        // Gateway startup shares the native command queue, so it must not
+        // overtake the Local-first bootstrap from this independent callback.
+        unawaited(
+          initialization.then<void>((_) async {
+            if (!mounted) return;
+            await _composition.initializeLlmGateway();
+          }),
+        );
       });
     }
   }
@@ -131,7 +140,10 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
                   builder: (context, systemReduceMotion) => LicoMotionScope(
                     reduceMotion: appearance.reduceMotion,
                     systemReduceMotion: systemReduceMotion,
-                    child: child ?? const SizedBox.shrink(),
+                    child: LicoLoadingEffectScope(
+                      effect: loadingEffectForId(appearance.loadingEffectId),
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   ),
                 ),
             // Theme changes are atomic visual updates; this also prevents the

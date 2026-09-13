@@ -90,10 +90,16 @@ mixin ClientNavigationFacade
     ClientSection.agents: ClientInterfaceEntryHookTask(
       section: ClientSection.agents,
       action: () async {
-        await Future.wait<void>([
-          scanTargets(showProgress: false, surfaceErrors: true),
-          clientConversationController.initialize(),
-        ]);
+        // Canonical groups, with Local's first page already warmed on startup,
+        // must become usable before Agent discovery. A shared Future.wait
+        // would make a restored group wait for the slowest Agent scan again.
+        await clientConversationController.initialize();
+        try {
+          await applyCurrentConversationViewRestore();
+        } finally {
+          // A failed group read must still allow independent target discovery.
+          await scanTargets(showProgress: false, surfaceErrors: true);
+        }
         selectDefaultConversationAgent();
         await applyCurrentConversationViewRestore();
         ensureConversationInterfaceModelCatalogEntry(forceEntry: true);

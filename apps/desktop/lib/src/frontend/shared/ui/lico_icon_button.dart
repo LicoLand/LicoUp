@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
@@ -202,7 +203,7 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
                       SizedBox(
                         width: widget.size.iconSize,
                         height: widget.size.iconSize,
-                        child: CircularProgressIndicator(
+                        child: LicoLoadingIndicator(
                           strokeWidth: 2,
                           color: colors.textMuted,
                         ),

@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -322,7 +323,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     if (projection.phase == PresentationPhase.loading && entries.isEmpty) {
       body = const Center(
         key: Key('agent-hub-loading'),
-        child: CircularProgressIndicator(),
+        child: LicoLoadingIndicator(),
       );
     } else if (projection.phase == PresentationPhase.failed &&
         entries.isEmpty) {

@@ -4,7 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_motion_geometry.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 
 /// A local overlay shared by a conversation and its composer. Desktop places
 /// it above both siblings; a standalone scene creates its own host.
@@ -19,6 +20,20 @@ class ConversationMotionHost extends StatefulWidget {
 class _ConversationMotionHostState extends State<ConversationMotionHost> {
   final _registry = _MotionRegistry();
   final _surfaceKey = GlobalKey();
+  ConversationMotionBuilder? _renderer;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _renderer = LicoLoadingEffectScope.maybeOf(context)?.conversationBuilder;
+    _registry.enabled = _renderer != null;
+    if (_registry.enabled) {
+      _registry.schedule();
+    } else {
+      _registry.presentation.value = null;
+      _registry.glyphs.clear();
+    }
+  }
 
   @override
   void initState() {
@@ -53,21 +68,17 @@ class _ConversationMotionHostState extends State<ConversationMotionHost> {
             children: [
               widget.child,
               Positioned.fill(
-                child: ValueListenableBuilder<_MotionPresentation?>(
+                child: ValueListenableBuilder<ConversationMotionPresentation?>(
                   valueListenable: _registry.presentation,
                   builder: (context, presentation, _) {
-                    if (presentation == null) return const SizedBox.shrink();
+                    if (presentation == null || _renderer == null) {
+                      return const SizedBox.shrink();
+                    }
                     return Offstage(
                       offstage: !presentation.enabled,
                       child: TickerMode(
                         enabled: presentation.enabled,
-                        child: ConversationParticleField(
-                          key: ValueKey(presentation.identity),
-                          assembled: presentation.assembled,
-                          anchors: presentation.anchors,
-                          avatarGlyph: presentation.glyph,
-                          onAssembled: presentation.onAssembled,
-                        ),
+                        child: _renderer!(context, presentation),
                       ),
                     );
                   },
@@ -399,6 +410,7 @@ class _RenderMotionAnchor extends RenderRepaintBoundary {
     final owner = registry;
     final identity = glyphIdentity;
     if (owner == null ||
+        !owner.enabled ||
         identity == null ||
         _capturing ||
         !attached ||
@@ -417,9 +429,10 @@ class _RenderMotionAnchor extends RenderRepaintBoundary {
         pixelRatio: 72 / math.max(size.width, size.height),
       );
       try {
-        final glyph = await ConversationParticleGlyph.fromImage(image);
+        final glyph = await ConversationMotionGlyph.fromImage(image);
         if (glyph != null &&
             attached &&
+            owner.enabled &&
             registry == owner &&
             glyphIdentity == identity) {
           owner.glyphs[identity] = glyph;
@@ -435,33 +448,18 @@ class _RenderMotionAnchor extends RenderRepaintBoundary {
   }
 }
 
-class _MotionPresentation {
-  const _MotionPresentation({
-    required this.identity,
-    required this.assembled,
-    required this.enabled,
-    required this.anchors,
-    required this.glyph,
-    required this.onAssembled,
-  });
-  final Object identity;
-  final bool assembled;
-  final bool enabled;
-  final ConversationParticleAnchors anchors;
-  final ConversationParticleGlyph? glyph;
-  final VoidCallback onAssembled;
-}
-
 class _MotionRegistry {
   final scenes = <_MotionSceneRegistrationState>[];
   final anchors = <_RenderMotionAnchor>{};
-  final glyphs = <Object, ConversationParticleGlyph>{};
-  final presentation = ValueNotifier<_MotionPresentation?>(null);
+  final glyphs = <Object, ConversationMotionGlyph>{};
+  final presentation = ValueNotifier<ConversationMotionPresentation?>(null);
   late RenderObject? Function() surface;
+  bool enabled = false;
   bool _scheduled = false;
   bool _disposed = false;
 
   void notifySubmit() {
+    if (!enabled) return;
     final scene = scenes
         .where(
           (scene) =>
@@ -494,11 +492,11 @@ class _MotionRegistry {
   }
 
   void schedule() {
-    if (_scheduled || _disposed) return;
+    if (!enabled || _scheduled || _disposed) return;
     _scheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduled = false;
-      if (!_disposed) _measure();
+      if (!_disposed && enabled) _measure();
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }
@@ -579,7 +577,6 @@ class _MotionRegistry {
       presentation.value = null;
       return;
     }
-    final diameter = bounds.shortestSide * 0.62;
     final glyph = glyphs[avatar?.glyphIdentity];
     final avatarRect = glyph == null ? null : _rect(avatar, overlay);
     if (avatar != null && glyph == null && _onstage(avatar)) {
@@ -600,12 +597,8 @@ class _MotionRegistry {
         bottomRight: scaled(radius.bottomRight),
       ).scaleRadii();
     }
-    final geometry = ConversationParticleAnchors(
-      sphere: Rect.fromCenter(
-        center: bounds.center,
-        width: diameter,
-        height: diameter,
-      ),
+    final geometry = ConversationMotionAnchors(
+      content: bounds,
       avatar: avatarRect,
       composer: outline,
     );
@@ -620,7 +613,7 @@ class _MotionRegistry {
         previous?.glyph == glyph) {
       return;
     }
-    presentation.value = _MotionPresentation(
+    presentation.value = ConversationMotionPresentation(
       identity: identity,
       assembled: assembled,
       enabled: enabled,

@@ -113,7 +113,9 @@ test("delegated publication leaves the protected release train unchanged", () =>
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "nightly",
     headRef: "codex/example", payload }).ok, true);
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "stable",
-    headRef: "nightly", payload }).ok, true);
+    headRef: "nightly-cutoff/2026-09-05", payload }).ok, true);
+  assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "stable",
+    headRef: "nightly", payload }).ok, false);
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "release",
     headRef: "stable", payload }).ok, true);
   assert.equal(evaluateBranchFlow({ eventName: "pull_request", baseRef: "release",

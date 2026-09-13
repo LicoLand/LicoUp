@@ -62,11 +62,7 @@ fn cli_program_path() -> Result<PathBuf> {
 
 fn app_bundle_path() -> Result<PathBuf> {
     let cli = cli_program_path()?;
-    // …/LicoUp.app/Contents/MacOS/licoup-cli → …/LicoUp.app
-    let bundle = cli
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
+    let bundle = paths::desktop_bundle_for_cli(&cli)
         .ok_or_else(|| anyhow!("client_autostart_app_missing"))?;
     ensure!(
         bundle.extension().and_then(|value| value.to_str()) == Some("app")
@@ -236,7 +232,7 @@ fn mcp_binaries_present() -> Result<bool> {
         Ok(path) => path,
         Err(_) => return Ok(false),
     };
-    let dir = match cli.parent() {
+    let dir = match paths::packaged_binary_directory(&cli) {
         Some(path) => path,
         None => return Ok(false),
     };

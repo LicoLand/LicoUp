@@ -9,13 +9,15 @@ final class AppearanceSettingsSelection {
       appearancePresets = value.appearancePresets,
       appearancePresetDirectoryPath = value.appearancePresetDirectoryPath,
       appearancePresetLoadErrorCount = value.appearancePresetLoadErrorCount,
-      reduceMotion = value.reduceMotion;
+      reduceMotion = value.reduceMotion,
+      loadingEffectId = value.loadingEffectId;
 
   final String appearancePresetId;
   final List<SettingsAppearancePresetProjection> appearancePresets;
   final String appearancePresetDirectoryPath;
   final int appearancePresetLoadErrorCount;
   final bool reduceMotion;
+  final String loadingEffectId;
 
   @override
   bool operator ==(Object other) =>
@@ -27,7 +29,8 @@ final class AppearanceSettingsSelection {
               appearancePresetDirectoryPath &&
           other.appearancePresetLoadErrorCount ==
               appearancePresetLoadErrorCount &&
-          other.reduceMotion == reduceMotion;
+          other.reduceMotion == reduceMotion &&
+          other.loadingEffectId == loadingEffectId;
 
   @override
   int get hashCode => Object.hash(
@@ -36,6 +39,7 @@ final class AppearanceSettingsSelection {
     appearancePresetDirectoryPath,
     appearancePresetLoadErrorCount,
     reduceMotion,
+    loadingEffectId,
   );
 }
 

@@ -75,6 +75,15 @@ void main() {
       expect(preferences.value.reduceMotion, isFalse);
       expect(feature.binding.projection.current.reduceMotion, isFalse);
 
+      final loadingUpdate = feature.binding.projection.changes.first;
+      feature.binding.intents.send(
+        const SetLoadingEffectPreference('particles'),
+      );
+      await loadingUpdate;
+      expect(controller.loadingEffectId, 'particles');
+      expect(preferences.value.loadingEffectId, 'particles');
+      expect(feature.binding.projection.current.loadingEffectId, 'particles');
+
       preferences.failMotionWrite = true;
       final rejected = feature.binding.effects.effects.first;
       feature.binding.intents.send(const SetReduceMotionPreference(true));
@@ -105,6 +114,12 @@ final class _SettingsPreferencesRepository
   Future<PresentationPreferences> setReduceMotion(bool enabled) async {
     if (failMotionWrite) throw StateError('synthetic_write_failure');
     return value = value.copyWith(reduceMotion: enabled);
+  }
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async {
+    if (failMotionWrite) throw StateError('synthetic_write_failure');
+    return value = value.copyWith(loadingEffectId: id);
   }
 
   @override

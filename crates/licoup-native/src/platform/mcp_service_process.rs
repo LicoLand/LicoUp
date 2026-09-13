@@ -15,7 +15,9 @@ fn default_binary() -> Result<PathBuf> {
     } else {
         "lico-subagent-mcp"
     };
-    Ok(executable.with_file_name(name))
+    let directory = super::paths::packaged_binary_directory(&executable)
+        .ok_or_else(|| anyhow!("mcp_binary_unavailable"))?;
+    Ok(directory.join(name))
 }
 pub fn execute(action: &str, binary: Option<&Path>) -> Result<Value> {
     if !matches!(action, "start" | "stop" | "reload" | "status") {
