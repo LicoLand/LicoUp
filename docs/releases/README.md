@@ -3,20 +3,20 @@
 
 - Repository: `LicoLand/LicoUp`
 - Profile: `semver`
-- Current version: `0.2.0`
+- Current version: `0.2.1`
 
 ## Next release
 
-- Version: `0.2.1`
-- Classification: `patch`
+- Version: `0.3.0`
+- Classification: `minor`
 - Status: `ready`
-- Target date: `2026-09-11`
+- Target date: `2026-09-14`
 - Integration branch: `nightly`
 - Progress: `1/1` accepted (`100%`)
 
 | ID | Type | Feature | Status | Risk | Pull request | Depends on | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| clear-window-veil | fix | Clear window veil and quieter glass chrome | accepted | low | [PR](https://github.com/LicoLand/LicoUp/pull/306) | — | PR #306 required Client source policy, Flutter checks, and Client required aggregates passed.<br>Installed macOS client launch and stable-survival verification passed for the clear-veil build. |
+| native-cli-custody-and-presentation | capability | Native CLI custody and the modernized client presentation | accepted | medium | [PR](https://github.com/LicoLand/LicoUp/pull/338) | — | PR #338 required Branch flow, Commit identity, Auditor, Client source policy, Flutter checks, Rust checks and the Client required aggregate passed on the exact head.<br>The stable edge's client gate builds and installs the macOS arm64 client, then observes the installed app's bounded survival proof. |
 
 ## Release history
 
