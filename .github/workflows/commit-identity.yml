@@ -33,6 +33,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REF_NAME: ${{ github.ref_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -60,8 +61,12 @@ jobs:
           evidence_file=$(mktemp)
           trap 'rm -f "$evidence_file"; settle' EXIT
           if [[ "$EVENT_NAME" == push ]]; then
-            release_sha=$(gh api "repos/${REPOSITORY}/git/ref/heads/release" --jq '.object.sha')
-            test "$HEAD_SHA" = "$release_sha"
+            case "$REF_NAME" in
+              macos-nightly-release-candidate) source_branch=nightly ;;
+              *) source_branch=release ;;
+            esac
+            source_sha=$(gh api "repos/${REPOSITORY}/git/ref/heads/${source_branch}" --jq '.object.sha')
+            test "$HEAD_SHA" = "$source_sha"
             gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" | jq '[[.]]' >"$evidence_file"
           else
             gh api --paginate --slurp \
