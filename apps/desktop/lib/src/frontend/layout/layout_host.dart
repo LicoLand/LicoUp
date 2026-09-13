@@ -203,7 +203,13 @@ final class _LayoutHostState extends State<LayoutHost> {
                     LayoutShellBuildContext(
                       environment: widget.environment,
                       activeDestination: widget.destination,
-                      availableDestinations: destinations,
+                      availableDestinations: destinations
+                          .where(
+                            (destination) =>
+                                destination != ClientSection.skillHub &&
+                                destination != ClientSection.pluginManagement,
+                          )
+                          .toList(growable: false),
                       destination: LayoutFocusTarget(
                         semanticTarget: widget.primaryFocusTarget,
                         child: destination,

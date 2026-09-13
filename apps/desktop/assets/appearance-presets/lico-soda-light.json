@@ -2,8 +2,8 @@
   "schemaVersion": 2,
   "id": "lico-soda-light",
   "label": {
-    "en": "LicoUp Light",
-    "zh-CN": "LicoUp 明亮"
+    "en": "Orbital · Light",
+    "zh-CN": "轨道 · 浅色"
   },
   "mode": "light",
   "tokens": {
@@ -23,10 +23,10 @@
     "brand-subtle": "#f5f8c5",
     "brand-border": "#bfc744",
     "text-on-brand": "#1b1d00",
-    "accent": "#007d8a",
-    "accent-strong": "#0d5f68",
-    "accent-surface": "#deeef0",
-    "accent-border": "#67c8d6",
+    "accent": "#4f596a",
+    "accent-strong": "#303a4b",
+    "accent-surface": "#e9ebef",
+    "accent-border": "#9aa2af",
     "text-on-accent": "#ffffff",
     "success": "#158351",
     "warning": "#9c660c",
@@ -35,8 +35,13 @@
     "pressed-overlay": "rgba(26, 26, 32, 0.09)",
     "selected-surface": "#eeeef1",
     "brand-glow": "rgba(217, 227, 32, 0.30)",
-    "accent-glow": "rgba(0, 125, 138, 0.22)",
+    "accent-glow": "rgba(79, 89, 106, 0.15)",
     "skeleton-base": "#eeeef1",
-    "skeleton-highlight": "#ffffff"
+    "skeleton-highlight": "#ffffff",
+    "font-family": "geist",
+    "icon-style": "outlined",
+    "motion-scale": "1",
+    "surface-opacity": "1",
+    "component-finish": "crisp"
   }
 }

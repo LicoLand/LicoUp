@@ -10,6 +10,7 @@
 | **Domain Vocabulary** | [CONTEXT.md](../../CONTEXT.md) | Unified domain vocabulary definitions |
 | **Documentation Index** | [docs/README.md](../README.md) | Complete documentation table of contents |
 | **Continuous Assistant** | [CONTINUOUS-ASSISTANT.md](CONTINUOUS-ASSISTANT.md) | Target continuity semantics; current facts stay in STATUS |
+| **Global Model Registry** | [MODEL-REGISTRY.md](MODEL-REGISTRY.md) | Canonical model identity, dynamic directory, and actual usage controls |
 
 [`PRODUCT.md`](../../PRODUCT.md) owns the durable product goal and boundary. [`../STATUS.md`](../STATUS.md) owns current status. Current component and dependency facts are owned by the Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the architecture verifier under `apps/desktop/scripts/client-architecture/`. This document is their public architectural projection.
 
@@ -149,11 +150,12 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | Architecture Domain | Architectural Tier | Specification Document | Domain Responsibilities |
 |:---|:---|:---|:---|
 | **Client-Native Interaction** | Tier 2: Bridging Contract Layer | [CLIENT-NATIVE-INTERACTION.md](CLIENT-NATIVE-INTERACTION.md) | `licoup.stdio.v1` structured method frames and mobile FFI command contracts |
+| **Native CLI** | Tier 2: Local Application Boundary | [NATIVE-CLI.md](NATIVE-CLI.md) | Registry-derived commands, persistent native methods, and independent MCP process lifecycle |
 | **Canonical Conversation Vertical** | Vertical Slice (Tiers 1 ~ 4) | [CONVERSATION-DOMAIN.md](CONVERSATION-DOMAIN.md) | Bidirectional binding, direct chat base with group orchestration encapsulation, state machine & end-to-end flows |
 | **Agent Adapters & Runtime Architecture** | Tier 3: Rust Functional Core | [AGENT-ADAPTERS-ARCHITECTURE.md](AGENT-ADAPTERS-ARCHITECTURE.md) | Registry-derived driver taxonomy, standard protocols (ACP/RPC/PTY) vs proprietary (Codex/OpenCode) normalization |
 | **Rust Infrastructure & Boundaries** | Tier 3: Infra & Boundary Gateway | [RUST-INFRASTRUCTURE-LAYER.md](RUST-INFRASTRUCTURE-LAYER.md) | Database (SQLite WAL), dynamic config, secret custody facade, transport, PTY/TTY |
 | **Adaptive Flywheel** | Tier 3: Rust Functional Core | [ADAPTIVE-FLYWHEEL.md](../functionality/ADAPTIVE-FLYWHEEL.md) | Immutable Graph revisions, route selection, and durable run reduction |
-| **Subagent MCP** | Tier 3: Rust Functional Core | [subagent-mcp.md](../protocols/subagent-mcp.md) | Assistant goal ownership, profile facts, and temporary Graph admission |
+| **Subagent MCP** | External Protocol Adapter | [subagent-mcp.md](../protocols/subagent-mcp.md) | Independently built MCP process exposing the remote-approved Subagents subset through the native CLI |
 | **Semantic Conversation** | Tier 3: Rust Functional Core | [semantic-conversation.md](../protocols/semantic-conversation.md) | Registry-listed agent protocol translations, native catalog discovery, and read-only replay |
 | **Security & Data Boundaries** | Tier 3: Rust Functional Core | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | VM discovery isolation, endpoint protection preview, platform secret custody, zero-trust data |
 | **Platform System Bridges** | Tier 4: Native OS Adaptation | `crates/licoup-native/src/platform/` | Low-level OS APIs and system tooling for macOS, Windows, Linux, Android, iOS |
@@ -196,8 +198,15 @@ Plans, temporary scripts, local skills, raw evidence, and runtime data belong to
 | **Monolithic Rust crate** | High | `crates/licoup-native/` (~299K lines) | `domain/` has 48 entries, `core/` 52, `platform/` 85 (72K lines). Compilation slow, boundaries unclear. Largest files: `client_conversation/store.rs` (6.6K lines), `ffi/commands/mod.rs` (5.2K). |
 | **Contracts layer bloat** | Medium | `apps/desktop/lib/src/contracts/` (93 files, 15.7K lines) | Mixes models, interfaces, parsing logic, and generated code in one layer. |
 | **Large Flutter surfaces** | Medium | `frontend/features/`, `display/conversation/` | The former 2.6K-line Canonical pane is split into focused files (largest leaf: 572 lines). Remaining large feature files include `adaptive_flywheel_multi_capsule_section.dart` (1626), `settings_panel.dart` (1184), `agent_conversation_composer_capsules.dart` (1135), and `agent_conversation_workspace.dart` (1132). |
-| **Vestigial backend layer** | Low | `apps/desktop/lib/src/backend/` (2.1K lines) | Too thin to provide real abstraction; also fabricates domain events in Dart (`dispatch.lane.bound`). |
-| **Manual JSON-RPC method surface** | High | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | Method names hand-duplicated on both sides (25 Rust vs 23 Dart; two methods unreachable from Dart); codegen covers FFI data types only, not stdio frames. Dart routes some calls by argv-shape sniffing. |
+
+### Native boundary migration
+
+Conversation services use named native ports. The platform adapter owns generated
+RPC method selection and encoding; generic command execution rejects stateful
+conversation namespaces. Flutter rendering, native execution and the standalone
+MCP module can change independently through their owned contracts. The
+[client-native boundary](CLIENT-NATIVE-INTERACTION.md) and
+[native CLI](NATIVE-CLI.md) define these contracts and transport ownership.
 
 ### Implemented Presentation Boundary (M3–M6)
 

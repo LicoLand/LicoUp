@@ -33,7 +33,7 @@ String agentConversationTargetCompactDisplayName(TargetCandidate target) {
     'cursor' => 'Cursor',
     'hermes' || 'hermes-agent' => 'Hermes',
     'kilo' || 'kilo-code' => 'Kilo',
-    'kimi' || 'kimi-code' => 'Kimi',
+    'kimi-code' => 'Kimi',
     'grok' || 'xai-grok' => 'Grok',
     'command-code' || 'cmdc' => 'Command Code',
     'lico' || 'lico-agent' => 'Lico',

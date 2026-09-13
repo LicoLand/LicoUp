@@ -266,6 +266,18 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/test/native_cli_runtime_context_test.dart",
   ])), ["bridge.flutter-native-client"]);
+  for (const source of [
+    "native_conversation_command_policy.dart",
+    "native_conversation_port.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      `apps/desktop/lib/src/platform/native_client/${source}`,
+    ])), [
+      "architecture.client-boundaries",
+      "bridge.flutter-native-client.stdio-transport",
+      "regression.native-stdio-rpc-source-bundle",
+    ]);
+  }
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/client.dart",
   ])), [
@@ -307,8 +319,11 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  assert.deepEqual(stdioTransport.command.args.slice(-2), [
+  assert.deepEqual(stdioTransport.command.args.slice(-5), [
+    "test/stdio_rpc_method_policy_test.dart",
     "test/native_stdio_rpc_client_test.dart",
+    "test/native_stdio_rpc_read_pool_test.dart",
+    "test/native_conversation_port_test.dart",
     "test/stdio_rpc_operation_queue_test.dart",
   ]);
   assert.deepEqual(stdioIntegration.command.args.slice(-2), ["--name", "RPC"]);

@@ -702,8 +702,11 @@ void main() {
           onDraftChanged: (_) {},
           onSend: (_) async => true,
           floatingMatteCapsule: true,
-          mentionTargets: [_target('codex', 'Codex'), _target('kimi', 'Kimi')],
-          mentionLabels: const {'codex': 'Codex', 'kimi': 'Kimi'},
+          mentionTargets: [
+            _target('codex', 'Codex'),
+            _target('kimi-code', 'Kimi Code'),
+          ],
+          mentionLabels: const {'codex': 'Codex', 'kimi-code': 'Kimi Code'},
         ),
       ),
     );
@@ -719,7 +722,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('agent-conversation-mention-kimi')),
+      find.byKey(const Key('agent-conversation-mention-kimi-code')),
       findsOneWidget,
     );
     final selectedRow = tester.widget<Material>(
@@ -735,7 +738,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('agent-conversation-mention-kimi')),
+      find.byKey(const Key('agent-conversation-mention-kimi-code')),
       findsOneWidget,
     );
   });
@@ -803,8 +806,11 @@ void main() {
           onReasoningEffortChanged: (_) {},
           onDraftChanged: (_) {},
           onSend: (_) async => true,
-          mentionTargets: [_target('codex', 'Codex'), _target('kimi', 'Kimi')],
-          mentionLabels: const {'codex': 'Codex', 'kimi': 'Kimi'},
+          mentionTargets: [
+            _target('codex', 'Codex'),
+            _target('kimi-code', 'Kimi Code'),
+          ],
+          mentionLabels: const {'codex': 'Codex', 'kimi-code': 'Kimi Code'},
         ),
       ),
     );
@@ -817,7 +823,7 @@ void main() {
 
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '@Kimi ',
+      '@Kimi Code ',
     );
   });
 

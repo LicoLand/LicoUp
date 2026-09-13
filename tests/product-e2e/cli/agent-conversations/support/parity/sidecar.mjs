@@ -5,8 +5,8 @@ import { coreProbeIds, dispatchLaneHarnessVersion, driversInventoryPath, workspa
 
 export function releaseSidecarCandidates() {
   return [
-    join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release", "LicoUp.app", "Contents", "MacOS", "licoup-cli"),
-    join(workspaceRoot, "apps", "desktop", "build", "macos", "Build", "Products", "Release", "licoup.app", "Contents", "MacOS", "licoup-cli"),
+    join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release", "LicoUp.app", "Contents", "Helpers", "LicoUpCustody.app", "Contents", "MacOS", "licoup-cli"),
+    join(workspaceRoot, "apps", "desktop", "build", "macos", "Build", "Products", "Release", "licoup.app", "Contents", "Helpers", "LicoUpCustody.app", "Contents", "MacOS", "licoup-cli"),
   ];
 }
 

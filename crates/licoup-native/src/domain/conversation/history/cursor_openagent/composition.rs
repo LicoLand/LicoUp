@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::super::generic::collect_explicit_json_sessions;
 use super::super::{HistoryAdapter, HistoryScanConfig};
-use super::codec::open_read_only_connection;
+use super::codec::{open_read_only_connection, sqlite_table_exists};
 use super::cursor::parse_cursor_sqlite_sessions;
 use super::cursor_cli::parse_cursor_cli_store_sessions;
 use super::fallback::parse_generic_sqlite_sessions;
@@ -49,22 +49,21 @@ pub(crate) fn parse_sqlite_sessions(
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name == "store.db")
+            && sqlite_table_exists(&connection, "blobs")
         {
-            let precise_sessions =
-                parse_cursor_cli_store_sessions(path, source_kind, metadata, &connection);
-            if !precise_sessions.is_empty() {
-                return precise_sessions;
-            }
+            return parse_cursor_cli_store_sessions(path, source_kind, metadata, &connection);
         }
-        let precise_sessions = parse_cursor_sqlite_sessions(
-            path,
-            source_kind,
-            metadata,
-            &mut connection,
-            scan_config.single_session_id(),
-        );
-        if !precise_sessions.is_empty() {
-            return precise_sessions;
+        // A recognized store owns an empty result too. In particular, a CLI
+        // session absent from the IDE store must not make an exact read parse
+        // every unrelated bubble and ItemTable record through generic fallback.
+        if sqlite_table_exists(&connection, "cursorDiskKV") {
+            return parse_cursor_sqlite_sessions(
+                path,
+                source_kind,
+                metadata,
+                &mut connection,
+                scan_config.single_session_id(),
+            );
         }
     }
     let transaction = match connection.transaction_with_behavior(TransactionBehavior::Deferred) {

@@ -12,6 +12,7 @@ use crate::platform::runtime_adapters::{
 };
 use anyhow::{Result, anyhow};
 use licoup_conversation::continuity::ContinuityReadPort;
+use licoup_conversation::{DEFAULT_EVENT_PAGE_SIZE, EventPagePosition};
 use serde_json::{Value, json};
 use std::{
     fmt,
@@ -115,7 +116,7 @@ struct HostRuntimePorts {
     strategy_execute: Option<Arc<StrategyExecute>>,
 }
 
-/// One application service for CLI, FFI, Conversation MCP, and Subagent MCP.
+/// One native application service for CLI, FFI and admitted protocol adapters.
 /// Transport adapters pass JSON envelopes here; domain validation remains in
 /// `ConversationStore`. Strategy execution is a separate native authority.
 #[derive(Clone)]
@@ -509,16 +510,31 @@ impl ConversationService {
             "conversation.get" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let mut value = serde_json::to_value(self.store.get(conversation_id)?)?;
+                if object
+                    .get("includeNativeSessionReferences")
+                    .and_then(Value::as_bool)
+                    == Some(true)
+                {
+                    value["nativeSessionReferences"] = serde_json::to_value(
+                        self.store.native_session_references(conversation_id)?,
+                    )?;
+                }
                 if let Some(continuity) = &self.continuity {
                     continuity.enrich_get(&mut value, conversation_id);
                 }
                 Ok(value)
             }
-            "conversation.events.page" => Ok(serde_json::to_value(self.store.page_events(
-                required_string(object, "conversationId")?,
-                object.get("afterSequence").and_then(Value::as_i64),
-                object.get("limit").and_then(Value::as_u64).unwrap_or(50) as usize,
-            )?)?),
+            "conversation.events.page" => Ok(serde_json::to_value(
+                self.store.page_events_window(
+                    required_string(object, "conversationId")?,
+                    event_page_position(object)?,
+                    object
+                        .get("limit")
+                        .and_then(Value::as_u64)
+                        .map(|limit| limit as usize)
+                        .unwrap_or(DEFAULT_EVENT_PAGE_SIZE),
+                )?,
+            )?),
             "conversation.events.search" => Ok(serde_json::to_value(self.store.search(
                 required_string(object, "query")?,
                 object.get("limit").and_then(Value::as_u64).unwrap_or(50) as usize,
@@ -2038,8 +2054,15 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "timeout.policy.get" => &["action"],
         "timeout.policy.set" => &["action", "policy"],
         "conversation.list" => &["action", "includeArchived"],
-        "conversation.get" => &["action", "conversationId"],
-        "conversation.events.page" => &["action", "conversationId", "afterSequence", "limit"],
+        "conversation.get" => &["action", "conversationId", "includeNativeSessionReferences"],
+        "conversation.events.page" => &[
+            "action",
+            "conversationId",
+            "afterSequence",
+            "beforeSequence",
+            "latest",
+            "limit",
+        ],
         "conversation.events.search" => &["action", "query", "limit"],
         "conversation.event.append" => &[
             "action",
@@ -2187,6 +2210,33 @@ fn required_string<'a>(object: &'a serde_json::Map<String, Value>, key: &str) ->
         .ok_or_else(|| anyhow!("invalid_request"))
 }
 
+fn event_page_position(object: &serde_json::Map<String, Value>) -> Result<EventPagePosition> {
+    let sequence = |key| {
+        object
+            .get(key)
+            .filter(|value| !value.is_null())
+            .map(|value| value.as_i64().ok_or_else(|| anyhow!("invalid_request")))
+            .transpose()
+    };
+    let after = sequence("afterSequence")?;
+    let before = sequence("beforeSequence")?;
+    let latest = object
+        .get("latest")
+        .map(|value| value.as_bool().ok_or_else(|| anyhow!("invalid_request")))
+        .transpose()?
+        .unwrap_or(false);
+    if usize::from(after.is_some()) + usize::from(before.is_some()) + usize::from(latest) > 1 {
+        return Err(anyhow!("invalid_request"));
+    }
+    Ok(if latest {
+        EventPagePosition::Latest
+    } else if let Some(sequence) = before {
+        EventPagePosition::Before(sequence)
+    } else {
+        EventPagePosition::After(after.unwrap_or(0))
+    })
+}
+
 fn required_revision(object: &serde_json::Map<String, Value>, key: &str) -> Result<i64> {
     object
         .get(key)
@@ -2231,7 +2281,7 @@ fn principal_from_value(value: &Value) -> Result<Principal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::client_conversation::DispatchSessionMode;
+    use crate::domain::client_conversation::{DispatchSessionMode, EventKind};
     use std::sync::{Condvar, Mutex};
 
     /// Releases the runtime barrier even when an assertion fails first, so a
@@ -2339,6 +2389,106 @@ mod tests {
                 "eventId": event_id,
             }))
             .expect("dispatch after post")
+    }
+
+    #[test]
+    fn canonical_event_pages_default_to_twenty_and_preserve_directional_cursors() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, _, _) = group_fixture(&service);
+        for _ in 0..45 {
+            service
+                .store()
+                .append_event(
+                    &conversation_id,
+                    None,
+                    EventKind::Message,
+                    &[],
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap();
+        }
+        let latest = service
+            .execute(json!({
+                "action": "conversation.events.page",
+                "conversationId": conversation_id,
+                "latest": true
+            }))
+            .unwrap();
+        let events = latest["events"].as_array().unwrap();
+        assert_eq!(events.len(), 20);
+        assert_eq!(latest["hasEarlier"], true);
+        assert_eq!(latest["nextBeforeSequence"], events[0]["sequence"]);
+        let tail_sequence = events.last().unwrap()["sequence"].as_i64().unwrap();
+        assert_eq!(latest["nextCursor"], tail_sequence.to_string());
+        let older = service
+            .execute(json!({
+                "action": "conversation.events.page",
+                "conversationId": conversation_id,
+                "beforeSequence": latest["nextBeforeSequence"]
+            }))
+            .unwrap();
+        let older_events = older["events"].as_array().unwrap();
+        assert_eq!(older_events.len(), 20);
+        assert!(
+            older_events.last().unwrap()["sequence"].as_i64().unwrap()
+                < events[0]["sequence"].as_i64().unwrap()
+        );
+        assert_eq!(older["totalCount"], latest["totalCount"]);
+
+        let forward = service
+            .execute(json!({
+                "action": "conversation.events.page",
+                "conversationId": conversation_id
+            }))
+            .unwrap();
+        assert_eq!(forward["events"].as_array().unwrap().len(), 20);
+        assert_eq!(forward["events"][0]["sequence"], 1);
+        assert_eq!(forward["hasEarlier"], false);
+        assert!(forward["nextBeforeSequence"].is_null());
+        let exact = service
+            .execute(json!({
+                "action": "conversation.events.page",
+                "conversationId": conversation_id,
+                "afterSequence": tail_sequence - 1,
+                "limit": 1
+            }))
+            .unwrap();
+        assert_eq!(exact["events"].as_array().unwrap().len(), 1);
+        assert_eq!(exact["events"][0]["sequence"], tail_sequence);
+        assert_eq!(exact["nextCursor"], latest["nextCursor"]);
+    }
+
+    #[test]
+    fn canonical_event_pages_reject_conflicting_or_malformed_selectors() {
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        );
+        let (conversation_id, _, _) = group_fixture(&service);
+        for selectors in [
+            json!({"latest": true, "afterSequence": 0}),
+            json!({"latest": true, "beforeSequence": 20}),
+            json!({"beforeSequence": 20, "afterSequence": 0}),
+            json!({"latest": "true"}),
+            json!({"beforeSequence": "20"}),
+            json!({"afterSequence": 1.5}),
+        ] {
+            let mut request = json!({
+                "action": "conversation.events.page",
+                "conversationId": conversation_id,
+            });
+            request
+                .as_object_mut()
+                .unwrap()
+                .extend(selectors.as_object().unwrap().clone());
+            assert_eq!(
+                service.execute(request).unwrap_err().to_string(),
+                "invalid_request"
+            );
+        }
     }
 
     #[test]
@@ -3115,6 +3265,55 @@ mod tests {
             missing.unwrap_err().to_string(),
             "conversation_event_not_found"
         );
+    }
+
+    #[test]
+    fn group_native_sessions_are_opt_in_local_get_facts() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap());
+        let (conversation_id, _, membership_id) = group_fixture(&service);
+        let agent_id = service
+            .store()
+            .get(&conversation_id)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .find(|membership| membership.id == membership_id)
+            .unwrap()
+            .principal
+            .agent_id
+            .unwrap();
+        let scope = service
+            .store()
+            .prepare_runtime_dispatch(
+                &agent_id,
+                "synthetic-session",
+                "Synthetic request",
+                Some(&conversation_id),
+                Some(&membership_id),
+                None,
+                None,
+            )
+            .unwrap();
+        service
+            .store()
+            .bind_runtime_session(&scope, &agent_id, "synthetic-session", None, None)
+            .unwrap();
+        let ordinary = service
+            .execute(json!({"action":"conversation.get","conversationId":conversation_id}))
+            .unwrap();
+        assert!(ordinary.get("nativeSessionReferences").is_none());
+        let local = service
+            .execute(
+                json!({"action":"conversation.get","conversationId":conversation_id,
+            "includeNativeSessionReferences":true}),
+            )
+            .unwrap();
+        assert_eq!(
+            local["nativeSessionReferences"],
+            json!([{"membershipId":membership_id,
+            "agentId":agent_id,"nativeSessionId":"synthetic-session"}])
+        );
+        assert!(local.get("runtimeBindings").is_none());
     }
 
     #[test]

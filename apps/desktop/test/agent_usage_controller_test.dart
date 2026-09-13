@@ -9,6 +9,96 @@ import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
 
 void main() {
+  test(
+    'cold loading spans cache, local scan, and missing directory bootstrap',
+    () async {
+      final gateway = _FakeUsageGateway()
+        ..reportsResult = []
+        ..reportsGate = Completer<void>()
+        ..scanGate = Completer<void>()
+        ..registryGate = Completer<void>()
+        ..registryRefreshGate = Completer<void>()
+        ..registryEmpty = true;
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+      final phases = <bool>[];
+      final subscription = controller.changes.listen((_) {
+        phases.add(controller.loading);
+      });
+      addTearDown(subscription.cancel);
+
+      final pending = controller.ensureLoadedAndFresh();
+      expect(controller.loading, isTrue);
+      expect(controller.scanning, isFalse);
+      gateway.reportsGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.report, isNull);
+      expect(controller.loading, isTrue);
+      gateway.scanGate!.complete();
+      await pending;
+      expect(controller.report, isNotNull);
+      expect(controller.loading, isTrue);
+      gateway.registryGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.loading, isTrue);
+      expect(phases, everyElement(isTrue));
+      gateway.registryRefreshGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.loading, isFalse);
+      expect(controller.loadFailed, isFalse);
+      expect(gateway.scanCalls, 2);
+      expect(phases.last, isFalse);
+    },
+  );
+
+  test(
+    'a failed first scan ends loading and a retry clears the failure',
+    () async {
+      final gateway = _FakeUsageGateway()
+        ..reportsResult = []
+        ..scanFails = true;
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+      await controller.ensureLoadedAndFresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.loading, isFalse);
+      expect(controller.loadFailed, isTrue);
+      expect(controller.report, isNull);
+      gateway.scanFails = false;
+      await controller.scan();
+      expect(controller.loading, isFalse);
+      expect(controller.loadFailed, isFalse);
+      expect(controller.report, isNotNull);
+    },
+  );
+
+  test(
+    'cached usage publishes while its fresh scan is still pending',
+    () async {
+      final gateway = _FakeUsageGateway();
+      gateway.reportsResult = [_reportWithDailyUsage(windowDays: 30)];
+      final gate = Completer<void>();
+      gateway.scanGate = gate;
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+      final changes = <AgentUsageReport?>[];
+      final subscription = controller.changes.listen((_) {
+        changes.add(controller.report);
+      });
+      addTearDown(subscription.cancel);
+      final pending = controller.ensureLoadedAndFresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(gateway.scanCalls, 1);
+      expect(gate.isCompleted, isFalse);
+      expect(controller.report?.totalTokens, greaterThan(0));
+      expect(controller.loading, isTrue);
+      expect(controller.scanning, isFalse);
+      expect(changes.whereType<AgentUsageReport>(), isNotEmpty);
+      gate.complete();
+      await pending;
+    },
+  );
+
   test('shares one in-flight scan and keeps bounded report history', () async {
     final gateway = _FakeUsageGateway();
     final gate = Completer<void>();
@@ -387,6 +477,11 @@ final class _FakeUsageGateway implements AgentUsageGateway {
     : report = report ?? _reportWithDailyUsage(windowDays: 90);
 
   Completer<void>? scanGate;
+  Completer<void>? reportsGate;
+  Completer<void>? registryGate;
+  Completer<void>? registryRefreshGate;
+  bool registryEmpty = false;
+  bool scanFails = false;
   int scanCalls = 0;
   int reportCalls = 0;
   int lastHistoryDays = 0;
@@ -395,8 +490,29 @@ final class _FakeUsageGateway implements AgentUsageGateway {
   List<AgentUsageReport>? reportsResult;
 
   @override
+  Future<AgentModelRegistryResult> readModelRegistry() async {
+    await registryGate?.future;
+    return AgentModelRegistryResult(
+      ok: true,
+      status: registryEmpty ? 'empty' : 'ready',
+      revision: 'fixture',
+    );
+  }
+
+  @override
+  Future<AgentModelRegistryResult> refreshModelRegistry() async {
+    await registryRefreshGate?.future;
+    return const AgentModelRegistryResult(
+      ok: true,
+      status: 'unchanged',
+      revision: 'fixture',
+    );
+  }
+
+  @override
   Future<List<AgentUsageReport>> reports({int limit = 10}) async {
     reportCalls += 1;
+    await reportsGate?.future;
     return reportsResult ?? [report];
   }
 
@@ -410,6 +526,9 @@ final class _FakeUsageGateway implements AgentUsageGateway {
     lastHistoryDays = historyDays;
     lastForceRefresh = forceRefresh;
     await scanGate?.future;
+    if (scanFails) {
+      throw const FormatException('synthetic scan failure');
+    }
     return report;
   }
 }

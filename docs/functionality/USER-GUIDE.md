@@ -107,9 +107,9 @@ temporary workflow Graph with exact Membership bindings. The Graph is compiled
 and preflighted before any Agent effect: structure, quota, model, Agent, Skill,
 environment, capability, readiness, and existing-Authority problems return stable typed errors first, and
 runtime failures that cannot be preflighted return to the Assistant, which may
-continue directly or author a later Graph. The four Assistant MCP tools rank
+continue directly or author a later Graph. The native CLI Assistant commands rank
 Profiles and execute (including internal preflight and durable admission),
-inspect, or explicitly cancel a temporary workflow. The MCP-bound Agent must
+inspect, or explicitly cancel a temporary workflow. The calling Agent must
 be the exact active designated Assistant Membership; it cannot choose routes,
 bind native sessions, or create hidden participants. Independent workflows can
 run concurrently while each workflow and Membership turn stays ordered.

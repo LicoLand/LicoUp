@@ -25,6 +25,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// the window's lifetime so the engine keeps rendering into its view inside
   /// the rounded container.
   private var retainedFlutterViewController: FlutterViewController?
+  private let reduceMotionStream = MacReduceMotionStream()
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -97,6 +98,10 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     )
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    FlutterEventChannel(
+      name: "licoup/accessibility/reduce_motion",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    ).setStreamHandler(reduceMotionStream)
     self.delegate = self
     if MacStatusBarPresencePolicy.createsStatusItemAtLaunch {
       MacStatusBarPresence.shared.attach(mainWindow: self)
@@ -245,5 +250,43 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   deinit {
     NotificationCenter.default.removeObserver(self)
+  }
+}
+
+/// Flutter's macOS embedder does not forward this NSWorkspace preference.
+private final class MacReduceMotionStream: NSObject, FlutterStreamHandler {
+  private var observation: NSObjectProtocol?
+
+  func onListen(
+    withArguments arguments: Any?,
+    eventSink events: @escaping FlutterEventSink
+  ) -> FlutterError? {
+    removeObservation()
+    let workspace = NSWorkspace.shared
+    observation = workspace.notificationCenter.addObserver(
+      forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      events(workspace.accessibilityDisplayShouldReduceMotion)
+    }
+    events(workspace.accessibilityDisplayShouldReduceMotion)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    removeObservation()
+    return nil
+  }
+
+  private func removeObservation() {
+    if let observation {
+      NSWorkspace.shared.notificationCenter.removeObserver(observation)
+      self.observation = nil
+    }
+  }
+
+  deinit {
+    removeObservation()
   }
 }

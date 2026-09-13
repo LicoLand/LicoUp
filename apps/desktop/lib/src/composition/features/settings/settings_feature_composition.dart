@@ -129,6 +129,10 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
           () => _controller.setLocalePreference(preference, cause: cause),
           trace,
         );
+      case SetReduceMotionPreference(:final enabled):
+        _run(() => _controller.setReduceMotion(enabled, cause: cause), trace);
+      case SetLoadingEffectPreference(:final id):
+        _run(() => _controller.setLoadingEffect(id, cause: cause), trace);
       case SetLayoutPreference(:final profileId):
         _run(
           () => _controller.layoutManager.selectLayout(

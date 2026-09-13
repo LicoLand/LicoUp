@@ -1,5 +1,8 @@
 //! Stable local-token-usage contract and aggregation models.
 
+use super::model_identity::project_model_usage;
+pub(super) use super::variant::UsageVariant;
+pub(super) const USAGE_PARSER_REVISION: &str = "request-variant-usage-v1";
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,56 +21,35 @@ pub(super) struct AgentDef {
     pub(super) label: &'static str,
 }
 
-pub(super) const SUPPORTED_AGENTS: &[AgentDef] = &[
-    AgentDef {
-        id: "antigravity",
-        label: "Antigravity",
-    },
-    AgentDef {
-        id: "claude-code",
-        label: "Claude Code",
-    },
-    AgentDef {
-        id: "codex",
-        label: "Codex",
-    },
-    AgentDef {
-        id: "copilot",
-        label: "GitHub Copilot",
-    },
-    AgentDef {
-        id: "cursor",
-        label: "Cursor",
-    },
-    AgentDef {
-        id: "hermes",
-        label: "Hermes Agent",
-    },
-    AgentDef {
-        id: "kilo-code",
-        label: "Kilo Code",
-    },
-    AgentDef {
-        id: "openclaw",
-        label: "OpenClaw",
-    },
-    AgentDef {
-        id: "opencode",
-        label: "OpenCode",
-    },
-    AgentDef {
-        id: "kimi",
-        label: "Kimi",
-    },
-    AgentDef {
-        id: "kimi-code",
-        label: "Kimi Code",
-    },
-    AgentDef {
-        id: "pi",
-        label: "Pi Agent",
-    },
-];
+pub(super) fn supported_agents() -> Vec<AgentDef> {
+    crate::domain::agent_catalog::entries()
+        .into_iter()
+        .filter(|entry| {
+            entry.has_adapter
+                || crate::domain::conversation::source_catalog::usage_adapter_for_agent(&entry.id)
+                    .is_some_and(|adapter| {
+                        adapter != crate::domain::conversation::source_catalog::HistoryAdapter::Code
+                    })
+        })
+        .filter_map(|entry| {
+            let (id, label) = if let Ok(target) = crate::domain::targets::target_def(&entry.id) {
+                (target.id, target.label)
+            } else {
+                let registration = crate::domain::cli_registration::registrations()
+                    .iter()
+                    .find(|registration| registration.id == entry.id)?;
+                (registration.id.as_str(), registration.label.as_str())
+            };
+            Some(AgentDef {
+                id,
+                label: label
+                    .strip_suffix(" CLI")
+                    .or_else(|| label.strip_suffix(" Desktop"))
+                    .unwrap_or(label),
+            })
+        })
+        .collect()
+}
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct HistoryUsageSummary {
@@ -130,7 +112,16 @@ impl HistoryUsageSummary {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn to_json(&self) -> Value {
+        self.to_json_for_agent(None, &crate::domain::model_registry::snapshot())
+    }
+
+    pub(super) fn to_json_for_agent(
+        &self,
+        source_agent: Option<&str>,
+        registry: &crate::domain::model_registry::RegistrySnapshot,
+    ) -> Value {
         json!({
             "sessionCount": self.session_count,
             "messageCount": self.message_count,
@@ -153,7 +144,7 @@ impl HistoryUsageSummary {
                 "estimatedCompletionTokens": self.estimated_completion_tokens,
                 "estimatedTotalTokens": self.estimated_total_tokens
             },
-            "dailyUsage": self.daily_usage_json(),
+            "dailyUsage": self.daily_usage_json(source_agent, registry),
             "source": self.source.unwrap_or("native-history-adapters"),
             "confidence": self.confidence(),
             "tokenUnavailableRequests": self.token_unavailable_records,
@@ -202,17 +193,18 @@ impl HistoryUsageSummary {
     /// Record one present-but-tokenless usage event: a real request whose
     /// provider payload carried no token fields. Nothing is estimated for it;
     /// it only raises the request counters and the day's visibility.
-    pub(super) fn add_token_unavailable_request(
+    pub(super) fn add_token_unavailable_request_with_variant(
         &mut self,
         date_key: Option<String>,
         model: Option<String>,
+        variant: UsageVariant,
     ) {
         self.token_unavailable_records = self.token_unavailable_records.saturating_add(1);
         if let Some(date_key) = date_key.filter(|value| !value.trim().is_empty()) {
             self.daily_usage
                 .entry(date_key)
                 .or_default()
-                .add_token_unavailable_request(model);
+                .add_token_unavailable_request(model, variant);
         }
     }
 
@@ -279,11 +271,20 @@ impl HistoryUsageSummary {
         }
     }
 
-    fn daily_usage_json(&self) -> Vec<Value> {
+    fn daily_usage_json(
+        &self,
+        source_agent: Option<&str>,
+        registry: &crate::domain::model_registry::RegistrySnapshot,
+    ) -> Vec<Value> {
         self.daily_usage
             .iter()
-            .filter(|(_, usage)| usage.total_tokens > 0)
+            .filter(|(_, usage)| usage.total_tokens > 0 || usage.request_count > 0)
             .map(|(date, usage)| {
+                let models = project_model_usage(&usage.model_variants, source_agent, registry);
+                let totals = models
+                    .iter()
+                    .map(|(name, usage)| (name, &usage["totalTokens"]))
+                    .collect::<BTreeMap<_, _>>();
                 json!({
                     "date": date,
                     "promptTokens": usage.prompt_tokens,
@@ -293,8 +294,9 @@ impl HistoryUsageSummary {
                     "messageCount": usage.message_count,
                     "requestCount": usage.request_count,
                     "tokenUnavailableRequests": usage.token_unavailable_requests,
-                    "modelUsage": usage.model_usage_totals_json(),
-                    "modelTokenUsage": usage.model_token_usage_json(),
+                    "modelUsage": totals,
+                    "modelTokenUsage": models,
+                    "rawModelUsage": super::model_identity::raw_usage_json(&usage.model_variants),
                     "explicitRecords": usage.explicit_records,
                     "estimatedRecords": usage.estimated_records
                 })
@@ -310,6 +312,7 @@ pub(super) struct MessageUsage {
     pub(super) completion_tokens: u64,
     pub(super) total_tokens: u64,
     pub(super) model: Option<String>,
+    pub(super) variant: UsageVariant,
     pub(super) accuracy: UsageAccuracy,
 }
 
@@ -337,6 +340,7 @@ pub(super) struct DailyUsageSummary {
     pub(super) request_count: u64,
     pub(super) token_unavailable_requests: u64,
     pub(super) model_usage: BTreeMap<String, ModelTokenUsageSummary>,
+    pub(super) model_variants: BTreeMap<(String, UsageVariant), ModelTokenUsageSummary>,
 }
 
 impl DailyUsageSummary {
@@ -369,7 +373,7 @@ impl DailyUsageSummary {
             .model
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_owned());
-        let entry = self.model_usage.entry(model).or_default();
+        let mut entry = ModelTokenUsageSummary::default();
         entry.record_request();
         entry.add(
             usage.prompt_tokens,
@@ -378,63 +382,58 @@ impl DailyUsageSummary {
             usage.total_tokens,
             usage.accuracy,
         );
+        self.add_model_variant_totals(model, usage.variant, entry);
     }
 
     /// One tokenless request for a model: counted, never converted to tokens.
-    fn add_token_unavailable_request(&mut self, model: Option<String>) {
+    fn add_token_unavailable_request(&mut self, model: Option<String>, variant: UsageVariant) {
         let model = model
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_owned());
         self.message_count = self.message_count.saturating_add(1);
         self.request_count = self.request_count.saturating_add(1);
         self.token_unavailable_requests = self.token_unavailable_requests.saturating_add(1);
+        let mut usage = ModelTokenUsageSummary::default();
+        usage.record_token_unavailable_request();
+        self.add_model_variant_totals(model, variant, usage);
+    }
+
+    pub(super) fn add_model_usage_with_variant(
+        &mut self,
+        model: String,
+        variant: UsageVariant,
+        prompt_tokens: u64,
+        cached_input_tokens: u64,
+        completion_tokens: u64,
+        total_tokens: u64,
+    ) {
+        self.add_model_variant_totals(
+            model,
+            variant,
+            ModelTokenUsageSummary {
+                prompt_tokens,
+                cached_input_tokens: cached_input_tokens.min(prompt_tokens),
+                completion_tokens,
+                total_tokens,
+                ..Default::default()
+            },
+        );
+    }
+
+    pub(super) fn add_model_variant_totals(
+        &mut self,
+        model: String,
+        variant: UsageVariant,
+        usage: ModelTokenUsageSummary,
+    ) {
         self.model_usage
-            .entry(model)
+            .entry(model.clone())
             .or_default()
-            .record_token_unavailable_request();
-    }
-
-    pub(super) fn add_model_usage(
-        &mut self,
-        model: String,
-        prompt_tokens: u64,
-        cached_input_tokens: u64,
-        completion_tokens: u64,
-        total_tokens: u64,
-    ) {
-        self.model_usage.entry(model).or_default().add(
-            prompt_tokens,
-            cached_input_tokens,
-            completion_tokens,
-            total_tokens,
-            UsageAccuracy::Exact,
-        );
-    }
-
-    pub(super) fn add_model_usage_with_estimates(
-        &mut self,
-        model: String,
-        prompt_tokens: u64,
-        cached_input_tokens: u64,
-        completion_tokens: u64,
-        total_tokens: u64,
-        estimated_prompt_tokens: u64,
-        estimated_completion_tokens: u64,
-    ) {
-        let usage = self.model_usage.entry(model).or_default();
-        usage.add(
-            prompt_tokens,
-            cached_input_tokens,
-            completion_tokens,
-            total_tokens,
-            UsageAccuracy::Exact,
-        );
-        usage.estimated_prompt_tokens = usage
-            .estimated_prompt_tokens
-            .saturating_add(estimated_prompt_tokens.min(prompt_tokens));
-        usage.estimated_completion_tokens = usage
-            .estimated_completion_tokens
-            .saturating_add(estimated_completion_tokens.min(completion_tokens));
+            .merge(usage);
+        self.model_variants
+            .entry((model, variant))
+            .or_default()
+            .merge(usage);
     }
 
     fn merge(&mut self, other: &Self) {
@@ -461,30 +460,13 @@ impl DailyUsageSummary {
         self.estimated_completion_tokens = self
             .estimated_completion_tokens
             .saturating_add(other.estimated_completion_tokens);
-        for (model, usage) in &other.model_usage {
-            self.model_usage
-                .entry(model.clone())
-                .and_modify(|current| current.merge(*usage))
-                .or_insert(*usage);
+        for ((model, variant), usage) in &other.model_variants {
+            self.add_model_variant_totals(model.clone(), variant.clone(), *usage);
         }
-    }
-
-    fn model_usage_totals_json(&self) -> BTreeMap<String, u64> {
-        self.model_usage
-            .iter()
-            .map(|(model, usage)| (model.clone(), usage.total_tokens))
-            .collect()
-    }
-
-    fn model_token_usage_json(&self) -> BTreeMap<String, Value> {
-        self.model_usage
-            .iter()
-            .map(|(model, usage)| (model.clone(), usage.to_json()))
-            .collect()
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ModelTokenUsageSummary {
     pub(super) prompt_tokens: u64,
     pub(super) cached_input_tokens: u64,
@@ -530,7 +512,7 @@ impl ModelTokenUsageSummary {
         }
     }
 
-    fn merge(&mut self, other: Self) {
+    pub(super) fn merge(&mut self, other: Self) {
         self.add(
             other.prompt_tokens,
             other.cached_input_tokens,
@@ -550,7 +532,47 @@ impl ModelTokenUsageSummary {
             .saturating_add(other.token_unavailable_requests);
     }
 
-    fn to_json(self) -> Value {
+    pub(super) fn has_usage(&self) -> bool {
+        self.total_tokens > 0 || self.request_count > 0 || self.token_unavailable_requests > 0
+    }
+
+    pub(super) fn saturating_sub(self, other: Self) -> Self {
+        Self {
+            prompt_tokens: self.prompt_tokens.saturating_sub(other.prompt_tokens),
+            cached_input_tokens: self
+                .cached_input_tokens
+                .saturating_sub(other.cached_input_tokens),
+            completion_tokens: self
+                .completion_tokens
+                .saturating_sub(other.completion_tokens),
+            total_tokens: self.total_tokens.saturating_sub(other.total_tokens),
+            estimated_prompt_tokens: self
+                .estimated_prompt_tokens
+                .saturating_sub(other.estimated_prompt_tokens),
+            estimated_completion_tokens: self
+                .estimated_completion_tokens
+                .saturating_sub(other.estimated_completion_tokens),
+            request_count: self.request_count.saturating_sub(other.request_count),
+            token_unavailable_requests: self
+                .token_unavailable_requests
+                .saturating_sub(other.token_unavailable_requests),
+        }
+    }
+
+    pub(super) fn from_json(value: &Value) -> Self {
+        Self {
+            prompt_tokens: number_field(value, &["promptTokens"]).unwrap_or(0),
+            cached_input_tokens: number_field(value, &["cachedInputTokens"]).unwrap_or(0),
+            completion_tokens: number_field(value, &["completionTokens"]).unwrap_or(0),
+            total_tokens: number_field(value, &["totalTokens"]).unwrap_or(0),
+            request_count: number_field(value, &["requestCount"]).unwrap_or(0),
+            token_unavailable_requests: number_field(value, &["tokenUnavailableRequests"])
+                .unwrap_or(0),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn to_json(self) -> Value {
         json!({
             "promptTokens": self.prompt_tokens,
             "cachedInputTokens": self.cached_input_tokens,
@@ -594,7 +616,6 @@ pub(super) fn normalize_agent_id(value: &str) -> String {
         "github-copilot" => "copilot".to_owned(),
         "vscode" | "vs-code" => "code".to_owned(),
         "kilo" => "kilo-code".to_owned(),
-        "kimi" | "moonshot" => "kimi".to_owned(),
         "hermes-agent" => "hermes".to_owned(),
         "pi-agent" | "pi-coding-agent" => "pi".to_owned(),
         other => other.to_owned(),
@@ -607,14 +628,29 @@ mod tests {
 
     #[test]
     fn supported_usage_sources_use_product_identity() {
-        let labels = SUPPORTED_AGENTS
+        let labels = supported_agents()
             .iter()
             .map(|agent| (agent.id, agent.label))
             .collect::<BTreeMap<_, _>>();
 
         assert_eq!(labels.get("codex"), Some(&"Codex"));
         assert_eq!(labels.get("kimi-code"), Some(&"Kimi Code"));
-        assert_eq!(labels.get("kimi"), Some(&"Kimi"));
+        let authoritative =
+            crate::domain::agent_catalog::supported_membership(std::iter::empty::<&str>())
+                .into_iter()
+                .map(|agent| agent.id)
+                .collect::<BTreeSet<_>>();
+        assert!(
+            authoritative.is_subset(
+                &labels
+                    .keys()
+                    .map(|id| id.to_string())
+                    .collect::<BTreeSet<_>>()
+            )
+        );
+        assert!(!labels.contains_key("code"));
+        assert!(labels.contains_key("lico-agent"));
+        assert!(labels.contains_key("deepseek-harness"));
     }
 
     #[test]
@@ -675,9 +711,10 @@ mod tests {
             },
             Some("2026-07-15".to_owned()),
         );
-        summary.add_token_unavailable_request(
+        summary.add_token_unavailable_request_with_variant(
             Some("2026-07-15".to_owned()),
             Some("cursor-auto".to_owned()),
+            UsageVariant::default(),
         );
 
         // The tokenless request never becomes a token total, and it keeps the

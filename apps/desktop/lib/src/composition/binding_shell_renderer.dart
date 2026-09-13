@@ -21,6 +21,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pairing_channels.dart';
 import 'package:licoup/src/frontend/features/models/ui/models_panel.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
@@ -159,14 +160,22 @@ final class BindingShellRenderer implements ShellRendererPort {
     ClientSection.pluginManagement => AdapterPluginPanel(
       binding: _pluginManagement,
     ),
-    ClientSection.mobileRelay => MobileRelayPanel(binding: _mobileRelay),
-    ClientSection.models => ModelsPanel(binding: _models),
+    ClientSection.mobileRelay => MobileRelayPanel(
+      binding: _mobileRelay,
+      chatChannels: MobilePairingChannels(binding: _models),
+    ),
+    ClientSection.models => ModelsPanel(
+      binding: _models,
+      pane: ModelsPanelPane.gateway,
+    ),
     ClientSection.settings => SettingsPanel(
       binding: _settings,
       layoutRegistry: _layout.registry,
     ),
     ClientSection.agentHub => AgentHubPanel(
       binding: _agentHub,
+      plugins: _pluginManagement,
+      skills: _skillHub,
       openHomepage: _openExternalUri,
       onOpenAgent: (agentId) => _shellIntents.send(OpenShellAgent(agentId)),
     ),

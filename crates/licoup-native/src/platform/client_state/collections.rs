@@ -151,8 +151,29 @@ impl ClientStateStore {
     }
 
     pub fn write_collection(&self, collection: &str, value: Value) -> Result<Value> {
-        let path = self.collection_path(collection)?;
         let document = normalize_collection(collection, value)?;
+        self.write_normalized_collection(collection, document)
+    }
+
+    /// Persist complete newest items from an oldest-first sequence, bounded
+    /// both by count and the actual encoded collection size.
+    pub(crate) fn write_collection_retaining_latest_items(
+        &self,
+        collection: &str,
+        value: Value,
+        max_items: usize,
+    ) -> Result<Value> {
+        let mut document = normalize_collection(collection, value)?;
+        serialization::retain_latest_items(
+            &mut document,
+            max_items,
+            policy::MAX_COLLECTION_DOCUMENT_BYTES,
+        )?;
+        self.write_normalized_collection(collection, document)
+    }
+
+    fn write_normalized_collection(&self, collection: &str, document: Value) -> Result<Value> {
+        let path = self.collection_path(collection)?;
         let _target_transaction = if collection == TARGET_DISCOVERY_CACHE_COLLECTION {
             Some(TargetRouteTransactionGuard::acquire(&self.root)?)
         } else {
@@ -419,8 +440,7 @@ fn empty_collection(collection: &str) -> Value {
 }
 
 fn normalize_collection(collection: &str, value: Value) -> Result<Value> {
-    if value.is_object() {
-        let mut object = value.as_object().cloned().unwrap_or_default();
+    if let Value::Object(mut object) = value {
         if let Some(schema) = object.get("schemaVersion") {
             ensure!(
                 schema.as_str() == Some(policy::STATE_SCHEMA_VERSION),

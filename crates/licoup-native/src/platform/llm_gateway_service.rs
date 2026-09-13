@@ -104,6 +104,22 @@ fn authorization_report(
     value
 }
 
+fn authorization_failure_report(error: &anyhow::Error) -> Option<Value> {
+    let reason = match error.to_string().as_str() {
+        "secure_mesh_keychain_classic_access_requires_user_action" => {
+            "secure_mesh_keychain_classic_access_requires_user_action"
+        }
+        _ => return None,
+    };
+    Some(authorization_report(
+        false,
+        Vec::new(),
+        Vec::new(),
+        Some(reason),
+        None,
+    ))
+}
+
 #[cfg(unix)]
 pub(crate) fn replace_gateway_session_credentials(
     handoff: Option<GatewayCredentialHandoff>,
@@ -352,7 +368,14 @@ pub fn credentials_authorize(credential_id: Option<&str>) -> Result<Value> {
         let handoff = if ids.is_empty() {
             None
         } else {
-            vault.authorize_gateway_handoff_filtered(Some(&ids))?
+            match vault.authorize_gateway_handoff_filtered(Some(&ids)) {
+                Ok(handoff) => handoff,
+                Err(error) => {
+                    // An unsuccessful attempt does not replace an existing
+                    // lease, enable any new key, or hot-apply a partial batch.
+                    return authorization_failure_report(&error).map_or_else(|| Err(error), Ok);
+                }
+            }
         };
         let providers = handoff
             .as_ref()
@@ -920,8 +943,7 @@ fn validate_config(path: &Path) -> Result<()> {
 
 fn sidecar_path() -> Result<PathBuf> {
     let current = std::env::current_exe().map_err(|_| anyhow!("llm_gateway_sidecar_missing"))?;
-    let parent = current
-        .parent()
+    let parent = super::paths::packaged_binary_directory(&current)
         .ok_or_else(|| anyhow!("llm_gateway_sidecar_missing"))?;
     for name in [SIDECAR_BINARY, LEGACY_SIDECAR_BINARY] {
         let sibling = parent.join(format!("{}{}", name, std::env::consts::EXE_SUFFIX));
@@ -1226,6 +1248,28 @@ fn unix_seconds() -> u64 {
 mod tests {
     use super::*;
     use std::net::TcpListener;
+
+    #[test]
+    fn authorization_failure_projects_only_allowlisted_keychain_action() {
+        let report = authorization_failure_report(&anyhow!(
+            "secure_mesh_keychain_classic_access_requires_user_action"
+        ))
+        .unwrap();
+        assert_eq!(report["authorized"], false);
+        assert_eq!(
+            report["reasonCode"],
+            "secure_mesh_keychain_classic_access_requires_user_action"
+        );
+        assert_eq!(report["providers"], json!([]));
+        assert_eq!(report["authorizedCredentialIds"], json!([]));
+        assert!(report.get("credentialsApplied").is_none());
+        assert!(
+            authorization_failure_report(&anyhow!("synthetic private platform detail")).is_none()
+        );
+        assert!(
+            authorization_failure_report(&anyhow!("secure_mesh_authorization_required")).is_none()
+        );
+    }
 
     struct PortableDataDirOverrideGuard {
         previous: Option<PathBuf>,

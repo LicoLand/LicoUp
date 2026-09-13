@@ -9,7 +9,7 @@ const repoRoot = join(moduleRoot, "../../../../../..");
 function resolveLicoupCli() {
   const candidates = [
     process.env.LICO_CLIENT_PATH,
-    "/Applications/LicoUp.app/Contents/MacOS/licoup-cli",
+    "/Applications/LicoUp.app/Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli",
     join(repoRoot, "build", "crates", "licoup-native", "target", "debug", "licoup-cli"),
     join(repoRoot, "crates", "licoup-native", "target", "debug", "licoup-cli"),
     join(repoRoot, "target", "debug", "licoup-cli"),

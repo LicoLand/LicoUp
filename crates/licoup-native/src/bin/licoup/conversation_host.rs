@@ -265,6 +265,14 @@ fn wait_for_current_or_released_endpoint() -> Option<Stream> {
     None
 }
 
+pub(super) fn connect_for_cli(require_running: bool) -> Result<Stream> {
+    if require_running {
+        return licoup_native::platform::conversation_host_transport::connect_existing()
+            .map_err(|_| anyhow!("persistent_conversation_transport_required"));
+    }
+    connect_or_start()
+}
+
 fn connect_or_start() -> Result<Stream> {
     if host_ownership() != HostOwnership::Absent {
         // The record names this executable's generation, whether or not the
@@ -537,11 +545,13 @@ pub(super) fn serve_host() -> Result<()> {
                 .map_err(|err| err.to_string())
         });
     }
-    // The Subagent MCP service is a supervised child: a start failure or an
-    // unexpected exit degrades MCP readiness through the monitor instead of
-    // crashing the unrelated Conversation host behavior.
-    let _subagent_mcp =
-        licoup_native::platform::subagent_mcp_supervisor::SubagentMcpService::start();
+    // Optional protocol services have their own process and lifecycle.
+    // A startup failure never changes this host or an active turn.
+    if std::env::var_os("LICOUP_MCP_AUTOSTART").as_deref() != Some(std::ffi::OsStr::new("0")) {
+        thread::spawn(|| {
+            let _ = licoup_native::platform::mcp_service_process::execute("start", None);
+        });
+    }
     serve_bound_host(listener, service, runtime, None)
 }
 

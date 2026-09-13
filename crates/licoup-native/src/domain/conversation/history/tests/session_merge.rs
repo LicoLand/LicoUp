@@ -79,7 +79,17 @@ fn codex_history_merges_explicit_subagent_lineage_into_parent_thread() {
     assert_eq!(messages.len(), 3);
     assert_eq!(messages[1]["role"], "subagent");
     assert_eq!(messages[1]["cardTitle"], "reviewer");
-    assert_eq!(messages[1]["messages"][0]["text"], "Found one issue.");
+    assert_eq!(messages[1]["childSessionId"], "child-session");
+    assert_eq!(messages[1]["childMessageCount"], 1);
+    assert!(messages[1]["messages"].as_array().unwrap().is_empty());
+    let child = conversation_list(
+        &json!({"agent": "codex", "root": display_path(&dir), "sessionId": "child-session"}),
+    )
+    .unwrap();
+    assert_eq!(
+        child["sessions"][0]["messages"][0]["text"],
+        "Found one issue."
+    );
 }
 
 #[test]

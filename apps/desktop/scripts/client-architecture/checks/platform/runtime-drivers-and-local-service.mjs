@@ -136,7 +136,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
   }
   for (const dependency of ["events::", "execution::", "protocol::", "supervision::"]) {
     assert(
-      !claudeCodeTransportSource.includes(dependency),
+      !new RegExp(`\\b${dependency}`, "u").test(claudeCodeTransportSource),
       `Claude Code transport lifecycle must not depend on ${dependency}`
     );
   }

@@ -1,19 +1,18 @@
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'fixtures/client_controller/support/fake_agent_service.dart';
 
 /// Bounded driver failures must close the live turn in the transcript and
 /// surface their precise code; an unclosed process card was the "endless
 /// retry" symptom.
 class _FailingConversationService extends AgentConversationService {
-  const _FailingConversationService();
+  const _FailingConversationService({required super.native});
 
   @override
   Stream<AgentDispatchEvent> sendStreaming({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,
@@ -72,8 +71,12 @@ void main() {
   testWidgets('exact driver failure survives later observer disconnect', (
     tester,
   ) async {
+    final service = FakeAgentService();
     final controller = ClientController(
-      conversationService: const _FailingConversationService(),
+      agentService: service,
+      conversationService: _FailingConversationService(
+        native: service.conversationNativePort,
+      ),
     );
     addTearDown(controller.dispose);
     controller.scannedTargets = [_copilotTarget()];

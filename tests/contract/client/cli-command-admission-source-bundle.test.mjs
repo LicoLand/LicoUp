@@ -1489,7 +1489,9 @@ test("recognized CommandSpec literals use typed admitted handler accessors", asy
       `${registration.sourcePath} ${registration.handler} must not retain a raw args alias`,
     );
     for (let index = 0; index < handlerFunction.body.length; index += 1) {
-      if (handlerFunction.body[index].value !== carrierName) continue;
+      // Rust's `_` parameter is a discard pattern, not a binding. Closure
+      // discard patterns in the body cannot refer to that carrier.
+      if (carrierName === "_" || handlerFunction.body[index].value !== carrierName) continue;
       assert.notEqual(
         handlerFunction.body[index + 1]?.value,
         "[",
@@ -2509,6 +2511,7 @@ test("command root owns one bounded typed public admission seam", async () => {
     "options",
     "constraints",
     "cardinality",
+    "help",
   ];
   assert.deepEqual(
     namedStructFields(schemaLiteralBody).sort(),

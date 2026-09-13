@@ -455,7 +455,8 @@ intra-Conversation dispatch lineage and is not the parent/child Conversation
 relation. A one-time scan retired the single-visible-Conversation presentation
 in these owned documents; there is no permanent removed-string gate.
 
-The installed MCP catalog remains the existing nine tools. Old Conversation
-dispatch stays on its current actions. `designation_epoch` is a version fact on
+The external tool catalog belongs to [Subagent MCP](../protocols/subagent-mcp.md).
+Assistant workflow operations use the native CLI; Conversation dispatch stays
+on its current actions. `designation_epoch` is a version fact on
 the designated Assistant Membership, not a new Principal. `admit-task-child`
 is an internal continuity command for durable work, not a User demand form.

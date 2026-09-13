@@ -6,6 +6,70 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+    'up-to-date check clears an earlier candidate without claiming signature verification',
+    () async {
+      final gateway = _FakeClientUpdateGateway();
+      final updates = <ClientUpdateStatusUpdate>[];
+      final controller = ClientUpdateController(
+        gateway: gateway,
+        agentService: _NoopAgentCommandRunner(),
+        onStatus: updates.add,
+      );
+      addTearDown(controller.dispose);
+      await controller.checkGithub();
+      expect(controller.canDownloadUpdate, isTrue);
+      gateway.checkPhase = ClientUpdatePhase.upToDate;
+      await controller.checkGithub();
+      expect(controller.status.phase, ClientUpdatePhase.upToDate);
+      expect(controller.artifactReceiptId, isEmpty);
+      expect(controller.status.availableVersion, isEmpty);
+      expect(controller.canDownloadUpdate, isFalse);
+      expect(controller.canApplyUpdate, isFalse);
+      expect(updates.last.chinese, '已是最新版本。');
+      expect(updates.last.errorCode, isEmpty);
+    },
+  );
+
+  test(
+    'missing release metadata is unavailable and never reports up to date',
+    () async {
+      final gateway = _FakeClientUpdateGateway()
+        ..checkPhase = ClientUpdatePhase.unavailable;
+      final updates = <ClientUpdateStatusUpdate>[];
+      final controller = ClientUpdateController(
+        gateway: gateway,
+        agentService: _NoopAgentCommandRunner(),
+        onStatus: updates.add,
+      );
+      addTearDown(controller.dispose);
+      await controller.checkGithub();
+      expect(controller.status.phase, ClientUpdatePhase.unavailable);
+      expect(controller.status.runningVersion, '1.0.0');
+      expect(controller.artifactReceiptId, isEmpty);
+      expect(controller.canCheckUpdate, isTrue);
+      expect(controller.canDownloadUpdate, isFalse);
+      expect(controller.canApplyUpdate, isFalse);
+      expect(updates.last.errorCode, 'client_update_metadata_unavailable');
+      expect(updates.last.chinese, isNot(contains('最新')));
+    },
+  );
+
+  test('unexpected native check phase cannot report success', () async {
+    final gateway = _FakeClientUpdateGateway()
+      ..checkPhase = ClientUpdatePhase.failed;
+    final updates = <ClientUpdateStatusUpdate>[];
+    final controller = ClientUpdateController(
+      gateway: gateway,
+      agentService: _NoopAgentCommandRunner(),
+      onStatus: updates.add,
+    );
+    addTearDown(controller.dispose);
+    await controller.checkGithub();
+    expect(controller.status.phase, ClientUpdatePhase.failed);
+    expect(updates.last.errorCode, 'client_update_check_failed');
+  });
+
+  test(
     'download verifies internally so apply can run without chrome steps',
     () async {
       final gateway = _FakeClientUpdateGateway();
@@ -205,6 +269,7 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   final List<String> calls = [];
   bool failCheck = false;
   bool mismatchDownloadReceipt = false;
+  ClientUpdatePhase checkPhase = ClientUpdatePhase.updateAvailable;
   String lastApplyDataRoot = '';
   String lastCheckTargetReleaseTrack = '';
 
@@ -261,7 +326,18 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     _record('check');
     lastCheckTargetReleaseTrack = targetReleaseTrack;
     if (failCheck) throw StateError('check_failed');
-    return _status(ClientUpdatePhase.updateAvailable);
+    if (checkPhase != ClientUpdatePhase.updateAvailable) {
+      return ClientUpdateStatus(
+        phase: checkPhase,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.stable,
+        errorCode: checkPhase == ClientUpdatePhase.unavailable
+            ? 'client_update_metadata_unavailable'
+            : '',
+      );
+    }
+    return _status(checkPhase);
   }
 
   @override

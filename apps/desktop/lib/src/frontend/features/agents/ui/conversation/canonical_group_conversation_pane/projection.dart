@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:licoup/src/contracts/conversation_execution.dart';
+
 import 'package:licoup/src/presentation/conversation/canonical_conversation_event_metadata.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -151,7 +153,14 @@ AgentConversationSession canonicalGroupConversationSession(
               ? 'assistant'
               : 'member');
     final correlationId = event.correlationId.trim();
-    final turnIdentity = correlationId.isEmpty ? '' : 'live-$correlationId';
+    final turnIdentity = correlationId.isEmpty ? '' : correlationId;
+    final executionReference = !user && correlationId.isNotEmpty
+        ? ConversationExecutionReference(
+            conversationId: event.conversationId,
+            membershipId: event.authorMembershipId,
+            turnHandle: correlationId,
+          )
+        : null;
     var processIndex = 0;
     final textChunks = <String>[];
     // Posted image Event Parts collect here and land on the flushed text
@@ -164,11 +173,16 @@ AgentConversationSession canonicalGroupConversationSession(
     var insideMessageUnit = false;
     var textCreatedAt = event.createdAtUnixMs;
     var textFlush = 0;
+    AgentConversationReplyTerminalState? terminalState;
     void flushText() {
       if (textChunks.isEmpty) return;
       final text = textChunks.join();
+      if (text.trim().isEmpty && pendingImages.isEmpty) {
+        textChunks.clear();
+        return;
+      }
       final identity = textFlush == 0
-          ? event.id
+          ? (executionReference == null ? event.id : '$correlationId-assistant')
           : '${event.id}:text:$textFlush';
       messages.add(
         AgentConversationMessage(
@@ -188,6 +202,7 @@ AgentConversationSession canonicalGroupConversationSession(
               ? ''
               : author?.principal.displayName.trim() ?? '',
           participantRole: participantRole,
+          executionReference: executionReference,
           deliveryState: user && failedSourceEventIds.contains(event.id)
               ? AgentConversationMessageDeliveryState.failed
               : AgentConversationMessageDeliveryState.ordinary,
@@ -232,6 +247,14 @@ AgentConversationSession canonicalGroupConversationSession(
         continue;
       }
       var presentation = _canonicalGroupPartPresentation(eventPart);
+      if (presentation.cardType == 'lifecycle') {
+        terminalState = switch (presentation.text) {
+          'completed' => AgentConversationReplyTerminalState.completed,
+          'failed' => AgentConversationReplyTerminalState.failed,
+          'cancelled' => AgentConversationReplyTerminalState.cancelled,
+          _ => terminalState,
+        };
+      }
       if (presentation.cardType == 'continuity-task-card') {
         try {
           final decoded = jsonDecode(presentation.text);
@@ -264,7 +287,11 @@ AgentConversationSession canonicalGroupConversationSession(
           id: eventPart.id.isEmpty
               ? '${event.id}:${eventPart.ordinal}'
               : eventPart.id,
-          role: user ? 'user' : presentation.cardType,
+          role: user
+              ? 'user'
+              : presentation.cardTitle == 'lifecycle.failed'
+              ? 'error'
+              : presentation.cardType,
           text: presentation.text,
           createdAt: _iso(
             eventPart.createdAtUnixMs == 0
@@ -282,6 +309,7 @@ AgentConversationSession canonicalGroupConversationSession(
               ? ''
               : author?.principal.displayName.trim() ?? '',
           participantRole: participantRole,
+          executionReference: executionReference,
           deliveryState: user && failedSourceEventIds.contains(event.id)
               ? AgentConversationMessageDeliveryState.failed
               : AgentConversationMessageDeliveryState.ordinary,
@@ -289,15 +317,41 @@ AgentConversationSession canonicalGroupConversationSession(
       );
     }
     flushText();
-    if (pendingImages.isNotEmpty) {
+    if (!user &&
+        event.finalized &&
+        textFlush == 0 &&
+        pendingImages.isEmpty &&
+        terminalState != null) {
+      final identity = executionReference == null
+          ? event.id
+          : '$correlationId-assistant';
       messages.add(
         AgentConversationMessage(
-          id: event.id,
+          id: identity,
+          role: 'assistant',
+          text: '',
+          createdAt: _iso(event.createdAtUnixMs),
+          stableIdentity: identity,
+          participantAgentId: author?.principal.agentId.trim() ?? '',
+          participantLabel: author?.principal.displayName.trim() ?? '',
+          participantRole: participantRole,
+          executionReference: executionReference,
+          replyTerminalState: terminalState,
+        ),
+      );
+    }
+    if (pendingImages.isNotEmpty) {
+      final identity = executionReference == null
+          ? event.id
+          : '$correlationId-assistant';
+      messages.add(
+        AgentConversationMessage(
+          id: identity,
           role: user ? 'user' : 'assistant',
           text: '',
           createdAt: _iso(event.createdAtUnixMs),
           layer: AgentConversationSemanticLayer.thread,
-          stableIdentity: event.id,
+          stableIdentity: identity,
           images: List<AgentConversationImageAttachment>.unmodifiable(
             pendingImages,
           ),
@@ -308,6 +362,7 @@ AgentConversationSession canonicalGroupConversationSession(
               ? ''
               : author?.principal.displayName.trim() ?? '',
           participantRole: participantRole,
+          executionReference: executionReference,
         ),
       );
       pendingImages.clear();
@@ -420,6 +475,19 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
       cardType: 'lifecycle',
       cardTitle: 'lifecycle.$lifecycleStage',
       text: lifecycleStage,
+    );
+  }
+  if (_isFailureDiagnosticPart(eventPart)) {
+    final decoded = jsonDecode(eventPart.content) as Map;
+    final stage = (decoded['stage'] ?? '').toString();
+    final code = (decoded['code'] ?? '').toString();
+    final reason =
+        (decoded['message'] ?? decoded['reason'] ?? decoded['turnStatus'] ?? '')
+            .toString();
+    return (
+      cardType: 'error',
+      cardTitle: code,
+      text: [stage, code, reason].where((value) => value.isNotEmpty).join(': '),
     );
   }
   if (eventPart.kind == ConversationEventPartKind.metadata) {

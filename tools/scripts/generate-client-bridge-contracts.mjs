@@ -387,7 +387,7 @@ function readConversationSchema(family) {
     !Number.isSafeInteger(schema.maxRequestBytes) ||
     schema.maxRequestBytes <= 0 ||
     schema.maxRequestBytes > 16 * 1024 * 1024 ||
-    schema.defaultEventPageSize !== 50 ||
+    schema.defaultEventPageSize !== 20 ||
     schema.maxEventPageSize !== 100 ||
     JSON.stringify(schema.actions) !== JSON.stringify(expectedActions) ||
     !validValues(schema.principalKinds) ||

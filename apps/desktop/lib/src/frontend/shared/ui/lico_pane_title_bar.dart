@@ -58,6 +58,7 @@ final class LicoPaneTitleBar extends StatelessWidget {
     this.refreshingIconKey,
     this.leading,
     this.trailing,
+    this.actionsOnSeparateLine = false,
     this.padding = EdgeInsets.zero,
   });
 
@@ -74,45 +75,63 @@ final class LicoPaneTitleBar extends StatelessWidget {
   /// Optional actions immediately left of refresh. Feature panes leave this
   /// null; search lives in the left sidebar.
   final Widget? trailing;
+
+  /// The feature may move its actions together below the title when their
+  /// measured width leaves insufficient space for the page identity.
+  final bool actionsOnSeparateLine;
   final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
+    final heading = <Widget>[
+      if (leading != null) ...[
+        leading!,
+        const SizedBox(width: LicoContentSpacing.compact),
+      ],
+      Expanded(
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+    ];
+    final actions = <Widget>[
+      if (trailing != null) ...[
+        const SizedBox(width: LicoContentSpacing.compact),
+        trailing!,
+      ],
+      const SizedBox(width: LicoContentSpacing.compact),
+      LicoPaneRefreshButton(
+        key: refreshButtonKey,
+        tooltip: refreshTooltip,
+        onPressed: onRefresh,
+        refreshing: refreshing,
+        refreshingIconKey: refreshingIconKey,
+      ),
+    ];
     return SizedBox(
       width: double.infinity,
       child: Padding(
         padding: padding,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (leading != null) ...[
-              leading!,
-              const SizedBox(width: LicoContentSpacing.compact),
-            ],
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+        child: actionsOnSeparateLine
+            ? Column(
+                children: [
+                  Row(children: heading),
+                  const SizedBox(height: LicoContentSpacing.compact),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actions,
+                  ),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [...heading, ...actions],
               ),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: LicoContentSpacing.compact),
-              trailing!,
-            ],
-            const SizedBox(width: LicoContentSpacing.compact),
-            LicoPaneRefreshButton(
-              key: refreshButtonKey,
-              tooltip: refreshTooltip,
-              onPressed: onRefresh,
-              refreshing: refreshing,
-              refreshingIconKey: refreshingIconKey,
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -70,6 +70,75 @@ void main() {
     },
   );
 
+  test(
+    'ready skills publish before local scan and other Agents finish',
+    () async {
+      final local = Completer<void>();
+      final opencode = Completer<void>();
+      final controller = _controller(
+        gateway: _Gateway(
+          skillsByAgent: {
+            'codex': [
+              {'skillId': 'codex-review'},
+            ],
+            'opencode': [
+              {'skillId': 'opencode-debug'},
+            ],
+          },
+          skillGates: {'opencode': opencode},
+        ),
+        source: _Source([
+          {'skillId': 'shared-format', 'isPublic': true},
+        ], gate: local),
+      );
+      addTearDown(controller.dispose);
+      final refresh = controller.refresh('codex');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.busy, isTrue);
+      expect(
+        controller.skills.map((skill) => skill['skillId']),
+        contains('codex-review'),
+      );
+      local.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.busy, isTrue);
+      expect(
+        controller.skills.map((skill) => skill['skillId']),
+        containsAll(['codex-review', 'shared-format']),
+      );
+      opencode.complete();
+      await refresh;
+      expect(controller.busy, isFalse);
+      expect(
+        controller.skills.map((skill) => skill['skillId']),
+        containsAll(['codex-review', 'shared-format', 'opencode-debug']),
+      );
+    },
+  );
+
+  test('a failed source preserves its last available skills', () async {
+    final gateway = _Gateway(
+      skillsByAgent: {
+        'codex': [
+          {'skillId': 'review'},
+        ],
+        'opencode': [
+          {'skillId': 'debug'},
+        ],
+      },
+    );
+    final controller = _controller(gateway: gateway);
+    addTearDown(controller.dispose);
+    await controller.refresh('codex');
+    gateway.failingAgents.add('opencode');
+    await controller.refresh('codex', forceRefresh: true);
+    expect(
+      controller.skills.map((skill) => skill['skillId']),
+      containsAll(['review', 'debug']),
+    );
+    expect(controller.lastErrorCode, isEmpty);
+  });
+
   test('busy lock suppresses duplicate workflow execution', () async {
     final gate = Completer<void>();
     final gateway = _Gateway(gate: gate);
@@ -128,14 +197,19 @@ TargetCandidate _target(String id) => TargetCandidate(
 );
 
 class _Source implements SkillHubLocalCatalogSource {
-  const _Source(this.values);
+  const _Source(this.values, {this.gate});
+
+  final Completer<void>? gate;
 
   final List<Map<String, dynamic>> values;
 
   @override
   Future<List<Map<String, dynamic>>> scan({
     required Iterable<String> detectedAgentIds,
-  }) async => values;
+  }) async {
+    if (gate != null) await gate!.future;
+    return values;
+  }
 }
 
 class _PreferencesRepository implements SkillHubPreferencesRepository {
@@ -158,11 +232,13 @@ class _Gateway implements SkillHubGateway {
     this.skillsByAgent = const {},
     Set<String>? failingAgents,
     this.gate,
+    this.skillGates = const {},
   }) : failingAgents = failingAgents ?? <String>{};
 
   final Map<String, List<Map<String, dynamic>>> skillsByAgent;
   final Set<String> failingAgents;
   final Completer<void>? gate;
+  final Map<String, Completer<void>> skillGates;
   var requestCalls = 0;
 
   void _check(String agent) {
@@ -182,6 +258,8 @@ class _Gateway implements SkillHubGateway {
   @override
   Future<List<Map<String, dynamic>>> listSkills({required String agent}) async {
     _check(agent);
+    final skillGate = skillGates[agent];
+    if (skillGate != null) await skillGate.future;
     return skillsByAgent[agent] ?? const [];
   }
 

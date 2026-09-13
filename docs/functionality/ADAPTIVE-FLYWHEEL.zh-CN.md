@@ -102,7 +102,7 @@ script 状态必须声明 `runtime` 与 `entry`。留空的 flow 目标在导入
 `callback` 边则让 run 挂起：源状态结算完成，run 持久进入等待，主智能体——发起方
 Assistant membership——通过与效果输出相同的 Membership 作用域会话投影收到这个
 待决回调。只有主智能体的决策作为 run 输入到达后，run 才继续；回调请求会指明应答
-通道：导入的 run 走 `strategy.run.resume`，而经 Subagent MCP 驱动 Assistant run 图的
+通道：导入的 run 走 `strategy.run.resume`，而经原生 CLI 驱动 Assistant run 图的
 主智能体搭乘同一次幂等的 `lico_assistant_workflow_execute` 调用。`advance` 进入声明的
 下一节点，`return` 重新进入已完成的节点，`terminate` 取消整个 run。决策按状态 id 与
 访问序位绑定唯一一次等待，重放或错位的决策都是陈旧的，不会结算任何东西。多个回调

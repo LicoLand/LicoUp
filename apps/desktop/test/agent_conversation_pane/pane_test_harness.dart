@@ -114,9 +114,20 @@ TargetCandidate paneTestTarget({
   runtimeConnection: runtimeConnection,
 );
 
-Widget paneTestApp(Widget child, {double width = 800, double height = 600}) {
+Widget paneTestApp(
+  Widget child, {
+  double width = 800,
+  double height = 600,
+  bool disableAnimations = true,
+}) {
   return MaterialApp(
     locale: const Locale('en'),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(disableAnimations: disableAnimations),
+      child: child!,
+    ),
     theme: buildLicoTheme(
       platformBrightness: Brightness.dark,
     ).copyWith(platform: TargetPlatform.macOS),

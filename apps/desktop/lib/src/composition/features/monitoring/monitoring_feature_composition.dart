@@ -73,18 +73,16 @@ final class _MonitoringIntents implements IntentSink<MonitoringIntent> {
       case RefreshMonitoring():
         _run(() async {
           await Future.wait<void>([
-            _controller.agentUsageController.scan(forceRefresh: true),
+            _controller.agentUsageController.refreshModelDirectoryAndScan(),
             _controller.providerQuotaController.refresh(forceRefresh: true),
           ]);
         }, trace);
       case StartAutomaticMonitoring():
         _controller.startAgentUsagePolling();
-        if (_controller.agentUsageReport == null) {
-          _run(
-            () => _controller.ensureAgentUsageLoadedAndFresh(limit: 20),
-            trace,
-          );
-        }
+        _run(
+          () => _controller.ensureAgentUsageLoadedAndFresh(limit: 20),
+          trace,
+        );
       case StopAutomaticMonitoring():
         _controller.stopAgentUsagePolling();
       case SetMonitoringHistoryDays(:final days):

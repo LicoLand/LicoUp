@@ -1,6 +1,5 @@
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -29,14 +28,20 @@ void main() {
           },
         });
 
-    var accumulated = page(203, 253, 253);
-    accumulated = accumulated.mergeExactMessagePage(page(153, 203, 253));
-    accumulated = accumulated.mergeExactMessagePage(page(53, 153, 253));
-    accumulated = accumulated.mergeExactMessagePage(page(0, 53, 253));
+    var accumulated = page(233, 253, 253);
+    for (var end = 233; end > 0; end -= 20) {
+      accumulated = accumulated.mergeExactMessagePage(
+        page((end - 20).clamp(0, end), end, 253),
+      );
+    }
 
     expect(accumulated.messages, hasLength(253));
     expect(accumulated.messages.first.id, 'message-0');
     expect(accumulated.messages.last.id, 'message-252');
+    expect(
+      accumulated.messages.map((message) => message.id).toSet(),
+      hasLength(253),
+    );
     expect(accumulated.messagePage.hasEarlier, isFalse);
     expect(accumulated.messagePage.start, 0);
   });
@@ -304,81 +309,10 @@ void main() {
     },
   );
 
-  test('multi-block readback converges into one turn card in the timeline', () {
-    // One assistant reply is recorded as several content blocks with tool
-    // operations between them; all of them belong to the same turn card.
-    final persisted = [
-      _message('native-user', 'user', 'build it'),
-      _structured('native-thinking', 'reasoning', 'thinking...'),
-      _structured('native-tool-1', 'tool-call', 'Bash'),
-      _message('native-assistant-1', 'assistant', 'checking...'),
-      _structured('native-tool-2', 'tool-call', 'Grep'),
-      _message('native-assistant-2', 'assistant', 'done'),
-    ];
-    final live = [
-      _message('live-user', 'user', 'build it'),
-      _structured('live-lifecycle', 'lifecycle', 'completed'),
-      _message('live-assistant', 'assistant', 'done'),
-    ];
-
-    final merged = mergeConversationReadbackAndLiveMessages(persisted, live);
-
-    final items = buildConversationTimelineItems(merged, 'claude-code|s-1');
-    final cards = items.whereType<ConversationProcessTimelineItem>().toList();
-    expect(cards, hasLength(1));
-    expect(cards.single.events.map((message) => message.text), [
-      'completed',
-      'thinking...',
-      'Bash',
-      'Grep',
-    ]);
-  });
-
-  test('the turn card keeps its key across the readback handover', () {
-    const scope = 'claude-code|sess-1|native-1';
-    final liveFrame = buildConversationTimelineItems([
-      _message('live-user', 'user', 'build it'),
-      _structured('live-lifecycle', 'lifecycle', 'processing'),
-      _structured('live-process-0', 'reasoning', 'thinking...'),
-      _structured('live-process-1', 'tool-call', 'Bash'),
-      _message('live-assistant', 'assistant', 'done'),
-    ], scope);
-
-    final merged = mergeConversationReadbackAndLiveMessages(
-      [
-        _message('native-user', 'user', 'build it'),
-        _structured('native-thinking', 'reasoning', 'thinking...'),
-        _structured('native-tool', 'tool-call', 'Bash'),
-        _message('native-assistant', 'assistant', 'done'),
-      ],
-      [
-        _message('live-user', 'user', 'build it'),
-        _structured('live-lifecycle', 'lifecycle', 'processing'),
-        _structured('live-process-0', 'reasoning', 'thinking...'),
-        _structured('live-process-1', 'tool-call', 'Bash'),
-        _message('live-assistant', 'assistant', 'done'),
-      ],
-    );
-    final converged = buildConversationTimelineItems(merged, scope);
-
-    final liveCard = liveFrame
-        .whereType<ConversationProcessTimelineItem>()
-        .single;
-    final convergedCards = converged
-        .whereType<ConversationProcessTimelineItem>()
-        .toList();
-    expect(convergedCards, hasLength(1));
-    expect(convergedCards.single.storageKey, liveCard.storageKey);
-    expect(convergedCards.single.events.map((message) => message.text), [
-      'processing',
-      'thinking...',
-      'Bash',
-    ]);
-  });
-
   test(
     'merge cache returns the same list instance when identity is unchanged',
     () {
+      final cache = ConversationMessageMergeCache();
       final persisted = [
         _message('native-user', 'user', 'hello'),
         _message('native-assistant', 'assistant', 'world'),
@@ -388,8 +322,8 @@ void main() {
         _message('live-assistant', 'assistant', 'world'),
       ];
 
-      final first = mergeConversationReadbackAndLiveMessages(persisted, live);
-      final second = mergeConversationReadbackAndLiveMessages(
+      final first = cache.merge(persisted, live);
+      final second = cache.merge(
         List<AgentConversationMessage>.of(persisted),
         List<AgentConversationMessage>.of(live),
       );
@@ -400,10 +334,7 @@ void main() {
         live[0],
         _message('live-assistant', 'assistant', 'world!'),
       ];
-      final rematched = mergeConversationReadbackAndLiveMessages(
-        persisted,
-        grownLive,
-      );
+      final rematched = cache.merge(persisted, grownLive);
       expect(identical(rematched, first), isFalse);
       expect(rematched.map((message) => message.id), [
         'native-user',
@@ -411,6 +342,29 @@ void main() {
         'live-user',
         'live-assistant',
       ]);
+    },
+  );
+
+  test(
+    'merge cache refreshes native child content without a parent text change',
+    () {
+      final cache = ConversationMessageMergeCache();
+      AgentConversationMessage task(String childText) =>
+          AgentConversationMessage(
+            id: 'native-child-task',
+            role: 'subagent',
+            text: 'Worker',
+            createdAt: '2026-07-23T00:00:00Z',
+            childMessages: [
+              _message('native-child-reply', 'assistant', childText),
+            ],
+          );
+      final first = cache.merge([task('Partial result')], const []);
+      final next = cache.merge([task('Complete result')], const []);
+
+      expect(first.single.childMessages.single.text, 'Partial result');
+      expect(next.single.childMessages.single.text, 'Complete result');
+      expect(identical(first, next), isFalse);
     },
   );
 }

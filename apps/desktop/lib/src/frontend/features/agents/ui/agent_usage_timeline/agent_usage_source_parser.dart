@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class AgentUsageSourceDailyEntry {
   const AgentUsageSourceDailyEntry({required this.date, required this.source});
 
@@ -79,19 +77,6 @@ String agentUsageSourceDateKey(Object? value) {
   }
   final dateMatch = RegExp(r'^\d{4}-\d{2}-\d{2}$').firstMatch(text);
   return dateMatch?.group(0) ?? '';
-}
-
-Map<dynamic, dynamic>? agentUsageJsonObjectFromText(String text) {
-  final trimmed = text.trim();
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
-    return null;
-  }
-  try {
-    final parsed = jsonDecode(trimmed);
-    return parsed is Map ? parsed : null;
-  } catch (_) {
-    return null;
-  }
 }
 
 double agentUsageTokensFromSource(Object? value) {

@@ -24,7 +24,12 @@ void main() {
       expect(producer.current.entries.single.id, 'synthetic-agent');
       expect(producer.current.entries.single.channels.single.id, 'official');
       expect(producer.current.entries.single.installable, isTrue);
-      expect(updates, ['loading:empty', 'loading:true', 'ready:false']);
+      expect(updates, [
+        'loading:empty',
+        'loading:true',
+        'loading:false',
+        'ready:false',
+      ]);
 
       await subscription.cancel();
       await producer.dispose();

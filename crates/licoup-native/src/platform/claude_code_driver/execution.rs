@@ -70,6 +70,7 @@ pub(in crate::platform) fn execute(
             return RunResult::failed(supervisor_failure(), started_at, false, false);
         }
     };
+    let raw_execution = transport.bind_raw_execution();
     let known_session = managed
         .native_session_id
         .lock()
@@ -80,6 +81,7 @@ pub(in crate::platform) fn execute(
             .as_deref()
             .is_some_and(|known| known != config.requested_session_id.as_str())
     {
+        drop(raw_execution);
         drop(transport);
         remove_transport(&managed, true);
         return RunResult::failed(
@@ -152,6 +154,7 @@ pub(in crate::platform) fn execute(
     };
     let stderr_truncated = transport.stderr_truncated.load(Ordering::Relaxed);
     set_active_session(&managed, None);
+    drop(raw_execution);
     drop(transport);
     if let Some(outcome) = outcome {
         if let Err(failure) = bind_session(&managed, &outcome.session_id) {

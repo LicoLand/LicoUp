@@ -76,6 +76,13 @@ mixin ClientLifecycleFacade
       id: 'client_state_migration',
       action: _admitClientStateMigration,
     ),
+    // Local is the highest-priority startup data target. Native state
+    // admission is its only prerequisite; target-cache hydration can itself
+    // start Agent history/model reads, so it must follow Local's first page.
+    ClientBootstrapStep(
+      id: 'client_local_conversation',
+      action: _initializeLocalConversation,
+    ),
     ClientBootstrapStep(id: 'client_storage', action: _initializeClientStorage),
     ClientBootstrapStep(
       id: 'client_preferences',
@@ -147,20 +154,16 @@ mixin ClientLifecycleFacade
     await layoutManager.initialize();
   }
 
+  Future<void> _initializeLocalConversation() async {
+    if (mobileClientRuntimePlatform || lifecycleProjection.disposed) return;
+    await clientConversationController.initialize();
+  }
+
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
         presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
-    // System-following and light themes are not ready yet, so a configured
-    // brightness that lands on them falls back to the dark theme at startup.
-    final resolvedAppearancePresetId = switch (appearanceBrightnessSelectionFor(
-      requestedAppearancePresetId,
-      appearancePresetConfigs,
-    )) {
-      AppearanceBrightnessSelection.system ||
-      AppearanceBrightnessSelection.light => AppearancePresetIds.licoSoda,
-      _ => requestedAppearancePresetId,
-    };
+    final resolvedAppearancePresetId = requestedAppearancePresetId;
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
@@ -172,6 +175,12 @@ mixin ClientLifecycleFacade
     }
     localePreference = LocalePreference.normalize(
       presentation?.localePreference ?? LocalePreference.system,
+    );
+    appearancePreferenceOwner.replaceReduceMotion(
+      presentation?.reduceMotion ?? false,
+    );
+    appearancePreferenceOwner.replaceLoadingEffect(
+      presentation?.loadingEffectId ?? 'spinner',
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();

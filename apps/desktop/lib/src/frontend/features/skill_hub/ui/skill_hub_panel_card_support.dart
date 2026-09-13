@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
@@ -208,10 +209,7 @@ class SkillScanningPlaceholder extends StatelessWidget {
           SizedBox(
             width: 36,
             height: 36,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: colors.accent,
-            ),
+            child: LicoLoadingIndicator(strokeWidth: 3, color: colors.accent),
           ),
           const SizedBox(height: 16),
           Text(

@@ -7,6 +7,9 @@ use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
+use crate::platform::raw_execution::{
+    RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+};
 use crate::platform::turn_event_emit::{
     emit_agent_processing, emit_agent_tool_error, emit_turn_event,
 };
@@ -195,6 +198,7 @@ fn create_chat_session(
     // turn so the connector never starts without its canonical Membership.
     crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
     crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
+    observe_command(&command);
     let mut child = SupervisedChild::spawn(&mut command).map_err(|_| {
         ProtocolFailure::new(
             "cursor_cli_start_failed",
@@ -218,8 +222,16 @@ fn create_chat_session(
             "process/start",
         ));
     };
-    let stdout_handle = thread::spawn(move || read_bounded(stdout, max_output));
-    let stderr_handle = thread::spawn(move || read_bounded(stderr, max_output));
+    let stdout_observer = RawExecutionObserver::current();
+    let stdout_handle = thread::spawn(move || {
+        let _scope = RawExecutionScope::enter(stdout_observer);
+        read_bounded(stdout, max_output, RawExecutionDirection::Received)
+    });
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _scope = RawExecutionScope::enter(stderr_observer);
+        read_bounded(stderr, max_output, RawExecutionDirection::Stderr)
+    });
     let deadline = if timeout_ms == 0 {
         None
     } else {
@@ -308,6 +320,7 @@ fn run_turn(
     apply_optional_turn_flags(&mut command, params);
     crate::platform::runtime_adapters::apply_subagent_caller_context(&mut command, params);
     crate::platform::runtime_adapters::apply_mcp_runtime_root(&mut command);
+    observe_command(&command);
     let (mut child, stdout) = match spawn_turn_transport(command) {
         Ok(transport) => transport,
         Err(_) => {
@@ -341,12 +354,32 @@ fn run_turn(
         );
     };
     let (sender, receiver) = mpsc::channel();
-    let stdout_handle =
-        thread::spawn(move || read_protocol_messages(BufReader::new(stdout), sender));
+    // Unix Master::read owns raw PTY capture before control isolation. Pipe
+    // transports carry the invocation explicitly into the protocol reader.
+    #[cfg(not(unix))]
+    let stdout_observer = RawExecutionObserver::current();
+    let stdout_handle = thread::spawn(move || {
+        #[cfg(not(unix))]
+        let binding = crate::platform::raw_execution::RawExecutionBinding::default();
+        #[cfg(not(unix))]
+        let _guard = binding.bind(stdout_observer);
+        #[cfg(not(unix))]
+        let stdout = crate::platform::raw_execution::RawExecutionReader::new(
+            stdout,
+            binding,
+            "cursor",
+            RawExecutionDirection::Received,
+        );
+        read_protocol_messages(BufReader::new(stdout), sender)
+    });
     // Cursor's documented failure channel is a non-zero exit plus stderr,
     // often without a terminal stream-json frame. Keep a bounded copy only
     // until this turn is classified; raw provider prose never leaves here.
-    let stderr_handle = thread::spawn(move || read_bounded(stderr, Some(max_stderr)));
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _scope = RawExecutionScope::enter(stderr_observer);
+        read_bounded(stderr, Some(max_stderr), RawExecutionDirection::Stderr)
+    });
     // The deadline already spans the whole turn, including any create-chat
     // phase, so the turn phase simply keeps consuming the same window.
     let (outcome, failure, stdout_truncated) = consume_turn_stream(
@@ -764,7 +797,74 @@ struct BoundedRead {
     truncated: bool,
 }
 
-fn read_bounded(mut reader: impl Read, max_output: Option<usize>) -> BoundedRead {
+fn observe_command(command: &Command) {
+    if let Some(observer) = RawExecutionObserver::current() {
+        observer.record_bytes(
+            "cursor.executable",
+            RawExecutionDirection::Sent,
+            command.get_program().as_encoded_bytes(),
+        );
+        for argument in command.get_args() {
+            observer.record_bytes(
+                "cursor.argv",
+                RawExecutionDirection::Sent,
+                argument.as_encoded_bytes(),
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod raw_execution_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn raw_execution_records_each_actual_argument_without_shell_encoding() {
+        let records = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&records);
+        let observer = RawExecutionObserver::new(move |source, direction, text| {
+            captured
+                .lock()
+                .unwrap()
+                .push((source.to_owned(), direction, text.to_owned()));
+            Ok(())
+        });
+        let _scope = RawExecutionScope::enter(Some(observer));
+        let mut command = Command::new("synthetic-cursor");
+        command.args([
+            "--resume",
+            "synthetic-session",
+            "literal 'quoted'\nand multiline prompt",
+        ]);
+        observe_command(&command);
+        let records = records.lock().unwrap();
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.2.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "synthetic-cursor",
+                "--resume",
+                "synthetic-session",
+                "literal 'quoted'\nand multiline prompt"
+            ]
+        );
+        assert!(
+            records
+                .iter()
+                .all(|record| record.1 == RawExecutionDirection::Sent)
+        );
+        assert_eq!(records[3].0, "cursor.argv");
+    }
+}
+
+fn read_bounded(
+    mut reader: impl Read,
+    max_output: Option<usize>,
+    direction: RawExecutionDirection,
+) -> BoundedRead {
     // None means unbounded: read everything the agent produces.
     let max_output = max_output.unwrap_or(usize::MAX);
     let mut buffer = vec![0u8; 8192.min(max_output.max(1))];
@@ -776,6 +876,9 @@ fn read_bounded(mut reader: impl Read, max_output: Option<usize>) -> BoundedRead
             Ok(count) => count,
             Err(_) => break,
         };
+        if let Some(observer) = RawExecutionObserver::current() {
+            observer.record_bytes("cursor", direction, &buffer[..read]);
+        }
         if collected.len() >= max_output {
             truncated = true;
             break;

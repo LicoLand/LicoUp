@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/composition/client_app_composition.dart';
@@ -12,6 +14,7 @@ import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/appearance/appearance_preset_config.dart';
 import 'src/frontend/appearance/appearance_projection_adapter.dart';
 import 'src/frontend/shared/ui/theme.dart';
+import 'src/frontend/shared/ui/lico_motion_scope.dart';
 import 'src/frontend/shell/client_shell.dart';
 import 'src/frontend/binding/shell_renderer_port.dart';
 import 'src/presentation/appearance/appearance_projection.dart';
@@ -63,10 +66,17 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
           WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
     );
     if (widget.initializeController) {
-      unawaited(_composition.initialize());
+      final initialization = _composition.initialize();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_composition.initializeLlmGateway());
+        // A visible window does not mean Local's startup reads have finished.
+        // Gateway startup shares the native command queue, so it must not
+        // overtake the Local-first bootstrap from this independent callback.
+        unawaited(
+          initialization.then<void>((_) async {
+            if (!mounted) return;
+            await _composition.initializeLlmGateway();
+          }),
+        );
       });
     }
   }
@@ -123,6 +133,22 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
               GlobalCupertinoLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
             ],
+            builder: (context, child) =>
+                ProjectionBuilder<EnvironmentProjection, bool>(
+                  source: _composition.binding.environment,
+                  select: _systemReduceMotion,
+                  builder: (context, systemReduceMotion) => LicoMotionScope(
+                    reduceMotion: appearance.reduceMotion,
+                    systemReduceMotion: systemReduceMotion,
+                    child: LicoLoadingEffectScope(
+                      effect: loadingEffectForId(appearance.loadingEffectId),
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+            // Theme changes are atomic visual updates; this also prevents the
+            // MaterialApp-owned AnimatedTheme from outrunning the motion scope.
+            themeAnimationDuration: Duration.zero,
             themeMode: themeModeForAppearance(presetId, presets),
             theme: buildLicoTheme(
               presetId: presetId,
@@ -158,3 +184,6 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
 AppearanceProjection _appearanceProjection(AppearanceProjection value) => value;
 
 LocaleProjection _localeProjection(LocaleProjection value) => value;
+
+bool _systemReduceMotion(EnvironmentProjection value) =>
+    value.systemReduceMotion;

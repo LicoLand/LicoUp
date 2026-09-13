@@ -271,6 +271,24 @@
       }
     },
     {
+      "name": "agent.conversation.execution",
+      "kind": "stream",
+      "lane": "conversation",
+      "structured": false,
+      "stream": true,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "agent.conversation.execution.detach",
+      "kind": "command",
+      "lane": "conversation",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": true,
+      "cli": null
+    },
+    {
       "name": "agent.conversation.stream",
       "kind": "stream",
       "lane": "conversation",

@@ -1069,6 +1069,11 @@ final class ConversationDeltaDecoder {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('invalid_delta');
     }
+    return decodeEnvelope(decoded);
+  }
+
+  /// Validates an envelope already decoded by the multiplexed transport.
+  ConversationDelta decodeEnvelope(Map<String, dynamic> decoded) {
     if (_terminalSeen ||
         decoded['protocol'] != conversationProtocolVersion ||
         decoded['id'] != requestId ||

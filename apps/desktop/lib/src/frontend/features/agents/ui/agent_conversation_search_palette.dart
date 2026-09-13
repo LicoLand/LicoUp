@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -173,7 +174,7 @@ class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     if (projection.phase == PresentationPhase.loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LicoLoadingIndicator());
     }
     if (projection.results.isEmpty) {
       return Center(

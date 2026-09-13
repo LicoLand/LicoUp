@@ -47,6 +47,10 @@ final class RefreshGatewayCredentials extends ModelsIntent {
   const RefreshGatewayCredentials({super.trace});
 }
 
+final class MigrateGatewayCredentials extends ModelsIntent {
+  const MigrateGatewayCredentials({super.trace});
+}
+
 final class CreateGatewayCredential extends ModelsIntent {
   const CreateGatewayCredential({
     required this.provider,

@@ -93,6 +93,8 @@ final class ModelsRendererBindingFixture {
         await _owner.recoverGateway(traceId: traceId);
       case RefreshGatewayCredentials():
         await _owner.refreshCredentials(traceId: traceId);
+      case MigrateGatewayCredentials():
+        await _owner.migrateCredentials(traceId: traceId);
       case CreateGatewayCredential(
         :final provider,
         :final label,

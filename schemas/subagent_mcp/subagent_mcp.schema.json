@@ -13,24 +13,20 @@
       "required": ["name", "version"],
       "properties": {
         "name": { "const": "lico-up-subagents" },
-        "version": { "const": "0.13.0" }
+        "version": { "const": "0.14.0" }
       }
     },
     "tools": {
       "type": "array",
       "prefixItems": [
-        { "const": "lico_assistant_profiles" },
-        { "const": "lico_assistant_workflow_execute" },
-        { "const": "lico_assistant_workflow_inspect" },
-        { "const": "lico_assistant_workflow_cancel" },
         { "const": "lico_subagents_list" },
         { "const": "lico_subagent_probe" },
         { "const": "lico_subagent_delegate" },
         { "const": "lico_subagent_continue" },
         { "const": "lico_subagent_cancel" }
       ],
-      "minItems": 9,
-      "maxItems": 9
+      "minItems": 5,
+      "maxItems": 5
     },
     "receiptSchema": { "const": "licoup.subagent.receipt.v3" }
   }

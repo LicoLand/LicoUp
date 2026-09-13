@@ -77,7 +77,6 @@ export const EVIDENCE_BLOCKING_CODES = new Set([
 export const INVENTORY_BLOCKING_CODES = new Set([
   ...EVIDENCE_BLOCKING_CODES,
   "antigravity_cli_structured_transport_unavailable",
-  "deepseek_harness_jsonrpc_carrier_unverified",
 ]);
 
 export const SENSITIVE_KEY_FRAGMENTS = Object.freeze([

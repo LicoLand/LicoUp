@@ -78,21 +78,21 @@ void main() {
     await tester.tap(find.text('Deep exploration'));
     await tester.pumpAndSettle();
 
-    final scrollable = find.byType(SingleChildScrollView);
+    final scrollable = find.byType(ListView);
     expect(scrollable, findsOneWidget);
     final bodyHeight = tester.renderObject<RenderBox>(scrollable).size.height;
     expect(bodyHeight, lessThanOrEqualTo(320));
 
-    // The bounded frame keeps the tail of the task outside the viewport
-    // until the user scrolls it into view.
+    // The bounded frame starts at the newest child message and reveals older
+    // task content when the reader scrolls upward.
     expect(
-      find.textContaining('Step 11 outcome', findRichText: true).hitTestable(),
+      find.textContaining('Step 0 outcome', findRichText: true).hitTestable(),
       findsNothing,
     );
-    await tester.drag(scrollable, const Offset(0, -800));
+    await tester.drag(scrollable, const Offset(0, 1800));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('Step 11 outcome', findRichText: true).hitTestable(),
+      find.textContaining('Step 0 outcome', findRichText: true).hitTestable(),
       findsOneWidget,
     );
   });
@@ -137,5 +137,81 @@ void main() {
     final cardCenter = card.localToGlobal(Offset(card.size.width / 2, 0)).dx;
     expect(cardCenter, closeTo(paneWidth / 2, 1));
     expect(card.size.width, closeTo(detailWidth, 1));
+  });
+
+  testWidgets('tool-only child retains complete details when expanded', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      messageBlocksTestApp(
+        AgentConversationSubagentCardBlock(
+          message: messageBlockTestMessage(
+            role: 'subagent',
+            text: '',
+            cardTitle: 'Tool worker',
+            childMessages: [
+              messageBlockTestMessage(
+                role: 'tool_call',
+                text:
+                    'Start\n\nDetails one\n\nDetails two\n\nComplete tool result',
+                cardType: 'tool_call',
+              ),
+            ],
+          ),
+          adapter: AgentRenderAdapter.fallback(),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Tool worker'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Complete tool result', findRichText: true),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const Key('subagent-step-run-toggle')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Complete tool result', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('native lineage remains expandable beyond four levels', (
+    tester,
+  ) async {
+    AgentConversationMessage nestedTask(int depth) => messageBlockTestMessage(
+      id: 'task-$depth',
+      role: 'subagent',
+      cardType: 'subagent',
+      cardTitle: 'Native task $depth',
+      text: '',
+      childMessages: depth == 5
+          ? [
+              messageBlockTestMessage(
+                role: 'assistant',
+                text: 'Deep native result',
+              ),
+            ]
+          : [nestedTask(depth + 1)],
+    );
+    await tester.pumpWidget(
+      messageBlocksTestApp(
+        AgentConversationSubagentCardBlock(
+          message: nestedTask(0),
+          adapter: AgentRenderAdapter.fallback(),
+        ),
+      ),
+    );
+    for (var depth = 0; depth <= 5; depth += 1) {
+      final title = find.text('Native task $depth');
+      await tester.ensureVisible(title);
+      await tester.tap(title);
+      await tester.pumpAndSettle();
+    }
+    expect(
+      find.textContaining('Deep native result', findRichText: true),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

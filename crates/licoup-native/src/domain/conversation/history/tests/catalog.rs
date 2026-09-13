@@ -548,18 +548,24 @@ fn openagent_explicit_parent_folds_identically_in_browse_and_exact_reads() {
             .filter(|message| message["role"] == "subagent")
             .collect::<Vec<_>>();
         assert_eq!(cards.len(), 1);
-        assert!(
-            cards[0]["messages"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|message| {
-                    message["text"]
-                        .as_str()
-                        .is_some_and(|text| text.contains("Tool-only child result"))
-                })
-        );
+        assert_eq!(cards[0]["childSessionId"], "child");
+        assert_eq!(cards[0]["childMessageCount"], 1);
+        assert!(cards[0]["messages"].as_array().unwrap().is_empty());
     }
+    let child = conversation_list(
+        &json!({"agent": "opencode", "homeDir": display_path(&home), "sessionId": "child"}),
+    )
+    .unwrap();
+    assert_eq!(child["sessions"][0]["nativeSessionId"], "child");
+    assert!(
+        child["sessions"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("Tool-only child result")))
+    );
 }
 
 #[test]
@@ -1224,7 +1230,7 @@ fn codex_exact_lineage_reaches_every_explicit_child_without_a_total_cap() {
     drop(connection);
 
     let children = super::super::catalog::codex_delegated_thread_ids(
-        &json!({"homeDir": display_path(&home)}),
+        &super::super::catalog::codex_spawn_lineage(&json!({"homeDir": display_path(&home)})),
         &["parent-thread".to_string()],
     );
     assert_eq!(children.len(), 65);
@@ -1361,4 +1367,270 @@ fn antigravity_catalog_lists_brain_conversations_and_skips_cli_logs() {
         streamed[0]["session"]["workingDirectory"], "/workspace/antigravity-project",
         "stream must carry the same project directory as list"
     );
+}
+
+#[test]
+fn codex_lazy_nested_cards_keep_browse_exact_and_older_pages_complete() {
+    let home = temp_dir("codex-lazy-nested-pages");
+    let store = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&store).unwrap();
+    let parent = "019f0000-0000-7000-8000-00000000a001";
+    let child = "019f0000-0000-7000-8000-00000000a002";
+    let grandchild = "019f0000-0000-7000-8000-00000000a003";
+    let write_rollout = |id: &str, owner: Option<&str>, count: usize, start: i64| {
+        let mut header =
+            json!({"type": "session_meta", "payload": {"id": id, "cwd": "/synthetic/project"}});
+        if let Some(owner) = owner {
+            header["payload"]["source"] = json!({"subagent": {"thread_spawn": {"parent_thread_id": owner, "agent_nickname": id}}});
+        }
+        let mut lines = vec![header.to_string()];
+        for index in 0..count {
+            let timestamp =
+                OffsetDateTime::from_unix_timestamp(1_786_147_200 + start + index as i64)
+                    .unwrap()
+                    .format(&Rfc3339)
+                    .unwrap();
+            lines.push(json!({"timestamp": timestamp, "type": "response_item", "payload": {"type": "message", "role": if index == 0 { "user" } else { "assistant" }, "content": [{"type": "output_text", "text": format!("{id}-message-{index}")}]}}).to_string());
+        }
+        let path = store.join(format!("rollout-2026-08-01T00-00-00-{id}.jsonl"));
+        fs::write(&path, lines.join("\n")).unwrap();
+        path
+    };
+    write_rollout(parent, None, 45, 0);
+    let child_path = write_rollout(child, Some(parent), 65, 100);
+    let grandchild_path = write_rollout(grandchild, Some(child), 2, 200);
+    let second = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let set_source_time = |path: &Path, nanos| {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(UNIX_EPOCH + std::time::Duration::new(second, nanos)),
+            )
+            .unwrap();
+    };
+    set_source_time(&child_path, 100_000_000);
+    set_source_time(&grandchild_path, 100_000_000);
+    let cache = temp_dir("codex-lazy-nested-cache");
+    let started = std::time::Instant::now();
+    let (browse, cold) = browse_with_counters(&home, &cache);
+    let cold_elapsed = started.elapsed();
+    let started = std::time::Instant::now();
+    let (warm, counters) = browse_with_counters(&home, &cache);
+    let warm_elapsed = started.elapsed();
+    assert_eq!(browse["page"]["totalSessions"], 1);
+    assert_eq!(browse["sessions"], warm["sessions"]);
+    assert_eq!(cold.cache_misses, 1);
+    assert_eq!(counters.cache_hits, 1);
+    let root = &browse["sessions"][0];
+    assert_eq!(root["messagePage"]["returned"], 20);
+    assert_eq!(root["messagePage"]["total"], 46);
+    let card = root["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["childSessionId"] == child)
+        .unwrap();
+    assert_eq!(card["childMessageCount"], 66);
+    assert_eq!(card["subagentDepth"], 2);
+    assert!(card["messages"].as_array().unwrap().is_empty());
+    assert!(card.get("childMessagePage").is_none());
+    let exact = conversation_list(
+        &json!({"agent": "codex", "homeDir": display_path(&home), "sessionId": parent}),
+    )
+    .unwrap();
+    assert_eq!(root["messages"], exact["sessions"][0]["messages"]);
+    assert_eq!(root["messagePage"], exact["sessions"][0]["messagePage"]);
+    for (id, expected_total) in [(parent, 46), (child, 66), (grandchild, 2)] {
+        let mut params = json!({"agent": "codex", "homeDir": display_path(&home), "sessionId": id});
+        let mut ids = BTreeSet::new();
+        loop {
+            let page = conversation_list(&params).unwrap();
+            let session = &page["sessions"][0];
+            assert_eq!(session["nativeSessionId"], id);
+            assert_eq!(session["sourceMessageCount"], expected_total);
+            if id == child {
+                assert_eq!(session["sourceRevision"], card["childSourceRevision"]);
+            }
+            assert!(session["messages"].as_array().unwrap().len() <= 20);
+            for message in session["messages"].as_array().unwrap() {
+                assert!(ids.insert(message["id"].as_str().unwrap().to_string()));
+                if message["role"] == "subagent" {
+                    assert!(message["messages"].as_array().unwrap().is_empty());
+                    if id == child {
+                        assert_eq!(message["childSessionId"], grandchild);
+                    }
+                }
+            }
+            let next = &session["messagePage"]["nextBefore"];
+            if next.is_null() {
+                break;
+            }
+            params["messageBefore"] = next.clone();
+        }
+        assert_eq!(ids.len(), expected_total);
+    }
+    let mut previous_revision = card["childSourceRevision"].clone();
+    // Same byte length, same message count and same display second. A nested
+    // source update must also propagate through the collapsed ancestor card.
+    for (id, path, index) in [(child, &child_path, 64), (grandchild, &grandchild_path, 1)] {
+        let original = fs::read_to_string(path).unwrap();
+        let changed = original.replace(
+            &format!("{id}-message-{index}"),
+            &format!("{id}-revised-{index}"),
+        );
+        assert_eq!(original.len(), changed.len());
+        assert_ne!(original, changed);
+        fs::write(path, changed).unwrap();
+        set_source_time(path, 200_000_000);
+        let (updated, counters) = browse_with_counters(&home, &cache);
+        assert_eq!(counters.cache_misses, 1);
+        let updated_card = updated["sessions"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["childSessionId"] == child)
+            .unwrap();
+        assert_eq!(updated_card["id"], card["id"]);
+        assert_eq!(updated_card["createdAt"], card["createdAt"]);
+        assert_eq!(updated_card["childMessageCount"], 66);
+        assert_ne!(updated_card["childSourceRevision"], previous_revision);
+        let exact_child = conversation_list(
+            &json!({"agent": "codex", "homeDir": display_path(&home), "sessionId": child}),
+        )
+        .unwrap();
+        assert_eq!(
+            exact_child["sessions"][0]["sourceRevision"],
+            updated_card["childSourceRevision"]
+        );
+        previous_revision = updated_card["childSourceRevision"].clone();
+    }
+    write_rollout(child, Some(parent), 70, 100);
+    let updated = conversation_list(
+        &json!({"agent": "codex", "homeDir": display_path(&home), "sessionId": parent}),
+    )
+    .unwrap();
+    let updated_card = updated["sessions"][0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["childSessionId"] == child)
+        .unwrap();
+    assert_eq!(updated_card["id"], card["id"]);
+    assert_eq!(updated_card["createdAt"], card["createdAt"]);
+    assert_eq!(updated_card["childMessageCount"], 71);
+    eprintln!(
+        "synthetic lazy history: source_sessions=3 browse_rows=1 root_messages=46 returned=20 cold_micros={} warm_micros={} cache_hits={}",
+        cold_elapsed.as_micros(),
+        warm_elapsed.as_micros(),
+        counters.cache_hits
+    );
+}
+
+#[test]
+fn claude_orphan_tasks_keep_each_native_identity_and_exact_read() {
+    let home = temp_dir("claude-orphan-catalog");
+    let tasks = home.join(".claude/projects/project/missing-parent/subagents");
+    fs::create_dir_all(&tasks).unwrap();
+    for id in ["agent-one", "agent-two"] {
+        fs::write(tasks.join(format!("{id}.jsonl")), json!({"sessionId": "missing-parent", "type": "user", "message": {"role": "user", "content": format!("Task {id}")}}).to_string()).unwrap();
+    }
+    let browse = conversation_list(
+        &json!({"agent": "claude-code", "homeDir": display_path(&home), "limit": 20}),
+    )
+    .unwrap();
+    assert_eq!(browse["page"]["totalSessions"], 2);
+    let ids = session_ids(&browse).into_iter().collect::<BTreeSet<_>>();
+    assert_eq!(
+        ids,
+        BTreeSet::from(["agent-one".to_string(), "agent-two".to_string()])
+    );
+    for id in ids {
+        let exact = conversation_list(
+            &json!({"agent": "claude-code", "homeDir": display_path(&home), "sessionId": id}),
+        )
+        .unwrap();
+        assert_eq!(exact["sessions"][0]["nativeSessionId"], id);
+        assert_eq!(exact["sessions"][0]["messageCount"], 1);
+    }
+}
+
+#[test]
+fn sqlite_wal_commit_invalidates_browse_projection_without_database_stat_change() {
+    let home = temp_dir("openagent-wal-history");
+    let data = home.join(".local/share/opencode");
+    fs::create_dir_all(&data).unwrap();
+    let database = data.join("opencode.db");
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    connection.execute_batch(
+        "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT, time_updated INTEGER);
+         CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+         CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+         INSERT INTO session VALUES ('wal-session', NULL, 1786147200000);
+         INSERT INTO message VALUES ('message', 'wal-session', 1786147200000, '{\"role\":\"user\",\"text\":\"First value\"}');"
+    ).unwrap();
+    let cache = temp_dir("openagent-wal-cache");
+    let params = json!({"agent": "opencode", "homeDir": display_path(&home), "historyProjectionCacheRoot": display_path(&cache), "limit": 20});
+    let first = conversation_list(&params).unwrap();
+    assert_eq!(first["sessions"][0]["messages"][0]["text"], "First value");
+    let before = super::super::projection_cache::SourceFingerprint::from_path(&database).unwrap();
+    connection.execute("UPDATE message SET data = '{\"role\":\"user\",\"text\":\"Later value\"}' WHERE id = 'message'", []).unwrap();
+    let after = super::super::projection_cache::SourceFingerprint::from_path(&database).unwrap();
+    assert_eq!(before, after);
+    let second = conversation_list(&params).unwrap();
+    assert_eq!(second["sessions"][0]["messages"][0]["text"], "Later value");
+}
+
+#[test]
+fn openagent_orphans_and_cycles_remain_accessible_under_their_own_identities() {
+    for (agent, directory, file) in [
+        ("opencode", ".local/share/opencode", "opencode.db"),
+        ("kilo-code", ".local/share/kilo", "kilo.db"),
+    ] {
+        let home = temp_dir("openagent-orphan-cycle");
+        let data = home.join(directory);
+        fs::create_dir_all(&data).unwrap();
+        let connection = Connection::open(data.join(file)).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+             CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);"
+        ).unwrap();
+        for (id, parent) in [("orphan", "absent"), ("left", "right"), ("right", "left")] {
+            connection
+                .execute(
+                    "INSERT INTO session VALUES (?1, ?2, 1786147200000)",
+                    (id, parent),
+                )
+                .unwrap();
+            connection.execute("INSERT INTO message VALUES (?1, ?1, 1786147200000, '{\"role\":\"tool_result\",\"type\":\"tool_result\",\"result\":\"Synthetic result\"}')", [id]).unwrap();
+        }
+        drop(connection);
+        let browse = conversation_list(
+            &json!({"agent": agent, "homeDir": display_path(&home), "limit": 20}),
+        )
+        .unwrap();
+        assert_eq!(browse["page"]["totalSessions"], 3);
+        assert_eq!(
+            session_ids(&browse).into_iter().collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "orphan".to_string(),
+                "left".to_string(),
+                "right".to_string()
+            ])
+        );
+        let exact = conversation_list(
+            &json!({"agent": agent, "homeDir": display_path(&home), "sessionId": "orphan"}),
+        )
+        .unwrap();
+        assert_eq!(exact["sessions"][0]["nativeSessionId"], "orphan");
+        assert_eq!(exact["sessions"][0]["parentSessionId"], "absent");
+        assert_eq!(exact["sessions"][0]["messageCount"], 1);
+    }
 }

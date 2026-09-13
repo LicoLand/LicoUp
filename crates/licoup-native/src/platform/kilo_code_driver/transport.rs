@@ -46,7 +46,9 @@ pub(super) fn execute_via_serve(
     let turn_completed = Arc::new(AtomicBool::new(false));
     let watch_failure = Arc::clone(&first_failure);
     let watch_completed = Arc::clone(&turn_completed);
+    let watch_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let watch_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(watch_observer);
         match kilo_code_serve::watch_session_events(
             &watch_url,
             &watch_session,
@@ -69,7 +71,9 @@ pub(super) fn execute_via_serve(
     let post_url = format!("{}/session/{}/message", endpoint.attach_url, session_id);
     let post_failure = Arc::clone(&first_failure);
     let post_completed = Arc::clone(&turn_completed);
+    let post_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let post_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(post_observer);
         let response = wait_post_json(&post_url, &message_body, deadline);
         match &response {
             Ok(_) => post_completed.store(true, Ordering::Release),
@@ -161,7 +165,7 @@ fn open_session(
             "{}/session/{}",
             endpoint.attach_url, config.requested_session_id
         );
-        return match kilo_code_serve::get_json(&url) {
+        return match kilo_code_serve::get_session_json(&url) {
             Ok(payload) => match serve_parser::session_id(&payload) {
                 Some(id) if id == config.requested_session_id => Ok(id.to_string()),
                 // A returned different identity is an exact-lookup mismatch:

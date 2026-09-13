@@ -5,6 +5,9 @@ use super::command::LaunchIdentity;
 use super::control::ControlRequest;
 use super::errors::{ProtocolFailure, pipe_failure};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionReader,
+};
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +24,8 @@ pub(super) struct PersistentTransport {
     stdout_handle: Option<thread::JoinHandle<()>>,
     stderr_handle: Option<thread::JoinHandle<()>>,
     pub(super) stderr_truncated: Arc<AtomicBool>,
+    raw_execution: RawExecutionBinding,
+    initial_raw_execution: Option<RawExecutionBindingGuard>,
     closed: bool,
     join_probe_path: Option<PathBuf>,
 }
@@ -44,12 +49,22 @@ impl PersistentTransport {
         let stdout = child.stdout().ok_or_else(pipe_failure)?;
         let stderr = child.stderr().ok_or_else(pipe_failure)?;
         let stdin = child.stdin().ok_or_else(pipe_failure)?;
+        let raw_execution = RawExecutionBinding::default();
+        let initial_raw_execution = Some(raw_execution.bind_current());
         let (sender, receiver) = mpsc::channel();
+        let stdout = RawExecutionReader::new(
+            stdout,
+            raw_execution.clone(),
+            "claude-code",
+            RawExecutionDirection::Received,
+        );
         let stdout_handle =
             thread::spawn(move || read_protocol_messages(BufReader::new(stdout), sender));
         let stderr_truncated = Arc::new(AtomicBool::new(false));
         let stderr_flag = Arc::clone(&stderr_truncated);
-        let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+        let stderr_observer = raw_execution.clone();
+        let stderr_handle =
+            thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag, &stderr_observer));
         Ok(Self {
             child,
             stdin: BoundedStdinWriter::new(stdin),
@@ -58,11 +73,20 @@ impl PersistentTransport {
             stdout_handle: Some(stdout_handle),
             stderr_handle: Some(stderr_handle),
             stderr_truncated,
+            raw_execution,
+            initial_raw_execution,
             closed: false,
             join_probe_path: std::env::var_os("LICO_TEST_CLAUDE_TRANSPORT_JOIN_PROBE_ROOT")
                 .and_then(|_| identity.cwd.as_ref())
                 .map(|cwd| cwd.join("fake-claude-transport-workers.joined")),
         })
+    }
+
+    pub(super) fn bind_raw_execution(&mut self) -> RawExecutionBindingGuard {
+        match self.initial_raw_execution.take() {
+            Some(guard) => guard.rebind_current(),
+            None => self.raw_execution.bind_current(),
+        }
     }
 
     pub(super) fn shutdown(&mut self) -> Result<(), TransportFinishFailure> {

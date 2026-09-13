@@ -9,6 +9,7 @@ members = [
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-conversation",
+    "crates/licoup-mcp",
     "crates/licoup-native",
     "crates/trybuild",
 ]

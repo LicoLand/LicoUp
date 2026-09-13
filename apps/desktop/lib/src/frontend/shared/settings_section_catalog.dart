@@ -7,7 +7,6 @@ const settingsSectionIdOrder = <String>[
   'appearance',
   'updates',
   'startup',
-  'catalog-convergence',
   'storage',
   'diagnostics',
   'archived-conversations',
@@ -29,11 +28,6 @@ List<SettingsSectionDescriptor> settingsSectionDescriptors(
     id: 'startup',
     icon: Icons.rocket_launch_outlined,
     label: strings.isChinese ? '启动' : 'Startup',
-  ),
-  (
-    id: 'catalog-convergence',
-    icon: Icons.sync_alt_outlined,
-    label: strings.isChinese ? '工具' : 'Tools',
   ),
   (
     id: 'storage',

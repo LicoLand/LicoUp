@@ -21,22 +21,11 @@ class StdioRpcCommandReply {
   final ClientError? error;
 }
 
-String? stdioRpcEnvelopeRequestId(Uint8List bytes) {
-  try {
-    final decoded = _decodeEnvelope(bytes);
-    final requestId = decoded['id'];
-    return requestId is String && requestId.isNotEmpty ? requestId : null;
-  } on StdioRpcProtocolViolation {
-    return null;
-  }
-}
-
 StdioRpcCommandReply decodeStdioRpcCommandReply(
-  Uint8List bytes, {
+  Map<String, dynamic> decoded, {
   required String requestId,
   required String workflowId,
 }) {
-  final decoded = _decodeEnvelope(bytes);
   if (decoded['protocol'] != stdioRpcProtocol ||
       decoded['id'] != requestId ||
       decoded['workflowId'] != workflowId ||
@@ -54,12 +43,11 @@ StdioRpcCommandReply decodeStdioRpcCommandReply(
 }
 
 bool isStdioRpcShutdownAcknowledged(
-  Uint8List bytes, {
+  Map<String, dynamic> decoded, {
   required String requestId,
   required String workflowId,
 }) {
   try {
-    final decoded = _decodeEnvelope(bytes);
     return decoded['protocol'] == stdioRpcProtocol &&
         decoded['id'] == requestId &&
         decoded['workflowId'] == workflowId &&
@@ -91,6 +79,7 @@ class StdioRpcConversationDecoder {
   StdioRpcConversationDecoder({
     required this.requestId,
     required this.workflowId,
+    this.executionObservation = false,
   }) : _deltaDecoder = ConversationDeltaDecoder(
          requestId: requestId,
          workflowId: workflowId,
@@ -98,12 +87,13 @@ class StdioRpcConversationDecoder {
 
   final String requestId;
   final String workflowId;
+  final bool executionObservation;
   final ConversationDeltaDecoder _deltaDecoder;
 
-  StdioRpcConversationFrame decode(Uint8List bytes) {
+  StdioRpcConversationFrame decode(Map<String, dynamic> envelope) {
     late ConversationDelta delta;
     try {
-      delta = _deltaDecoder.decode(bytes);
+      delta = _deltaDecoder.decodeEnvelope(envelope);
     } on FormatException {
       throw const StdioRpcProtocolViolation();
     }
@@ -113,7 +103,9 @@ class StdioRpcConversationDecoder {
           (event['turnHandle'] ?? '').toString().trim().isNotEmpty &&
           (event['conversationId'] ?? '').toString().trim().isNotEmpty &&
           event['cursor'] is int &&
-          (event['cursor'] as int) > 0;
+          (executionObservation
+              ? (event['cursor'] as int) >= 0
+              : (event['cursor'] as int) > 0);
       if (!persistent &&
           ((event['sessionId'] ?? '').toString().trim().isEmpty ||
               (event['turnId'] ?? '').toString().trim().isEmpty)) {
@@ -129,7 +121,7 @@ class StdioRpcConversationDecoder {
   }
 }
 
-Map<String, dynamic> _decodeEnvelope(Uint8List bytes) {
+Map<String, dynamic> decodeStdioRpcEnvelope(Uint8List bytes) {
   try {
     final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is Map<String, dynamic>) {

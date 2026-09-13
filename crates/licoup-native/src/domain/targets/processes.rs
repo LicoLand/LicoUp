@@ -49,7 +49,6 @@ pub(super) fn target_uses_running_process_detection(target: &str) -> bool {
             | "code"
             | "cursor"
             | "kilo-code"
-            | "kimi"
             | "kimi-code"
             | "grok"
             | "command-code"

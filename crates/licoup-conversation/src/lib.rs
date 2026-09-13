@@ -19,7 +19,7 @@ pub use state_machine::{
 pub use store::{
     ColdRecoverableConversationStore, ColdRecoveryReport, ConversationRepository,
     ConversationRuntimeScope, ConversationStore, DEFAULT_CONVERSATION_POOL_SIZE,
-    DEFAULT_EVENT_PAGE_SIZE, DirectTurnExecutionContext, DispatchRepository, EventRepository,
-    ImageAttachmentReference, MAX_EVENT_PAGE_SIZE, MAX_SUBAGENT_INVOCATION_DEPTH, NewEventPart,
-    StoreError, StoreResult,
+    DEFAULT_EVENT_PAGE_SIZE, DirectTurnExecutionContext, DispatchRepository, EventPagePosition,
+    EventRepository, ImageAttachmentReference, MAX_EVENT_PAGE_SIZE, MAX_SUBAGENT_INVOCATION_DEPTH,
+    NewEventPart, StoreError, StoreResult,
 };

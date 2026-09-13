@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
@@ -177,7 +178,7 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
                   icon: _busy
                       ? const SizedBox.square(
                           dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: LicoLoadingIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.play_arrow_rounded, size: 18),
                   label: Text(
@@ -275,10 +276,7 @@ final class _GatewayRecoveryNotification extends StatelessWidget {
             SizedBox.square(
               key: const Key('llm-gateway-recovery-spinner'),
               dimension: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.accent,
-              ),
+              child: LicoLoadingIndicator(strokeWidth: 2, color: colors.accent),
             )
           else
             Icon(Icons.warning_amber_rounded, size: 20, color: colors.warning),

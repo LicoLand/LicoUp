@@ -54,6 +54,22 @@ final class _UsageFacadeHost with ClientAgentUsageFacade {
 
 final class _NoopUsageGateway implements AgentUsageGateway {
   @override
+  Future<AgentModelRegistryResult> readModelRegistry() async =>
+      const AgentModelRegistryResult(
+        ok: true,
+        status: 'ready',
+        revision: 'fixture',
+      );
+
+  @override
+  Future<AgentModelRegistryResult> refreshModelRegistry() async =>
+      const AgentModelRegistryResult(
+        ok: true,
+        status: 'unchanged',
+        revision: 'fixture',
+      );
+
+  @override
   Future<List<AgentUsageReport>> reports({int limit = 10}) async => const [];
 
   @override
