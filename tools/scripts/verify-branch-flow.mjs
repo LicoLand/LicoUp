@@ -7,6 +7,10 @@ import { pathToFileURL } from "node:url";
 
 export const LONG_LIVED_BRANCHES = Object.freeze(["nightly", "stable", "release"]);
 export const MACOS_CANDIDATE = "macos-release-candidate";
+export const MACOS_NIGHTLY_CANDIDATE = "macos-nightly-release-candidate";
+// Both Apple Release tracks publish from a tool-managed candidate branch that
+// is pushed once at the frozen revision and never merged back.
+export const CANDIDATE_BRANCHES = Object.freeze([MACOS_CANDIDATE, MACOS_NIGHTLY_CANDIDATE]);
 export const CUTOFF_PATTERN = /^nightly-cutoff\/\d{4}-\d{2}-\d{2}$/u;
 const LONG_LIVED = new Set(LONG_LIVED_BRANCHES);
 const RETIRED = new Set(["main", "master"]);
@@ -35,7 +39,7 @@ export function evaluateBranchFlow({
   payload = {}
 } = {}) {
   if (eventName === "push") {
-    if (refName === MACOS_CANDIDATE) return payload.deleted === true
+    if (CANDIDATE_BRANCHES.includes(refName)) return payload.deleted === true
       ? { ok: false, code: "candidate-deleted" } : { ok: true, code: "candidate-push-event" };
     return LONG_LIVED.has(refName)
       ? { ok: true, code: "protected-push-event" }
@@ -51,7 +55,7 @@ export function evaluateBranchFlow({
   if (!LONG_LIVED.has(base)) return { ok: true, code: "base-not-governed" };
   if (!sameRepository(payload)) return { ok: false, code: "cross-repository-promotion" };
   if (base === "nightly") {
-    return !LONG_LIVED.has(head) && head !== MACOS_CANDIDATE && !RETIRED.has(head) && head.length > 0
+    return !LONG_LIVED.has(head) && !CANDIDATE_BRANCHES.includes(head) && !RETIRED.has(head) && head.length > 0
       ? { ok: true, code: "temporary-to-nightly" }
       : { ok: false, code: "nightly-source-invalid" };
   }
@@ -253,7 +257,7 @@ function verifyCurrentEvent() {
     return;
   }
   if (process.env.GITHUB_EVENT_NAME === "push") {
-    const topology = process.env.GITHUB_REF_NAME === MACOS_CANDIDATE
+    const topology = CANDIDATE_BRANCHES.includes(process.env.GITHUB_REF_NAME || "")
       ? verifyCandidatePush({ after: payload.after || process.env.GITHUB_SHA || "", deleted: payload.deleted })
       : verifyProtectedPushTopology({
       branch: process.env.GITHUB_REF_NAME || "",

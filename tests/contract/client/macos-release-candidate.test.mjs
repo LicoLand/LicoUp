@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { evaluateBranchFlow, verifyCandidatePush, LONG_LIVED_BRANCHES } from '../../../tools/scripts/verify-branch-flow.mjs';
+import { evaluateBranchFlow, verifyCandidatePush, LONG_LIVED_BRANCHES, CANDIDATE_BRANCHES } from '../../../tools/scripts/verify-branch-flow.mjs';
 const revision = 'a'.repeat(40);
 test('candidate creation and resume require exact release SHA and tree', () => {
   assert.deepEqual(LONG_LIVED_BRANCHES, ['nightly', 'stable', 'release']);
@@ -25,4 +25,24 @@ test('four unchanged checks admit only the fixed candidate, preserving trusted P
   const ready = readFileSync('.github/workflows/client-release-ready.yml','utf8');
   assert.match(ready, /if: github.event_name == 'pull_request'\n        id: readme/u);
   assert.match(ready, /verify-branch-flow.mjs/u); assert.doesNotMatch(ready, /client:build|GH_TOKEN|secrets\./u);
+});
+test('the nightly track publishes from its own fixed candidate branch', () => {
+  assert.deepEqual(CANDIDATE_BRANCHES, ['macos-release-candidate', 'macos-nightly-release-candidate']);
+  assert.equal(evaluateBranchFlow({ eventName: 'push', refName: 'macos-nightly-release-candidate',
+    payload: { before: '0'.repeat(40) } }).ok, true);
+  assert.equal(evaluateBranchFlow({ eventName: 'push', refName: 'macos-nightly-release-candidate',
+    payload: { deleted: true } }).ok, false);
+  const payload = { repository: { full_name: 'example/repo' },
+    pull_request: { head: { repo: { full_name: 'example/repo' } } } };
+  for (const baseRef of LONG_LIVED_BRANCHES) {
+    assert.equal(evaluateBranchFlow({ eventName: 'pull_request', baseRef,
+      headRef: 'macos-nightly-release-candidate', payload }).ok, false);
+  }
+  for (const [file, name] of [['branch-flow', 'Branch flow'], ['commit-identity', 'Commit identity'],
+    ['lico-auditor-gate', 'Auditor'], ['client-ci', 'Client required']]) {
+    const value = readFileSync(`.github/workflows/${file}.yml`, 'utf8');
+    assert.match(value, /macos-nightly-release-candidate/u);
+    assert.ok(value.includes(`name: ${name}`));
+    assert.match(value, /github\.event\.deleted != true/u);
+  }
 });
