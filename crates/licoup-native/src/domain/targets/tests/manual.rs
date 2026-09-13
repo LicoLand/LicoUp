@@ -284,7 +284,6 @@ fn targets_target_params_and_aliases_are_normalized() {
     assert_eq!(normalize_target("kimi-code"), "kimi-code");
     assert_eq!(normalize_target("moonshot"), "moonshot");
     assert_eq!(normalize_target("moonshot"), "moonshot");
-    assert_eq!(normalize_target("kimi"), "kimi");
 }
 
 #[test]

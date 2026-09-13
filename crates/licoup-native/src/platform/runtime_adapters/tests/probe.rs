@@ -26,11 +26,7 @@ fn codex_probe_is_static_and_does_not_launch_a_runtime() {
 
 #[test]
 fn deepseek_detection_does_not_overclaim_unverified_carrier_support() {
-    let result = probe_runtime_driver(
-        "deepseek-harness",
-        Path::new("dsh-jsonrpc-agent"),
-        Path::new("."),
-    );
+    let result = probe_runtime_driver("deepseek-harness", Path::new("dsh"), Path::new("."));
 
     assert_eq!(result["available"], true);
     assert_eq!(result["supported"], false);

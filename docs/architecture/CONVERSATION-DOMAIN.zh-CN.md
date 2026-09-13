@@ -633,6 +633,23 @@ sequenceDiagram
 
 ## 12. 可信历史与恢复边界
 
+群聊侧边栏直接绑定该群关联会话形成的专属子集。
+`conversation_native_sessions` 是关联关系的唯一依据，对已确认的
+`(conversationId, membershipId, nativeSessionId)` 只保留一条关系；替换当前运行绑定、
+切换模型或成员离群都不会删除旧关联。同一个智能体及原生会话只有分别留下明确绑定，
+才可同时属于多个群。Schema 15 仅从当前绑定、明确的执行来源记录和旧运行来源链接
+记载的准确所属群回填；没有证据就不建立关系。
+
+桌面端在 `conversation.get` 中显式传入 `includeNativeSessionReferences: true`，
+取得仅限本地查表的 `membershipId`、`agentId`、`nativeSessionId`。默认 get、可移植
+Conversation、导出及 MCP/协议契约均不变，结果不包含运行路径或 dispatch 句柄。
+应用层由这些关联直接映射出群聊专属会话集合，列表直接消费该集合的投影。缺失的
+元数据按原生会话身份精确读取，最多四路并发，每条就绪后立即更新投影。选择、刷新
+和消息分页均使用这个群聊集合及精确读取器。禁止枚举或筛选成员 Agent 的浏览目录，
+也不得把群聊子集写回普通浏览目录。普通浏览目录变化不应重建或替换群聊集合；切群
+及绑定变化必须使过期响应失效。无关联即为空集合，禁止按产品名、项目、模型或时间
+猜测归属，原生行不可读时也不编造会话。消息分页与执行仍复用现有机制。
+
 规范 `conversation.events.page` 按序号升序返回事件，默认每页 20 条、最多 100 条。
 `latest: true` 读取最新保留事件；`beforeSequence` 以独占序号锚点读取更早一页。
 两者均使用索引降序查询，只反转已选中的当前页。`afterSequence` 继续独立支持尾部

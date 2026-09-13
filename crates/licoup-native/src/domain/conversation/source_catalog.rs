@@ -15,9 +15,9 @@ pub(crate) enum HistoryAdapter {
     Codex,
     Copilot,
     Cursor,
+    DeepSeekHarness,
     Hermes,
     KiloCode,
-    Kimi,
     KimiCode,
     OpenClaw,
     OpenCode,
@@ -45,9 +45,9 @@ impl HistoryAdapter {
             Self::Codex => "codex",
             Self::Copilot => "copilot",
             Self::Cursor => "cursor",
+            Self::DeepSeekHarness => "deepseek-harness",
             Self::Hermes => "hermes",
             Self::KiloCode => "kilo-code",
-            Self::Kimi => "kimi",
             Self::KimiCode => "kimi-code",
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
@@ -68,9 +68,9 @@ impl HistoryAdapter {
             Self::Codex => "Codex CLI",
             Self::Copilot => "GitHub Copilot Plugin",
             Self::Cursor => "Cursor CLI",
+            Self::DeepSeekHarness => "DeepSeek Harness CLI",
             Self::Hermes => "Hermes Agent CLI",
             Self::KiloCode => "Kilo Code CLI",
-            Self::Kimi => "Kimi Desktop",
             Self::KimiCode => "Kimi Code CLI",
             Self::OpenClaw => "OpenClaw CLI",
             Self::OpenCode => "OpenCode CLI",
@@ -100,6 +100,7 @@ impl HistoryAdapter {
             return false;
         }
         match self {
+            Self::DeepSeekHarness => deepseek_generation(path).is_some(),
             Self::Codex => matches!(extension, "jsonl" | "ndjson" | "json" | "md"),
             Self::ClaudeCode => matches!(extension, "jsonl" | "json" | "md" | "txt"),
             Self::Code => matches!(
@@ -145,7 +146,6 @@ impl HistoryAdapter {
             | Self::OpenCode
             | Self::OpenClaw
             | Self::Hermes
-            | Self::Kimi
             | Self::KimiCode
             | Self::Pi => matches!(
                 extension,
@@ -239,7 +239,6 @@ pub(crate) fn adapter_for_agent(agent_id: &str) -> Option<HistoryAdapter> {
         "cursor" => Some(HistoryAdapter::Cursor),
         "hermes" | "hermes-agent" => Some(HistoryAdapter::Hermes),
         "kilo" | "kilo-code" => Some(HistoryAdapter::KiloCode),
-        "kimi" | "moonshot" => Some(HistoryAdapter::Kimi),
         "kimi-code" | "kimi_code" | "kimicode" => Some(HistoryAdapter::KimiCode),
         "openclaw" => Some(HistoryAdapter::OpenClaw),
         "opencode" => Some(HistoryAdapter::OpenCode),
@@ -251,6 +250,32 @@ pub(crate) fn adapter_for_agent(agent_id: &str) -> Option<HistoryAdapter> {
         "trae-agent" | "trae_agent" | "trae-cli" | "trae_cli" => Some(HistoryAdapter::TraeAgent),
         _ => None,
     }
+}
+
+/// Usage metadata can be readable even when transcript history is unavailable.
+pub(crate) fn usage_adapter_for_agent(agent_id: &str) -> Option<HistoryAdapter> {
+    match agent_id {
+        "deepseek-harness" => Some(HistoryAdapter::DeepSeekHarness),
+        _ => adapter_for_agent(agent_id),
+    }
+}
+
+/// Canonical immutable Harness generations. Temporary/backup artifacts are not
+/// histories, and only the highest generation in each session is authoritative.
+pub(crate) fn deepseek_generation(path: &Path) -> Option<u64> {
+    let name = path.file_name()?.to_str()?;
+    let name = name.strip_suffix(".zstd").unwrap_or(name);
+    if name == "session.jsonl" {
+        return Some(0);
+    }
+    let version = name.strip_prefix("session.v")?.strip_suffix(".jsonl")?;
+    if version.starts_with('0') || !version.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    version
+        .parse()
+        .ok()
+        .filter(|version| *version <= (1 << 53) - 1)
 }
 
 pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<HistoryRoot> {
@@ -286,6 +311,23 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
         .collect::<Vec<_>>();
     let allow_environment = home_override.is_none();
     match adapter {
+        HistoryAdapter::DeepSeekHarness => {
+            let dsh_home = text_param(params, &["deepseekHarnessHome", "dshHome"])
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    allow_environment
+                        .then(|| env::var("DSH_HOME").ok())
+                        .flatten()
+                        .filter(|value| !value.trim().is_empty())
+                })
+                .map(|value| expand_home_from(&value, || home.to_path_buf()))
+                .unwrap_or_else(|| home.join(".dsh"));
+            for root in &mut roots {
+                if root.source_kind == "deepseek-harness-session-store" {
+                    root.path = dsh_home.join("sessions");
+                }
+            }
+        }
         HistoryAdapter::KimiCode => {
             let kimi_home = kimi_code_history_home(params, &home, allow_environment);
             for root in &mut roots {

@@ -453,7 +453,7 @@ pub(super) fn kimi_code_usage_message(path: &Path, index: usize, value: &Value) 
     if total_tokens == 0 {
         return None;
     }
-    let model = find_string(value, &["model", "modelId", "model_id"]);
+    let model = extract_native_model(value);
     let created_at = find_string(value, &["time", "timestamp", "createdAt"])
         .unwrap_or_else(native_message_timestamp);
     let source_event_type = value

@@ -266,7 +266,7 @@ pub(crate) fn parse_lico_agent_session(
                         "usageScope": "turn",
                         "usage": usage
                     });
-                    if let Some(model) = find_string(&value, &["model", "modelId", "model_id"]) {
+                    if let Some(model) = extract_native_model(&value) {
                         message["model"] = json!(model);
                     }
                     messages.push(message);
@@ -304,7 +304,7 @@ pub(crate) fn parse_lico_agent_session(
                     if let Some(usage) = extract_token_usage(&value) {
                         message["usage"] = usage;
                     }
-                    if let Some(model) = find_string(&value, &["model", "modelId", "model_id"]) {
+                    if let Some(model) = extract_native_model(&value) {
                         message["model"] = json!(model);
                     }
                     messages.push(message);
@@ -454,7 +454,10 @@ fn attach_native_usage(target: &mut Value, event: &Value, payload: &Value) -> bo
     };
     object.insert("usage".to_string(), usage);
     object.insert("usageScope".to_string(), json!("request-response"));
-    if let Some(model) = extract_native_model(payload).or_else(|| extract_native_model(event)) {
+    if let Some(model) = crate::domain::agent_usage::prefer_recorded_model(
+        extract_native_model(payload),
+        extract_native_model(event),
+    ) {
         object.insert("model".to_string(), json!(model));
     }
     true

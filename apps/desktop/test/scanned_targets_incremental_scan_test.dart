@@ -497,6 +497,12 @@ class _SlowPerAgentService extends AgentService {
   var maxInFlight = 0;
 
   @override
+  Future<Set<String>> targetCatalogIds() async => {
+    ...AgentService.packagedScanTargetIds,
+    ...results.keys,
+  };
+
+  @override
   Future<TargetScanBatch> scanTargetsBatch(
     List<String> targetIds, {
     bool enableAgentCliModelLookup = false,

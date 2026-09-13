@@ -21,7 +21,7 @@
 //! complete fails closed instead of publishing a partial total.
 
 use super::super::contract::{
-    DailyUsageSummary, HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field, text_field,
+    DailyUsageSummary, HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field,
 };
 use super::super::persistence::read_retained_reports;
 use super::super::window::UsageWindow;
@@ -142,7 +142,7 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
             continue;
         }
         requests = requests.saturating_add(1);
-        let model = text_field(event, &["model"]);
+        let model = super::super::variant::model_label(event);
         match event_token_usage(event) {
             Some(usage) => {
                 let message = MessageUsage {
@@ -657,6 +657,21 @@ mod tests {
         assert!(!serialized.contains("private-user"));
         assert!(!serialized.contains("conversationId"));
         assert!(!serialized.contains("00000000-0000"));
+    }
+
+    #[test]
+    fn hosted_placeholder_uses_only_actual_model_on_the_same_usage_event() {
+        let mut linked = event(1_784_080_800_000, "default", Some((10, 2, 0)));
+        linked["tokenUsage"]["model"] = json!("actual-response-model");
+        let unknown = event(1_784_080_800_001, "auto", Some((5, 1, 0)));
+        let summary = aggregate_events(&[linked, unknown], &window());
+        let report = summary.to_json();
+        assert_eq!(summary.total_tokens(), 18);
+        assert_eq!(
+            report["dailyUsage"][0]["modelUsage"]["actual-response-model"],
+            12
+        );
+        assert_eq!(report["dailyUsage"][0]["modelUsage"]["Others"], 6);
     }
 
     #[test]

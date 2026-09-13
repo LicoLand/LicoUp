@@ -8,7 +8,9 @@
 
 mod cache;
 mod cursor;
+mod deepseek;
 mod files;
+mod identity_refresh;
 #[cfg(test)]
 mod migration_tests;
 mod models;
@@ -26,7 +28,7 @@ use crate::domain::conversation::history_discovery::{
 };
 use crate::domain::conversation::parameters::param_bool;
 use crate::domain::conversation::source_catalog::{
-    HistoryAdapter, adapter_for_agent, history_roots,
+    HistoryAdapter, history_roots, usage_adapter_for_agent,
 };
 use anyhow::{Context, Result};
 use cache::{
@@ -89,7 +91,9 @@ pub(super) fn summarize(
     match summarize_inner(agent, scan_params, window, warnings, runtime) {
         Ok(summary) => Some(summary),
         Err(error) => {
-            warnings.push(if let Some(version) = error.downcast_ref::<cache::UnsupportedSchemaVersion>() {
+            warnings.push(if let Some(failure) = error.downcast_ref::<deepseek::ReadFailure>() {
+                json!({"code":"native_usage_source_read_failed", "agentId":agent.id, "stage":failure.0})
+            } else if let Some(version) = error.downcast_ref::<cache::UnsupportedSchemaVersion>() {
                 json!({"code":"native_usage_cache_schema_unsupported", "agentId":agent.id, "schemaVersion":version.0})
             } else { json!({
                 "code": "native_usage_cache_failed", "agentId": agent.id
@@ -106,7 +110,7 @@ fn summarize_inner(
     warnings: &mut Vec<Value>,
     runtime: &CacheRuntime,
 ) -> Result<HistoryUsageSummary> {
-    let adapter = adapter_for_agent(agent.id)
+    let adapter = usage_adapter_for_agent(agent.id)
         .with_context(|| format!("unsupported usage adapter: {}", agent.id))?;
     let roots = usage_roots(adapter, history_roots(adapter, scan_params));
     let root_paths = roots
@@ -122,7 +126,7 @@ fn summarize_inner(
     let refresh_scope = runtime.begin_refresh(&scope_key, &database_path, now_ms)?;
     stats.opened_connections = refresh_scope.opened_connections();
 
-    let (has_baseline, previous, compaction_targets) = {
+    let (has_baseline, previous, compaction_targets, identity_targets) = {
         let mut lease = runtime.lease(&scope_key, &database_path, now_ms)?;
         stats.leases = stats.leases.saturating_add(lease.stats().leases);
         stats.opened_connections = stats
@@ -154,7 +158,12 @@ fn summarize_inner(
         let previous = load_sources(lease.connection(0), &scope_key)?;
         let compaction_targets =
             load_compaction_targets(lease.connection(0), &scope_key, &window.end)?;
-        (has_baseline, previous, compaction_targets)
+        let identity_targets = if force_refresh {
+            identity_refresh::targets(lease.connection(0), &scope_key, &window.end)?
+        } else {
+            BTreeSet::new()
+        };
+        (has_baseline, previous, compaction_targets, identity_targets)
     };
     // The lease is released here: discovery, guard hashing, and parsing run
     // without holding any database connection.
@@ -192,6 +201,11 @@ fn summarize_inner(
                 unique
             },
         );
+    let unique_candidates = if adapter == HistoryAdapter::DeepSeekHarness {
+        deepseek::canonical_sources(unique_candidates)
+    } else {
+        unique_candidates
+    };
     let entries = unique_candidates
         .into_iter()
         .filter_map(|(path, source_kind)| {
@@ -220,8 +234,14 @@ fn summarize_inner(
         .collect::<Vec<_>>();
 
     let mut sources = Vec::new();
+    let mut deepseek_reader = deepseek::Reader::default();
     for entry in entries {
-        let key = source_key(&scope_key, &entry.path);
+        let identity_path = if adapter == HistoryAdapter::DeepSeekHarness {
+            entry.path.parent().unwrap_or(&entry.path)
+        } else {
+            &entry.path
+        };
+        let key = source_key(&scope_key, identity_path);
         let previous_source = planned_sources.get(&key).cloned();
         let (action, metadata) = if let Some(previous) = &previous_source
             && (previous.migration_state == 1
@@ -233,7 +253,7 @@ fn summarize_inner(
                                 previous.size,
                                 &previous.append_guard,
                             )))
-                    && !can_append(&entry.path, previous, &entry.metadata))
+                    && !can_append(adapter, &entry.path, previous, &entry.metadata))
                 || (matches!(previous.migration_state, 4 | 5)
                     && previous.file_id != entry.metadata.file_id))
         {
@@ -243,14 +263,59 @@ fn summarize_inner(
                 &entry.source_kind,
                 previous,
                 &parse_window,
+                &mut deepseek_reader,
             )?;
             stats.replaced_sources = stats.replaced_sources.saturating_add(1);
             stats.parsed_bytes = stats.parsed_bytes.saturating_add(migration.1.size);
             migration
         } else if let Some(previous) = &previous_source
+            && identity_targets.contains(&key)
+            && source_unchanged(previous, &entry.metadata)
+            && (!is_append_source(adapter, &entry.path)
+                || append_guard_matches(&entry.path, previous.size, &previous.append_guard))
+        {
+            let parsed = if !previous.sealed
+                && previous.migration_state == 0
+                && previous.file_id.is_some()
+                && previous.parsed_bytes <= previous.size
+            {
+                let parsed = if is_append_source(adapter, &entry.path) {
+                    parse_append_prefix(adapter, &entry.path, previous.parsed_bytes, &parse_window)
+                } else {
+                    parse_stable_source(
+                        adapter,
+                        &entry.path,
+                        &entry.source_kind,
+                        None,
+                        0,
+                        &parse_window,
+                        &mut deepseek_reader,
+                    )
+                    .map(|stable| stable.parsed)
+                };
+                parsed.ok().and_then(|parsed| {
+                    stats.parsed_bytes = stats.parsed_bytes.saturating_add(parsed.parsed_bytes);
+                    (parsed.parsed_bytes == previous.parsed_bytes
+                        && parsed.cumulative_snapshots.is_empty()
+                        && (!is_append_source(adapter, &entry.path)
+                            || append_guard_matches(
+                                &entry.path,
+                                previous.size,
+                                &previous.append_guard,
+                            )))
+                    .then(|| Box::new(parsed))
+                })
+            } else {
+                None
+            };
+            (
+                PlannedSourceAction::RefreshIdentity { parsed },
+                entry.metadata.clone(),
+            )
+        } else if let Some(previous) = &previous_source
             && source_unchanged(previous, &entry.metadata)
             && (!force_refresh
-                || (is_append_format(&entry.path)
+                || (is_append_source(adapter, &entry.path)
                     && append_guard_matches(&entry.path, previous.size, &previous.append_guard)))
         {
             if !previous.sealed && source_is_closed(&entry.metadata, window) {
@@ -266,7 +331,7 @@ fn summarize_inner(
                 (PlannedSourceAction::Reuse, entry.metadata.clone())
             }
         } else {
-            let append_format = is_append_format(&entry.path);
+            let append_format = is_append_source(adapter, &entry.path);
             let previous_session_count = previous_source
                 .as_ref()
                 .map_or(0, |source| source.session_count);
@@ -277,6 +342,7 @@ fn summarize_inner(
                 previous_source.as_ref(),
                 previous_session_count,
                 &parse_window,
+                &mut deepseek_reader,
             )?;
             let projection = if stable.append {
                 let previous = previous_source
@@ -433,6 +499,23 @@ fn apply_refresh_plan(
                     )?;
                 }
                 PlannedSourceAction::Reuse => {}
+                PlannedSourceAction::RefreshIdentity { parsed } => {
+                    let refreshed = match parsed {
+                        Some(parsed) => identity_refresh::apply(
+                            &mut statements,
+                            scope_key,
+                            &source.key,
+                            &window.end,
+                            &parsed.summary,
+                        )?,
+                        None => false,
+                    };
+                    if refreshed {
+                        stats.identity_refreshed_sources += 1;
+                    } else {
+                        stats.identity_skipped_sources += 1;
+                    }
+                }
                 PlannedSourceAction::ReuseSeal { session_count } => {
                     statements.seal(scope_key, &source.key, session_count)?;
                 }
@@ -568,16 +651,20 @@ fn parse_stable_source(
     previous_source: Option<&CachedSource>,
     previous_session_count: u64,
     parse_window: &UsageWindow,
+    deepseek_reader: &mut deepseek::Reader,
 ) -> Result<StableParse> {
-    let append_format = is_append_format(path);
+    let append_format = is_append_source(adapter, path);
     for _ in 0..2 {
         let before = source_metadata(path)
             .with_context(|| format!("native usage source metadata failed: {}", path.display()))?;
         // Recompute append eligibility for the exact snapshot about to be
         // parsed. A replacement between discovery and either retry must fall
         // back to a full parse instead of applying an obsolete append plan.
-        let append = previous_source.is_some_and(|previous| can_append(path, previous, &before));
-        let parsed = if append {
+        let append =
+            previous_source.is_some_and(|previous| can_append(adapter, path, previous, &before));
+        let parsed = if adapter == HistoryAdapter::DeepSeekHarness {
+            deepseek_reader.parse(path, before.size, parse_window)?
+        } else if append {
             let previous = previous_source.expect("append source checked above");
             parse_append_source(
                 adapter,
@@ -617,8 +704,17 @@ fn parse_stable_source(
     )
 }
 
-fn can_append(path: &Path, previous: &CachedSource, metadata: &SourceMetadata) -> bool {
-    is_append_format(path)
+fn is_append_source(adapter: HistoryAdapter, path: &Path) -> bool {
+    adapter != HistoryAdapter::DeepSeekHarness && is_append_format(path)
+}
+
+fn can_append(
+    adapter: HistoryAdapter,
+    path: &Path,
+    previous: &CachedSource,
+    metadata: &SourceMetadata,
+) -> bool {
+    is_append_source(adapter, path)
         && previous.file_id.is_some()
         && previous.file_id == metadata.file_id
         && metadata.size > previous.size
@@ -640,8 +736,9 @@ fn plan_source_migration(
     source_kind: &str,
     previous: &CachedSource,
     calendar: &UsageWindow,
+    deepseek_reader: &mut deepseek::Reader,
 ) -> Result<(PlannedSourceAction, SourceMetadata)> {
-    let append_format = is_append_format(path);
+    let append_format = is_append_source(adapter, path);
     for _ in 0..2 {
         let before =
             source_metadata(path).context("native usage migration source metadata failed")?;
@@ -692,7 +789,11 @@ fn plan_source_migration(
         } else {
             let metadata = fs::metadata(path)?;
             (
-                parse_snapshot_source(adapter, path, source_kind, &metadata, calendar)?,
+                if adapter == HistoryAdapter::DeepSeekHarness {
+                    deepseek_reader.parse(path, metadata.len(), calendar)?
+                } else {
+                    parse_snapshot_source(adapter, path, source_kind, &metadata, calendar)?
+                },
                 None,
             )
         };
@@ -844,6 +945,9 @@ fn report_migration_status(
 }
 
 fn apply_source(adapter: HistoryAdapter, summary: &mut HistoryUsageSummary) {
+    if adapter == HistoryAdapter::DeepSeekHarness {
+        summary.source = Some("deepseek-harness-session-usage");
+    }
     if adapter == HistoryAdapter::Hermes {
         summary.source = Some("hermes-gateway-usage-database");
     }
@@ -900,6 +1004,7 @@ mod tests {
             None,
             0,
             &calendar,
+            &mut deepseek::Reader::default(),
         )
         .unwrap();
         let cached = |parsed: &StableParse| CachedSource {
@@ -921,6 +1026,7 @@ mod tests {
             Some(&previous),
             0,
             &calendar,
+            &mut deepseek::Reader::default(),
         )
         .unwrap();
         assert!(appended.append);
@@ -945,6 +1051,7 @@ mod tests {
             Some(&previous),
             1,
             &calendar,
+            &mut deepseek::Reader::default(),
         )
         .unwrap();
         assert!(next.append);

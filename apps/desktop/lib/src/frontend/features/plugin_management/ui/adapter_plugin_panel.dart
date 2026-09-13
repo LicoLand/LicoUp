@@ -58,19 +58,6 @@ final class AdapterPluginPanel extends StatelessWidget {
                     const LinearProgressIndicator(
                       key: Key('adapter-plugin-loading'),
                     ),
-                  if (embedded)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        key: const Key('adapter-plugin-refresh'),
-                        onPressed: loading
-                            ? null
-                            : () =>
-                                  binding.intents.send(const RefreshPlugins()),
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: Text(strings.refresh),
-                      ),
-                    ),
                   if (plugins.isNotEmpty)
                     _PluginCardGrid(
                       plugins: plugins,

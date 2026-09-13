@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'dart:convert';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_execution_observer.dart';
@@ -725,18 +726,31 @@ NativeConversationCatalogProjection _readNativeCatalog(
   ClientController controller,
 ) {
   final sessions = controller.selectedConversationSessions;
+  final groupId = controller.groupNativeSessions.conversationId;
+  final groupSessions = groupId.isNotEmpty
+      ? controller.groupNativeSessions.sessionsByAgent
+      : const <String, List<AgentConversationSession>>{};
   final catalogs = <NativeConversationAgentCatalogProjection>[
-    for (final entry in controller.conversationSessionsByAgent.entries)
-      NativeConversationAgentCatalogProjection(
-        agentId: entry.key,
-        sessions: entry.value,
-      ),
+    if (groupId.isEmpty)
+      for (final entry in controller.conversationSessionsByAgent.entries)
+        NativeConversationAgentCatalogProjection(
+          agentId: entry.key,
+          sessions: entry.value,
+        ),
   ];
   final runningSessionIds = <String>{
-    for (final catalog in catalogs)
-      for (final session in catalog.sessions)
+    for (final sessions
+        in groupId.isNotEmpty
+            ? groupSessions.values
+            : catalogs.map((catalog) => catalog.sessions))
+      for (final session in sessions)
         if (_nativeSessionIsRunning(controller, session)) session.id,
   };
+  final error = groupId.isNotEmpty
+      ? (controller.groupNativeSessions.failedIdentities.isNotEmpty
+            ? 'native_history_session_not_found'
+            : '')
+      : controller.lastError;
   final serve = controller.opencodeServeState;
   return NativeConversationCatalogProjection(
     sessions: [
@@ -750,6 +764,8 @@ NativeConversationCatalogProjection _readNativeCatalog(
     ],
     nativeSessions: sessions,
     agentCatalogs: catalogs,
+    groupConversationId: groupId,
+    groupSessionsByAgent: groupSessions,
     runningSessionIds: runningSessionIds,
     childHistories: [
       if (controller.conversationChildHistoryScope ==
@@ -781,14 +797,15 @@ NativeConversationCatalogProjection _readNativeCatalog(
     opencodeServePort: serve?['port'] is int ? serve!['port'] as int : null,
     opencodeServePortConflict: serve?['portConflict'] == true,
     hasMore: controller.selectedConversationSessionsHasMore,
-    phase: controller.isLoadingConversations
+    phase:
+        (groupId.isNotEmpty
+            ? controller.groupNativeSessions.loading
+            : controller.isLoadingConversations)
         ? PresentationPhase.loading
-        : controller.lastError.isNotEmpty
+        : error.isNotEmpty
         ? PresentationPhase.failed
         : PresentationPhase.ready,
-    notice: controller.lastError.isEmpty
-        ? null
-        : _notice('native-conversation', controller.lastError),
+    notice: error.isEmpty ? null : _notice('native-conversation', error),
   );
 }
 

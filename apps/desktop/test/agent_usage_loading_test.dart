@@ -162,6 +162,8 @@ void main() {
                 'native_usage_source_unavailable',
                 'native_history_scan_failed',
                 'native_usage_source_migration_incomplete',
+                'native_usage_cache_schema_unsupported',
+                'native_usage_source_read_failed',
               ]),
               detectedAgentIds: const {'antigravity'},
               windowDays: 30,
@@ -177,7 +179,15 @@ void main() {
         find.textContaining('prior usage totals are preserved'),
         findsOneWidget,
       );
+      expect(
+        find.textContaining('Usage cache version is unsupported'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Unrecognized'), findsNothing);
+      expect(
+        find.textContaining('Unable to read Agent usage history'),
+        findsOneWidget,
+      );
     },
   );
 }

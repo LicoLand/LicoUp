@@ -94,6 +94,20 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       case CloseConversationExecutionView(:final viewId):
         _projection.execution.dismiss(viewId, trace: trace);
       case RefreshConversationCatalog(:final agentId):
+        if (_controller.groupNativeSessions.conversationId.isNotEmpty) {
+          _run(
+            () async {
+              final groupId = _controller.groupNativeSessions.conversationId;
+              await _controller.clientConversationController.reloadSelected();
+              if (_controller.groupNativeSessions.conversationId == groupId) {
+                await _controller.refreshGroupConversationSessions();
+              }
+            },
+            trace,
+            stage: 'group-history-refresh',
+          );
+          break;
+        }
         final requestedAgentId = agentId.trim();
         if (requestedAgentId.isNotEmpty) {
           _run(
@@ -104,7 +118,12 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           break;
         }
         final selectedAgentId = _controller.selectedConversationAgentId.trim();
-        if (selectedAgentId.isNotEmpty) {
+        if (selectedAgentId.isNotEmpty &&
+            _controller
+                    .clientConversationController
+                    .selectedConversation
+                    ?.group !=
+                true) {
           _run(
             () => _controller.refreshConversationSessions(selectedAgentId),
             trace,

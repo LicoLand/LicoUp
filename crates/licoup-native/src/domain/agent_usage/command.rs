@@ -148,7 +148,7 @@ fn summarize_agent_history(
     if def.id == "codex" {
         return agent_usage_codex::summarize(params, window, warnings).unwrap_or_default();
     }
-    if crate::domain::conversation::source_catalog::adapter_for_agent(def.id).is_none() {
+    if crate::domain::conversation::source_catalog::usage_adapter_for_agent(def.id).is_none() {
         return HistoryUsageSummary {
             source: Some("native-usage-source-unavailable"),
             skipped: vec![json!({"code": "native_usage_source_unavailable", "agentId": def.id})],

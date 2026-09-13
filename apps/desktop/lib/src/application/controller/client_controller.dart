@@ -307,7 +307,12 @@ class ClientController extends AgentConversationController
     clientConversationController = ClientConversationController(
       native:
           conversationNativePort ?? this.agentService.conversationNativePort,
-      onSelectionChanged: recordCurrentGroupConversationView,
+      onSelectionChanged: (conversationId) {
+        selectGroupConversationHistory(conversationId);
+        recordCurrentGroupConversationView(conversationId);
+      },
+      onSnapshotApplied: (conversation) =>
+          unawaited(hydrateGroupConversationSessions(conversation)),
       memoryJournal: clientMemoryDiagnosticJournal,
       pendingNoticePollInterval: pendingNoticePollInterval,
     );

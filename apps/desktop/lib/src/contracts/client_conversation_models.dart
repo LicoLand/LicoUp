@@ -109,6 +109,7 @@ final class ClientConversation {
     required this.updatedAtUnixMs,
     required this.memberships,
     required this.eventCount,
+    this.nativeSessionReferences = const [],
   });
 
   factory ClientConversation.fromJson(Map<String, dynamic> json) =>
@@ -127,6 +128,9 @@ final class ClientConversation {
           json['memberships'],
         ).map(ClientConversationMembership.fromJson).toList(growable: false),
         eventCount: _integer(json['eventCount']),
+        nativeSessionReferences: _maps(json['nativeSessionReferences'])
+            .map(ClientConversationNativeSessionReference.fromJson)
+            .toList(growable: false),
       );
 
   final String id;
@@ -141,6 +145,7 @@ final class ClientConversation {
   final int updatedAtUnixMs;
   final List<ClientConversationMembership> memberships;
   final int eventCount;
+  final List<ClientConversationNativeSessionReference> nativeSessionReferences;
 
   bool get isDefaultLocalAgentGroup => id == 'lico-group-default';
 
@@ -176,6 +181,27 @@ final class ClientConversation {
     }
     return null;
   }
+}
+
+/// Endpoint-local catalog identities. These are never portable Event data.
+final class ClientConversationNativeSessionReference {
+  const ClientConversationNativeSessionReference({
+    required this.membershipId,
+    required this.agentId,
+    required this.nativeSessionId,
+  });
+
+  factory ClientConversationNativeSessionReference.fromJson(
+    Map<String, dynamic> json,
+  ) => ClientConversationNativeSessionReference(
+    membershipId: (json['membershipId'] ?? '').toString(),
+    agentId: (json['agentId'] ?? '').toString(),
+    nativeSessionId: (json['nativeSessionId'] ?? '').toString(),
+  );
+
+  final String membershipId;
+  final String agentId;
+  final String nativeSessionId;
 }
 
 final class ClientConversationPrincipal {

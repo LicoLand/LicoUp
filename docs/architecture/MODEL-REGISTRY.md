@@ -35,6 +35,24 @@ Refresh downloads public facts only. It sends no usage, model selections,
 credentials, conversations, or native history to the catalog service. Registry
 commands remain local CLI capabilities, outside the remote Subagents MCP surface.
 
+### Installed DeepSeek Harness catalog
+
+Selected-target discovery reads the installed official `dsh-llm-deepseek`
+adapter's `listModels` and `resolveModel` metadata through the existing opt-in
+Agent lookup. It does not boot a profile, apply plugins, read credentials or
+user settings, or send a model request. The installed package supplies the
+advisory model list and supported reasoning options; LicoUp preserves its native
+IDs and serving-provider route. Catalog membership does not prove account access
+or establish a historical request's model, and no default model is invented.
+
+Conversation launch uses the official `dsh --profile sdk` entry. Model, provider,
+workspace and optional reasoning effort enter through `initialize`; the selected
+effort is retained in effective settings and cannot silently change inside a
+reused SDK session. Model discovery alone does not establish conversation readiness.
+The official [adapter metadata](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md)
+and [SDK profile](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/sdk-app/README.md)
+own these contracts.
+
 ## Canonical identity
 
 The registry indexes canonical IDs and names separately from provider selectors.
@@ -58,6 +76,13 @@ their serialized JSON is never a model name. A context variant that explicitly
 refers to the same base model shares its identity. A provider-only or automatic
 selector does not prove which model answered. Ambiguous and unknown names are
 not assigned to a guessed model.
+
+Complete JSON selectors, including JSON string wrappers, are decoded before
+identity lookup. Malformed container fragments and default or automatic routing
+labels cannot become model names or be protected by a stale canonical marker.
+Their original records and counters remain available under unattributed usage.
+Lost namespace or request fields cannot be reconstructed from a display fragment
+or from a match in today's directory.
 
 Upstream changes can extend the directory without per-model frontend adapters.
 The directory is not proof that every private, renamed, or newly released model
@@ -101,9 +126,10 @@ earlier request's effort. Parser changes migrate retained accounting facts and
 refresh reconstructible metadata. They do not erase sealed history or invent
 request controls that its retained records lack.
 
-The runtime Agent inventory determines scan coverage. Existing independent
-history sources, including Kimi Desktop, remain readable even when they are not
-runtime dispatch Agents. A source with no retained token metadata reports its
+The supported Agent inventory determines scan coverage and retained report
+visibility. Kimi Code remains supported; Kimi Desktop is not an adapter.
+Removing an adapter does not delete its user history, configuration, or retained
+accounting records. A source with no retained token metadata reports its
 unavailability; adding its Agent to the scan cannot invent historical tokens.
 An arbitrary named model preset is not a reasoning effort unless the same
 record supplies the actual option or the selector has a known effort meaning.

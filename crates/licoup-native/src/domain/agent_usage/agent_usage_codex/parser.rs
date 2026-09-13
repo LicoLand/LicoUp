@@ -1,4 +1,5 @@
 use super::super::contract::{UsageVariant, text_field};
+use super::super::variant::{compatible_recorded_models, model_label, prefer_recorded_model};
 use super::super::window::UsageWindow;
 use super::event_hash::advance_event_chain;
 use super::models::{ParserState, TokenTotals};
@@ -107,17 +108,7 @@ impl<'connection> ParserBatch<'connection> {
                 state.current_variant = UsageVariant::from_metadata(payload);
                 state.current_turn_id = turn_id(payload);
                 state.pending_context = true;
-                state.current_model = text_field(
-                    payload,
-                    &[
-                        "model",
-                        "model_name",
-                        "modelName",
-                        "model_id",
-                        "modelId",
-                        "modelID",
-                    ],
-                );
+                state.current_model = model_label(payload);
                 return Ok(());
             }
             "event_msg" => {}
@@ -133,28 +124,26 @@ impl<'connection> ParserBatch<'connection> {
             // a turn ID, so consume them once at the next start, never again.
             let same_turn = (id.is_some() && id == state.current_turn_id)
                 || (state.pending_context && state.current_turn_id.is_none());
-            let observed_model = text_field(
-                payload,
-                &[
-                    "model",
-                    "model_name",
-                    "modelName",
-                    "model_id",
-                    "modelId",
-                    "modelID",
-                ],
-            );
+            let observed_model = model_label(payload);
             let same_model = observed_model.is_none()
                 || state.current_model.is_none()
-                || observed_model == state.current_model;
+                || observed_model
+                    .as_deref()
+                    .zip(state.current_model.as_deref())
+                    .is_some_and(|(current, previous)| {
+                        compatible_recorded_models(current, previous)
+                    });
             let observed = UsageVariant::from_metadata(payload);
             state.current_variant = if same_turn && same_model {
                 observed.with_fallback(&state.current_variant)
             } else {
                 observed
             };
-            if !same_turn || observed_model.is_some() {
+            if !same_turn {
                 state.current_model = observed_model;
+            } else {
+                state.current_model =
+                    prefer_recorded_model(observed_model, state.current_model.take());
             }
             state.current_turn_id = id;
             state.pending_context = false;
@@ -190,25 +179,17 @@ impl<'connection> ParserBatch<'connection> {
             state.current_turn_id = Some(id);
         }
         state.pending_context = false;
-        let model_fields = &[
-            "model",
-            "model_name",
-            "modelName",
-            "model_id",
-            "modelId",
-            "modelID",
-        ];
-        let explicit_model =
-            text_field(info, model_fields).or_else(|| text_field(payload, model_fields));
+        let explicit_model = prefer_recorded_model(model_label(info), model_label(payload));
         if let Some(model) = explicit_model.as_ref() {
             if state
                 .current_model
                 .as_ref()
-                .is_some_and(|previous| previous != model)
+                .is_some_and(|previous| !compatible_recorded_models(previous, model))
             {
                 state.current_variant = UsageVariant::default();
             }
-            state.current_model = Some(model.clone());
+            state.current_model =
+                prefer_recorded_model(Some(model.clone()), state.current_model.take());
         }
         let variant = UsageVariant::from_metadata(info)
             .with_fallback(&UsageVariant::from_metadata(payload))
@@ -229,7 +210,7 @@ impl<'connection> ParserBatch<'connection> {
         else {
             return Ok(());
         };
-        let model = explicit_model.or_else(|| state.current_model.clone());
+        let model = prefer_recorded_model(explicit_model, state.current_model.clone());
         let raw_baseline = state.raw_totals;
         let counted_baseline = state.counted_totals.unwrap_or_default();
         let delta = match (last, total) {

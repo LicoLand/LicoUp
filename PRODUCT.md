@@ -27,6 +27,12 @@ Users can communicate with their own agents, peer endpoints, and explicitly
 admitted external capabilities while retaining control of protected content,
 keys, approval, and local effects.
 
+One explicit model API-key authorization covers one exact operation or bounded
+batch. It may present at most one system authentication, using Touch ID whenever
+usable; a still-valid scoped grant may be reused without a new prompt. It must
+not add password dialogs per key, weaken Keychain protection, or report a blocked
+legacy-key migration as successful authorization.
+
 The client asks the operating system for a privacy permission only when the
 current user action needs that resource. Automatic Agent discovery resolves
 each canonical Agent command through the User's configured command-line

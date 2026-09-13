@@ -25,13 +25,17 @@ export async function checkConversationBridges(context, { packagedTargets, conve
   const driverProfiles = new Map(
     (driverInventory.drivers || []).map((driver) => [driver.agentId, driver])
   );
+  const historyAdapterRoutes = /fn adapter_for_agent\([^]*?\n\}/u.exec(
+    conversationSourceCatalogRustSource
+  )?.[0] || "";
+  assert(historyAdapterRoutes.length > 0, "native transcript adapter routes must be declared");
   for (const target of packagedTargets) {
     const driver = driverProfiles.get(target);
     assert(driver, `packaged target must have a conversation driver profile: ${target}`);
     assert(typeof driver?.historyReadable === "boolean",
       `conversation driver must declare history readability: ${target}`);
     assert(
-      conversationSourceCatalogRustSource.includes(`"${target}"`) === driver?.historyReadable,
+      historyAdapterRoutes.includes(`"${target}"`) === driver?.historyReadable,
       `native history adapter availability must match the conversation driver profile: ${target}`
     );
   }

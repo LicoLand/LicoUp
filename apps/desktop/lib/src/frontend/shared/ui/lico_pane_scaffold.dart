@@ -28,6 +28,7 @@ final class LicoPaneScaffold extends StatelessWidget {
     this.contentKey,
     this.leading,
     this.trailing,
+    this.actionsOnSeparateLine = false,
   });
 
   final String title;
@@ -41,6 +42,7 @@ final class LicoPaneScaffold extends StatelessWidget {
   final Key? contentKey;
   final Widget? leading;
   final Widget? trailing;
+  final bool actionsOnSeparateLine;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +61,7 @@ final class LicoPaneScaffold extends StatelessWidget {
             refreshingIconKey: refreshingIconKey,
             leading: leading,
             trailing: trailing,
+            actionsOnSeparateLine: actionsOnSeparateLine,
             padding: LicoContentSpacing.paneTitlePadding,
           ),
           Expanded(

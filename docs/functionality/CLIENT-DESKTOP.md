@@ -122,6 +122,13 @@ concurrency. Results are normalized and deduplicated by stable target identity,
 then registered in a local cache with configuration references needed for fast
 subsequent launch.
 
+Discovery snapshots are restored only for IDs in the current native target
+registry. The local read-only `targets catalog` command projects that registry,
+including registered custom CLI lanes, without discovering processes or virtual
+machines. Retired adapters cannot reappear from old snapshots. If the registry
+is unavailable, the client skips the acceleration snapshot and preserves its
+stored data; existing manual and virtual-machine boundaries still apply.
+
 On macOS, the accessible-environment scan also enumerates running local OrbStack
 machines and checks a fixed set of documented or common OpenClaw and Hermes
 executable locations. Guest probes have bounded time, output, machine count, and
@@ -278,6 +285,31 @@ amounts and the billing-cycle reset.
 Regression: agent/model dimensions, default and custom windows, timezone
 transitions, deduplication, cache invalidation, redaction, and empty/partial local
 source handling.
+
+DeepSeek Harness usage comes from provider-reported samples in its durable
+`assistant/message` and `assistant/attempt` events, including billed retries.
+Discovery uses `DSH_HOME/sessions` (default `~/.dsh/sessions`) or an explicitly
+selected history root. One scan reuses one lazily started metadata reader and
+the installed official read-only persistence API; it loads no profile, current
+provider configuration, or credentials. The API decodes plaintext and Zstandard
+generations in memory and supplies the exact fork-inherited prefix to exclude.
+Only the highest canonical generation represents each session. Native source
+fingerprints skip unchanged sessions, and daily snapshot replacement keeps
+generation upgrades and repeated refreshes from recounting consumption.
+
+Harness input is uncached input; reported cache reads and writes belong in
+prompt totals. Reasoning is already included in output and is not added again.
+The response's actual model and provider take precedence, while effort comes
+only from its matching recorded request header or materialized adapter defaults.
+The public session meter preserves reported disjoint input/output buckets when
+full-call totals are absent, using its documented zero contribution for absent
+optional cache buckets. Supplied invalid counts or inconsistent totals remain
+unavailable requests; context pressure and estimated composition never become
+usage. Initial extraction
+reads the complete selected session histories once, with work and byte counts
+recorded by the existing background scan cache. A reader failure reports a
+sanitized stage. Historical usage support does not imply SDK transcript
+readback or a live `usageStatus` control.
 
 ## Preview Scenario S-06 — End-to-End Encryption and Mobile Relay
 

@@ -123,24 +123,16 @@ void main() {
     expect(adapters.map((json) => json['id']), contains('external-agent'));
   });
 
-  test(
-    'packaged Kimi adapters keep desktop and CLI identities separate',
-    () async {
-      final adapters =
-          (await AssetAgentRenderAdapterJsonSource().loadAdapterJson())
-              .map(AgentRenderAdapter.fromJson)
-              .toList(growable: false);
-      final desktop = adapters.singleWhere((adapter) => adapter.id == 'kimi');
-      final cli = adapters.singleWhere((adapter) => adapter.id == 'kimi-code');
+  test('packaged Kimi Code adapter matches its CLI identity', () async {
+    final adapters =
+        (await AssetAgentRenderAdapterJsonSource().loadAdapterJson())
+            .map(AgentRenderAdapter.fromJson)
+            .toList(growable: false);
+    final cli = adapters.singleWhere((adapter) => adapter.id == 'kimi-code');
 
-      expect(desktop.displayName, 'Kimi Desktop');
-      expect(cli.displayName, 'Kimi Code CLI');
-      expect(desktop.matchScore(agentId: 'kimi'), greaterThan(0));
-      expect(desktop.matchScore(agentId: 'kimi-code'), 0);
-      expect(cli.matchScore(agentId: 'kimi-code'), greaterThan(0));
-      expect(cli.matchScore(agentId: 'kimi'), 0);
-    },
-  );
+    expect(cli.displayName, 'Kimi Code CLI');
+    expect(cli.matchScore(agentId: 'kimi-code'), greaterThan(0));
+  });
 }
 
 class _MemoryAgentRenderAdapterJsonSource

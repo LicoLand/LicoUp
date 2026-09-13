@@ -137,13 +137,22 @@ ConversationParticleField _field(
   find.byType(ConversationParticleField, skipOffstage: skipOffstage),
 );
 
-Future<void> _finishLocalRaster(WidgetTester tester) async {
-  // Let the engine's local image readback finish outside the fake async clock.
-  await tester.runAsync(() async {
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-  });
+Future<void> _waitForLocalRaster(WidgetTester tester) async {
   await tester.pump();
-  await tester.pump();
+  final elapsed = Stopwatch()..start();
+  // Image readback runs outside the fake clock. Observe its published result;
+  // the guard only bounds a broken test, not production rendering readiness.
+  while (_field(tester).avatarGlyph == null &&
+      elapsed.elapsed < const Duration(seconds: 5)) {
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+  }
+  expect(
+    _field(tester).avatarGlyph,
+    isNotNull,
+    reason:
+        'The selected avatar must publish its raster before geometry checks.',
+  );
 }
 
 class _SyntheticBrandPainter extends CustomPainter {
@@ -170,7 +179,7 @@ void main() {
       '${external ? 'Desktop sibling' : 'Dashboard nested'} composer uses real local geometry and keeps input live',
       (tester) async {
         await tester.pumpWidget(_fixture(external: external));
-        await _finishLocalRaster(tester);
+        await _waitForLocalRaster(tester);
         final initial = _field(tester);
         final host = tester.getRect(find.byType(ConversationMotionHost));
         final content = tester
@@ -315,7 +324,7 @@ void main() {
     'resize and animated outline retain field identity and cached mark geometry',
     (tester) async {
       await tester.pumpWidget(_fixture(external: true));
-      await _finishLocalRaster(tester);
+      await _waitForLocalRaster(tester);
       final state = tester.state(find.byType(ConversationParticleField));
       final glyph = _field(tester).avatarGlyph;
       await tester.pumpWidget(_fixture(external: true, assembled: true));
@@ -348,7 +357,7 @@ void main() {
     'conversation switch removes old anchors and creates a fresh field',
     (tester) async {
       await tester.pumpWidget(_fixture(external: true));
-      await _finishLocalRaster(tester);
+      await _waitForLocalRaster(tester);
       final oldState = tester.state(find.byType(ConversationParticleField));
       await tester.pumpWidget(
         _fixture(
@@ -375,7 +384,7 @@ void main() {
     (tester) async {
       var completed = 0;
       await tester.pumpWidget(_fixture(external: true));
-      await _finishLocalRaster(tester);
+      await _waitForLocalRaster(tester);
       await tester.pumpWidget(_fixture(external: true, offstage: true));
       await tester.pump();
       expect(find.byType(ConversationParticleField), findsNothing);
@@ -504,7 +513,7 @@ void main() {
           ),
         ),
       );
-      await _finishLocalRaster(tester);
+      await _waitForLocalRaster(tester);
       final before = _field(tester).anchors.avatar!;
       scroll.jumpTo(80);
       await tester.pump();
@@ -567,8 +576,7 @@ void main() {
           ),
         ),
       );
-      await _finishLocalRaster(tester);
-      await _finishLocalRaster(tester);
+      await _waitForLocalRaster(tester);
       final field = _field(tester);
       expect(field.avatarGlyph, isNotNull);
       expect(

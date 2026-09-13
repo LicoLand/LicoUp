@@ -145,7 +145,18 @@ fn metadata_objects(value: &Value) -> Vec<&Value> {
                 "usage",
                 "token_usage",
                 "tokenUsage",
+                "usageMetadata",
+                "usage_metadata",
+                "tokenCount",
+                "token_count",
+                "responseUsage",
+                "response_usage",
+                "gen_ai.usage",
+                "tokens",
+                "status",
                 "message",
+                "response",
+                "modelInfo",
                 "data",
                 "payload",
                 "request",
@@ -238,8 +249,8 @@ mod tests {
         let request =
             json!({"id":"lab/flash-latest","providerID":"relay-a","variant":"high"}).to_string();
         let response = json!({"id":"lab/flash-latest","variant":"max"}).to_string();
-        assert!(same_model_selection(&request, &response));
-        assert!(!same_model_selection(&request, &nested));
+        assert!(compatible_recorded_models(&request, &response));
+        assert!(!compatible_recorded_models(&request, &nested));
         let completed = model_selection(&model_with_provider_fallback(&response, &request));
         assert_eq!(completed.provider_id.as_deref(), Some("relay-a"));
         assert_eq!(completed.variant.effort.as_deref(), Some("max"));
@@ -248,10 +259,66 @@ mod tests {
             "different-model"
         );
     }
+
+    #[test]
+    fn decodes_complete_selectors_and_rejects_structural_fragments_as_model_ids() {
+        let selector = json!({
+            "modelID":"anthropic/claude-opus-4.6", "providerID":"synthetic-relay",
+            "variant":"high", "fast":false
+        });
+        for encoded in [
+            selector.to_string(),
+            json!(selector.to_string()).to_string(),
+        ] {
+            let selection = model_selection(&encoded);
+            assert_eq!(selection.id, "anthropic/claude-opus-4.6");
+            assert_eq!(selection.provider_id.as_deref(), Some("synthetic-relay"));
+            assert_eq!(selection.variant.label().as_deref(), Some("High"));
+            assert_eq!(selection.variant.fast, Some(false));
+        }
+        let encoded = json!(
+            json!({"id":"anthropic/claude-opus-4.6","variant":"high","fast":false}).to_string()
+        )
+        .to_string();
+        let labeled =
+            model_label(&json!({"model":encoded,"providerID":"synthetic-relay"})).unwrap();
+        let selection = model_selection(&labeled);
+        assert_eq!(selection.provider_id.as_deref(), Some("synthetic-relay"));
+        assert_eq!(selection.variant.label().as_deref(), Some("High"));
+        assert_eq!(selection.variant.fast, Some(false));
+        for invalid in [
+            r#"claude-opus-4.6","providerid":"synthetic-relay","variant":"high"}"#,
+            "claude-opus-4.6\" ,\n  \"providerid\" : \"synthetic-relay\",\n  \"variant\" : \"high\"\n}",
+            r#"synthetic/{"id":"anthropic/claude-opus-4.6"}"#,
+            "synthetic/{\n  \"id\": \"anthropic/claude-opus-4.6\"\n}",
+            r#"{"providerID":"synthetic-relay","variant":"high"}"#,
+            r#"["claude-opus-4.6"]"#,
+            r#"{"id":["claude-opus-4.6"]}"#,
+        ] {
+            let selection = model_selection(invalid);
+            assert!(selection.id.is_empty());
+            assert!(!compatible_recorded_models(invalid, invalid));
+        }
+        let missing = model_selection(r#"{"providerID":"synthetic-relay","variant":"high"}"#);
+        assert_eq!(missing.variant.label().as_deref(), Some("High"));
+        let fragment =
+            model_selection(r#"claude-opus-4.6","providerid":"synthetic-relay","variant":"high"}"#);
+        assert_eq!(fragment.variant, UsageVariant::default());
+        assert_eq!(
+            model_selection("custom/model-high[1m]").id,
+            "custom/model-high[1m]"
+        );
+        assert_eq!(model_selection("123").id, "123");
+        assert_eq!(
+            model_selection("custom-{blue}, high:fast").id,
+            "custom-{blue}, high:fast"
+        );
+    }
 }
 
 /// Structured selectors are request facts, including JSON-string selectors
 /// written by OpenCode/Kilo. `variant: default` is not an observed effort.
+#[derive(Default)]
 pub(super) struct ModelSelection {
     pub(super) id: String,
     pub(super) provider_id: Option<String>,
@@ -270,46 +337,95 @@ impl ModelSelection {
 }
 
 pub(super) fn model_selection(raw: &str) -> ModelSelection {
-    let parsed = serde_json::from_str::<Value>(raw)
-        .ok()
-        .filter(|value| value.is_object());
-    let Some(value) = parsed else {
-        return ModelSelection {
-            id: raw.to_owned(),
-            provider_id: None,
-            variant: UsageVariant::default(),
-        };
+    let value = match serde_json::from_str::<Value>(raw) {
+        Ok(Value::String(encoded)) => return model_selection(&encoded),
+        Ok(value @ Value::Object(_)) => value,
+        Ok(Value::Array(_)) => return ModelSelection::default(),
+        Ok(_) | Err(_) => {
+            return ModelSelection {
+                id: if has_structured_selector_syntax(raw) {
+                    String::new()
+                } else {
+                    raw.trim().to_owned()
+                },
+                ..Default::default()
+            };
+        }
     };
     let id = ["id", "modelID", "modelId", "model_id", "model", "name"]
         .into_iter()
-        .find_map(|key| value.get(key).and_then(Value::as_str))
-        .unwrap_or(raw)
-        .trim();
-    let provider = ["providerID", "providerId", "provider_id", "provider"]
-        .into_iter()
-        .find_map(|key| value.get(key).and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let mut variant = UsageVariant::from_metadata(&value);
-    if variant.effort.is_none() {
-        variant.effort = value
-            .get("variant")
-            .and_then(Value::as_str)
-            .and_then(selector_effort);
+        .find_map(|key| value.get(key).and_then(Value::as_str));
+    let mut selection = id.map(model_selection).unwrap_or_default();
+    if selection.provider_id.is_none() {
+        selection.provider_id = recorded_provider(&value).map(str::to_owned);
     }
-    ModelSelection {
-        id: id.to_owned(),
-        provider_id: provider.map(str::to_owned),
-        variant,
+    selection.variant = UsageVariant::from_metadata(&value).with_fallback(&selection.variant);
+    selection
+}
+
+pub(super) fn is_placeholder_id(id: &str) -> bool {
+    matches!(
+        id.rsplit('/')
+            .next()
+            .unwrap_or(id)
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "" | "default" | "auto" | "unknown" | "unspecified" | "others"
+    )
+}
+
+fn has_concrete_model(raw: &str) -> bool {
+    let selected = model_selection(raw);
+    !selected.id.is_empty() && !is_placeholder_id(&selected.id)
+}
+
+/// Select only between facts the caller has already associated with one
+/// record, request, response, or turn. Never searches session state or config.
+pub(crate) fn prefer_recorded_model(
+    primary: Option<String>,
+    related: Option<String>,
+) -> Option<String> {
+    if primary.as_deref().is_some_and(has_concrete_model) {
+        primary
+    } else if related.as_deref().is_some_and(has_concrete_model) {
+        related
+    } else {
+        primary.or(related)
     }
 }
 
-/// Request correlation compares recorded IDs, not option fields serialized in
-/// the selector. Two explicit different serving providers never share context.
-pub(super) fn same_model_selection(left: &str, right: &str) -> bool {
+/// A serialized container or a remaining JSON field tail is not a model ID.
+/// Keep the source elsewhere unchanged; never reconstruct missing fields from
+/// fragments or pass request metadata through the display-name formatter.
+fn has_structured_selector_syntax(raw: &str) -> bool {
+    let raw = raw.trim();
+    raw.starts_with(['{', '[', '"'])
+        || raw
+            .match_indices('{')
+            .any(|(index, _)| raw[index + 1..].trim_start().starts_with('"'))
+        || (raw.ends_with('}')
+            && raw.match_indices('"').any(|(index, _)| {
+                let Some(rest) = raw[index + 1..].trim_start().strip_prefix(',') else {
+                    return false;
+                };
+                let Some(field) = rest.trim_start().strip_prefix('"') else {
+                    return false;
+                };
+                field.split_once('"').is_some_and(|(key, rest)| {
+                    !key.is_empty() && rest.trim_start().starts_with(':')
+                })
+            }))
+}
+
+/// A placeholder can be completed by evidence from the same associated request,
+/// but cannot bridge two explicitly different serving providers.
+pub(super) fn compatible_recorded_models(left: &str, right: &str) -> bool {
     let left = model_selection(left);
     let right = model_selection(right);
-    left.id == right.id
+    !left.id.is_empty()
+        && !right.id.is_empty()
+        && (left.id == right.id || is_placeholder_id(&left.id) || is_placeholder_id(&right.id))
         && match (&left.provider_id, &right.provider_id) {
             (Some(left), Some(right)) => left == right,
             _ => true,
@@ -319,22 +435,29 @@ pub(super) fn same_model_selection(left: &str, right: &str) -> bool {
 pub(super) fn model_with_provider_fallback(raw: &str, request: &str) -> String {
     let current = model_selection(raw);
     let request = model_selection(request);
-    if current.provider_id.is_some() || current.id != request.id {
+    if current.id.is_empty() || current.provider_id.is_some() || current.id != request.id {
         return raw.to_owned();
     }
     let Some(provider) = request.provider_id else {
         return raw.to_owned();
     };
-    let mut selection = serde_json::from_str::<Value>(raw)
-        .ok()
-        .filter(Value::is_object)
-        .unwrap_or_else(|| serde_json::json!({"id":current.id}));
+    let mut selection =
+        selector_object(raw).unwrap_or_else(|| serde_json::json!({"id":current.id}));
     selection["providerID"] = Value::String(provider);
     selection.to_string()
 }
 
+fn selector_object(raw: &str) -> Option<Value> {
+    match serde_json::from_str(raw).ok()? {
+        object @ Value::Object(_) => Some(object),
+        Value::String(encoded) => selector_object(&encoded),
+        _ => None,
+    }
+}
+
 /// Preserve only the structured model selection, never the surrounding request.
-pub(super) fn model_label(value: &Value) -> Option<String> {
+pub(crate) fn model_label(value: &Value) -> Option<String> {
+    let mut fallback = None;
     for candidate in metadata_objects(value) {
         for key in [
             "model",
@@ -357,9 +480,15 @@ pub(super) fn model_label(value: &Value) -> Option<String> {
                 if let Some(provider) = recorded_provider(candidate) {
                     let selection = model_selection(text);
                     let request = serde_json::json!({"id":selection.id,"providerID":provider});
-                    return Some(model_with_provider_fallback(text, &request.to_string()));
+                    let labeled = model_with_provider_fallback(text, &request.to_string());
+                    fallback = prefer_recorded_model(fallback, Some(labeled));
+                } else {
+                    fallback = prefer_recorded_model(fallback, Some(text.to_owned()));
                 }
-                return Some(text.to_owned());
+                if fallback.as_deref().is_some_and(has_concrete_model) {
+                    return fallback;
+                }
+                continue;
             }
             if let Some(object) = model.as_object() {
                 let mut selected = [
@@ -395,12 +524,16 @@ pub(super) fn model_label(value: &Value) -> Option<String> {
                     .into_iter()
                     .any(|key| selected.contains_key(key))
                 {
-                    return Some(Value::Object(selected).to_string());
+                    fallback =
+                        prefer_recorded_model(fallback, Some(Value::Object(selected).to_string()));
+                    if fallback.as_deref().is_some_and(has_concrete_model) {
+                        return fallback;
+                    }
                 }
             }
         }
     }
-    value.get("modelInfo").and_then(model_label)
+    fallback
 }
 
 fn recorded_provider(value: &Value) -> Option<&str> {

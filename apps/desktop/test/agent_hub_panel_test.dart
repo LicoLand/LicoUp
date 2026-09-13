@@ -20,6 +20,9 @@ import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart'
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
 import 'package:licoup/src/contracts/agent_hub.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_panel.dart';
+import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_detail_tabs.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
@@ -410,6 +413,7 @@ _HubHarness _harness(
   _AgentHubCatalogOrder? orderRecipes,
   PluginManagementBinding? plugins,
   SkillHubBinding? skills,
+  String? presetId,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   final feature = AgentHubRendererBindingFixture(controller);
@@ -424,7 +428,9 @@ _HubHarness _harness(
         GlobalCupertinoLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
+      theme: presetId == null
+          ? buildLicoTheme(platformBrightness: Brightness.dark)
+          : buildLicoTheme(presetId: presetId),
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
@@ -794,6 +800,142 @@ void main() {
     expect(find.text('Uninstall'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'detail title bar refresh follows its active resource and retains page state',
+    (tester) async {
+      final engine = _FakeHubEngine();
+      final skillFixture = SkillHubBindingFixture(skills: const []);
+      final pluginEffects = SemanticEffectChannel<PluginManagementEffect>();
+      final pluginIntents = <PluginManagementIntent>[];
+      PluginManagementProjection pluginProjection(PresentationPhase phase) =>
+          PluginManagementProjection(
+            plugins: const [],
+            workflows: const [],
+            phase: phase,
+          );
+      final pluginSource = _MutableProjection(
+        pluginProjection(PresentationPhase.ready),
+      );
+      addTearDown(skillFixture.dispose);
+      addTearDown(pluginEffects.dispose);
+      addTearDown(pluginSource.close);
+      final plugins = PluginManagementBinding(
+        projection: pluginSource,
+        intents: SemanticIntentChannel<PluginManagementIntent>(
+          pluginIntents.add,
+        ),
+        effects: pluginEffects,
+      );
+      await _pumpHub(
+        tester,
+        _harness(engine, plugins: plugins, skills: skillFixture.binding),
+      );
+      await _openDetail(tester, 'codex');
+      pluginIntents.clear();
+      skillFixture.receivedIntents.clear();
+      int rootRequests() =>
+          engine.catalogRecipeIds.where((id) => id.isEmpty).length;
+      final beforeRefresh = rootRequests();
+      final refresh = find.byKey(const Key('agent-hub-refresh'));
+      final selector = find.byType(AgentHubDetailTabs);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('agent-hub-top-bar')),
+          matching: selector,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getRect(selector).right,
+        closeTo(tester.getRect(refresh).left - 8, 0.1),
+      );
+      expect(
+        tester.getRect(selector).center.dy,
+        closeTo(tester.getRect(refresh).center.dy, 0.1),
+      );
+      expect(find.byKey(const Key('adapter-plugin-refresh')), findsNothing);
+      expect(find.byKey(const Key('skill-hub-refresh')), findsNothing);
+      final retainedSkillPage = tester.state(find.byType(SkillHubPanel));
+
+      await tester.tap(refresh);
+      await tester.pump();
+      await tester.pump();
+      expect(rootRequests(), beforeRefresh + 1);
+      expect(pluginIntents, isEmpty);
+      expect(skillFixture.receivedIntents, isEmpty);
+
+      await tester.tap(find.byKey(const Key('agent-hub-detail-tab-1')));
+      await tester.pump();
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(pluginIntents.whereType<RefreshPlugins>(), hasLength(1));
+      expect(skillFixture.receivedIntents, isEmpty);
+      expect(rootRequests(), beforeRefresh + 1);
+      pluginSource.replace(pluginProjection(PresentationPhase.loading));
+      await tester.pump();
+      expect(tester.widget<LicoPaneRefreshButton>(refresh).refreshing, isTrue);
+      expect(tester.widget<LicoPaneRefreshButton>(refresh).onPressed, isNull);
+
+      await tester.tap(find.byKey(const Key('agent-hub-detail-tab-2')));
+      await tester.pump();
+      expect(tester.widget<LicoPaneRefreshButton>(refresh).refreshing, isFalse);
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(
+        skillFixture.receivedIntents.whereType<RefreshSkillHub>(),
+        hasLength(1),
+      );
+      expect(pluginIntents.whereType<RefreshPlugins>(), hasLength(1));
+      expect(rootRequests(), beforeRefresh + 1);
+      expect(tester.state(find.byType(SkillHubPanel)), same(retainedSkillPage));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'narrow large-text detail keeps its selector next to refresh and supports skills without plugins',
+    (tester) async {
+      final skillFixture = SkillHubBindingFixture(skills: const []);
+      addTearDown(skillFixture.dispose);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pumpHub(
+        tester,
+        _harness(
+          _FakeHubEngine(),
+          skills: skillFixture.binding,
+          locale: const Locale('zh'),
+          presetId: 'lico-soda-light',
+        ),
+      );
+      await _openDetail(tester, 'codex');
+      await tester.binding.setSurfaceSize(const Size(360, 640));
+      await tester.pump();
+      final header = tester.widget<LicoPaneTitleBar>(
+        find.byKey(const Key('agent-hub-top-bar')),
+      );
+      expect(header.actionsOnSeparateLine, isTrue);
+      final selector = tester.getRect(find.byType(AgentHubDetailTabs));
+      final refresh = tester.getRect(
+        find.byKey(const Key('agent-hub-refresh')),
+      );
+      expect(selector.right, closeTo(refresh.left - 8, 0.1));
+      expect(selector.center.dy, closeTo(refresh.center.dy, 0.1));
+      expect(find.text('概览'), findsOneWidget);
+      expect(find.text('技能'), findsOneWidget);
+      skillFixture.receivedIntents.clear();
+      await tester.tap(find.byKey(const Key('agent-hub-detail-tab-1')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('agent-hub-refresh')));
+      await tester.pump();
+      expect(
+        skillFixture.receivedIntents.whereType<RefreshSkillHub>(),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('detail keeps Agent skills usable while plugins are loading', (
     tester,
@@ -1737,4 +1879,19 @@ final class _StaticProjection<P> implements ProjectionSource<P> {
   final P current;
   @override
   Stream<ProjectionUpdate<P>> get changes => const Stream.empty();
+}
+
+final class _MutableProjection<P> implements ProjectionSource<P> {
+  _MutableProjection(this.current);
+  @override
+  P current;
+  final _updates = StreamController<ProjectionUpdate<P>>.broadcast(sync: true);
+  @override
+  Stream<ProjectionUpdate<P>> get changes => _updates.stream;
+  void replace(P next) {
+    current = next;
+    _updates.add(ProjectionUpdate(next));
+  }
+
+  Future<void> close() => _updates.close();
 }

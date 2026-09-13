@@ -224,7 +224,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             value: formatAgentUsageNumber(sectionTotal),
             trailing: '100%',
             fraction: sectionTotal > 0 ? 1 : 0,
-            accent: colors.primary,
+            accent: Colors.white,
           ),
         ...detailRows,
       ],

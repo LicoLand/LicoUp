@@ -26,6 +26,7 @@ mod conversations;
 mod dispatches;
 mod events;
 mod execution;
+mod native_sessions;
 mod path_security;
 mod recovery;
 
@@ -37,6 +38,7 @@ pub use execution::{
     ExecutionRecord, NativeExecutionReference, NativeExecutionReferenceIndex,
     RuntimeExecutionSnapshot, RuntimeFrameRecord,
 };
+pub use native_sessions::NativeSessionReference;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 
 pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
@@ -49,7 +51,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "14";
+pub const CURRENT_SCHEMA_VERSION: &str = "15";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -1451,6 +1453,7 @@ impl ConversationStore {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            native_sessions::record_native_session(&transaction, &scope.conversation_id, &scope.membership_id, session_id)?;
             transaction.execute(
                 "INSERT INTO migration_provenance(source_kind, source_identity, conversation_id)
                  VALUES ('projection', ?1, ?2)
@@ -3068,7 +3071,17 @@ impl ConversationStore {
         validate_identifier(&binding.conversation_id, "conversation_id")?;
         validate_identifier(&binding.membership_id, "membership_id")?;
         self.with_connection(|connection| {
-            connection.execute(
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            if let Some(session_id) = runtime_session_id {
+                native_sessions::record_native_session(
+                    &transaction,
+                    &binding.conversation_id,
+                    &binding.membership_id,
+                    session_id,
+                )?;
+            }
+            transaction.execute(
                 "INSERT INTO runtime_bindings(
                    id, conversation_id, membership_id, lane, availability, safe_reason,
                    runtime_session_id, runtime_conversation_path, working_directory
@@ -3091,6 +3104,7 @@ impl ConversationStore {
                     working_directory,
                 ],
             )?;
+            transaction.commit()?;
             Ok(())
         })
     }
@@ -3642,7 +3656,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3802,6 +3816,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "INTEGER",
     )?;
     ensure_search_index(connection)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == "14" {
+        native_sessions::migrate_native_sessions_v15(connection)?;
+    }
     Ok(())
 }
 
@@ -4242,6 +4264,21 @@ fn retarget_duplicate_membership_group(
 fn retarget_membership_id(connection: &Connection, from: &str, to: &str) -> StoreResult<()> {
     if from == to {
         return Ok(());
+    }
+    let has_native_sessions: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_native_sessions')",
+        [], |row|row.get(0),
+    )?;
+    if has_native_sessions {
+        connection.execute(
+            "INSERT OR IGNORE INTO conversation_native_sessions
+             SELECT conversation_id,?2,native_session_id FROM conversation_native_sessions WHERE membership_id=?1",
+            params![from, to],
+        )?;
+        connection.execute(
+            "DELETE FROM conversation_native_sessions WHERE membership_id=?1",
+            params![from],
+        )?;
     }
     connection.execute(
         "UPDATE events SET author_membership_id=?2 WHERE author_membership_id=?1",

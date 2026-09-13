@@ -107,6 +107,7 @@ fn migration_append_case(sealed: bool, replaced: bool) {
         "jsonl",
         &previous,
         &calendar,
+        &mut deepseek::Reader::default(),
     )
     .unwrap();
     let PlannedSourceAction::Migrate {
@@ -165,6 +166,7 @@ fn migration_append_case(sealed: bool, replaced: bool) {
         Some(&previous),
         0,
         &calendar,
+        &mut deepseek::Reader::default(),
     )
     .unwrap();
     assert!(parsed.append);

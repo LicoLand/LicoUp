@@ -107,6 +107,8 @@ pub(super) struct CachedFile {
 pub(super) struct ScanStats {
     pub(super) discovered_files: u64,
     pub(super) reused_files: u64,
+    pub(super) identity_refreshed_files: u64,
+    pub(super) identity_skipped_files: u64,
     pub(super) appended_files: u64,
     pub(super) rescanned_files: u64,
     pub(super) parsed_bytes: u64,
@@ -122,6 +124,8 @@ impl ScanStats {
             "fresh": self.cache_fresh,
             "discoveredFiles": self.discovered_files,
             "reusedFiles": self.reused_files,
+            "identityRefreshedFiles": self.identity_refreshed_files,
+            "identitySkippedFiles": self.identity_skipped_files,
             "appendedFiles": self.appended_files,
             "rescannedFiles": self.rescanned_files,
             "parsedBytes": self.parsed_bytes,
