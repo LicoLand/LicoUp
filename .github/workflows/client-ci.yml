@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - nightly
+  push:
+    branches:
+      - macos-nightly-release-candidate
 
 permissions:
   contents: read
@@ -14,6 +17,7 @@ concurrency:
 
 jobs:
   plan:
+    if: github.event.deleted != true
     name: Plan client gates
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -192,7 +196,7 @@ jobs:
 
   client-required:
     name: Client required
-    if: always()
+    if: always() && github.event.deleted != true
     needs: [plan, source, flutter, rust, android, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
