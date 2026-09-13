@@ -4,6 +4,87 @@ This file records notable public changes to LicoUp. Product and package
 versions are owned by `tools/client-version.json` and the synchronized package
 manifests.
 
+## 0.3.0 — 2026-09-14
+
+- Added the Orbital theme style in Dark and Light on a deep-black, silver and
+  electric-yellow palette. Existing selections are preserved, the motion-scale
+  token now scales animation durations, and macOS Reduce Motion and the manual
+  switch resolve through one scope.
+- Desktop navigation now shows four floating apps: Agent Hub, Token Usage,
+  Model Gateway and Mobile Pairing. Plugin Management and Skill Hub moved into
+  the Agent detail page, and Chat Channels moved into Mobile Pairing.
+- Added an Execution process viewer opened from the ellipsis menu at an Agent
+  bubble's upper-right corner, with search, copy, step-through and live follow.
+  Thinking and tool activity are no longer inline process cards in the
+  transcript.
+- An accepted dispatch now creates its reply bubble immediately and shows three
+  points in elastic equal-mass collision until the first real reply text
+  replaces it.
+- Loading animation is now a setting with three options: a simple spinner (the
+  new default), a static indicator, and the previous conversation particles.
+  The first two skip anchor measurement, brand-mark glyph sampling and
+  decorative frame scheduling entirely.
+- `licoup` is now the documented local CLI facade (`licoup help`,
+  `licoup commands`, `licoup rpc call`, `licoup rpc conversation`).
+  `conversation execute` and `strategy execute` route through the persistent
+  native host, so work continues after the CLI exits.
+- The `lico-up-subagents` MCP server moved to 0.14.0 with its allowlist cut from
+  nine tools to five, so Assistant profiles and workflows are local-CLI only for
+  MCP clients. The separate `lico-conversation-mcp` server was removed, and MCP
+  now autostarts with the desktop host, opt-out via `LICOUP_MCP_AUTOSTART=0`.
+- Bundled `LicoUpCustody.app` as the CLI's Keychain custodian, so one biometric
+  authorization covers all selected Gateway keys instead of per-item prompts.
+  `Contents/MacOS/licoup-cli` remains as a permanent relative symlink, the
+  client no longer falls back to an external `licoup-cli`, and bundle
+  verification fails the build when the helper is missing.
+- Added **Migrate legacy keys** to the Model Gateway credentials card, shown
+  only while migration is pending. It copies each key to the Data Protection
+  Keychain, reads it back, verifies equality, then removes the classic source,
+  so API keys do not need to be re-entered.
+- DeepSeek Harness is a first-class agent: it appears in Agent Center, in model
+  pickers with the installed adapter's names and efforts, and in Statistics
+  from its own session store. Its conversations open and send turns, and
+  assistant messages publish as they complete.
+- Claude Code pickers now list the real model catalog (`opus`, `opus[1m]`,
+  `sonnet`, `sonnet[1m]`, `haiku`, `opusplan`, `default`) and honour
+  `availableModels` from Claude settings.
+- Model rows in Token Usage open a hover card with a source header, one
+  colour-swatched row per effort or speed variant, and an
+  `Included · N requests` footer. Agent charts use fixed per-Agent brand hues,
+  model charts use shades within the model developer's family, the Total bar is
+  pure white, and the model picker lists names only in a virtualized list.
+- Reasoning-effort labels are English-only in both locales and ascend from Auto
+  through Low, Medium, High, Extra High to Max.
+- The update check no longer reports a failed network request or a failed
+  integrity verification as up to date, and a release without update material
+  shows a neutral message. A stale cache can no longer mask a failed
+  verification.
+- Corrected native token accounting: placeholder selectors such as `default`,
+  `auto`, `unknown` and `Others` no longer appear as model names, complete and
+  JSON-string-wrapped selectors decode to their effort and speed row, a record
+  with a different explicit provider no longer inherits the request's reasoning
+  effort, and retained reports are re-projected onto the currently supported
+  agent set.
+- Group conversations now bind to their own recorded history (store schema
+  14 → 15) instead of intersecting group members' browse catalogs, so missing
+  metadata no longer invents relationships and unrelated browse changes no
+  longer rebuild the group collection.
+- Removed the Kimi Desktop target. It no longer appears in Agent Center and its
+  tokens drop out of Statistics totals; Kimi Code CLI (`kimi-code`) is
+  unaffected and nothing on disk is deleted.
+- Pull-to-refresh dispatches one refresh and springs back instead of holding the
+  list, and authorizing the Gateway no longer re-seals every selected credential
+  on each call. The 120-second timeout on the macOS authorization prompt was
+  removed.
+- Startup now stages around the Local conversation: it warms immediately after
+  native state admission and before storage, preferences, target-cache
+  hydration, Agent discovery and service warmups, and update checks and
+  optional warmups no longer hold the ready state.
+- `conversation.list` returns one snapshot instead of two, replies of 256 KiB or
+  more decode off the UI isolate, each stdio RPC envelope is parsed once, and
+  `targets scan` and `llm-gateway credentials migrate` run on a bounded worker
+  pool so they no longer freeze the client.
+
 ## 0.2.1 — 2026-09-11
 
 - Replaced the macOS frosted visual-effect backdrop with a clear see-through
