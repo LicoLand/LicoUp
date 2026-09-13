@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 172;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 174;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -1848,6 +1848,12 @@ fn route_authorities() -> Vec<RouteAuthority> {
     let mut routes = Vec::with_capacity(AUTHORITATIVE_ROUTE_COUNT);
     for (module, handler, path) in [
         ("mod.rs", "handle_commands", "commands"),
+        ("model_registry.rs", "handle_read", "model-registry read"),
+        (
+            "model_registry.rs",
+            "handle_refresh",
+            "model-registry refresh",
+        ),
         ("native_rpc.rs", "handle_rpc_call", "rpc call"),
         (
             "subagents.rs",

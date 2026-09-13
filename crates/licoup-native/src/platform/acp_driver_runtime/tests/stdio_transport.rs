@@ -60,7 +60,22 @@ fn agent_chunk(content: Value) -> Value {
 
 #[test]
 fn fake_child_transport_emits_ordered_chunks_before_protocol_finish() {
+    use crate::platform::raw_execution::{
+        RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+    };
+    use std::sync::{Arc, Mutex};
+
     let (dir, executable) = compile_fake_agent("response-first");
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&records);
+    let _scope = RawExecutionScope::enter(Some(RawExecutionObserver::new(
+        move |source, direction, text| {
+            sink.lock()
+                .unwrap()
+                .push((source.to_owned(), direction, text.to_owned()));
+            Ok(())
+        },
+    )));
     let acp_driver = AcpDriverSpec::new("test-acp", &["acp"]).with_identity("test-acp", "acp");
     let result = execute_acp(
         acp_driver,
@@ -85,6 +100,29 @@ fn fake_child_transport_emits_ordered_chunks_before_protocol_finish() {
         ))
     ));
     assert!(result.stderr_truncated);
+    let records = records.lock().unwrap();
+    assert!(
+        records
+            .iter()
+            .any(|(source, direction, text)| source == "acp"
+                && *direction == RawExecutionDirection::Sent
+                && text.contains("private-stdin-prompt")
+                && text.ends_with('\n'))
+    );
+    let received: String = records
+        .iter()
+        .filter(|(_, direction, _)| *direction == RawExecutionDirection::Received)
+        .map(|(_, _, text)| text.as_str())
+        .collect();
+    assert!(received.contains("native-fake-session") && received.ends_with('\n'));
+    assert!(
+        records
+            .iter()
+            .filter(|(_, direction, _)| *direction == RawExecutionDirection::Stderr)
+            .map(|(_, _, text)| text.len())
+            .sum::<usize>()
+            > 1024
+    );
     let _ = fs::remove_dir_all(dir);
 }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
+
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/data/plan_document_loader.dart';
@@ -149,6 +151,7 @@ final class AgentConversationPaneActions {
     this.onCopyText,
     this.onRetryMessage,
     this.onDeleteMessage,
+    this.onOpenExecution,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -171,6 +174,7 @@ final class AgentConversationPaneActions {
   final Future<void> Function(String)? onCopyText;
   final Future<void> Function(String)? onRetryMessage;
   final Future<void> Function(String)? onDeleteMessage;
+  final OpenConversationExecution? onOpenExecution;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

@@ -87,4 +87,37 @@ void main() {
       isNot(agentUsageSeriesColor(colors, 'Cursor')),
     );
   });
+
+  test(
+    'native display facts select brand color while canonical IDs keep unknown colors stable',
+    () {
+      expect(
+        agentUsageSeriesColor(
+          colors,
+          'moonshotai/kimi-k3',
+          grouping: AgentUsageChartGrouping.model,
+          displayName: 'Kimi K3',
+        ),
+        agentUsageSeriesColor(
+          colors,
+          'Kimi K3',
+          grouping: AgentUsageChartGrouping.model,
+        ),
+      );
+      expect(
+        agentUsageSeriesColor(
+          colors,
+          'custom/model-id',
+          grouping: AgentUsageChartGrouping.model,
+          displayName: 'Research Model',
+        ),
+        agentUsageSeriesColor(
+          colors,
+          'custom/model-id',
+          grouping: AgentUsageChartGrouping.model,
+          displayName: 'Research Renamed',
+        ),
+      );
+    },
+  );
 }

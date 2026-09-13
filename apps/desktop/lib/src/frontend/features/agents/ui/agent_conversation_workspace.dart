@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -970,6 +972,20 @@ class _AgentConversationWorkspaceState
       recentSessionsCached: native.nativeSessions.isNotEmpty,
     );
     final actions = AgentConversationPaneActions(
+      onOpenExecution: (context, message, speakingTarget, returnFocusNode) =>
+          unawaited(
+            showBoundConversationExecution(
+              context: context,
+              message: message,
+              target: speakingTarget,
+              conversationTitle: session?.title ?? '',
+              projection: widget.conversation.execution,
+              intents: widget.conversation.intents,
+              onCopyText: (text) async =>
+                  widget.conversation.intents.send(CopyConversationText(text)),
+              returnFocusNode: returnFocusNode,
+            ),
+          ),
       onModelChanged: (model) =>
           widget.conversation.intents.send(SelectConversationModel(model)),
       onReasoningEffortChanged: (reasoningEffort) => widget.conversation.intents

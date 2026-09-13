@@ -76,8 +76,8 @@ void main() {
     expect(byAgent.snapshots.last.total, 120);
     expect(byAgent.groupTotal, 120);
     expect(byAgent.hasDailyBreakdown, isTrue);
-    expect(byModel.series.map((series) => series.label), ['GPT-5.5']);
-    expect(byModel.totalFor('GPT-5.5'), 120);
+    expect(byModel.series.map((series) => series.label), ['gpt-5.5']);
+    expect(byModel.totalFor('gpt-5.5'), 120);
     expect(byModel.groupTotal, 120);
   });
 

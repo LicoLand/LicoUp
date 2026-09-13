@@ -223,7 +223,7 @@ class AgentConversationSession {
       final previous = currentByIdentity[identity];
       if (previous != null &&
           !allowMessageRevisions &&
-          jsonEncode(previous.toJson()) != jsonEncode(message.toJson())) {
+          _nativeMessageJson(previous) != _nativeMessageJson(message)) {
         throw const FormatException('native_history_message_page_overlap');
       }
     }
@@ -237,7 +237,14 @@ class AgentConversationSession {
         final revised = allowMessageRevisions
             ? incomingByIdentity[identity]
             : null;
-        merged.add(revised ?? message);
+        var next = revised ?? message;
+        final reference =
+            incomingByIdentity[identity]?.executionReference ??
+            currentByIdentity[identity]?.executionReference;
+        if (reference != null && next.executionReference != reference) {
+          next = next.withExecutionReference(reference);
+        }
+        merged.add(next);
       }
     }
 
@@ -601,3 +608,8 @@ String _agentConversationSessionPreview(
   }
   return 'Native agent activity';
 }
+
+// Execution association is local metadata; an otherwise identical native
+// message revision cannot erase it or invalidate exact-page overlap.
+String _nativeMessageJson(AgentConversationMessage message) =>
+    jsonEncode(message.toJson()..remove('executionReference'));

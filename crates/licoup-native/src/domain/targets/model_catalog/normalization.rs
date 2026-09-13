@@ -1,4 +1,5 @@
 use super::*;
+pub(super) use crate::domain::model_registry::model_display_name as canonical_model_display_name;
 
 pub(super) fn collect_model_catalog_from_value(
     value: &Value,
@@ -328,7 +329,7 @@ pub(super) fn model_name_from_value(value: &Value) -> String {
 }
 
 pub(super) fn model_name_from_object(object: &Map<String, Value>) -> Option<String> {
-    model_identifier_from_object(object).or_else(|| model_display_name_from_object(object, ""))
+    model_identifier_from_object(object).or_else(|| raw_model_display_name_from_object(object))
 }
 
 pub(super) fn model_identifier_from_object(object: &Map<String, Value>) -> Option<String> {
@@ -367,6 +368,12 @@ pub(super) fn model_display_name_from_object(
     object: &Map<String, Value>,
     fallback: &str,
 ) -> Option<String> {
+    raw_model_display_name_from_object(object)
+        .or_else(|| sanitize_model_name(fallback))
+        .map(|name| canonical_model_display_name(&name))
+}
+
+fn raw_model_display_name_from_object(object: &Map<String, Value>) -> Option<String> {
     for key in [
         "displayName",
         "display_name",
@@ -381,10 +388,10 @@ pub(super) fn model_display_name_from_object(
             .and_then(Value::as_str)
             .and_then(sanitize_model_name);
         if let Some(name) = name {
-            return Some(canonical_model_display_name(&name));
+            return Some(name);
         }
     }
-    sanitize_model_name(fallback).map(|name| canonical_model_display_name(&name))
+    None
 }
 
 pub(super) fn collect_model_catalog_entries_from_collection_value(
@@ -494,74 +501,6 @@ pub(super) fn sanitize_model_name(value: &str) -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
-}
-
-pub(super) fn canonical_model_display_name(value: &str) -> String {
-    let trimmed = value.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("gpt-") {
-        return format!("GPT-{}", canonical_space_suffix(&lower[4..]));
-    }
-    if lower.starts_with("deepseek-") {
-        return format!("DeepSeek {}", canonical_space_suffix(&lower[9..]));
-    }
-    for (prefix, brand) in [
-        ("claude-", "Claude"),
-        ("gemini-", "Gemini"),
-        ("kimi-", "Kimi"),
-        ("grok-", "Grok"),
-    ] {
-        if let Some(suffix) = lower.strip_prefix(prefix) {
-            let mut display = brand.to_string();
-            let mut previous_numeric = false;
-            for part in suffix.split('-').filter(|part| !part.is_empty()) {
-                let numeric = part.chars().all(|ch| ch.is_ascii_digit());
-                display.push(if numeric && previous_numeric {
-                    '.'
-                } else {
-                    ' '
-                });
-                display.push_str(&canonical_model_part(part));
-                previous_numeric = numeric;
-            }
-            return display;
-        }
-    }
-    trimmed.to_string()
-}
-
-pub(super) fn canonical_space_suffix(value: &str) -> String {
-    value
-        .split(['-', ' '])
-        .filter(|part| !part.is_empty())
-        .map(canonical_model_part)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub(super) fn canonical_model_part(value: &str) -> String {
-    match value {
-        "api" => "API".to_string(),
-        "codex" => "Codex".to_string(),
-        "flash" => "Flash".to_string(),
-        "mini" => "Mini".to_string(),
-        "oss" => "OSS".to_string(),
-        "pro" => "Pro".to_string(),
-        "spark" => "Spark".to_string(),
-        value if value.starts_with('v') && value[1..].chars().all(|ch| ch.is_ascii_digit()) => {
-            value.to_ascii_uppercase()
-        }
-        value => {
-            let mut chars = value.chars();
-            match chars.next() {
-                Some(first) if first.is_ascii_alphabetic() => {
-                    format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
-                }
-                Some(first) => format!("{first}{}", chars.as_str()),
-                None => String::new(),
-            }
-        }
-    }
 }
 
 pub(super) fn prefer_model_display_name(name: &str, current: &str, candidate: &str) -> bool {

@@ -84,6 +84,10 @@ String agentUsageWarningLabel(String value, LicoStrings strings) {
           : 'ChatGPT token history scan failed',
     'native_history_scan_failed' =>
       strings.isChinese ? '原生历史扫描失败' : 'Native history scan failed',
+    'native_usage_source_migration_incomplete' =>
+      strings.isChinese
+          ? '部分历史用量无法核实，已保留原有用量'
+          : 'Some historical usage could not be verified; prior usage totals are preserved',
     'target_scan_failed' =>
       strings.isChinese ? '智能体检测失败' : 'Agent detection failed',
     // Hosted Cursor ledger. The session codes mean the local Cursor sign-in

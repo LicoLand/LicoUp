@@ -36,11 +36,6 @@ void main() {
     );
   }
 
-  Finder stackUnderShell() => find.descendant(
-    of: find.byKey(const ValueKey<String>('desktop-desktop-shell')),
-    matching: find.byType(Stack),
-  );
-
   testWidgets('main area and floating capsule bar render as one screen', (
     tester,
   ) async {
@@ -128,7 +123,9 @@ void main() {
     await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
     await tester.pump();
 
-    final stack = tester.widget<Stack>(stackUnderShell().first);
+    final stack = tester.widget<Stack>(
+      find.byKey(const Key('desktop-desktop-z-stack')),
+    );
     final mainIndex = stack.children.indexWhere(
       (child) =>
           child is Positioned &&

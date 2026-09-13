@@ -150,6 +150,7 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
                     cached_input_tokens: usage.cached_input_tokens,
                     completion_tokens: usage.completion_tokens,
                     total_tokens: usage.total_tokens,
+                    variant: super::super::variant::UsageVariant::from_metadata(event),
                     model,
                     accuracy: UsageAccuracy::Exact,
                 };
@@ -157,7 +158,11 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
             }
             // A present request whose payload omits token fields stays a
             // request: no character or context estimate is ever substituted.
-            None => summary.add_token_unavailable_request(Some(day), model),
+            None => summary.add_token_unavailable_request_with_variant(
+                Some(day),
+                model,
+                super::super::variant::UsageVariant::from_metadata(event),
+            ),
         }
     }
     summary.message_count = requests;
@@ -429,7 +434,16 @@ fn window_days(window: &UsageWindow) -> Vec<String> {
 }
 
 fn load_coverage(scan_params: &Value, window: &UsageWindow) -> HostedCoverage {
-    let Ok(reports) = read_retained_reports(scan_params, Some("cursor"), 1) else {
+    let Ok(reports) = read_retained_reports(
+        scan_params,
+        Some("cursor"),
+        1,
+        &crate::domain::model_registry::refresh_cached_snapshot_for_state_root(
+            super::super::contract::text_field(scan_params, &["stateRoot"])
+                .as_deref()
+                .map(std::path::Path::new),
+        ),
+    ) else {
         return HostedCoverage::default();
     };
     reports
@@ -439,6 +453,11 @@ fn load_coverage(scan_params: &Value, window: &UsageWindow) -> HostedCoverage {
 }
 
 fn parse_coverage(report: &Value, window: &UsageWindow) -> Option<HostedCoverage> {
+    if report.get("usageParserRevision").and_then(Value::as_str)
+        != Some(super::super::contract::USAGE_PARSER_REVISION)
+    {
+        return None;
+    }
     let report_day = report
         .get("generatedAt")
         .and_then(Value::as_str)
@@ -489,11 +508,14 @@ fn parse_retained_day(entry: &Value) -> Option<(String, DailyUsageSummary)> {
         request_count: number_field(entry, &["requestCount"]).unwrap_or(0),
         token_unavailable_requests: number_field(entry, &["tokenUnavailableRequests"]).unwrap_or(0),
         model_usage: BTreeMap::new(),
+        model_variants: BTreeMap::new(),
     };
     if usage.total_tokens == 0 && usage.request_count == 0 {
         return None;
     }
-    usage.model_usage = super::super::model_identity::raw_model_usage(entry);
+    for ((model, variant), totals) in super::super::model_identity::raw_model_usage(entry) {
+        usage.add_model_variant_totals(model, variant, totals);
+    }
     Some((day, usage))
 }
 
@@ -738,6 +760,7 @@ mod tests {
         let window = window();
         let report = json!({
             "generatedAt": "2026-07-15T12:00:00Z",
+            "usageParserRevision": super::super::super::contract::USAGE_PARSER_REVISION,
             "agents": [{
                 "agentId": "cursor",
                 "history": {

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
@@ -15,6 +15,10 @@ use super::native_agent_parser::adapters::driver_registry::{
     registry_get, registry_insert_if_absent, registry_remove, registry_remove_if,
 };
 use super::process_supervisor::SupervisedChild;
+use super::raw_execution::{
+    RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionObserver,
+    RawExecutionReader,
+};
 
 pub(super) const DRIVER_ID: &str = "deepseek-harness-sdk-jsonrpc";
 pub(super) const RUNTIME_PROTOCOL: &str = "deepseek-harness-sdk-stdio-jsonrpc";
@@ -139,6 +143,8 @@ struct TransportState {
     stdin: ChildStdin,
     receiver: mpsc::Receiver<std::result::Result<ProtocolFrame, FrameError>>,
     next_request_id: u64,
+    raw_execution: RawExecutionBinding,
+    initial_raw_execution: Option<RawExecutionBindingGuard>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -253,7 +259,13 @@ pub(super) fn execute(
             }
         };
         match state.as_mut() {
-            Some(state) => execute_turn(state, prompt, &session_id, config.output_limit, deadline),
+            Some(state) => {
+                let _raw_execution = match state.initial_raw_execution.take() {
+                    Some(guard) => guard.rebind_current(),
+                    None => state.raw_execution.bind_current(),
+                };
+                execute_turn(state, prompt, &session_id, config.output_limit, deadline)
+            }
             None => Err(transport_unavailable()),
         }
     };
@@ -375,15 +387,35 @@ fn spawn_transport(
         let _ = child.terminate_tree();
         return Err(transport_unavailable());
     };
+    let raw_execution = RawExecutionBinding::default();
+    let initial_raw_execution = Some(raw_execution.bind_current());
     if let Some(mut stderr) = child.stderr() {
+        let stderr_observer = raw_execution.clone();
         std::thread::spawn(move || {
-            // Drain to EOF without retaining third-party output. Stopping at
-            // the retention cap can fill the pipe and deadlock the carrier.
-            let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+            // Drain to EOF; only the invocation-owned local viewer retains it.
+            let mut bytes = [0u8; 8192];
+            loop {
+                match stderr.read(&mut bytes) {
+                    Ok(0) => break,
+                    Ok(read) => stderr_observer.record_bytes(
+                        "deepseek-harness",
+                        RawExecutionDirection::Stderr,
+                        &bytes[..read],
+                    ),
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
         });
     }
     let (sender, receiver) = mpsc::channel();
     let output_limit = config.output_limit;
+    let stdout = RawExecutionReader::new(
+        stdout,
+        raw_execution.clone(),
+        "deepseek-harness",
+        RawExecutionDirection::Received,
+    );
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         loop {
@@ -437,6 +469,8 @@ fn spawn_transport(
             stdin,
             receiver,
             next_request_id: 1,
+            raw_execution,
+            initial_raw_execution,
         })),
     })
 }
@@ -523,6 +557,9 @@ fn read_protocol_frame(
 
 fn write_frame(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
     let encoded = encode_request(value).map_err(std::io::Error::other)?;
+    if let Some(observer) = RawExecutionObserver::current() {
+        observer.record_bytes("deepseek-harness", RawExecutionDirection::Sent, &encoded);
+    }
     stdin.write_all(&encoded)?;
     stdin.flush()
 }
@@ -637,6 +674,63 @@ mod tests {
     }
 
     #[test]
+    fn raw_execution_preserves_unparsed_frames_and_encoded_requests() {
+        use super::super::raw_execution::RawExecutionScope;
+        let records = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&records);
+        let observer = RawExecutionObserver::new(move |_, direction, text| {
+            captured.lock().unwrap().push((direction, text.to_owned()));
+            Ok(())
+        });
+        let _scope = RawExecutionScope::enter(Some(observer));
+        let binding = RawExecutionBinding::default();
+        let _guard = binding.bind_current();
+        let raw = b" {\"future\":{\"toolResult\":\"exact\"}} \r\n";
+        let reader = RawExecutionReader::new(
+            raw.as_slice(),
+            binding.clone(),
+            "deepseek-harness",
+            RawExecutionDirection::Received,
+        );
+        assert!(
+            read_protocol_frame(&mut BufReader::new(reader), None)
+                .unwrap()
+                .is_some()
+        );
+        let reader = RawExecutionReader::new(
+            b"{invalid\r\n".as_slice(),
+            binding,
+            "deepseek-harness",
+            RawExecutionDirection::Received,
+        );
+        assert!(matches!(
+            read_protocol_frame(&mut BufReader::new(reader), None),
+            Err(FrameError::InvalidJson)
+        ));
+        let mut wire = Vec::new();
+        write_frame(&mut wire, &json!({"message":"line one\nline two"})).unwrap();
+        let captured = records.lock().unwrap();
+        assert_eq!(
+            captured[0],
+            (
+                RawExecutionDirection::Received,
+                String::from_utf8(raw.to_vec()).unwrap()
+            )
+        );
+        assert_eq!(
+            captured[1],
+            (RawExecutionDirection::Received, "{invalid\r\n".to_owned())
+        );
+        assert_eq!(
+            captured[2],
+            (
+                RawExecutionDirection::Sent,
+                String::from_utf8(wire).unwrap()
+            )
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn two_turns_reuse_one_initialized_process_and_cleanup_exact_session() {
         let root = std::env::temp_dir().join(format!("lico-dsh-test-{}", uuid::Uuid::new_v4()));
@@ -663,26 +757,42 @@ done
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).unwrap();
         let params = json!({"model":"deepseek-test"});
-        let first = execute(
-            executable.to_str().unwrap(),
-            &params,
-            "one",
-            "persistent-session",
-            Some(&root),
-            2_000,
-            None,
-            4096,
-        );
-        let second = execute(
-            executable.to_str().unwrap(),
-            &params,
-            "two",
-            "persistent-session",
-            Some(&root),
-            2_000,
-            None,
-            4096,
-        );
+        let captures = Arc::new(Mutex::new([Vec::new(), Vec::new()]));
+        let observer_for = |index: usize| {
+            let captures = Arc::clone(&captures);
+            RawExecutionObserver::new(move |_, _, text| {
+                captures.lock().unwrap()[index].push(text.to_owned());
+                Ok(())
+            })
+        };
+        let first = {
+            let _scope =
+                super::super::raw_execution::RawExecutionScope::enter(Some(observer_for(0)));
+            execute(
+                executable.to_str().unwrap(),
+                &params,
+                "one",
+                "persistent-session",
+                Some(&root),
+                2_000,
+                None,
+                4096,
+            )
+        };
+        let second = {
+            let _scope =
+                super::super::raw_execution::RawExecutionScope::enter(Some(observer_for(1)));
+            execute(
+                executable.to_str().unwrap(),
+                &params,
+                "two",
+                "persistent-session",
+                Some(&root),
+                2_000,
+                None,
+                4096,
+            )
+        };
         assert!(first.ok, "first turn failed: {:?}", first.error);
         assert!(second.ok, "second turn failed: {:?}", second.error);
         assert_eq!(
@@ -691,6 +801,15 @@ done
         );
         assert_eq!(first.output.rsplit('-').next(), Some("1"));
         assert_eq!(second.output.rsplit('-').next(), Some("2"));
+        {
+            let captures = captures.lock().unwrap();
+            let first_raw = captures[0].concat();
+            let second_raw = captures[1].concat();
+            assert!(first_raw.contains("\"method\":\"initialize\""));
+            assert!(!second_raw.contains("\"method\":\"initialize\""));
+            assert!(second_raw.contains("message-2"));
+            assert!(!first_raw.contains("message-2"));
+        }
         let drifted = execute(
             executable.to_str().unwrap(),
             &json!({"model":"different-model"}),

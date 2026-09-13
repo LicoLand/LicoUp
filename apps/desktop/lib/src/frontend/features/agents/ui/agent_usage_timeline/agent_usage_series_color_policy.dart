@@ -37,6 +37,7 @@ Color agentUsageSeriesColor(
   LicoThemeColors colors,
   String label, {
   AgentUsageChartGrouping grouping = AgentUsageChartGrouping.agent,
+  String? displayName,
 }) {
   final key = label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
   if (key.isEmpty) return colors.primaryStrong;
@@ -44,7 +45,7 @@ Color agentUsageSeriesColor(
   if (grouping != AgentUsageChartGrouping.model) {
     return _agentColors[key] ?? _additionalColors[_stableIndex(key)];
   }
-  final lower = label.toLowerCase();
+  final lower = (displayName ?? label).toLowerCase();
   final base = switch (lower) {
     _ when lower.startsWith('claude') => const Color(0xFFD97757),
     _ when lower.startsWith('gpt') || RegExp(r'^o[134]\b').hasMatch(lower) =>

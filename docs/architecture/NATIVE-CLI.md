@@ -71,7 +71,15 @@ remain native methods. The binary owns host lifetime and startup; Flutter is
 not required to start or operate it. The internal `rpc conversation-host`
 entry is used by this native process supervisor.
 
+
+The local `agent.conversation.execution` stream inspects one exact dispatch.
+Its record ownership, cursor and observation contract is defined by
+[Local execution inspection](CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+
 ## Independent MCP process
+
+The local [model registry](MODEL-REGISTRY.md) owns public model-directory
+refresh and canonical identity. Its commands are not remote MCP operations.
 
 `subagents catalog` exposes the native caller and operation schemas;
 `subagents execute` admits a local invocation with `name`, `arguments`, and

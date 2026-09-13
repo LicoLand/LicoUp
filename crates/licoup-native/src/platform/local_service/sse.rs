@@ -28,13 +28,13 @@ fn stream_gate() -> &'static BoundedGate {
     GATE.get_or_init(|| BoundedGate::new(MAX_SSE_STREAMS))
 }
 
-pub(in crate::platform) fn watch_data<F>(
+pub(in crate::platform) fn watch_frames<F>(
     url: &str,
     stop: &AtomicBool,
     on_data: F,
 ) -> Result<(), SseFailure>
 where
-    F: FnMut(&str) -> bool,
+    F: FnMut(&str, &[u8]) -> bool,
 {
     let url = http::validate_url(url).map_err(map_http_failure)?;
     let _permit = stream_gate()
@@ -44,12 +44,20 @@ where
     // timeout kills a healthy idle stream. A `timeout_read` is intentionally
     // not configured. Only the connect is time-boxed —
     // liveness after that comes from server heartbeats and the stop flag.
-    let response = ureq::AgentBuilder::new()
+    let request = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(2))
         .build()
-        .get(url.as_str())
-        .call()
-        .map_err(|_| SseFailure::Request)?;
+        .get(url.as_str());
+    http::record_request_metadata(Some("sse.http"), &request);
+    let response = match request.call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(_, response)) => {
+            http::record_response_metadata(Some("sse.http"), &response);
+            return Err(SseFailure::Request);
+        }
+        Err(_) => return Err(SseFailure::Request),
+    };
+    http::record_response_metadata(Some("sse.http"), &response);
     http::validate_headers(&response).map_err(map_http_failure)?;
 
     parse_stream(BufReader::new(response.into_reader()), stop, on_data)
@@ -62,30 +70,46 @@ pub(super) fn parse_stream<R, F>(
 ) -> Result<(), SseFailure>
 where
     R: BufRead,
-    F: FnMut(&str) -> bool,
+    F: FnMut(&str, &[u8]) -> bool,
 {
     let mut line = Vec::new();
     let mut data = Vec::new();
+    let mut frame = Vec::new();
     let mut data_lines = 0usize;
     let mut events = 0usize;
     while !stop.load(Ordering::Relaxed) {
         match read_bounded_line(&mut reader, &mut line)? {
             LineRead::Eof => {
                 if !data.is_empty() {
-                    dispatch(&mut data, &mut data_lines, &mut events, &mut on_data)?;
+                    dispatch(
+                        &mut data,
+                        &mut frame,
+                        &mut data_lines,
+                        &mut events,
+                        &mut on_data,
+                    )?;
                 }
                 return Ok(());
             }
             LineRead::Line => {}
         }
+        frame.extend_from_slice(&line);
         while matches!(line.last(), Some(b'\n' | b'\r')) {
             line.pop();
         }
         if line.is_empty() {
-            if !data.is_empty() && !dispatch(&mut data, &mut data_lines, &mut events, &mut on_data)?
+            if !data.is_empty()
+                && !dispatch(
+                    &mut data,
+                    &mut frame,
+                    &mut data_lines,
+                    &mut events,
+                    &mut on_data,
+                )?
             {
                 return Ok(());
             }
+            frame.clear();
             continue;
         }
         if line.first() == Some(&b':') {
@@ -152,20 +176,22 @@ fn read_bounded_line<R: BufRead>(
 
 fn dispatch<F>(
     data: &mut Vec<u8>,
+    frame: &mut Vec<u8>,
     data_lines: &mut usize,
     events: &mut usize,
     on_data: &mut F,
 ) -> Result<bool, SseFailure>
 where
-    F: FnMut(&str) -> bool,
+    F: FnMut(&str, &[u8]) -> bool,
 {
     *events = events.saturating_add(1);
     if *events > MAX_SSE_EVENTS_PER_STREAM {
         return Err(SseFailure::EventLimit);
     }
     let text = std::str::from_utf8(data).map_err(|_| SseFailure::InvalidUtf8)?;
-    let keep_watching = on_data(text);
+    let keep_watching = on_data(text, frame);
     data.clear();
+    frame.clear();
     *data_lines = 0;
     Ok(keep_watching)
 }
@@ -190,4 +216,46 @@ fn map_http_failure(failure: HttpFailure) -> SseFailure {
         HttpFailure::Unavailable => SseFailure::Unavailable,
         _ => SseFailure::Request,
     }
+}
+
+/// Shared endpoints also carry unrelated sessions. Only explicit protocol
+/// session fields can bind a complete raw frame to the current execution.
+pub(in crate::platform) fn frame_belongs_to_session(data: &str, session_id: &str) -> bool {
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+        return false;
+    };
+    let Some(properties) = event.get("properties") else {
+        return false;
+    };
+    let mut matched = false;
+    for object in [
+        Some(properties),
+        properties.get("info"),
+        properties.get("part"),
+    ] {
+        let Some(object) = object else { continue };
+        for key in ["sessionID", "sessionId"] {
+            if let Some(id) = object.get(key).and_then(serde_json::Value::as_str) {
+                if id != session_id {
+                    return false;
+                }
+                matched = true;
+            }
+        }
+    }
+    if event
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|kind| kind.starts_with("session."))
+        && let Some(id) = properties
+            .get("info")
+            .and_then(|info| info.get("id"))
+            .and_then(serde_json::Value::as_str)
+    {
+        if id != session_id {
+            return false;
+        }
+        matched = true;
+    }
+    matched
 }

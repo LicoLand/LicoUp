@@ -7,7 +7,6 @@ mod constants;
 mod event_hash;
 mod file_collection;
 mod lineage;
-mod model_backfill;
 mod models;
 mod parser;
 mod rollup;

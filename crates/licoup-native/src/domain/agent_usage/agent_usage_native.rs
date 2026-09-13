@@ -9,10 +9,13 @@
 mod cache;
 mod cursor;
 mod files;
+#[cfg(test)]
+mod migration_tests;
 mod models;
 mod openclaw;
 mod parser;
 pub(super) mod runtime;
+mod snapshot_cursor;
 mod watermark;
 
 use super::contract::{AgentDef, HistoryUsageSummary};
@@ -28,7 +31,7 @@ use crate::domain::conversation::source_catalog::{
 use anyhow::{Context, Result};
 use cache::{
     RefreshStatements, aggregate_usage, cache_has_baseline, cache_is_fresh, cache_path,
-    load_compaction_targets, load_sources, reclaim_space,
+    load_compaction_targets, load_sources, migration_counts, reclaim_space,
 };
 use files::{
     append_guard, append_guard_matches, is_append_format, is_usage_source, roots_fingerprint,
@@ -38,17 +41,21 @@ use models::{
     CachedSource, ParseResult, PlannedSource, PlannedSourceAction, RefreshPlan, ScanStats,
     SourceMetadata,
 };
-use parser::{parse_append_source, parse_snapshot_source};
+use parser::{parse_append_prefix, parse_append_source, parse_snapshot_source};
 use runtime::{CacheLease, CacheRuntime};
 use rusqlite::TransactionBehavior;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use snapshot_cursor::SnapshotCursor;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use watermark::{WatermarkProjection, apply_cumulative_watermarks};
+use watermark::{
+    WatermarkProjection, apply_cumulative_watermarks, cursor_covers_old_sessions,
+    initialize_cumulative_cursor,
+};
 
-pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v9";
+pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v11";
 const CACHE_REFRESH_INTERVAL_MS: u64 = 60_000;
 const SNAPSHOT_CACHE_REFRESH_INTERVAL_MS: u64 = 10 * 60_000;
 
@@ -81,11 +88,12 @@ pub(super) fn summarize(
     }
     match summarize_inner(agent, scan_params, window, warnings, runtime) {
         Ok(summary) => Some(summary),
-        Err(_) => {
-            warnings.push(json!({
-                "code": "native_usage_cache_failed",
-                "agentId": agent.id
-            }));
+        Err(error) => {
+            warnings.push(if let Some(version) = error.downcast_ref::<cache::UnsupportedSchemaVersion>() {
+                json!({"code":"native_usage_cache_schema_unsupported", "agentId":agent.id, "schemaVersion":version.0})
+            } else { json!({
+                "code": "native_usage_cache_failed", "agentId": agent.id
+            }) });
             None
         }
     }
@@ -129,6 +137,7 @@ fn summarize_inner(
             )?
         {
             let mut summary = aggregate_usage(lease.connection(1), &scope_key, window)?;
+            report_migration_status(lease.connection(0), &scope_key, agent.id, warnings)?;
             apply_source(adapter, &mut summary);
             summary.scan_cache = Some(
                 ScanStats {
@@ -215,6 +224,30 @@ fn summarize_inner(
         let key = source_key(&scope_key, &entry.path);
         let previous_source = planned_sources.get(&key).cloned();
         let (action, metadata) = if let Some(previous) = &previous_source
+            && (previous.migration_state == 1
+                || (matches!(previous.migration_state, 2 | 3)
+                    && (!source_unchanged(previous, &entry.metadata)
+                        || (force_refresh
+                            && !append_guard_matches(
+                                &entry.path,
+                                previous.size,
+                                &previous.append_guard,
+                            )))
+                    && !can_append(&entry.path, previous, &entry.metadata))
+                || (matches!(previous.migration_state, 4 | 5)
+                    && previous.file_id != entry.metadata.file_id))
+        {
+            let migration = plan_source_migration(
+                adapter,
+                &entry.path,
+                &entry.source_kind,
+                previous,
+                &parse_window,
+            )?;
+            stats.replaced_sources = stats.replaced_sources.saturating_add(1);
+            stats.parsed_bytes = stats.parsed_bytes.saturating_add(migration.1.size);
+            migration
+        } else if let Some(previous) = &previous_source
             && source_unchanged(previous, &entry.metadata)
             && (!force_refresh
                 || (is_append_format(&entry.path)
@@ -323,6 +356,7 @@ fn summarize_inner(
         stats.opened_connections = stats
             .opened_connections
             .saturating_add(lease.stats().opened);
+        report_migration_status(lease.connection(0), &scope_key, agent.id, warnings)?;
         aggregate_usage(lease.connection(1), &scope_key, window)?
     };
     apply_source(adapter, &mut summary);
@@ -373,6 +407,31 @@ fn apply_refresh_plan(
         }
         for source in plan.sources {
             match source.action {
+                PlannedSourceAction::Migrate {
+                    baseline,
+                    tail,
+                    complete,
+                    append_format,
+                    append_guard,
+                } => {
+                    let mut previous = plan.previous[&source.key].clone();
+                    if plan.compaction_targets.contains(&source.key) {
+                        previous.session_count = 0;
+                    }
+                    apply_source_migration(
+                        &mut statements,
+                        scope_key,
+                        &source.key,
+                        &source.metadata,
+                        &previous,
+                        *baseline,
+                        tail.map(|parsed| *parsed),
+                        complete,
+                        append_format,
+                        &append_guard,
+                        parse_window,
+                    )?;
+                }
                 PlannedSourceAction::Reuse => {}
                 PlannedSourceAction::ReuseSeal { session_count } => {
                     statements.seal(scope_key, &source.key, session_count)?;
@@ -385,21 +444,57 @@ fn apply_refresh_plan(
                     projection,
                     append_guard,
                 } => {
+                    let previous = plan.previous.get(&source.key);
+                    let snapshot_mode =
+                        previous.is_some_and(|source| matches!(source.migration_state, 4 | 5));
+                    let mut snapshot_gap = false;
+                    let snapshot_cursor = if snapshot_mode {
+                        let cursor = snapshot_cursor_for(&parsed, parse_window);
+                        let old = previous
+                            .and_then(|source| source.snapshot_cursor.as_ref())
+                            .context("native snapshot migration cursor missing")?;
+                        (parsed.summary, snapshot_gap) = cursor.delta(old, parse_window);
+                        Some(cursor)
+                    } else {
+                        None
+                    };
                     let snapshots = std::mem::take(&mut parsed.cumulative_snapshots);
-                    let watermarked_sessions = apply_cumulative_watermarks(
-                        &mut statements,
-                        scope_key,
-                        &source.key,
-                        parse_window,
-                        &snapshots,
-                        projection,
-                        &mut parsed.summary,
-                    )?;
-                    parsed.summary.session_count = parsed
-                        .summary
-                        .session_count
-                        .saturating_add(watermarked_sessions);
-                    let session_count = if append_format {
+                    let watermarked_sessions = if snapshot_gap {
+                        initialize_cumulative_cursor(
+                            &mut statements,
+                            scope_key,
+                            &source.key,
+                            &snapshots,
+                        )?;
+                        0
+                    } else {
+                        apply_cumulative_watermarks(
+                            &mut statements,
+                            scope_key,
+                            &source.key,
+                            parse_window,
+                            &snapshots,
+                            if snapshot_mode {
+                                WatermarkProjection::AppendDelta
+                            } else {
+                                projection
+                            },
+                            &mut parsed.summary,
+                        )?
+                    };
+                    if !snapshot_mode {
+                        parsed.summary.session_count = parsed
+                            .summary
+                            .session_count
+                            .saturating_add(watermarked_sessions);
+                    }
+                    let session_count = if previous
+                        .is_some_and(|source| has_sealed_session_today(source, parse_window))
+                    {
+                        previous_session_count
+                    } else if snapshot_mode {
+                        previous_session_count.saturating_add(parsed.summary.session_count)
+                    } else if append_format {
                         if append {
                             previous_session_count.saturating_add(if previous_session_count == 0 {
                                 parsed.summary.session_count
@@ -412,7 +507,7 @@ fn apply_refresh_plan(
                     } else {
                         parsed.summary.session_count
                     };
-                    if append {
+                    if append || snapshot_mode {
                         statements.add_rollup(scope_key, &source.key, &parsed.summary)?;
                     } else {
                         statements.replace_rollup(scope_key, &source.key, &parsed.summary)?;
@@ -424,7 +519,14 @@ fn apply_refresh_plan(
                         parsed.parsed_bytes,
                         &append_guard,
                         session_count,
+                        &parsed.request_context,
                     )?;
+                    if let Some(cursor) = snapshot_cursor {
+                        statements.save_snapshot_cursor(scope_key, &source.key, &cursor)?;
+                        if snapshot_gap {
+                            statements.save_migration_state(scope_key, &source.key, 5)?;
+                        }
+                    }
                     let compacted =
                         statements.compact(scope_key, &source.key, &window.end, session_count)?;
                     stats.compacted_days = stats.compacted_days.saturating_add(compacted);
@@ -474,14 +576,7 @@ fn parse_stable_source(
         // Recompute append eligibility for the exact snapshot about to be
         // parsed. A replacement between discovery and either retry must fall
         // back to a full parse instead of applying an obsolete append plan.
-        let append = previous_source.is_some_and(|previous| {
-            append_format
-                && previous.file_id.is_some()
-                && previous.file_id == before.file_id
-                && before.size > previous.size
-                && previous.parsed_bytes <= previous.size
-                && append_guard_matches(path, previous.size, &previous.append_guard)
-        });
+        let append = previous_source.is_some_and(|previous| can_append(path, previous, &before));
         let parsed = if append {
             let previous = previous_source.expect("append source checked above");
             parse_append_source(
@@ -489,10 +584,18 @@ fn parse_stable_source(
                 path,
                 previous.parsed_bytes,
                 parse_window,
-                previous_session_count > 0,
+                previous_session_count > 0 || has_sealed_session_today(previous, parse_window),
+                previous.request_context.clone(),
             )?
         } else if append_format {
-            parse_append_source(adapter, path, 0, parse_window, previous_session_count > 0)?
+            parse_append_source(
+                adapter,
+                path,
+                0,
+                parse_window,
+                previous_session_count > 0,
+                Default::default(),
+            )?
         } else {
             let metadata = fs::metadata(path)
                 .with_context(|| format!("native usage source stat failed: {}", path.display()))?;
@@ -512,6 +615,232 @@ fn parse_stable_source(
         "native usage source changed while parsing: {}",
         path.display()
     )
+}
+
+fn can_append(path: &Path, previous: &CachedSource, metadata: &SourceMetadata) -> bool {
+    is_append_format(path)
+        && previous.file_id.is_some()
+        && previous.file_id == metadata.file_id
+        && metadata.size > previous.size
+        && previous.parsed_bytes <= previous.size
+        && append_guard_matches(path, previous.size, &previous.append_guard)
+}
+
+fn has_sealed_session_today(source: &CachedSource, calendar: &UsageWindow) -> bool {
+    matches!(source.migration_state, 2 | 3)
+        && source
+            .snapshot_cursor
+            .as_ref()
+            .is_some_and(|cursor| cursor.day == calendar.end && cursor.session_count > 0)
+}
+
+fn plan_source_migration(
+    adapter: HistoryAdapter,
+    path: &Path,
+    source_kind: &str,
+    previous: &CachedSource,
+    calendar: &UsageWindow,
+) -> Result<(PlannedSourceAction, SourceMetadata)> {
+    let append_format = is_append_format(path);
+    for _ in 0..2 {
+        let before =
+            source_metadata(path).context("native usage migration source metadata failed")?;
+        let same_file = previous.file_id.is_some() && previous.file_id == before.file_id;
+        let prefix = if append_format
+            && same_file
+            && previous.parsed_bytes <= previous.size
+            && before.size >= previous.size
+            && append_guard_matches(path, previous.size, &previous.append_guard)
+        {
+            parse_append_prefix(
+                adapter,
+                path,
+                previous.parsed_bytes,
+                &calendar.all_history(),
+            )
+            .ok()
+        } else {
+            None
+        };
+        let complete = if append_format {
+            prefix.is_some()
+        } else {
+            same_file && source_unchanged(previous, &before)
+        };
+        let (baseline, tail) = if let Some(prefix) = prefix {
+            let tail = parse_append_source(
+                adapter,
+                path,
+                previous.parsed_bytes,
+                calendar,
+                previous.session_count > 0 || has_sealed_session_today(previous, calendar),
+                prefix.request_context.clone(),
+            )?;
+            (prefix, Some(Box::new(tail)))
+        } else if append_format {
+            (
+                parse_append_source(
+                    adapter,
+                    path,
+                    0,
+                    &calendar.all_history(),
+                    true,
+                    Default::default(),
+                )?,
+                None,
+            )
+        } else {
+            let metadata = fs::metadata(path)?;
+            (
+                parse_snapshot_source(adapter, path, source_kind, &metadata, calendar)?,
+                None,
+            )
+        };
+        let guard = if append_format {
+            append_guard(path, before.size)?
+        } else {
+            String::new()
+        };
+        if source_metadata(path).as_ref() == Some(&before) {
+            return Ok((
+                PlannedSourceAction::Migrate {
+                    baseline: Box::new(baseline),
+                    tail,
+                    complete,
+                    append_format,
+                    append_guard: guard,
+                },
+                before,
+            ));
+        }
+    }
+    anyhow::bail!("native usage source changed while migrating")
+}
+
+fn apply_source_migration(
+    statements: &mut RefreshStatements<'_>,
+    scope_key: &str,
+    source_key: &str,
+    metadata: &SourceMetadata,
+    previous: &CachedSource,
+    mut baseline: ParseResult,
+    mut tail: Option<ParseResult>,
+    complete: bool,
+    append_format: bool,
+    append_guard: &str,
+    calendar: &UsageWindow,
+) -> Result<()> {
+    let complete = complete
+        && cursor_covers_old_sessions(
+            statements,
+            scope_key,
+            source_key,
+            &baseline.cumulative_snapshots,
+        )?;
+    if !previous.sealed {
+        statements.seal(scope_key, source_key, previous.session_count)?;
+    }
+    if !complete && let Some(tail) = tail.take() {
+        baseline
+            .cumulative_snapshots
+            .extend(tail.cumulative_snapshots);
+        baseline.parsed_bytes = tail.parsed_bytes;
+        baseline.request_context = tail.request_context;
+    }
+    initialize_cumulative_cursor(
+        statements,
+        scope_key,
+        source_key,
+        &baseline.cumulative_snapshots,
+    )?;
+    let snapshot_cursor = if append_format {
+        SnapshotCursor::capture(
+            &HistoryUsageSummary {
+                session_count: previous.session_count,
+                ..Default::default()
+            },
+            calendar,
+        )
+    } else {
+        snapshot_cursor_for(&baseline, calendar)
+    };
+    let mut session_count = 0;
+    if let Some(mut tail) = tail {
+        let watermarked_sessions = apply_cumulative_watermarks(
+            statements,
+            scope_key,
+            source_key,
+            calendar,
+            &tail.cumulative_snapshots,
+            WatermarkProjection::AppendDelta,
+            &mut tail.summary,
+        )?;
+        if previous.session_count == 0 && !has_sealed_session_today(previous, calendar) {
+            session_count = tail
+                .summary
+                .session_count
+                .saturating_add(watermarked_sessions);
+        }
+        statements.add_rollup(scope_key, source_key, &tail.summary)?;
+        baseline.parsed_bytes = tail.parsed_bytes;
+        baseline.request_context = tail.request_context;
+    }
+    statements.save_source(
+        scope_key,
+        source_key,
+        metadata,
+        baseline.parsed_bytes,
+        append_guard,
+        session_count,
+        &baseline.request_context,
+    )?;
+    statements.save_snapshot_cursor(scope_key, source_key, &snapshot_cursor)?;
+    let gap = !complete || matches!(previous.migration_state, 3 | 5);
+    statements.save_migration_state(
+        scope_key,
+        source_key,
+        if append_format {
+            if gap { 3 } else { 2 }
+        } else if gap {
+            5
+        } else {
+            4
+        },
+    )?;
+    if source_is_closed(metadata, calendar) {
+        statements.seal(scope_key, source_key, session_count)?;
+    }
+    Ok(())
+}
+
+fn snapshot_cursor_for(parsed: &ParseResult, calendar: &UsageWindow) -> SnapshotCursor {
+    let mut cursor = SnapshotCursor::capture(&parsed.summary, calendar);
+    let cumulative_sessions = parsed
+        .cumulative_snapshots
+        .iter()
+        .filter(|snapshot| snapshot.projects_usage && calendar.contains(&snapshot.observed_day))
+        .map(|snapshot| snapshot.session_key.as_str())
+        .collect::<BTreeSet<_>>();
+    cursor.session_count = cursor
+        .session_count
+        .saturating_add(cumulative_sessions.len() as u64);
+    cursor
+}
+
+fn report_migration_status(
+    connection: &rusqlite::Connection,
+    scope_key: &str,
+    agent_id: &str,
+    warnings: &mut Vec<Value>,
+) -> Result<()> {
+    let (pending, gaps) = migration_counts(connection, scope_key)?;
+    if pending > 0 || gaps > 0 {
+        warnings.push(
+            json!({"code":"native_usage_source_migration_incomplete", "agentId":agent_id,
+            "pendingSources":pending, "gapSources":gaps}),
+        );
+    }
+    Ok(())
 }
 
 fn apply_source(adapter: HistoryAdapter, summary: &mut HistoryUsageSummary) {
@@ -548,6 +877,87 @@ fn cache_refresh_interval_ms(adapter: HistoryAdapter) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn native_append_recovers_cached_request_options_without_recounting_tokens() {
+        use std::io::Write;
+        let root =
+            std::env::temp_dir().join(format!("lico-usage-context-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("synthetic.jsonl");
+        fs::write(
+            &path,
+            b"{\"type\":\"request\",\"model\":\"raw-model\",\"effort\":\"high\",\"fast\":false}\n",
+        )
+        .unwrap();
+        let calendar =
+            UsageWindow::from_params(&json!({"now":"2026-07-15T12:00:00Z", "historyDays":1}));
+        let initial = parse_stable_source(
+            HistoryAdapter::ClaudeCode,
+            &path,
+            "jsonl",
+            None,
+            0,
+            &calendar,
+        )
+        .unwrap();
+        let cached = |parsed: &StableParse| CachedSource {
+            modified_ns: parsed.metadata.modified_ns,
+            size: parsed.metadata.size,
+            file_id: parsed.metadata.file_id.clone(),
+            parsed_bytes: parsed.parsed.parsed_bytes,
+            append_guard: append_guard(&path, parsed.metadata.size).unwrap(),
+            request_context: parsed.parsed.request_context.clone(),
+            ..Default::default()
+        };
+        let previous = cached(&initial);
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(file, "{}", json!({"type":"assistant", "timestamp":"2026-07-15T10:00:00Z", "message":{"model":"raw-model", "usage":{"input_tokens":10,"output_tokens":2}}})).unwrap();
+        let appended = parse_stable_source(
+            HistoryAdapter::ClaudeCode,
+            &path,
+            "jsonl",
+            Some(&previous),
+            0,
+            &calendar,
+        )
+        .unwrap();
+        assert!(appended.append);
+        assert_eq!(appended.parsed.summary.total_tokens(), 12);
+        let known = super::super::contract::UsageVariant {
+            effort: Some("high".to_owned()),
+            fast: Some(false),
+        };
+        assert_eq!(
+            appended.parsed.summary.daily_usage["2026-07-15"].model_variants
+                [&("raw-model".to_owned(), known)]
+                .total_tokens,
+            12
+        );
+        let previous = cached(&appended);
+        writeln!(file, "{}", json!({"type":"request","model":"raw-model"})).unwrap();
+        writeln!(file, "{}", json!({"type":"assistant", "timestamp":"2026-07-15T11:00:00Z", "message":{"model":"raw-model", "usage":{"input_tokens":5,"output_tokens":1}}})).unwrap();
+        let next = parse_stable_source(
+            HistoryAdapter::ClaudeCode,
+            &path,
+            "jsonl",
+            Some(&previous),
+            1,
+            &calendar,
+        )
+        .unwrap();
+        assert!(next.append);
+        assert_eq!(next.parsed.summary.total_tokens(), 6);
+        assert_eq!(
+            next.parsed.summary.daily_usage["2026-07-15"].model_variants
+                [&("raw-model".to_owned(), Default::default())]
+                .total_tokens,
+            6
+        );
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn snapshot_heavy_adapters_are_throttled_without_affecting_append_adapters() {

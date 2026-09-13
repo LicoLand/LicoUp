@@ -1,5 +1,8 @@
-use super::super::contract::HistoryUsageSummary;
+use super::super::contract::{HistoryUsageSummary, UsageVariant};
+use super::super::variant::UsageRequestContext;
+use super::snapshot_cursor::SnapshotCursor;
 use super::watermark::WatermarkProjection;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -11,7 +14,7 @@ pub(super) struct SourceMetadata {
     pub(super) file_id: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(super) struct CumulativeTotals {
     pub(super) prompt: u64,
     pub(super) cached: u64,
@@ -43,6 +46,10 @@ pub(super) struct CachedSource {
     pub(super) append_guard: String,
     pub(super) session_count: u64,
     pub(super) sealed: bool,
+    pub(super) request_context: UsageRequestContext,
+    /// 1 pending; 2/3 append cursor; 4/5 snapshot cursor. Odd ready states retain a gap.
+    pub(super) migration_state: i64,
+    pub(super) snapshot_cursor: Option<SnapshotCursor>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +57,7 @@ pub(super) struct CumulativeSnapshot {
     pub(super) usage_key: String,
     pub(super) session_key: String,
     pub(super) model: Option<String>,
+    pub(super) variant: UsageVariant,
     pub(super) first_day: String,
     pub(super) observed_day: String,
     pub(super) totals: CumulativeTotals,
@@ -62,6 +70,7 @@ pub(super) struct ParseResult {
     pub(super) parsed_bytes: u64,
     pub(super) cumulative_snapshots: Vec<CumulativeSnapshot>,
     pub(super) session_increment: u64,
+    pub(super) request_context: UsageRequestContext,
 }
 
 /// Immutable two-phase refresh plan. Built entirely outside any database
@@ -84,6 +93,13 @@ pub(super) struct PlannedSource {
 
 #[derive(Clone, Debug)]
 pub(super) enum PlannedSourceAction {
+    Migrate {
+        baseline: Box<ParseResult>,
+        tail: Option<Box<ParseResult>>,
+        complete: bool,
+        append_format: bool,
+        append_guard: String,
+    },
     Reuse,
     ReuseSeal {
         session_count: u64,

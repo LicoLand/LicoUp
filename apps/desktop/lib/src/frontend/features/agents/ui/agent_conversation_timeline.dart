@@ -12,27 +12,17 @@ final class ConversationMessageTimelineItem extends ConversationTimelineItem {
   final AgentConversationMessage message;
 }
 
-final class ConversationProcessTimelineItem extends ConversationTimelineItem {
-  const ConversationProcessTimelineItem(super.storageKey, this.events);
+/// An actual turn failure remains readable in the conversation. Execution
+/// records are inspected through the bubble menu instead of inline cards.
+final class ConversationFailureTimelineItem extends ConversationTimelineItem {
+  const ConversationFailureTimelineItem(super.storageKey, this.message);
 
-  final List<AgentConversationMessage> events;
+  final AgentConversationMessage message;
 }
 
-/// Provider runtime records that are useful for inspection but are not agent
-/// reasoning or tool execution. They render in a dedicated collapsible card.
-final class ConversationLogTimelineItem extends ConversationTimelineItem {
-  const ConversationLogTimelineItem(super.storageKey, this.events);
-
-  final List<AgentConversationMessage> events;
-}
-
-/// One in-place card describing an agent runtime auto-update (e.g.
-/// cursor-agent) blocking the turn. Stands alone: it must not render as a
-/// process operation nor as a runtime log card.
-final class ConversationRuntimeUpdateTimelineItem
-    extends ConversationTimelineItem {
-  const ConversationRuntimeUpdateTimelineItem(super.storageKey, this.message);
-
+/// Membership and availability are conversation facts, not execution logs.
+final class ConversationNoticeTimelineItem extends ConversationTimelineItem {
+  const ConversationNoticeTimelineItem(super.storageKey, this.message);
   final AgentConversationMessage message;
 }
 
@@ -56,170 +46,49 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
 }) {
   final items = <ConversationTimelineItem>[];
   final usedStorageKeys = <String>{};
-  var pendingEvents = <AgentConversationMessage>[];
-  var pendingLogs = <AgentConversationMessage>[];
-  var processAnchor = 'session-start';
-  var messageIndex = 0;
-
-  // One open blackboard card per live turn. All structured events of the
-  // same turn (lifecycle stages + evidence operations) share one timeline
-  // item whose storage key is derived from the turn id only, so the card is
-  // pinned at its first-seen position and its content grows in place across
-  // frames and across interleaved reply messages.
-  String? activeTurnKey;
-  String openTurnStorageKey = '';
-  var openTurnIndex = -1;
-  var openTurnEvents = <AgentConversationMessage>[];
-
-  void closeTurnBatch() {
-    if (openTurnIndex < 0) return;
-    items[openTurnIndex] = ConversationProcessTimelineItem(
-      openTurnStorageKey,
-      List<AgentConversationMessage>.unmodifiable(openTurnEvents),
-    );
-    openTurnIndex = -1;
-    openTurnEvents = <AgentConversationMessage>[];
-    activeTurnKey = null;
-  }
-
-  String messageIdentity(AgentConversationMessage message, int sourceIndex) {
-    if (message.stableIdentity.trim().isNotEmpty) {
-      return message.stableIdentity.trim();
-    }
-    final immutableIdentity = [
-      message.id.trim(),
-      message.createdAt,
-      message.role,
-      message.cardType,
-    ].join('|');
-    return immutableIdentity.replaceAll('|', '').isNotEmpty
-        ? stableConversationTimelineIdentity(immutableIdentity)
-        : 'position-$sourceIndex';
-  }
-
-  String stableStorageKey(
-    String kind,
-    String sourceIdentity, {
-    int collisionPosition = 0,
-  }) {
+  String storageKey(String kind, String identity, int position) {
     final base =
-        'conversation-timeline-$kind-${stableConversationTimelineIdentity('$sessionScope|$kind|$sourceIdentity')}';
-    if (usedStorageKeys.add(base)) return base;
-    final disambiguated =
-        '$base-${stableConversationTimelineIdentity('$sourceIdentity|$collisionPosition')}';
-    usedStorageKeys.add(disambiguated);
-    return disambiguated;
+        'conversation-timeline-$kind-${stableConversationTimelineIdentity('$sessionScope|$kind|$identity')}';
+    return usedStorageKeys.add(base) ? base : '$base-$position';
   }
 
   if (historyTruncated || messageTreeTruncated) {
     items.add(
       ConversationTruncationTimelineItem(
-        stableStorageKey('truncation', 'source-boundary'),
+        storageKey('truncation', 'source-boundary', 0),
         historyTruncated: historyTruncated,
         messageTreeTruncated: messageTreeTruncated,
       ),
     );
   }
-
-  void flushEvents() {
-    if (pendingEvents.isEmpty) return;
-    items.add(
-      ConversationProcessTimelineItem(
-        stableStorageKey(
-          'process',
-          processAnchor,
-          collisionPosition: messageIndex,
-        ),
-        List<AgentConversationMessage>.unmodifiable(pendingEvents),
-      ),
+  for (var index = 0; index < messages.length; index += 1) {
+    final message = messages[index];
+    if (message.cardType == 'lifecycle') continue;
+    final failure = message.kind == AgentConversationMessageKind.error;
+    final notice =
+        message.cardType == 'membership-changed' ||
+        message.cardType == 'availability';
+    if (message.isStructuredEvent && !failure && !notice) continue;
+    final identity = message.stableIdentity.trim().isNotEmpty
+        ? message.stableIdentity.trim()
+        : '${message.id}|${message.createdAt}|${message.role}|${message.cardType}';
+    final key = storageKey(
+      failure
+          ? 'failure'
+          : notice
+          ? 'notice'
+          : 'message',
+      identity,
+      index,
     );
-    pendingEvents = <AgentConversationMessage>[];
-  }
-
-  void flushLogs() {
-    if (pendingLogs.isEmpty) return;
     items.add(
-      ConversationLogTimelineItem(
-        stableStorageKey('log', processAnchor, collisionPosition: messageIndex),
-        List<AgentConversationMessage>.unmodifiable(pendingLogs),
-      ),
+      failure
+          ? ConversationFailureTimelineItem(key, message)
+          : notice
+          ? ConversationNoticeTimelineItem(key, message)
+          : ConversationMessageTimelineItem(key, message),
     );
-    pendingLogs = <AgentConversationMessage>[];
   }
-
-  for (final message in messages) {
-    if (message.isStructuredEvent) {
-      if (isConversationRuntimeUpdateEvent(message)) {
-        // Own timeline item: close the batches ahead of the card so it never
-        // renders inside the process card nor the log rows. The open turn
-        // batch itself stays open: the runtime-update card is separate and
-        // later evidence still belongs to the same blackboard card.
-        flushEvents();
-        flushLogs();
-        final identity = messageIdentity(message, messageIndex);
-        items.add(
-          ConversationRuntimeUpdateTimelineItem(
-            stableStorageKey(
-              'runtime-update',
-              identity,
-              collisionPosition: messageIndex,
-            ),
-            message,
-          ),
-        );
-        continue;
-      }
-      final turnKey = liveTurnKeyOf(message);
-      if (turnKey != null) {
-        if (activeTurnKey != turnKey) {
-          closeTurnBatch();
-          flushEvents();
-          flushLogs();
-          activeTurnKey = turnKey;
-          openTurnEvents = <AgentConversationMessage>[message];
-          openTurnStorageKey = stableStorageKey(
-            'turn-process',
-            turnKey,
-            collisionPosition: messageIndex,
-          );
-          openTurnIndex = items.length;
-          items.add(
-            ConversationProcessTimelineItem(
-              openTurnStorageKey,
-              List<AgentConversationMessage>.unmodifiable(openTurnEvents),
-            ),
-          );
-        } else {
-          openTurnEvents.add(message);
-          items[openTurnIndex] = ConversationProcessTimelineItem(
-            openTurnStorageKey,
-            List<AgentConversationMessage>.unmodifiable(openTurnEvents),
-          );
-        }
-        continue;
-      }
-      if (isConversationRuntimeLogEvent(message)) {
-        pendingLogs.add(message);
-        continue;
-      }
-      pendingEvents.add(message);
-      continue;
-    }
-    flushEvents();
-    flushLogs();
-    final identity = messageIdentity(message, messageIndex);
-    items.add(
-      ConversationMessageTimelineItem(
-        stableStorageKey('message', identity, collisionPosition: messageIndex),
-        message,
-      ),
-    );
-    processAnchor = identity;
-    messageIndex += 1;
-  }
-  closeTurnBatch();
-  flushEvents();
-  flushLogs();
   return List.unmodifiable(items);
 }
 

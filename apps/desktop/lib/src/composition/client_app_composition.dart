@@ -245,6 +245,7 @@ final class ClientAppComposition {
     final rawConversation = _conversation.binding;
     conversation = ConversationBinding(
       projection: _projectionTracing.wrap(rawConversation.projection),
+      execution: rawConversation.execution,
       nativeCatalog: _projectionTracing.wrap(rawConversation.nativeCatalog),
       canonicalEvents: _projectionTracing.wrap(rawConversation.canonicalEvents),
       persistentTurns: _projectionTracing.wrap(rawConversation.persistentTurns),

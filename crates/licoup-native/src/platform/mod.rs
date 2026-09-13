@@ -34,6 +34,7 @@ mod process_supervisor;
 pub(crate) mod provider_mcp_registration;
 #[cfg(unix)]
 mod pty_transport;
+pub mod raw_execution;
 pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;

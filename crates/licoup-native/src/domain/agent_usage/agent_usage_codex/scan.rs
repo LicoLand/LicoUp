@@ -92,7 +92,8 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
         return aggregate_cached_usage(&mut connection, &root_key, window, stats);
     }
     let transaction = transaction_result.context("agent usage cache transaction failed")?;
-    // Finalize previous local days before a rewrite can replace today's rows.
+    // Finalize previous local days before a rewrite or schema migration can
+    // replace today's rows. Preserved scan markers keep archived days sealed.
     let mut deleted_rows = compact_historical_details(&transaction, &root_key, &rollup_window)?;
     let cached_keys = cached_source_keys(&transaction, &root_key)?;
     let mut seen_source_keys = BTreeSet::<String>::new();

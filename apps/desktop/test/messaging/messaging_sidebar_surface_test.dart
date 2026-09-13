@@ -55,6 +55,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           debugShowCheckedModeBanner: false,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           locale: const Locale('en'),
           supportedLocales: LicoStrings.supportedLocales,
           localizationsDelegates: const [
@@ -185,8 +189,6 @@ void main() {
       expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
 
       await tester.tap(rosterToggleFinder);
-      await tester.pump();
-      expect(surfaceFinder, findsOneWidget);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsNothing);
       expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);

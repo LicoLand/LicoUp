@@ -1,3 +1,4 @@
+import 'conversation_execution.dart';
 import 'agent_conversation_message.dart';
 import 'agent_conversation_message_page.dart';
 import 'agent_conversation_privacy_projection.dart';
@@ -160,6 +161,9 @@ AgentConversationMessage _buildAgentConversationMessage(
       providerSummary: providerSummary,
     ),
     createdAt: createdAt,
+    executionReference: ConversationExecutionReference.fromJson(
+      json['executionReference'],
+    ),
     layer: layer,
     cardType: rawCardType.trim().isEmpty
         ? (isInternalConversationRole(role)

@@ -4,11 +4,14 @@ import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({
@@ -102,18 +105,32 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
             : () => widget.binding.intents.send(const RefreshMonitoring()),
         refreshing: projection.refreshing,
         refreshButtonKey: const Key('agent-usage-refresh'),
-        body: SingleChildScrollView(
-          primary: false,
-          padding: EdgeInsets.zero,
-          child: AgentUsageCharts(
-            report: projection.report,
-            detectedAgentIds: projection.detectedAgentIds,
-            windowDays: projection.historyDays,
-            windowBusy: projection.refreshing,
-            onWindowChanged: (days) =>
-                widget.binding.intents.send(SetMonitoringHistoryDays(days)),
-          ),
-        ),
+        body:
+            !projection.hasUsage &&
+                projection.phase == PresentationPhase.loading
+            ? const AgentUsageLoadingState()
+            : !projection.hasUsage &&
+                  projection.phase == PresentationPhase.failed
+            ? Center(
+                child: Text(
+                  strings.usageLoadFailed,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.licoColors.textMuted),
+                ),
+              )
+            : SingleChildScrollView(
+                primary: false,
+                padding: EdgeInsets.zero,
+                child: AgentUsageCharts(
+                  report: projection.report,
+                  detectedAgentIds: projection.detectedAgentIds,
+                  windowDays: projection.historyDays,
+                  windowBusy: projection.refreshing,
+                  onWindowChanged: (days) => widget.binding.intents.send(
+                    SetMonitoringHistoryDays(days),
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -125,6 +142,7 @@ final class _UsageView {
     : report = projection.report,
       historyDays = projection.historyDays,
       refreshing = projection.refreshing,
+      phase = projection.phase,
       detectedAgentIds = {
         for (final target in projection.detectedTargets)
           if (target.status != 'not-detected') target.target,
@@ -133,7 +151,15 @@ final class _UsageView {
   final AgentUsageReport? report;
   final int historyDays;
   final bool refreshing;
+  final PresentationPhase phase;
   final Set<String> detectedAgentIds;
+
+  bool get hasUsage =>
+      (report?.totalTokens ?? 0) > 0 ||
+      (report?.agents.any(
+            (agent) => agent.sessionCount > 0 || agent.messageCount > 0,
+          ) ??
+          false);
 
   @override
   bool operator ==(Object other) =>
@@ -141,6 +167,7 @@ final class _UsageView {
       identical(report, other.report) &&
       historyDays == other.historyDays &&
       refreshing == other.refreshing &&
+      phase == other.phase &&
       setEquals(detectedAgentIds, other.detectedAgentIds);
 
   @override
@@ -148,6 +175,7 @@ final class _UsageView {
     report,
     historyDays,
     refreshing,
+    phase,
     Object.hashAllUnordered(detectedAgentIds),
   );
 }

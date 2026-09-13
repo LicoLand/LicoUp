@@ -30,6 +30,7 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
   "crates/licoup-native/src/domain/lico_agent/transport.rs",
+  "crates/licoup-native/src/domain/model_registry/source.rs",
   "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/provider_quota/http.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
@@ -83,8 +84,10 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
     "crates/licoup-native/src/domain/collaboration_plugin/source.rs";
   const updatePath =
     "crates/licoup-native/src/domain/client_update/github_source.rs";
-  const [collaboration, update] = await Promise.all(
-    [collaborationPath, updatePath].map((relativePath) =>
+  const registryPath =
+    "crates/licoup-native/src/domain/model_registry/source.rs";
+  const [collaboration, update, registry] = await Promise.all(
+    [collaborationPath, updatePath, registryPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),
     ),
   );
@@ -103,9 +106,16 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
   assert.match(update, /MAX_ARTIFACT_DOWNLOAD_BYTES/u);
   assert.match(update, /\.take\(max_bytes\.saturating_add\(1\)\)/u);
 
+  assert.ok(registry.includes('"https://codeload.github.com/anomalyco/models.dev/tar.gz/refs/heads/dev"'));
+  assert.ok(registry.includes("fetch(REPOSITORY_SOURCE)"));
+  assert.ok(registry.includes(".get(url)"));
+  assert.ok(registry.includes(".take(MAX_DOWNLOAD_BYTES + 1)"));
+  assert.ok(registry.includes("decoded_bytes <= MAX_DOWNLOAD_BYTES"));
+
   for (const [relativePath, source] of [
     [collaborationPath, collaboration],
     [updatePath, update],
+    [registryPath, registry],
   ]) {
     for (const forbidden of [".post(", ".send_json(", 'set("Authorization"']) {
       assert.equal(source.includes(forbidden), false, `${relativePath} contains ${forbidden}`);

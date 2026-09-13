@@ -1,6 +1,7 @@
 use super::events::AgentEvent;
 use super::tools::ToolRegistry;
 use super::transport::LlmTransport;
+use crate::domain::conversation::usage::extract_token_usage;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -29,6 +30,9 @@ pub fn run_turn(
         let response = transport
             .complete(model, &messages, &tool_defs)
             .map_err(|e| e.to_string())?;
+        if let Some(event) = response_usage(&response, model) {
+            on_event(event);
+        }
         let choice = response
             .pointer("/choices/0/message")
             .cloned()
@@ -106,4 +110,81 @@ pub fn run_turn(
     }
     on_event(AgentEvent::TurnEnd);
     Ok(())
+}
+
+fn response_usage(response: &Value, requested_model: &str) -> Option<AgentEvent> {
+    let usage = extract_token_usage(response)?;
+    let concrete_model = |model: &str| {
+        let model = model.trim();
+        (!model.is_empty()
+            && !["auto", "default", "unknown", "unspecified"]
+                .into_iter()
+                .any(|selector| model.eq_ignore_ascii_case(selector)))
+        .then(|| model.to_owned())
+    };
+    let model = response
+        .get("model")
+        .and_then(Value::as_str)
+        .and_then(concrete_model)
+        .or_else(|| concrete_model(requested_model));
+    Some(AgentEvent::Usage { model, usage })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn usage_keeps_only_numeric_counters_and_explicit_response_options() {
+        let event = response_usage(
+            &json!({
+                "model": "actual-model",
+                "reasoning_effort": "high",
+                "service_tier": "default",
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "total_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 4},
+                    "private": "private-usage-canary"
+                },
+                "metadata": {"opaqueField": "private-metadata-canary"},
+                "choices": [{"message": {"content": "private-content-canary"}}]
+            }),
+            "requested-model",
+        )
+        .unwrap();
+        let AgentEvent::Usage { model, usage } = event else {
+            panic!("expected usage event");
+        };
+        assert_eq!(model.as_deref(), Some("actual-model"));
+        assert_eq!(usage["promptTokens"], 12);
+        assert_eq!(usage["cachedInputTokens"], 4);
+        assert_eq!(usage["completionTokens"], 3);
+        assert_eq!(usage["totalTokens"], 15);
+        assert_eq!(usage["reasoningEffort"], "high");
+        assert_eq!(usage["fast"], false);
+        assert!(!usage.to_string().contains("private-"));
+    }
+
+    #[test]
+    fn usage_without_response_options_does_not_invent_effort_or_auto_model() {
+        let response = json!({"usage": {"prompt_tokens": 2, "completion_tokens": 1}});
+        for selector in ["auto", " Default ", "UNKNOWN", "unspecified", ""] {
+            let AgentEvent::Usage { model, usage } = response_usage(&response, selector).unwrap()
+            else {
+                panic!("expected usage event");
+            };
+            assert!(model.is_none());
+            assert!(usage.get("reasoningEffort").is_none());
+            assert!(usage.get("fast").is_none());
+        }
+        let AgentEvent::Usage { model, .. } =
+            response_usage(&response, "explicit-request-model").unwrap()
+        else {
+            panic!("expected usage event");
+        };
+        assert_eq!(model.as_deref(), Some("explicit-request-model"));
+        assert!(response_usage(&json!({"model": "actual-model"}), "auto").is_none());
+    }
 }

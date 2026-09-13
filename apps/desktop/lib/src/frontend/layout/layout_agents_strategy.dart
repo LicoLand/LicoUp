@@ -19,15 +19,6 @@ enum AgentsMessageStyle {
   participantFlow,
 }
 
-/// How structured process events are surfaced between messages.
-enum AgentsProcessStyle {
-  /// Expandable process cards.
-  processCard,
-
-  /// Single-line inline status rows.
-  inlineStatus,
-}
-
 /// How the composer presents runtime settings.
 enum AgentsComposerStyle {
   /// The composer carries the embedded runtime settings bar.
@@ -46,7 +37,6 @@ final class AgentsPresentationStrategy {
   const AgentsPresentationStrategy._({
     required this.sidebarStyle,
     required this.messageStyle,
-    required this.processStyle,
     required this.composerStyle,
   });
 
@@ -55,23 +45,20 @@ final class AgentsPresentationStrategy {
     : this._(
         sidebarStyle: AgentsSidebarStyle.agentTree,
         messageStyle: AgentsMessageStyle.documentTranscript,
-        processStyle: AgentsProcessStyle.processCard,
         composerStyle: AgentsComposerStyle.withRuntimeBar,
       );
 
-  /// The messaging rendering: flat recency list, participant flow, inline
-  /// process status, and a plain composer.
+  /// The messaging rendering: flat recency list, participant flow, and a plain
+  /// composer.
   const AgentsPresentationStrategy.messaging()
     : this._(
         sidebarStyle: AgentsSidebarStyle.flatRecencyList,
         messageStyle: AgentsMessageStyle.participantFlow,
-        processStyle: AgentsProcessStyle.inlineStatus,
         composerStyle: AgentsComposerStyle.plain,
       );
 
   final AgentsSidebarStyle sidebarStyle;
   final AgentsMessageStyle messageStyle;
-  final AgentsProcessStyle processStyle;
   final AgentsComposerStyle composerStyle;
 
   @override
@@ -79,19 +66,16 @@ final class AgentsPresentationStrategy {
       other is AgentsPresentationStrategy &&
       other.sidebarStyle == sidebarStyle &&
       other.messageStyle == messageStyle &&
-      other.processStyle == processStyle &&
       other.composerStyle == composerStyle;
 
   @override
-  int get hashCode =>
-      Object.hash(sidebarStyle, messageStyle, processStyle, composerStyle);
+  int get hashCode => Object.hash(sidebarStyle, messageStyle, composerStyle);
 
   @override
   String toString() =>
       'AgentsPresentationStrategy('
       'sidebarStyle: ${sidebarStyle.name}, '
       'messageStyle: ${messageStyle.name}, '
-      'processStyle: ${processStyle.name}, '
       'composerStyle: ${composerStyle.name})';
 }
 

@@ -25,6 +25,7 @@ mod continuity_seam;
 mod conversations;
 mod dispatches;
 mod events;
+mod execution;
 mod path_security;
 mod recovery;
 
@@ -32,6 +33,10 @@ pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
 pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
 pub use events::{EventPagePosition, EventRepository};
+pub use execution::{
+    ExecutionRecord, NativeExecutionReference, NativeExecutionReferenceIndex,
+    RuntimeExecutionSnapshot, RuntimeFrameRecord,
+};
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 
 pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
@@ -44,7 +49,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "13";
+pub const CURRENT_SCHEMA_VERSION: &str = "14";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -93,7 +98,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
          CREATE TABLE IF NOT EXISTS event_parts (
            id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
            ordinal INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
-           runtime_cursor INTEGER, created_at INTEGER NOT NULL,
+           runtime_cursor INTEGER, execution_kind TEXT, created_at INTEGER NOT NULL,
            UNIQUE(event_id, ordinal)
          );
          CREATE INDEX IF NOT EXISTS event_parts_event_idx ON event_parts(event_id, ordinal);
@@ -128,6 +133,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            state TEXT NOT NULL CHECK(state IN ('accepted','running','completed','failed','cancel-requested','cancelled')),
            session_mode TEXT NOT NULL CHECK(session_mode IN ('new','resume')),
            runtime_conversation_path TEXT, error_code TEXT,
+           request_payload TEXT, terminal_payload TEXT, native_provenance TEXT,
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
           CREATE INDEX IF NOT EXISTS conversation_dispatches_resume_idx
@@ -1117,7 +1123,7 @@ impl ConversationStore {
                     &scope.event_id,
                     ordinal,
                     &part,
-                    Some(cursor),
+                    Some(cursor as i64),
                     now,
                 )?;
                 ordinal += 1;
@@ -1142,53 +1148,10 @@ impl ConversationStore {
         through_cursor: u64,
         limit: usize,
     ) -> StoreResult<Vec<Value>> {
-        if after_cursor > through_cursor || through_cursor > i64::MAX as u64 {
-            return Err(anyhow!("runtime_cursor_invalid"));
-        }
-        let limit = limit.clamp(1, 512);
-        self.with_connection(|connection| {
-            let mut statement = connection.prepare(
-                "SELECT selected.runtime_cursor, p.ordinal, p.content
-                  FROM (
-                   SELECT parts.runtime_cursor FROM event_parts parts
-                   JOIN events event ON event.id=parts.event_id
-                   WHERE parts.event_id=?1 AND event.correlation_id=?2
-                     AND parts.runtime_cursor IS NOT NULL
-                     AND runtime_cursor>?3 AND runtime_cursor<=?4
-                   GROUP BY parts.runtime_cursor
-                   ORDER BY parts.runtime_cursor ASC LIMIT ?5
-                  ) selected
-                 JOIN event_parts p ON p.event_id=?1
-                   AND p.runtime_cursor=selected.runtime_cursor
-                 ORDER BY selected.runtime_cursor ASC, p.ordinal ASC",
-            )?;
-            let rows = statement.query_map(
-                params![
-                    scope.event_id,
-                    scope.dispatch_id,
-                    after_cursor as i64,
-                    through_cursor as i64,
-                    limit as i64,
-                ],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(2)?)),
-            )?;
-            let mut frames = Vec::new();
-            let mut current_cursor = None;
-            let mut encoded = String::new();
-            for row in rows {
-                let (cursor, content) = row?;
-                if current_cursor.is_some_and(|current| current != cursor) {
-                    frames.push(serde_json::from_str(&encoded)?);
-                    encoded.clear();
-                }
-                current_cursor = Some(cursor);
-                encoded.push_str(&content);
-            }
-            if current_cursor.is_some() {
-                frames.push(serde_json::from_str(&encoded)?);
-            }
-            Ok(frames)
-        })
+        self.runtime_raw_frames_after(scope, after_cursor, through_cursor, limit)?
+            .into_iter()
+            .map(|frame| serde_json::from_str(&frame.raw_text).map_err(Into::into))
+            .collect()
     }
 
     /// Persist the terminal lifecycle and dispatch state in one canonical
@@ -1260,7 +1223,8 @@ impl ConversationStore {
             let error_code = persisted_error.as_deref();
             let changed = transaction.execute(
                 "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4,
-                   runtime_conversation_path=COALESCE(?5, runtime_conversation_path)
+                   runtime_conversation_path=COALESCE(?5, runtime_conversation_path),
+                   terminal_payload=?6
                  WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
                 params![
                     scope.dispatch_id,
@@ -1268,6 +1232,7 @@ impl ConversationStore {
                     error_code,
                     now,
                     runtime_conversation_path,
+                    serde_json::to_string(terminal)?,
                 ],
             )?;
             if changed != 1 {
@@ -3677,7 +3642,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3753,6 +3718,38 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if current_schema_version == "12" {
         migrate_licoup_guide_profile_references_v13(connection)?;
+    }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "13" {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_column(&transaction, "event_parts", "execution_kind", "TEXT")?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "request_payload",
+            "TEXT",
+        )?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "terminal_payload",
+            "TEXT",
+        )?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "native_provenance",
+            "TEXT",
+        )?;
+        transaction.execute_batch("CREATE INDEX IF NOT EXISTS conversation_dispatches_native_provenance_idx
+            ON conversation_dispatches(json_extract(native_provenance,'$.agentId'),json_extract(native_provenance,'$.nativeSessionId'))
+            WHERE native_provenance IS NOT NULL;")?;
+        transaction.execute("UPDATE schema_meta SET value='14' WHERE key='version'", [])?;
+        transaction.commit()?;
     }
     ensure_column(
         connection,
@@ -5786,7 +5783,7 @@ fn load_trusted_response_mode(
     event_id: &str,
 ) -> StoreResult<Option<String>> {
     let mut statement = connection.prepare(
-        "SELECT content FROM event_parts WHERE event_id=?1 AND kind='metadata' ORDER BY ordinal",
+        "SELECT content FROM event_parts WHERE event_id=?1 AND kind='metadata' AND runtime_cursor IS NULL ORDER BY ordinal",
     )?;
     let rows = statement.query_map(params![event_id], |row| row.get::<_, String>(0))?;
     for row in rows {
@@ -5961,10 +5958,10 @@ fn insert_runtime_event_part(
     event_id: &str,
     ordinal: i64,
     part: &NewEventPart,
-    runtime_cursor: Option<u64>,
+    runtime_cursor: Option<i64>,
     now: i64,
 ) -> StoreResult<()> {
-    if runtime_cursor.is_some_and(|cursor| cursor == 0 || cursor > i64::MAX as u64) {
+    if runtime_cursor == Some(0) {
         return Err(anyhow!("runtime_cursor_invalid"));
     }
     if part.kind != EventPartKind::Text {
@@ -5985,7 +5982,7 @@ fn insert_runtime_event_part(
             ordinal,
             enum_wire(part.kind)?,
             part.content,
-            runtime_cursor.map(|cursor| cursor as i64),
+            runtime_cursor,
             now,
         ],
     )?;
@@ -7872,7 +7869,7 @@ mod tests {
         let custom_before = snapshot_group(&root, "custom-group");
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -8019,7 +8016,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -8051,7 +8048,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -8079,7 +8076,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -8464,7 +8461,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let migrated = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let matching = migrated
             .get(&conversation_id)
             .unwrap()
@@ -9037,7 +9034,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -9047,7 +9044,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

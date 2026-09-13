@@ -26,6 +26,7 @@ final class ConversationFeatureComposition {
     );
     binding = ConversationBinding(
       projection: _projection.projection,
+      execution: _projection.execution,
       nativeCatalog: _projection.nativeCatalog,
       canonicalEvents: _projection.canonicalEvents,
       persistentTurns: _projection.persistentTurns,
@@ -88,6 +89,10 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       _beginRendererIntent,
     );
     switch (intent) {
+      case OpenConversationExecutionView(:final viewId, :final reference):
+        _projection.execution.open(viewId, reference, trace: trace);
+      case CloseConversationExecutionView(:final viewId):
+        _projection.execution.dismiss(viewId, trace: trace);
       case RefreshConversationCatalog(:final agentId):
         final requestedAgentId = agentId.trim();
         if (requestedAgentId.isNotEmpty) {

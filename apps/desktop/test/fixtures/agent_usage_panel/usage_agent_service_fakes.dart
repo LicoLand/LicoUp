@@ -25,11 +25,17 @@ class UsageAgentService extends AgentService {
             jsonEncode({
               'ok': true,
               'schemaVersion': AgentUsageReport.currentSchemaVersion,
+              'usageParserRevision':
+                  AgentUsageReport.currentUsageParserRevision,
+              'modelRegistryRevision': 'fixture-registry',
               'mode': AgentUsageReport.currentMode,
               'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
               'reports': [
                 {
                   'schemaVersion': AgentUsageReport.currentSchemaVersion,
+                  'usageParserRevision':
+                      AgentUsageReport.currentUsageParserRevision,
+                  'modelRegistryRevision': 'fixture-registry',
                   'mode': AgentUsageReport.currentMode,
                   'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
                   'generatedAt': reportGeneratedAt,
@@ -49,7 +55,12 @@ class UsageAgentService extends AgentService {
                           {
                             'date': _dayKey(),
                             'totalTokens': 231917287,
-                            'modelUsage': {'claude-sonnet-4': 231917287},
+                            'modelTokenUsage': {
+                              'claude-sonnet-4': {
+                                'displayName': 'Claude Sonnet 4',
+                                'totalTokens': 231917287,
+                              },
+                            },
                           },
                         ],
                         'modelUsage': [
@@ -70,7 +81,12 @@ class UsageAgentService extends AgentService {
                           {
                             'date': _dayKey(),
                             'totalTokens': 7860433,
-                            'modelUsage': {'gpt-5.4': 7860433},
+                            'modelTokenUsage': {
+                              'gpt-5.4': {
+                                'displayName': 'GPT-5.4',
+                                'totalTokens': 7860433,
+                              },
+                            },
                           },
                         ],
                         'modelUsage': {
@@ -88,7 +104,12 @@ class UsageAgentService extends AgentService {
                           {
                             'date': _dayKey(),
                             'totalTokens': 670726,
-                            'modelUsage': {'deepseek-v4-pro': 670726},
+                            'modelTokenUsage': {
+                              'deepseek-v4-pro': {
+                                'displayName': 'DeepSeek V4 Pro',
+                                'totalTokens': 670726,
+                              },
+                            },
                           },
                         ],
                       },
@@ -129,6 +150,9 @@ class UsageAgentService extends AgentService {
             jsonEncode({
               'ok': true,
               'schemaVersion': AgentUsageReport.currentSchemaVersion,
+              'usageParserRevision':
+                  AgentUsageReport.currentUsageParserRevision,
+              'modelRegistryRevision': 'fixture-registry',
               'mode': AgentUsageReport.currentMode,
               'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
               'generatedAt': DateTime.now().toUtc().toIso8601String(),
@@ -152,10 +176,13 @@ class UsageAgentService extends AgentService {
                         {
                           'date': _dayKey(),
                           'totalTokens': entry.value.$2,
-                          'modelUsage': _modelUsage(entry.key, entry.value.$2),
+                          'modelTokenUsage': _modelUsage(
+                            entry.key,
+                            entry.value.$2,
+                          ),
                         },
                       ],
-                      'modelUsage': _modelUsage(entry.key, entry.value.$2),
+                      'modelTokenUsage': _modelUsage(entry.key, entry.value.$2),
                     },
                   },
               ],
@@ -174,27 +201,36 @@ class UsageAgentService extends AgentService {
     return args[index + 1];
   }
 
-  Object _modelUsage(String agentId, int tokens) {
+  Map<String, Object> _modelUsage(String agentId, int tokens) {
     if (tokens <= 0) {
-      return const [];
+      return const {};
     }
     return switch (agentId) {
-      'claude-code' => [
-        {'model': 'claude-sonnet-4', 'totalTokens': tokens - 31917287},
-        {'model': 'claude-haiku', 'totalTokens': 31917287},
-      ],
-      'codex' => {
-        'gpt-5.4': {'totalTokens': tokens - 1000},
-        'deepseek-v4-pro': {'totalTokens': 1000},
-      },
-      'opencode' => [
-        {
-          'model':
-              '{"id":"deepseek-v4-pro","providerID":"deepseek","variant":"max"}',
-          'promptTokens': tokens,
+      'claude-code' => {
+        'claude-sonnet-4': {
+          'displayName': 'Claude Sonnet 4',
+          'totalTokens': tokens - 31917287,
         },
-      ],
-      _ => const [],
+        'claude-haiku': {
+          'displayName': 'Claude Haiku',
+          'totalTokens': 31917287,
+        },
+      },
+      'codex' => {
+        'gpt-5.4': {'displayName': 'GPT-5.4', 'totalTokens': tokens - 1000},
+        'deepseek-v4-pro': {
+          'displayName': 'DeepSeek V4 Pro',
+          'totalTokens': 1000,
+        },
+      },
+      'opencode' => {
+        'deepseek-v4-pro': {
+          'displayName': 'DeepSeek V4 Pro',
+          'promptTokens': tokens,
+          'totalTokens': tokens,
+        },
+      },
+      _ => const {},
     };
   }
 
@@ -271,6 +307,9 @@ class DeltaUsageAgentService extends AgentService {
             jsonEncode({
               'ok': true,
               'schemaVersion': AgentUsageReport.currentSchemaVersion,
+              'usageParserRevision':
+                  AgentUsageReport.currentUsageParserRevision,
+              'modelRegistryRevision': 'fixture-registry',
               'mode': AgentUsageReport.currentMode,
               'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
               'reports': [
@@ -326,6 +365,8 @@ class DeltaUsageAgentService extends AgentService {
     return {
       'ok': true,
       'schemaVersion': AgentUsageReport.currentSchemaVersion,
+      'usageParserRevision': AgentUsageReport.currentUsageParserRevision,
+      'modelRegistryRevision': 'fixture-registry',
       'mode': AgentUsageReport.currentMode,
       'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
       'generatedAt': generatedAt,

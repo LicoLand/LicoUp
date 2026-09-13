@@ -23,7 +23,9 @@ void main() {
               {
                 'date': _todayKey(),
                 'totalTokens': 120,
-                'modelUsage': {'gpt-5.5': 120},
+                'modelTokenUsage': {
+                  'gpt-5.5': {'displayName': 'GPT-5.5', 'totalTokens': 120},
+                },
               },
             ],
           },

@@ -5,6 +5,10 @@ use super::super::attribution::{
     estimated_message_usage, message_usage, summarize_sessions, summarize_sessions_exact_only,
 };
 use super::super::contract::{HistoryUsageSummary, MessageUsage, text_field};
+use super::super::variant::{
+    UsageRequestContext, UsageVariant, model_label, model_with_provider_fallback,
+    same_model_selection,
+};
 use super::super::window::UsageWindow;
 use super::models::{CumulativeSnapshot, CumulativeTotals, ParseResult};
 use crate::domain::conversation::adapter_dispatch::parse_history_file;
@@ -19,7 +23,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 pub(super) fn parse_append_source(
@@ -28,10 +32,55 @@ pub(super) fn parse_append_source(
     start_offset: u64,
     calendar: &UsageWindow,
     has_known_session: bool,
+    request_context: UsageRequestContext,
 ) -> Result<ParseResult> {
     let mut reader =
         BufReader::new(fs::File::open(path).context("native usage append source open failed")?);
     reader.seek(SeekFrom::Start(start_offset))?;
+    parse_append_reader(
+        adapter,
+        reader,
+        start_offset,
+        calendar,
+        has_known_session,
+        request_context,
+    )
+}
+
+pub(super) fn parse_append_prefix(
+    adapter: HistoryAdapter,
+    path: &Path,
+    end_offset: u64,
+    calendar: &UsageWindow,
+) -> Result<ParseResult> {
+    let file = fs::File::open(path).context("native usage prefix source open failed")?;
+    anyhow::ensure!(
+        file.metadata()?.len() >= end_offset,
+        "native usage prefix cursor exceeds source"
+    );
+    let parsed = parse_append_reader(
+        adapter,
+        BufReader::new(file.take(end_offset)),
+        0,
+        calendar,
+        true,
+        Default::default(),
+    )?;
+    anyhow::ensure!(
+        parsed.parsed_bytes == end_offset,
+        "native usage prefix cursor is not a complete record boundary"
+    );
+    Ok(parsed)
+}
+
+fn parse_append_reader(
+    adapter: HistoryAdapter,
+    mut reader: impl BufRead,
+    start_offset: u64,
+    calendar: &UsageWindow,
+    has_known_session: bool,
+    mut request_context: UsageRequestContext,
+) -> Result<ParseResult> {
     let mut parsed_bytes = start_offset;
     let mut summary = HistoryUsageSummary::default();
     let mut cumulative_snapshots = Vec::new();
@@ -61,7 +110,9 @@ pub(super) fn parse_append_source(
         let Ok(event) = serde_json::from_slice::<Value>(&bytes) else {
             continue;
         };
-        if let Some(parsed) = explicit_usage_event(adapter, &event, calendar) {
+        update_request_context(adapter, &event, &mut request_context);
+        if let Some(mut parsed) = explicit_usage_event(adapter, &event, calendar) {
+            apply_request_context(&event, &mut parsed.usage, &request_context);
             if let Some(usage_key) = parsed.cumulative_key {
                 let session_key = parsed
                     .session_key
@@ -70,6 +121,7 @@ pub(super) fn parse_append_source(
                     usage_key,
                     session_key,
                     model: parsed.usage.model.clone(),
+                    variant: parsed.usage.variant.clone(),
                     first_day: parsed.day.clone(),
                     observed_day: parsed.day,
                     totals: CumulativeTotals {
@@ -92,8 +144,9 @@ pub(super) fn parse_append_source(
         if !matches!(
             adapter,
             HistoryAdapter::Kimi | HistoryAdapter::OpenClaw | HistoryAdapter::Hermes
-        ) && let Some(parsed) = estimated_usage_event(adapter, &event, calendar)
+        ) && let Some(mut parsed) = estimated_usage_event(adapter, &event, calendar)
         {
+            apply_request_context(&event, &mut parsed.usage, &request_context);
             record_append_usage(
                 parsed,
                 &mut summary,
@@ -119,6 +172,7 @@ pub(super) fn parse_append_source(
         parsed_bytes,
         cumulative_snapshots,
         session_increment,
+        request_context,
     })
 }
 
@@ -310,7 +364,8 @@ fn explicit_usage_event(
         "model": model,
         "usage": normalized
     });
-    let usage = message_usage(&envelope, model)?;
+    let mut usage = message_usage(&envelope, model)?;
+    usage.variant = UsageVariant::from_metadata(event);
     let timestamp = timestamp_value(event)?;
     let day = calendar.date_key(&timestamp)?;
     if !calendar.contains(&day) {
@@ -335,13 +390,10 @@ fn explicit_usage_event(
         || event.pointer("/conversation/totalUsage").is_some()
         || event_type.contains("session_usage");
     let session_key = session_scope.as_deref().map(opaque_scope);
-    let cumulative_key = is_cumulative.then(|| {
-        opaque_scope(&format!(
-            "{}\0{}",
-            session_scope.as_deref().unwrap_or("source-session"),
-            usage.model.as_deref().unwrap_or_default()
-        ))
-    });
+    // A session counter is one cumulative stream even when the actual model
+    // or effort changes. Splitting its key would count the running total again.
+    let cumulative_key =
+        is_cumulative.then(|| opaque_scope(session_scope.as_deref().unwrap_or("source-session")));
     Some(ExplicitUsageEvent {
         usage,
         day,
@@ -429,24 +481,81 @@ fn timestamp_value(value: &Value) -> Option<String> {
     None
 }
 
-fn model_label(value: &Value) -> Option<String> {
-    [
-        value,
-        value.get("usage").unwrap_or(&Value::Null),
-        value.get("token_usage").unwrap_or(&Value::Null),
-        value.get("usageMetadata").unwrap_or(&Value::Null),
-        value.get("usage_metadata").unwrap_or(&Value::Null),
-        value.get("message").unwrap_or(&Value::Null),
-        value.get("data").unwrap_or(&Value::Null),
-        value.get("payload").unwrap_or(&Value::Null),
-    ]
-    .into_iter()
-    .find_map(|candidate| {
-        text_field(
-            candidate,
-            &["model", "modelId", "model_id", "modelName", "model_name"],
-        )
-    })
+fn apply_request_context(event: &Value, usage: &mut MessageUsage, context: &UsageRequestContext) {
+    usage.variant = UsageVariant::from_metadata(event);
+    let current = model_label(event);
+    let same_model = current.as_ref().is_none_or(|model| {
+        context
+            .model
+            .as_ref()
+            .is_none_or(|previous| same_model_selection(previous, model))
+    });
+    if same_model {
+        usage.model = usage
+            .model
+            .take()
+            .map(|raw| {
+                context
+                    .model
+                    .as_deref()
+                    .map(|prior| model_with_provider_fallback(&raw, prior))
+                    .unwrap_or(raw)
+            })
+            .or_else(|| context.model.clone());
+        usage.variant = usage.variant.with_fallback(&context.variant);
+    }
+}
+
+/// Only explicit historical request boundaries or recorded selection changes
+/// establish context. A usage event never becomes the next request's default.
+fn update_request_context(
+    adapter: HistoryAdapter,
+    event: &Value,
+    context: &mut UsageRequestContext,
+) {
+    let kind = event_type(event).to_ascii_lowercase();
+    if matches!(
+        kind.as_str(),
+        "session"
+            | "session.start"
+            | "session_start"
+            | "session.started"
+            | "turn.completed"
+            | "turn_complete"
+            | "task_complete"
+            | "task_failed"
+    ) {
+        *context = UsageRequestContext::default();
+    }
+    if adapter == HistoryAdapter::Pi
+        && matches!(kind.as_str(), "model_change" | "thinking_level_change")
+    {
+        if kind == "model_change" {
+            context.model = model_label(event);
+        } else {
+            context.variant = UsageVariant::from_metadata(event);
+        }
+        return;
+    }
+    let request_boundary = matches!(
+        kind.as_str(),
+        "turn_context"
+            | "request"
+            | "request.start"
+            | "request_start"
+            | "turn.start"
+            | "turn_start"
+            | "turn.started"
+            | "step.start"
+            | "step_start"
+    ) || (matches!(kind.as_str(), "user" | "user.message" | "user_message")
+        && adapter != HistoryAdapter::Pi);
+    if request_boundary {
+        *context = UsageRequestContext {
+            model: model_label(event),
+            variant: UsageVariant::from_metadata(event),
+        };
+    }
 }
 
 fn session_scope(value: &Value) -> Option<String> {
@@ -521,8 +630,15 @@ mod tests {
             ),
         )
         .unwrap();
-        let first =
-            parse_append_source(HistoryAdapter::ClaudeCode, &path, 0, &window(), false).unwrap();
+        let first = parse_append_source(
+            HistoryAdapter::ClaudeCode,
+            &path,
+            0,
+            &window(),
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(first.summary.total_tokens(), 12);
         assert!(first.parsed_bytes < fs::metadata(&path).unwrap().len());
         fs::OpenOptions::new()
@@ -537,6 +653,7 @@ mod tests {
             first.parsed_bytes,
             &window(),
             true,
+            first.request_context.clone(),
         )
         .unwrap();
         assert_eq!(second.summary.total_tokens(), 100);
@@ -557,7 +674,15 @@ mod tests {
         )
         .unwrap();
 
-        let parsed = parse_append_source(HistoryAdapter::Kimi, &path, 0, &window(), false).unwrap();
+        let parsed = parse_append_source(
+            HistoryAdapter::Kimi,
+            &path,
+            0,
+            &window(),
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(parsed.summary.total_tokens(), 120);
         assert_eq!(parsed.summary.explicit_records, 1);
         assert_eq!(parsed.summary.estimated_records, 0);
@@ -577,8 +702,15 @@ mod tests {
         )
         .unwrap();
 
-        let parsed =
-            parse_append_source(HistoryAdapter::OpenClaw, &path, 0, &window(), false).unwrap();
+        let parsed = parse_append_source(
+            HistoryAdapter::OpenClaw,
+            &path,
+            0,
+            &window(),
+            false,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(parsed.summary.total_tokens(), 0);
         assert_eq!(parsed.summary.explicit_records, 0);
         assert_eq!(parsed.summary.estimated_records, 0);
@@ -709,22 +841,22 @@ mod tests {
             .unwrap();
         for (id, session, timestamp, data) in [
             (
-                "ignored-message",
+                "partial-message",
                 "single-day",
                 1_784_080_800_000i64,
-                json!({"tokens": {"input": 500, "output": 500}}),
+                json!({"effort":"high", "tokens": {"input": 50, "output": 5}}),
             ),
             (
                 "cross-day-1",
                 "cross-day",
                 1_783_994_400_000i64,
-                json!({"tokens": {"input": 10, "output": 2}}),
+                json!({"model":"model-b", "tokens": {"input": 10, "output": 2}}),
             ),
             (
                 "cross-day-2",
                 "cross-day",
                 1_784_080_800_000i64,
-                json!({"tokens": {"input": 20, "output": 3}}),
+                json!({"model":"model-b", "tokens": {"input": 20, "output": 3}}),
             ),
         ] {
             connection
@@ -738,22 +870,14 @@ mod tests {
 
         let parsed = parse_openagent_usage_database(&path, &window()).unwrap();
         let summary = parsed.summary;
-        assert_eq!(summary.total_tokens(), 35);
-        assert_eq!(summary.explicit_records, 2);
-        assert_eq!(summary.session_count, 1);
+        assert_eq!(summary.total_tokens(), 142);
+        assert_eq!(summary.session_count, 2);
         assert_eq!(parsed.cumulative_snapshots.len(), 2);
-        let aggregate = parsed
-            .cumulative_snapshots
-            .iter()
-            .find(|snapshot| snapshot.projects_usage)
-            .unwrap();
-        assert_eq!(aggregate.totals.prompt, 100);
-        assert_eq!(aggregate.totals.completion, 7);
         assert!(
             parsed
                 .cumulative_snapshots
                 .iter()
-                .any(|snapshot| !snapshot.projects_usage)
+                .all(|snapshot| !snapshot.projects_usage)
         );
         assert_eq!(
             summary.daily_usage["2026-07-15"].model_usage["model-b"].total_tokens,
@@ -761,6 +885,185 @@ mod tests {
         );
         assert_eq!(
             summary.daily_usage["2026-07-14"].model_usage["model-b"].total_tokens,
+            12
+        );
+        fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn actual_request_context_survives_append_and_resets_before_missing_effort() {
+        let path = temp_file("request-options");
+        fs::write(&path, [
+            json!({"type":"request.start","model":"k3","reasoning":{"effort":"high"}}),
+            json!({"type":"usage.record","timestamp":"2026-07-15T10:00:00Z","usage":{"inputOther":10,"output":2}})
+        ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();
+        let first = parse_append_source(
+            HistoryAdapter::KimiCode,
+            &path,
+            0,
+            &window(),
+            false,
+            Default::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            first.summary.daily_usage["2026-07-15"].model_variants[&(
+                "k3".to_owned(),
+                UsageVariant {
+                    effort: Some("high".into()),
+                    fast: None
+                }
+            )]
+                .total_tokens,
+            12
+        );
+        fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(([
+            json!({"type":"usage.record","timestamp":"2026-07-15T10:01:00Z","usage":{"inputOther":3,"output":1}}),
+            json!({"type":"request.start","model":"k3"}),
+            json!({"type":"usage.record","timestamp":"2026-07-15T10:02:00Z","usage":{"inputOther":5,"output":1}})
+        ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").as_bytes()).unwrap();
+        let second = parse_append_source(
+            HistoryAdapter::KimiCode,
+            &path,
+            first.parsed_bytes,
+            &window(),
+            true,
+            first.request_context,
+        )
+        .unwrap();
+        let day = &second.summary.daily_usage["2026-07-15"];
+        assert_eq!(
+            day.model_variants[&(
+                "k3".to_owned(),
+                UsageVariant {
+                    effort: Some("high".into()),
+                    fast: None
+                }
+            )]
+                .total_tokens,
+            4
+        );
+        assert_eq!(
+            day.model_variants[&("k3".to_owned(), UsageVariant::default())].total_tokens,
+            6
+        );
+        assert_eq!(day.total_tokens, 10);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn catalog_file_adapters_preserve_actual_options_and_counter_conservation() {
+        use crate::domain::conversation::source_catalog::adapter_for_agent;
+        let path = temp_file("all-file-adapters");
+        fs::write(&path,json!({"type":"usage.record","timestamp":"2026-07-15T10:00:00Z","model":"synthetic-model","effort":"medium","fast":true,"usage":{"input_tokens":10,"output_tokens":2}}).to_string()+"\n").unwrap();
+        for agent in crate::domain::agent_usage::contract::supported_agents() {
+            let Some(adapter) = adapter_for_agent(agent.id) else {
+                continue;
+            };
+            if matches!(
+                adapter,
+                HistoryAdapter::Codex
+                    | HistoryAdapter::Cursor
+                    | HistoryAdapter::OpenClaw
+                    | HistoryAdapter::Hermes
+            ) {
+                continue;
+            }
+            let parsed =
+                parse_append_source(adapter, &path, 0, &window(), false, Default::default())
+                    .unwrap();
+            assert_eq!(parsed.summary.total_tokens(), 12, "{}", agent.id);
+            let values = parsed.summary.daily_usage["2026-07-15"]
+                .model_variants
+                .values();
+            assert_eq!(
+                values.map(|usage| usage.total_tokens).sum::<u64>(),
+                12,
+                "{}",
+                agent.id
+            );
+            assert!(
+                parsed.summary.daily_usage["2026-07-15"]
+                    .model_variants
+                    .keys()
+                    .all(|(_, variant)| variant.effort.as_deref() == Some("medium")
+                        && variant.fast == Some(true)),
+                "{}",
+                agent.id
+            );
+        }
+        fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn observed_estimated_variant_survives_an_explicit_model_change() {
+        let path = temp_file("estimated-model-change");
+        fs::write(&path,[
+            json!({"type":"request.start","model":"model-a","effort":"high"}),
+            json!({"type":"assistant","model":"model-b","effort":"low","fast":true,"timestamp":"2026-07-15T10:00:00Z","text":"synthetic"})
+        ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();
+        let parsed = parse_append_source(
+            HistoryAdapter::ClaudeCode,
+            &path,
+            0,
+            &window(),
+            false,
+            Default::default(),
+        )
+        .unwrap();
+        let day = &parsed.summary.daily_usage["2026-07-15"];
+        assert!(day.model_variants.contains_key(&(
+            "model-b".to_owned(),
+            UsageVariant {
+                effort: Some("low".into()),
+                fast: Some(true)
+            }
+        )));
+        assert_eq!(day.model_variants.len(), 1);
+        fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn lico_snapshot_counts_each_model_call_once_and_covers_turn_text() {
+        let path = temp_file("lico-usage").with_extension("jsonl");
+        fs::write(&path,[
+            json!({"type":"session","id":"synthetic-lico"}),
+            json!({"type":"message","role":"user","text":"synthetic prompt","timestamp":"2026-07-15T10:00:00Z"}),
+            json!({"type":"message","role":"assistant","text":"synthetic response","timestamp":"2026-07-15T10:00:00Z"}),
+            json!({"type":"usage.record","model":"model-a","timestamp":"2026-07-15T10:00:00Z","usage":{"promptTokens":10,"completionTokens":2,"reasoningEffort":"high"}}),
+            json!({"type":"usage.record","model":"model-a","timestamp":"2026-07-15T10:00:00Z","usage":{"promptTokens":10,"completionTokens":2,"reasoningEffort":"high"}}),
+            json!({"type":"usage.record","model":"model-b","timestamp":"2026-07-15T10:00:00Z","usage":{"promptTokens":10,"completionTokens":2,"reasoningEffort":"low","fast":true}})
+        ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();
+        let metadata = fs::metadata(&path).unwrap();
+        let parsed = parse_snapshot_source(
+            HistoryAdapter::LicoAgent,
+            &path,
+            "fixture",
+            &metadata,
+            &window(),
+        )
+        .unwrap();
+        assert_eq!(parsed.summary.total_tokens(), 36);
+        assert_eq!(parsed.summary.estimated_total_tokens, 0);
+        assert_eq!(parsed.summary.explicit_records, 3);
+        let variants = &parsed.summary.daily_usage["2026-07-15"].model_variants;
+        assert_eq!(
+            variants[&(
+                "model-a".to_owned(),
+                UsageVariant {
+                    effort: Some("high".into()),
+                    fast: None
+                }
+            )]
+                .total_tokens,
+            24
+        );
+        assert_eq!(
+            variants[&(
+                "model-b".to_owned(),
+                UsageVariant {
+                    effort: Some("low".into()),
+                    fast: Some(true)
+                }
+            )]
+                .total_tokens,
             12
         );
         fs::remove_file(path).unwrap();

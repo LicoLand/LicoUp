@@ -147,6 +147,7 @@ fn parse_gateway_usage(payload: &Value, window: &UsageWindow) -> Option<HistoryU
                 completion_tokens: totals.completion,
                 total_tokens: totals.total,
                 model: None,
+                variant: Default::default(),
                 accuracy: UsageAccuracy::Exact,
             },
             Some(day.to_owned()),

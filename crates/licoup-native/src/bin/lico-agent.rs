@@ -166,6 +166,7 @@ fn run_prompt(
     workspace: &std::path::Path,
 ) -> Result<(), &'static str> {
     let mut assistant_output = String::new();
+    let mut usage_records = Vec::new();
     let result = {
         let mut guard = agent.lock().unwrap();
         guard.prompt(message, |event| {
@@ -174,12 +175,19 @@ fn run_prompt(
             {
                 assistant_output.push_str(delta);
             }
+            if let AgentEvent::Usage { model, usage } = &event {
+                usage_records.push((OffsetDateTime::now_utc(), usage_record(model, usage)));
+            }
             if !matches!(event, AgentEvent::AgentEnd) {
                 let _ = emit_event(out, &event);
             }
         })
     };
     if let Err(err) = result {
+        // Earlier model calls still consumed tokens when a later call failed.
+        if persist_usage_records(transcript_path, session_id, workspace, &usage_records).is_err() {
+            emit_persist_error(out)?;
+        }
         write_json(
             out,
             &json!({"type":"error","code":"prompt_failed","message":err}),
@@ -192,17 +200,11 @@ fn run_prompt(
         workspace,
         message,
         &assistant_output,
+        &usage_records,
     )
     .is_err()
     {
-        write_json(
-            out,
-            &json!({
-                "type":"error",
-                "code":"lico_agent_transcript_persist_failed",
-                "message":"Lico Agent could not persist the completed turn."
-            }),
-        )?;
+        emit_persist_error(out)?;
         return Ok(());
     }
     emit_event(out, &AgentEvent::AgentEnd)
@@ -230,21 +232,10 @@ fn persist_turn(
     workspace: &std::path::Path,
     prompt: &str,
     output: &str,
+    usage_records: &[(OffsetDateTime, Value)],
 ) -> Result<(), ()> {
     let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).map_err(|_| ())?;
-    if !path.exists() {
-        append_private_line(
-            path,
-            &json!({
-                "type": "session",
-                "id": session_id,
-                "cwd": workspace.to_string_lossy(),
-                "timestamp": timestamp,
-            })
-            .to_string(),
-        )
-        .map_err(|_| ())?;
-    }
+    persist_session_header(path, session_id, workspace, &timestamp)?;
     append_private_line(
         path,
         &json!({
@@ -266,7 +257,61 @@ fn persist_turn(
         })
         .to_string(),
     )
-    .map_err(|_| ())
+    .map_err(|_| ())?;
+    persist_usage_records(path, session_id, workspace, usage_records)
+}
+
+fn persist_session_header(
+    path: &std::path::Path,
+    session_id: &str,
+    workspace: &std::path::Path,
+    timestamp: &str,
+) -> Result<(), ()> {
+    if !path.exists() {
+        append_private_line(
+            path,
+            &json!({
+                "type": "session",
+                "id": session_id,
+                "cwd": workspace.to_string_lossy(),
+                "timestamp": timestamp,
+            })
+            .to_string(),
+        )
+        .map_err(|_| ())?;
+    }
+    Ok(())
+}
+
+fn persist_usage_records(
+    path: &std::path::Path,
+    session_id: &str,
+    workspace: &std::path::Path,
+    records: &[(OffsetDateTime, Value)],
+) -> Result<(), ()> {
+    for (observed_at, record) in records {
+        let timestamp = observed_at.format(&Rfc3339).map_err(|_| ())?;
+        persist_session_header(path, session_id, workspace, &timestamp)?;
+        let mut record = record.clone();
+        record["timestamp"] = json!(timestamp);
+        append_private_line(path, &record.to_string()).map_err(|_| ())?;
+    }
+    Ok(())
+}
+
+fn usage_record(model: &Option<String>, usage: &Value) -> Value {
+    json!({"type": "usage.record", "model": model, "usage": usage})
+}
+
+fn emit_persist_error(out: &mut impl Write) -> Result<(), &'static str> {
+    write_json(
+        out,
+        &json!({
+            "type":"error",
+            "code":"lico_agent_transcript_persist_failed",
+            "message":"Lico Agent could not persist the completed turn."
+        }),
+    )
 }
 
 fn emit_event(out: &mut impl Write, event: &AgentEvent) -> Result<(), &'static str> {
@@ -283,6 +328,7 @@ fn emit_event(out: &mut impl Write, event: &AgentEvent) -> Result<(), &'static s
             "type": "message_end",
             "message": { "role": "assistant", "content": content }
         }),
+        AgentEvent::Usage { model, usage } => usage_record(model, usage),
         AgentEvent::ToolExecutionStart { name, call_id } => json!({
             "type": "tool_execution_start",
             "toolName": name,
@@ -397,6 +443,71 @@ fn parse_args(raw: &[String]) -> Result<Args, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use licoup_native::domain::lico_agent::TransportError;
+    use std::collections::VecDeque;
+
+    struct FixtureTransport {
+        responses: Mutex<VecDeque<Result<Value, TransportError>>>,
+    }
+
+    impl LlmTransport for FixtureTransport {
+        fn complete(
+            &self,
+            model: &str,
+            _messages: &[Value],
+            _tools: &[Value],
+        ) -> Result<Value, TransportError> {
+            assert_eq!(model, "requested-model");
+            self.responses.lock().unwrap().pop_front().unwrap()
+        }
+    }
+
+    fn fixture_agent(
+        workspace: &std::path::Path,
+        responses: Vec<Result<Value, TransportError>>,
+    ) -> Arc<Mutex<Agent>> {
+        Arc::new(Mutex::new(
+            Agent::new(
+                AgentConfig {
+                    profile: AgentProfileKind::Base,
+                    model: "requested-model".into(),
+                    workspace: workspace.to_owned(),
+                    plan_path: None,
+                },
+                Arc::new(FixtureTransport {
+                    responses: Mutex::new(responses.into()),
+                }),
+            )
+            .unwrap(),
+        ))
+    }
+
+    fn fixture_response(message: Value) -> Value {
+        json!({
+            "model": "actual-model",
+            "reasoning_effort": "high",
+            "usage": {
+                "prompt_tokens": 12,
+                "completion_tokens": 3,
+                "total_tokens": 15,
+                "prompt_tokens_details": {"cached_tokens": 4},
+                "private": "private-usage-canary"
+            },
+            "choices": [{"message": message}]
+        })
+    }
+
+    fn fixture_tool_call() -> Value {
+        json!({
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [{
+                "id": "fixture-call",
+                "type": "function",
+                "function": {"name": "read", "arguments": "{\"path\":\"input.txt\"}"}
+            }]
+        })
+    }
 
     #[test]
     fn cli_requires_fixed_native_session_identity_and_explicit_workspace() {
@@ -439,12 +550,152 @@ mod tests {
             &dir,
             "synthetic prompt",
             "synthetic response",
+            &[],
         )
         .unwrap();
         let history = Agent::load_persisted_history(&path, &session_id).unwrap();
         assert_eq!(history.len(), 2);
         assert_eq!(history[0]["content"], "synthetic prompt");
         assert_eq!(history[1]["content"], "synthetic response");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tool_loop_persists_each_identical_usage_call_without_estimate_double_counting() {
+        let dir = std::env::temp_dir().join(format!("lico-agent-usage-{}", Uuid::new_v4()));
+        let sessions = dir.join("sessions");
+        ensure_private_dir(&sessions).unwrap();
+        std::fs::write(dir.join("input.txt"), "synthetic tool output").unwrap();
+        let session_id = Uuid::new_v4().to_string();
+        let path = sessions.join(format!("{session_id}.jsonl"));
+        let agent = fixture_agent(
+            &dir,
+            vec![
+                Ok(fixture_response(fixture_tool_call())),
+                Ok(fixture_response(
+                    json!({"role": "assistant", "content": "synthetic answer"}),
+                )),
+            ],
+        );
+        let mut output = Vec::new();
+        run_prompt(
+            &agent,
+            &mut output,
+            "synthetic prompt",
+            &path,
+            &session_id,
+            &dir,
+        )
+        .unwrap();
+
+        let events = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let live_usage = events
+            .iter()
+            .filter(|event| event["type"] == "usage.record")
+            .collect::<Vec<_>>();
+        assert_eq!(live_usage.len(), 2);
+        assert_eq!(live_usage[0], live_usage[1]);
+        assert_eq!(events.last().unwrap()["type"], "agent_end");
+        assert!(
+            events
+                .iter()
+                .any(|event| event["type"] == "tool_execution_end" && event["ok"] == true)
+        );
+        assert_eq!(
+            agent.lock().unwrap().history()[2]["content"],
+            "synthetic tool output"
+        );
+
+        let records = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 5);
+        assert_eq!(records[1]["type"], "message");
+        assert_eq!(records[2]["type"], "message");
+        for record in &records[3..] {
+            assert_eq!(record["type"], "usage.record");
+            assert_eq!(record["model"], "actual-model");
+            assert_eq!(record["usage"]["reasoningEffort"], "high");
+            assert_eq!(record["usage"]["totalTokens"], 15);
+            assert!(record["usage"].get("fast").is_none());
+            assert!(!record.to_string().contains("synthetic tool output"));
+            assert!(!record.to_string().contains("private-usage-canary"));
+        }
+        let history = Agent::load_persisted_history(&path, &session_id).unwrap();
+        assert_eq!(
+            history,
+            vec![
+                json!({"role": "user", "content": "synthetic prompt"}),
+                json!({"role": "assistant", "content": "synthetic answer"}),
+            ]
+        );
+
+        let params = json!({
+            "agent": "lico-agent",
+            "root": sessions,
+            "stateRoot": dir.join("state"),
+            "now": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
+            "forceRefresh": true,
+        });
+        for _ in 0..2 {
+            let report = licoup_native::domain::agent_usage::scan(&params).unwrap();
+            assert_eq!(report["summary"]["promptTokens"], 24);
+            assert_eq!(report["summary"]["completionTokens"], 6);
+            assert_eq!(report["summary"]["totalTokens"], 30);
+            assert_eq!(report["agents"][0]["history"]["cachedInputTokens"], 8);
+            let sources = &report["agents"][0]["history"]["tokenSourceBreakdown"];
+            assert_eq!(sources["explicitRecords"], 2);
+            assert_eq!(sources["estimatedTotalTokens"], 0);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn later_transport_failure_preserves_completed_call_usage_without_fake_reply() {
+        let dir = std::env::temp_dir().join(format!("lico-agent-usage-failure-{}", Uuid::new_v4()));
+        ensure_private_dir(&dir).unwrap();
+        std::fs::write(dir.join("input.txt"), "synthetic tool output").unwrap();
+        let session_id = Uuid::new_v4().to_string();
+        let path = dir.join(format!("{session_id}.jsonl"));
+        let agent = fixture_agent(
+            &dir,
+            vec![
+                Ok(fixture_response(fixture_tool_call())),
+                Err(TransportError::Connect),
+            ],
+        );
+        let mut output = Vec::new();
+        run_prompt(
+            &agent,
+            &mut output,
+            "synthetic prompt",
+            &path,
+            &session_id,
+            &dir,
+        )
+        .unwrap();
+        let records = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1]["type"], "usage.record");
+        assert_eq!(records[1]["usage"]["totalTokens"], 15);
+        assert!(
+            Agent::load_persisted_history(&path, &session_id)
+                .unwrap()
+                .is_empty()
+        );
+        let events = String::from_utf8(output).unwrap();
+        assert!(events.contains("prompt_failed"));
+        assert!(!events.contains("agent_end"));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

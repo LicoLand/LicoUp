@@ -1,6 +1,5 @@
-use super::super::contract::UNATTRIBUTED_MODEL;
+use super::super::contract::{UNATTRIBUTED_MODEL, UsageVariant};
 use super::super::window::UsageWindow;
-use super::model_backfill::{attributed_model, session_dominant_models};
 use super::utils::{from_i64, to_i64};
 use anyhow::Result;
 use rusqlite::{Transaction, params};
@@ -21,13 +20,20 @@ pub(super) struct DailyRollup {
     pub(super) explicit_completion: u64,
     pub(super) explicit_records: u64,
     pub(super) message_count: u64,
-    pub(super) models: BTreeMap<String, ModelRollup>,
+    pub(super) models: BTreeMap<(String, UsageVariant), ModelRollup>,
     pub(super) sessions: BTreeSet<String>,
 }
 
 impl DailyRollup {
-    fn add_model(&mut self, model: String, prompt: u64, cached: u64, completion: u64) {
-        let usage = self.models.entry(model).or_default();
+    fn add_model(
+        &mut self,
+        model: String,
+        variant: UsageVariant,
+        prompt: u64,
+        cached: u64,
+        completion: u64,
+    ) {
+        let usage = self.models.entry((model, variant)).or_default();
         usage.prompt = usage.prompt.saturating_add(prompt);
         usage.cached = usage.cached.saturating_add(cached.min(prompt));
         usage.completion = usage.completion.saturating_add(completion);
@@ -44,12 +50,11 @@ pub(super) fn collect_detail_rollups(
     end: &str,
     include_end: bool,
 ) -> Result<BTreeMap<String, DailyRollup>> {
-    let dominant_models = session_dominant_models(snapshot, root_key, window)?;
     let mut rollups = BTreeMap::<String, DailyRollup>::new();
     {
         let mut statement = snapshot.prepare(
             "SELECT r.source_key, r.session_id, r.day, r.model,
-                    r.input_tokens, r.cached_input_tokens, r.output_tokens
+                    r.input_tokens, r.cached_input_tokens, r.output_tokens,r.effort,r.fast
              FROM usage_rows r
              INNER JOIN usage_files f
                ON f.root_key=r.root_key AND f.source_key=r.source_key
@@ -85,13 +90,17 @@ pub(super) fn collect_detail_rollups(
                     from_i64(row.get(4)?),
                     from_i64(row.get(5)?),
                     from_i64(row.get(6)?),
+                    UsageVariant {
+                        effort: row.get(7)?,
+                        fast: row.get(8)?,
+                    },
                 ))
             },
         )?;
         for row in rows {
-            let (source, session, day, model, prompt, cached, completion) = row?;
-            let session_key = session.clone().unwrap_or_else(|| source.clone());
-            let model = attributed_model(&model, session.as_ref(), &source, &dominant_models);
+            let (source, session, day, model, prompt, cached, completion, variant) = row?;
+            let session_key = session.unwrap_or(source);
+            let model = normalized_model(model.as_deref().unwrap_or_default());
             let rollup = rollups.entry(day).or_default();
             rollup.sessions.insert(session_key);
             rollup.explicit_prompt = rollup.explicit_prompt.saturating_add(prompt);
@@ -99,7 +108,7 @@ pub(super) fn collect_detail_rollups(
             rollup.explicit_completion = rollup.explicit_completion.saturating_add(completion);
             rollup.explicit_records = rollup.explicit_records.saturating_add(1);
             rollup.message_count = rollup.message_count.saturating_add(1);
-            rollup.add_model(model, prompt, cached, completion);
+            rollup.add_model(model, variant, prompt, cached, completion);
         }
     }
     Ok(rollups)
@@ -122,8 +131,8 @@ pub(super) fn compact_historical_details(
            message_count=message_count+excluded.message_count",
     )?;
     let mut insert_model = transaction.prepare(
-        "INSERT INTO usage_daily_models VALUES(?1,?2,?3,?4,?5,?6,?7)
-         ON CONFLICT(root_key,day,model) DO UPDATE SET
+        "INSERT INTO usage_daily_models VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+         ON CONFLICT(root_key,day,model,effort,fast) DO UPDATE SET
            prompt_tokens=prompt_tokens+excluded.prompt_tokens,
            cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
            completion_tokens=completion_tokens+excluded.completion_tokens,
@@ -143,7 +152,7 @@ pub(super) fn compact_historical_details(
             to_i64(rollup.explicit_records),
             to_i64(rollup.message_count),
         ])?;
-        for (model, usage) in rollup.models {
+        for ((model, variant), usage) in rollup.models {
             insert_model.execute(params![
                 root_key,
                 day,
@@ -152,6 +161,8 @@ pub(super) fn compact_historical_details(
                 to_i64(usage.cached),
                 to_i64(usage.completion),
                 to_i64(usage.total),
+                variant.effort.unwrap_or_default(),
+                variant.fast.map(i64::from).unwrap_or(-1),
             ])?;
         }
         for session in rollup.sessions {

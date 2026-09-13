@@ -5,7 +5,8 @@ pub(super) fn absolute_test_cwd() -> PathBuf {
 }
 
 pub(super) fn config(params: Value, prompt: &str, session_id: &str) -> ProtocolConfig {
-    ProtocolConfig::from_params(
+    // Protocol fixtures do not exercise installation-backed MCP registration.
+    ProtocolConfig::from_params_without_local_mcp(
         &params,
         prompt,
         session_id,

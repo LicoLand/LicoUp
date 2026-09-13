@@ -86,15 +86,17 @@ fn shared_control_client_reuses_one_connection_for_sequential_calls() {
         }
     });
     let base = format!("http://{address}");
-    let first = http::post_json(
+    let first = http::post_json_observed(
         &format!("{base}/session"),
         &json!({"probe": 1}),
-        Duration::from_secs(5),
+        Some(Duration::from_secs(5)),
+        "synthetic.http",
     );
-    let second = http::post_json(
+    let second = http::post_json_observed(
         &format!("{base}/session"),
         &json!({"probe": 2}),
-        Duration::from_secs(5),
+        Some(Duration::from_secs(5)),
+        "synthetic.http",
     );
     server.join().unwrap();
     assert_eq!(first.unwrap()["ok"], true);
@@ -115,12 +117,100 @@ fn http_failure_preserves_the_non_success_status_class() {
             )
             .unwrap();
     });
-    let failure = http::post_json(
+    let failure = http::post_json_observed(
         &format!("http://{address}/session"),
         &json!({}),
-        Duration::from_secs(2),
+        Some(Duration::from_secs(2)),
+        "synthetic.http",
     )
     .unwrap_err();
     server.join().unwrap();
     assert_eq!(failure, HttpFailure::Status(422));
+}
+
+#[test]
+fn observed_http_keeps_encoded_request_and_unparsed_error_body() {
+    use crate::platform::raw_execution::{
+        RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+    };
+    use std::sync::Mutex;
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&records);
+    let observer = RawExecutionObserver::new(move |source, direction, raw| {
+        sink.lock()
+            .unwrap()
+            .push((source.to_owned(), direction, raw.to_owned()));
+        Ok(())
+    });
+    let _scope = RawExecutionScope::enter(Some(observer));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let response_body = concat!(
+        r#"  {"unknownMetadata": [1, 2], "toolResult": "full\nvalue"}"#,
+        "\r\n"
+    );
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let (_, body) = read_http_request(&mut stream).unwrap();
+        let response = format!(
+            "HTTP/1.1 422 Unprocessable Entity\r\ncontent-length: {}\r\nx-extra: first\r\nx-extra: second\r\nconnection: close\r\n\r\n{response_body}",
+            response_body.len()
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        body
+    });
+    let body = json!({"prompt": "synthetic\ninput", "settings": {"new": true}});
+    assert_eq!(
+        http::post_json_observed(
+            &format!("http://{address}/session/target/message"),
+            &body,
+            Some(Duration::from_secs(5)),
+            "synthetic.http"
+        )
+        .unwrap_err(),
+        HttpFailure::Status(422)
+    );
+    let sent = String::from_utf8(server.join().unwrap()).unwrap();
+    let records = records.lock().unwrap();
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record.0 == "synthetic.http")
+            .cloned()
+            .collect::<Vec<_>>(),
+        [
+            (
+                "synthetic.http".to_owned(),
+                RawExecutionDirection::Sent,
+                sent
+            ),
+            (
+                "synthetic.http".to_owned(),
+                RawExecutionDirection::Received,
+                response_body.to_owned()
+            ),
+        ]
+    );
+    let request: serde_json::Value = serde_json::from_str(&records[0].2).unwrap();
+    assert_eq!(records[0].0, "synthetic.http.request-metadata");
+    assert_eq!(request["method"], "POST");
+    assert!(
+        request["url"]
+            .as_str()
+            .unwrap()
+            .ends_with("/session/target/message")
+    );
+    assert_eq!(
+        request["headers"],
+        json!([{"name":"content-type", "values":["application/json"]}])
+    );
+    let response: serde_json::Value = serde_json::from_str(&records[2].2).unwrap();
+    assert_eq!(records[2].0, "synthetic.http.response-metadata");
+    assert_eq!(response["status"], 422);
+    assert!(
+        response["headers"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({"name":"x-extra","values":["first","second"]}))
+    );
 }

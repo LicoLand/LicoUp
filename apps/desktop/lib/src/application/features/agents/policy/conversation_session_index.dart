@@ -153,6 +153,9 @@ bool conversationMessageListsEquivalent(
             leftMessage.text != rightMessage.text ||
             leftMessage.createdAt != rightMessage.createdAt ||
             leftMessage.layer != rightMessage.layer ||
+            leftMessage.executionReference != rightMessage.executionReference ||
+            leftMessage.waitingForReply != rightMessage.waitingForReply ||
+            leftMessage.replyTerminalState != rightMessage.replyTerminalState ||
             leftMessage.cardType != rightMessage.cardType ||
             leftMessage.cardTitle != rightMessage.cardTitle ||
             leftMessage.cardSubtitle != rightMessage.cardSubtitle ||

@@ -254,6 +254,24 @@ pub(crate) fn parse_lico_agent_session(
                     working_directory = Some(cwd.to_string());
                 }
             }
+            "usage.record" => {
+                if let Some(usage) = extract_token_usage(&value) {
+                    let mut message = json!({
+                        "id": native_history_message_id(HistoryAdapter::LicoAgent, path, index, 0),
+                        "role": "metadata",
+                        "text": "Lico Agent token usage",
+                        "createdAt": extract_timestamp(&value),
+                        "sourcePath": display_path(path),
+                        "sourceEventType": "usage.record",
+                        "usageScope": "turn",
+                        "usage": usage
+                    });
+                    if let Some(model) = find_string(&value, &["model", "modelId", "model_id"]) {
+                        message["model"] = json!(model);
+                    }
+                    messages.push(message);
+                }
+            }
             "message" => {
                 let role = value
                     .get("role")
@@ -274,7 +292,7 @@ pub(crate) fn parse_lico_agent_session(
                 if text.trim().is_empty() {
                     continue;
                 }
-                if let Some(message) = plain_history_message(
+                if let Some(mut message) = plain_history_message(
                     HistoryAdapter::LicoAgent,
                     path,
                     index,
@@ -283,6 +301,12 @@ pub(crate) fn parse_lico_agent_session(
                     &text,
                     extract_timestamp(&value),
                 ) {
+                    if let Some(usage) = extract_token_usage(&value) {
+                        message["usage"] = usage;
+                    }
+                    if let Some(model) = find_string(&value, &["model", "modelId", "model_id"]) {
+                        message["model"] = json!(model);
+                    }
                     messages.push(message);
                 }
             }

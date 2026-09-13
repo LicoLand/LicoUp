@@ -51,6 +51,7 @@ class StdioRpcSession {
   final Map<String, Completer<StdioRpcFrame>> _expectedFrames = {};
   final Map<String, StdioRpcConversationExpectation> _expectedConversations =
       {};
+  final Map<String, StdioRpcConversationDecoder> _detachedConversations = {};
   var _closed = false;
   var usable = true;
   var stderrBytes = 0;
@@ -68,16 +69,29 @@ class StdioRpcSession {
   Stream<StdioRpcConversationFrame> expectConversationFrames({
     required String requestId,
     required String workflowId,
+    bool executionObservation = false,
+    Future<void> Function()? onCancel,
   }) {
     if (!_canExpectRequest(requestId)) {
       throw const StdioRpcTransportFailure();
     }
-    final controller = StreamController<StdioRpcConversationFrame>();
+    final controller = StreamController<StdioRpcConversationFrame>(
+      onCancel: () async {
+        if (!executionObservation) return;
+        final expectation = _expectedConversations.remove(requestId);
+        if (expectation == null) return;
+        // Retain only the decoder until native acknowledges detach; late frames
+        // belong to this closed observer and cannot poison other live requests.
+        _detachedConversations[requestId] = expectation.decoder;
+        await onCancel?.call();
+      },
+    );
     _expectedConversations[requestId] = StdioRpcConversationExpectation(
       controller: controller,
       decoder: StdioRpcConversationDecoder(
         requestId: requestId,
         workflowId: workflowId,
+        executionObservation: executionObservation,
       ),
     );
     return controller.stream;
@@ -89,6 +103,7 @@ class StdioRpcSession {
       requestId.isNotEmpty &&
       !_expectedFrames.containsKey(requestId) &&
       !_expectedConversations.containsKey(requestId) &&
+      !_detachedConversations.containsKey(requestId) &&
       _expectedFrames.length + _expectedConversations.length < 64;
 
   void completeExpectedFrames(String requestId) {
@@ -114,7 +129,9 @@ class StdioRpcSession {
     if (!usable || _closed) {
       return;
     }
-    if (_expectedFrames.isEmpty && _expectedConversations.isEmpty) {
+    if (_expectedFrames.isEmpty &&
+        _expectedConversations.isEmpty &&
+        _detachedConversations.isEmpty) {
       _addFrameError();
       return;
     }
@@ -137,6 +154,18 @@ class StdioRpcSession {
     final expectedFrame = _expectedFrames.remove(requestId);
     if (expectedFrame != null) {
       expectedFrame.complete(StdioRpcFrame.data(bytes));
+      return;
+    }
+    final detached = _detachedConversations[requestId];
+    if (detached != null) {
+      try {
+        if (detached.decode(bytes) is StdioRpcConversationTerminal) {
+          _detachedConversations.remove(requestId);
+        }
+      } on StdioRpcProtocolViolation {
+        // A malformed abandoned observation is isolated from live consumers.
+        // Keep its identity until connection teardown to absorb its late data.
+      }
       return;
     }
     final expectation = _expectedConversations[requestId];
@@ -182,6 +211,7 @@ class StdioRpcSession {
       return;
     }
     usable = false;
+    _detachedConversations.clear();
     final expectedFrames = _expectedFrames.values.toList(growable: false);
     _expectedFrames.clear();
     for (final expectedFrame in expectedFrames) {

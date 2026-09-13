@@ -1,4 +1,5 @@
 import 'package:licoup/src/contracts/target_management.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 
 import 'support/agents_workspace_test_harness.dart';
@@ -180,11 +181,11 @@ void registerAgentsWorkspaceLayoutScenarios() {
     await tester.pumpAndSettle();
 
     expect(find.text('Back up conversations'), findsNothing);
-    expect(find.text('New Chat'), findsOneWidget);
-    expect(
-      find.byKey(const Key('agent-conversation-home-new-conversation')),
-      findsOneWidget,
-    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('conversation-empty-content')), findsOneWidget);
+    expect(find.byType(ConversationParticleField), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
 

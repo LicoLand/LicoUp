@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -18,7 +22,6 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
-import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
@@ -44,6 +47,7 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.adapter,
     this.runtimeProfile,
     this.assistantActive = false,
+    this.motionAvatar = false,
     this.conversationId = '',
     this.streamingMessageIds = const <String>{},
     this.onCopyText,
@@ -65,6 +69,7 @@ class MessagingMessageGroup extends StatelessWidget {
   /// message header carries its agent's brand mark instead of the generic
   /// sparkles.
   final bool assistantActive;
+  final bool motionAvatar;
 
   /// Ids of messages whose body is a partially written streamed reply. The
   /// owning pane derives the set from the live turn state; it is never
@@ -133,15 +138,7 @@ class MessagingMessageGroup extends StatelessWidget {
                     _MessagingUserAvatar(accessibilityLabel: authorName),
                   ]
                 : [
-                    if (isAssistant && !assistantActive)
-                      _MessagingAssistantAvatar(accessibilityLabel: authorName)
-                    else
-                      MessagingAgentAvatar(
-                        target: participantTarget ?? target,
-                        size: MessagingDesktopMetrics.conversationAvatarExtent,
-                        iconSize: MessagingDesktopMetrics
-                            .conversationAvatarMarkExtent,
-                      ),
+                    _avatar(),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Text(
@@ -184,13 +181,14 @@ class MessagingMessageGroup extends StatelessWidget {
         for (var index = 0; index < messages.length; index++) ...[
           RepaintBoundary(
             key: ValueKey<String>(
-              'messaging-group-message-${messages[index].id}-${messages[index].createdAt}',
+              'messaging-group-message-${_messageIdentity(messages[index])}',
             ),
             child: ReadingPositionAnchor(
               controller: scrollController,
-              anchorId: (messages[index].id, messages[index].createdAt),
+              anchorId: _messageIdentity(messages[index]),
               child: _MessagingGroupMessageRow(
                 message: messages[index],
+                target: participantTarget ?? target,
                 adapter: adapter,
                 authorIsUser: authorIsUser,
                 agentKey: bubbleGlowKey,
@@ -207,6 +205,17 @@ class MessagingMessageGroup extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  Widget _avatar() {
+    final avatar = MessagingAgentAvatar(
+      target: participantTarget ?? target,
+      size: MessagingDesktopMetrics.conversationAvatarExtent,
+      iconSize: MessagingDesktopMetrics.conversationAvatarMarkExtent,
+    );
+    return motionAvatar
+        ? ConversationMotionAvatarTarget(child: avatar)
+        : avatar;
   }
 
   String _runtimeProfileLabel(
@@ -234,6 +243,7 @@ class MessagingMessageGroup extends StatelessWidget {
 class _MessagingGroupMessageRow extends StatefulWidget {
   const _MessagingGroupMessageRow({
     required this.message,
+    required this.target,
     required this.adapter,
     required this.authorIsUser,
     this.agentKey = '',
@@ -245,6 +255,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   });
 
   final AgentConversationMessage message;
+  final TargetCandidate target;
   final AgentRenderAdapter adapter;
 
   /// Drives the asymmetric treatment. Giving both authors an identical bordered
@@ -358,7 +369,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
     final showMeta = timestampLabel != null || conversationId.isNotEmpty;
     final canCopy =
         widget.onCopyText != null && widget.message.text.trim().isNotEmpty;
-    if (!showMeta && !canCopy) {
+    if (!showMeta && !canCopy && widget.authorIsUser) {
       return bubble;
     }
     final metaStyle = TextStyle(
@@ -371,9 +382,21 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       clipBehavior: Clip.none,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: _hoverBandExtent),
+          padding: EdgeInsets.only(
+            top: widget.authorIsUser ? 0 : 28,
+            bottom: _hoverBandExtent,
+          ),
           child: bubble,
         ),
+        if (!widget.authorIsUser)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: ConversationExecutionMenu(
+              message: widget.message,
+              target: widget.target,
+            ),
+          ),
         if (canCopy)
           Positioned(
             left: 0,
@@ -435,26 +458,54 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       return _ContinuousAssistantTimelineCard(message: widget.message);
     }
     final colors = context.licoColors;
-    final content = AgentConversationMessageContent(
-      data: widget.message.text,
-      foreground: agentConversationMessageForeground(
-        colors,
-        widget.message.role,
-      ),
-      accent: colors.accent,
-      codeBackground: agentConversationToneColor(
-        colors,
-        widget.adapter.codeTone,
-      ),
-      blockBackground: agentConversationToneColor(
-        colors,
-        widget.adapter.quoteTone,
-      ),
-      borderColor: colors.line,
-      renderStyle: widget.adapter.markdownStyle,
-      images: widget.message.images,
-      isStreaming: widget.isStreaming,
-    );
+    final waiting = !widget.authorIsUser && widget.message.waitingForReply;
+    final terminal = widget.message.replyTerminalState;
+    final strings = LicoStrings.of(context);
+    final content = waiting
+        ? const SizedBox(
+            key: Key('conversation-agent-waiting-bubble'),
+            width: 70,
+            height: 30,
+            child: Center(child: SteelBallWaitingIndicator(active: true)),
+          )
+        : terminal != null
+        ? Text(
+            switch (terminal) {
+              AgentConversationReplyTerminalState.completed =>
+                strings.replyCompletedWithoutText,
+              AgentConversationReplyTerminalState.cancelled =>
+                strings.replyCancelled,
+              AgentConversationReplyTerminalState.interrupted =>
+                strings.replyInterrupted,
+              AgentConversationReplyTerminalState.failed => strings.replyFailed,
+            },
+            key: const Key('conversation-reply-terminal'),
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          )
+        : AgentConversationMessageContent(
+            data: widget.message.text,
+            foreground: agentConversationMessageForeground(
+              colors,
+              widget.message.role,
+            ),
+            accent: colors.accent,
+            codeBackground: agentConversationToneColor(
+              colors,
+              widget.adapter.codeTone,
+            ),
+            blockBackground: agentConversationToneColor(
+              colors,
+              widget.adapter.quoteTone,
+            ),
+            borderColor: colors.line,
+            renderStyle: widget.adapter.markdownStyle,
+            images: widget.message.images,
+            isStreaming: widget.isStreaming,
+          );
     final bubbleRadius = BorderRadius.circular(LicoRadius.composerField);
     final bubblePadding = const EdgeInsets.symmetric(
       horizontal: 14,
@@ -549,35 +600,6 @@ class _MessagingFailedMessageRetry extends StatelessWidget {
           visualDensity: VisualDensity.compact,
           onPressed: () => onRetry(messageId),
           icon: Icon(Icons.refresh_rounded, size: 18, color: colors.error),
-        ),
-      ),
-    );
-  }
-}
-
-class _MessagingAssistantAvatar extends StatelessWidget {
-  const _MessagingAssistantAvatar({required this.accessibilityLabel});
-
-  final String accessibilityLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Semantics(
-      label: accessibilityLabel,
-      child: Container(
-        key: const Key('messaging-assistant-avatar'),
-        width: MessagingDesktopMetrics.conversationAvatarExtent,
-        height: MessagingDesktopMetrics.conversationAvatarExtent,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: colors.accentSurface,
-          border: Border.all(color: colors.accentBorder, width: 1),
-        ),
-        child: AssistantSparklesIcon(
-          color: colors.accent,
-          size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
         ),
       ),
     );
@@ -709,3 +731,8 @@ class _ContinuousAssistantTimelineCard extends StatelessWidget {
     );
   }
 }
+
+Object _messageIdentity(AgentConversationMessage message) =>
+    message.stableIdentity.isNotEmpty
+    ? message.stableIdentity
+    : (message.id, message.createdAt);

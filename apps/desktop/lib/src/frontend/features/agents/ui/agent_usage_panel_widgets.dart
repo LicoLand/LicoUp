@@ -87,6 +87,12 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
     final totalTokens = _totalTokens;
     final sourceTotals = _sourceTotals;
     final timeline = _timeline!;
+    // A source without a native adapter is already shown as Unavailable in
+    // its source row. It is not a second report-wide warning.
+    final warnings = report.warnings
+        .where((warning) => warning != 'native_usage_source_unavailable')
+        .map((warning) => agentUsageWarningLabel(warning, strings))
+        .toSet();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -119,13 +125,10 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             ),
           ),
         ],
-        if (report.warnings.isNotEmpty) ...[
+        if (warnings.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(
-            report.warnings
-                .map((warning) => agentUsageWarningLabel(warning, strings))
-                .toSet()
-                .join(' · '),
+            warnings.join(' · '),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: context.licoColors.textMuted, fontSize: 12),
@@ -166,7 +169,8 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
       AgentUsageChartGrouping.model => [
         for (final label in timeline.shareSeriesLabels)
           AgentUsageBarData(
-            label: label,
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
             value: formatAgentUsageNumber(timeline.shareTotalFor(label)),
             trailing: formatAgentUsagePercent(
               timeline.shareTotalFor(label),
@@ -180,6 +184,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
               colors,
               label,
               grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
             ),
             sources: label == agentUsageOverflowSeriesLabel
                 ? const []
@@ -189,7 +194,8 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
         // counts; nothing is estimated to make them look like token totals.
         for (final label in timeline.requestOnlyShareLabels)
           AgentUsageBarData(
-            label: label,
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
             value: strings.agentUsageIncludedRequests(
               timeline.requestCountFor(label),
             ),
@@ -199,6 +205,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
               colors,
               label,
               grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
             ),
             sources: label == agentUsageOverflowSeriesLabel
                 ? const []

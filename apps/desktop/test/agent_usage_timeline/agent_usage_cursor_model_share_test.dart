@@ -61,12 +61,12 @@ void main() {
       anchor: DateTime(2026, 7, 21),
     );
 
-    expect(timeline.shareSeriesLabels, contains('Grok 4.5'));
-    expect(timeline.shareSeriesLabels, contains('Claude Fable 5'));
-    expect(timeline.shareSeriesLabels, contains('Composer 2.5'));
-    expect(timeline.shareTotalFor('Grok 4.5'), 17_630_031);
-    expect(timeline.shareTotalFor('Claude Fable 5'), 1_561_773);
-    expect(timeline.shareTotalFor('Composer 2.5'), 6_984_030);
+    expect(timeline.shareSeriesLabels, contains('grok-4.5'));
+    expect(timeline.shareSeriesLabels, contains('claude-fable-5'));
+    expect(timeline.shareSeriesLabels, contains('composer-2.5'));
+    expect(timeline.shareTotalFor('grok-4.5'), 17_630_031);
+    expect(timeline.shareTotalFor('claude-fable-5'), 1_561_773);
+    expect(timeline.shareTotalFor('composer-2.5'), 6_984_030);
   });
 
   test('tokenless hosted requests stay request counts, never token totals', () {
@@ -122,12 +122,12 @@ void main() {
       anchor: DateTime(2026, 7, 21),
     );
 
-    expect(timeline.series.map((series) => series.label), ['Composer 2.5']);
-    expect(timeline.totalFor('Composer 2.5'), 100);
-    expect(timeline.totalFor('Cursor Auto'), 0);
-    expect(timeline.requestOnlyShareLabels, ['Cursor Auto']);
-    expect(timeline.requestCountFor('Cursor Auto'), 7);
-    expect(timeline.requestCountFor('Composer 2.5'), 3);
+    expect(timeline.series.map((series) => series.label), ['composer-2.5']);
+    expect(timeline.totalFor('composer-2.5'), 100);
+    expect(timeline.totalFor('cursor-auto'), 0);
+    expect(timeline.requestOnlyShareLabels, ['cursor-auto']);
+    expect(timeline.requestCountFor('cursor-auto'), 7);
+    expect(timeline.requestCountFor('composer-2.5'), 3);
     expect(timeline.groupTotal, 100);
   });
 }

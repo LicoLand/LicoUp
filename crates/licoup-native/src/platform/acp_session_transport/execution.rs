@@ -69,6 +69,10 @@ pub(in crate::platform) fn execute(
             );
         }
     };
+    let raw_scope = match transport.initial_raw_observer.take() {
+        Some(guard) => guard.rebind_current(),
+        None => transport.raw_observer.bind_current(),
+    };
     let mut protocol = SessionProtocol::new_ready(config);
     // An empty value is an internal "session/open in progress" marker. It lets
     // cleanup interrupt a new turn before Hermes has returned its native ID.
@@ -99,6 +103,7 @@ pub(in crate::platform) fn execute(
         )
     };
     let stderr_was_truncated = transport.stderr_truncated.load(Ordering::Relaxed);
+    drop(raw_scope);
     set_active_session(&managed, None);
     let reset_transport = failure
         .as_ref()

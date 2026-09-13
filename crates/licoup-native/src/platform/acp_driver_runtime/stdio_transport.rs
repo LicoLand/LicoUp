@@ -9,6 +9,10 @@ use super::model::{AcpDriverSpec, CapabilityProbe, PROCESS_POLL_INTERVAL, RunRes
 use super::params::{ProtocolConfig, timestamp};
 use super::protocol::{AcpProtocol, ProtocolEffect, ProtocolOutcome, ProtocolPhase};
 use super::supervision::LaunchSpec;
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+    RawExecutionScope,
+};
 use serde_json::Value;
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -155,11 +159,24 @@ pub(in crate::platform) fn execute_acp(
     let mut stdin = BoundedStdinWriter::new(stdin);
 
     let (sender, receiver) = mpsc::sync_channel(ACP_EVENT_CHANNEL_CAPACITY);
-    let stdout_handle =
-        thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
+    let raw_observer = RawExecutionObserver::current();
+    let stdout_binding = RawExecutionBinding::default();
+    let _raw_stdout_scope = stdout_binding.bind(raw_observer.clone());
+    let stdout_handle = thread::spawn(move || {
+        let reader = RawExecutionReader::new(
+            stdout,
+            stdout_binding,
+            "acp",
+            RawExecutionDirection::Received,
+        );
+        read_protocol_messages(BufReader::new(reader), max_stdout, sender)
+    });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+    let stderr_handle = thread::spawn(move || {
+        let _raw_scope = RawExecutionScope::enter(raw_observer);
+        drain_stderr(stderr, max_stderr, &stderr_flag)
+    });
 
     let mut protocol = AcpProtocol::new(config, driver.parser);
     let initial_request = match protocol.initial_request() {
