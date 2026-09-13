@@ -4,9 +4,12 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/in_fli
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/method_policy.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/read_policy.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/read_pool.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_conversation_command_policy.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 Future<Map<String, dynamic>> _rpcFailure(String code) =>
@@ -16,6 +19,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
   NativeStdioRpcClient({required NativeCliProcessContext processContext})
     : _processContext = processContext,
       _sessionManager = StdioRpcSessionManager(processContext: processContext),
+      _reads = StdioRpcReadPool(processContext: processContext),
       _chat = StdioRpcSessionManager(
         processContext: processContext,
         arguments: const ['rpc', 'conversation'],
@@ -23,6 +27,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
 
   final NativeCliProcessContext _processContext;
   final StdioRpcSessionManager _sessionManager;
+  final StdioRpcReadPool _reads;
   final StdioRpcSessionManager _chat;
   final StdioRpcOperationQueue _operations = StdioRpcOperationQueue();
   final StdioRpcOperationQueue _conversationOperations =
@@ -41,7 +46,21 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     if (!validStdioRpcArgs(args)) {
       return _rpcFailure('invalid_request');
     }
+    if (nativeCliTargetsConversation(args)) {
+      return _rpcFailure('conversation_port_required');
+    }
     final requestArgs = List<String>.unmodifiable(args);
+    if (stdioRpcArgsUseReadPool(requestArgs)) {
+      return _reads.execute(
+        (manager) => executeStdioRpcCommand(
+          args: requestArgs,
+          requestId: _nextRequestId(),
+          workflowId: _workflowId,
+          sessionManager: manager,
+        ),
+        priority: currentRpcPriorityToken(),
+      );
+    }
     return _operations.serialize(priority: currentRpcPriorityToken(), () {
       final execution = executeStdioRpcCommand(
         args: requestArgs,
@@ -49,10 +68,11 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         workflowId: _workflowId,
         sessionManager: _sessionManager,
       );
-      // Migration owns a cross-process lock and deliberately waits for the
-      // current holder. Interrupting that wait can strand startup between
-      // durable schema steps, so this single startup gate is unbounded.
-      if (_isClientStateMigrationAdmission(requestArgs)) {
+      // State admission can wait for a cross-process migration lock. Explicit
+      // credential migration can wait for macOS keychain approval. Neither
+      // operation may lose its native session to an ordinary response timeout.
+      if (_isClientStateMigrationAdmission(requestArgs) ||
+          _isCredentialMigration(requestArgs)) {
         return execution;
       }
       return execution.timeout(
@@ -149,6 +169,13 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
   @override
   Future<void> dispose() async {
     await Future.wait<void>([
+      _reads.close(
+        (manager) => shutdownStdioRpcManager(
+          manager: manager,
+          requestId: _nextRequestId(),
+          workflowId: _workflowId,
+        ),
+      ),
       _operations.close(
         () => shutdownStdioRpcManager(
           manager: _sessionManager,
@@ -163,3 +190,9 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
 
 bool _isClientStateMigrationAdmission(List<String> args) =>
     args.length == 3 && args[0] == 'state' && args[1] == 'admit';
+
+bool _isCredentialMigration(List<String> args) =>
+    args.length == 3 &&
+    args[0] == 'llm-gateway' &&
+    args[1] == 'credentials' &&
+    args[2] == 'migrate';

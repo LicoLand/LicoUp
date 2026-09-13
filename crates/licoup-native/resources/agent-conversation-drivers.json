@@ -407,7 +407,7 @@
         "laneFamily": "rpc",
         "openNew": true,
         "exactResume": true,
-        "streaming": true,
+        "streaming": false,
         "cancel": false,
         "structuredEvents": true,
         "approvals": false,

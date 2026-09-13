@@ -156,10 +156,6 @@ mod tests {
             Some(app_data.join("Code/User/settings.json"))
         );
         assert_eq!(
-            default_detection_paths_for_platform("kimi", "linux", &home, &app_data),
-            vec![home.join(".config/Kimi"), home.join(".local/share/Kimi")]
-        );
-        assert_eq!(
             expand_home_root("~/.kimi-code", &home),
             home.join(".kimi-code")
         );

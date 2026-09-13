@@ -9,6 +9,7 @@
 | **领域词汇** | [CONTEXT.md](../../CONTEXT.md) | 统一领域词汇与定义 |
 | **文档索引** | [docs/README.md](../README.md) | 完整文档索引目录 |
 | **持续 Assistant** | [CONTINUOUS-ASSISTANT.zh-CN.md](CONTINUOUS-ASSISTANT.zh-CN.md) | 持续协作目标语义；当前事实见 STATUS |
+| **全局模型注册表** | [MODEL-REGISTRY.zh-CN.md](MODEL-REGISTRY.zh-CN.md) | 标准模型身份、动态目录与实际用量控制参数 |
 
 长期产品目标与边界由 [PRODUCT.zh-CN.md](../../PRODUCT.zh-CN.md) 负责，当前状态由 [STATUS.zh-CN.md](../STATUS.zh-CN.md) 负责。当前组件和依赖事实由 Rust/Flutter 模块树、`apps/desktop/packaging.modules.json` 以及 `apps/desktop/scripts/client-architecture/` 下的架构验证器负责。本文件是这些来源的公开架构投影。
 
@@ -148,11 +149,12 @@ flowchart TB
 | 细分领域 | 所属层级 | 架构 / 协议文档 | 职责概述 |
 |:---|:---|:---|:---|
 | **前后端交互契约** | 第 2 层：桥接协议层 | [CLIENT-NATIVE-INTERACTION.md](CLIENT-NATIVE-INTERACTION.md) | `licoup.stdio.v1` 结构化方法帧与移动端 FFI 命令契约 |
+| **原生 CLI** | 第 2 层：本地应用边界 | [NATIVE-CLI.zh-CN.md](NATIVE-CLI.zh-CN.md) | 注册表生成的命令、持久原生方法与独立 MCP 进程生命周期 |
 | **统一 Conversation 垂直领域** | 垂直切片 (第 1 ~ 4 层) | [CONVERSATION-DOMAIN.zh-CN.md](CONVERSATION-DOMAIN.zh-CN.md) | 前后端双向绑定、单聊基石与群聊协同封装、状态机驱动与端到端时序流 |
 | **智能体适配器与运行时架构** | 第 3 层：功能核心层 | [AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md](AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) | 由注册表推导的驱动分类、标准协议(ACP/RPC/PTY)与私有协议(Codex/OpenCode)归一化 |
 | **Rust 基础设施与对外交互层** | 第 3 层：基础设施与边界 | [RUST-INFRASTRUCTURE-LAYER.zh-CN.md](RUST-INFRASTRUCTURE-LAYER.zh-CN.md) | 数据库存储 (SQLite WAL)、动态配置、密钥管理、网络传输、PTY/TTY |
 | **Adaptive Flywheel 策略** | 第 3 层：功能核心层 | [ADAPTIVE-FLYWHEEL.zh-CN.md](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | 不可变 Graph 版本、路由决策与持久化运行归约 |
-| **下属智能体 MCP** | 第 3 层：功能核心层 | [subagent-mcp.zh-CN.md](../protocols/subagent-mcp.zh-CN.md) | Assistant 目标闭环、Profile 事实与临时 Graph 准入机制 |
+| **下属智能体 MCP** | 外部协议适配器 | [subagent-mcp.zh-CN.md](../protocols/subagent-mcp.zh-CN.md) | 独立构建的 MCP 进程通过原生 CLI 提供获准远程调用的 Subagents 子集 |
 | **语义对话与历史编目** | 第 3 层：功能核心层 | [semantic-conversation.md](../protocols/semantic-conversation.md) | 注册表所列 Agent 协议转换、厂商历史目录发现与只读回放 |
 | **安全与数据边界** | 第 3 层：功能核心层 | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 虚拟机探测隔离、端点保护预览、平台密钥保管与数据零信任 |
 | **原生系统平台桥接** | 第 4 层：原生适配层 | `crates/licoup-native/src/platform/` | macOS、Windows、Linux、Android、iOS 底层 OS API 与工具链实现 |
@@ -195,8 +197,13 @@ flowchart TB
 | **单体 Rust crate** | 高 | `crates/licoup-native/`（约 299K 行） | `domain/` 48 项、`core/` 52 项、`platform/` 85 项（72K 行）。编译慢、边界不清。最大文件：`client_conversation/store.rs`（6.6K 行）、`ffi/commands/mod.rs`（5.2K 行）。 |
 | **契约层膨胀** | 中 | `apps/desktop/lib/src/contracts/`（93 个文件, 15.7K 行） | 模型、接口、解析逻辑与生成代码混在同一层。 |
 | **大型 Flutter 界面文件** | 中 | `frontend/features/`、`display/conversation/` | 原 2.6K 行 Canonical pane 已拆分为聚焦文件（最大叶文件 572 行）。仍较大的功能文件包括 `adaptive_flywheel_multi_capsule_section.dart`（1626）、`settings_panel.dart`（1184）、`agent_conversation_composer_capsules.dart`（1135）与 `agent_conversation_workspace.dart`（1132）。 |
-| **残留后端层** | 低 | `apps/desktop/lib/src/backend/`（2.1K 行） | 太薄，无法提供真正抽象；还会在 Dart 中伪造领域事件（`dispatch.lane.bound`）。 |
-| **手工 JSON-RPC 方法面** | 高 | `platform/native_client/` ↔ Rust `bin/licoup/stdio_rpc/` | 方法名在两侧手工重复（Rust 25 个 vs Dart 23 个；两个方法从 Dart 不可达）；codegen 只覆盖 FFI 数据类型，不覆盖 stdio 帧。Dart 部分调用按 argv 形状嗅探路由。 |
+
+### 原生边界迁移
+
+会话服务使用具名原生端口。平台适配器负责选择生成的 RPC 方法并编码，
+通用命令执行拒绝有状态会话命名空间。Flutter 渲染、原生执行和独立 MCP
+模块通过各自所属契约独立演进。[客户端原生边界](CLIENT-NATIVE-INTERACTION.md)
+与[原生 CLI](NATIVE-CLI.zh-CN.md)定义这些契约及传输所有权。
 
 ### 已实现的 Presentation Boundary（M3–M6）
 

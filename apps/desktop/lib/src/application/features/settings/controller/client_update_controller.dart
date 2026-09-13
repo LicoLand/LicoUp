@@ -119,8 +119,8 @@ final class ClientUpdateController extends ApplicationStateOwner {
   Future<void> hydrateIdentity({String targetReleaseTrack = ''}) async {
     if (!_begin()) return;
     _targetReleaseTrack = targetReleaseTrack.trim();
-    await _resolveRoots();
     try {
+      await _resolveRoots();
       final next = await _gateway.status(
         agentService: _agentService,
         targetReleaseTrack: _targetReleaseTrack,
@@ -197,15 +197,16 @@ final class ClientUpdateController extends ApplicationStateOwner {
     required String english,
   }) async {
     _begin();
-    _status = _status.copyWith(
+    _status = ClientUpdateStatus(
       phase: ClientUpdatePhase.checking,
-      errorCode: '',
-      updateAvailable: false,
+      runningVersion: _status.runningVersion,
+      runningReleaseTrack: _status.runningReleaseTrack,
+      targetReleaseTrack: _status.targetReleaseTrack,
     );
     _report(chinese, english);
     publishChange();
-    await _resolveRoots();
     try {
+      await _resolveRoots();
       final checked = await _gateway.check(
         agentService: _agentService,
         manifestPath: _manifestPath,
@@ -217,6 +218,15 @@ final class ClientUpdateController extends ApplicationStateOwner {
         stagingRoot: _stagingRoot,
         stateRoot: _stateRoot,
       );
+      if (!const {
+            ClientUpdatePhase.upToDate,
+            ClientUpdatePhase.updateAvailable,
+            ClientUpdatePhase.unavailable,
+          }.contains(checked.phase) ||
+          (checked.phase == ClientUpdatePhase.updateAvailable) !=
+              checked.updateAvailable) {
+        throw StateError('client_update_check_invalid_status');
+      }
       if (checked.updateAvailable &&
           (checked.artifactReceiptId.isEmpty ||
               checked.artifactSha256.isEmpty ||
@@ -226,13 +236,21 @@ final class ClientUpdateController extends ApplicationStateOwner {
       }
       _status = _adopt(checked);
       _artifactReceiptId = checked.artifactReceiptId;
+      if (_status.phase == ClientUpdatePhase.unavailable) {
+        _report(
+          '当前发布尚未提供客户端更新资料。',
+          'This release does not yet provide client update information.',
+          errorCode: 'client_update_metadata_unavailable',
+        );
+        return;
+      }
       _report(
         _status.updateAvailable
             ? '发现已签名更新：${_status.availableVersion}'
-            : '当前已是最新已验证版本。',
+            : '已是最新版本。',
         _status.updateAvailable
             ? 'Signed update available: ${_status.availableVersion}'
-            : 'Already on the latest verified version.',
+            : 'Already up to date.',
       );
     } catch (_) {
       _fail('client_update_check_failed');

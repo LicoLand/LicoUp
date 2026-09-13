@@ -204,7 +204,9 @@ fn execute_via_serve(
     let (chunk_sender, chunk_receiver) = mpsc::sync_channel::<String>(64);
     let watch_failure = Arc::clone(&first_failure);
     let watch_completed = Arc::clone(&turn_completed);
+    let watch_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let watch_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(watch_observer);
         if let Err(failure) = super::super::opencode_serve::watch_session_events_url(
             &watch_url,
             &watch_session,
@@ -225,7 +227,9 @@ fn execute_via_serve(
     )?;
     let post_failure = Arc::clone(&first_failure);
     let post_completed = Arc::clone(&turn_completed);
+    let post_observer = crate::platform::raw_execution::RawExecutionObserver::current();
     let post_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(post_observer);
         let response = wait_post_json(&post_url, &message_body, deadline);
         if let Err(failure) = &response {
             post_failure.record(failure.clone());

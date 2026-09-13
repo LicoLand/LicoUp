@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 
 import 'journey_oracle.dart';
 
@@ -40,7 +40,7 @@ const reviewerUpdatedA = 'reviewer A accepted attempt 2';
 /// Exact conversation-bridge stand-in. Records dispatched continuity actions
 /// and grows canonical Events from real `conversation.message.post` results.
 final class JourneyBridge
-    implements AgentCommandRunner, JourneyBridgeTrajectory {
+    implements ClientConversationNativePort, JourneyBridgeTrajectory {
   JourneyBridge({bool prepopulated = true}) : _prepopulated = prepopulated {
     if (prepopulated) {
       _goals[goalAId] = _GoalState(
@@ -138,17 +138,10 @@ final class JourneyBridge
   }
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    if (args.length != 4 ||
-        args[0] != 'conversation' ||
-        args[1] != 'execute' ||
-        args[2] != '--stdin-json') {
-      throw StateError('unexpected continuity bridge argv');
-    }
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = (request['action'] ?? '').toString();
     final conversationId = (request['conversationId'] ?? '').toString();
@@ -848,20 +841,6 @@ final class JourneyBridge
       _ => assistantMembershipId,
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 final class _ParentText {

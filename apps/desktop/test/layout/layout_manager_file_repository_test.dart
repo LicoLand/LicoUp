@@ -164,6 +164,14 @@ final class _HangingPreferencesRepository
       Completer<PresentationPreferences>().future;
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences;
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async =>
+      _preferences;
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       _preferences;
 
@@ -188,6 +196,18 @@ final class _ExplodingPreferencesRepository
   @override
   Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) =>
       Future.error(StateError('unexpected_store_failure'));
+
+  @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
+    _preferences = _preferences.copyWith(reduceMotion: enabled);
+    return _preferences;
+  }
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async {
+    _preferences = _preferences.copyWith(loadingEffectId: id);
+    return _preferences;
+  }
 
   @override
   Future<PresentationPreferences> setAppearancePreset(String id) async {

@@ -65,6 +65,7 @@ pub enum SecretStoreCallerChannel {
     Mobile,
     NativeCli,
     GatewaySidecar,
+    GatewayCredentialMigration,
 }
 
 impl SecretStoreCallerChannel {
@@ -74,6 +75,7 @@ impl SecretStoreCallerChannel {
             Self::Mobile => b"mobile",
             Self::NativeCli => b"native-cli",
             Self::GatewaySidecar => b"gateway-sidecar",
+            Self::GatewayCredentialMigration => b"gateway-credential-migration",
         }
     }
 }
@@ -147,6 +149,8 @@ impl fmt::Debug for SecretStorePresencePurpose {
 #[derive(Clone)]
 pub struct SecretStorePresenceBatchRequest {
     provider: SecretStorePresenceProvider,
+    key_class: SecretStoreKeyClass,
+    caller_channel: SecretStoreCallerChannel,
     operation_count: usize,
     reason: String,
     allow_interaction: bool,
@@ -189,6 +193,8 @@ impl SecretStorePresenceBatchRequest {
         );
         Ok(Self {
             provider,
+            key_class,
+            caller_channel,
             operation_count,
             reason,
             allow_interaction,
@@ -202,6 +208,23 @@ impl SecretStorePresenceBatchRequest {
 
     pub(crate) fn provider(&self) -> SecretStorePresenceProvider {
         self.provider
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn key_class(&self) -> SecretStoreKeyClass {
+        self.key_class
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn caller_channel(&self) -> SecretStoreCallerChannel {
+        self.caller_channel
+    }
+
+    pub(crate) fn is_gateway_credential_migration(&self) -> bool {
+        self.provider == SecretStorePresenceProvider::MacosKeychain
+            && self.key_class == SecretStoreKeyClass::GatewayCredential
+            && self.caller_channel == SecretStoreCallerChannel::GatewayCredentialMigration
+            && self.allow_interaction
     }
 
     pub(crate) fn operation_count(&self) -> usize {
@@ -268,7 +291,7 @@ impl fmt::Debug for SecretStorePresenceScope {
 
 pub struct SecretStoreApprovedPresenceBatch {
     binding_digest: [u8; 32],
-    expires_at: Instant,
+    expires_at: Option<Instant>,
     operation_count: usize,
     issued_count: AtomicUsize,
 }
@@ -303,9 +326,17 @@ impl SecretStoreApprovedPresenceBatch {
                 "secure_mesh_presence_ttl_invalid",
             ));
         }
-        let expires_at = approved_at
-            .checked_add(ttl)
-            .ok_or_else(|| SecretStorePresenceError::new("secure_mesh_presence_ttl_invalid"))?;
+        // The explicitly authorized legacy migration can wait in native ACL
+        // dialogs. Its platform scope revokes it when the migration returns;
+        // operation budgets and one-use grants still apply throughout.
+        let expires_at =
+            if request.is_gateway_credential_migration() {
+                None
+            } else {
+                Some(approved_at.checked_add(ttl).ok_or_else(|| {
+                    SecretStorePresenceError::new("secure_mesh_presence_ttl_invalid")
+                })?)
+            };
         let approval_nonce = Uuid::new_v4();
         let binding_digest = digest_fields(
             b"licoup:secret-store-approved-presence-batch:v1",
@@ -358,7 +389,7 @@ impl SecretStoreApprovedPresenceBatch {
         self.binding_digest
     }
 
-    pub(crate) fn expires_at(&self) -> Instant {
+    pub(crate) fn expires_at(&self) -> Option<Instant> {
         self.expires_at
     }
 }
@@ -375,7 +406,7 @@ struct PresenceGrantInner {
     operation: SecretStoreOperation,
     namespace: String,
     key: String,
-    expires_at: Instant,
+    expires_at: Option<Instant>,
     state: AtomicU8,
 }
 
@@ -411,7 +442,7 @@ impl SecretStorePresenceGrant {
                         "secure_mesh_presence_expired",
                     ));
                 }
-                GRANT_AVAILABLE if now >= self.0.expires_at => {
+                GRANT_AVAILABLE if self.0.expires_at.is_some_and(|expiry| now >= expiry) => {
                     if self
                         .0
                         .state
@@ -468,7 +499,7 @@ struct ConsumedPresenceInner {
     operation: SecretStoreOperation,
     namespace: String,
     key: String,
-    expires_at: Instant,
+    expires_at: Option<Instant>,
 }
 
 pub struct SecretStoreConsumedPresence(ConsumedPresenceInner);
@@ -482,7 +513,7 @@ impl SecretStoreConsumedPresence {
         self.0.scope_digest
     }
 
-    pub(crate) fn expires_at(&self) -> Instant {
+    pub(crate) fn expires_at(&self) -> Option<Instant> {
         self.0.expires_at
     }
 

@@ -21,7 +21,7 @@ pub(super) fn handle_conversation_execute(mut command: AdmittedCommand) -> Resul
     };
     if require_running_host {
         return Ok(CliExecution::Json(
-            crate::platform::subagent_mcp_host_client::execute_existing(
+            crate::platform::conversation_host_client::execute_existing(
                 "client.conversation.execute",
                 &input,
             )?,

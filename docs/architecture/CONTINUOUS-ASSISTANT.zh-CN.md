@@ -196,5 +196,6 @@ Rust 与 Dart 投影由该嵌入字段生成。过渡端口返回带 `effectClas
 
 `ContinuityReadPort` 按接收 Membership 分页列出 Goal→子会话关系与已准入父授权，不是第二套 Conversation 列表或调度器。`ContextCompositionPort::compose_authorized` 是唯一必实现的组合方法，接受指明当前接收方与撤销代际的 `ContextCompositionRequest`；M1 经读端口取回授权。不存在环境两参数 `compose`。子 Conversation 仍是普通规范会话，通过既有 `conversation.create`、Membership 与 Event 动作创建。父卡片身份是指向既有 message Event 与 metadata Part 的 `ParentCardAnchor`，不新增 Event 种类。完成通知复用既有通知中心条目 `id`。`subagent_dispatch_claims` 仍是同一 Conversation 内的派发谱系，不是父子 Conversation 关系。已在本文对“单一可见 Conversation”展示做一次性迁移；不设永久删除字符串门禁。
 
-已安装 MCP 目录仍是现有 9 个工具。旧 Conversation 派发仍走现有动作。
+外部工具目录由 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md) 拥有。
+Assistant 工作流操作使用原生 CLI；Conversation 派发仍走现有动作。
 `designation_epoch` 是指定 Assistant Membership 的版本事实，不是新 Principal。`admit-task-child` 是长程工作的内部连续性命令，不是用户需求表单。

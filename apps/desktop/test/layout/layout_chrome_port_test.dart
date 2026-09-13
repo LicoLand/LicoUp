@@ -195,6 +195,18 @@ final class _MemoryPreferencesRepository
       PresentationPreferencesLoadResult(preferences: value);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async {
+    value = value.copyWith(reduceMotion: enabled);
+    return value;
+  }
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async {
+    value = value.copyWith(loadingEffectId: id);
+    return value;
+  }
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async {
     value = value.copyWith(appearancePresetId: id);
     return value;

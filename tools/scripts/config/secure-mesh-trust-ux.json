@@ -105,9 +105,9 @@
     },
     {
       "id": "cli-usage-documents-device-trust-evaluate",
-      "file": "crates/licoup-native/src/bin/licoup/presentation.rs",
+      "file": "crates/licoup-native/src/ffi/commands/mod.rs",
       "tokens": [
-        "secure-mesh device-trust evaluate --identity JSON",
+        "path: &[\"secure-mesh\", \"device-trust\", \"evaluate\"]",
         "caller state is advisory and cannot authorize"
       ]
     },

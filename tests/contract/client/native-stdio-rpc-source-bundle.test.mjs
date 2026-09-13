@@ -24,6 +24,8 @@ const leafNames = Object.freeze([
   "operation_pending_queue.dart",
   "operation_queue.dart",
   "protocol.dart",
+  "read_policy.dart",
+  "read_pool.dart",
   "request_writer.dart",
   "response_codec.dart",
   "session.dart",
@@ -40,6 +42,8 @@ const allowedDependencies = Object.freeze({
     "method_policy.dart",
     "operation_queue.dart",
     "protocol.dart",
+    "read_policy.dart",
+    "read_pool.dart",
     "session_manager.dart",
     "shutdown.dart",
   ],
@@ -65,6 +69,8 @@ const allowedDependencies = Object.freeze({
   "operation_pending_queue.dart": [],
   "operation_queue.dart": ["operation_pending_queue.dart"],
   "protocol.dart": [],
+  "read_policy.dart": [],
+  "read_pool.dart": ["operation_pending_queue.dart", "session_manager.dart"],
   "request_writer.dart": ["session.dart"],
   "response_codec.dart": ["protocol.dart"],
   "session.dart": [
@@ -144,7 +150,7 @@ test("stdio RPC protocol and response codecs bind bounded identities", async () 
   }
 });
 
-test("stdio RPC transport is serialized, cursor-replayable, and non-projecting", async () => {
+test("stdio RPC preserves mutation ordering, cursor replay, and private projections", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
   assert.ok(source["client.dart"].includes("StdioRpcOperationQueue _operations"));
@@ -176,7 +182,9 @@ test("stdio RPC transport is serialized, cursor-replayable, and non-projecting",
 
 test("stdio RPC owns fast protocol, framer, and public-client regressions", async () => {
   for (const testPath of [
+    "apps/desktop/test/native_conversation_port_test.dart",
     "apps/desktop/test/native_stdio_rpc_client_test.dart",
+    "apps/desktop/test/native_stdio_rpc_read_pool_test.dart",
     "apps/desktop/test/native_stdio_rpc_line_framer_test.dart",
     "apps/desktop/test/native_stdio_rpc_protocol_test.dart",
     "apps/desktop/test/native_persistent_runtime_test.dart",

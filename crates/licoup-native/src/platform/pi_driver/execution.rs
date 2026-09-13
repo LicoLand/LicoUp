@@ -13,7 +13,7 @@ use crate::platform::native_agent_parser::adapters::pi::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::{self, BufReader};
+use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -68,11 +68,18 @@ pub(in crate::platform) fn execute(
     let mut stdin = BoundedStdinWriter::new(stdin);
 
     let (sender, receiver) = mpsc::channel();
-    let stdout_handle =
-        thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
+    let stdout_observer = crate::platform::raw_execution::RawExecutionObserver::current();
+    let stdout_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(stdout_observer);
+        read_protocol_messages(stdout, max_stdout, sender)
+    });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+    let stderr_observer = crate::platform::raw_execution::RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _raw_scope = crate::platform::raw_execution::RawExecutionScope::enter(stderr_observer);
+        drain_stderr(stderr, max_stderr, &stderr_flag)
+    });
 
     let mut protocol = PiProtocol::new(config);
     let (control_sender, control_receiver) = mpsc::sync_channel(16);

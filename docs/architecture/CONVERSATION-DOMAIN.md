@@ -632,6 +632,46 @@ sequenceDiagram
 
 ## 12. Trusted History and Recovery Boundary
 
+The group sidebar binds directly to the group's own associated-session subset.
+`conversation_native_sessions` is the membership authority and retains
+each confirmed `(conversationId, membershipId, nativeSessionId)` once; replacing
+the current runtime binding, changing a model, or a Membership leaving does not
+erase earlier associations. The same Agent and native session can belong to
+multiple groups only when each group has its own recorded binding. Schema 15
+backfills current bindings, explicit dispatch provenance, and the exact recorded
+owner of old runtime source links. Missing evidence never creates a relationship.
+
+Desktop `conversation.get` opts into `includeNativeSessionReferences: true` to
+receive local `membershipId`, `agentId`, and `nativeSessionId` lookup facts. The
+ordinary get, portable Conversation, export, and MCP/protocol contracts remain
+unchanged; runtime paths and dispatch handles are not included. Application
+state maps these references directly into a dedicated group session collection.
+The list consumes that collection's projection. Missing metadata is fetched by
+exact native identity with at most four reads in flight; each completed read
+updates the projection immediately. Selection, refresh and message paging use
+the same group collection and exact readers. Group state neither enumerates nor
+filters the Agents' browse catalogs, and never writes its subset back into them.
+Unrelated browse changes do not rebuild or replace the group collection. Group
+switches and binding changes invalidate stale responses. No recorded relationship
+means an empty group collection; product names, projects, models and timestamps
+cannot create membership. Unreadable native rows are not replaced with invented
+conversations. Existing message paging and execution remain shared mechanisms.
+
+The canonical `conversation.events.page` action returns ascending events with a
+default page size of 20 (maximum 100). `latest: true` reads the newest retained
+events; `beforeSequence` reads the preceding page with an exclusive sequence
+anchor. Both use descending indexed reads and reverse only the selected page.
+`afterSequence` remains an independent forward read for incremental updates and
+exact event anchors; omitting all selectors reads forward from the beginning.
+Active selectors are mutually exclusive and invalid combinations return
+`invalid_request`. `hasEarlier` and nullable `nextBeforeSequence` describe earlier
+retained rows; the latter is the first returned sequence only when earlier rows
+exist. `nextCursor` remains the last returned sequence as a string for forward
+reads, or null for an empty page. `totalCount` counts retained rows and is never a
+sequence cursor: deleted events can leave gaps. The desktop opens the latest 20
+events and requests 20 earlier events when scrolling back; exact task-card anchor
+reads remain separate from that contiguous page window.
+
 Canonical Conversation history remains owned by LicoUp's local
 `ConversationStore`. Provider-managed cloud history is a separate retained
 object source and may be projected into the conversation experience only after
@@ -665,3 +705,83 @@ flowchart LR
     I["Identity recovery"] -.-> K["Endpoint identity and keys"]
     S["Malicious Station<br/>transport only"]
 ```
+
+
+## 13. Local Execution Inspection
+
+`agent.conversation.execution` is a read-only local stream for one exact
+`conversationId`, `membershipId`, and `turnHandle`. The handle is the native
+dispatch ID. Adapter session IDs and late-arriving adapter turn IDs do not
+replace it. The store resolves and verifies the corresponding Agent Event
+before returning any records. Live bubbles carry that execution reference.
+Native history readback may attach it only through an explicit provider key
+recorded for the same Agent and native session. The dispatch owns this small
+provenance association; conflicting matches remain unbound. Codex app-server
+turn acknowledgements and rollout turn contexts provide this association.
+Host-generated transport IDs, text similarity, timestamps and the currently
+active Agent never supply a missing provider key. Older unbound history remains
+readable without an invented execution reference.
+
+The stream replays retained records in order, reports when historical reading
+has caught up, and then observes new records through the existing wakeable turn
+observer. Request and terminal payloads belong to the dispatch row. Runtime
+records reuse the existing cursor-bearing EventPart chunks; reading joins those
+stored chunks without decoding and re-encoding their original text. There is no
+second transcript or separate runtime-frame store.
+
+The local capture observer records available application-protocol input before
+parser projection and output after encoding at the send boundary. It preserves
+unknown fields and tool or intermediate content that the public projection
+omits. Source and direction belong to record metadata, not an added prefix in
+the original text. Text stays unchanged; non-UTF-8 bytes use an explicitly
+labelled reversible encoding. Normalized runtime records and protocol records
+remain distinguishable. This does not reconstruct bytes or metadata discarded
+before capture was introduced.
+
+Capture belongs to the exact dispatch. Worker threads receive an explicit
+observer, and persistent transports bind their reader for the active dispatch
+rather than assigning queued frames when a later turn consumes them. Unbound
+traffic is not assigned to the most recent turn. Capture closes before terminal
+settlement. A capture write failure marks the retained terminal evidence as
+incomplete without changing the Agent's actual result or cancelling its work.
+
+Execution cursors are opaque increasing values, distinct from public runtime
+cursors and transport sequence numbers. They preserve the persistent order of
+captured request, runtime records (including user-speech metadata), and terminal
+payload. Gaps are valid. `afterCursor` is exclusive; transport parts of one large
+record are reassembled completely before advancing it. Reconnecting observers
+therefore continue without duplicating or truncating records. Missing payloads
+in older dispatches remain missing; a new reader cannot recreate them.
+
+The explicit local inspection path preserves available raw record contents,
+including unknown nested fields, arrays, request metadata, intermediate output,
+and terminal evidence. It does not pass through the public assistant-summary
+redactor. Ordinary transcript, approval, export and remote boundaries retain
+their own contracts. This method is not an MCP capability. It neither reads
+protected credentials nor adds an external runtime-data destination.
+
+Observation is separate from execution. Closing the viewer or disconnecting
+its stream never steers, cancels, restarts, or completes a turn. A terminal
+record remains readable after host restart or registry eviction. If a retained
+nonterminal dispatch has no observable runtime, the reader reports that
+observation is unavailable and preserves the stored execution status; it does
+not invent an interruption or wait indefinitely for an absent observer.
+
+The presentation binding exposes immutable execution values through the shared
+projection and intent contracts. Opening and closing a viewer attaches and
+detaches its observation in the composition layer. Frontend widgets receive no
+native reader or transport lifecycle port. Record lists retain their immutable
+prefix across incremental updates, so observation does not copy the transcript
+or create a second execution authority.
+
+`agent.conversation.execution.detach` releases one observer using its original
+stream request/workflow identity and exact execution scope. It wakes the
+observer and closes that stream without terminating the shared conversation
+transport or the Agent. Late frames remain isolated to the detached request.
+
+The frontend mirrors the admitted dispatch while waiting for reply text. Its
+waiting bubble is a presentation of existing send/dispatch facts, not a new
+persisted assistant message or a second lifecycle authority. Thinking and tool
+records do not satisfy the first-reply condition. Actual reply text or a real
+terminal outcome ends the wait. The visual and search behavior is owned by the
+[design system](../functionality/DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).

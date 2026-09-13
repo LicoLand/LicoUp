@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -16,6 +18,7 @@ import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/native_subagent_history_scope.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
@@ -631,31 +634,16 @@ class _AgentConversationWorkspaceState
     final selectedId = _selectedSession(native)?.id ?? '';
     var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
-    Set<String>? conversationListRelatedAgentIds;
     var conversationListPriorityAgentId = '';
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
       showConversationList = true;
       final selectedGroup = canonical.conversation;
-      if (selectedGroup?.id == _conversationListGroupId) {
-        final memberProductIds = {
-          for (final membership in selectedGroup!.memberships)
-            if (membership.principal.agentId.trim().isNotEmpty)
-              agentConversationProductId(membership.principal.agentId.trim()),
-        };
+      if (selectedGroup != null &&
+          selectedGroup.id == _conversationListGroupId) {
         conversationListTargets = agents.targetDetails
             .where((target) => target.isConversationAgent)
             .toList(growable: false);
-        conversationListRelatedAgentIds = <String>{};
-        for (final target in conversationListTargets) {
-          if (memberProductIds.contains(
-            agentConversationProductId(target.target),
-          )) {
-            conversationListRelatedAgentIds
-              ..add(target.id)
-              ..add(target.target);
-          }
-        }
         conversationListPriorityAgentId =
             selectedGroup.assistantMembership?.principal.agentId.trim() ?? '';
       }
@@ -681,12 +669,17 @@ class _AgentConversationWorkspaceState
             .toList(growable: false);
       }
     }
-    final sessionsByAgent = <String, List<AgentConversationSession>>{
-      for (final catalog in native.agentCatalogs)
-        catalog.agentId: catalog.sessions,
-      if (native.agentCatalogs.isEmpty && agents.selectedAgentId.isNotEmpty)
-        agents.selectedAgentId: native.nativeSessions,
-    };
+    final sessionsByAgent = _conversationListGroupId.isNotEmpty
+        ? (native.groupConversationId == _conversationListGroupId
+              ? native.groupSessionsByAgent
+              : const <String, List<AgentConversationSession>>{})
+        : <String, List<AgentConversationSession>>{
+            for (final catalog in native.agentCatalogs)
+              catalog.agentId: catalog.sessions,
+            if (native.agentCatalogs.isEmpty &&
+                agents.selectedAgentId.isNotEmpty)
+              agents.selectedAgentId: native.nativeSessions,
+          };
     AgentConversationTabActivity activityFor(String agentId) =>
         _activityFor(tabActivity, agentId);
     bool runningFor(AgentConversationSession session) =>
@@ -726,6 +719,21 @@ class _AgentConversationWorkspaceState
       ),
     );
 
+    void refreshSidebarCatalog() {
+      // Read current projections, not the last rendered snapshot: a second
+      // gesture must not redispatch during the frame before loading paints.
+      if (widget.conversation.nativeCatalog.current.phase ==
+              PresentationPhase.loading ||
+          widget.conversation.canonicalEvents.current.phase ==
+              PresentationPhase.loading) {
+        return;
+      }
+      widget.conversation.intents.send(const RefreshConversationCatalog());
+    }
+
+    final sidebarRefreshing =
+        native.phase == PresentationPhase.loading ||
+        canonical.phase == PresentationPhase.loading;
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     if (strategy.sidebarStyle == AgentsSidebarStyle.flatRecencyList) {
       return MessagingContactList(
@@ -766,17 +774,19 @@ class _AgentConversationWorkspaceState
         onNewConversation: () =>
             widget.conversation.intents.send(const StartConversationSession()),
         onSearch: widget.onSearch,
+        onRefresh: refreshSidebarCatalog,
         onOpenWelcome: _showWelcomePage,
         showConversationList: showConversationList,
         conversationListTargets: conversationListTargets,
-        conversationListRelatedAgentIds: conversationListRelatedAgentIds,
         selectedSessionId: selectedId,
         showConversationAgentIcons: showConversationAgentIcons,
         onSelectSession: onSelectSession,
         onBack: _returnToPreviousConversationList,
-        onPrefetchSessions: (agentId) => widget.conversation.intents.send(
-          RefreshConversationCatalog(agentId: agentId),
-        ),
+        onPrefetchSessions: _conversationListGroupId.isNotEmpty
+            ? null
+            : (agentId) => widget.conversation.intents.send(
+                RefreshConversationCatalog(agentId: agentId),
+              ),
         isPinned: (targetId) {
           for (final target in agents.targets) {
             if (target.id == targetId) return target.pinned;
@@ -787,7 +797,7 @@ class _AgentConversationWorkspaceState
             widget.agents.intents.send(ToggleAgentPinned(agentId)),
         priorityAgentId: conversationListPriorityAgentId,
         scanning: agents.scanning,
-        loading: native.phase == PresentationPhase.loading,
+        loading: sidebarRefreshing,
         activeDestination: ClientSection.agents,
         onSelectDestination: widget.onSelectDestination,
       );
@@ -801,9 +811,11 @@ class _AgentConversationWorkspaceState
       onSelectSession: onSelectSession,
       onNewConversation: () =>
           widget.conversation.intents.send(const StartConversationSession()),
-      onPrefetchSessions: (agentId) => widget.conversation.intents.send(
-        RefreshConversationCatalog(agentId: agentId),
-      ),
+      onPrefetchSessions: _conversationListGroupId.isNotEmpty
+          ? null
+          : (agentId) => widget.conversation.intents.send(
+              RefreshConversationCatalog(agentId: agentId),
+            ),
       onArchive: () => unawaited(
         showConversationArchiveDialog(
           context,
@@ -812,11 +824,10 @@ class _AgentConversationWorkspaceState
         ),
       ),
       onAddTarget: widget.onAddTarget,
-      onRefresh: () =>
-          widget.conversation.intents.send(const RefreshConversationCatalog()),
+      onRefresh: refreshSidebarCatalog,
       scanning: agents.scanning,
       adding: agents.adding,
-      refreshing: native.phase == PresentationPhase.loading,
+      refreshing: sidebarRefreshing,
       allowManualTargetActions: widget.allowManualTargetActions,
     );
     return Column(
@@ -954,6 +965,20 @@ class _AgentConversationWorkspaceState
       recentSessionsCached: native.nativeSessions.isNotEmpty,
     );
     final actions = AgentConversationPaneActions(
+      onOpenExecution: (context, message, speakingTarget, returnFocusNode) =>
+          unawaited(
+            showBoundConversationExecution(
+              context: context,
+              message: message,
+              target: speakingTarget,
+              conversationTitle: session?.title ?? '',
+              projection: widget.conversation.execution,
+              intents: widget.conversation.intents,
+              onCopyText: (text) async =>
+                  widget.conversation.intents.send(CopyConversationText(text)),
+              returnFocusNode: returnFocusNode,
+            ),
+          ),
       onModelChanged: (model) =>
           widget.conversation.intents.send(SelectConversationModel(model)),
       onReasoningEffortChanged: (reasoningEffort) => widget.conversation.intents
@@ -1075,11 +1100,20 @@ class _AgentConversationWorkspaceState
                 native.runningSessionIds.contains(candidate.id),
           )
         : ConversationPaneHeader(state: headerState, actions: headerActions);
-    return AgentConversationActivePane(
-      state: state,
-      actions: actions,
-      header: header,
-      framed: mobile,
+    return NativeSubagentHistoryScope(
+      key: ValueKey(
+        'native-children-${target.target}-${session?.nativeSessionId ?? ''}',
+      ),
+      histories: native.childHistories,
+      onLoad: (childId, earlier) => widget.conversation.intents.send(
+        LoadChildConversationMessages(childId, earlier: earlier),
+      ),
+      child: AgentConversationActivePane(
+        state: state,
+        actions: actions,
+        header: header,
+        framed: mobile,
+      ),
     );
   }
 

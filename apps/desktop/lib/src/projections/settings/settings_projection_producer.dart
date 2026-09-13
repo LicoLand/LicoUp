@@ -103,6 +103,8 @@ final class SettingsProjectionProducer
         conversations.loading;
     return SettingsProjection(
       appearancePresetId: controller.appearancePresetId,
+      reduceMotion: controller.reduceMotion,
+      loadingEffectId: controller.loadingEffectId,
       appearancePresets: [
         for (final config in controller.appearancePresetConfigs)
           SettingsAppearancePresetProjection(
@@ -140,6 +142,7 @@ final class SettingsProjectionProducer
                 profile.selectable,
           ),
       ],
+      archivedConversationsLoading: conversations.loading,
       archivedConversations: [
         for (final conversation in conversations.archivedConversations)
           ArchivedConversationProjection(
@@ -174,6 +177,7 @@ final class SettingsProjectionProducer
         githubReleaseUrl: update.githubReleaseUrl,
         artifactSha256: update.artifactSha256,
         updateAvailable: update.updateAvailable,
+        errorCode: update.errorCode,
       ),
       clientUpdateRepo: controller.clientUpdateRepo,
       catalog: SettingsCatalogProjection(
@@ -214,9 +218,12 @@ final class SettingsProjectionProducer
 
   static bool _same(SettingsProjection left, SettingsProjection right) =>
       left.appearancePresetId == right.appearancePresetId &&
+      left.reduceMotion == right.reduceMotion &&
+      left.loadingEffectId == right.loadingEffectId &&
       samePresentationList(left.appearancePresets, right.appearancePresets) &&
       samePresentationList(left.localeChoices, right.localeChoices) &&
       samePresentationList(left.layoutChoices, right.layoutChoices) &&
+      left.archivedConversationsLoading == right.archivedConversationsLoading &&
       samePresentationList(
         left.archivedConversations,
         right.archivedConversations,

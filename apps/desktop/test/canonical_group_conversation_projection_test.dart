@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -8,11 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -112,7 +110,7 @@ void main() {
       expect(session.messages[0].text, 'answer');
       expect(session.messages[1].cardType, 'reasoning');
       expect(session.messages[2].cardType, 'tool-call');
-      expect(session.messages[3].cardType, 'diagnostic');
+      expect(session.messages[3].cardType, 'error');
       expect(
         session.messages[3].text,
         contains('native_agent_executable_unavailable'),
@@ -659,13 +657,15 @@ void main() {
       final session = canonicalGroupConversationSession(conversation, [
         event,
       ], LicoStrings.forLocale(const Locale('en')));
-      final process = projectConversationProcessEvents(session.messages);
-      expect(process.totalOperations, 303);
+      expect(
+        session.messages.where((message) => message.isStructuredEvent),
+        hasLength(303),
+      );
       expect(
         session.messages
             .where((message) => message.isStructuredEvent)
             .map((message) => liveTurnKeyOf(message)),
-        everyElement('live-dispatch:one'),
+        everyElement('dispatch:one'),
       );
     },
   );
@@ -720,10 +720,15 @@ void main() {
     ], LicoStrings.forLocale(const Locale('en')));
     expect(session.messages.map((message) => message.cardTitle), [
       'lifecycle.accepted',
-      '',
+      'codex_turn_not_completed',
       'lifecycle.failed',
+      '',
     ]);
     expect(session.messages[1].text, contains('failed/Unauthorized'));
+    expect(
+      session.messages.last.replyTerminalState,
+      AgentConversationReplyTerminalState.failed,
+    );
   });
 
   test('canonical group does not translate retired lifecycle aliases', () {
@@ -764,7 +769,7 @@ void main() {
         'finalized': true,
         'parts': [
           _part('part:running', 0, 'metadata', '{"lifecycle":"running"}'),
-          _part('part:cancelled', 1, 'metadata', '{"lifecycle":"cancelled"}'),
+          _part('part:done', 1, 'metadata', '{"lifecycle":"done"}'),
         ],
       }),
     ], LicoStrings.forLocale(const Locale('en')));
@@ -777,6 +782,70 @@ void main() {
       everyElement(isEmpty),
     );
   });
+
+  test(
+    'canonical finalized empty replies retain exact stored terminal state and execution identity',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Synthetic',
+        'memberships': [
+          _membership(
+            id: 'membership:codex',
+            principalId: 'agent:codex',
+            kind: 'agent',
+            label: 'Codex',
+            agentId: 'codex',
+          ),
+        ],
+      });
+      for (final entry in {
+        'completed': AgentConversationReplyTerminalState.completed,
+        'failed': AgentConversationReplyTerminalState.failed,
+        'cancelled': AgentConversationReplyTerminalState.cancelled,
+      }.entries) {
+        final session = canonicalGroupConversationSession(conversation, [
+          ClientConversationEvent.fromJson({
+            'id': 'event:${entry.key}',
+            'conversationId': conversation.id,
+            'authorMembershipId': 'membership:codex',
+            'correlationId': 'dispatch:${entry.key}',
+            'kind': 'message',
+            'finalized': true,
+            'parts': [
+              _part('empty-text', 0, 'text', ' '),
+              _part('terminal', 1, 'metadata', '{"lifecycle":"${entry.key}"}'),
+            ],
+          }),
+        ], LicoStrings.forLocale(const Locale('en')));
+        final visible = buildConversationTimelineItems(
+          session.messages,
+          conversation.id,
+        );
+        expect(visible, hasLength(1));
+        final reply =
+            (visible.single as ConversationMessageTimelineItem).message;
+        expect(reply.id, 'dispatch:${entry.key}-assistant');
+        expect(reply.stableIdentity, reply.id);
+        expect(reply.replyTerminalState, entry.value);
+        expect(reply.waitingForReply, isFalse);
+        expect(reply.executionReference?.conversationId, conversation.id);
+        expect(reply.executionReference?.membershipId, 'membership:codex');
+        expect(reply.executionReference?.turnHandle, 'dispatch:${entry.key}');
+      }
+      final unknown = canonicalGroupConversationSession(conversation, [
+        ClientConversationEvent.fromJson({
+          'id': 'event:unknown',
+          'conversationId': conversation.id,
+          'authorMembershipId': 'membership:codex',
+          'kind': 'message',
+          'finalized': true,
+          'parts': const [],
+        }),
+      ], LicoStrings.forLocale(const Locale('en')));
+      expect(unknown.messages, isEmpty);
+    },
+  );
 
   test('canonical group history explains every non-message event', () {
     final conversation = ClientConversation.fromJson({
@@ -1182,7 +1251,7 @@ void main() {
     tester,
   ) async {
     final runner = _DialogConversationRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     final dialog = _DialogConversationBinding(controller);
     final targets = [_target('codex', 'Codex')];
     await tester.pumpWidget(
@@ -1241,7 +1310,7 @@ void main() {
     tester,
   ) async {
     final controller = ClientConversationController(
-      runner: _FailingDialogConversationRunner(),
+      native: _FailingDialogConversationRunner(),
     );
     final dialog = _DialogConversationBinding(controller);
     await tester.pumpWidget(
@@ -1335,17 +1404,16 @@ final class _DialogConversationBinding
   }
 }
 
-final class _DialogConversationRunner implements AgentCommandRunner {
+final class _DialogConversationRunner implements ClientConversationNativePort {
   final _create = Completer<void>();
 
   void completeCreate() => _create.complete();
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     final action = request['action'];
     if (action == 'conversation.create') await _create.future;
     return {
@@ -1398,45 +1466,17 @@ final class _DialogConversationRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
-final class _FailingDialogConversationRunner implements AgentCommandRunner {
+final class _FailingDialogConversationRunner
+    implements ClientConversationNativePort {
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async => {
     'ok': false,
     'error': {'code': 'synthetic_create_failed'},
   };
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 TargetCandidate _target(String id, String label) => TargetCandidate(

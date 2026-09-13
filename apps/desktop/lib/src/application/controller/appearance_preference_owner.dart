@@ -6,17 +6,23 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 final class AppearancePreferenceOwner extends ApplicationStateOwner {
   AppearancePreferenceOwner({
     String presetId = AppearancePresetIds.licoSoda,
+    bool reduceMotion = false,
     List<AppearancePresetConfig> presets = builtInAppearancePresetConfigs,
   }) : _presetId = presetId,
+       _reduceMotion = reduceMotion,
        _presets = List.unmodifiable(presets);
 
   String _presetId;
+  bool _reduceMotion;
+  String _loadingEffectId = 'spinner';
+  String get loadingEffectId => _loadingEffectId;
   String _fontPreference = 'system';
   List<AppearancePresetConfig> _presets;
   String _directoryPath = '';
   List<String> _loadErrors = const [];
 
   String get presetId => _presetId;
+  bool get reduceMotion => _reduceMotion;
   String get fontPreference => _fontPreference;
   List<AppearancePresetConfig> get presets => _presets;
   List<AppearancePresetConfig> get selectablePresets => _presets
@@ -43,6 +49,20 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
     final normalized = value.trim().isEmpty ? 'system' : value.trim();
     if (_fontPreference == normalized) return false;
     _fontPreference = normalized;
+    publishChange(cause);
+    return true;
+  }
+
+  bool replaceReduceMotion(bool value, {ApplicationCause? cause}) {
+    if (_reduceMotion == value) return false;
+    _reduceMotion = value;
+    publishChange(cause);
+    return true;
+  }
+
+  bool replaceLoadingEffect(String id, {ApplicationCause? cause}) {
+    if (_loadingEffectId == id) return false;
+    _loadingEffectId = id;
     publishChange(cause);
     return true;
   }

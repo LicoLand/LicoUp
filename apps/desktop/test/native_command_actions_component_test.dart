@@ -6,6 +6,28 @@ import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('target membership reads metadata without discovery', () async {
+    final executor = _RecordingExecutor({
+      'ok': true,
+      'targetIds': ['codex', 'workbuddy', 'custom-cli-agent'],
+    });
+    final actions = NativeCommandActions(
+      commandExecutor: executor,
+      concurrentCommandExecutor: executor,
+    );
+
+    expect(await actions.targetCatalogIds(), {
+      'codex',
+      'workbuddy',
+      'custom-cli-agent',
+    });
+    expect(executor.calls, [
+      ['targets', 'catalog'],
+    ]);
+    executor.response.clear();
+    await expectLater(actions.targetCatalogIds(), throwsStateError);
+  });
+
   test(
     'native command actions depend only on command executor ports',
     () async {

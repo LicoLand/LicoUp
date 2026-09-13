@@ -54,17 +54,41 @@ final class AgentUsageController extends ApplicationStateOwner {
   int historyDays = defaultAgentUsageDisplayHistoryDays;
 
   AgentUsageReport? _nativeProjection;
+  int _projectionGeneration = 0;
+  AgentUsageReport? _viewportSource;
+  int? _viewportDays;
   Timer? _pollingTimer;
   final Set<Object> _pollingOwners = <Object>{};
   final Object _defaultPollingOwner = Object();
   Duration _pollingInterval = defaultAgentUsagePollingInterval;
   Future<void>? _refreshFuture;
   Future<void>? _scanFuture;
+  Future<void>? _modelRefreshFuture;
+  Future<void>? _modelDirectoryFuture;
+  int _pendingReportLoads = 0;
+  bool _loadFailed = false;
+  bool _modelRefreshVisible = false;
+  bool _modelDirectoryChecked = false;
+  bool _modelDirectoryRefreshAttempted = false;
   bool _disposed = false;
 
   int get pollingOwnerCount => _pollingOwners.length;
 
   bool get dailyCacheIsEmpty => _nativeProjection == null;
+
+  /// Includes silent cache, scan, and directory work so an empty first view
+  /// stays in its loading state until the complete bootstrap has settled.
+  /// This is presentation state; the existing operation guards remain owners
+  /// of scheduling and explicit refresh visibility.
+  bool get loading =>
+      scanning ||
+      _pendingReportLoads > 0 ||
+      _refreshFuture != null ||
+      _scanFuture != null ||
+      _modelRefreshFuture != null ||
+      _modelDirectoryFuture != null;
+
+  bool get loadFailed => _loadFailed;
 
   /// Backward-compatible alias for tests and facades.
   AgentUsageReport? get scanCache =>
@@ -72,7 +96,9 @@ final class AgentUsageController extends ApplicationStateOwner {
 
   /// True when the native projection covers 90 days and was refreshed recently.
   bool get hasFreshScanCoverage =>
-      _hasFullCoverage() && (_nativeProjection?.isFresh() ?? false);
+      _hasFullCoverage() &&
+      (_nativeProjection?.hasCurrentParserRevision ?? false) &&
+      (_nativeProjection?.isFresh() ?? false);
 
   AgentUsageAgentSummary? get selectedUsage {
     final agentId = selectedAgentId().trim();
@@ -80,11 +106,15 @@ final class AgentUsageController extends ApplicationStateOwner {
   }
 
   void replaceReport(AgentUsageReport? value) {
+    _loadFailed = false;
+    _projectionGeneration++;
     _nativeProjection = value;
     _applyViewport();
   }
 
   void replaceReports(List<AgentUsageReport> value) {
+    _loadFailed = false;
+    _projectionGeneration++;
     reports = List.unmodifiable(value);
     _nativeProjection = _newestProjection(value);
     _applyViewport();
@@ -155,15 +185,23 @@ final class AgentUsageController extends ApplicationStateOwner {
     if (hasFreshScanCoverage) {
       _applyViewport();
       publishChange();
+      unawaited(_loadMissingModelDirectory());
       return Future<void>.value();
     }
     final active = _refreshFuture;
     if (active != null) return active;
     late final Future<void> refresh;
     refresh = _loadAndRefresh(limit: limit).whenComplete(() {
-      if (identical(_refreshFuture, refresh)) _refreshFuture = null;
+      if (identical(_refreshFuture, refresh)) {
+        _refreshFuture = null;
+      }
+      unawaited(_loadMissingModelDirectory());
+      if (!_disposed) {
+        publishChange();
+      }
     });
     _refreshFuture = refresh;
+    publishChange();
     return refresh;
   }
 
@@ -187,7 +225,8 @@ final class AgentUsageController extends ApplicationStateOwner {
       publishChange();
       return;
     }
-    if (!_hasFullCoverage()) {
+    if (!_hasFullCoverage() ||
+        !(_nativeProjection?.hasCurrentParserRevision ?? false)) {
       await scan(
         forceRefresh: false,
         showProgress: false,
@@ -215,6 +254,13 @@ final class AgentUsageController extends ApplicationStateOwner {
   }
 
   void _applyViewport() {
+    if (identical(_viewportSource, _nativeProjection) &&
+        _viewportDays == historyDays &&
+        report != null) {
+      return;
+    }
+    _viewportSource = _nativeProjection;
+    _viewportDays = historyDays;
     report = projectViewport(_nativeProjection, historyDays);
   }
 
@@ -233,6 +279,10 @@ final class AgentUsageController extends ApplicationStateOwner {
     bool showProgress = true,
     int? historyDays,
   }) {
+    final refreshingModels = _modelRefreshFuture;
+    if (refreshingModels != null) {
+      return refreshingModels;
+    }
     final active = _scanFuture;
     if (active != null) return active;
     if ((scanning && showProgress) || _disposed) {
@@ -245,9 +295,15 @@ final class AgentUsageController extends ApplicationStateOwner {
           showProgress: showProgress,
           historyDays: historyDays,
         ).whenComplete(() {
-          if (identical(_scanFuture, scanFuture)) _scanFuture = null;
+          if (identical(_scanFuture, scanFuture)) {
+            _scanFuture = null;
+          }
+          if (!_disposed) {
+            publishChange();
+          }
         });
     _scanFuture = scanFuture;
+    publishChange();
     return scanFuture;
   }
 
@@ -255,24 +311,34 @@ final class AgentUsageController extends ApplicationStateOwner {
     required bool forceRefresh,
     required bool showProgress,
     int? historyDays,
+    bool refreshModelDirectory = false,
   }) async {
     final scanDays = historyDays ?? defaultAgentUsageScanHistoryDays;
-    if (showProgress) {
-      scanning = true;
-      onStatus(
-        chinese: '正在刷新本机 Token 用量。',
-        english: 'Refreshing local token usage.',
-        caption: 'Agent usage',
-      );
-      publishChange();
+    bool visible() =>
+        showProgress || (refreshModelDirectory && _modelRefreshVisible);
+    if (visible()) {
+      _showScanProgress();
     }
     try {
+      var registryUnavailable = false;
+      if (refreshModelDirectory) {
+        try {
+          registryUnavailable = !(await gateway.refreshModelRegistry()).ok;
+        } on Object {
+          registryUnavailable = true;
+        }
+        if (_disposed) {
+          return;
+        }
+      }
       final next = await gateway.scan(
         forceRefresh: forceRefresh,
         historyDays: scanDays,
       );
       if (_disposed) return;
       final normalized = _normalizeScanReport(next, scanDays);
+      _loadFailed = false;
+      _projectionGeneration++;
       _nativeProjection = normalized;
       _applyViewport();
       if (scanDays >= agentUsageDailyCacheMaxDays) {
@@ -285,18 +351,24 @@ final class AgentUsageController extends ApplicationStateOwner {
           ].take(20),
         );
       }
-      if (showProgress) {
+      if (visible()) {
         final shown = report ?? normalized;
         onStatus(
-          chinese:
-              '已扫描 ${shown.agentCount} 个智能体，共 ${shown.totalTokens} 个 Token。',
-          english:
-              'Scanned ${shown.agentCount} agents and ${shown.totalTokens} tokens.',
+          chinese: registryUnavailable
+              ? '模型目录刷新暂不可用，已使用本地目录更新用量。'
+              : '已扫描 ${shown.agentCount} 个智能体，共 ${shown.totalTokens} 个 Token。',
+          english: registryUnavailable
+              ? 'Model directory refresh is unavailable. Usage was updated with the local directory.'
+              : 'Scanned ${shown.agentCount} agents and ${shown.totalTokens} tokens.',
           caption: 'Agent usage',
+          errorCode: registryUnavailable
+              ? 'model_registry_refresh_unavailable'
+              : '',
         );
       }
     } catch (_) {
-      if (!_disposed && showProgress) {
+      _loadFailed = true;
+      if (!_disposed && visible()) {
         onStatus(
           chinese: '智能体用量扫描失败。',
           english: 'Agent usage scan failed.',
@@ -305,15 +377,108 @@ final class AgentUsageController extends ApplicationStateOwner {
         );
       }
     } finally {
-      if (showProgress) {
+      if (visible()) {
         scanning = false;
       }
       if (!_disposed) publishChange();
     }
   }
 
+  void _showScanProgress() {
+    scanning = true;
+    onStatus(
+      chinese: '正在刷新本机 Token 用量。',
+      english: 'Refreshing local token usage.',
+      caption: 'Agent usage',
+    );
+    publishChange();
+  }
+
+  /// Explicit refresh joins a local scan, refreshes the public registry, and
+  /// scans again using the resulting native model identities.
+  Future<void> refreshModelDirectoryAndScan() =>
+      _refreshModelDirectoryAndScan(showProgress: true);
+
+  Future<void> _refreshModelDirectoryAndScan({required bool showProgress}) {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    final active = _modelRefreshFuture;
+    if (active != null) {
+      if (showProgress && !_modelRefreshVisible) {
+        _modelRefreshVisible = true;
+        _showScanProgress();
+      }
+      return active;
+    }
+    _modelRefreshVisible = showProgress;
+    _modelDirectoryRefreshAttempted = true;
+    final precedingScan = _scanFuture;
+    late final Future<void> refresh;
+    refresh =
+        (() async {
+          await precedingScan;
+          if (_disposed) {
+            return;
+          }
+          await _scan(
+            forceRefresh: true,
+            showProgress: showProgress,
+            refreshModelDirectory: true,
+          );
+        })().whenComplete(() {
+          if (identical(_modelRefreshFuture, refresh)) {
+            _modelRefreshFuture = null;
+            _modelRefreshVisible = false;
+          }
+          if (!_disposed) {
+            publishChange();
+          }
+        });
+    _modelRefreshFuture = refresh;
+    publishChange();
+    return refresh;
+  }
+
+  /// Bootstrap only an absent directory after the local statistics are ready.
+  /// The per-controller check is consumed before I/O, so failure never causes
+  /// polling or repeated panel mounts to initiate another network request.
+  Future<void> _loadMissingModelDirectory() {
+    if (_disposed || _modelDirectoryChecked) {
+      return _modelDirectoryFuture ?? Future<void>.value();
+    }
+    _modelDirectoryChecked = true;
+    late final Future<void> pending;
+    pending = _readMissingModelDirectory().whenComplete(() {
+      if (identical(_modelDirectoryFuture, pending)) {
+        _modelDirectoryFuture = null;
+      }
+      if (!_disposed) {
+        publishChange();
+      }
+    });
+    _modelDirectoryFuture = pending;
+    publishChange();
+    return pending;
+  }
+
+  Future<void> _readMissingModelDirectory() async {
+    try {
+      final registry = await gateway.readModelRegistry();
+      if (_disposed ||
+          _modelDirectoryRefreshAttempted ||
+          !registry.ok ||
+          registry.status != 'empty') {
+        return;
+      }
+      await _refreshModelDirectoryAndScan(showProgress: false);
+    } on Object {
+      // Existing statistics remain usable. Explicit refresh can retry.
+    }
+  }
+
   Future<void> _refreshNativeProjection({required bool showProgress}) async {
-    await _scan(
+    await scan(
       forceRefresh: false,
       showProgress: showProgress,
       historyDays: defaultAgentUsageScanHistoryDays,
@@ -322,13 +487,22 @@ final class AgentUsageController extends ApplicationStateOwner {
 
   Future<void> loadReports({int limit = 10, bool showProgress = true}) async {
     if ((scanning && showProgress) || _disposed) return;
+    _pendingReportLoads++;
+    final projectionGeneration = _projectionGeneration;
     if (showProgress) {
       scanning = true;
       onStatus(chinese: '', english: '', caption: 'Agent usage');
-      publishChange();
     }
+    publishChange();
     try {
-      reports = List.unmodifiable(await gateway.reports(limit: limit));
+      final retained = await gateway.reports(limit: limit);
+      // A scan may publish fresher model identities while this older local
+      // read is pending. Never roll its projection or retained history back.
+      if (_disposed || projectionGeneration != _projectionGeneration) {
+        return;
+      }
+      reports = List.unmodifiable(retained);
+      _loadFailed = false;
       if (reports.isEmpty) {
         if (_nativeProjection == null) {
           report = null;
@@ -347,6 +521,9 @@ final class AgentUsageController extends ApplicationStateOwner {
         );
       }
     } catch (_) {
+      if (!_disposed && projectionGeneration == _projectionGeneration) {
+        _loadFailed = true;
+      }
       if (showProgress) {
         onStatus(
           chinese: '智能体用量报表加载失败。',
@@ -356,6 +533,7 @@ final class AgentUsageController extends ApplicationStateOwner {
         );
       }
     } finally {
+      _pendingReportLoads--;
       if (showProgress) {
         scanning = false;
       }

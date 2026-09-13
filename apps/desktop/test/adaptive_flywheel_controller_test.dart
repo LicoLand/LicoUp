@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/strategy.g.dart'
     show
         StrategyWorkflowDiagnosticActualKind,
@@ -22,6 +23,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import 'fixtures/adaptive_flywheel/adaptive_flywheel_binding_fixture.dart';
+import 'support/fake_conversation_transport.dart';
 
 void main() {
   test('generated workflow diagnostics close fields and scalar bounds', () {
@@ -193,9 +195,13 @@ void main() {
     final runner = _StrategyRunner();
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     clientController.scannedTargets = [
       _target('codex', callable: true),
       _target('unadapted', callable: false),
@@ -288,6 +294,116 @@ void main() {
     expect(runner.actions, isNot(contains('strategy.run.start')));
   });
 
+  testWidgets(
+    'saved override uses its native display projection and preserves its model ID on save',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const modelId = 'deepseek-v4-flash-vision-exp';
+      final runner = _StrategyRunner(
+        modelDisplayNames: const {modelId: 'DeepSeek V4 Flash Vision Exp'},
+      );
+      runner.bindings.addAll({
+        'entry:0': {
+          'slotId': 'entry',
+          'ordinal': 0,
+          'valueId': 'claude-code',
+          'model': modelId,
+          'revision': 1,
+        },
+        'worker-a:0': {
+          'slotId': 'worker-a',
+          'ordinal': 0,
+          'valueId': 'codex',
+          'model': 'gpt-5',
+          'revision': 1,
+        },
+      });
+      final agentService = AgentService(
+        processIo: runner,
+        conversationNativePort: FakeConversationTransport().native,
+        persistentStdioRpcEnabled: false,
+      );
+      final clientController = ClientController(
+        agentService: agentService,
+        conversationNativePort: runner,
+      );
+      // The saved override intentionally does not occur in either selectable
+      // catalog. The inspect response supplies its label without adding a choice.
+      clientController.scannedTargets = [
+        _target('claude-code', callable: true),
+        _target('codex', callable: true),
+      ];
+      final bindings = AdaptiveFlywheelBindingFixture(clientController);
+      addTearDown(() async {
+        await bindings.close();
+        clientController.dispose();
+        await agentService.dispose();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: const [Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Claude Code · DeepSeek V4 Flash Vision Exp'),
+        findsOneWidget,
+      );
+      expect(find.textContaining(modelId), findsNothing);
+      expect(
+        (clientController.scannedTargets.first.modelCatalog['models'] as List)
+            .cast<Map<String, dynamic>>()
+            .map((model) => model['name']),
+        isNot(contains(modelId)),
+      );
+      // Add another route candidate so Save actually persists this slot.
+      await tester.tap(find.byKey(const Key('adaptive-flywheel-entry-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('adaptive-flywheel-entry-option-codex')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('adaptive-flywheel-entry-confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('main-agent-save')));
+      await tester.pumpAndSettle();
+      final saved = runner.strategyRequests.lastWhere(
+        (request) =>
+            request['action'] == 'strategy.binding.replace' &&
+            request['slotId'] == 'entry',
+      );
+      expect((saved['candidates'] as List).first['model'], modelId);
+      expect(saved['candidates'], hasLength(2));
+      expect(runner.bindings['entry:0']?['model'], modelId);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('empty catalog asks the user to import a package first', (
     tester,
   ) async {
@@ -299,9 +415,13 @@ void main() {
     final runner = _StrategyRunner(definitions: const []);
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     final bindings = AdaptiveFlywheelBindingFixture(clientController);
     addTearDown(() async {
       await bindings.close();
@@ -363,9 +483,13 @@ void main() {
       final runner = _StrategyRunner(definitions: const []);
       final agentService = AgentService(
         processIo: runner,
+        conversationNativePort: FakeConversationTransport().native,
         persistentStdioRpcEnabled: false,
       );
-      final clientController = ClientController(agentService: agentService);
+      final clientController = ClientController(
+        agentService: agentService,
+        conversationNativePort: runner,
+      );
       clientController.scannedTargets = [_target('codex', callable: true)];
       final bindings = AdaptiveFlywheelBindingFixture(clientController);
       addTearDown(() async {
@@ -481,9 +605,13 @@ void main() {
     );
     final agentService = AgentService(
       processIo: runner,
+      conversationNativePort: FakeConversationTransport().native,
       persistentStdioRpcEnabled: false,
     );
-    final clientController = ClientController(agentService: agentService);
+    final clientController = ClientController(
+      agentService: agentService,
+      conversationNativePort: runner,
+    );
     final bindings = AdaptiveFlywheelBindingFixture(clientController);
     addTearDown(() async {
       await bindings.close();
@@ -572,15 +700,20 @@ void main() {
 }
 
 final class _StrategyRunner
-    implements AgentCommandRunner, AdaptiveFlywheelGateway {
+    implements
+        AgentCommandRunner,
+        AdaptiveFlywheelGateway,
+        ClientConversationNativePort {
   _StrategyRunner({
     this.includeRuntime = true,
+    this.modelDisplayNames = const {},
     List<Map<String, dynamic>>? definitions,
   }) : definitions = List<Map<String, dynamic>>.from(
          definitions ?? [_StrategyRunner.summary],
        );
 
   final bool includeRuntime;
+  final Map<String, String> modelDisplayNames;
   final List<Map<String, dynamic>> definitions;
   final List<String> actions = [];
   final List<Map<String, dynamic>> strategyRequests = [];
@@ -604,12 +737,6 @@ final class _StrategyRunner
     List<String> args,
     String stdinText,
   ) async {
-    if (args.first == 'conversation') {
-      expectSync(args, ['conversation', 'execute', '--stdin-json', 'true']);
-      final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
-      conversationRequests.add(request);
-      return {'ok': true, 'result': _conversationResult(request)};
-    }
     expectSync(args, ['strategy', 'execute', '--stdin-json', 'true']);
     final request = jsonDecode(stdinText) as Map<String, dynamic>;
     final action = request['action'] as String;
@@ -633,6 +760,15 @@ final class _StrategyRunner
       _ => throw StateError('unexpected action $action'),
     };
     return {'ok': true, 'result': result};
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
+  ) async {
+    final request = command.payload;
+    conversationRequests.add(request);
+    return {'ok': true, 'result': _conversationResult(request)};
   }
 
   Object _conversationResult(Map<String, dynamic> request) {
@@ -709,6 +845,7 @@ final class _StrategyRunner
   }
 
   Map<String, dynamic> _inspection() => {
+    'modelDisplayNames': modelDisplayNames,
     'projection': {
       'schema': 'licoup.adaptive-flywheel.state.v1',
       'definition': _StrategyRunner.summary,

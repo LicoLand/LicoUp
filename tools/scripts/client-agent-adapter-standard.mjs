@@ -235,7 +235,8 @@ function validateInventory(validateManifest, { agentId = null, sharedOnly = fals
       "adapter_manifest_history_drift",
     );
     requireFact(
-      (manifest.events.realtimeKinds.length > 0) === matrix.streaming
+      // A completed message can arrive before idle without token-delta support.
+      manifest.events.realtimeKinds.includes("agent.message.chunk") === matrix.streaming
         && (manifest.events.terminalKinds.length > 0) === matrix.structuredEvents,
       "adapter_manifest_event_capability_drift",
     );

@@ -25,16 +25,23 @@ mod continuity_seam;
 mod conversations;
 mod dispatches;
 mod events;
+mod execution;
+mod native_sessions;
 mod path_security;
 mod recovery;
 
 pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
 pub use dispatches::{DispatchRepository, MAX_SUBAGENT_INVOCATION_DEPTH};
-pub use events::EventRepository;
+pub use events::{EventPagePosition, EventRepository};
+pub use execution::{
+    ExecutionRecord, NativeExecutionReference, NativeExecutionReferenceIndex,
+    RuntimeExecutionSnapshot, RuntimeFrameRecord,
+};
+pub use native_sessions::NativeSessionReference;
 pub use recovery::{ColdRecoverableConversationStore, ColdRecoveryReport};
 
-pub const DEFAULT_EVENT_PAGE_SIZE: usize = 50;
+pub const DEFAULT_EVENT_PAGE_SIZE: usize = 20;
 pub const MAX_EVENT_PAGE_SIZE: usize = 100;
 /// Bounded conversation SQLite pool size. Long-running processes reuse at
 /// most this many configured connections; acquisition blocks on a condition
@@ -44,7 +51,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "13";
+pub const CURRENT_SCHEMA_VERSION: &str = "15";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -93,7 +100,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
          CREATE TABLE IF NOT EXISTS event_parts (
            id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
            ordinal INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
-           runtime_cursor INTEGER, created_at INTEGER NOT NULL,
+           runtime_cursor INTEGER, execution_kind TEXT, created_at INTEGER NOT NULL,
            UNIQUE(event_id, ordinal)
          );
          CREATE INDEX IF NOT EXISTS event_parts_event_idx ON event_parts(event_id, ordinal);
@@ -128,6 +135,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            state TEXT NOT NULL CHECK(state IN ('accepted','running','completed','failed','cancel-requested','cancelled')),
            session_mode TEXT NOT NULL CHECK(session_mode IN ('new','resume')),
            runtime_conversation_path TEXT, error_code TEXT,
+           request_payload TEXT, terminal_payload TEXT, native_provenance TEXT,
            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
          );
           CREATE INDEX IF NOT EXISTS conversation_dispatches_resume_idx
@@ -1117,7 +1125,7 @@ impl ConversationStore {
                     &scope.event_id,
                     ordinal,
                     &part,
-                    Some(cursor),
+                    Some(cursor as i64),
                     now,
                 )?;
                 ordinal += 1;
@@ -1142,53 +1150,10 @@ impl ConversationStore {
         through_cursor: u64,
         limit: usize,
     ) -> StoreResult<Vec<Value>> {
-        if after_cursor > through_cursor || through_cursor > i64::MAX as u64 {
-            return Err(anyhow!("runtime_cursor_invalid"));
-        }
-        let limit = limit.clamp(1, 512);
-        self.with_connection(|connection| {
-            let mut statement = connection.prepare(
-                "SELECT selected.runtime_cursor, p.ordinal, p.content
-                  FROM (
-                   SELECT parts.runtime_cursor FROM event_parts parts
-                   JOIN events event ON event.id=parts.event_id
-                   WHERE parts.event_id=?1 AND event.correlation_id=?2
-                     AND parts.runtime_cursor IS NOT NULL
-                     AND runtime_cursor>?3 AND runtime_cursor<=?4
-                   GROUP BY parts.runtime_cursor
-                   ORDER BY parts.runtime_cursor ASC LIMIT ?5
-                  ) selected
-                 JOIN event_parts p ON p.event_id=?1
-                   AND p.runtime_cursor=selected.runtime_cursor
-                 ORDER BY selected.runtime_cursor ASC, p.ordinal ASC",
-            )?;
-            let rows = statement.query_map(
-                params![
-                    scope.event_id,
-                    scope.dispatch_id,
-                    after_cursor as i64,
-                    through_cursor as i64,
-                    limit as i64,
-                ],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(2)?)),
-            )?;
-            let mut frames = Vec::new();
-            let mut current_cursor = None;
-            let mut encoded = String::new();
-            for row in rows {
-                let (cursor, content) = row?;
-                if current_cursor.is_some_and(|current| current != cursor) {
-                    frames.push(serde_json::from_str(&encoded)?);
-                    encoded.clear();
-                }
-                current_cursor = Some(cursor);
-                encoded.push_str(&content);
-            }
-            if current_cursor.is_some() {
-                frames.push(serde_json::from_str(&encoded)?);
-            }
-            Ok(frames)
-        })
+        self.runtime_raw_frames_after(scope, after_cursor, through_cursor, limit)?
+            .into_iter()
+            .map(|frame| serde_json::from_str(&frame.raw_text).map_err(Into::into))
+            .collect()
     }
 
     /// Persist the terminal lifecycle and dispatch state in one canonical
@@ -1260,7 +1225,8 @@ impl ConversationStore {
             let error_code = persisted_error.as_deref();
             let changed = transaction.execute(
                 "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4,
-                   runtime_conversation_path=COALESCE(?5, runtime_conversation_path)
+                   runtime_conversation_path=COALESCE(?5, runtime_conversation_path),
+                   terminal_payload=?6
                  WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
                 params![
                     scope.dispatch_id,
@@ -1268,6 +1234,7 @@ impl ConversationStore {
                     error_code,
                     now,
                     runtime_conversation_path,
+                    serde_json::to_string(terminal)?,
                 ],
             )?;
             if changed != 1 {
@@ -1486,6 +1453,7 @@ impl ConversationStore {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            native_sessions::record_native_session(&transaction, &scope.conversation_id, &scope.membership_id, session_id)?;
             transaction.execute(
                 "INSERT INTO migration_provenance(source_kind, source_identity, conversation_id)
                  VALUES ('projection', ?1, ?2)
@@ -2352,10 +2320,23 @@ impl ConversationStore {
         after_sequence: Option<i64>,
         requested_limit: usize,
     ) -> StoreResult<EventPage> {
+        self.page_events_window(
+            conversation_id,
+            EventPagePosition::After(after_sequence.unwrap_or(0)),
+            requested_limit,
+        )
+    }
+
+    pub fn page_events_window(
+        &self,
+        conversation_id: &str,
+        position: EventPagePosition,
+        requested_limit: usize,
+    ) -> StoreResult<EventPage> {
         validate_identifier(conversation_id, "conversation_id")?;
         let limit = requested_limit.clamp(1, MAX_EVENT_PAGE_SIZE);
         self.with_connection(|connection| {
-            page_events_inner(connection, conversation_id, after_sequence, limit)
+            page_events_window_inner(connection, conversation_id, position, limit)
         })
     }
 
@@ -3090,7 +3071,17 @@ impl ConversationStore {
         validate_identifier(&binding.conversation_id, "conversation_id")?;
         validate_identifier(&binding.membership_id, "membership_id")?;
         self.with_connection(|connection| {
-            connection.execute(
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            if let Some(session_id) = runtime_session_id {
+                native_sessions::record_native_session(
+                    &transaction,
+                    &binding.conversation_id,
+                    &binding.membership_id,
+                    session_id,
+                )?;
+            }
+            transaction.execute(
                 "INSERT INTO runtime_bindings(
                    id, conversation_id, membership_id, lane, availability, safe_reason,
                    runtime_session_id, runtime_conversation_path, working_directory
@@ -3113,6 +3104,7 @@ impl ConversationStore {
                     working_directory,
                 ],
             )?;
+            transaction.commit()?;
             Ok(())
         })
     }
@@ -3664,7 +3656,7 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13") => {}
+        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15") => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3741,6 +3733,38 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     if current_schema_version == "12" {
         migrate_licoup_guide_profile_references_v13(connection)?;
     }
+    let current_schema_version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if current_schema_version == "13" {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_column(&transaction, "event_parts", "execution_kind", "TEXT")?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "request_payload",
+            "TEXT",
+        )?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "terminal_payload",
+            "TEXT",
+        )?;
+        ensure_column(
+            &transaction,
+            "conversation_dispatches",
+            "native_provenance",
+            "TEXT",
+        )?;
+        transaction.execute_batch("CREATE INDEX IF NOT EXISTS conversation_dispatches_native_provenance_idx
+            ON conversation_dispatches(json_extract(native_provenance,'$.agentId'),json_extract(native_provenance,'$.nativeSessionId'))
+            WHERE native_provenance IS NOT NULL;")?;
+        transaction.execute("UPDATE schema_meta SET value='14' WHERE key='version'", [])?;
+        transaction.commit()?;
+    }
     ensure_column(
         connection,
         "conversations",
@@ -3792,6 +3816,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "INTEGER",
     )?;
     ensure_search_index(connection)?;
+    let version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == "14" {
+        native_sessions::migrate_native_sessions_v15(connection)?;
+    }
     Ok(())
 }
 
@@ -4232,6 +4264,21 @@ fn retarget_duplicate_membership_group(
 fn retarget_membership_id(connection: &Connection, from: &str, to: &str) -> StoreResult<()> {
     if from == to {
         return Ok(());
+    }
+    let has_native_sessions: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_native_sessions')",
+        [], |row|row.get(0),
+    )?;
+    if has_native_sessions {
+        connection.execute(
+            "INSERT OR IGNORE INTO conversation_native_sessions
+             SELECT conversation_id,?2,native_session_id FROM conversation_native_sessions WHERE membership_id=?1",
+            params![from, to],
+        )?;
+        connection.execute(
+            "DELETE FROM conversation_native_sessions WHERE membership_id=?1",
+            params![from],
+        )?;
     }
     connection.execute(
         "UPDATE events SET author_membership_id=?2 WHERE author_membership_id=?1",
@@ -4789,19 +4836,40 @@ fn page_events_inner(
     after_sequence: Option<i64>,
     limit: usize,
 ) -> StoreResult<EventPage> {
+    page_events_window_inner(
+        connection,
+        conversation_id,
+        EventPagePosition::After(after_sequence.unwrap_or(0)),
+        limit,
+    )
+}
+
+fn page_events_window_inner(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    position: EventPagePosition,
+    limit: usize,
+) -> StoreResult<EventPage> {
     ensure_conversation(connection, conversation_id)?;
-    let cursor = after_sequence.unwrap_or(0);
-    let mut statement = connection.prepare(
+    let (operator, order, cursor) = match position {
+        EventPagePosition::After(sequence) => (">", "ASC", sequence),
+        EventPagePosition::Before(sequence) => ("<", "DESC", sequence),
+        EventPagePosition::Latest => ("<=", "DESC", i64::MAX),
+    };
+    let mut statement = connection.prepare(&format!(
         "SELECT id, conversation_id, sequence, author_membership_id, kind,
          causation_id, correlation_id, created_at, finalized
-         FROM events WHERE conversation_id=?1 AND sequence>?2
-         ORDER BY sequence ASC LIMIT ?3",
-    )?;
+         FROM events WHERE conversation_id=?1 AND sequence {operator} ?2
+         ORDER BY sequence {order} LIMIT ?3"
+    ))?;
     let rows = statement.query_map(
         params![conversation_id, cursor, limit as i64],
         event_from_row,
     )?;
     let mut events = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    if !matches!(position, EventPagePosition::After(_)) {
+        events.reverse();
+    }
     let event_ids = events
         .iter()
         .map(|event| event.id.clone())
@@ -4812,16 +4880,21 @@ fn page_events_inner(
             event.parts.clone_from(parts);
         }
     }
-    let total_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM events WHERE conversation_id=?1",
-        params![conversation_id],
-        |row| row.get(0),
+    let first_sequence = events.first().map(|event| event.sequence);
+    let (total_count, has_earlier): (i64, bool) = connection.query_row(
+        "SELECT COUNT(*), EXISTS(
+           SELECT 1 FROM events WHERE conversation_id=?1 AND sequence<?2
+         ) FROM events WHERE conversation_id=?1",
+        params![conversation_id, first_sequence],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let next_cursor = events.last().map(|event| event.sequence.to_string());
     Ok(EventPage {
         events,
         next_cursor,
         total_count,
+        has_earlier,
+        next_before_sequence: first_sequence.filter(|_| has_earlier),
     })
 }
 
@@ -5747,7 +5820,7 @@ fn load_trusted_response_mode(
     event_id: &str,
 ) -> StoreResult<Option<String>> {
     let mut statement = connection.prepare(
-        "SELECT content FROM event_parts WHERE event_id=?1 AND kind='metadata' ORDER BY ordinal",
+        "SELECT content FROM event_parts WHERE event_id=?1 AND kind='metadata' AND runtime_cursor IS NULL ORDER BY ordinal",
     )?;
     let rows = statement.query_map(params![event_id], |row| row.get::<_, String>(0))?;
     for row in rows {
@@ -5922,10 +5995,10 @@ fn insert_runtime_event_part(
     event_id: &str,
     ordinal: i64,
     part: &NewEventPart,
-    runtime_cursor: Option<u64>,
+    runtime_cursor: Option<i64>,
     now: i64,
 ) -> StoreResult<()> {
-    if runtime_cursor.is_some_and(|cursor| cursor == 0 || cursor > i64::MAX as u64) {
+    if runtime_cursor == Some(0) {
         return Err(anyhow!("runtime_cursor_invalid"));
     }
     if part.kind != EventPartKind::Text {
@@ -5946,7 +6019,7 @@ fn insert_runtime_event_part(
             ordinal,
             enum_wire(part.kind)?,
             part.content,
-            runtime_cursor.map(|cursor| cursor as i64),
+            runtime_cursor,
             now,
         ],
     )?;
@@ -6645,18 +6718,26 @@ mod tests {
                 .unwrap();
         }
         let mut page_delta: Option<usize> = None;
-        for limit in [10usize, 50, 100] {
-            let before = store.counters().queries();
-            let page = store.page_events(&conversation.id, None, limit).unwrap();
-            let delta = store.counters().queries() - before;
-            assert_eq!(page.events.len(), limit.min(120));
-            for event in &page.events {
-                if event.kind == EventKind::Message {
-                    assert_eq!(event.parts.len(), 2);
+        for position in [
+            EventPagePosition::After(0),
+            EventPagePosition::Latest,
+            EventPagePosition::Before(121),
+        ] {
+            for limit in [10usize, 20, 100] {
+                let before = store.counters().queries();
+                let page = store
+                    .page_events_window(&conversation.id, position, limit)
+                    .unwrap();
+                let delta = store.counters().queries() - before;
+                assert_eq!(page.events.len(), limit.min(120));
+                for event in &page.events {
+                    if event.kind == EventKind::Message {
+                        assert_eq!(event.parts.len(), 2);
+                    }
                 }
+                assert_eq!(delta, 4, "page of {limit} events must cost 4 statements");
+                page_delta = Some(delta);
             }
-            assert_eq!(delta, 4, "page of {limit} events must cost 4 statements");
-            page_delta = Some(delta);
         }
         let mut search_delta: Option<usize> = None;
         for limit in [10usize, 50, 100] {
@@ -6975,6 +7056,121 @@ mod tests {
             .unwrap();
         assert_eq!(second.events.len(), 5);
         assert_eq!(store.search("searchable-token", 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn event_pages_use_retained_sequence_anchors_for_latest_older_and_tail() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Sparse pages", owner()).unwrap();
+        let append = || {
+            store
+                .append_event(
+                    &conversation.id,
+                    None,
+                    EventKind::Message,
+                    &[NewEventPart {
+                        id: String::new(),
+                        kind: EventPartKind::Text,
+                        content: "retained complete content".into(),
+                    }],
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap()
+        };
+        for _ in 0..65 {
+            append();
+        }
+        store
+            .with_connection(|connection| {
+                connection.execute(
+                    "DELETE FROM events WHERE conversation_id=?1 AND sequence % 3 = 0",
+                    [&conversation.id],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let retained: Vec<i64> = (1..=65).filter(|sequence| sequence % 3 != 0).collect();
+        let mut position = EventPagePosition::Latest;
+        let mut recovered = Vec::new();
+        let mut end = retained.len();
+        let mut latest_cursor = None;
+        loop {
+            let page = store
+                .page_events_window(&conversation.id, position, DEFAULT_EVENT_PAGE_SIZE)
+                .unwrap();
+            let sequences: Vec<_> = page.events.iter().map(|event| event.sequence).collect();
+            let start = end.saturating_sub(20);
+            assert_eq!(sequences, retained[start..end]);
+            assert_eq!(page.total_count, retained.len() as i64);
+            assert_eq!(page.next_cursor, sequences.last().map(ToString::to_string));
+            assert_eq!(page.has_earlier, start > 0);
+            assert!(page.events.iter().all(|event| {
+                event.parts.len() == 1 && event.parts[0].content == "retained complete content"
+            }));
+            if latest_cursor.is_none() {
+                latest_cursor = page.next_cursor.clone();
+            }
+            recovered.splice(0..0, sequences);
+            let Some(before) = page.next_before_sequence else {
+                assert!(!page.has_earlier);
+                break;
+            };
+            assert_eq!(before, retained[start]);
+            position = EventPagePosition::Before(before);
+            end = start;
+        }
+        assert_eq!(recovered, retained);
+
+        // A deleted anchor is still a valid exclusive sequence boundary.
+        let page = store
+            .page_events_window(&conversation.id, EventPagePosition::Before(36), 20)
+            .unwrap();
+        assert_eq!(page.events.len(), 20);
+        assert_eq!(page.events.last().unwrap().sequence, 35);
+
+        let appended = [append(), append()];
+        let tail = store
+            .page_events(
+                &conversation.id,
+                latest_cursor.and_then(|cursor| cursor.parse().ok()),
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            tail.events
+                .iter()
+                .map(|event| &event.id)
+                .collect::<Vec<_>>(),
+            appended.iter().map(|event| &event.id).collect::<Vec<_>>()
+        );
+        assert_eq!(tail.total_count, retained.len() as i64 + 2);
+        assert!(tail.has_earlier);
+        assert_eq!(tail.next_before_sequence, Some(appended[0].sequence));
+        let empty = store
+            .page_events(&conversation.id, Some(appended[1].sequence), 20)
+            .unwrap();
+        assert!(empty.events.is_empty());
+        assert_eq!(empty.next_cursor, None);
+        assert!(!empty.has_earlier);
+        assert_eq!(empty.next_before_sequence, None);
+    }
+
+    #[test]
+    fn event_pages_have_no_earlier_cursor_without_retained_rows() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let conversation = store.create_conversation("Empty pages", owner()).unwrap();
+        for position in [EventPagePosition::Latest, EventPagePosition::Before(1)] {
+            let page = store
+                .page_events_window(&conversation.id, position, 20)
+                .unwrap();
+            assert!(page.events.is_empty());
+            assert_eq!(page.total_count, 0);
+            assert_eq!(page.next_cursor, None);
+            assert!(!page.has_earlier);
+            assert_eq!(page.next_before_sequence, None);
+        }
     }
 
     #[test]
@@ -7710,7 +7906,7 @@ mod tests {
         let custom_before = snapshot_group(&root, "custom-group");
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
 
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
@@ -7857,7 +8053,7 @@ mod tests {
         drop(check);
 
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let conversation = store.get("legacy-reserved-group").unwrap();
         assert_eq!(conversation.event_count, 9);
         for membership in conversation.memberships {
@@ -7889,7 +8085,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let has_strategy_revision = store
             .with_connection(|connection| {
                 let mut statement = connection.prepare("PRAGMA table_info(conversations)")?;
@@ -7917,7 +8113,7 @@ mod tests {
             .unwrap();
         assert!(store.list(false).unwrap().is_empty());
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -8302,7 +8498,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let migrated = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let matching = migrated
             .get(&conversation_id)
             .unwrap()
@@ -8875,7 +9071,7 @@ mod tests {
 
         assert!(ConversationStore::open(&root).is_err());
         let store = ConversationStore::open_for_migration(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         let conversation = store.get("legacy-group").unwrap();
         assert!(conversation.assistant_membership_id.is_none());
         let profiles = store.membership_profiles("legacy-group").unwrap();
@@ -8885,7 +9081,7 @@ mod tests {
 
         drop(store);
         let reopened = ConversationStore::open(&root).unwrap();
-        assert_eq!(schema_version(&root), "13");
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
         assert_eq!(
             reopened.membership_profiles("legacy-group").unwrap().len(),
             1

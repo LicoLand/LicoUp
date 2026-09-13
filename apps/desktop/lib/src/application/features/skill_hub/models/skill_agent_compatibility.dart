@@ -45,7 +45,6 @@ String canonicalSkillAgentId(String value) {
       return 'copilot';
     case 'kilo':
       return 'kilo-code';
-    case 'kimi':
     case 'kimicode':
       return 'kimi-code';
     default:

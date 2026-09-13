@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,9 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_message.dart';
 import 'package:licoup/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -21,6 +21,7 @@ import 'package:licoup/src/platform/native_client/agent_service.dart';
 import '../layout/fixtures/production_client_shell_fixture.dart';
 import '../layout/fixtures/layout_destination_presentation_fixture.dart';
 import '../support/agent_conversation_workspace_fixture.dart';
+import '../support/fake_conversation_transport.dart';
 
 void main() {
   testWidgets(
@@ -113,12 +114,14 @@ void main() {
       );
       expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
 
-      final recentSessionRow = find.byKey(
-        Key('agent-conversation-recent-${session.id}'),
+      expect(
+        find.byKey(const Key('conversation-empty-content')),
+        findsOneWidget,
       );
-      expect(recentSessionRow, findsOneWidget);
 
-      await tester.tap(recentSessionRow);
+      // Restore a concrete selection through the existing application intent;
+      // the new-conversation home is now occupied by the particle sphere.
+      controller.selectConversationSession(session.id);
       await tester.pump();
 
       expect(controller.selectedConversationSession?.id, session.id);
@@ -192,6 +195,7 @@ void main() {
     addTearDown(agentService.dispose);
     final controller = ClientController(
       agentService: agentService,
+      conversationNativePort: agentService,
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
@@ -297,8 +301,9 @@ void main() {
   ) async {
     final agentService = _GroupNavigationAgentService();
     addTearDown(agentService.dispose);
-    final controller = ClientController(
+    final controller = _GroupNavigationController(
       agentService: agentService,
+      conversationNativePort: agentService,
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
@@ -373,7 +378,7 @@ void main() {
     );
     expect(conversationRow, findsOneWidget);
     expect(find.text('Historical group Agent detail'), findsOneWidget);
-    expect(find.text('其它对话'), findsOneWidget);
+    expect(find.text('其它对话'), findsNothing);
     expect(find.text('Unrelated Agent detail'), findsNothing);
     expect(
       tester
@@ -491,6 +496,7 @@ AgentConversationSession _navigationSession({
     id: id,
     agentId: agentId,
     title: title,
+    nativeSessionId: 'native:$id',
     createdAt: at,
     updatedAt: at,
     messages: [
@@ -504,7 +510,53 @@ AgentConversationSession _navigationSession({
   );
 }
 
-final class _GroupNavigationAgentService extends AgentService {
+final class _GroupNavigationController extends ClientController {
+  _GroupNavigationController({
+    required super.agentService,
+    required super.conversationNativePort,
+    super.llmGatewayMonitorInterval,
+  });
+
+  @override
+  Future<ConversationSessionPage> readConversationSessionPage(
+    String agentId, {
+    String sessionId = '',
+    required int offset,
+    required int pageSize,
+    String messageBefore = '',
+    int? messageLimit,
+    ConversationSessionProgressCallback? onProgress,
+  }) async {
+    expect(
+      sessionId,
+      isNotEmpty,
+      reason: 'Group navigation must request an exact bound session.',
+    );
+    expect([
+      'native:session:codex',
+      'native:session:claude',
+    ], contains(sessionId));
+    return ConversationSessionPage(
+      sessions: [
+        _navigationSession(
+          id: sessionId.substring('native:'.length),
+          agentId: agentId,
+          title: agentId == 'codex'
+              ? 'Agent detail'
+              : 'Historical group Agent detail',
+          at: '2026-09-13T00:00:00Z',
+        ),
+      ],
+      hasMore: false,
+    );
+  }
+}
+
+final class _GroupNavigationAgentService extends AgentService
+    implements ClientConversationNativePort {
+  _GroupNavigationAgentService()
+    : super(conversationNativePort: FakeConversationTransport().native);
+
   @override
   Future<TargetScanBatch> scanTargetsBatch(
     List<String> targetIds, {
@@ -515,16 +567,30 @@ final class _GroupNavigationAgentService extends AgentService {
   ]);
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     return {
       'ok': true,
       'result': switch (request['action']) {
         'conversation.list' => [_groupSummary],
-        'conversation.get' => _groupConversation,
+        'conversation.get' => {
+          ..._groupConversation,
+          if (request['includeNativeSessionReferences'] == true)
+            'nativeSessionReferences': [
+              {
+                'membershipId': 'membership:codex',
+                'agentId': 'codex',
+                'nativeSessionId': 'native:session:codex',
+              },
+              {
+                'membershipId': 'membership:claude',
+                'agentId': 'claude-code',
+                'nativeSessionId': 'native:session:claude',
+              },
+            ],
+        },
         'conversation.events.page' => {
           'events': <Map<String, dynamic>>[],
           'nextCursor': null,

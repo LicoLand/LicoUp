@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const supervisor = readFileSync(
-  "crates/licoup-native/src/platform/subagent_mcp_supervisor.rs",
+  "crates/licoup-mcp/src/transport.rs",
   "utf8",
 );
 const connector = readFileSync(
-  "crates/licoup-native/src/bin/lico-subagent-mcp.rs",
+  "crates/licoup-mcp/src/connector.rs",
   "utf8",
 );
 
@@ -22,11 +22,17 @@ test("service is bounded authenticated loopback with private discovery", () => {
   assert.match(supervisor, /impl Drop for SubagentMcpSupervisor/u);
 });
 
-test("connector contains no tools and performs no ambiguous retry", () => {
-  assert.doesNotMatch(connector, /lico_subagent_|lico_assistant_/u);
-  assert.doesNotMatch(connector, /retry|sleep/u);
+test("connector reports uncertain effects without replaying the request", () => {
+  assert.doesNotMatch(connector, /fn tool_catalog|fn call_tool|thread::sleep/u);
+  const forward = connector.slice(
+    connector.indexOf("fn forward("),
+    connector.indexOf("fn module_unavailable("),
+  );
+  assert.equal([...forward.matchAll(/connector_exchange\(/gu)].length, 1);
+  assert.match(connector, /mcp_outcome_unknown/u);
+  assert.match(connector, /reconcile_before_retry/u);
   assert.match(connector, /connector_exchange/u);
   assert.match(connector, /session_id/u);
-  assert.match(connector, /impl Drop for ConnectorSession/u);
+  assert.match(connector, /connector_close_session\(&discovery, session_id\)/u);
   assert.match(connector, /202 if response\.is_empty/u);
 });

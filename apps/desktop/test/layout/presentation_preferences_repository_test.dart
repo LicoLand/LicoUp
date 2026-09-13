@@ -43,12 +43,16 @@ void main() {
       repository.setLayoutProfile(LayoutProfileId.parse('atlas')),
       repository.setAppearancePreset('dark'),
       repository.setLocalePreference('zh'),
+      repository.setReduceMotion(true),
+      repository.setLoadingEffect('particles'),
     ]);
 
     final loaded = await repository.load();
     expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('atlas'));
     expect(loaded.preferences.appearancePresetId, 'dark');
     expect(loaded.preferences.localePreference, 'zh');
+    expect(loaded.preferences.reduceMotion, isTrue);
+    expect(loaded.preferences.loadingEffectId, 'particles');
   });
 
   test('canonical writes omit unknown runtime-only fields', () async {
@@ -77,8 +81,31 @@ void main() {
       'layoutProfileId',
       'appearancePresetId',
       'localePreference',
+      'reduceMotion',
+      'loadingEffectId',
     });
     expect(decoded['layoutProfileId'], 'atlas');
+    expect(decoded['reduceMotion'], isFalse);
+  });
+
+  test('reduce motion persists and absent preference follows system', () async {
+    final file = await preferencesFile(portableData);
+    final document = fallback.toJson()..remove('reduceMotion');
+    await file.writeAsString(jsonEncode(document));
+    final repository = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+    expect((await repository.load()).preferences.reduceMotion, isFalse);
+
+    await repository.setReduceMotion(true);
+    final reopened = FilePresentationPreferencesRepository(
+      portableData: portableData,
+      fallback: fallback,
+    );
+    expect((await reopened.load()).preferences.reduceMotion, isTrue);
+    await reopened.setReduceMotion(false);
+    expect((await repository.load()).preferences.reduceMotion, isFalse);
   });
 
   test(

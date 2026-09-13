@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +9,7 @@ import 'package:licoup/src/application/features/agents/contracts/adaptive_flywhe
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
@@ -19,7 +18,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'support/canonical_group/canonical_group_binding_fixture.dart';
@@ -38,7 +37,7 @@ void main() {
       final gateway = _StrategyGateway(callOrder: callOrder);
       final openedRevisions = <String?>[];
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -242,7 +241,7 @@ void main() {
       final conversationRunner = _GroupConversationRunner(callOrder: callOrder);
       final gateway = _StrategyGateway(callOrder: callOrder);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -303,7 +302,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _GroupConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -364,7 +363,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _GroupConversationRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -429,7 +428,7 @@ void main() {
       final conversationRunner = _GroupConversationRunner();
       final gateway = _StrategyGateway(inspectionBarrier: inspectionBarrier);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -494,7 +493,7 @@ void main() {
       final conversationRunner = _GroupConversationRunner();
       final gateway = _StrategyGateway();
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -552,7 +551,7 @@ void main() {
       );
       final gateway = _StrategyGateway();
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -620,7 +619,7 @@ void main() {
         ..failStrategyStart = true;
       final gateway = _StrategyGateway();
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -673,7 +672,7 @@ void main() {
       final conversationRunner = _GroupConversationRunner()
         ..dispatchPending = true;
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -706,10 +705,8 @@ void main() {
       expect(find.byKey(const Key('canonical-group-failure')), findsNothing);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
       controller.dispose();
@@ -729,7 +726,7 @@ void main() {
         postBarrier: postBarrier,
       );
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -758,10 +755,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
 
@@ -770,10 +765,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
       controller.dispose();
@@ -801,7 +794,7 @@ void main() {
       final persistent = _PersistentGateway();
       addTearDown(persistent.dispose);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -833,10 +826,8 @@ void main() {
       expect(find.text('streaming token'), findsOneWidget);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isTrue,
       );
       controller.dispose();
@@ -864,7 +855,7 @@ void main() {
       ],
     );
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
+    final controller = ClientConversationController(native: conversationRunner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -910,7 +901,7 @@ void main() {
       final persistent = _BurstGateway();
       addTearDown(persistent.dispose);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -991,7 +982,7 @@ void main() {
       final persistent = _PersistentGateway();
       addTearDown(persistent.dispose);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -1060,7 +1051,7 @@ void main() {
       final persistent = _PersistentGateway();
       addTearDown(persistent.dispose);
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -1088,6 +1079,15 @@ void main() {
 
       conversationRunner.getFailuresRemaining = 2;
       persistent.completeObserver();
+      await tester.pump();
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isTrue);
+      // Drive the fixture's explicit durable-readback retry timers. A settled
+      // animation frame does not mean those asynchronous retries have finished.
+      for (final retryDelay in const [200, 400, 800]) {
+        await tester.pump(Duration(milliseconds: retryDelay));
+        expect(find.text('streaming token'), findsOneWidget);
+      }
       await tester.pumpAndSettle();
 
       expect(find.text('streaming token'), findsOneWidget);
@@ -1116,7 +1116,7 @@ void main() {
       ..dispatchPending = true;
     final persistent = _PersistentGateway();
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
+    final controller = ClientConversationController(native: conversationRunner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -1170,7 +1170,7 @@ void main() {
       ],
     );
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
+    final controller = ClientConversationController(native: conversationRunner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -1228,7 +1228,7 @@ void main() {
       ],
     );
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
+    final controller = ClientConversationController(native: conversationRunner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -1274,7 +1274,7 @@ void main() {
       ..dispatchPending = true;
     final persistent = _PersistentGateway();
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: conversationRunner);
+    final controller = ClientConversationController(native: conversationRunner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -1335,7 +1335,7 @@ void main() {
             ]
             ..dispatchPending = true;
       final controller = ClientConversationController(
-        runner: conversationRunner,
+        native: conversationRunner,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -1369,10 +1369,8 @@ void main() {
       expect(controller.dispatchPending, isFalse);
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isFalse,
       );
 
@@ -1384,10 +1382,8 @@ void main() {
       expect(controller.liveTurns.single['turnHandle'], 'dispatch:live');
       expect(
         tester
-            .widget<LicoTopEdgePulse>(
-              find.byKey(const Key('conversation-header-running-edge')),
-            )
-            .enabled,
+            .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+            .active,
         isTrue,
       );
       controller.dispose();
@@ -1573,7 +1569,7 @@ final class _StrategyGateway implements AdaptiveFlywheelGateway {
   }
 }
 
-final class _GroupConversationRunner implements AgentCommandRunner {
+final class _GroupConversationRunner implements ClientConversationNativePort {
   _GroupConversationRunner({
     this.callOrder,
     this.postBarrier,
@@ -1595,11 +1591,10 @@ final class _GroupConversationRunner implements AgentCommandRunner {
   int getFailuresRemaining = 0;
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = request['action'];
     callOrder?.add('conversation:$action');
@@ -1686,20 +1681,6 @@ final class _GroupConversationRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _summary(int revision) => {

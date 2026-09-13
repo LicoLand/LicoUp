@@ -1,4 +1,5 @@
 import 'support/agents_workspace_test_harness.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
 
 void registerAgentsWorkspaceStateScenarios() {
   testWidgets('agent message list defaults to latest messages', (tester) async {
@@ -143,14 +144,25 @@ void registerAgentsWorkspaceStateScenarios() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('Explain the current build.'), findsOneWidget);
+      // The reverse transcript opens at the newest streamed reply. The
+      // earlier user row may be outside this small viewport's lazy range.
       expect(find.text('The build is still running'), findsOneWidget);
+      expect(find.text('Inspecting build status'), findsNothing);
       expect(
-        find.byKey(
-          const ValueKey<String>('conversation-process-semantics-live-process'),
-        ),
+        find.byKey(const Key('conversation-execution-menu')),
         findsOneWidget,
       );
+      final transcript = tester.widget<ListView>(
+        find.descendant(
+          of: find.byType(AgentConversationMessageList),
+          matching: find.byType(ListView),
+        ),
+      );
+      final scroll = transcript.controller!;
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pump();
+      expect(find.text('Explain the current build.'), findsOneWidget);
+      expect(find.text('Inspecting build status'), findsNothing);
     },
   );
 

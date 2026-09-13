@@ -1,4 +1,5 @@
 use super::super::process_supervisor::BoundedStdinWriter;
+use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use serde_json::Value;
 use std::io::{self, BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,9 @@ pub(super) enum TransportEvent {
 
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
     let bytes = crate::platform::native_agent_parser::adapters::codex::encode_message(message)?;
+    if let Some(observer) = RawExecutionObserver::current() {
+        observer.record_bytes("codex-app-server", RawExecutionDirection::Sent, &bytes);
+    }
     stdin
         .enqueue(bytes)
         .map_err(|_| io::Error::other("native agent protocol write failed"))
@@ -74,9 +78,10 @@ fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -> Result<()
         .map_err(|_| ())
 }
 
-/// Drain child stderr without retaining or forwarding its potentially private
-/// contents. Only a bounded truncation fact crosses the adapter boundary.
+/// Keep stderr out of ordinary adapter results; an invocation-owned local
+/// observer may inspect the bytes before the truncation fact is projected.
 pub(super) fn drain_stderr<R: Read>(mut stderr: R, max_bytes: usize, truncated: &AtomicBool) {
+    let raw_observer = RawExecutionObserver::current();
     let mut buffer = [0u8; 8192];
     let mut total_bytes = 0usize;
     loop {
@@ -85,6 +90,13 @@ pub(super) fn drain_stderr<R: Read>(mut stderr: R, max_bytes: usize, truncated: 
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(_) => return,
             Ok(read) => {
+                if let Some(observer) = raw_observer.as_ref() {
+                    observer.record_bytes(
+                        "codex-app-server",
+                        RawExecutionDirection::Stderr,
+                        &buffer[..read],
+                    );
+                }
                 total_bytes = total_bytes.saturating_add(read);
                 if total_bytes > max_bytes {
                     truncated.store(true, Ordering::Relaxed);

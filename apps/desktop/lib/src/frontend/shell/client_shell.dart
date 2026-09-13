@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -228,7 +229,7 @@ StatusProjection _statusProjection(StatusProjection value) => value;
 
 Widget _startupLoading(BuildContext context, StatusProjection status) {
   if (status.errorCode.isEmpty) {
-    return const Center(child: CircularProgressIndicator());
+    return const Center(child: LicoLoadingIndicator());
   }
   final locale = LicoStrings.of(context);
   final message = locale.isChinese

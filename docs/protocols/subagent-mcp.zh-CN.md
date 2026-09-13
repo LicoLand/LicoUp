@@ -1,190 +1,100 @@
 # LicoUp Subagent MCP
 
-[English](subagent-mcp.md) · 简体中文 · [Agent 适配器架构](../architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md)
+| 参考 | 文档 |
+| --- | --- |
+| 规范版本 | [English](subagent-mcp.md) |
+| 原生门面 | [原生 CLI](../architecture/NATIVE-CLI.zh-CN.md) |
+| Provider 执行与注册 | [Agent 适配器](../architecture/AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) |
+| 公共模式 | [Subagent MCP Schema](../../schemas/subagent_mcp/subagent_mcp.schema.json) |
 
-已实现权威由 `domain/subagent_mcp`、参数化 `core/mcp` 引擎、
-`licoup-agent-runtime`、`licoup-agent-adapters` 与私有 Canonical
-Conversation store 共同组成。公开契约冻结在
-`schemas/subagent_mcp/subagent_mcp.schema.json`。
+## 模块边界
 
-## 公共契约
+`crates/licoup-mcp` 独立拥有可选公共 MCP 服务和 stdio 连接器。它只依赖公开
+Rust 依赖，可以独立构建，不依赖 native、Flutter、领域 crate 或项目源码路径。
+它仅通过已安装原生 CLI 的公开 `licoup.stdio.v1` 进程契约调用 LicoUp。
+原生出站 MCP 客户端适配器仍是独立能力。
 
-- 主协议修订：`2025-06-18`；兼容入站修订：`2025-11-25`
-- 服务器：`lico-up-subagents` `0.13.0`
-- 传输：桌面客户端托管的已认证回环 Streamable HTTP 服务
-- 供应商入口：不含工具定义的轻量 stdio connector
-- Mesh caller：由适配器注册表接纳为 caller 的 Agent。connector 通过 `--caller`
-  或 `LICOUP_MCP_CALLER_PROVIDER` 声明自身 Agent；该集合不在代码或文档中逐一列举，
-  因此不会与签发席位的注册表发生漂移
+原生 `domain/subagents` 拥有调用方 Membership 检查、Provider 执行准入、
+持久化分派声明、继续、取消与回执。Canonical Conversation 与 PersistentTurn
+保留既有存储、调度器、历史、运行绑定及受保护操作权限。MCP 模块不复制这些权限。
 
-准确且有序的工具目录为：
+## 远程接口
 
-1. `lico_assistant_profiles`
-2. `lico_assistant_workflow_execute`
-3. `lico_assistant_workflow_inspect`
-4. `lico_assistant_workflow_cancel`
-5. `lico_subagents_list`
-6. `lico_subagent_probe`
-7. `lico_subagent_delegate`
-8. `lico_subagent_continue`
-9. `lico_subagent_cancel`
+服务名为 `lico-up-subagents`，版本 `0.14.0`，支持协议版本 `2025-06-18`
+和 `2025-11-25`。完整有序工具许可列表如下。
 
-所有输入 schema 都是封闭的。connector 不含目录与供应商逻辑；每个 stdio
-帧只执行一次 HTTP 尝试。
+| 工具 | 操作 |
+| --- | --- |
+| `lico_subagents_list` | 读取已准入的目标清单 |
+| `lico_subagent_probe` | 读取目标就绪及能力投影 |
+| `lico_subagent_delegate` | 准入新的 Membership 轮次 |
+| `lico_subagent_continue` | 通过私有原生绑定继续轮次 |
+| `lico_subagent_cancel` | 请求取消准确的活动分派声明 |
 
-## 软件使用指导
+工具模式来自 `licoup subagents catalog`，独立适配器仅选择上述五个名字并拒绝
+其余操作。输入模式全部封闭。连接器通过 `--caller` 或
+`LICOUP_MCP_CALLER_PROVIDER` 声明 Provider；准入调用方集合来自原生适配器注册表，
+服务及连接器不维护第二份 Provider 清单。
 
-客户端只内置一个 `licoup-guide` Skill 来指导以下工具的使用，边界见
-[使用指南](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md#licoup-使用指南)。
-MCP 服务只暴露软件操作，不提供开发策略或模型预设目录；传输服务名称与 Skill 名称独立。
+Assistant Profiles、Assistant 工作流、完整 Conversation 及其他原生能力仍通过
+[本地 CLI](../architecture/NATIVE-CLI.zh-CN.md) 使用，不由 MCP 远程公开。
+捆绑的 `licoup-guide` 负责把调用方引导到相应接口。
 
-## Assistant Profile 与临时工作流
+## 独立生命周期与开发
 
-前四个工具继续遵守 designated Assistant 契约。只有当前被指定为该 Conversation
-Assistant 的准确活动 Agent Membership，才能读取排序后的 Membership Profile，
-或执行、检查、取消 Assistant 创作的临时工作流。检查与取消会先从持久 run 中恢复
-其 Conversation 和 Assistant Membership，再认证 caller；调用方不能通过工具输入
-改选另一份权威。
+发布可执行文件名为 `lico-subagent-mcp`。本地原生门面提供
+`licoup mcp start`、`stop`、`status`、`reload`；`start` 和 `reload` 支持
+`--binary` 选择独立构建的模块。命令确保原生宿主可用，无需 Flutter。
+正常桌面宿主启动也会启动可选模块；失败只降低 MCP 可用性，不停止原生宿主。
 
-工作流执行只接受封闭的 workflow、binding、filter、input 与 idempotency 字段。
-持久 host 获准接纳 run 前，每个引用的 binding 都必须解析为活动 target Membership，
-且存在已安装、可执行的 `runtime.message.send` 路由。持久 Conversation host 始终是工作流与 turn 的唯一
-所有者；MCP 服务不会创建第二套 scheduler、history 或 terminal output store。
-原生身份、路径、prompt 与 Agent output 不进入 Profile 或工作流回执。
+```sh
+node tools/scripts/cargo-client.mjs build -p licoup-mcp
+licoup mcp reload --binary <built-lico-subagent-mcp>
+```
 
-`lico_assistant_workflow_execute` 另有三个可选字段承载主智能体对 callback
-模式 Graph 边的决策：`decision`（`advance`、`return` 或 `terminate`）、
-`callbackStateId` 与 `callbackStateVisit`。当 Assistant run 的工作流结算到一条
-callback 边时，run 持久挂起而不进入声明的下一节点；execute 调用返回
-`callback_decision_required` 与待决回调列表，主智能体 Membership 同时收到一条指明
-此应答通道的 `strategy-callback-request` 会话事件。决策搭乘同一次幂等 execute
-调用——同一 Conversation、Membership、workflow、bindings、input 与幂等键——因此重放
-的决策是陈旧的，不会结算任何东西。`advance` 进入声明的下一节点，`return` 重新进入
-已完成节点，`terminate` 取消该 run。
+模块也可直接执行 `service start|stop|status|reload`，通过 `LICOUP_CLI_BINARY`
+明确指定原生 CLI，通过 `LICOUP_PORTABLE_DIR` 限定状态目录。可复用、有界的
+公开 CLI 会话池承载准入请求；取消具有独立保留通道，不被缓慢清单或准入请求占用。
 
-每一次结算的效果都会在 Conversation 时间线上发出仅含标识符的主智能体提醒：
-Graph 沿 `flow` 边继续（含经 flow 走到终态 success）时为 `strategy-flow-settled`，
-callback 边 park 时为 `strategy-callback-request`，typed 终态失败时为
-`strategy-terminal-outcome`。提醒只携带标识符——run、state、visit、边模式，以及存在
-时的应答通道——绝不包含 Worker transcript、prompt、路径或工具结果。当指定 Assistant
-的回合已经结算时，提醒会自动开一轮新的 Assistant turn，其输入只带该标识事件；当该
-membership 已有回合在飞时，提醒只留在时间线上，不再叠加第二轮。`flow` 提醒绝不把
-边改写成 park。
+停止操作先认证私有控制请求，停止接受新帧，并在释放服务租约前排空已准入请求。
+重新加载随后启动所选文件。发现文档变化后，连接器更新 MCP 握手；绝不重放
+效果不确定的工具调用。原生轮次、声明、工作流和历史不受模块停止或更新影响，
+没有模块计时器取消轮次。服务崩溃后使用操作系统租约存活性清理旧发现记录，
+不会凭不可信 PID 杀死进程。
 
-## 权限与调用谱系
+## 权限与谱系
 
-每项效果都绑定到已认证 caller Membership，以及同一 Canonical Conversation
-中的准确 target Membership；二者都必须是活动 Agent Membership。store 在目标
-运行效果开始前持久提交 dispatch claim。自调用、重复活动边、跨 Conversation、
-重复祖先、环路以及超过四层的调用都会在零效果状态下拒绝。
+每项效果都要求已认证调用方，以及准确、同一 Conversation 内的活动 Agent
+Membership。原生存储在启动 Provider 工作前提交持久化声明，并拒绝自调用、
+重复活动边、跨 Conversation、重复祖先、环和超过四级深度的调用。
+继续操作解析私有适配器持有的原生身份；调用方不提交或接收原生会话和路径。
+结果不确定的取消保持 `reconciliation-required`。
 
-`lico_subagent_delegate`、`lico_subagent_continue` 与 `lico_subagent_cancel`
-的入站 `tools/call` 记入 Canonical Conversation 的 `subagent_mcp_inbound`。
-Mesh 证明读这些行、`subagent_dispatch_claims` 与 target Membership 的
-PersistentTurn，不刮取 caller Agent 会话或投影出的 `tool-call` 部分。
-
-委派只通过 Membership 作用域 PersistentTurn。续接从私有 runtime binding
-解析 adapter 自有的准确原生身份；调用方不能提交或读取原生 session/path。取消只
-寻址活动 claim。原生取消结果不确定时进入 `reconciliation-required`，绝不伪报完成。
-
-## Registry、准入与 readiness
-
-`McpCallerIntegration` 独占供应商注册、安装、身份、readiness、移除与新会话行为。
-`SubagentRuntimeAdapter` 独占能力、准确原生身份、send、continue、observe、活动
-cancel、cleanup 与状态投影。唯一 registry 连接两类 port；MCP application
-不含供应商分支。
-
-执行准入与 Conversation readiness 观察相互独立。执行要求准确供应商身份、已注册
-adapter、请求操作能力，以及已安装且可执行的 `runtime.message.send` 路由。已认证的
-直接 MCP caller、同一 Conversation 内活动且非自身的 Membership、持久 claim 规则、
-选定模型与服务健康仍是彼此独立的 fail-closed 门禁。准入后遇到的首个 discovery、
-binding、authentication、permission、launch、protocol、session、model、dispatch 或
-readback 失败会保留其类型化阶段契约。
-
-Conversation readiness 不会合成 transport 或 permission，也不会否决执行；它仅作为
-`lico_subagent_probe` 与其它 inventory 投影的观察信息。
-
-`lico_subagents_list` 与 `lico_subagent_probe` 是只读 inventory/readiness 表面。
-它们只检查准确的 Codex、Cursor、Antigravity target，不启动供应商进程、不刷新
-history、不打开 model owner，也不持久更新 discovery state。其投影只包含安全的
-供应商、状态、driver、readiness、能力与 blocker 事实。
-
-## 供应商行为
-
-| 供应商 | Caller 注册 | Target 通道 | 指令策略 | 活动控制 |
-| --- | --- | --- | --- | --- |
-| Codex | 外部 `lico-up-codex` package `0.2.0` | App Server stdio JSON-RPC | 原生 `developerInstructions` | 原生 steer 与 interrupt |
-| Cursor | 命名空间 user MCP entry | PTY 上的 create-chat/resume CLI | 一段普通、无标记、临时 wire prefix | 监督式活动 cancel 后准确 resume |
-| Antigravity | 命名空间 user MCP entry | OAuth/权限预检、Hook receipt、PTY CLI | 一段普通、无标记、临时 wire prefix | 监督式活动 cancel 后按 Hook 身份 resume |
-
-Cursor 与 Antigravity 不接收 `privateInstructions`。生成指令在 driver 调用前被
-剥离，不写入可见 Event/Part；准确用户 Event 文本始终是 canonical。
+委派、继续和取消将 `subagent_mcp_inbound` 证据与分派声明、所属 PersistentTurn
+共同记录到 Canonical Conversation。这些持久事件名仍是原生数据格式契约。
+只读清单和探测不启动 Provider、不注入提示、不刷新历史，也不另建运行权限。
 
 ## 本地安全与隐私
 
-HTTP 只监听回环。私有 discovery 保存临时、按供应商区分的 bearer token，并在
-客户端状态目录内加固。MCP session 与连接数有界；关闭时只删除当前 supervisor
-所属 generation。
+服务只绑定数字回环地址。每个请求必须具有准确 Host、没有浏览器 Origin，
+并在查询会话或执行效果前完成认证。私有发现文档为每个准入调用方提供短期 bearer
+令牌，并为控制端点提供独立令牌。工具调用方不能使用控制端点；控制令牌不会进入
+公共工具结果或连接器诊断。发现文档私有、原子写入；关闭只删除自身代次。
 
-discovery 为每个已接纳 caller 发布恰好一个 token，因此 token 映射即成员集合。
-connector 从该集合读回自己的席位：已声明但无席位的 Agent 会在第一个 stdio 帧之前
-被拒绝，拒绝信息同时说明原因和服务当前接纳的 caller。完全不属于任何 Assistant 的
-名称，与"确实存在但无 Mesh 席位"的 Assistant 分开报告。token 映射只做结构化校验，
-因此本版本不认识的 caller 集合会作为文档被接纳，而不会被当作损坏文档拒绝。
+连接、会话及准入请求数有界。HTTP 输入帧和健康检查可以约束传输 I/O，已准入
+原生工作没有适配器执行期限。协议取消只结束观察，只有显式
+`lico_subagent_cancel` 操作可以中断 Agent。
 
-注册变更要求一次 digest 绑定且只能消费一次的批准。Cursor 与 Antigravity 只修改
-LicoUp 命名空间且确认归属的 entry；外来 entry、同一连接器挂在其它任意 key 下的条目、
-多个 Antigravity 配置候选或配置发生变化都会 fail closed。同一次批准还会通过供应商
-user Skill Hub root 交付内嵌的 `licoup-guide` Skill（外来 Skill 内容同样
-fail closed），并在共享的 `~/.agents/skills` 表面重新发布同一份内容。该共享副本是
-拷贝而非链接，且不做逐字节校验，因为该处一个文件服务所有已安装的连接器版本。
-公开响应不包含配置正文、凭据、endpoint、原生 session、
-路径、prompt 或 Agent output。
+Provider 注册继续要求既有摘要绑定、一次性批准。命名空间条目、外部内容检查、
+平台认证、操作系统权限、原生密钥保管和受保护操作批准仍由原生模块负责。
+适合远程调用不构成开放公共监听器、修改端点、弱化认证或扩大数据传输的权限。
+已配置连接器在既有授权内使用现有已认证本地传输。
 
-## 相互独立的验证路径
+## 验证
 
-`tests/product-e2e/cli/subagent-mcp/upstream.mjs` 验证启动识别。它先初始化桌面
-客户端托管的服务并核对准确、有序的工具目录，再并发执行 Codex、Cursor 与
-Antigravity 三个独立启动探针。每个探针只读取供应商的标准 MCP
-startup/list/registry 表面，不发送 turn、不创建 Conversation，也不安装、移除或
-改写配置。该验证不依赖 Codex 自定义插件。Codex 通过仅在当前进程生效的配置
-override 接收一份标准 MCP 声明，该 override 不会持久化。Cursor 与 Antigravity
-使用各自支持的只读 `mcp list` 命令；若缺少归 LicoUp 所有的注册，则只报告
-`installer_configuration_required`，不会修改供应商配置。
-
-`tests/product-e2e/cli/subagent-mcp/downstream.mjs` 是独立的直接效果验证路径。
-默认模式是零效果预检。只有显式 `--live` 才能准备本地验证 Conversation，并针对
-每个尚未验证的 target 直接向已认证 Streamable HTTP 服务发送一次
-`lico_subagent_delegate`。该路径不启动 Caller Agent 进程或 Caller Agent
-Conversation。通过必须同时具备匹配的入站 delegate、持久 dispatch claim、选中的
-target Membership 与其 PersistentTurn dispatch 状态；既不读取也不保留 Agent
-输出。
-
-预检通过既有 LicoUp target 与 Agent Hub 表面解析三个 Agent 的安装版本、可执行
-`runtime.message.send` 路由及其报告的模型清单。Agent Hub 使用既有、有界的
-`--version` recipe 调用 target discovery 的准确可执行绑定，其中 Cursor 必须使用
-绑定的 `cursor-agent`；它不会重新扫描 `PATH`，也不会把绑定投影到 card 或 receipt。
-Conversation readiness 不参与准入。随后，验证器使用实际会采用的非自身 caller
-身份验证 MCP 服务。版本缺失或不安全、缺少可执行路由、批准模型不可用、服务不健康
-时，都会在创建 Conversation 或产生付费工作前停止。
-
-现场模型选择仅允许首个可用的低成本批准模型：Codex 依次为
-`gpt-5.3-codex-spark`、`gpt-5.4-mini`，Cursor 为 `composer-2.5`，Antigravity
-为已配置的 Gemini 3.7 Flash 别名；不存在 Auto 或昂贵 fallback。现场路径在最终
-三个 Agent 的主候选均来自共享 Conversation 验证模型权威，只有 Codex Mini
-fallback 在该路径边界补充。现场路径在最终重读 Manifest 到写入 target 记录期间
-持有唯一、未跟踪的排他 lease。它会在创建 Conversation 或付费前跳过 App Version、
-Target Agent 与 Target Agent Version 完全匹配的通过凭据；每个其余 target 最多执行
-一次 `tools/call`，内部从不重试，也不会用超时破坏其它现场 lease。结构化
-`licoup.mcp.error.v1` 结果只有在 code、stage、retryability 与 recovery 都属于封闭
-安全集合时才会保留；Notes 只能写入其中白名单 reason code。
-
-最近 App Version 的 Manifest 位于
-`tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml`。其 key 为 App
-Version 加 Target Agent，Codex、Cursor、Antigravity 各至多一行。跳过还要求当前
-Target Agent Version 一致且 `Results: passed`。每行严格按顺序包含 App Version、
-Caller Agent、Caller Agent Version、Target Agent、Target Agent Version、
-Results、Notes；Caller 字段表示已认证的非自身 Membership。Results 只能是
-`passed` 或 `failed`，Notes 为空或白名单 reason code。写入使用原子替换；封闭解析器
-拒绝重复、额外、乱序或不安全值。endpoint、token、prompt、本地标识符、路径、原生
-身份、模型与运行内容都不会进入 Manifest 或控制台回执。
+| 范围 | 维护入口 |
+| --- | --- |
+| 公共传输与工具契约 | [互操作清单](../../tests/product-e2e/cli/subagent-mcp/interop-manifest.yaml) |
+| 调用方协议验收 | [上游互操作](../../tests/product-e2e/cli/subagent-mcp/upstream.mjs) |
+| 原生目标执行与控制 | [下游互操作](../../tests/product-e2e/cli/subagent-mcp/downstream.mjs) |
+| 独立进程生命周期、恢复及取消隔离 | [模块生命周期测试](../../crates/licoup-mcp/tests/lifecycle.rs) |

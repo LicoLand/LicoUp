@@ -18,6 +18,7 @@ use anyhow::Result;
 use serde_json::Value;
 use std::path::PathBuf;
 
+pub(crate) use binaries::find_binary;
 pub use catalog::{AdapterCapabilities, TargetCandidate};
 pub(crate) use catalog::{normalize_target, target_def, target_defs};
 

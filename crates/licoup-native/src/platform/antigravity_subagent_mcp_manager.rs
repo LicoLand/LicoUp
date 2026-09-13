@@ -172,7 +172,7 @@ fn map_error(error: RegistrationError) -> AntigravitySubagentMcpError {
     }
 }
 
-/// Resolve the packaged thin connector next to `licoup-cli`.
+/// Resolve the packaged thin connector in the desktop's sidecar directory.
 ///
 /// Registration must use the bundled sidecar in an app bundle
 /// (`Contents/MacOS/lico-subagent-mcp`), never a workspace
@@ -182,8 +182,7 @@ pub fn default_mcp_binary_path() -> Option<PathBuf> {
     if let Some(directory) = std::env::current_exe()
         .ok()
         .as_ref()
-        .and_then(|exe| exe.parent())
-        .map(Path::to_path_buf)
+        .and_then(|exe| super::paths::packaged_binary_directory(exe))
     {
         let connector = directory.join(&name);
         if connector.is_file()

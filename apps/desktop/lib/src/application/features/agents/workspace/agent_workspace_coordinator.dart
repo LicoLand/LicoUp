@@ -9,6 +9,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
+import 'package:licoup/src/application/features/conversations/group_native_session_membership.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
@@ -24,6 +25,16 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
 abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
+  final groupNativeSessions = GroupNativeSessionMembership();
+
+  List<AgentConversationSession> conversationSessionCatalogFor(
+    String agentId,
+  ) =>
+      (groupNativeSessions.conversationId.isNotEmpty
+          ? groupNativeSessions.sessionsByAgent
+          : conversationSessionsByAgent)[agentId] ??
+      const [];
+
   AgentConversationGateway get conversationGateway;
   MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
@@ -159,7 +170,10 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   final Set<String> conversationSessionLoadMoreTargets = <String>{};
   final Set<String> conversationMessagePageLoadingKeys = <String>{};
   Map<String, String> conversationMessagePageErrors = const {};
-  Map<String, int> conversationMessagePageContinuationCounts = const {};
+  String conversationChildHistoryScope = '';
+  Map<String, AgentConversationSession> conversationChildSessions = const {};
+  final Set<String> conversationChildLoadingSessions = <String>{};
+  Map<String, String> conversationChildPageErrors = const {};
   Map<String, int> conversationSessionLoadMoreCountsByAgent = const {};
   Map<String, String> _selectedConversationSessionIdsByAgent = const {};
 
@@ -507,7 +521,10 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
     if (session == null) return '';
     final nativeId = session.nativeSessionId.trim();
     if (nativeId.isEmpty) return '';
-    return '${session.agentId.trim()}\u0000$nativeId';
+    final prefix = groupNativeSessions.conversationId.isEmpty
+        ? ''
+        : 'group:${groupNativeSessions.generation}\u0000';
+    return '$prefix${session.agentId.trim()}\u0000$nativeId';
   }
 
   bool get isLoadingEarlierSelectedConversationMessages =>

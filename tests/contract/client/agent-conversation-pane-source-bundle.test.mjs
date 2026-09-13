@@ -17,8 +17,6 @@ const productionLeaves = Object.freeze([
   "resize.dart",
 ]);
 const leafPaths = new Set(productionLeaves.map((leaf) => `${paneRoot}/${leaf}`));
-const removedRecentSessionsImport =
-  "package:licoup/src/frontend/features/agents/ui/agent_conversation_pane/recent_sessions.dart";
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
@@ -48,18 +46,6 @@ function importedDartSpecifiers(source) {
     .map((match) => match[1]);
 }
 
-async function dartFilesUnder(relativeRoot) {
-  const entries = await fs.readdir(path.join(repoRoot, relativeRoot), {
-    withFileTypes: true,
-  });
-  const files = await Promise.all(entries.map(async (entry) => {
-    const relativePath = path.posix.join(relativeRoot, entry.name);
-    if (entry.isDirectory()) return dartFilesUnder(relativePath);
-    return entry.isFile() && entry.name.endsWith(".dart") ? [relativePath] : [];
-  }));
-  return files.flat();
-}
-
 async function sourceGraph() {
   const graph = new Map();
   for (const leafPath of leafPaths) {
@@ -74,6 +60,15 @@ async function sourceGraph() {
 
 test("agent conversation pane facade exposes four leaves and one neutral port", async () => {
   const facade = await read(`${paneRoot}.dart`);
+  const entries = await fs.readdir(path.join(repoRoot, paneRoot), {
+    withFileTypes: true,
+  });
+  assert.deepEqual(
+    entries.filter((entry) => entry.isFile() && entry.name.endsWith(".dart"))
+      .map((entry) => entry.name)
+      .sort(),
+    [...productionLeaves].sort(),
+  );
   assert.deepEqual(
     [...facade.matchAll(/^export 'agent_conversation_pane\/([^']+)';$/gmu)]
       .map((match) => match[1])
@@ -125,32 +120,6 @@ test("workspace is the single typed controller projection", async () => {
   assert.match(port, /List\.unmodifiable/u);
   assert.match(port, /enum AgentConversationServeStatus/u);
   assert.equal(port.includes("Map<String, dynamic>"), false);
-});
-
-test("superseded hidden recent-sessions leaf is removed", async () => {
-  await assert.rejects(
-    fs.access(path.join(repoRoot, `${paneRoot}/recent_sessions.dart`)),
-    { code: "ENOENT" },
-  );
-  await fs.access(path.join(
-    repoRoot,
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart",
-  ));
-});
-
-test("production and test Dart sources do not import the removed recent-sessions URI", async () => {
-  const dartFiles = (
-    await Promise.all([
-      dartFilesUnder("apps/desktop/lib"),
-      dartFilesUnder("apps/desktop/test"),
-    ])
-  ).flat();
-  const staleImports = [];
-  for (const dartFile of dartFiles) {
-    const imports = importedDartSpecifiers(await read(dartFile));
-    if (imports.includes(removedRecentSessionsImport)) staleImports.push(dartFile);
-  }
-  assert.deepEqual(staleImports, []);
 });
 
 test("every pane responsibility retains a dedicated widget regression", async () => {

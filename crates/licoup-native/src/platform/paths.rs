@@ -15,6 +15,26 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
     PORTABLE_DATA_DIR_OVERRIDE.with(|value| value.replace(path))
 }
 
+/// The desktop owns the custody helper, while independently supervised
+/// sidecars remain in the outer app's executable directory.
+pub(crate) fn desktop_bundle_for_cli(executable: &Path) -> Option<&Path> {
+    if !executable.ends_with("Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli") {
+        return None;
+    }
+    executable.ancestors().nth(6).filter(|bundle| {
+        bundle
+            .extension()
+            .is_some_and(|extension| extension == "app")
+    })
+}
+
+pub(crate) fn packaged_binary_directory(executable: &Path) -> Option<PathBuf> {
+    match desktop_bundle_for_cli(executable) {
+        Some(bundle) => Some(bundle.join("Contents/MacOS")),
+        None => executable.parent().map(Path::to_path_buf),
+    }
+}
+
 /// Resolve only the current LicoUp state root.
 ///
 /// The default root is the `.lico-up` directory in the user's home, next to
@@ -135,6 +155,37 @@ fn prepare_current_root(path: PathBuf) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custody_helper_resolves_outer_app_and_sidecars() {
+        let bundle = Path::new("fixture/Custom Client.app");
+        let cli = bundle.join("Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli");
+        assert_eq!(desktop_bundle_for_cli(&cli), Some(bundle));
+        assert_eq!(
+            packaged_binary_directory(&cli),
+            Some(bundle.join("Contents/MacOS"))
+        );
+        assert_eq!(
+            desktop_bundle_for_cli(&bundle.join("Contents/MacOS/licoup-cli")),
+            None
+        );
+        assert_eq!(
+            desktop_bundle_for_cli(Path::new(
+                "fixture/LicoUpCustody.app/Contents/MacOS/licoup-cli"
+            )),
+            None
+        );
+    }
+
+    #[test]
+    fn standalone_cli_keeps_its_packaged_siblings() {
+        let cli = Path::new("fixture/bin/licoup-cli");
+        assert_eq!(desktop_bundle_for_cli(cli), None);
+        assert_eq!(
+            packaged_binary_directory(cli),
+            Some(PathBuf::from("fixture/bin"))
+        );
+    }
 
     #[test]
     fn current_override_is_private_and_uses_only_requested_root() {

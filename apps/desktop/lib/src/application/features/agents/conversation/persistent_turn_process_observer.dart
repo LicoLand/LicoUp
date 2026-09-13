@@ -128,6 +128,7 @@ void _appendPersistentTurnEvidence(
       cardType: diagnostic != null ? 'diagnostic' : role.replaceAll('_', '-'),
       cardTitle: kind,
       stableIdentity: messageId,
+      executionReference: state.executionReference,
       participantAgentId: state.participantAgentId,
       participantLabel: state.participantLabel,
       participantRole: state.participantRole,

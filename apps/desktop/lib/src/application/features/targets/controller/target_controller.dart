@@ -401,11 +401,15 @@ class TargetController extends ApplicationStateOwner {
     if (!_cachedTargetIds.contains(id)) {
       return false;
     }
-    final refreshCatalog = !_nativeModelCatalogRefreshedIds.contains(id);
-    return _revalidateConversationRuntimeBinding(
+    // History needs an executable binding, not the CLI model catalog. Release
+    // that dependency as soon as the lightweight probe has settled; model
+    // discovery can continue while the conversation's first page is read.
+    final bound = await _revalidateConversationRuntimeBinding(
       id,
-      enableAgentCliModelLookup: refreshCatalog,
+      enableAgentCliModelLookup: false,
     );
+    if (bound && !_disposed) ensureSelectedAgentModelCatalog(id);
+    return bound;
   }
 
   /// Loads the native model catalog for an Agent whose conversation interface
@@ -594,10 +598,17 @@ class TargetController extends ApplicationStateOwner {
 
   Future<List<TargetCandidate>> _loadCachedTargets() async {
     try {
-      return await _snapshotRepository.load(_portableData);
+      final cached = await _snapshotRepository.load(_portableData);
+      if (cached.isEmpty) {
+        return const [];
+      }
+      final currentIds = await _gateway.targetCatalogIds();
+      return cached
+          .where((target) => currentIds.contains(target.target.trim()))
+          .toList(growable: false);
     } catch (_) {
-      // Discovery remains authoritative when the local acceleration cache is
-      // unavailable, corrupt, or not yet backed by a platform data provider.
+      // Discovery remains authoritative when the acceleration cache or current
+      // catalog is unavailable. Restoring metadata never edits durable state.
       return const [];
     }
   }

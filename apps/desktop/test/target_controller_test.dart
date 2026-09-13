@@ -7,6 +7,136 @@ import 'package:licoup/src/contracts/target_management.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('cached runtime binding does not wait for the model catalog', () async {
+    final modelGate = Completer<void>();
+    final modelStarted = Completer<void>();
+    final candidate = _cursor(modelCatalog: const {});
+    final gateway = _Gateway(
+      probes: {'cursor': candidate},
+      selectedProbes: {
+        'cursor': candidate.withModelCatalog({
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh-model'},
+          ],
+        }),
+      },
+      modelGate: modelGate,
+      modelStarted: modelStarted,
+    );
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository()
+        ..loaded = [
+          TargetCandidate.fromJson({...candidate.toJson(), 'binaryPath': null}),
+        ],
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['cursor'],
+      isMobileRuntime: () => false,
+      scanMobileTargets: () async => const [],
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(() {
+      if (!modelGate.isCompleted) modelGate.complete();
+      controller.dispose();
+    });
+    await controller.hydrateCache();
+    var bound = false;
+    final binding = controller
+        .ensureConversationRuntimeBinding('cursor')
+        .then((value) => bound = value);
+    await modelStarted.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(bound, isTrue, reason: 'Model discovery must not block history.');
+    expect(controller.isRefreshingNativeModelCatalog('cursor'), isTrue);
+    expect(gateway.catalogLookups, [false, true]);
+    modelGate.complete();
+    await binding;
+    while (controller.isRefreshingNativeModelCatalog('cursor')) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(
+      (controller.targets.single.modelCatalog['models'] as List).single['name'],
+      'fresh-model',
+    );
+  });
+
+  test(
+    'cache restore uses current catalog and preserves manual lanes',
+    () async {
+      final manual = TargetCandidate.fromJson({
+        ..._target('workbuddy').toJson(),
+        'manual': true,
+      });
+      final registered = _target('custom-cli-agent');
+      final snapshots = _SnapshotRepository()
+        ..loaded = [
+          _target('retired-agent'),
+          _target('kimi-code'),
+          manual,
+          registered,
+        ];
+      final gateway = _Gateway(
+        catalogIds: {'kimi-code', 'workbuddy', 'custom-cli-agent'},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: snapshots,
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['kimi-code'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.hydrateCache();
+
+      expect(controller.targets.map((target) => target.target), [
+        'kimi-code',
+        'workbuddy',
+        'custom-cli-agent',
+      ]);
+      expect(controller.targets[1], same(manual));
+      expect(controller.targets[2], same(registered));
+      expect(gateway.scanCounts, isEmpty);
+      expect(snapshots.loaded, hasLength(4));
+      expect(snapshots.saveCalls, 0);
+    },
+  );
+
+  test('unavailable catalog skips cache without deleting it', () async {
+    final snapshots = _SnapshotRepository()..loaded = [_target('codex')];
+    final controller = TargetController(
+      gateway: _Gateway(failCatalog: true),
+      snapshotRepository: snapshots,
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      scanMobileTargets: () async => const [],
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.hydrateCache();
+
+    expect(controller.targets, isEmpty);
+    expect(snapshots.loaded.single.target, 'codex');
+    expect(snapshots.saveCalls, 0);
+  });
+
   test('incremental plan skips known targets unless explicitly rescanned', () {
     final known = [_target('codex')];
     expect(
@@ -110,9 +240,9 @@ void main() {
     );
   });
 
-  test('Claude current model is a settled native catalog', () {
+  test('Claude settings model list is a settled native catalog', () {
     final target = _target('claude-code').withModelCatalog({
-      'sources': ['claude-current'],
+      'sources': ['claude-settings'],
       'models': [
         {'name': 'configured-current-model'},
       ],
@@ -509,16 +639,33 @@ class _Gateway implements TargetManagementGateway {
     this.selectedProbes = const {},
     this.delays = const {},
     this.failTools = false,
+    this.catalogIds,
+    this.failCatalog = false,
+    this.modelGate,
+    this.modelStarted,
   });
 
   final Map<String, TargetCandidate?> probes;
   final Map<String, TargetCandidate?> selectedProbes;
   final Map<String, Duration> delays;
   final bool failTools;
+  final Set<String>? catalogIds;
+  final bool failCatalog;
+  final Completer<void>? modelGate;
+  final Completer<void>? modelStarted;
+
   var _inFlight = 0;
   var maxInFlight = 0;
   final Map<String, int> scanCounts = {};
   final List<bool> catalogLookups = [];
+
+  @override
+  Future<Set<String>> targetCatalogIds() async {
+    if (failCatalog) {
+      throw StateError('target_catalog_unavailable');
+    }
+    return catalogIds ?? probes.keys.toSet();
+  }
 
   @override
   Future<TargetScanBatch> scanTargetsBatch(
@@ -545,6 +692,10 @@ class _Gateway implements TargetManagementGateway {
     maxInFlight = _inFlight > maxInFlight ? _inFlight : maxInFlight;
     try {
       await Future<void>.delayed(delays[targetId] ?? Duration.zero);
+      if (enableAgentCliModelLookup) {
+        if (modelStarted?.isCompleted == false) modelStarted!.complete();
+        await modelGate?.future;
+      }
       if (enableAgentCliModelLookup && selectedProbes.containsKey(targetId)) {
         return TargetScanSlot(
           targetId: targetId,

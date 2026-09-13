@@ -6,7 +6,11 @@ import process from "node:process";
 import { packageClientRuntime } from "../cli-policy.mjs";
 import { runPackageProcess } from "../process-runner.mjs";
 
-export function buildNativeSidecars(selected, options) {
+export function buildNativeSidecars(
+  selected,
+  options,
+  { runProcess = runPackageProcess } = {},
+) {
   const bins = [
     ...new Set(
       selected.flatMap((item) =>
@@ -15,17 +19,6 @@ export function buildNativeSidecars(selected, options) {
     ),
   ];
   if (bins.length === 0 || options.skipNativeBuild || options.dryRun) return;
-  const args = [
-    path.join("tools", "scripts", "cargo-client.mjs"),
-    "build",
-    "--manifest-path",
-    path.join("crates", "licoup-native", "Cargo.toml"),
-  ];
-  if (options.mode === "release") args.push("--release", "--locked");
-  if (options.platform === "windows") {
-    args.push("--target", packageClientRuntime.windowsX64RustTarget);
-  }
-  for (const bin of bins) args.push("--bin", bin);
   const environment = {
     ...process.env,
     CARGO_ENCODED_RUSTFLAGS: encodedRustFlagsWithPathRemap(),
@@ -35,11 +28,28 @@ export function buildNativeSidecars(selected, options) {
     environment.LICO_CLIENT_PRODUCT_VERSION = clientProductVersion();
   }
   environment.LICO_CLIENT_RELEASE_TRACK = clientReleaseTrack(process.env);
-  runPackageProcess(process.execPath, args, {
-    failureCode: "native_sidecar_build_failed",
-    stage: "native-build",
-    env: environment,
-  });
+  for (const [crate, selectedBins] of [
+    ["licoup-native", bins.filter((bin) => bin !== "lico-subagent-mcp")],
+    ["licoup-mcp", bins.filter((bin) => bin === "lico-subagent-mcp")],
+  ]) {
+    if (selectedBins.length === 0) continue;
+    const args = [
+      path.join("tools", "scripts", "cargo-client.mjs"),
+      "build",
+      "--manifest-path",
+      path.join("crates", crate, "Cargo.toml"),
+    ];
+    if (options.mode === "release") args.push("--release", "--locked");
+    if (options.platform === "windows") {
+      args.push("--target", packageClientRuntime.windowsX64RustTarget);
+    }
+    for (const bin of selectedBins) args.push("--bin", bin);
+    runProcess(process.execPath, args, {
+      failureCode: "native_sidecar_build_failed",
+      stage: "native-build",
+      env: environment,
+    });
+  }
 }
 
 export function clientReleaseTrack(environment = process.env) {

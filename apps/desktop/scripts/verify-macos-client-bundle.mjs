@@ -2,11 +2,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { sanitizeError } from "../../../tools/scripts/lib/sanitize-error.mjs";
+import { macosCustodyHelper, macosCustodyHelperPaths } from "./package-client/macos/metadata.mjs";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const localProfile = process.argv.slice(2).includes("--local");
+const custodySigning = process.argv.slice(2).includes("--macos-custody-signing");
 const roots = [
   {
     kind: "bundle",
@@ -66,7 +68,38 @@ function executableArchitectures(executable) {
   return String(result.stdout || "").trim().split(/\s+/u).filter(Boolean);
 }
 
+export async function verifyMacosCustodyHelper(appPath, {
+  provisioned = false, architectures = executableArchitectures,
+} = {}) {
+  const missing = [];
+  const helper = macosCustodyHelperPaths(appPath);
+  if (!(await fileSize(helper.executablePath))) missing.push("custody executable missing");
+  const arch = architectures(helper.executablePath);
+  if (arch.length !== 1 || arch[0] !== "arm64") missing.push("custody executable must contain only arm64");
+  if (!(await fileExists(helper.infoPath))) {
+    missing.push("custody Info.plist missing");
+  } else {
+    const plist = await readText(helper.infoPath);
+    for (const [key, value] of [["CFBundleIdentifier", macosCustodyHelper.bundleId],
+      ["CFBundleExecutable", macosCustodyHelper.executableName], ["CFBundlePackageType", "APPL"]]) {
+      if (!plistHasString(plist, key, value)) missing.push(`custody ${key} invalid`);
+    }
+  }
+  const publicEntry = path.join(appPath, "Contents", "MacOS", "licoup-cli");
+  try {
+    if (await fs.readlink(publicEntry) !== "../Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli" ||
+        await fs.realpath(publicEntry) !== await fs.realpath(helper.executablePath)) {
+      missing.push("public CLI alias invalid");
+    }
+  } catch { missing.push("public CLI alias missing or not a symlink"); }
+  for (const profile of [helper.profilePath, path.join(appPath, "Contents", "embedded.provisionprofile")]) {
+    if ((await fileExists(profile)) !== provisioned) missing.push("provisioning profile presence differs from signing mode");
+  }
+  return missing;
+}
+
 async function main() {
+  if (localProfile && custodySigning) throw new Error("macOS signing verification modes conflict");
   const missing = [];
   for (const { kind, root, appName } of roots) {
     const appPath = path.join(root, appName);
@@ -95,18 +128,8 @@ async function main() {
         missing.push(`${appPath} CFBundleDisplayName must be LicoUp`);
       }
     }
-    for (const executableName of ["licoup"]) {
-      const size = await fileSize(appExecutablePath(root, appName, executableName));
-      if (size <= 0) {
-        missing.push(`${appPath} missing non-empty ${executableName}`);
-      }
-      const architectures = executableArchitectures(
-        appExecutablePath(root, appName, executableName),
-      );
-      if (architectures.length !== 1 || architectures[0] !== "arm64") {
-        missing.push(`${appPath} ${executableName} must contain only arm64`);
-      }
-    }
+    missing.push(...(await verifyMacosCustodyHelper(appPath, { provisioned: custodySigning }))
+      .map((failure) => `${kind}: ${failure}`));
     for (const relativePath of [
       path.join("package-metadata", "licoup", "packaging-modules.json"),
       "README-macos.txt"
@@ -128,8 +151,12 @@ async function main() {
         missing.push(`${root} macOS package manifest has mode=${manifest.mode}`);
       }
       const signing = manifest.signing || {};
-      if (signing.signingKind !== "local-ad-hoc-codesign") {
+      if (signing.signingKind !== (custodySigning ? "local-provisioned-developer-id-codesign" : "local-ad-hoc-codesign")) {
         missing.push(`${root} macOS package manifest has signing.signingKind=${signing.signingKind}`);
+      }
+      if (signing.custodyHelper !== macosCustodyHelper.relativeExecutablePath ||
+          signing.custodyProvisioningRequested !== custodySigning) {
+        missing.push(`${kind}: custody signing manifest mismatch`);
       }
       const expectedProductionEntitlements = !localProfile;
       const expectedEntitlementProfile = localProfile ? "release" : "production-release";
@@ -158,12 +185,14 @@ async function main() {
   if (missing.length > 0) {
     throw new Error(missing.join("\n"));
   }
-  console.log(`macOS ${localProfile ? "local" : "production-entitlements"} bundle verification passed`);
+  console.log(`macOS ${custodySigning ? "local-provisioned" : localProfile ? "local" : "production-entitlements"} bundle verification passed`);
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(`[macos-bundle] ${sanitizeError(error)}`);
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`[macos-bundle] ${sanitizeError(error)}`);
+    process.exitCode = 1;
+  }
 }

@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:presentation_contract/presentation_contract.dart';
@@ -111,7 +112,7 @@ final class _TelegramChannelCardState extends State<TelegramChannelCard> {
                   icon: _busy
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: LicoLoadingIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh),
                 ),
@@ -120,8 +121,8 @@ final class _TelegramChannelCardState extends State<TelegramChannelCard> {
             const SizedBox(height: 8),
             Text(
               chinese
-                  ? '在 Gateway 上层接入 Telegram 私聊。保存 token 后会重启网关以加载通道。Telegram 可读经此 bot 发送的内容。'
-                  : 'Admit Telegram DMs on the Gateway channel layer. Saving a token restarts the gateway to load the channel. Telegram can read content sent through this bot.',
+                  ? '保存令牌会重新连接 Telegram。Telegram 可以读取通过此机器人发送的消息。'
+                  : 'Saving the token reconnects Telegram. Telegram can read messages sent through this bot.',
               style: TextStyle(color: colors.textMuted, height: 1.35),
             ),
             const SizedBox(height: 14),

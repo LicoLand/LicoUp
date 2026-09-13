@@ -177,9 +177,11 @@ void main() {
     },
   );
 
-  test('finalization runs once after every background step settles', () async {
+  test('finalization and readiness do not wait for background work', () async {
     final calls = <String>[];
-    final controller = ClientLifecycleCoordinator(onReport: (_) {});
+    final background = Completer<void>();
+    final reports = <ClientLifecycleReport>[];
+    final controller = ClientLifecycleCoordinator(onReport: reports.add);
     addTearDown(controller.dispose);
 
     await controller.initialize(
@@ -189,7 +191,10 @@ void main() {
       backgroundSteps: [
         ClientBootstrapStep(
           id: 'background',
-          action: () async => calls.add('background'),
+          action: () async {
+            calls.add('background');
+            await background.future;
+          },
         ),
       ],
       finalStep: ClientBootstrapStep(
@@ -200,6 +205,12 @@ void main() {
     await controller.initialize(sequentialSteps: const []);
 
     expect(calls, ['core', 'background', 'finalize']);
+    expect(controller.projection.initialized, isTrue);
+    expect(background.isCompleted, isFalse);
+    background.completeError(StateError('synthetic_background_failure'));
+    await Future<void>.delayed(Duration.zero);
+    expect(reports.single.code, 'client_background_step_failed');
+    expect(controller.projection.initialized, isTrue);
   });
 
   test(

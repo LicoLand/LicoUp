@@ -590,6 +590,14 @@ final class _PanelPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences = _preferences.copyWith(reduceMotion: enabled);
+
+  @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async =>
+      _preferences = _preferences.copyWith(loadingEffectId: id);
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       _preferences = _preferences.copyWith(appearancePresetId: id);
 

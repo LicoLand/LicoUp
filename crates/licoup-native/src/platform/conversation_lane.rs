@@ -439,26 +439,6 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         .map(|p| p.driver_status.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    if adapter == RuntimeAdapter::DeepSeekHarness
-        && profile
-            .as_ref()
-            .is_none_or(|profile| profile.readiness != "ready")
-    {
-        return Ok(json!({
-            "ok": false,
-            "agentId": adapter.id(),
-            "laneFamily": effective_lane_family,
-            "driverId": adapter.driver_id(),
-            "runtimeProtocol": effective_runtime_protocol,
-            "capabilities": matrix,
-            "error": {
-                "code": blocker.unwrap_or_else(|| "deepseek_harness_jsonrpc_carrier_unverified".to_string()),
-                "stage": "capability/readiness",
-                "message": "The official DeepSeek Harness JSON-RPC carrier has not been verified."
-            }
-        }));
-    }
-
     if effective_lane_family == "unavailable" {
         return Ok(json!({
             "ok": false,
@@ -1544,15 +1524,21 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_open_and_capabilities_fail_closed_while_carrier_is_unverified() {
+    fn deepseek_open_preserves_separate_release_readiness_and_native_capabilities() {
         let open = open_or_resume(&json!({"agent": "deepseek-harness"})).unwrap();
-        assert_eq!(open["ok"], false);
-        assert_eq!(
-            open["error"]["code"],
-            "deepseek_harness_jsonrpc_carrier_unverified"
-        );
+        assert_eq!(open["ok"], true);
+        assert_eq!(open["openMode"], "new");
+        let resumed = open_or_resume(&json!({
+            "agent": "deepseek-harness", "sessionId": "synthetic-sdk-session"
+        }))
+        .unwrap();
+        assert_eq!(resumed["ok"], true);
+        assert_eq!(resumed["openMode"], "resume");
+        assert_eq!(resumed["nativeSessionId"], "synthetic-sdk-session");
 
         let capabilities = lane_capabilities(&json!({"agent": "deepseek-harness"})).unwrap();
+        assert_eq!(capabilities["capabilities"]["streaming"], false);
+        assert_eq!(capabilities["capabilities"]["cancel"], false);
         assert_eq!(capabilities["readiness"], "unverified");
         assert_eq!(capabilities["blockerCodes"], json!([]));
         assert_eq!(capabilities["summaryCodes"], json!(["evidence_missing"]));

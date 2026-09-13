@@ -15,7 +15,6 @@ const canonicalStore = read("crates/licoup-conversation/src/store/mod.rs");
 const nativeFacade = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const service = read("crates/licoup-native/src/domain/client_conversation/service.rs");
 const migration = read("crates/licoup-native/src/domain/client_conversation/migration.rs");
-const conversationMcp = read("crates/licoup-native/src/bin/lico-conversation-mcp.rs");
 const flutterController = read(
   "apps/desktop/lib/src/application/features/conversations/client_conversation_controller.dart",
 );
@@ -37,7 +36,7 @@ test("generated Conversation contract is active and excludes strategy execution"
     },
   );
   assert.equal(state.collections.includes("adaptive-flywheel"), false);
-  assert.equal(contract.defaultEventPageSize, 50);
+  assert.equal(contract.defaultEventPageSize, 20);
   assert.equal(contract.maxEventPageSize, 100);
   for (const action of contract.actions) {
     assert.match(service, new RegExp(`"${action.replaceAll(".", "\\.")}"`, "u"));
@@ -146,6 +145,4 @@ test("superseded operational stores and fixed workflow owners stay removed", () 
   ]) {
     assert.equal(existsSync(path.join(root, relative)), false, relative);
   }
-  assert.match(conversationMcp, /ConversationService::open/u);
-  assert.doesNotMatch(conversationMcp, /projection store|matchMode|replaceExisting/u);
 });

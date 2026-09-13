@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
@@ -38,7 +36,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final controller = ClientConversationController(
-        runner: _GroupConversationRunner(),
+        native: _GroupConversationRunner(),
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -57,6 +55,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           debugShowCheckedModeBanner: false,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           locale: const Locale('en'),
           supportedLocales: LicoStrings.supportedLocales,
           localizationsDelegates: const [
@@ -187,8 +189,6 @@ void main() {
       expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
 
       await tester.tap(rosterToggleFinder);
-      await tester.pump();
-      expect(surfaceFinder, findsOneWidget);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsNothing);
       expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
@@ -412,13 +412,12 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
   supportedActions: const ['runtime.message.send'],
 );
 
-final class _GroupConversationRunner implements AgentCommandRunner {
+final class _GroupConversationRunner implements ClientConversationNativePort {
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     return {
       'ok': true,
       'result': switch (request['action']) {
@@ -433,20 +432,6 @@ final class _GroupConversationRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 const Map<String, dynamic> _summary = {

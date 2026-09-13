@@ -26,6 +26,7 @@ final class ConversationFeatureComposition {
     );
     binding = ConversationBinding(
       projection: _projection.projection,
+      execution: _projection.execution,
       nativeCatalog: _projection.nativeCatalog,
       canonicalEvents: _projection.canonicalEvents,
       persistentTurns: _projection.persistentTurns,
@@ -88,7 +89,25 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       _beginRendererIntent,
     );
     switch (intent) {
+      case OpenConversationExecutionView(:final viewId, :final reference):
+        _projection.execution.open(viewId, reference, trace: trace);
+      case CloseConversationExecutionView(:final viewId):
+        _projection.execution.dismiss(viewId, trace: trace);
       case RefreshConversationCatalog(:final agentId):
+        if (_controller.groupNativeSessions.conversationId.isNotEmpty) {
+          _run(
+            () async {
+              final groupId = _controller.groupNativeSessions.conversationId;
+              await _controller.clientConversationController.reloadSelected();
+              if (_controller.groupNativeSessions.conversationId == groupId) {
+                await _controller.refreshGroupConversationSessions();
+              }
+            },
+            trace,
+            stage: 'group-history-refresh',
+          );
+          break;
+        }
         final requestedAgentId = agentId.trim();
         if (requestedAgentId.isNotEmpty) {
           _run(
@@ -99,7 +118,12 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           break;
         }
         final selectedAgentId = _controller.selectedConversationAgentId.trim();
-        if (selectedAgentId.isNotEmpty) {
+        if (selectedAgentId.isNotEmpty &&
+            _controller
+                    .clientConversationController
+                    .selectedConversation
+                    ?.group !=
+                true) {
           _run(
             () => _controller.refreshConversationSessions(selectedAgentId),
             trace,
@@ -152,14 +176,17 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       case StartConversationSession():
         _controller.clientConversationController.clearSelection();
         _controller.startNewConversationSession();
-      case LoadEarlierConversationEvents():
+      case LoadEarlierConversationEvents(:final conversationId):
         if (_controller
             .clientConversationController
             .selectedConversationId
             .isNotEmpty) {
           _run(
             () async {
-              await _controller.clientConversationController.reloadSelected();
+              final owner = _controller.clientConversationController;
+              if (owner.selectedConversationId == conversationId) {
+                await owner.loadEarlierEvents();
+              }
             },
             trace,
             stage: 'canonical-load-earlier',
@@ -171,6 +198,15 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             stage: 'native-load-earlier',
           );
         }
+      case LoadChildConversationMessages(:final childSessionId, :final earlier):
+        _run(
+          () => _controller.loadChildConversationMessages(
+            childSessionId,
+            earlier: earlier,
+          ),
+          trace,
+          stage: 'native-child-messages',
+        );
       case PostConversationMessage(
         :final conversationId,
         :final content,

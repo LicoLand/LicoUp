@@ -139,6 +139,17 @@ final class ModelsSemanticController extends ApplicationStateOwner {
     traceId: traceId,
   );
 
+  Future<bool> migrateCredentials({String? traceId}) => _execute(
+    () async {
+      if (!await _authorization.migrateCredentials(_runner)) {
+        throw const _SemanticCommandFailure();
+      }
+    },
+    failureCode: 'credential_migration_failed',
+    successCode: 'credential_migrated',
+    traceId: traceId,
+  );
+
   Future<bool> createCredential({
     required String provider,
     required String label,
@@ -240,7 +251,7 @@ final class ModelsSemanticController extends ApplicationStateOwner {
       final succeeded = authorized
           ? await _authorization.authorizeCredential(_runner, credentialId)
           : await _authorization.clearCredential(_runner, credentialId);
-      if (!succeeded) throw const _SemanticCommandFailure();
+      if (!succeeded) throw _credentialAuthorizationFailure();
       if (authorized) await _authorization.refreshInventory(_runner);
       await _lifecycle.pollNow();
     },
@@ -254,7 +265,7 @@ final class ModelsSemanticController extends ApplicationStateOwner {
   Future<bool> authorizeAllCredentials({String? traceId}) => _execute(
     () async {
       final authorized = await _authorization.authorize(_runner);
-      if (!authorized) throw const _SemanticCommandFailure();
+      if (!authorized) throw _credentialAuthorizationFailure();
       await _authorization.refreshInventory(_runner);
       await _lifecycle.pollNow();
     },
@@ -267,6 +278,14 @@ final class ModelsSemanticController extends ApplicationStateOwner {
     failureCode: 'telegram_refresh_failed',
     traceId: traceId,
   );
+
+  _SemanticCommandFailure _credentialAuthorizationFailure() =>
+      _SemanticCommandFailure(
+        _authorization.failure ==
+                LlmVaultAuthorizationFailure.keychainActionRequired
+            ? 'credential_keychain_action_required'
+            : null,
+      );
 
   Future<bool> saveTelegramToken(String token, {String? traceId}) async {
     final normalized = token.trim();
@@ -417,6 +436,9 @@ final class ModelsSemanticController extends ApplicationStateOwner {
       await action();
       _noticeCode = successCode;
       return true;
+    } on _SemanticCommandFailure catch (error) {
+      _noticeCode = error.reasonCode ?? failureCode;
+      return false;
     } on Object {
       _noticeCode = failureCode;
       return false;
@@ -468,5 +490,7 @@ final class ModelsSemanticController extends ApplicationStateOwner {
 }
 
 final class _SemanticCommandFailure implements Exception {
-  const _SemanticCommandFailure();
+  const _SemanticCommandFailure([this.reasonCode]);
+
+  final String? reasonCode;
 }

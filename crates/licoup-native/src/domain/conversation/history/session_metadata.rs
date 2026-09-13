@@ -195,12 +195,39 @@ pub(super) fn session_from_messages_with_title(
         "title": title,
         "createdAt": created_at,
         "updatedAt": updated_at,
+        "sourceRevision": source_revision(path, metadata),
         "native": true,
         "readOnly": true,
         "messageCount": projected.len(),
         "semantic": semantic,
         "messages": projected
     })
+}
+
+/// Reuse the source stat facts that invalidate the browse cache. Display
+/// timestamps can be rounded or provider-owned and are not content revisions.
+fn source_revision(path: &Path, metadata: &fs::Metadata) -> String {
+    let mut revision = format!(
+        "{}:{}",
+        metadata.len(),
+        super::projection_cache::modified_ns(metadata)
+    );
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "db" | "sqlite" | "sqlite3" | "vscdb"))
+    {
+        let mut wal = path.as_os_str().to_os_string();
+        wal.push("-wal");
+        if let Ok(metadata) = fs::metadata(Path::new(&wal)) {
+            revision.push_str(&format!(
+                ";{}:{}",
+                metadata.len(),
+                super::projection_cache::modified_ns(&metadata)
+            ));
+        }
+    }
+    revision
 }
 
 pub(super) fn ensure_message_semantic_layer(message: &mut Value) {
@@ -528,7 +555,7 @@ pub(super) fn source_client_label(source_client: &str) -> &'static str {
         "cursor-agent" => "Cursor Agent CLI",
         "hermes" => "Hermes Agent",
         "kilo-code" => "Kilo Code",
-        "kimi" => "Kimi",
+        "kimi-code" => "Kimi Code",
         "openclaw" => "OpenClaw",
         "opencode" => "OpenCode",
         "pi" => "Pi Agent",
@@ -546,7 +573,7 @@ pub(super) fn host_app_label(host_app: &str) -> &'static str {
         "cursor" => "Cursor",
         "hermes" => "Hermes Agent",
         "kilo-code" => "Kilo Code",
-        "kimi" => "Kimi",
+        "kimi-code" => "Kimi Code",
         "openclaw" => "OpenClaw",
         "opencode" => "OpenCode",
         "pi" => "Pi Agent",
@@ -567,7 +594,7 @@ pub(super) fn source_client_display(source_client: &str) -> &'static str {
         "cursor" => "cursor",
         "cursor-agent" => "cursor agent cli",
         "hermes" => "hermes",
-        "kimi" => "kimi",
+        "kimi-code" => "kimi code",
         "pi" => "pi",
         _ => "conversation",
     }
@@ -585,7 +612,7 @@ pub(super) fn host_app_display(host_app: &str) -> &'static str {
         "copilot" => "copilot",
         "cursor" => "cursor",
         "hermes" => "hermes",
-        "kimi" => "kimi",
+        "kimi-code" => "kimi code",
         "pi" => "pi",
         _ => "native",
     }

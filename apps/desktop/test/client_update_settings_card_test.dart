@@ -13,6 +13,39 @@ import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
+  testWidgets('update actions share dimensions on wide and narrow screens', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    for (final width in [800.0, 360.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 700));
+      await _pumpCard(tester, fixture);
+      final actions = [
+        'client-update-check-github',
+        'client-update-download-local',
+        'client-update-apply-restart',
+      ].map((key) => find.byKey(Key(key))).toList();
+      final sizes = actions.map(tester.getSize).toSet();
+      expect(sizes, hasLength(1));
+      expect(sizes.single.height, 40);
+      final positions = actions.map(tester.getTopLeft).toList();
+      if (width > 560) {
+        expect(positions.map((position) => position.dy).toSet(), hasLength(1));
+      } else {
+        expect(positions.map((position) => position.dx).toSet(), hasLength(1));
+      }
+      expect(tester.takeException(), isNull);
+    }
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('shows three actions, version, and public source address', (
     tester,
   ) async {
@@ -102,6 +135,17 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture);
+    final currentStatus = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(currentStatus.data, 'Up to date');
+    expect(
+      currentStatus.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .success,
+    );
     expect(find.byKey(const Key('client-update-release-track')), findsNothing);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
@@ -117,6 +161,9 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('无法检查更新，请重试'), findsOneWidget);
+    expect(find.text('更新失败，请重试'), findsNothing);
+    expect(find.text('已是最新版本'), findsNothing);
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
     expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
@@ -138,6 +185,36 @@ void main() {
     await _pumpCard(tester, fixture);
     await tester.tap(find.byKey(const Key('client-update-apply-restart')));
     expect(fixture.intents.values.whereType<ApplyClientUpdate>(), hasLength(1));
+  });
+
+  testWidgets('unavailable update metadata is neutral and retryable', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.unavailable,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        errorCode: 'client_update_metadata_unavailable',
+      ),
+    );
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('当前发布尚未提供更新资料'), findsOneWidget);
+    expect(find.text('已是最新版本'), findsNothing);
+    final status = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(
+      status.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .textSecondary,
+    );
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(_onPressed(tester, 'client-update-download-local'), isNull);
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 }
 

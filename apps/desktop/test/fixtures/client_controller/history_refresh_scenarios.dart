@@ -605,7 +605,7 @@ void registerClientHistoryRefreshScenarios() {
           (request) =>
               request['sessionId'] == 'native-codex-active' &&
               request['limit'] == 1 &&
-              request['messageLimit'] == 50,
+              request['messageLimit'] == 20,
         ),
         isTrue,
       );

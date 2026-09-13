@@ -1,4 +1,4 @@
-use super::super::contract::number_field;
+use super::super::contract::{UsageVariant, number_field};
 use super::constants::{CACHE_SCHEMA_VERSION, PARSER_REVISION};
 use serde_json::{Value, json};
 
@@ -84,6 +84,8 @@ pub(super) struct ParserState {
     pub(super) forked_from_id: Option<String>,
     pub(super) current_model: Option<String>,
     pub(super) current_turn_id: Option<String>,
+    pub(super) current_variant: UsageVariant,
+    pub(super) pending_context: bool,
     pub(super) raw_totals: Option<TokenTotals>,
     pub(super) counted_totals: Option<TokenTotals>,
     pub(super) has_divergent_totals: bool,
@@ -105,6 +107,8 @@ pub(super) struct CachedFile {
 pub(super) struct ScanStats {
     pub(super) discovered_files: u64,
     pub(super) reused_files: u64,
+    pub(super) identity_refreshed_files: u64,
+    pub(super) identity_skipped_files: u64,
     pub(super) appended_files: u64,
     pub(super) rescanned_files: u64,
     pub(super) parsed_bytes: u64,
@@ -120,6 +124,8 @@ impl ScanStats {
             "fresh": self.cache_fresh,
             "discoveredFiles": self.discovered_files,
             "reusedFiles": self.reused_files,
+            "identityRefreshedFiles": self.identity_refreshed_files,
+            "identitySkippedFiles": self.identity_skipped_files,
             "appendedFiles": self.appended_files,
             "rescannedFiles": self.rescanned_files,
             "parsedBytes": self.parsed_bytes,

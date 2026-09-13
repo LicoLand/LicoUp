@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_search_capsule.dart';
 
 /// Messaging-chrome binding of [LicoSearchCapsule]. The Agents page hosts it
@@ -23,11 +22,11 @@ final class MessagingSearchCapsule extends StatelessWidget {
       width: width,
       hintText: strings.sidebarSearchHint,
       colors: LicoSearchCapsuleColors(
-        fill: MessagingDesktopMetrics.chromeControlFill(isDark: colors.isDark),
-        border: MessagingDesktopMetrics.chromeSearchBorder(),
-        icon: MessagingDesktopMetrics.chromeSearchIcon(),
-        hint: MessagingDesktopMetrics.chromeSearchPlaceholder(),
-        text: MessagingDesktopMetrics.chromeForeground(),
+        fill: colors.surfaceLow,
+        border: colors.line,
+        icon: colors.textMuted,
+        hint: colors.textMuted,
+        text: colors.text,
       ),
     );
   }

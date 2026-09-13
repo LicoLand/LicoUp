@@ -55,7 +55,7 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
   ]) {
     assert(
       facade.includes("local_service::serve::ensure") &&
-        facade.includes("local_service::sse::watch_data") &&
+        facade.includes("local_service::sse::watch_frames") &&
         facade.includes("ServeEventParser") &&
         facade.includes("EventStreamFailure") &&
         !facade.includes("ureq::") &&

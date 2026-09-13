@@ -1,12 +1,14 @@
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
+import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
 final class ConversationBinding {
   const ConversationBinding({
     required this.projection,
+    this.execution,
     required this.nativeCatalog,
     required this.canonicalEvents,
     required this.persistentTurns,
@@ -20,6 +22,7 @@ final class ConversationBinding {
   });
 
   final ProjectionSource<ConversationProjection> projection;
+  final ProjectionSource<ConversationExecutionProjection>? execution;
   final ProjectionSource<NativeConversationCatalogProjection> nativeCatalog;
   final ProjectionSource<CanonicalConversationProjection> canonicalEvents;
   final ProjectionSource<PersistentTurnProjection> persistentTurns;

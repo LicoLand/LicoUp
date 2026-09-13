@@ -10,7 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_surfaces.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
@@ -69,9 +69,8 @@ final class _ContinuousAssistantParentCardState
         lifecycle: lifecycle,
         sequence: sequence,
       ),
-      child: LicoSurface(
+      child: ContinuousParentSurface(
         selected: widget.focused,
-        padding: const EdgeInsets.all(LicoContentSpacing.compact),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

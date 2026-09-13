@@ -104,10 +104,12 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
         if (!_isCurrent(generation)) return;
       }
       if (runBackgroundSteps && backgroundSteps.isNotEmpty) {
-        await Future.wait<void>([
-          for (final step in backgroundSteps)
-            _runBackgroundStep(step, generation),
-        ]);
+        // Update checks and optional service warmups must not delay the
+        // selected page's entry hook or the ready state. Each task owns its
+        // failure report and remains active until its own work settles.
+        for (final step in backgroundSteps) {
+          unawaited(_runBackgroundStep(step, generation));
+        }
       }
       if (!_isCurrent(generation)) return;
       if (finalStep != null) {

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -10,14 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 import '../test/support/canonical_group/canonical_group_binding_fixture.dart';
 
@@ -33,11 +32,15 @@ void main() {
         'lico-group-button-flow-',
       );
       addTearDown(() => portableRoot.delete(recursive: true));
-      final runner = _IsolatedNativeRunner(
-        cliPath: cliPath,
-        portableRoot: portableRoot.path,
+      final service = AgentService(
+        dataDirectory: () async => portableRoot.path,
+        resolveCliBinary: () async => File(cliPath),
       );
-      final controller = ClientConversationController(runner: runner);
+      addTearDown(service.dispose);
+      final native = _ObservedConversationNativePort(
+        service.conversationNativePort,
+      );
+      final controller = ClientConversationController(native: native);
       addTearDown(controller.dispose);
       await controller.initialize();
       final captureKey = GlobalKey();
@@ -142,12 +145,12 @@ void main() {
       await _capture(captureKey, '06-group-created');
 
       expect(
-        runner.requests.where(
+        native.requests.where(
           (request) => request['action'] == 'conversation.create',
         ),
         hasLength(1),
       );
-      final createRequest = runner.requests.firstWhere(
+      final createRequest = native.requests.firstWhere(
         (request) => request['action'] == 'conversation.create',
       );
       expect(
@@ -280,62 +283,23 @@ class _GroupConversationButtonHarnessState
   }
 }
 
-final class _IsolatedNativeRunner implements AgentCommandRunner {
-  _IsolatedNativeRunner({required this.cliPath, required this.portableRoot});
+final class _ObservedConversationNativePort
+    implements ClientConversationNativePort {
+  _ObservedConversationNativePort(this.native);
 
-  final String cliPath;
-  final String portableRoot;
+  final ClientConversationNativePort native;
   final List<Map<String, dynamic>> requests = [];
 
   @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnsupportedError('runCli is not used by this acceptance');
-
-  @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final decodedRequest = jsonDecode(stdinText);
-    if (decodedRequest is! Map) throw StateError('request_invalid');
-    final request = Map<String, dynamic>.from(decodedRequest);
-    requests.add(request);
-    if (request['action'] == 'conversation.create') {
+    requests.add(command.payload);
+    if (command.action == 'conversation.create') {
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    final process = await Process.start(
-      cliPath,
-      args,
-      environment: {
-        ...Platform.environment,
-        'LICOUP_PORTABLE_DIR': portableRoot,
-      },
-      runInShell: false,
-    );
-    final stdout = utf8.decoder.bind(process.stdout).join();
-    final stderr = process.stderr.drain<void>();
-    process.stdin.write(stdinText);
-    await process.stdin.close();
-    final results = await Future.wait<dynamic>([
-      process.exitCode,
-      stdout,
-      stderr,
-    ]);
-    if (results[0] != 0) throw StateError('native_cli_failed');
-    final decoded = jsonDecode(results[1] as String);
-    if (decoded is! Map) throw StateError('native_response_invalid');
-    return Map<String, dynamic>.from(decoded);
+    return native.executeClientConversation(command);
   }
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Future<void> _capture(GlobalKey captureKey, String name) async {

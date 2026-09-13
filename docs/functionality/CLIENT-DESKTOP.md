@@ -27,8 +27,11 @@ Built-in capabilities are limited to:
 5. the six product scenarios defined below.
 
 Capabilities outside this scope are not built into the client, registered as
-commands, or shown in navigation. The default UI modules are **Agents**, **Token
-Usage**, **Skill Hub**, **Mobile Relay**, and **Settings**.
+commands, or shown in navigation. The default UI destinations are **Conversations**, **Agent Center**, **Statistics**,
+**Model Gateway**, **Mobile Pairing**, and **Settings**. Agent detail retains
+Plugin and Skill management. Mobile Pairing includes Chat Channels.
+[Design system](DESIGN-SYSTEM.md) owns navigation presentation, theme styles,
+fonts, motion, component styling and independent loading behavior.
 
 ## Mandatory External-Transfer Contract
 
@@ -55,8 +58,8 @@ requires a separate direct approval for each file.
 | --- | --- |
 | Flutter contracts | Defines ports, values, and cross-layer messages without depending on application, frontend, backend, or platform implementations. |
 | Flutter application | Owns use cases and narrow controllers; one feature must not reach another feature's storage or UI implementation. |
-| Flutter frontend | Consumes application/contracts only and contains no native process, filesystem, network, or protocol implementation. |
-| Flutter platform/backend | Implements narrow contracts and returns bounded business projections rather than raw process output. |
+| Flutter frontend | Consumes named presentation Bindings and contracts, and contains no application, backend, native process, filesystem, network, or protocol implementation. |
+| Flutter platform/backend | Implements narrow contracts and returns business projections; explicit local execution inspection uses the dedicated record contract. |
 | Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
 | Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
@@ -119,6 +122,13 @@ concurrency. Results are normalized and deduplicated by stable target identity,
 then registered in a local cache with configuration references needed for fast
 subsequent launch.
 
+Discovery snapshots are restored only for IDs in the current native target
+registry. The local read-only `targets catalog` command projects that registry,
+including registered custom CLI lanes, without discovering processes or virtual
+machines. Retired adapters cannot reappear from old snapshots. If the registry
+is unavailable, the client skips the acceleration snapshot and preserves its
+stored data; existing manual and virtual-machine boundaries still apply.
+
 On macOS, the accessible-environment scan also enumerates running local OrbStack
 machines and checks a fixed set of documented or common OpenClaw and Hermes
 executable locations. Guest probes have bounded time, output, machine count, and
@@ -154,6 +164,11 @@ optional package is available, otherwise its official TUI Gateway JSON-RPC.
 History uses the selected protocol's session list/load operations rather than
 guest filesystem access, and local MCP server descriptors are not forwarded
 into the VM.
+
+The local execution viewer follows the exact-dispatch contract in
+[Local execution inspection](../architecture/CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+Its presentation and first-reply waiting behavior are owned by the
+[design system](DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).
 
 When official mid-turn injection is unavailable, LicoUp may stream the active
 turn for display and start the next user message only after the native reply is
@@ -217,6 +232,32 @@ with the named main conversation kept separate from subordinate totals. It
 shows numeric prompt, cached-input, completion, total, and exact-coverage facts
 only.
 
+The Rust [global model registry](../architecture/MODEL-REGISTRY.md) owns model
+identity across source applications, reasoning efforts and speed modes. Fresh
+and retained reports use the same directory; each canonical `modelTokenUsage`
+entry retains its source's numeric effort and speed breakdown. An explicit
+refresh updates the public model directory before rescanning local usage.
+Missing effort has no placeholder row and never reduces the source total.
+
+Completed daily rollups remain durable accounting facts when their source files
+are changed or removed. Cache schema upgrades migrate those facts in place;
+reparsing available files is not permission to replace sealed history. Missing
+historical request controls stay absent. Recovery binds a selected accounting
+snapshot to its exact local scope and closed date window, without adding or
+taking maxima across histories that no longer share source-level identities.
+
+Retained scan reports are rolling snapshots of those accounting facts. Retention
+is bounded by both report count and the encoded collection size. It removes the
+oldest snapshots first and keeps the newest report intact; it never removes
+daily ledger facts. A report that cannot fit by itself produces a persistence
+error and leaves the previous collection intact.
+
+The [design system](DESIGN-SYSTEM.md) owns the Agent and model palettes and the
+expandable source-share presentation. The waveform shows up to ten series;
+the share list keeps its fifteen-row limit, with one Others row for unattributed
+usage and any overflow. Source disclosure never changes the selected window or
+the underlying counts.
+
 LicoUp is the scheduling authority and Adaptive Flywheel is the route-selection
 authority. A raw native conversation location is handed to a selected adapter
 privately; it is never part of the desktop report. The native ledger keeps active
@@ -244,6 +285,31 @@ amounts and the billing-cycle reset.
 Regression: agent/model dimensions, default and custom windows, timezone
 transitions, deduplication, cache invalidation, redaction, and empty/partial local
 source handling.
+
+DeepSeek Harness usage comes from provider-reported samples in its durable
+`assistant/message` and `assistant/attempt` events, including billed retries.
+Discovery uses `DSH_HOME/sessions` (default `~/.dsh/sessions`) or an explicitly
+selected history root. One scan reuses one lazily started metadata reader and
+the installed official read-only persistence API; it loads no profile, current
+provider configuration, or credentials. The API decodes plaintext and Zstandard
+generations in memory and supplies the exact fork-inherited prefix to exclude.
+Only the highest canonical generation represents each session. Native source
+fingerprints skip unchanged sessions, and daily snapshot replacement keeps
+generation upgrades and repeated refreshes from recounting consumption.
+
+Harness input is uncached input; reported cache reads and writes belong in
+prompt totals. Reasoning is already included in output and is not added again.
+The response's actual model and provider take precedence, while effort comes
+only from its matching recorded request header or materialized adapter defaults.
+The public session meter preserves reported disjoint input/output buckets when
+full-call totals are absent, using its documented zero contribution for absent
+optional cache buckets. Supplied invalid counts or inconsistent totals remain
+unavailable requests; context pressure and estimated composition never become
+usage. Initial extraction
+reads the complete selected session histories once, with work and byte counts
+recorded by the existing background scan cache. A reader failure reports a
+sanitized stage. Historical usage support does not imply SDK transcript
+readback or a live `usageStatus` control.
 
 ## Preview Scenario S-06 — End-to-End Encryption and Mobile Relay
 

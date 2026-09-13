@@ -1,4 +1,7 @@
 use super::super::process_supervisor::BoundedStdinWriter;
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionDirection, RawExecutionObserver,
+};
 use serde_json::Value;
 use std::io::{self, BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +20,9 @@ pub(super) enum TransportEvent {
 pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
     let bytes =
         crate::platform::native_agent_parser::adapters::claude_code::encode_message(message)?;
+    if let Some(observer) = RawExecutionObserver::current() {
+        observer.record_bytes("claude-code", RawExecutionDirection::Sent, &bytes);
+    }
     stdin
         .enqueue(bytes)
         .map_err(|_| io::Error::other("Claude Code protocol write failed"))
@@ -64,13 +70,23 @@ pub(super) fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -
         .map_err(|_| ())
 }
 
-pub(super) fn drain_stderr(mut stderr: impl Read, max_bytes: usize, truncated: &AtomicBool) {
+pub(super) fn drain_stderr(
+    mut stderr: impl Read,
+    max_bytes: usize,
+    truncated: &AtomicBool,
+    observer: &RawExecutionBinding,
+) {
     let mut retained = 0usize;
     let mut buffer = [0u8; 8192];
     loop {
         match stderr.read(&mut buffer) {
             Ok(0) => return,
             Ok(read) => {
+                observer.record_bytes(
+                    "claude-code",
+                    RawExecutionDirection::Stderr,
+                    &buffer[..read],
+                );
                 let keep = max_bytes.saturating_sub(retained).min(read);
                 retained = retained.saturating_add(keep);
                 if keep < read {

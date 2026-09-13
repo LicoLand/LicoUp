@@ -17,6 +17,10 @@ pub enum AgentEvent {
         role: String,
         content: String,
     },
+    Usage {
+        model: Option<String>,
+        usage: Value,
+    },
     ToolExecutionStart {
         name: String,
         call_id: String,

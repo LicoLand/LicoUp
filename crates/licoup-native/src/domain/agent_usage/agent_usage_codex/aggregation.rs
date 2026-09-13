@@ -1,4 +1,4 @@
-use super::super::contract::HistoryUsageSummary;
+use super::super::contract::{HistoryUsageSummary, UsageVariant};
 use super::super::window::UsageWindow;
 use super::models::ScanStats;
 use super::rollup::{DailyRollup, collect_detail_rollups, normalized_model};
@@ -50,9 +50,10 @@ fn apply_rollup(
     daily.explicit_records = daily
         .explicit_records
         .saturating_add(rollup.explicit_records);
-    for (model, usage) in rollup.models {
-        daily.add_model_usage(
+    for ((model, variant), usage) in rollup.models {
+        daily.add_model_usage_with_variant(
             normalized_model(&model),
+            variant,
             usage.prompt,
             usage.cached,
             usage.completion,
@@ -106,7 +107,7 @@ pub(super) fn aggregate_cached_usage(
     {
         let mut statement = snapshot.prepare(
             "SELECT day, model, prompt_tokens, cached_input_tokens,
-                    completion_tokens, total_tokens
+                    completion_tokens, total_tokens,effort,fast
              FROM usage_daily_models
              WHERE root_key=?1 AND day>=?2 AND day<=?3
              ORDER BY day, model",
@@ -121,15 +122,23 @@ pub(super) fn aggregate_cached_usage(
                     completion: from_i64(row.get(4)?),
                     total: from_i64(row.get(5)?),
                 },
+                UsageVariant {
+                    effort: Some(row.get::<_, String>(6)?).filter(|effort| !effort.is_empty()),
+                    fast: match row.get::<_, i64>(7)? {
+                        0 => Some(false),
+                        1 => Some(true),
+                        _ => None,
+                    },
+                },
             ))
         })?;
         for row in rows {
-            let (day, model, usage) = row?;
+            let (day, model, usage, variant) = row?;
             historical
                 .entry(day)
                 .or_default()
                 .models
-                .insert(model, usage);
+                .insert((model, variant), usage);
         }
     }
     {

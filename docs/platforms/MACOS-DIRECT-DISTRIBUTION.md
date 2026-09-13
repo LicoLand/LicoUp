@@ -62,6 +62,42 @@ No remote workflow may publish a macOS direct artifact. The local Apple Release
 engine may upload and publish only the exact mutations in its one immutable
 per-release authorization.
 
+## Local custody validation
+
+The sole custody binary is `licoup-cli` inside
+`Contents/Helpers/LicoUpCustody.app/Contents/MacOS`, with bundle ID
+`land.lico.licoup.custody`. The main app retains `land.lico.licoup`.
+`Contents/MacOS/licoup-cli` is a permanent relative symlink to the helper's
+executable, preserving existing launch agents and provider token helpers
+without rewriting private configuration. Flutter invokes the helper directly
+and does not fall back to an external or old sibling binary. The layout and
+public alias are owned by `package-client/macos/metadata.mjs` and
+`package-client/resource-assembly.mjs` under the desktop scripts directory.
+
+Explicitly authorized local Data Protection validation uses
+`npm run client:build -- --platform macos --macos-custody-signing`. Private
+inputs are `LICO_MACOS_SIGNING_IDENTITY` (certificate SHA-1),
+`LICO_MACOS_APP_IDENTIFIER_PREFIX`, `LICO_MACOS_APP_PROVISIONING_PROFILE`, and
+`LICO_MACOS_CUSTODY_PROVISIONING_PROFILE`. The profiles must authorize their
+respective application IDs, the shared main-app keychain group, and the selected
+certificate. Packaging checks expiration and Developer ID all-device scope,
+embeds each profile in its own bundle, and signs nested code before the outer
+app with Hardened Runtime. It strictly verifies each signature. Public package
+metadata records only the mode and repository-owned helper path.
+
+This mode performs local validation without a secure timestamp, notarization,
+publication, or release acceptance. It does not load update-signing or notary
+credentials. Ordinary local builds remain ad hoc and do not claim Data
+Protection authorization; `--production-entitlements` alone does not grant it.
+The release acceptance boundary above remains unchanged. Real validation must
+exercise protected synthetic items through both the direct helper and public
+CLI alias; a valid signature alone does not prove one-prompt credential
+authorization. Existing classic ACLs are never broadened.
+
+Apple documents [app-like provisioning for command-line executables](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)
+and recommends a [public symlink to the bundled CLI](https://developer.apple.com/forums/thread/836816)
+for shared Data Protection keychain access.
+
 ## Local authority
 
 Install the private `apple-release` CLI from its standalone checkout first

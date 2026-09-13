@@ -76,8 +76,8 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
       await reconnectWithoutReplay();
       throw const LicoClientRpcException('transport_failed');
     }
-    final responseBytes = responseFrame.bytes;
-    if (responseBytes == null) {
+    final responseEnvelope = responseFrame.envelope;
+    if (responseEnvelope == null) {
       await reconnectWithoutReplay();
       throw const LicoClientRpcException('transport_failed');
     }
@@ -85,7 +85,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
     late StdioRpcCommandReply reply;
     try {
       reply = decodeStdioRpcCommandReply(
-        responseBytes,
+        responseEnvelope,
         requestId: requestId,
         workflowId: workflowId,
       );

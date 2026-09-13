@@ -193,6 +193,18 @@ final class LayoutManager {
     cause: cause,
   );
 
+  Future<bool> setReduceMotion(bool enabled, {ApplicationCause? cause}) =>
+      _updatePresentationPreferences(
+        () => _preferencesRepository.setReduceMotion(enabled),
+        cause: cause,
+      );
+
+  Future<bool> setLoadingEffect(String id, {ApplicationCause? cause}) =>
+      _updatePresentationPreferences(
+        () => _preferencesRepository.setLoadingEffect(id),
+        cause: cause,
+      );
+
   Future<bool> _updatePresentationPreferences(
     Future<PresentationPreferences> Function() update, {
     ApplicationCause? cause,

@@ -19,6 +19,8 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
   AgentHubCatalogSnapshot? _catalog;
   Future<AgentHubCatalogSnapshot>? _refreshFuture;
   final Set<String> _resolvingRecipeIds = {};
+  final Set<String> _failedRecipeIds = {};
+  final Map<String, Future<AgentHubCatalogSnapshot>> _recipeLoads = {};
   bool _busy = false;
   bool _failed = false;
 
@@ -26,6 +28,7 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
   bool get busy => _busy;
   bool get failed => _failed;
   bool get resolving => _resolvingRecipeIds.isNotEmpty;
+  bool isRecipeFailed(String recipeId) => _failedRecipeIds.contains(recipeId);
 
   bool isRecipeResolving(String recipeId) {
     return _resolvingRecipeIds.contains(recipeId);
@@ -52,27 +55,9 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
     if (id.isEmpty) {
       return const AgentHubCatalogSnapshot(recipes: [], ok: false);
     }
-    final active = _refreshFuture;
-    if (active != null) {
-      final snapshot = await active;
-      return _snapshotForRecipe(snapshot, id);
-    }
-    _resolvingRecipeIds.add(id);
-    publishChange();
-    try {
-      final snapshot = await _engine.catalog(recipeId: id);
-      final live = _recipeFrom(snapshot, id);
-      if (live != null) {
-        _replaceRecipe(live);
-        publishChange();
-      }
-      return snapshot;
-    } on Object {
-      return const AgentHubCatalogSnapshot(recipes: [], ok: false);
-    } finally {
-      _resolvingRecipeIds.remove(id);
-      publishChange();
-    }
+    final active = _recipeLoads[id];
+    if (active != null) await active;
+    return _inspectRecipe(id);
   }
 
   Future<AgentHubOperationResult> runLifecycle(
@@ -116,6 +101,7 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
 
   Future<AgentHubCatalogSnapshot> _load() async {
     _busy = true;
+    _failedRecipeIds.clear();
     _resolvingRecipeIds.addAll(
       _catalog?.recipes.map((recipe) => recipe.id) ?? const <String>[],
     );
@@ -130,18 +116,21 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
           ..addAll(root.recipes.map((recipe) => recipe.id));
         publishChange();
 
-        // One batched live pass resolves every card. The desktop transport runs
-        // native requests through one serialized queue, so resolving cards one
-        // command at a time cost a round trip per card.
-        final live = await _engine.catalog(live: true);
-        final recipes = _withWarehouseFallback(root.recipes, live.recipes);
-        final resolved = AgentHubCatalogSnapshot(
-          recipes: recipes,
-          scanGeneration: root.scanGeneration,
-          ok: root.ok,
-        );
-        _catalog = resolved;
-        return resolved;
+        if (root.recipes.isEmpty) return root;
+        final settled = Completer<void>();
+        var remaining = root.recipes.length;
+        for (final recipe in root.recipes) {
+          unawaited(
+            _inspectRecipe(recipe.id).whenComplete(() {
+              remaining--;
+              if (remaining == 0) settled.complete();
+            }),
+          );
+        }
+        // Each result is published by its own task. This future only keeps
+        // refresh single-flight until every requested inspection settles.
+        await settled.future;
+        return _catalog ?? root;
       } else {
         _failed = true;
       }
@@ -151,31 +140,41 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
       return _catalog ?? const AgentHubCatalogSnapshot(recipes: [], ok: false);
     } finally {
       _busy = false;
-      _resolvingRecipeIds.clear();
+      _resolvingRecipeIds.retainAll(_recipeLoads.keys);
       publishChange();
     }
   }
 
-  /// Batched live state, with the warehouse card retained for any member the
-  /// batch did not return.
-  ///
-  /// The batch is meant to cover every member, but a partial answer must never
-  /// shrink the catalog: a missing card would read as "this Agent is gone"
-  /// rather than "its live state is unknown". Order follows [warehouse], so the
-  /// card order stays the one the first paint established.
-  List<AgentHubRecipe> _withWarehouseFallback(
-    List<AgentHubRecipe> warehouse,
-    List<AgentHubRecipe> live,
-  ) {
-    if (live.isEmpty) {
-      return warehouse;
+  Future<AgentHubCatalogSnapshot> _inspectRecipe(String id) {
+    final active = _recipeLoads[id];
+    if (active != null) return active;
+    final next = _resolveRecipe(id).whenComplete(() {
+      _recipeLoads.remove(id);
+    });
+    _recipeLoads[id] = next;
+    return next;
+  }
+
+  Future<AgentHubCatalogSnapshot> _resolveRecipe(String id) async {
+    _resolvingRecipeIds.add(id);
+    publishChange();
+    try {
+      final snapshot = await _engine.catalog(recipeId: id, live: true);
+      final recipe = _recipeFrom(snapshot, id);
+      if (snapshot.ok && recipe != null) {
+        _replaceRecipe(recipe);
+        _failedRecipeIds.remove(id);
+      } else {
+        _failedRecipeIds.add(id);
+      }
+      return snapshot;
+    } on Object {
+      _failedRecipeIds.add(id);
+      return const AgentHubCatalogSnapshot(recipes: [], ok: false);
+    } finally {
+      _resolvingRecipeIds.remove(id);
+      publishChange();
     }
-    final byId = {for (final recipe in live) recipe.id: recipe};
-    final merged = [
-      for (final recipe in warehouse) byId.remove(recipe.id) ?? recipe,
-    ];
-    merged.addAll(byId.values);
-    return merged;
   }
 
   void _replaceRecipe(AgentHubRecipe recipe) {
@@ -195,18 +194,6 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
       recipes: recipes,
       scanGeneration: current.scanGeneration,
       ok: current.ok,
-    );
-  }
-
-  AgentHubCatalogSnapshot _snapshotForRecipe(
-    AgentHubCatalogSnapshot snapshot,
-    String recipeId,
-  ) {
-    final recipe = _recipeFrom(snapshot, recipeId);
-    return AgentHubCatalogSnapshot(
-      recipes: recipe == null ? const [] : [recipe],
-      scanGeneration: snapshot.scanGeneration,
-      ok: recipe != null,
     );
   }
 

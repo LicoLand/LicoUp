@@ -1,4 +1,5 @@
-use serde_json::Value;
+use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
+use serde_json::{Value, json};
 use std::io::Read;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -30,40 +31,46 @@ fn request_gate() -> &'static BoundedGate {
 }
 
 pub(in crate::platform) fn get_json(url: &str, timeout: Duration) -> Result<Value, HttpFailure> {
+    get_json_recorded(url, timeout, None)
+}
+
+pub(in crate::platform) fn get_json_observed(
+    url: &str,
+    timeout: Duration,
+    source: &str,
+) -> Result<Value, HttpFailure> {
+    get_json_recorded(url, timeout, Some(source))
+}
+
+fn get_json_recorded(
+    url: &str,
+    timeout: Duration,
+    source: Option<&str>,
+) -> Result<Value, HttpFailure> {
     let url = validate_url(url)?;
     let _permit = request_gate()
         .acquire(CONCURRENCY_WAIT)
         .map_err(map_limit_failure)?;
     let request = control_agent().get(url.as_str()).timeout(timeout);
-    let response = map_response(request.call())?;
-    decode_json(response)
+    record_request_metadata(source, &request);
+    let response = map_response(request.call(), source)?;
+    decode_json(response, source)
 }
 
-pub(in crate::platform) fn post_json(
-    url: &str,
-    body: &Value,
-    timeout: Duration,
-) -> Result<Value, HttpFailure> {
-    let url = validate_url(url)?;
-    let bytes = serde_json::to_vec(body).map_err(|_| HttpFailure::Serialize)?;
-    if bytes.len() > MAX_HTTP_REQUEST_BODY_BYTES {
-        return Err(HttpFailure::BodyTooLarge);
-    }
-    let _permit = request_gate()
-        .acquire(CONCURRENCY_WAIT)
-        .map_err(map_limit_failure)?;
-    let request = control_agent()
-        .post(url.as_str())
-        .timeout(timeout)
-        .set("Content-Type", "application/json");
-    let response = map_response(request.send_bytes(&bytes))?;
-    decode_json(response)
-}
-
-pub(in crate::platform) fn post_json_with_optional_timeout(
+pub(in crate::platform) fn post_json_observed(
     url: &str,
     body: &Value,
     timeout: Option<Duration>,
+    source: &str,
+) -> Result<Value, HttpFailure> {
+    post_json_recorded(url, body, timeout, Some(source))
+}
+
+fn post_json_recorded(
+    url: &str,
+    body: &Value,
+    timeout: Option<Duration>,
+    source: Option<&str>,
 ) -> Result<Value, HttpFailure> {
     let url = validate_url(url)?;
     let bytes = serde_json::to_vec(body).map_err(|_| HttpFailure::Serialize)?;
@@ -78,8 +85,10 @@ pub(in crate::platform) fn post_json_with_optional_timeout(
         request = request.timeout(timeout);
     }
     let request = request.set("Content-Type", "application/json");
-    let response = map_response(request.send_bytes(&bytes))?;
-    decode_json(response)
+    record_request_metadata(source, &request);
+    record_body(source, RawExecutionDirection::Sent, &bytes);
+    let response = map_response(request.send_bytes(&bytes), source)?;
+    decode_json(response, source)
 }
 
 pub(in crate::platform) fn probe_status(url: &str, timeout: Duration) -> Result<u16, HttpFailure> {
@@ -148,35 +157,60 @@ fn control_agent() -> &'static ureq::Agent {
 
 fn map_response(
     response: Result<ureq::Response, ureq::Error>,
+    source: Option<&str>,
 ) -> Result<ureq::Response, HttpFailure> {
     match response {
         Ok(response) => {
+            record_response_metadata(source, &response);
             validate_headers(&response)?;
             Ok(response)
         }
         Err(ureq::Error::Status(404, response)) => {
+            record_response_metadata(source, &response);
             validate_headers(&response)?;
+            if source.is_some() && RawExecutionObserver::current().is_some() {
+                let _ = read_body(response, source);
+            }
             Err(HttpFailure::NotFound)
         }
         Err(ureq::Error::Status(status, response)) => {
+            record_response_metadata(source, &response);
             validate_headers(&response)?;
+            if source.is_some() && RawExecutionObserver::current().is_some() {
+                let _ = read_body(response, source);
+            }
             Err(HttpFailure::Status(status))
         }
         Err(_) => Err(HttpFailure::Request),
     }
 }
 
-fn decode_json(response: ureq::Response) -> Result<Value, HttpFailure> {
+fn decode_json(response: ureq::Response, source: Option<&str>) -> Result<Value, HttpFailure> {
+    let bytes = read_body(response, source)?;
+    serde_json::from_slice(&bytes).map_err(|_| HttpFailure::InvalidJson)
+}
+
+fn read_body(response: ureq::Response, source: Option<&str>) -> Result<Vec<u8>, HttpFailure> {
     let mut bytes = Vec::new();
-    response
+    let read_result = response
         .into_reader()
         .take((MAX_HTTP_RESPONSE_BODY_BYTES as u64).saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(|_| HttpFailure::Request)?;
+        .map_err(|_| HttpFailure::Request);
+    record_body(source, RawExecutionDirection::Received, &bytes);
+    read_result?;
     if bytes.len() > MAX_HTTP_RESPONSE_BODY_BYTES {
         return Err(HttpFailure::BodyTooLarge);
     }
-    serde_json::from_slice(&bytes).map_err(|_| HttpFailure::InvalidJson)
+    Ok(bytes)
+}
+
+fn record_body(source: Option<&str>, direction: RawExecutionDirection, bytes: &[u8]) {
+    if let Some(source) = source
+        && let Some(observer) = RawExecutionObserver::current()
+    {
+        observer.record_bytes(source, direction, bytes);
+    }
 }
 
 fn map_limit_failure(failure: LimitFailure) -> HttpFailure {
@@ -184,4 +218,48 @@ fn map_limit_failure(failure: LimitFailure) -> HttpFailure {
         LimitFailure::Busy => HttpFailure::Busy,
         LimitFailure::Unavailable => HttpFailure::Unavailable,
     }
+}
+
+// These are the values exposed by ureq, not reconstructed wire headers.
+pub(super) fn record_request_metadata(source: Option<&str>, request: &ureq::Request) {
+    let (Some(source), Some(observer)) = (source, RawExecutionObserver::current()) else {
+        return;
+    };
+    let mut names = request.header_names();
+    names.sort();
+    names.dedup();
+    let headers: Vec<_> = names
+        .iter()
+        .map(|name| json!({"name": name, "values": request.all(name)}))
+        .collect();
+    observer.record(
+        &format!("{}.request-metadata", source),
+        RawExecutionDirection::Sent,
+        &json!({
+            "method": request.method(), "url": request.url(), "headers": headers
+        })
+        .to_string(),
+    );
+}
+
+pub(super) fn record_response_metadata(source: Option<&str>, response: &ureq::Response) {
+    let (Some(source), Some(observer)) = (source, RawExecutionObserver::current()) else {
+        return;
+    };
+    let mut names = response.headers_names();
+    names.sort();
+    names.dedup();
+    let headers: Vec<_> = names
+        .iter()
+        .map(|name| json!({"name": name, "values": response.all(name)}))
+        .collect();
+    observer.record(
+        &format!("{}.response-metadata", source),
+        RawExecutionDirection::Received,
+        &json!({
+            "url": response.get_url(), "httpVersion": response.http_version(),
+            "status": response.status(), "statusText": response.status_text(), "headers": headers
+        })
+        .to_string(),
+    );
 }

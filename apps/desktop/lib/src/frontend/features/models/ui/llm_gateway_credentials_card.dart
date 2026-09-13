@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
     required this.gatewayRunning,
     required this.phase,
     required this.intents,
+    this.migrationPending = false,
     this.notice,
   });
 
@@ -37,6 +39,7 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
   final bool gatewayRunning;
   final PresentationPhase phase;
   final IntentSink<ModelsIntent> intents;
+  final bool migrationPending;
   final PresentationNotice? notice;
 
   bool get _busy =>
@@ -54,37 +57,60 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 12,
               children: [
-                const Icon(Icons.key_outlined),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    strings.isChinese ? '模型 API 密钥' : 'Model API keys',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.key_outlined),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        strings.isChinese ? '模型 API 密钥' : 'Model API keys',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                  ],
                 ),
-                FilledButton.tonalIcon(
-                  key: const ValueKey<String>('credentials-add'),
-                  onPressed: _busy ? null : () => unawaited(_add(context)),
-                  icon: const Icon(Icons.add),
-                  label: Text(chinese ? '添加' : 'Add'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  key: const ValueKey<String>('credentials-authorize'),
-                  onPressed: _busy
-                      ? null
-                      : () => intents.send(
-                          const AuthorizeAllGatewayCredentials(),
-                        ),
-                  icon: _busy
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.fingerprint, size: 18),
-                  label: Text(chinese ? '授权' : 'Authorize'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (migrationPending)
+                      OutlinedButton.icon(
+                        key: const ValueKey<String>('credentials-migrate'),
+                        onPressed: _busy
+                            ? null
+                            : () => unawaited(_migrate(context)),
+                        icon: const Icon(Icons.key_outlined, size: 18),
+                        label: Text(chinese ? '迁移旧密钥' : 'Migrate legacy keys'),
+                      ),
+                    FilledButton.tonalIcon(
+                      key: const ValueKey<String>('credentials-add'),
+                      onPressed: _busy ? null : () => unawaited(_add(context)),
+                      icon: const Icon(Icons.add),
+                      label: Text(chinese ? '添加' : 'Add'),
+                    ),
+                    FilledButton.icon(
+                      key: const ValueKey<String>('credentials-authorize'),
+                      onPressed: _busy
+                          ? null
+                          : () => intents.send(
+                              const AuthorizeAllGatewayCredentials(),
+                            ),
+                      icon: _busy
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: LicoLoadingIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.fingerprint, size: 18),
+                      label: Text(chinese ? '授权' : 'Authorize'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -116,6 +142,34 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _migrate(BuildContext context) async {
+    final chinese = LicoStrings.of(context).isChinese;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('migrate-credentials-dialog'),
+        title: Text(chinese ? '迁移旧密钥' : 'Migrate legacy keys'),
+        content: Text(
+          chinese
+              ? '本次迁移可能需要在 macOS 提示中输入旧钥匙串密码。无需重新输入 API Key。'
+              : 'macOS may ask for the old keychain password during this one-time migration. You do not need to enter your API keys again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(chinese ? '取消' : 'Cancel'),
+          ),
+          FilledButton(
+            key: const Key('credentials-migrate-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(chinese ? '迁移' : 'Migrate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) intents.send(const MigrateGatewayCredentials());
   }
 
   Future<void> _add(BuildContext context) async {
@@ -170,6 +224,18 @@ String? _credentialMessage(String? code, bool chinese) => switch (code) {
     chinese
         ? '系统授权未完成，请重试。'
         : 'System authorization did not complete. Try again.',
+  'credential_keychain_action_required' =>
+    chinese
+        ? '旧密钥需要钥匙串访问权限。请点击“迁移旧密钥”，按 macOS 提示完成迁移。'
+        : 'Legacy keys need keychain access. Select “Migrate legacy keys” and follow the macOS prompts.',
+  'credential_migrated' =>
+    chinese
+        ? '旧密钥已迁移。可点击“授权”启用。'
+        : 'Legacy keys migrated. Select Authorize to enable them.',
+  'credential_migration_failed' =>
+    chinese
+        ? '迁移未完成，请重试并按 macOS 提示操作。'
+        : 'Migration did not complete. Try again and follow the macOS prompts.',
   'credential_revoke_failed' =>
     chinese ? '未能撤销授权，请重试。' : 'Could not revoke authorization. Try again.',
   _ => null,
@@ -203,12 +269,18 @@ final class _CredentialsTable extends StatelessWidget {
     final headerStyle = theme.textTheme.labelMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final fontSize = theme.textTheme.bodyMedium?.fontSize ?? 14;
+    final textScale =
+        MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
+    final authorizeColumnWidth = _authorizeToggleWidth * textScale;
+    final minimumWidth =
+        120 * textScale * 5 + authorizeColumnWidth + _rowActionsWidth + 16;
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     Widget headerCell(String label, [int flex = 1]) => Expanded(
       flex: flex,
       child: Text(label, style: headerStyle),
     );
-    return Column(
+    final table = Column(
       key: const ValueKey<String>('credentials-table'),
       children: [
         Padding(
@@ -220,7 +292,7 @@ final class _CredentialsTable extends StatelessWidget {
               headerCell(chinese ? '创建时间' : 'Created'),
               headerCell(chinese ? '到期时间' : 'Expires'),
               SizedBox(
-                width: _authorizeToggleWidth,
+                width: authorizeColumnWidth,
                 child: Text(
                   chinese ? '授权' : 'Auth',
                   style: headerStyle,
@@ -256,12 +328,25 @@ final class _CredentialsTable extends StatelessWidget {
               busy: busy,
               chinese: chinese,
               nowEpoch: nowEpoch,
+              authorizeColumnWidth: authorizeColumnWidth,
               canToggleAuthorization: canToggleAuthorization,
               onAuthorizeChanged: onAuthorizeChanged,
               onEdit: onEdit,
               onDelete: onDelete,
             ),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        key: const ValueKey<String>('credentials-table-scroll'),
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: constraints.maxWidth < minimumWidth
+              ? minimumWidth
+              : constraints.maxWidth,
+          child: table,
+        ),
+      ),
     );
   }
 }
@@ -272,6 +357,7 @@ final class _CredentialRow extends StatelessWidget {
     required this.busy,
     required this.chinese,
     required this.nowEpoch,
+    required this.authorizeColumnWidth,
     required this.canToggleAuthorization,
     required this.onAuthorizeChanged,
     required this.onEdit,
@@ -282,6 +368,7 @@ final class _CredentialRow extends StatelessWidget {
   final bool busy;
   final bool chinese;
   final int nowEpoch;
+  final double authorizeColumnWidth;
   final bool canToggleAuthorization;
   final _CredentialAuthorizeChanged onAuthorizeChanged;
   final ValueChanged<GatewayCredentialProjection> onEdit;
@@ -304,14 +391,7 @@ final class _CredentialRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(_providerLabel(credential.providerLabel))),
-          Expanded(
-            flex: 2,
-            child: Text(
-              credential.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          Expanded(flex: 2, child: Text(credential.label)),
           Expanded(
             child: Text(
               credential.createdAtEpochSeconds == null
@@ -330,7 +410,7 @@ final class _CredentialRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: _authorizeToggleWidth,
+            width: authorizeColumnWidth,
             child: Center(
               child: Tooltip(
                 message: authorizeTooltip,

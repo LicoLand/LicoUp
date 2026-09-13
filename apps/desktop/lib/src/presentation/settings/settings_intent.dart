@@ -18,6 +18,16 @@ final class SetLocalePreference extends SettingsIntent {
   final String preference;
 }
 
+final class SetReduceMotionPreference extends SettingsIntent {
+  const SetReduceMotionPreference(this.enabled, {super.trace});
+  final bool enabled;
+}
+
+final class SetLoadingEffectPreference extends SettingsIntent {
+  const SetLoadingEffectPreference(this.id, {super.trace});
+  final String id;
+}
+
 final class SetLayoutPreference extends SettingsIntent {
   const SetLayoutPreference(this.profileId, {super.trace});
   final String profileId;

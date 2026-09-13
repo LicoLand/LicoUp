@@ -467,11 +467,8 @@ final class _CanonicalGroupAssistantActionsState
               child: Semantics(
                 button: true,
                 label: strings.assistantActionsTooltip,
-                child: Material(
-                  color: colors.surfaceRaised,
-                  shape: CircleBorder(
-                    side: BorderSide(color: colors.line, width: 1),
-                  ),
+                child: MessagingConversationOverlayGlass(
+                  borderRadius: BorderRadius.circular(999),
                   child: InkWell(
                     key: const Key('canonical-group-assistant-actions-trigger'),
                     customBorder: const CircleBorder(),
@@ -525,6 +522,42 @@ final class _AssistantActionCircleState extends State<_AssistantActionCircle> {
     const radius = BorderRadius.all(
       Radius.circular(CanonicalGroupAssistantActions.circleExtent / 2),
     );
+    final duration = context.motion(LicoMotion.short);
+    final content = SizedBox(
+      height: CanonicalGroupAssistantActions.circleExtent,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: CanonicalGroupAssistantActions.circleExtent,
+            child: Center(
+              child: Icon(
+                widget.icon,
+                size: 19,
+                color: enabled
+                    ? (_hovering ? colors.text : colors.textMuted)
+                    : colors.textMuted.withAlpha(120),
+              ),
+            ),
+          ),
+          if (_hovering)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.08,
+                  height: 1.15,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -537,46 +570,14 @@ final class _AssistantActionCircleState extends State<_AssistantActionCircle> {
             key: widget.actionKey,
             customBorder: const RoundedRectangleBorder(borderRadius: radius),
             onTap: widget.onTap,
-            child: AnimatedSize(
-              duration: context.motion(LicoMotion.short),
-              curve: LicoMotion.standard,
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                height: CanonicalGroupAssistantActions.circleExtent,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox.square(
-                      dimension: CanonicalGroupAssistantActions.circleExtent,
-                      child: Center(
-                        child: Icon(
-                          widget.icon,
-                          size: 19,
-                          color: enabled
-                              ? (_hovering ? colors.text : colors.textMuted)
-                              : colors.textMuted.withAlpha(120),
-                        ),
-                      ),
-                    ),
-                    if (_hovering)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 14),
-                        child: Text(
-                          widget.label,
-                          maxLines: 1,
-                          style: TextStyle(
-                            color: colors.text,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.08,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+            child: duration == Duration.zero
+                ? content
+                : AnimatedSize(
+                    duration: duration,
+                    curve: LicoMotion.standard,
+                    alignment: Alignment.centerLeft,
+                    child: content,
+                  ),
           ),
         ),
       ),

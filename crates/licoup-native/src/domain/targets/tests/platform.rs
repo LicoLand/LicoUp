@@ -69,48 +69,6 @@ fn windows_directory_detection_preserves_the_resolved_appdata_root() {
 }
 
 #[test]
-fn kimi_default_paths_use_expected_platform_locations() {
-    let home = PathBuf::from("<user-home>");
-    let app_data = home.join("Library").join("Application Support");
-    let config = default_config_path_for_platform("kimi", "macos", &home, &app_data).unwrap();
-    assert!(config.ends_with(Path::new("Kimi").join("config.json")));
-    assert!(config.starts_with(&app_data));
-    let detection = default_detection_paths_for_platform("kimi", "macos", &home, &app_data);
-    assert!(detection.iter().any(|path| path.ends_with("Kimi")));
-    assert!(
-        detection
-            .iter()
-            .any(|path| path.ends_with("com.moonshot.kimi"))
-    );
-
-    let home = windows_test_path("X:", &["Profile", "example"]);
-    let app_data = home.join("AppData").join("Roaming");
-    let config = default_config_path_for_platform("kimi", "windows", &home, &app_data).unwrap();
-    assert!(config.ends_with(Path::new("Kimi").join("config.json")));
-    assert!(config.starts_with(&app_data));
-    let detection = default_detection_paths_for_platform("kimi", "windows", &home, &app_data);
-    assert!(detection.iter().any(|path| path.ends_with("Kimi")));
-    assert!(
-        detection
-            .iter()
-            .any(|path| path.ends_with("com.moonshot.kimi"))
-    );
-
-    let home = PathBuf::from("<user-home>");
-    let app_data = home.join(".local").join("share");
-    let config = default_config_path_for_platform("kimi", "linux", &home, &app_data).unwrap();
-    assert!(config.ends_with(Path::new("Kimi").join("config.json")));
-    assert!(config.starts_with(home.join(".config")));
-    let detection = default_detection_paths_for_platform("kimi", "linux", &home, &app_data);
-    assert!(detection.iter().any(|path| path.ends_with("Kimi")));
-    assert!(
-        detection
-            .iter()
-            .any(|path| path.ends_with(".local/share/Kimi"))
-    );
-}
-
-#[test]
 fn cursor_detection_keeps_desktop_state_and_acp_cli_candidates_separate() {
     let home = temp_test_dir("cursor-persistent-detection");
     let app_data = home.join("Library").join("Application Support");
@@ -161,15 +119,7 @@ fn kimi_code_target_uses_official_cli_home_and_binary() {
     assert_eq!(target.label, "Kimi Code CLI");
     assert_eq!(target.kind, "cli");
     assert_eq!(target.binary_names, &["kimi"]);
-    assert!(!target.process_names.contains(&"com.moonshot.kimi"));
     assert!(target_uses_running_process_detection("kimi-code"));
-
-    let desktop = target_def("kimi").unwrap();
-    assert_eq!(desktop.label, "Kimi Desktop");
-    assert_eq!(desktop.kind, "desktop-agent");
-    assert!(desktop.binary_names.is_empty());
-    assert!(desktop.process_names.contains(&"com.moonshot.kimi"));
-    assert!(target_uses_running_process_detection("kimi"));
 }
 
 #[test]
@@ -262,38 +212,6 @@ fn kilo_code_extension_install_dir_yields_bundled_cli_binary() {
 #[test]
 fn kilo_code_uses_running_process_detection() {
     assert!(target_uses_running_process_detection("kilo-code"));
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-fn kimi_desktop_detection_pairs_app_support_evidence_with_bundle_executable() {
-    let home = temp_test_dir("kimi-desktop-detection");
-    let app_data = home.join("Library").join("Application Support");
-    let evidence = home
-        .join("Library")
-        .join("Application Support")
-        .join("Kimi");
-    fs::create_dir_all(&evidence).unwrap();
-
-    assert!(
-        default_detection_paths_for_platform("kimi", "macos", &home, &app_data).contains(&evidence)
-    );
-    assert_eq!(
-        default_detection_path_for_platform("kimi", "macos", &home, &app_data),
-        None
-    );
-
-    let install_root = home.join("Applications");
-    let executable = install_root
-        .join("Kimi.app")
-        .join("Contents")
-        .join("MacOS")
-        .join("Kimi");
-    fs::create_dir_all(executable.parent().unwrap()).unwrap();
-    fs::write(&executable, "kimi").unwrap();
-
-    let found = binaries::find_kimi_desktop_app_executable(&[install_root]).unwrap();
-    assert_eq!(found, executable);
 }
 
 #[test]

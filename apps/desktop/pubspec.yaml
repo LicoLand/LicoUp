@@ -76,6 +76,8 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+    - assets/fonts/OFL.txt
+    - assets/fonts/NotoSansSC-OFL.txt
     - assets/appearance-presets/
     - assets/agent-icons/
     - assets/agent-render-adapters/
@@ -89,28 +91,23 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # Bundled typefaces. See assets/fonts/README.md before enabling: the font
-  # binaries must be vendored with their OFL license file, and this block must
-  # be uncommented in the same change that sets LicoTypography.sansFamily and
-  # monoFamily. Declaring a family with no asset makes Flutter fall back
-  # silently and inconsistently per platform.
-  # fonts:
-  #   - family: Geist Sans
-  #     fonts:
-  #       - asset: assets/fonts/GeistSans-Regular.ttf
-  #         weight: 400
-  #       - asset: assets/fonts/GeistSans-Medium.ttf
-  #         weight: 500
-  #       - asset: assets/fonts/GeistSans-SemiBold.ttf
-  #         weight: 600
-  #       - asset: assets/fonts/GeistSans-Bold.ttf
-  #         weight: 700
-  #   - family: Geist Mono
-  #     fonts:
-  #       - asset: assets/fonts/GeistMono-Regular.ttf
-  #         weight: 400
-  #       - asset: assets/fonts/GeistMono-Medium.ttf
-  #         weight: 500
-  #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: Geist Sans
+      fonts:
+        - asset: assets/fonts/GeistSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/GeistSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/GeistSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/GeistSans-Bold.ttf
+          weight: 700
+    - family: Geist Mono
+      fonts:
+        - asset: assets/fonts/GeistMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/GeistMono-Medium.ttf
+          weight: 500
+    - family: Noto Sans SC
+      fonts:
+        - asset: assets/fonts/NotoSansSC.ttf

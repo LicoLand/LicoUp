@@ -4,9 +4,8 @@ import 'package:licoup/src/frontend/features/continuous_assistant/continuous_ass
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_labels.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_task_view.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_surface.dart';
+import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant_surfaces.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
@@ -37,11 +36,8 @@ final class ContinuousAssistantChildEntry extends StatelessWidget {
     return Semantics(
       button: true,
       label: labels.childSemantics(title: title, childConversationId: childId),
-      child: LicoSurface(
+      child: ContinuousChildSurface(
         selected: highlighted,
-        padding: EdgeInsets.zero,
-        radius: LicoRadius.chip,
-        elevation: LicoElevation.flat,
         child: InkWell(
           key: ContinuousAssistantKeys.child(childId),
           borderRadius: BorderRadius.circular(LicoRadius.chip),
