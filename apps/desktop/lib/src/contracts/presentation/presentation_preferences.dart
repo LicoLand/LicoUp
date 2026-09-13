@@ -20,6 +20,7 @@ final class PresentationPreferences {
     required String appearancePresetId,
     required String localePreference,
     bool reduceMotion = false,
+    String loadingEffectId = 'spinner',
   }) {
     final appearance = appearancePresetId.trim();
     final locale = localePreference.trim();
@@ -34,6 +35,7 @@ final class PresentationPreferences {
       appearancePresetId: appearance,
       localePreference: locale,
       reduceMotion: reduceMotion,
+      loadingEffectId: loadingEffectId,
     );
   }
 
@@ -61,6 +63,9 @@ final class PresentationPreferences {
           ? rawLocale
           : fallback.localePreference,
       reduceMotion: rawReduceMotion is bool ? rawReduceMotion : false,
+      loadingEffectId: json['loadingEffectId'] is String
+          ? json['loadingEffectId']! as String
+          : 'spinner',
     );
   }
 
@@ -69,6 +74,7 @@ final class PresentationPreferences {
     required this.appearancePresetId,
     required this.localePreference,
     required this.reduceMotion,
+    required this.loadingEffectId,
   });
 
   static const schemaVersion = 1;
@@ -99,18 +105,21 @@ final class PresentationPreferences {
   final String appearancePresetId;
   final String localePreference;
   final bool reduceMotion;
+  final String loadingEffectId;
 
   PresentationPreferences copyWith({
     LayoutProfileId? layoutProfileId,
     String? appearancePresetId,
     String? localePreference,
     bool? reduceMotion,
+    String? loadingEffectId,
   }) {
     return PresentationPreferences(
       layoutProfileId: layoutProfileId ?? this.layoutProfileId,
       appearancePresetId: appearancePresetId ?? this.appearancePresetId,
       localePreference: localePreference ?? this.localePreference,
       reduceMotion: reduceMotion ?? this.reduceMotion,
+      loadingEffectId: loadingEffectId ?? this.loadingEffectId,
     );
   }
 
@@ -120,6 +129,7 @@ final class PresentationPreferences {
     'appearancePresetId': appearancePresetId,
     'localePreference': localePreference,
     'reduceMotion': reduceMotion,
+    'loadingEffectId': loadingEffectId,
   };
 
   @override
@@ -129,7 +139,8 @@ final class PresentationPreferences {
           other.layoutProfileId == layoutProfileId &&
           other.appearancePresetId == appearancePresetId &&
           other.localePreference == localePreference &&
-          other.reduceMotion == reduceMotion;
+          other.reduceMotion == reduceMotion &&
+          other.loadingEffectId == loadingEffectId;
 
   @override
   int get hashCode => Object.hash(
@@ -137,6 +148,7 @@ final class PresentationPreferences {
     appearancePresetId,
     localePreference,
     reduceMotion,
+    loadingEffectId,
   );
 }
 
@@ -162,4 +174,6 @@ abstract interface class PresentationPreferencesRepository {
   Future<PresentationPreferences> setLocalePreference(String preference);
 
   Future<PresentationPreferences> setReduceMotion(bool enabled);
+
+  Future<PresentationPreferences> setLoadingEffect(String id);
 }

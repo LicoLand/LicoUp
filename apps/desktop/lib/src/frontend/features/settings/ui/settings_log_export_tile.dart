@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
@@ -38,7 +39,7 @@ class SettingsLogExportTile extends StatelessWidget {
           ? const SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: LicoLoadingIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.file_download_outlined),
       label: Text(strings.exportLogs),

@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -786,7 +787,7 @@ final class _MessagingEarlierPageRow extends StatelessWidget {
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: LicoLoadingIndicator(strokeWidth: 2),
               )
             : errorCode.isNotEmpty
             ? TextButton.icon(

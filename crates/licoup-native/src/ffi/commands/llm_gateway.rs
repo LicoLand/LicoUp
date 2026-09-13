@@ -27,9 +27,22 @@ pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
 }
 
 pub(super) fn handle_list(_command: AdmittedCommand) -> Result<CliExecution> {
+    let root = crate::platform::paths::portable_data_dir()?;
     let inventory =
-        crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()?.list()?;
-    Ok(CliExecution::Json(serde_json::to_value(inventory)?))
+        crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(&root)?.list()?;
+    let mut result = serde_json::to_value(inventory)?;
+    result["migrationPending"] =
+        json!(crate::domain::client_state_migration::gateway_credential_migration_pending(&root)?);
+    Ok(CliExecution::Json(result))
+}
+
+pub(super) fn handle_migrate(_command: AdmittedCommand) -> Result<CliExecution> {
+    let root = crate::platform::paths::portable_data_dir()?;
+    let inventory = crate::domain::client_state_migration::migrate_gateway_credentials(&root)?;
+    let mut result = serde_json::to_value(inventory)?;
+    result["ok"] = json!(true);
+    result["migrationPending"] = json!(false);
+    Ok(CliExecution::Json(result))
 }
 
 pub(super) fn handle_authorize(command: AdmittedCommand) -> Result<CliExecution> {

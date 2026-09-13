@@ -58,6 +58,13 @@ mixin AgentConversationSessionController
     if (groupNativeSessions.conversationId.isEmpty || agentWorkspaceDisposed) {
       return Future.value();
     }
+    // A refresh joins the current group's read. Advancing its generation here
+    // would discard useful results and start four more native readers while
+    // the original workers are still consuming CPU and disk bandwidth.
+    if (_groupHydrationGeneration == groupNativeSessions.generation &&
+        _groupHydration != null) {
+      return _groupHydration!;
+    }
     groupNativeSessions.generation++;
     return _readGroupNativeSessions(refresh: true);
   }
@@ -1132,6 +1139,27 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyStateChanged();
   }
 
+  Future<bool> _bindConversationRuntimeForSelection(String agentId) async {
+    final ownsLoading = conversationSessionLoadingTargets.add(agentId);
+    if (ownsLoading) {
+      agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
+      agentWorkspaceNotifyStateChanged();
+    }
+    try {
+      return await agentWorkspaceEnsureConversationRuntimeBinding(agentId);
+    } finally {
+      if (ownsLoading) {
+        conversationSessionLoadingTargets.remove(agentId);
+        if (!agentWorkspaceDisposed && selectedConversationAgentId == agentId) {
+          agentWorkspaceNotifyConversationStructureChanged(
+            activeChanged: false,
+          );
+          agentWorkspaceNotifyStateChanged();
+        }
+      }
+    }
+  }
+
   Future<void> selectConversationAgent(String agentId) async {
     final normalizedAgentId = agentId.trim();
     if (normalizedAgentId.isEmpty) {
@@ -1148,7 +1176,7 @@ mixin AgentConversationSessionController
         selectedConversationSessions.isNotEmpty) {
       var runtimeBound = true;
       if (!agentWorkspaceMobileRuntime) {
-        runtimeBound = await agentWorkspaceEnsureConversationRuntimeBinding(
+        runtimeBound = await _bindConversationRuntimeForSelection(
           normalizedAgentId,
         );
         if (agentWorkspaceDisposed ||
@@ -1205,7 +1233,7 @@ mixin AgentConversationSessionController
     agentWorkspaceRecordCurrentAgentView();
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
-    await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
+    await _bindConversationRuntimeForSelection(normalizedAgentId);
     if (agentWorkspaceDisposed ||
         selectedConversationAgentId != normalizedAgentId) {
       return;

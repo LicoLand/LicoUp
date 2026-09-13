@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -117,6 +119,10 @@ Widget _fixture({
         )
       : Offstage(offstage: offstage, child: scene);
   return MaterialApp(
+    builder: (context, child) => LicoLoadingEffectScope(
+      effect: loadingEffectForId('particles'),
+      child: child!,
+    ),
     theme: buildLicoTheme(platformBrightness: Brightness.dark),
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: reduced),
@@ -190,7 +196,7 @@ void main() {
             .getRect(find.byKey(_composerKey))
             .shift(-host.topLeft);
         expect(
-          (initial.anchors.sphere.center - content.center).distance,
+          (initial.anchors.content.center - content.center).distance,
           lessThan(0.001),
         );
         expect(initial.anchors.avatar, mark);
@@ -294,6 +300,10 @@ void main() {
           );
           await tester.pumpWidget(
             MaterialApp(
+              builder: (context, child) => LicoLoadingEffectScope(
+                effect: loadingEffectForId('particles'),
+                child: child!,
+              ),
               theme: buildLicoTheme(platformBrightness: Brightness.dark),
               home: Scaffold(
                 body: external
@@ -338,7 +348,7 @@ void main() {
       final field = _field(tester);
       final host = tester.getRect(find.byType(ConversationMotionHost));
       expect(
-        (field.anchors.sphere.center -
+        (field.anchors.content.center -
                 tester
                     .getRect(find.byKey(_contentKey))
                     .shift(-host.topLeft)
@@ -421,6 +431,10 @@ void main() {
       const clipKey = Key('synthetic-viewport-clip');
       await tester.pumpWidget(
         MaterialApp(
+          builder: (context, child) => LicoLoadingEffectScope(
+            effect: loadingEffectForId('particles'),
+            child: child!,
+          ),
           theme: buildLicoTheme(platformBrightness: Brightness.dark),
           home: Scaffold(
             body: ConversationMotionHost(
@@ -454,11 +468,11 @@ void main() {
       await tester.pump();
       final viewport = tester.getRect(find.byKey(clipKey));
       expect(
-        (_field(tester).anchors.sphere.center - viewport.center).distance,
+        (_field(tester).anchors.content.center - viewport.center).distance,
         lessThan(0.001),
       );
       expect(
-        _field(tester).anchors.sphere.height,
+        _field(tester).anchors.content.height,
         closeTo(viewport.height * 0.62, 0.001),
       );
       await tester.pumpWidget(const SizedBox());
@@ -471,6 +485,10 @@ void main() {
       final scroll = ScrollController();
       await tester.pumpWidget(
         MaterialApp(
+          builder: (context, child) => LicoLoadingEffectScope(
+            effect: loadingEffectForId('particles'),
+            child: child!,
+          ),
           theme: buildLicoTheme(platformBrightness: Brightness.dark),
           home: Scaffold(
             body: ConversationMotionScene(
@@ -538,6 +556,10 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
+          builder: (context, child) => LicoLoadingEffectScope(
+            effect: loadingEffectForId('particles'),
+            child: child!,
+          ),
           theme: buildLicoTheme(platformBrightness: Brightness.dark),
           home: Scaffold(
             body: ConversationMotionScene(

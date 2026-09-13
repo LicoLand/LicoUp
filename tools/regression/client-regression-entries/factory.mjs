@@ -46,7 +46,7 @@ function sidecarPath() {
     "crates/licoup-native/target/release/licoup-cli",
     "target/debug/licoup-cli",
     "target/release/licoup-cli",
-    "build/apps/desktop/runnable/macos/release/LicoUp.app/Contents/MacOS/licoup-cli",
+    "build/apps/desktop/runnable/macos/release/LicoUp.app/Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli",
     "build/apps/desktop/runnable/linux/release/licoup-cli",
     "build/apps/desktop/runnable/windows/release/licoup-cli.exe",
   ].filter(Boolean);
@@ -219,18 +219,15 @@ export function defineAgentEntry(id) {
       })
       : null,
     async probe() {
-      if (id === "deepseek-harness") {
+      if (!config) {
         return Object.freeze({
           eligible: false,
-          reason: "deepseek_harness_jsonrpc_carrier_unverified",
+          reason: "agent_live_harness_unavailable",
         });
       }
       const sidecar = sidecarPath();
       if (!sidecar) {
         return Object.freeze({ eligible: false, reason: "lico_client_executable_unavailable" });
-      }
-      if (!config) {
-        return Object.freeze({ eligible: false, reason: "agent_executable_unavailable" });
       }
       const inventory = explicitConfiguredExecutable(config)
         ? null

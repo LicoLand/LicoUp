@@ -64,6 +64,9 @@ final class ModelsFeatureComposition {
       RefreshGatewayCredentials() => await _owner.refreshCredentials(
         traceId: traceId,
       ),
+      MigrateGatewayCredentials() => await _owner.migrateCredentials(
+        traceId: traceId,
+      ),
       CreateGatewayCredential(
         :final provider,
         :final label,

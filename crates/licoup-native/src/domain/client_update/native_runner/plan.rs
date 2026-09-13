@@ -117,19 +117,14 @@ fn install_root_override(params: &Value) -> Result<Option<PathBuf>> {
 }
 
 fn macos_install_root() -> PathBuf {
-    if let Ok(executable) = std::env::current_exe() {
-        let mut current = executable.as_path();
-        while let Some(parent) = current.parent() {
-            if current
-                .extension()
-                .is_some_and(|extension| extension == "app")
-            {
-                return parent.to_path_buf();
-            }
-            current = parent;
-        }
-    }
-    PathBuf::from("/Applications")
+    std::env::current_exe()
+        .ok()
+        .and_then(|executable| {
+            crate::platform::paths::desktop_bundle_for_cli(&executable)
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+        })
+        .unwrap_or_else(|| PathBuf::from("/Applications"))
 }
 
 fn portable_install_root() -> Result<PathBuf> {

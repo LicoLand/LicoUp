@@ -474,6 +474,8 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Thin package-client facade and nineteen bounded packaging authorities",
       inputs: [
+        "apps/desktop/macos/CustodyHelper/Info.plist",
+        "apps/desktop/macos/CustodyHelper/ProductionRelease.entitlements",
         "apps/desktop/scripts/package-client.mjs",
         "apps/desktop/scripts/package-client/build/flutter.mjs",
         "apps/desktop/scripts/package-client/build/native.mjs",
@@ -495,10 +497,12 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/scripts/package-client/source-staging.mjs",
         "apps/desktop/scripts/package-client/windows-manifest.mjs",
         "tests/contract/client/package-client/package-client-source-bundle.test.mjs",
+        "tests/contract/client/package-client/macos-custody-helper.test.mjs",
       ],
       command: command(
         "node",
-        ["--test", "tests/contract/client/package-client/package-client-source-bundle.test.mjs"],
+        ["--test", "tests/contract/client/package-client/package-client-source-bundle.test.mjs",
+          "tests/contract/client/package-client/macos-custody-helper.test.mjs"],
         60_000,
       ),
     }),

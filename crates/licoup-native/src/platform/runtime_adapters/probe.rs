@@ -160,21 +160,21 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
         }
         RuntimeAdapter::DeepSeekHarness => {
             let available = !executable.as_ref().is_empty();
-            let ready = super::registry::runtime_driver_profile(adapter.id())
-                .is_some_and(|profile| profile.readiness == "ready");
+            // Discovery has no selected route or authentication handshake. The
+            // actual SDK initialize validates both when the user sends a turn.
             json!({
                 "available": available,
-                "supported": available && ready,
-                "newSession": available && ready,
-                "resumeSession": available && ready,
-                "structuredStream": available && ready,
+                "supported": false,
+                "newSession": false,
+                "resumeSession": false,
+                "structuredStream": false,
                 "cancel": false,
                 "interruptSteer": false,
                 "history": false,
-                "errorCode": if available && ready {
-                    Value::Null
+                "errorCode": if available {
+                    "deepseek_harness_initialize_required"
                 } else {
-                    json!("deepseek_harness_jsonrpc_carrier_unverified")
+                    "runtime_not_detected"
                 }
             })
         }

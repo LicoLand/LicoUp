@@ -259,15 +259,25 @@ void main() {
       controller.selectConversationAgent('claude-code'),
     ]);
 
-    expect(service.scannedIds, ['claude-code']);
     expect(controller.selectedConversationAgent?.canRelayRuntime, isTrue);
+    await _waitForCatalogRefreshSettled(controller, 'claude-code');
+    expect(service.scannedIds, ['claude-code', 'claude-code']);
+    expect(
+      service.catalogLookups,
+      [false, true],
+      reason:
+          'concurrent opens share one lightweight binding and one background '
+          'model catalog refresh',
+    );
 
     await controller.scanTargets(showProgress: false);
 
     expect(
       service.scannedIds.where((id) => id == 'claude-code'),
-      hasLength(1),
-      reason: 'the restored binding must not be probed again by a quiet scan',
+      hasLength(2),
+      reason:
+          'the restored binding and model catalog must be reused by a quiet '
+          'scan',
     );
   });
 

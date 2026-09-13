@@ -8,6 +8,7 @@ This document defines the technical specification for **Tier 2: Bridging Contrac
 
 1. **Desktop stdio RPC**:
    - Flutter reaches the persistent Rust native host through the `licoup.stdio.v1` bidirectional frame.
+   - Desktop replies are decoded once per envelope and shared by request routing and the generated protocol validators. Large envelopes decode in a background Dart isolate; the paused stdout stream preserves frame order and applies backpressure until decoding completes. EOF is handled after accepted frames drain, so process exit cannot discard a final reply still being decoded. No functional request deadline is added.
    - Application composition binds the Agent conversation service and canonical conversation service to `AgentConversationNativePort` and `ClientConversationNativePort`. Their semantic operations carry session and turn identity types plus opaque native payloads; services do not accept a command runner for stateful operations.
    - The platform implementation alone encodes these operations as structured method-and-parameter frames. Agent operations use generated `agent.conversation.*` methods; canonical requests use generated `client.conversation.execute` with the requested action in its payload. `ConversationProtocolMethod`, generated from the native protocol registry, remains the method authority.
    - Stateful operations **strictly never use a CLI argument array** as their client-to-native transport.

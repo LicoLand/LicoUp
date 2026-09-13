@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_globe.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 
 import 'agent_usage_formatters.dart';
 import 'agent_usage_timeline_data.dart';
@@ -51,36 +51,28 @@ class AgentUsageLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final diameter = (constraints.maxHeight - 72)
-            .clamp(64.0, 240.0)
-            .clamp(0.0, constraints.maxWidth)
-            .toDouble();
-        return Center(
-          child: SingleChildScrollView(
-            primary: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ConversationParticleGlobe(diameter: diameter),
-                const SizedBox(height: 16),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    LicoStrings.of(context).usageLoading,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: context.licoColors.textSecondary,
-                      fontSize: 14,
-                    ),
-                  ),
+    return Center(
+      child: SingleChildScrollView(
+        primary: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const LicoLoadingIndicator(),
+            const SizedBox(height: 16),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                LicoStrings.of(context).usageLoading,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.licoColors.textSecondary,
+                  fontSize: 14,
                 ),
-              ],
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 }

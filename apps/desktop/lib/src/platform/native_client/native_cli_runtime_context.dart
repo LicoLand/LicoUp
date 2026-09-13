@@ -43,7 +43,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
   /// client executable path and environment.
   ///
   /// The resolved binary must never be the client executable itself. The
-  /// bundled sidecar is `licoup-cli`; the sibling `licoup` inside an app
+  /// bundled helper executable is `licoup-cli`; the sibling `licoup` inside an app
   /// bundle is the GUI client. Spawning the client as its own CLI starts a
   /// full new client per command, and each one rescans, snowballing into a
   /// process storm.
@@ -60,19 +60,38 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     final suffix = Platform.isWindows ? '.exe' : '';
     final selfPath = await _canonicalPath(File(executablePath));
     final executableDirectory = File(executablePath).parent.path;
-    // An installed app bundle must use its sibling sidecar. Developer CLI and
+    // An installed app bundle must use its app-like custody helper. Developer CLI and
     // cargo overlays leak into `open` from an Agent shell and can outlive the
     // exact installed product binary.
     final insideAppBundle = executablePath.contains('.app/Contents/MacOS/');
-    final explicitBinary = insideAppBundle
-        ? null
-        : environment['LICO_CLIENT_PATH'];
+    if (insideAppBundle) {
+      final appRoot = p.normalize(p.join(executableDirectory, '..', '..'));
+      final helper = File(
+        p.join(
+          appRoot,
+          'Contents',
+          'Helpers',
+          'LicoUpCustody.app',
+          'Contents',
+          'MacOS',
+          'licoup-cli',
+        ),
+      );
+      if (!await helper.exists()) return null;
+      final canonical = await _canonicalPath(helper);
+      final canonicalApp = await Directory(appRoot).resolveSymbolicLinks();
+      if (p.equals(canonical, selfPath) ||
+          !p.isWithin(canonicalApp, canonical)) {
+        return null;
+      }
+      return File(canonical);
+    }
+    final explicitBinary = environment['LICO_CLIENT_PATH'];
     final cargoTargetDirectory = environment['CARGO_TARGET_DIR'];
     final candidates = <String>[
       if (explicitBinary != null && explicitBinary.trim().isNotEmpty)
         explicitBinary.trim(),
-      if (!insideAppBundle &&
-          cargoTargetDirectory != null &&
+      if (cargoTargetDirectory != null &&
           cargoTargetDirectory.trim().isNotEmpty)
         p.join(cargoTargetDirectory.trim(), 'debug', 'licoup-cli$suffix'),
       p.join(executableDirectory, 'licoup-cli$suffix'),

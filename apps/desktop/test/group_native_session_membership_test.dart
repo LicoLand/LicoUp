@@ -8,6 +8,37 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 
 void main() {
   test(
+    'refresh joins the current group read instead of restarting its workers',
+    () async {
+      final controller = _HistoryController();
+      addTearDown(controller.dispose);
+      final initial = controller.hydrateGroupConversationSessions(
+        _group('group', ['one', 'two', 'three', 'four']),
+      );
+      final refresh = controller.refreshGroupConversationSessions();
+      final repeated = controller.refreshGroupConversationSessions();
+      final started = controller.reads.length;
+      for (final read in controller.reads) {
+        read.complete(_session(read.id));
+      }
+      await Future.wait([initial, refresh, repeated]);
+      expect(started, 4, reason: 'One group owns one four-worker hydration.');
+      expect(controller.groupNativeSessions.loading, isFalse);
+      expect(
+        controller.groupNativeSessions.sessionsByAgent['codex'],
+        hasLength(4),
+      );
+      final next = controller.refreshGroupConversationSessions();
+      expect(controller.reads, hasLength(8));
+      for (final read in controller.reads.skip(4)) {
+        read.complete(_session(read.id));
+      }
+      await next;
+      expect(controller.groupNativeSessions.loading, isFalse);
+    },
+  );
+
+  test(
     'group maps only exact bound reads without consuming or updating Agent browse',
     () async {
       final controller = _HistoryController();

@@ -169,11 +169,13 @@ layout or an alternate style-dependent arrangement.
 Each ready section appears immediately. Agent catalog entries, Plugin and Skill
 results publish incrementally; an unfinished sibling does not replace ready
 content with a full-page loading barrier. Refresh keeps existing content visible
-and indicates only the work still in flight. Cached usage appears before its
+and indicates only the work still in flight. Current-page initialization does
+not wait for optional background update checks or service warmups. Those tasks
+continue independently and retain their own failure reports. Cached usage appears before its
 fresh scan completes. Errors belong to their owning result or notification.
 
-Before the first usable usage report, Statistics shows the shared rotating
-particle globe with `正在加载中` (`Loading` in English) beneath it. This state
+Before the first usable usage report, Statistics shows a small progress
+indicator with `正在加载中` (`Loading` in English) beneath it. This state
 covers the initial cache read and scan. A completed empty result has an empty
 state; refreshing an existing report keeps its charts visible.
 
@@ -189,15 +191,21 @@ each positive run closes at adjacent zero samples, and zero-only intervals
 draw no series area. A day with zero usage contributes no height or colored
 line above another series; rendering never changes the reported usage values.
 
-Agent charts use a rainbow palette. Antigravity, Kimi Code and GitHub Copilot
-use distinct blue-to-purple colors; Kilo Code uses yellow and Claude Code uses
-orange. Other Agents receive fixed, distinct assignments. Existing brand colors
-take precedence over arbitrary chart order.
+Agent charts use muted brand hues with balanced brightness for large opaque
+fills. Antigravity, Kimi Code and GitHub Copilot use distinct blue-to-purple
+colors; Kilo Code uses yellow and Claude Code uses orange. Other Agents receive
+fixed, distinct assignments. Light themes deepen these hues for contrast.
+Plot areas, bars, legend swatches and hover rows share the same color authority.
+Legend labels and values use quiet medium weights so the chart retains focus.
 
 Model charts use shades within the model developer's color family. Stronger
 models use deeper shades; for Claude's orange family the order is Fable, Opus,
 Sonnet and Haiku, from deepest to lightest, when those models are present.
-Color never changes the model's availability or capabilities.
+The native display name selects the developer family consistently across the
+plot, legend and hover rows; canonical IDs keep unknown-model colors stable.
+Color never changes the model's availability or capabilities. The palette
+follows the categorical and sequential separation in
+[Carbon's chart color guidance](https://carbondesignsystem.com/data-visualization/color-palettes/).
 
 One canonical model has one usage row across source applications, reasoning
 efforts and speed modes. A source name such as Cursor is not a model name.
@@ -239,6 +247,43 @@ boundaries and avoids per-frame descendant rebuilds or backdrop reads.
 [Flutter performance guidance](https://docs.flutter.dev/perf/best-practices).
 
 ## Conversation loading and hierarchy
+
+The product-owned **Local** group is the highest-priority cold-start data
+target. After native state admission, load the canonical group catalog and
+Local's latest 20 events before target-cache hydration, Agent discovery,
+model catalogs, optional service warmups, or other background reads. Its
+native snapshot populates the existing conversation cache; opening Local
+reuses that snapshot without another first-page read. Restore a saved group
+view before awaiting Agent discovery. Loading priority does not overwrite an
+explicit saved or current conversation selection, and a group read failure
+stays visible in its owner without preventing independent startup work.
+
+Never join canonical group readiness and Agent discovery behind a shared
+completion barrier. The native canonical store owns Local's identity,
+membership and history; the client must not invent a placeholder group or
+substitute Agent history for canonical events. Keep this ordering documented
+at the bootstrap and conversation-entry call sites.
+The first-frame Gateway callback also waits for client initialization; window
+visibility alone must not let service startup overtake Local's queued reads.
+
+Cold native history waits only for its Agent executable binding; model catalog
+discovery continues in the background. Admitted target scans run in bounded
+RPC workers so discovery leaves the host's request loop responsive.
+Canonical active and archived lists use
+one native catalog snapshot, preserving archived child relationships. Neither
+path changes the other's conversation authority.
+
+A group's native-history loading state covers its associated native sessions.
+Publish each completed session immediately; concurrent refresh requests join
+the current read instead of invalidating it and starting another worker batch.
+Only a group or membership change invalidates an unfinished read. A completed
+batch releases its loading state and allows the next refresh.
+
+Recognized native-history stores own empty results as well as populated ones.
+For Cursor, an absent or empty conversation in its IDE or CLI schema must
+never trigger generic database scanning. Exact reads retain their native
+identity and delegated lineage, and unrelated database records are not a
+second source to search when the requested conversation is absent.
 
 A conversation initially displays the latest 20 messages. Scrolling toward
 older history requests 20 more. The existing page cursor and reading-position
@@ -307,8 +352,23 @@ the Scrollable's own simulation.
 
 ## Motion and accessibility
 
-An empty conversation shows a silver-white particle sphere centered in the
-conversation content area. Particles form a dense, irregularly sampled thin
+The default loading effect is a small spinning progress arc. Settings offers
+Simple spinner, Static indicator, and Spinner with conversation particles. The
+selection persists with appearance preferences and changes at runtime without
+replacing conversation content or draft state. Empty conversations stay idle
+under the default and static options.
+
+Loading widgets use `LicoLoadingIndicator` and the selected
+`LicoLoadingEffectScope`. A renderer supplies an indicator builder and may supply
+a conversation-scene builder. The application catalog registers compiled
+factories; only the selected, mounted effect creates its visual resources.
+The scene contract carries layout bounds and presentation completion, independently
+of the particle simulation. Without a scene builder, the host skips measurement,
+brand-mark sampling, and decorative frame scheduling. Data readiness, errors,
+sending, and cancellation remain with their existing owners.
+
+The optional particle effect shows a silver-white sphere centered in an empty
+conversation's content area. Particles form a dense, irregularly sampled thin
 spherical shell. Continuous tangential curl motion creates folding density and
 overlapping front and rear layers; it is not a latitude grid rotating as one
 object or a pair of sinusoidal bands. Fine flow and depth shading give the sphere
@@ -318,11 +378,14 @@ interaction implementation. Only the particle motion is referenced. The renderer
 leaves its canvas transparent and adds no background grid, reference-site
 decoration, or texture behind the sphere.
 
-Statistics loading and the empty conversation share one pure visual particle
-engine. Each screen owns its loading state independently of that renderer.
+Conversation and Statistics loading share a small progress indicator. Loading
+does not start the empty-conversation particle scene; the optional scene appears after
+the first read settles without content. Reduced motion keeps a static progress
+arc. Each screen owns its loading state independently of the renderer.
 
-On the first send, the same particle identities flow left into layered waves,
-then settle into the actual Agent avatar and composer outline. Transition
+With the particle effect enabled, the first send moves the same particle
+identities left into layered waves. They then settle into the actual Agent
+avatar and composer outline. Transition
 positions and velocities remain continuous. Targets come from measured layout
 geometry, including a relocated desktop composer; no fixed screen coordinates
 or replacement screenshots define the transition. The composer remains usable

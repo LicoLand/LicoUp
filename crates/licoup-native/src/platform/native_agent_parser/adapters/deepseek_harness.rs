@@ -104,6 +104,14 @@ pub(in crate::platform) struct TurnParser {
     buffered: Vec<ProtocolFrame>,
     attributed: Vec<ProtocolFrame>,
     receipt_seen: bool,
+    progress_cursor: usize,
+    message_ordinal: usize,
+}
+
+pub(in crate::platform) struct CompletedMessage {
+    pub(in crate::platform) turn_id: String,
+    pub(in crate::platform) unit_id: String,
+    pub(in crate::platform) text: String,
 }
 
 impl TurnParser {
@@ -115,6 +123,8 @@ impl TurnParser {
             buffered: Vec::new(),
             attributed: Vec::new(),
             receipt_seen: false,
+            progress_cursor: 0,
+            message_ordinal: 0,
         }
     }
 
@@ -179,10 +189,33 @@ impl TurnParser {
         Ok(None)
     }
 
+    /// Publish only messages attributed to the acknowledged inbox receipt.
+    /// Each completed native message is available before the agent becomes idle;
+    /// its embedded timed stream is historical data, never replayed as live deltas.
+    pub(in crate::platform) fn take_completed_messages(&mut self) -> Vec<CompletedMessage> {
+        let Some(turn_id) = self.message_id.as_ref().filter(|_| self.receipt_seen) else {
+            return Vec::new();
+        };
+        let messages = self.attributed[self.progress_cursor..]
+            .iter()
+            .filter_map(assistant_response)
+            .map(|text| {
+                self.message_ordinal += 1;
+                CompletedMessage {
+                    turn_id: turn_id.clone(),
+                    unit_id: message_unit(self.message_ordinal),
+                    text,
+                }
+            })
+            .collect();
+        self.progress_cursor = self.attributed.len();
+        messages
+    }
+
     fn finish(&mut self) -> Result<TurnResult, TurnParseError> {
         let turn_id = self
             .message_id
-            .take()
+            .clone()
             .filter(|_| self.receipt_seen)
             .ok_or(TurnParseError::Incomplete)?;
         let output = final_assistant_response(&self.attributed);
@@ -209,10 +242,16 @@ fn success_transitions(output: &str, frames: &[ProtocolFrame]) -> Vec<Transition
     }));
     if !output.is_empty() {
         transitions.extend(reducer.advance(LifecycleStage::Responding));
-        transitions.push(Transition::Text {
-            unit_id: "deepseek-harness:reply".to_owned(),
-            text: output.to_owned(),
-        });
+        transitions.extend(
+            frames
+                .iter()
+                .filter_map(assistant_response)
+                .enumerate()
+                .map(|(index, text)| Transition::Text {
+                    unit_id: message_unit(index + 1),
+                    text,
+                }),
+        );
     }
     transitions.extend(reducer.advance(LifecycleStage::Completed));
     transitions
@@ -258,22 +297,28 @@ fn is_idle_status(frame: &ProtocolFrame) -> bool {
             == Some("idle")
 }
 
-fn final_assistant_response(frames: &[ProtocolFrame]) -> String {
-    frames
+fn message_unit(ordinal: usize) -> String {
+    format!("deepseek-harness:reply:{ordinal}")
+}
+
+fn assistant_response(frame: &ProtocolFrame) -> Option<String> {
+    let event = frame.value.pointer("/params/event")?;
+    if event.get("type").and_then(Value::as_str) != Some("assistant/message") {
+        return None;
+    }
+    let text: String = event
+        .pointer("/data/message/content")
+        .or_else(|| event.pointer("/data/content"))
+        .and_then(Value::as_array)?
         .iter()
-        .filter_map(|frame| frame.value.pointer("/params/event"))
-        .filter(|event| event.get("type").and_then(Value::as_str) == Some("assistant/message"))
-        .flat_map(|event| {
-            event
-                .pointer("/data/message/content")
-                .or_else(|| event.pointer("/data/content"))
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-        })
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
         .filter_map(|block| block.get("text").and_then(Value::as_str))
-        .collect()
+        .collect();
+    (!text.is_empty()).then_some(text)
+}
+
+fn final_assistant_response(frames: &[ProtocolFrame]) -> String {
+    frames.iter().filter_map(assistant_response).collect()
 }
 
 #[cfg(test)]
@@ -328,6 +373,54 @@ mod tests {
         assert_eq!(
             result.transitions.last(),
             Some(&Transition::Lifecycle(LifecycleStage::Completed))
+        );
+    }
+
+    #[test]
+    fn completed_messages_wait_for_receipt_but_not_idle_and_keep_distinct_units() {
+        let mut parser = TurnParser::new("prompt-1", "session-1");
+        for event in [
+            json!({"type":"agent/inbox/spliced","data":{"inserted":[{"id":"message-1"}]}}),
+            json!({"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"first"}]},"stream":[{"private":"not-live"}]}}),
+        ] {
+            assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":event}}))).unwrap().is_none());
+        }
+        assert!(parser.take_completed_messages().is_empty());
+        assert!(
+            parser
+                .ingest(frame(
+                    json!({"id":"prompt-1","result":{"messageId":"message-1"}})
+                ))
+                .unwrap()
+                .is_none()
+        );
+        let first = parser.take_completed_messages();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].turn_id, "message-1");
+        assert_eq!(first[0].unit_id, "deepseek-harness:reply:1");
+        assert_eq!(first[0].text, "first");
+        assert!(parser.take_completed_messages().is_empty());
+        assert!(parser.ingest(frame(json!({"method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"second"}]}}}}}))).unwrap().is_none());
+        let second = parser.take_completed_messages();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].unit_id, "deepseek-harness:reply:2");
+        let final_result = parser.ingest(frame(json!({"method":"session.status","params":{"sessionId":"session-1","status":"idle"}}))).unwrap().unwrap();
+        assert!(parser.take_completed_messages().is_empty());
+        assert_eq!(final_result.output, "firstsecond");
+        let units: Vec<_> = final_result
+            .transitions
+            .iter()
+            .filter_map(|transition| {
+                if let Transition::Text { unit_id, .. } = transition {
+                    Some(unit_id.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            units,
+            ["deepseek-harness:reply:1", "deepseek-harness:reply:2"]
         );
     }
 

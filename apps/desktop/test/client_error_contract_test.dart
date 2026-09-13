@@ -61,8 +61,8 @@ const _wireErrors = <Map<String, Object>>[
 
 final _wireError = _wireErrors[3];
 
-Uint8List _frame(Map<String, Object?> value) =>
-    Uint8List.fromList(utf8.encode(jsonEncode(value)));
+Map<String, dynamic> _frame(Map<String, Object?> value) =>
+    decodeStdioRpcEnvelope(Uint8List.fromList(utf8.encode(jsonEncode(value))));
 
 void main() {
   test('generated ClientError round trips every bounded field', () {

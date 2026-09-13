@@ -45,6 +45,7 @@ final class AgentUsageChartTooltip extends AgentUsageHoverCard {
             context.licoColors,
             series.label,
             grouping: timeline.grouping,
+            displayName: timeline.displayNameFor(series.label),
           ),
         ),
   ];
@@ -103,8 +104,8 @@ final class AgentUsageChartLegend extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Wrap(
-      spacing: 12,
-      runSpacing: 6,
+      spacing: 16,
+      runSpacing: 8,
       children: [
         for (final series in timeline.series)
           Row(
@@ -118,6 +119,7 @@ final class AgentUsageChartLegend extends StatelessWidget {
                     colors,
                     series.label,
                     grouping: timeline.grouping,
+                    displayName: timeline.displayNameFor(series.label),
                   ),
                   borderRadius: BorderRadius.circular(99),
                 ),
@@ -132,7 +134,7 @@ final class AgentUsageChartLegend extends StatelessWidget {
                   style: TextStyle(
                     color: colors.textMuted,
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -140,9 +142,9 @@ final class AgentUsageChartLegend extends StatelessWidget {
               Text(
                 formatAgentUsageNumber(timeline.totalFor(series.label)),
                 style: TextStyle(
-                  color: colors.text,
+                  color: colors.textSecondary,
                   fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],

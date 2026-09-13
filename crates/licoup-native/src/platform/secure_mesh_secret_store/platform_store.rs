@@ -97,6 +97,46 @@ impl PlatformSecretStore {
             .delete_legacy_classic_secret(self.service, session, handle)
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn with_legacy_credential_migration_session<T>(
+        &self,
+        request: &SecretStoreAuthorizationRequest,
+        migrate: impl FnOnce(&SecretStoreAuthorizationSession) -> Result<T>,
+    ) -> Result<T> {
+        use crate::core::secure_mesh_secret_store::{
+            SecretStoreCallerChannel, SecretStoreKeyClass,
+        };
+        if request.caller_channel() != SecretStoreCallerChannel::GatewayCredentialMigration
+            || request.key_class() != SecretStoreKeyClass::GatewayCredential
+            || !request.allow_interaction()
+        {
+            return Err(anyhow!("secure_mesh_keychain_migration_scope_invalid"));
+        }
+        let access = self
+            .macos_secret_store_access()?
+            .filter(|access| access.is_injected())
+            .map(Ok)
+            .unwrap_or_else(|| {
+                super::macos_user_presence::production_access(request).map(Arc::new)
+            })?;
+        let session = access.begin_session(self.backend(), request)?;
+        struct MigrationSessionScope<'a> {
+            access: &'a MacosSecretStoreAccess,
+            session: &'a SecretStoreAuthorizationSession,
+        }
+        impl Drop for MigrationSessionScope<'_> {
+            fn drop(&mut self) {
+                self.access.finish_migration_session(self.session);
+            }
+        }
+        let _scope = MigrationSessionScope {
+            access: &access,
+            session: &session,
+        };
+        self.select_macos_secret_store_access(Arc::clone(&access))?;
+        migrate(&session)
+    }
+
     pub fn verify_secret_class_persistence(
         &self,
         namespace: impl Into<String>,

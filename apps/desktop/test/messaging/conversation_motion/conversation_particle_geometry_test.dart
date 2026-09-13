@@ -5,8 +5,8 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_geometry.dart';
 
-const _anchors = ConversationParticleAnchors(
-  sphere: Rect.fromLTWH(390, 140, 320, 320),
+const _anchors = ConversationMotionAnchors(
+  content: Rect.fromLTWH(390, 140, 320, 320),
   avatar: Rect.fromLTWH(32, 72, 36, 36),
   composer: RRect.fromLTRBXY(32, 530, 672, 618, 24, 24),
 );
@@ -21,11 +21,12 @@ void main() {
         final points = <List<double>>[];
         for (var i = 0; i < field.count; i += 7) {
           final z = field.depth[i] * 2 - 1;
-          final scale = (3.9 - z) / (3.9 * _anchors.sphere.shortestSide * 0.46);
+          final scale =
+              (3.9 - z) / (3.9 * _anchors.content.shortestSide * 0.46);
           final x =
-              (field.positions[i * 2] - _anchors.sphere.center.dx) * scale;
+              (field.positions[i * 2] - _anchors.content.center.dx) * scale;
           final y =
-              (field.positions[i * 2 + 1] - _anchors.sphere.center.dy) * scale;
+              (field.positions[i * 2 + 1] - _anchors.content.center.dy) * scale;
           expect(x * x + y * y + z * z, closeTo(1, 0.00001));
           points.add([x, y, z]);
         }
@@ -87,8 +88,8 @@ void main() {
     field.assemble(seconds: 0, duration: 2, anchors: _anchors);
     // A first streamed sentence can move the measured avatar before the shell
     // has finished releasing; its layout update must not reapply a long impulse.
-    final earlyReplyAnchors = ConversationParticleAnchors(
-      sphere: _anchors.sphere,
+    final earlyReplyAnchors = ConversationMotionAnchors(
+      content: _anchors.content,
       avatar: const Rect.fromLTWH(32, 64, 36, 36),
       composer: _anchors.composer,
     );
@@ -112,7 +113,7 @@ void main() {
     'wave join retains velocity and every identity reaches a real target',
     () {
       final field = ConversationParticleGeometry(count: 720);
-      final glyph = ConversationParticleGlyph(
+      final glyph = ConversationMotionGlyph(
         Float32List.fromList([0.25, 0.25, 0.75, 0.75]),
       );
       field.assemble(seconds: 0, duration: 2, anchors: _anchors, glyph: glyph);
@@ -164,8 +165,8 @@ void main() {
       final current = Float32List.fromList(field.positions);
       field.writeFrame(1.902, _anchors);
       final uninterrupted = Float32List.fromList(field.positions);
-      const resized = ConversationParticleAnchors(
-        sphere: Rect.fromLTWH(390, 140, 320, 320),
+      const resized = ConversationMotionAnchors(
+        content: Rect.fromLTWH(390, 140, 320, 320),
         avatar: Rect.fromLTWH(40, 84, 36, 36),
         composer: RRect.fromLTRBXY(40, 510, 740, 618, 24, 24),
       );
@@ -185,7 +186,7 @@ void main() {
     () {
       final bytes = Uint8List(4 * 4 * 4);
       bytes[(1 * 4 + 2) * 4 + 3] = 255;
-      final glyph = ConversationParticleGlyph.fromRgba(
+      final glyph = ConversationMotionGlyph.fromRgba(
         bytes,
         width: 4,
         height: 4,
@@ -194,7 +195,7 @@ void main() {
       bytes.fillRange(0, bytes.length, 0);
       expect(glyph.normalizedPositions, orderedEquals([0.625, 0.375]));
       expect(
-        ConversationParticleGlyph.fromRgba(bytes, width: 4, height: 4),
+        ConversationMotionGlyph.fromRgba(bytes, width: 4, height: 4),
         isNull,
       );
     },

@@ -36,6 +36,37 @@ fn native_model_catalog_attaches_registry_identity_without_rewriting_admitted_se
 }
 
 #[test]
+fn composer_catalog_retains_native_speed_selectors_with_one_global_identity() {
+    for target in ["cursor", "opencode"] {
+        let mut entries = BTreeMap::new();
+        for selector in ["composer-2.5", "composer-2.5-fast"] {
+            add_model_catalog_entry(&mut entries, selector, "native-cli", BTreeSet::new());
+        }
+        let value = build_model_catalog(
+            target,
+            entries,
+            BTreeSet::from(["native-cli".to_owned()]),
+            Vec::new(),
+            Some("composer-2.5-fast".to_owned()),
+        );
+        assert_eq!(value["defaultModel"], "composer-2.5-fast");
+        let models = value["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        for model in models {
+            assert_eq!(model["canonicalModelId"], "cursor/composer-2.5");
+            assert_eq!(model["modelLabId"], "cursor");
+        }
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model["name"].as_str().unwrap())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["composer-2.5", "composer-2.5-fast"])
+        );
+    }
+}
+
+#[test]
 fn native_catalog_uses_shared_display_typography_for_unresolved_models() {
     for (name, expected) in [
         ("custom/deepseek-v4-flash", "DeepSeek V4 Flash"),

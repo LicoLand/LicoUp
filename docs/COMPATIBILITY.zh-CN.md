@@ -81,7 +81,7 @@ LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon�
 | hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| deepseek-harness | conversation | unverified | 否 | deepseek-harness-sdk-stdio-jsonrpc | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
+| deepseek-harness | conversation | unverified | 否 | deepseek-harness-sdk-stdio-jsonrpc | rpc | 是 | 否 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 
 ## 原生能力清单

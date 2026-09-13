@@ -1,90 +1,12 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'conversation_particle_curl.dart';
+import 'conversation_motion_geometry.dart';
 
-/// Actual bounds in the particle overlay's local coordinate system.
-@immutable
-class ConversationParticleAnchors {
-  const ConversationParticleAnchors({
-    required this.sphere,
-    this.avatar,
-    this.composer,
-  });
-
-  final Rect sphere;
-  final Rect? avatar;
-  final RRect? composer;
-
-  bool get hasDestinations =>
-      avatar != null &&
-      !avatar!.isEmpty &&
-      composer != null &&
-      !composer!.isEmpty;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ConversationParticleAnchors &&
-      sphere == other.sphere &&
-      avatar == other.avatar &&
-      composer == other.composer;
-
-  @override
-  int get hashCode => Object.hash(sphere, avatar, composer);
-}
-
-/// A locally sampled brand mark, with x/y pairs normalized to its avatar bounds.
-///
-/// Supply only an application-rendered avatar/brand mark. No conversation or
-/// user-content capture is needed. The image and its bytes are never retained.
-class ConversationParticleGlyph {
-  ConversationParticleGlyph(Float32List normalizedPositions)
-    : normalizedPositions = Float32List.fromList(normalizedPositions) {
-    if (normalizedPositions.isEmpty || normalizedPositions.length.isOdd) {
-      throw ArgumentError.value(normalizedPositions.length, 'positions.length');
-    }
-  }
-
-  final Float32List normalizedPositions;
-  int get length => normalizedPositions.length ~/ 2;
-
-  static Future<ConversationParticleGlyph?> fromImage(ui.Image image) async {
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    if (bytes == null) return null;
-    return fromRgba(
-      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      width: image.width,
-      height: image.height,
-    );
-  }
-
-  static ConversationParticleGlyph? fromRgba(
-    Uint8List bytes, {
-    required int width,
-    required int height,
-  }) {
-    if (width <= 0 || height <= 0 || bytes.length != width * height * 4) {
-      throw ArgumentError('RGBA dimensions must match the byte buffer.');
-    }
-    final points = <double>[];
-    // Sampling is bounded by mark resolution, independently of display DPI.
-    final step = math.max(1, (math.max(width, height) / 72).ceil());
-    for (var y = 0; y < height; y += step) {
-      for (var x = 0; x < width; x += step) {
-        if (bytes[(y * width + x) * 4 + 3] < 48) continue;
-        points
-          ..add((x + 0.5) / width)
-          ..add((y + 0.5) / height);
-      }
-    }
-    return points.isEmpty
-        ? null
-        : ConversationParticleGlyph(Float32List.fromList(points));
-  }
-}
+export 'conversation_motion_geometry.dart';
 
 /// Stable Fibonacci samples of a thin, continuously folding particle shell.
 ///
@@ -138,7 +60,7 @@ class ConversationParticleGeometry {
   final Float32List _sourceDepth;
   final Float32List _sourceLight;
   final Float64List _scratch;
-  ConversationParticleAnchors? _anchors;
+  ConversationMotionAnchors? _anchors;
   double? _start;
   double _duration = 0;
   static const _curlDepartureFraction = 0.18;
@@ -233,8 +155,8 @@ class ConversationParticleGeometry {
   void assemble({
     required double seconds,
     required double duration,
-    required ConversationParticleAnchors anchors,
-    ConversationParticleGlyph? glyph,
+    required ConversationMotionAnchors anchors,
+    ConversationMotionGlyph? glyph,
   }) {
     assert(anchors.hasDestinations);
     assert(duration > 0);
@@ -257,7 +179,7 @@ class ConversationParticleGeometry {
     _curlDeparture = !retarget || seconds < _curlDepartureEnd;
     if (!retarget) _curlDepartureEnd = seconds;
     _anchors = anchors;
-    final radius = anchors.sphere.shortestSide * 0.46;
+    final radius = anchors.content.shortestSide * 0.46;
     final outline = Path()..addRRect(anchors.composer!.scaleRadii());
     final metric = outline.computeMetrics().first;
     for (var i = 0; i < count; i++) {
@@ -285,7 +207,7 @@ class ConversationParticleGeometry {
       if (!retarget) {
         for (var sample = -1; sample <= 1; sample++) {
           _setTime(seconds + delay + sample * delta);
-          _spherePoint(i, anchors.sphere, _scratch);
+          _spherePoint(i, anchors.content, _scratch);
           final buffer = sample < 0 ? before : (sample == 0 ? current : after);
           buffer[p] = _scratch[0];
           buffer[p + 1] = _scratch[1];
@@ -310,9 +232,9 @@ class ConversationParticleGeometry {
       final along = (u * 2 - 1) * envelope + (seed - 0.5) * 0.05;
       final wavePhase = along * math.pi * 1.4 + v * 0.35;
       final cross = v * (0.18 + 0.04 * math.cos(along * math.pi));
-      _wave[w] = anchors.sphere.center.dx - radius * (1.30 - 1.1 * along);
+      _wave[w] = anchors.content.center.dx - radius * (1.30 - 1.1 * along);
       _wave[w + 1] =
-          anchors.sphere.center.dy +
+          anchors.content.center.dy +
           radius *
               (math.sin(wavePhase) * 0.28 +
                   cross +
@@ -357,13 +279,13 @@ class ConversationParticleGeometry {
     writeFrame(seconds, anchors);
   }
 
-  void writeFrame(double seconds, ConversationParticleAnchors anchors) {
+  void writeFrame(double seconds, ConversationMotionAnchors anchors) {
     _setTime(seconds);
     final assembling = _start != null;
     for (var i = 0; i < count; i++) {
       final p = i * 2;
       if (!assembling || seconds < _launch[i]) {
-        _spherePoint(i, anchors.sphere, _scratch);
+        _spherePoint(i, anchors.content, _scratch);
         depth[i] = _scratch[2];
         luminance[i] = _scratch[3];
         positions[p] = _scratch[0];

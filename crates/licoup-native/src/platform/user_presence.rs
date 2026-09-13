@@ -20,7 +20,6 @@ mod macos {
     use objc2_foundation::{NSError, NSString};
     use objc2_local_authentication::{LAContext, LAError, LAPolicy};
     use std::sync::{Arc, Mutex, OnceLock, mpsc};
-    use std::time::Duration;
 
     #[derive(Clone)]
     pub(crate) struct Session {
@@ -110,18 +109,15 @@ mod macos {
         // SAFETY: the retained context, reason, and reply remain live through
         // submission; the block retains its captured channel sender.
         unsafe { context.evaluatePolicy_localizedReason_reply(policy, &reason, &reply) };
-        match receiver.recv_timeout(Duration::from_secs(120)) {
+        // The OS and user own authentication completion and cancellation.
+        // A slow response must not invalidate the pending native prompt.
+        match receiver.recv() {
             Ok((true, _)) => {}
             Ok((false, code)) => {
                 return Err(anyhow!(
                     "user_presence_authorization_failed:{}",
                     error_category(code)
                 ));
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // SAFETY: invalidate is the documented cancellation operation.
-                unsafe { context.invalidate() };
-                return Err(anyhow!("user_presence_authorization_timed_out"));
             }
             Err(_) => return Err(anyhow!("user_presence_authorization_callback_missing")),
         }

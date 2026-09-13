@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,7 +39,7 @@ void main() {
       expect(refreshes, 0, reason: 'holding an armed pull does not refresh');
       expect(
         tester
-            .widget<CircularProgressIndicator>(
+            .widget<LicoLoadingIndicator>(
               find.byKey(const Key('messaging-list-refresh-indicator')),
             )
             .value,
@@ -50,7 +51,7 @@ void main() {
       expect(refreshes, 1);
       expect(
         tester
-            .widget<CircularProgressIndicator>(
+            .widget<LicoLoadingIndicator>(
               find.byKey(const Key('messaging-list-refresh-indicator')),
             )
             .value,

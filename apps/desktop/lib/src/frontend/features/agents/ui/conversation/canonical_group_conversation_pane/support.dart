@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -109,7 +110,7 @@ class CanonicalGroupLoadingOrEmpty extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (loading)
-            const CircularProgressIndicator()
+            const LicoLoadingIndicator()
           else
             Icon(Icons.groups_2_outlined, size: 30, color: colors.textMuted),
           const SizedBox(height: 12),

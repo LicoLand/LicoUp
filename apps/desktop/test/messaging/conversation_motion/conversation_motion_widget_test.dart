@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_globe.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-const _anchors = ConversationParticleAnchors(
-  sphere: Rect.fromLTWH(80, 40, 200, 200),
+const _anchors = ConversationMotionAnchors(
+  content: Rect.fromLTWH(80, 40, 200, 200),
   avatar: Rect.fromLTWH(12, 12, 32, 32),
   composer: RRect.fromLTRBXY(12, 260, 292, 324, 18, 18),
 );
@@ -26,37 +26,17 @@ Widget _app(Widget child, {bool reduced = false, bool ticking = true}) =>
 
 void main() {
   testWidgets(
-    'loading globe shares the field and pauses without resetting it',
+    'loading feedback paints no particles and respects reduced motion',
     (tester) async {
       await tester.pumpWidget(
-        _app(const Center(child: ConversationParticleGlobe(diameter: 180))),
+        _app(const Center(child: LicoLoadingIndicator())),
       );
-      await tester.pump(const Duration(milliseconds: 100));
-      ConversationParticlePainter painter() => tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((widget) => widget.painter)
-          .whereType<ConversationParticlePainter>()
-          .single;
-      final original = painter();
-      final seconds = original.clock.value;
-      expect(original.anchors.sphere.size, const Size(180, 180));
+      expect(find.byType(ConversationParticleField), findsNothing);
+      expect(tester.binding.transientCallbackCount, greaterThan(0));
       await tester.pumpWidget(
-        _app(
-          const Center(
-            child: ConversationParticleGlobe(diameter: 180, active: false),
-          ),
-        ),
+        _app(const Center(child: LicoLoadingIndicator()), reduced: true),
       );
-      await tester.pump(const Duration(seconds: 2));
-      expect(painter().geometry, same(original.geometry));
-      expect(painter().clock.value, seconds);
-      expect(tester.binding.transientCallbackCount, 0);
-      await tester.pumpWidget(
-        _app(
-          const Center(child: ConversationParticleGlobe(diameter: 180)),
-          reduced: true,
-        ),
-      );
+      await tester.pump(const Duration(seconds: 1));
       expect(tester.binding.transientCallbackCount, 0);
       await tester.pumpWidget(const SizedBox.shrink());
     },

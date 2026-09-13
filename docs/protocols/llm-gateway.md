@@ -95,11 +95,16 @@ unknown fields fail closed.
 
 ## Credential custody
 
-An explicit authorize operation admits one exact operation or bounded batch,
+The macOS custody executable uses the [app-like helper and permanent public CLI alias](../platforms/MACOS-DIRECT-DISTRIBUTION.md#local-custody-validation). Its profile and access-group authorization belong to the helper executable; the Gateway does not acquire Keychain custody.
+
+
+A normal explicit authorize operation admits one exact operation or bounded batch,
 with at most one native authentication. All selected keys share its retained
 `LAContext`; an existing valid scoped grant needs no extra prompt. Cancellation,
 rejected biometry, and biometric lockout do not trigger password fallback. The
 sidecar receives the authorized handoff and does not authenticate again.
+Pending authentication waits for the native result or explicit cancellation;
+the client does not impose its own response deadline.
 
 Data Protection Keychain calls reuse that context with interaction disabled.
 Classic Keychain ACLs use a separate authorization mechanism: the adapter
@@ -113,16 +118,25 @@ an ACL or signing-identity mismatch. Existing classic items remain usable when
 their unchanged ACL allows silent access. A blocked read or migration is not a
 successful single-prompt unlock.
 The native authorize result exposes only this allowlisted reason with
-`authorized: false`; existing grants remain intact. The desktop explains that
-the user must resolve the keychain lock or access permissions in macOS before
-retrying, without claiming that migration is necessarily required.
+`authorized: false`; existing grants remain intact. The desktop offers the protected migration action while preserving the failed
+authorization state; a failed read does not grant access.
 
 `SecAccessControl` does not convert classic ACLs. Data Protection access requires
 the custody process's own valid access-group entitlements and provisioning;
-signing a local executable alone does not provide it. Moving classic items to
-that store requires a separately reviewed migration or replacement flow when
-their current ACL denies silent access. No automatic ACL relaxation, plaintext
-file export, or per-key password retry is allowed. See Apple's
+signing a local executable alone does not provide it. The explicit
+`llm-gateway credentials migrate` command is the one-time upgrade path for old
+items, including expired credentials. It binds a separate migration scope and
+allows macOS to request the old items' native ACL approval, which may require a
+password. This exception applies only to migration; normal authorization keeps
+its single-biometric contract. No API key re-entry, ACL relaxation, or plaintext
+file export is involved. The application copies each item to Data Protection,
+reads the destination back, and only then removes its classic source. Failures
+preserve the source; retries resume cleanup without replacing a verified
+current item. The batch is bounded by the credential inventory and retained
+native session, with no client response deadline while the user authenticates.
+Completion is recorded by the
+[state migration owner](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md#startup-admission).
+Migration does not enable credentials or start provider requests. See Apple's
 [keychain implementations](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)
 and [provisioning requirements](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
 
@@ -136,6 +150,7 @@ The native surface is closed to these operations:
 
 - `llm-gateway credentials status`
 - `llm-gateway credentials list`
+- `llm-gateway credentials migrate`
 - `llm-gateway credentials create --stdin-json true`
 - `llm-gateway credentials delete <credential-id>`
 - `llm-gateway credentials lease <days>`

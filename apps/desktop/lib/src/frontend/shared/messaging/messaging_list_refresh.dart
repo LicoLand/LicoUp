@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -109,7 +110,7 @@ class _MessagingListRefreshState extends State<MessagingListRefresh> {
                                 padding: const EdgeInsets.all(7),
                                 child: SizedBox.square(
                                   dimension: 18,
-                                  child: CircularProgressIndicator(
+                                  child: LicoLoadingIndicator(
                                     key: const Key(
                                       'messaging-list-refresh-indicator',
                                     ),

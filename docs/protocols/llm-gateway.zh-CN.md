@@ -79,9 +79,13 @@ OpenCode/Pi 一键脚本拒绝应用空快照。
 
 ## 密钥托管
 
-一次显式授权只准入一个精确操作或有界批次，最多进行一次原生认证。所有选中
+macOS 密钥托管执行体采用[app-like helper 与永久公开 CLI 入口](../platforms/MACOS-DIRECT-DISTRIBUTION.zh-CN.md#本机密钥托管验证)。Profile 和 access-group 授权属于 helper 执行体，Gateway 不获得钥匙串托管权。
+
+
+日常显式授权只准入一个精确操作或有界批次，最多进行一次原生认证。所有选中
 密钥共用保留的 `LAContext`；已有有效的精确授权不额外弹窗。取消、生物识别失败
 或锁定不会触发密码回退。Sidecar 接收已授权交接，不再次认证。
+等待认证期间，以原生结果或明确取消为准；客户端不另设响应超时。
 
 Data Protection Keychain 调用复用该上下文并禁止交互。Classic Keychain ACL
 使用独立的授权机制：适配器串行地临时禁止旧钥匙串 UI，每次效果结束后恢复
@@ -91,13 +95,18 @@ Data Protection Keychain 调用复用该上下文并禁止交互。Classic Keych
 ACL 不匹配或签名身份变化。原 ACL 允许静默访问的旧项目仍可使用；读取或迁移
 受阻不等于单提示解锁成功。
 原生授权结果只通过 `authorized: false` 和白名单原因码投影这类失败，既有授权
-保持不变。桌面端提示用户先在 macOS 中处理钥匙串锁定或访问权限问题，再重试，
-不会断言一定需要迁移。
+保持不变。桌面端提供受保护迁移操作并保留授权失败状态；读取失败不会授予权限。
 
 `SecAccessControl` 不能转换旧 ACL。Data Protection 访问要求实际保管进程具有
 有效的访问组 entitlement 和 provisioning；仅对本地可执行文件签名并不满足要求。
-旧 ACL 拒绝静默访问时，迁入该存储需要另行审阅的迁移或替换流程。禁止自动放宽
-ACL、导出明文文件或逐项重试密码。参见 Apple 的
+显式 `llm-gateway credentials migrate` 是旧项目的一次性升级入口，涵盖过期凭据。
+它绑定独立迁移范围，允许 macOS 请求旧条目的原生 ACL 授权，系统可能要求密码。
+这个例外只用于迁移，日常授权仍遵守单次指纹要求。无需重新输入 API Key，不放宽 ACL，
+不导出明文文件。应用逐项复制到 Data Protection，读回验证后才删除 classic 源记录。
+失败保留源记录；重试继续清理，不覆盖已验证的新记录。批次由凭据清单和存活原生会话
+限定，等待用户认证期间没有客户端响应超时。
+[状态迁移权威](../architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md#启动准入)
+负责记录完成。迁移本身不启用凭据，也不发起供应商请求。参见 Apple 的
 [钥匙串实现说明](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)
 与 [provisioning 要求](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)。
 
@@ -109,6 +118,7 @@ ACL、导出明文文件或逐项重试密码。参见 Apple 的
 
 - `llm-gateway credentials status`
 - `llm-gateway credentials list`
+- `llm-gateway credentials migrate`
 - `llm-gateway credentials create --stdin-json true`
 - `llm-gateway credentials delete <credential-id>`
 - `llm-gateway credentials lease <days>`

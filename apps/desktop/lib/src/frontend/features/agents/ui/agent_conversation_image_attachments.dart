@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:collection';
 import 'dart:convert';
 
@@ -294,7 +295,7 @@ class ConversationImageLoadingPlaceholder extends StatelessWidget {
         child: Center(
           child: SizedBox.square(
             dimension: 18,
-            child: CircularProgressIndicator(
+            child: LicoLoadingIndicator(
               strokeWidth: 1.6,
               color: colors.textMuted,
             ),

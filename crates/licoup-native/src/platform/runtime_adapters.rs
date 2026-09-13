@@ -126,7 +126,7 @@ pub fn compose_generated_instruction_delivery(
         RuntimeAdapter::Codex => {
             licoup_agent_runtime::InstructionPolicy::NativeDeveloperInstructions
         }
-        RuntimeAdapter::Cursor | RuntimeAdapter::Antigravity => {
+        RuntimeAdapter::Cursor | RuntimeAdapter::Antigravity | RuntimeAdapter::DeepSeekHarness => {
             licoup_agent_runtime::InstructionPolicy::OrdinaryWirePrefix
         }
         RuntimeAdapter::ClaudeCode
@@ -138,7 +138,7 @@ pub fn compose_generated_instruction_delivery(
         | RuntimeAdapter::OpenCode => {
             licoup_agent_runtime::InstructionPolicy::NativePrivateInstructions
         }
-        RuntimeAdapter::Pi | RuntimeAdapter::LicoAgent | RuntimeAdapter::DeepSeekHarness => {
+        RuntimeAdapter::Pi | RuntimeAdapter::LicoAgent => {
             return Err("runtime_instruction_policy_unavailable");
         }
     };

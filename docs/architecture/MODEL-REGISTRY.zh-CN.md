@@ -37,7 +37,9 @@ ID、名称和准入选项；注册表为其投影附加标准身份。显示名
 
 对话使用官方 `dsh --profile sdk` 入口启动。模型、供应商、工作目录和可选的
 思考强度经 `initialize` 传入；实际设置保留选中强度，复用 SDK 会话时不得静默
-更改。模型发现成功不代表对话就绪验证通过。上述契约分别由官方
+更改。模型发现成功不代表对话就绪验证通过。运行时准入、Assistant 指导语投递
+与消息发布由 [ADR 0005](../adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md)
+维护。上述模型契约分别由官方
 [适配器元数据](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md)
 和 [SDK profile](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/sdk-app/README.md)
 定义。
@@ -50,6 +52,13 @@ ID、名称和准入选项；注册表为其投影附加标准身份。显示名
 匹配必须唯一：格式差异、Agent 包装、上下文窗口后缀、请求思考强度和速度
 选项，不应为同一模型创造第二个身份。版本、实质不同的模型变体和模态差异
 必须保留。
+
+官方确认属于执行模式的选项共享注册表身份，即使公开目录将它们分行列出或尚未
+收录。[Composer 2.5 及其 Fast 模式](https://cursor.com/docs/models/cursor-composer-2-5)
+在各 Agent、可选模型目录元数据和用量报告中均解析为 `cursor/composer-2.5`。
+保留报告中先前独立的 Fast 身份也会合并。原生选择器与原始记录保持不变；明确的
+Fast 后缀作为执行速度保留，实际请求元数据优先。裸模型 ID 不能证明是否启用
+Fast。该已确认的等价关系不会移除其他模型身份中的 Fast。
 
 正式供应商 ID 使用独立命名空间。显示名称别名不能覆盖正式 ID，也不能在本家
 查不到时转去匹配另一家的选择器。历史统计只采纳标准身份与明确版本别名；今天
