@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { evaluateBranchFlow, verifyCandidatePush, LONG_LIVED_BRANCHES, CANDIDATE_BRANCHES } from '../../../tools/scripts/verify-branch-flow.mjs';
+import { evaluateBranchFlow, verifyCandidatePush, LONG_LIVED_BRANCHES, CANDIDATE_BRANCHES, CANDIDATE_SOURCE_REFS, resolveCandidateSourceRevision } from '../../../tools/scripts/verify-branch-flow.mjs';
 const revision = 'a'.repeat(40);
 test('candidate creation and resume require exact release SHA and tree', () => {
   assert.deepEqual(LONG_LIVED_BRANCHES, ['nightly', 'stable', 'release']);
@@ -28,6 +28,17 @@ test('four unchanged checks admit only the fixed candidate, preserving trusted P
 });
 test('the nightly track publishes from its own fixed candidate branch', () => {
   assert.deepEqual(CANDIDATE_BRANCHES, ['macos-release-candidate', 'macos-nightly-release-candidate']);
+  // Each candidate is measured against its own filled source branch.
+  assert.deepEqual(CANDIDATE_SOURCE_REFS, {
+    'macos-release-candidate': 'refs/remotes/origin/release',
+    'macos-nightly-release-candidate': 'refs/remotes/origin/nightly'
+  });
+  assert.equal(resolveCandidateSourceRevision('macos-nightly-release-candidate', () => 'nightly-tip'), 'nightly-tip');
+  assert.equal(resolveCandidateSourceRevision('macos-release-candidate', () => 'release-tip'), 'release-tip');
+  assert.equal(verifyCandidatePush({ branch: 'macos-nightly-release-candidate', after: revision,
+    releaseRevision: revision, candidateTree: () => 'tree' }).ok, true);
+  assert.equal(verifyCandidatePush({ branch: 'macos-nightly-release-candidate', after: 'b'.repeat(40),
+    releaseRevision: revision, candidateTree: () => 'tree' }).ok, false);
   assert.equal(evaluateBranchFlow({ eventName: 'push', refName: 'macos-nightly-release-candidate',
     payload: { before: '0'.repeat(40) } }).ok, true);
   assert.equal(evaluateBranchFlow({ eventName: 'push', refName: 'macos-nightly-release-candidate',
