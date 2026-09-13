@@ -273,11 +273,15 @@
   "publicReferenceDomains": [
     "claude.ai",
     "claude.com",
+    "codeload.github.com",
     "deepseek.com",
     "en.wikipedia.org",
     "formulae.brew.sh",
     "licoland.org",
     "openclaw.ai",
-    "pi.dev"
+    "openfontlicense.org",
+    "pi.dev",
+    "scripts.sil.org",
+    "www.adobe.com"
   ]
 }
