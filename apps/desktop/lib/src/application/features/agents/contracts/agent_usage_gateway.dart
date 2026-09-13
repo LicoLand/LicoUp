@@ -1,6 +1,10 @@
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 abstract interface class AgentUsageGateway {
+  Future<AgentModelRegistryResult> readModelRegistry();
+
+  Future<AgentModelRegistryResult> refreshModelRegistry();
+
   Future<AgentUsageReport> scan({
     String agentId = '',
     bool forceRefresh = false,

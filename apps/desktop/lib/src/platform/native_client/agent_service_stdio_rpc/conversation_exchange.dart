@@ -18,6 +18,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
   final wireParams = Map<String, dynamic>.from(params);
   final initialOperation = (wireParams.remove('_rpcOperation') ?? 'send')
       .toString();
+  final executionObservation = initialOperation == 'execution';
   var turnHandle = (wireParams['turnHandle'] ?? '').toString();
   var conversationId = (wireParams['conversationId'] ?? '').toString();
   var cursor = wireParams['afterCursor'] is int
@@ -55,6 +56,15 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
       final frames = session.expectConversationFrames(
         requestId: activeRequestId,
         workflowId: workflowId,
+        executionObservation: executionObservation,
+        onCancel: executionObservation
+            ? () => _detachExecutionObservation(
+                session: session!,
+                params: wireParams,
+                requestId: activeRequestId,
+                workflowId: workflowId,
+              )
+            : null,
       );
       await writeStdioRpcFrame(session, encoded);
       var terminalSeen = false;
@@ -76,6 +86,18 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
               throw const LicoClientRpcException('invalid_response');
             }
             conversationId = eventConversationId;
+          }
+          if (executionObservation) {
+            final membershipId = frame.event['membershipId'];
+            if (membershipId != null &&
+                membershipId != wireParams['membershipId']) {
+              throw const LicoClientRpcException('invalid_response');
+            }
+            // Execution cursors are opaque and a record can span several
+            // transport frames sharing one cursor. Only its typed record
+            // decoder may advance after the complete raw text is received.
+            yield frame.event;
+            continue;
           }
           if (eventCursor is int) {
             if (eventCursor <= cursor) {
@@ -121,7 +143,10 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     } on Object catch (error) {
       session?.abandonExpectedFrame(activeRequestId);
       await sessionManager.invalidateAndDiscard();
-      if (turnHandle.isEmpty ||
+      // A raw observation never reconnects through public attach. Its owner
+      // can reopen this same execution scope after the last complete record.
+      if (executionObservation ||
+          turnHandle.isEmpty ||
           conversationId.isEmpty ||
           reconnects >= maxReconnects) {
         if (error is LicoClientRpcException) rethrow;
@@ -129,5 +154,46 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
       }
       reconnects += 1;
     }
+  }
+}
+
+/// Releases only a read-only native subscription on the existing multiplexed
+/// session. It never invalidates that session or calls Agent cancellation.
+Future<void> _detachExecutionObservation({
+  required StdioRpcSession session,
+  required Map<String, dynamic> params,
+  required String requestId,
+  required String workflowId,
+}) async {
+  if (!session.usable) return;
+  final detachId = '$requestId-execution-detach';
+  try {
+    final reply = session.expectFrame(requestId: detachId);
+    reply.ignore();
+    final encoded = ConversationCommand(
+      id: detachId,
+      workflowId: workflowId,
+      method: ConversationProtocolMethod.agentConversationExecutionDetach,
+      params: {
+        'turnHandle': params['turnHandle'],
+        'conversationId': params['conversationId'],
+        'membershipId': params['membershipId'],
+        'requestId': requestId,
+        'workflowId': workflowId,
+      },
+    ).encode();
+    await writeStdioRpcFrame(session, encoded);
+    final frame = await reply;
+    final bytes = frame.bytes;
+    if (bytes != null) {
+      decodeStdioRpcCommandReply(
+        bytes,
+        requestId: detachId,
+        workflowId: workflowId,
+      );
+    }
+  } on Object {
+    // Transport teardown already settles expectations. A failed observer
+    // cleanup cannot interrupt the shared session's unrelated executions.
   }
 }

@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/contracts/conversation_execution_port.dart';
+
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
@@ -15,7 +18,8 @@ export 'package:licoup/src/backend/features/agents/services/agent_conversation_a
 /// Backend adapter that implements the unified [AgentConversationLane] over the
 /// sidecar. Conversation callers consume this contract instead of owning
 /// native conversation command shapes.
-class AgentConversationService implements AgentConversationLane {
+class AgentConversationService
+    implements AgentConversationLane, ConversationExecutionSource {
   const AgentConversationService({
     AgentConversationNativePort? native,
     AgentConversationArchiveService archiveService =
@@ -31,6 +35,115 @@ class AgentConversationService implements AgentConversationLane {
       (throw const NativeConversationException(
         'conversation_native_unavailable',
       ));
+
+  @override
+  Stream<ConversationExecutionEvent> watchExecution(
+    ConversationExecutionReference reference, {
+    int afterCursor = 0,
+  }) async* {
+    final native = _conversation;
+    if (native is! ConversationExecutionNativePort) {
+      throw const NativeConversationException(
+        'execution_observation_unavailable',
+      );
+    }
+    StringBuffer? fragments;
+    Map<dynamic, dynamic>? fragmentedRecord;
+    var nextPart = 0;
+    var partCount = 0;
+    await for (final frame
+        in (native as ConversationExecutionNativePort).execution(
+          reference,
+          afterCursor: afterCursor,
+        )) {
+      final kind = frame['event'];
+      if (kind == 'agent.execution.record') {
+        final record = frame['record'];
+        if (record is! Map ||
+            record['id'] is! String ||
+            record['rawText'] is! String ||
+            record['cursor'] is! int ||
+            record['kind'] is! String ||
+            record['timestamp'] is! int ||
+            frame['partIndex'] is! int ||
+            frame['partCount'] is! int) {
+          throw const NativeConversationException('execution_record_invalid');
+        }
+        final frameReference = ConversationExecutionReference.fromJson(frame);
+        if (frameReference != reference) {
+          throw const NativeConversationException('execution_scope_mismatch');
+        }
+        final index = frame['partIndex'] as int;
+        final count = frame['partCount'] as int;
+        if (count < 1 || index < 0 || index >= count) {
+          throw const NativeConversationException('execution_record_invalid');
+        }
+        String rawText;
+        if (count == 1 && fragments == null) {
+          rawText = record['rawText'] as String;
+        } else {
+          if (index == 0 && fragments == null) {
+            fragments = StringBuffer();
+            fragmentedRecord = record;
+            nextPart = 0;
+            partCount = count;
+          }
+          if (fragments == null ||
+              index != nextPart ||
+              count != partCount ||
+              record['id'] != fragmentedRecord?['id'] ||
+              record['cursor'] != fragmentedRecord?['cursor']) {
+            throw const NativeConversationException('execution_record_invalid');
+          }
+          fragments.write(record['rawText'] as String);
+          nextPart++;
+          if (nextPart < partCount) continue;
+          rawText = fragments.toString();
+          fragments = null;
+          fragmentedRecord = null;
+        }
+        yield ConversationExecutionRecordEvent(
+          ConversationExecutionRecord(
+            id: record['id'] as String,
+            rawText: rawText,
+            kind: record['kind'] is String ? record['kind'] as String : '',
+            timestamp: record['timestamp']?.toString() ?? '',
+            cursor: record['cursor'] as int,
+          ),
+        );
+      } else if (kind == 'agent.execution.ready' ||
+          kind == 'done' ||
+          frame.containsKey('ok')) {
+        if (fragments != null) {
+          throw const NativeConversationException(
+            'execution_history_incomplete',
+          );
+        }
+        if (frame['ok'] == false) {
+          final error = frame['error'];
+          throw NativeConversationException(
+            error is Map && error['code'] is String
+                ? error['code'] as String
+                : 'execution_observation_failed',
+          );
+        }
+        final scope = ConversationExecutionReference.fromJson(frame);
+        if (scope != reference) {
+          throw const NativeConversationException('execution_scope_mismatch');
+        }
+        yield ConversationExecutionReady(
+          reference: reference,
+          cursor: frame['cursor'] is int ? frame['cursor'] as int : afterCursor,
+          status: frame['status'] is String ? frame['status'] as String : '',
+          observationAvailable: frame['observationAvailable'] == true,
+          terminalPayloadAvailable: frame['terminalPayloadAvailable'] == true,
+        );
+      }
+    }
+    if (fragments != null) {
+      throw const NativeConversationException('execution_history_incomplete');
+    }
+  }
 
   Future<List<Map<String, dynamic>>> activeTurns({
     required String agentId,
@@ -57,13 +170,18 @@ class AgentConversationService implements AgentConversationLane {
     required String conversationId,
     int afterCursor = 0,
   }) async* {
-    await for (final line in _conversation.attach(
+    final context = _PersistentTurnContext(
+      turnHandle: turnHandle,
+      conversationId: conversationId,
+    );
+    await for (final rawLine in _conversation.attach(
       PersistentConversationTurnScope(
         turnHandle: turnHandle,
         conversationId: conversationId,
       ),
       afterCursor: afterCursor,
     )) {
+      final line = context.apply(rawLine);
       final eventName = (line['event'] ?? '').toString();
       if (eventName == 'done' ||
           (line.containsKey('ok') &&
@@ -107,6 +225,8 @@ class AgentConversationService implements AgentConversationLane {
                 'cursor': line['cursor'],
                 'turnHandle': line['turnHandle'],
                 'conversationId': line['conversationId'],
+                if (line['membershipId'] != null)
+                  'membershipId': line['membershipId'],
               }
             : Map<String, dynamic>.from(line),
       );
@@ -624,13 +744,15 @@ class AgentConversationService implements AgentConversationLane {
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     var streamSessionId = sessionId.trim();
+    final context = _PersistentTurnContext();
 
-    await for (final line in _conversation.send(
+    await for (final rawLine in _conversation.send(
       AgentConversationSessionScope(agentId: agentId, sessionId: sessionId),
       text: text,
       attachments: attachments,
       bind: bind,
     )) {
+      final line = context.apply(rawLine);
       final eventName = (line['event'] ?? '').toString();
       final lineSession = (line['sessionId'] ?? '').toString().trim();
       // One native stream is one native turn: the first frame that declares
@@ -673,6 +795,10 @@ class AgentConversationService implements AgentConversationLane {
                   'turnHandle': line['turnHandle'],
                 if (line['conversationId'] != null)
                   'conversationId': line['conversationId'],
+                if (line['membershipId'] != null)
+                  'membershipId': line['membershipId'],
+                if (line['membershipId'] != null)
+                  'membershipId': line['membershipId'],
                 if (line['cursor'] != null) 'cursor': line['cursor'],
               }
             : Map<String, dynamic>.from(line),
@@ -928,5 +1054,31 @@ class AgentConversationService implements AgentConversationLane {
       if (bind.runtimeConnection.isNotEmpty)
         'runtimeConnection': bind.runtimeConnection,
     };
+  }
+}
+
+/// Identity is bound by native once per stream; omitted later fields inherit
+/// that exact context, while provider turnId may appear or change independently.
+final class _PersistentTurnContext {
+  _PersistentTurnContext({String turnHandle = '', String conversationId = ''})
+    : _identity = {
+        if (turnHandle.isNotEmpty) 'turnHandle': turnHandle,
+        if (conversationId.isNotEmpty) 'conversationId': conversationId,
+      };
+  final Map<String, String> _identity;
+  Map<String, dynamic> apply(Map<String, dynamic> frame) {
+    final payload = frame['payload'];
+    for (final key in const ['turnHandle', 'conversationId', 'membershipId']) {
+      final value = frame[key] ?? (payload is Map ? payload[key] : null);
+      if (value is! String || value.isEmpty) continue;
+      final previous = _identity[key];
+      if (previous != null && previous != value) {
+        throw const NativeConversationException(
+          'conversation_turn_scope_mismatch',
+        );
+      }
+      _identity[key] = value;
+    }
+    return {...frame, ..._identity};
   }
 }

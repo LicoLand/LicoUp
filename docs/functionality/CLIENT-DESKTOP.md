@@ -59,7 +59,7 @@ requires a separate direct approval for each file.
 | Flutter contracts | Defines ports, values, and cross-layer messages without depending on application, frontend, backend, or platform implementations. |
 | Flutter application | Owns use cases and narrow controllers; one feature must not reach another feature's storage or UI implementation. |
 | Flutter frontend | Consumes named presentation Bindings and contracts, and contains no application, backend, native process, filesystem, network, or protocol implementation. |
-| Flutter platform/backend | Implements narrow contracts and returns bounded business projections rather than raw process output. |
+| Flutter platform/backend | Implements narrow contracts and returns business projections; explicit local execution inspection uses the dedicated record contract. |
 | Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
 | Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
@@ -158,6 +158,11 @@ History uses the selected protocol's session list/load operations rather than
 guest filesystem access, and local MCP server descriptors are not forwarded
 into the VM.
 
+The local execution viewer follows the exact-dispatch contract in
+[Local execution inspection](../architecture/CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+Its presentation and first-reply waiting behavior are owned by the
+[design system](DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).
+
 When official mid-turn injection is unavailable, LicoUp may stream the active
 turn for display and start the next user message only after the native reply is
 complete. It must not emulate mid-turn injection by editing private databases,
@@ -220,13 +225,25 @@ with the named main conversation kept separate from subordinate totals. It
 shows numeric prompt, cached-input, completion, total, and exact-coverage facts
 only.
 
-The native report groups known model identities across source applications,
-reasoning efforts and speed modes. Each canonical `modelTokenUsage` entry
-retains numeric `variants` for its source's effort and speed breakdown. Raw
-incremental caches keep their original keys, while new and retained report
-projections use the same grouping. A provider-only label is unattributed usage,
-not a model; genuine unknown model names remain independent. Missing effort
-evidence stays `Unspecified`.
+The Rust [global model registry](../architecture/MODEL-REGISTRY.md) owns model
+identity across source applications, reasoning efforts and speed modes. Fresh
+and retained reports use the same directory; each canonical `modelTokenUsage`
+entry retains its source's numeric effort and speed breakdown. An explicit
+refresh updates the public model directory before rescanning local usage.
+Missing effort has no placeholder row and never reduces the source total.
+
+Completed daily rollups remain durable accounting facts when their source files
+are changed or removed. Cache schema upgrades migrate those facts in place;
+reparsing available files is not permission to replace sealed history. Missing
+historical request controls stay absent. Recovery binds a selected accounting
+snapshot to its exact local scope and closed date window, without adding or
+taking maxima across histories that no longer share source-level identities.
+
+Retained scan reports are rolling snapshots of those accounting facts. Retention
+is bounded by both report count and the encoded collection size. It removes the
+oldest snapshots first and keeps the newest report intact; it never removes
+daily ledger facts. A report that cannot fit by itself produces a persistence
+error and leaves the previous collection intact.
 
 The [design system](DESIGN-SYSTEM.md) owns the Agent and model palettes and the
 expandable source-share presentation. The waveform shows up to ten series;

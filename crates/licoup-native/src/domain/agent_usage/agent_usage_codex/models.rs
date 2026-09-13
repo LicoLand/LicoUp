@@ -1,4 +1,4 @@
-use super::super::contract::number_field;
+use super::super::contract::{UsageVariant, number_field};
 use super::constants::{CACHE_SCHEMA_VERSION, PARSER_REVISION};
 use serde_json::{Value, json};
 
@@ -84,6 +84,8 @@ pub(super) struct ParserState {
     pub(super) forked_from_id: Option<String>,
     pub(super) current_model: Option<String>,
     pub(super) current_turn_id: Option<String>,
+    pub(super) current_variant: UsageVariant,
+    pub(super) pending_context: bool,
     pub(super) raw_totals: Option<TokenTotals>,
     pub(super) counted_totals: Option<TokenTotals>,
     pub(super) has_divergent_totals: bool,

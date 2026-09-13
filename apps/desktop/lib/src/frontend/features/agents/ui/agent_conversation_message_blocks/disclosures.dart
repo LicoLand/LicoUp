@@ -103,26 +103,6 @@ class AgentConversationMessageContent extends StatelessWidget {
   }
 }
 
-Widget buildAgentConversationEventDetails({
-  required String data,
-  required Color foreground,
-  required Color accent,
-  required Color codeBackground,
-  required Color blockBackground,
-  required Color borderColor,
-  required MessageMarkdownStyle renderStyle,
-}) {
-  return AgentConversationMessageContent(
-    data: data,
-    foreground: foreground,
-    accent: accent,
-    codeBackground: codeBackground,
-    blockBackground: blockBackground,
-    borderColor: borderColor,
-    renderStyle: renderStyle,
-  );
-}
-
 Color agentConversationMessageForeground(LicoThemeColors colors, String role) {
   final normalized = role.toLowerCase();
   if (normalized == 'metadata' || normalized == 'system') {

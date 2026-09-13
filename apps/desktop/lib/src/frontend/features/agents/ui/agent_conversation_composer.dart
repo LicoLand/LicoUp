@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
@@ -471,6 +472,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
       onSlashNewConversation();
       return;
     }
+    const ConversationMotionSubmitNotification().dispatch(context);
     _controller.clear();
     final consumed = await widget.onSend(text);
     if (!consumed && mounted && _controller.text.trim().isEmpty) {
@@ -621,11 +623,14 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                     drawRim: !activity,
                     child: child!,
                   );
-            return ComposerActivityBorder(
-              active: activity,
+            return ConversationMotionComposerOutline(
               borderRadius: radius,
-              color: colors.primaryStrong,
-              child: surface,
+              child: ComposerActivityBorder(
+                active: activity,
+                borderRadius: radius,
+                color: colors.primaryStrong,
+                child: surface,
+              ),
             );
           },
           child: fieldBody,

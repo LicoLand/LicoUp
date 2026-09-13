@@ -143,39 +143,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('cached recent sessions stay visible during refresh', (
-    tester,
-  ) async {
-    const recentSession = AgentConversationSession(
-      id: 'cached-session',
-      agentId: 'codex',
-      title: 'Cached conversation',
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-      messages: [],
-    );
-    await tester.pumpWidget(
-      paneTestApp(
-        AgentConversationActivePane(
-          state: paneTestState(
-            recentSessions: const [recentSession],
-            preparingNewConversation: true,
-            loading: true,
-            recentSessionsCached: true,
+  testWidgets(
+    'new conversation keeps its empty particle content during catalog refresh',
+    (tester) async {
+      const recentSession = AgentConversationSession(
+        id: 'cached-session',
+        agentId: 'codex',
+        title: 'Cached conversation',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        messages: [],
+      );
+      await tester.pumpWidget(
+        paneTestApp(
+          AgentConversationActivePane(
+            state: paneTestState(
+              recentSessions: const [recentSession],
+              preparingNewConversation: true,
+              loading: true,
+              recentSessionsCached: true,
+            ),
+            actions: paneTestActions(),
+            header: paneTestHeader(),
           ),
-          actions: paneTestActions(),
-          header: paneTestHeader(),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    expect(find.text('Cached conversation'), findsOneWidget);
-    expect(
-      find.byKey(const Key('agent-conversation-recent-loading')),
-      findsNothing,
-    );
-  });
+      expect(find.text('Cached conversation'), findsNothing);
+      expect(
+        find.byKey(const Key('conversation-empty-content')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('agent-conversation-recent-loading')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('new conversation reveals live messages as soon as send starts', (
     tester,
@@ -201,7 +206,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Recent conversations'), findsOneWidget);
+    expect(find.byKey(const Key('conversation-empty-content')), findsOneWidget);
 
     await tester.pumpWidget(
       paneTestApp(

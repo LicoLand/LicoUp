@@ -1,3 +1,4 @@
+import 'conversation_execution.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
@@ -104,3 +105,11 @@ abstract interface class AgentConversationNativePort {
 
 abstract interface class ConversationNativePort
     implements AgentConversationNativePort, ClientConversationNativePort {}
+
+/// Read-only raw execution access supported only by the desktop native host.
+abstract interface class ConversationExecutionNativePort {
+  Stream<Map<String, dynamic>> execution(
+    ConversationExecutionReference reference, {
+    int afterCursor = 0,
+  });
+}

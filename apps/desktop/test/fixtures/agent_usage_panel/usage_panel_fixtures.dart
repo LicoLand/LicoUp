@@ -52,7 +52,7 @@ AgentUsageReport snapshotOnlyReport({
         history: {
           'totalTokens': totalTokens,
           'modelUsage': {
-            'gpt-5.4': {'totalTokens': totalTokens},
+            'gpt-5.4': {'displayName': 'GPT-5.4', 'totalTokens': totalTokens},
           },
         },
         confidence: 'high',
@@ -216,7 +216,11 @@ AgentUsageReport equalModelUsageReport() {
       '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   final modelUsage = {
     for (var index = 0; index < 11; index += 1)
-      'model-${String.fromCharCode('a'.codeUnitAt(0) + index)}': 100,
+      'model-${String.fromCharCode('a'.codeUnitAt(0) + index)}': {
+        'displayName':
+            'Model ${String.fromCharCode('A'.codeUnitAt(0) + index)}',
+        'totalTokens': 100,
+      },
   };
   return AgentUsageReport(
     schemaVersion: AgentUsageReport.currentSchemaVersion,
@@ -258,15 +262,26 @@ AgentUsageReport formalNamingUsageReport() {
             {
               'date': date,
               'totalTokens': 1600,
-              'modelUsage': [
-                {'model': 'openai/gpt-5.5', 'totalTokens': 500},
-                {'model': 'GPT_5.5', 'totalTokens': 50},
-                {'model': 'gpt-5.6-sol', 'totalTokens': 400},
-                {'model': 'claude-opus-4.6', 'totalTokens': 300},
-                {'model': 'deepseek-v4-flash', 'totalTokens': 200},
-                {'model': 'deepseek_v4_pro', 'totalTokens': 100},
-                {'model': 'Others', 'totalTokens': 50},
-              ],
+              'modelTokenUsage': {
+                'gpt-5.5': {'displayName': 'GPT-5.5', 'totalTokens': 550},
+                'gpt-5.6-sol': {
+                  'displayName': 'GPT-5.6 Sol',
+                  'totalTokens': 400,
+                },
+                'claude-opus-4.6': {
+                  'displayName': 'Claude Opus 4.6',
+                  'totalTokens': 300,
+                },
+                'deepseek-v4-flash': {
+                  'displayName': 'DeepSeek V4 Flash',
+                  'totalTokens': 200,
+                },
+                'deepseek-v4-pro': {
+                  'displayName': 'DeepSeek V4 Pro',
+                  'totalTokens': 100,
+                },
+                'Others': {'displayName': 'Others', 'totalTokens': 50},
+              },
             },
           ],
         },

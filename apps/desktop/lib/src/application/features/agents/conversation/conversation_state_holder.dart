@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:licoup/src/contracts/conversation_execution.dart';
+
 import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
@@ -118,8 +120,36 @@ final class ConversationStateHolder extends ApplicationStateOwner {
   ConversationScopeProjection projectionFor(String scopeKey) {
     final scope = _scopes[scopeKey.trim()];
     if (scope == null) return const ConversationScopeProjection();
+    final messages = scope.process.projectedMessages(includeUser: false);
+    final terminal = switch (scope.turnState.phase) {
+      ConversationTurnState.succeeded =>
+        AgentConversationReplyTerminalState.completed,
+      ConversationTurnState.failed =>
+        AgentConversationReplyTerminalState.failed,
+      ConversationTurnState.cancelled =>
+        AgentConversationReplyTerminalState.cancelled,
+      ConversationTurnState.interrupted =>
+        AgentConversationReplyTerminalState.interrupted,
+      _ => null,
+    };
     return ConversationScopeProjection(
-      messages: scope.process.projectedMessages(includeUser: false),
+      messages: terminal != null && scope.process.replies.isEmpty
+          ? [
+              ...messages,
+              AgentConversationMessage(
+                id: '${scope.process.turnId}-assistant',
+                stableIdentity: '${scope.process.turnId}-assistant',
+                role: 'assistant',
+                text: '',
+                createdAt: scope.process.createdAt,
+                participantAgentId: scope.process.participantAgentId,
+                participantLabel: scope.process.participantLabel,
+                participantRole: scope.process.participantRole,
+                executionReference: scope.process.executionReference,
+                replyTerminalState: terminal,
+              ),
+            ]
+          : messages,
       turnState: scope.turnState,
     );
   }
@@ -137,8 +167,8 @@ final class ConversationStateHolder extends ApplicationStateOwner {
   /// Turn scopes are ephemeral for surfaces that detach finished turns (for
   /// example the canonical group pane): once a turn settles, the canonical
   /// readback owns the completed reply, so the live scope must leave the
-  /// projection before the reload lands. One-to-one workspaces keep their
-  /// conversation scopes for the workspace lifetime and never call this.
+  /// projection after the reload lands. Native workspaces also release a
+  /// terminal scope once provider readback carries its exact execution refs.
   void removeScope(String scopeKey) {
     if (_disposed) return;
     if (_scopes.remove(scopeKey.trim()) == null) return;
@@ -167,6 +197,14 @@ final class ConversationStateHolder extends ApplicationStateOwner {
     if (identity.isEmpty) return false;
 
     var scope = _scopes[normalizedScope];
+    final reference = event.executionReference;
+    final existingReference = scope?.process.executionReference;
+    if (scope?.process.turnId == identity &&
+        existingReference != null &&
+        reference != null &&
+        existingReference != reference) {
+      return false;
+    }
     if (scope == null || scope.process.turnId != identity) {
       scope = _ConversationScopeState(
         process: ConversationTurnProcessState(
@@ -174,11 +212,13 @@ final class ConversationStateHolder extends ApplicationStateOwner {
           userText: '',
           createdAt: event.createdAt,
           scopeKey: normalizedScope,
+          executionReference: reference,
         ),
       );
       _scopes[normalizedScope] = scope;
     }
 
+    scope.process.recordExecutionReference(reference);
     final dispatchEvent = AgentDispatchEvent(
       kind: event.kind.wireName.isEmpty ? event.rawKind : event.kind.wireName,
       sessionId: event.sessionId,
@@ -191,14 +231,30 @@ final class ConversationStateHolder extends ApplicationStateOwner {
       participantRole: participantRole,
     );
     scope.turnState = _nextTurnState(scope.turnState, event);
+    if (!scope.turnState.active) {
+      switch (scope.turnState.phase) {
+        case ConversationTurnState.succeeded:
+          scope.process.advanceStage('completed');
+        case ConversationTurnState.failed ||
+            ConversationTurnState.cancelled ||
+            ConversationTurnState.interrupted:
+          scope.process.advanceStage('failed');
+        default:
+          break;
+      }
+    }
 
     switch (event.kind) {
       case ConversationProjectionEventKind.turnBound ||
           ConversationProjectionEventKind.turnStarted ||
           ConversationProjectionEventKind.turnAccepted:
         _applyLifecyclePrefix(scope.process, event.payload);
+        if (event.kind == ConversationProjectionEventKind.turnAccepted) {
+          scope.process.advanceStage('accepted');
+        }
       case ConversationProjectionEventKind.turnProcessing:
         _applyLifecyclePrefix(scope.process, event.payload);
+        scope.process.advanceStage('processing');
         final evidenceKind = _text(event.payload['evidenceKind']);
         if (const {'reasoning', 'tool', 'plan'}.contains(evidenceKind)) {
           applyPersistentTurnProcessEvent(
@@ -312,9 +368,12 @@ final class _ProjectedConversationEvent {
   final String createdAt;
   final Map<String, dynamic> payload;
 
+  ConversationExecutionReference? get executionReference =>
+      ConversationExecutionReference.fromJson(payload);
+
   String get turnIdentity {
-    if (turnId.isNotEmpty) return turnId;
     if (turnHandle.isNotEmpty) return turnHandle;
+    if (turnId.isNotEmpty) return turnId;
     return sessionId;
   }
 
@@ -325,6 +384,14 @@ final class _ProjectedConversationEvent {
     final payload = rawPayload is Map
         ? Map<String, dynamic>.from(rawPayload)
         : <String, dynamic>{};
+    for (final field in const [
+      'turnHandle',
+      'conversationId',
+      'membershipId',
+    ]) {
+      final outer = delta.event[field];
+      if (outer is String && outer.isNotEmpty) payload[field] = outer;
+    }
     final outerTurnHandle = _text(delta.event['turnHandle']);
     final payloadTurnHandle = _text(payload['turnHandle']);
     return _ProjectedConversationEvent(
@@ -359,6 +426,15 @@ ConversationProjectedTurnState _nextTurnState(
   if (phase == ConversationTurnState.unknown) {
     phase = _phaseFromExplicitLifecycle(event);
   }
+  if (current.phase == ConversationTurnState.failed ||
+      current.phase == ConversationTurnState.cancelled ||
+      current.phase == ConversationTurnState.interrupted ||
+      (current.phase == ConversationTurnState.succeeded &&
+          phase != ConversationTurnState.failed &&
+          phase != ConversationTurnState.cancelled &&
+          phase != ConversationTurnState.interrupted)) {
+    return current;
+  }
   final inputEnabled = _nullableBool(
     turnStateMap['inputEnabled'] ??
         turnStateMap['input_enabled'] ??
@@ -381,6 +457,11 @@ ConversationProjectedTurnState _nextTurnState(
 ConversationTurnState _phaseFromExplicitLifecycle(
   _ProjectedConversationEvent event,
 ) {
+  final nativeError = event.payload['error'];
+  final nativeStatus =
+      event.payload['turnStatus'] ??
+      (nativeError is Map ? nativeError['turnStatus'] : null);
+  if (nativeStatus == 'cancelled') return ConversationTurnState.cancelled;
   final terminal = event.payload['terminalTransition'];
   if (terminal is Map) {
     if (terminal['kind'] == 'failed') return ConversationTurnState.failed;
@@ -396,7 +477,15 @@ ConversationTurnState _phaseFromExplicitLifecycle(
   }
   final stages = event.payload['lifecyclePrefix'];
   if (stages is! List || stages.isEmpty) {
-    return ConversationTurnState.unknown;
+    return switch (event.kind) {
+      ConversationProjectionEventKind.turnAccepted =>
+        ConversationTurnState.claimed,
+      ConversationProjectionEventKind.userMessageCreated =>
+        ConversationTurnState.pending,
+      ConversationProjectionEventKind.turnProcessing =>
+        ConversationTurnState.running,
+      _ => ConversationTurnState.unknown,
+    };
   }
   return switch (_text(stages.last)) {
     'submitted' => ConversationTurnState.pending,
@@ -458,6 +547,7 @@ void _applyRuntimeUpdate(
       cardTitle: event.rawKind,
       cardSubtitle: subtitle,
       stableIdentity: '${state.turnId}-runtime-update',
+      executionReference: state.executionReference,
       participantAgentId: participantAgentId,
       participantLabel: participantLabel,
       participantRole: participantRole,
@@ -520,6 +610,7 @@ void _applyUserMessageDelta(
   _ProjectedConversationEvent event,
 ) {
   _applyLifecyclePrefix(state, event.payload);
+  state.advanceStage('submitted');
   final text = _text(event.payload['text']);
   if (text.isEmpty) return;
   final identity = '${state.turnId}-user';

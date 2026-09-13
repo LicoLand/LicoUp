@@ -501,8 +501,10 @@ final class CanonicalGroupBindingFixture {
               ConversationDeltaEvent(<String, dynamic>{
                 'event': event.kind,
                 'sessionId': event.sessionId,
-                'turnId': 'live-${turn.handle}',
+                'turnId': turn.handle,
                 'turnHandle': turn.handle,
+                'conversationId': turn.conversationId,
+                'membershipId': turn.membershipId,
                 'payload': event.payload,
               }),
               scopeKey: turn.scopeKey,
@@ -713,6 +715,7 @@ class CanonicalGroupConversationPaneFixture extends StatefulWidget {
     required this.onCopyText,
     this.onOpenAgentConversations,
     this.framed = true,
+    this.reduceMotion = true,
     this.flywheelGateway,
     this.persistentGateway,
     this.onOpenAdaptiveFlywheel,
@@ -727,6 +730,7 @@ class CanonicalGroupConversationPaneFixture extends StatefulWidget {
   final Future<void> Function(String) onCopyText;
   final ValueChanged<String>? onOpenAgentConversations;
   final bool framed;
+  final bool reduceMotion;
   final AdaptiveFlywheelGateway? flywheelGateway;
   final PersistentAgentConversationGateway? persistentGateway;
   final Future<void> Function(String? revisionDigest)? onOpenAdaptiveFlywheel;
@@ -955,21 +959,26 @@ class _CanonicalGroupConversationPaneFixtureState
   }
 
   @override
-  Widget build(BuildContext context) => CanonicalGroupConversationPane(
-    conversation: _fixture.conversation,
-    agents: _fixture.agents,
-    canonical: _fixture.canonical,
-    turns: _fixture.turns,
-    composer: _fixture.composer,
-    attachments: _fixture.attachments,
-    onOpenAgentConversations: widget.onOpenAgentConversations,
-    onOpenAdaptiveFlywheel: (revision) async {
-      await widget.onOpenAdaptiveFlywheel?.call(revision);
-      await _reloadAssistantProfile(force: true);
-    },
-    onPickComposerImages: widget.onPickComposerImages,
-    onClearComposerImages: widget.onClearComposerImages,
-    framed: widget.framed,
+  Widget build(BuildContext context) => MediaQuery(
+    data: MediaQuery.of(
+      context,
+    ).copyWith(disableAnimations: widget.reduceMotion),
+    child: CanonicalGroupConversationPane(
+      conversation: _fixture.conversation,
+      agents: _fixture.agents,
+      canonical: _fixture.canonical,
+      turns: _fixture.turns,
+      composer: _fixture.composer,
+      attachments: _fixture.attachments,
+      onOpenAgentConversations: widget.onOpenAgentConversations,
+      onOpenAdaptiveFlywheel: (revision) async {
+        await widget.onOpenAdaptiveFlywheel?.call(revision);
+        await _reloadAssistantProfile(force: true);
+      },
+      onPickComposerImages: widget.onPickComposerImages,
+      onClearComposerImages: widget.onClearComposerImages,
+      framed: widget.framed,
+    ),
   );
 }
 
@@ -1000,6 +1009,8 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           unawaited(controller.loadEarlierEvents());
         }
       case LoadChildConversationMessages():
+        break;
+      case OpenConversationExecutionView() || CloseConversationExecutionView():
         break;
       case PostConversationMessage(:final content, :final dispatchCanonical):
         unawaited(_post(content, dispatchCanonical, intent));

@@ -79,3 +79,40 @@ fn parser_accepts_lf_or_crlf_without_splitting_unicode_separators() {
     );
     assert!(decode_jsonl_line("{not-json}\n").is_err());
 }
+
+#[test]
+fn raw_stdout_retains_whole_over_limit_frame_and_invalid_utf8() {
+    use crate::platform::raw_execution::{RawExecutionObserver, RawExecutionScope};
+    use std::sync::Mutex;
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&records);
+    let observer = RawExecutionObserver::new(move |source, _, raw| {
+        sink.lock()
+            .unwrap()
+            .push((source.to_owned(), raw.to_owned()));
+        Ok(())
+    });
+    let _scope = RawExecutionScope::enter(Some(observer));
+    let frame = b" {\"type\":\"tool_execution_end\",\"unknown\":[1,2]}\r\n{\"prefetched\":true}\n";
+    let (sender, receiver) = mpsc::channel();
+    read_protocol_messages(std::io::BufReader::new(Cursor::new(frame)), Some(4), sender);
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::StdoutLimitExceeded
+    ));
+    assert_eq!(records.lock().unwrap()[0].1.as_bytes(), frame);
+    let (sender, receiver) = mpsc::channel();
+    read_protocol_messages(
+        std::io::BufReader::new(Cursor::new(b"\xff\n")),
+        None,
+        sender,
+    );
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::StdoutReadFailed
+    ));
+    assert_eq!(
+        records.lock().unwrap()[1],
+        ("pi.stdout.base64".to_owned(), "/wo=".to_owned())
+    );
+}

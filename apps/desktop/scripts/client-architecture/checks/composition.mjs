@@ -62,7 +62,7 @@ export async function checkConversationBridges(context, { packagedTargets, conve
       agentConversationControllerSource.includes("conversationGateway.streamSessions(") &&
       agentConversationControllerSource.includes("conversationGateway.loadSessions(") &&
       agentConversationControllerSource.includes("conversationGateway.sendStreaming(") &&
-      agentConversationGatewayAdapterSource.includes("implements AgentConversationGateway") &&
+      /implements\s+AgentConversationGateway\b/u.test(agentConversationGatewayAdapterSource) &&
       agentConversationGatewayAdapterSource.includes("service.sendStreaming("),
     "direct agent conversation state must depend on the gateway port through its composition adapter"
   );
@@ -132,25 +132,28 @@ export async function checkConversationBridges(context, { packagedTargets, conve
   const agentConversationComposerSource = await readDartSourceByBasename(
     "agent_conversation_composer.dart"
   );
-  const agentConversationEventCardSource = await readJoinedText([
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_process_card.dart",
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_process_operations.dart",
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_process_projection.dart",
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_timeline.dart",
-    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart"
+  const agentConversationTimelineSource = await readJoinedText([
+    "apps/desktop/lib/src/frontend/features/agents/ui/conversation_execution_entry.dart",
+    "apps/desktop/lib/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart",
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_timeline.dart"
   ]);
   assert(
     agentConversationWorkspaceSource.includes("agent_conversation_pane/composition.dart") &&
-      agentConversationWorkspaceSource.includes("agent_conversation_event_card.dart") &&
+      agentConversationWorkspaceSource.includes("ConversationExecutionScope(") &&
+      agentConversationWorkspaceSource.includes("showBoundConversationExecution(") &&
       agentConversationWorkspaceSource.includes("RuntimeMessageComposer(") &&
       agentConversationWorkspaceSource.includes("buildConversationTimelineItems(") &&
       agentConversationWorkspaceSource.includes("PostConversationMessage(") &&
       agentConversationComposerSource.includes("class RuntimeMessageComposer") &&
       agentConversationComposerSource.includes("TextField(") &&
       agentConversationComposerSource.includes("widget.onSend(text)") &&
-      agentConversationEventCardSource.includes("class ConversationProcessCard") &&
-      agentConversationEventCardSource.includes("List<ConversationTimelineItem> buildConversationTimelineItems"),
-    "agent conversation workspace must compose independently testable composer and timeline-event UI components"
+      agentConversationTimelineSource.includes("class ConversationExecutionMenu") &&
+      agentConversationTimelineSource.includes("ProjectionSource<ConversationExecutionProjection>") &&
+      agentConversationTimelineSource.includes("OpenConversationExecutionView(") &&
+      agentConversationTimelineSource.includes("CloseConversationExecutionView(") &&
+      agentConversationTimelineSource.includes("showConversationExecutionViewer(") &&
+      agentConversationTimelineSource.includes("List<ConversationTimelineItem> buildConversationTimelineItems"),
+    "agent conversation workspace must compose independently testable composer, timeline, and execution-projection UI components"
   );
   assert(
     agentConversationWorkspaceSource.includes("_ConversationDiagnosticsPanel") &&

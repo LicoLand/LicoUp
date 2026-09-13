@@ -4,7 +4,8 @@
 //! only after `adapter_for_agent` returns None and a CLI registration exists.
 
 use crate::domain::cli_registration::{CliRegistration, StreamMode};
-use crate::platform::process_supervisor::SupervisedChild;
+use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
+use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use crate::platform::runtime_adapters::RuntimeAdapterError;
 use crate::platform::turn_event_emit::emit_agent_message_chunk;
 use serde_json::Value;
@@ -45,6 +46,15 @@ pub(crate) fn execute(
     let (args, write_stdin) = substitute_args(&registration.args, text, model, effort);
     let mut command = Command::new(executable);
     command.args(&args);
+    if let Some(observer) = RawExecutionObserver::current() {
+        for (index, arg) in args.iter().enumerate() {
+            observer.record(
+                &format!("generic-cli.argv.{index}"),
+                RawExecutionDirection::Sent,
+                arg,
+            );
+        }
+    }
     if let Some(workspace) = cwd {
         command.current_dir(workspace);
     }
@@ -168,15 +178,19 @@ fn run_stdio(
     let mut child = SupervisedChild::spawn(&mut command)
         .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)?;
     if write_stdin && let Some(mut stdin) = child.stdin() {
-        let _ = stdin.write_all(prompt.as_bytes());
+        let mut payload = prompt.as_bytes().to_vec();
         if !prompt.ends_with('\n') {
-            let _ = stdin.write_all(b"\n");
+            payload.push(b'\n');
         }
+        if let Some(observer) = RawExecutionObserver::current() {
+            observer.record_bytes("generic-cli.stdin", RawExecutionDirection::Sent, &payload);
+        }
+        let _ = stdin.write_all(&payload);
     }
     let stdout = child
         .stdout()
         .ok_or(RuntimeAdapterError::ConversationDispatchFailed)?;
-    collect_output(child, stdout, timeout_ms, max_stdout)
+    collect_output(child, stdout, timeout_ms, max_stdout, true)
 }
 
 #[cfg(unix)]
@@ -196,7 +210,7 @@ fn run_pty(
             let _ = master.write_all(b"\n");
         }
     }
-    collect_output(child, master, timeout_ms, max_stdout)
+    collect_output(child, master, timeout_ms, max_stdout, false)
 }
 
 #[cfg(not(unix))]
@@ -215,7 +229,31 @@ fn collect_output<R: Read + Send + 'static>(
     reader: R,
     timeout_ms: u64,
     max_stdout: Option<usize>,
+    capture_stdout: bool,
 ) -> Result<Captured, RuntimeAdapterError> {
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = child.stderr().map(|mut stderr| {
+        thread::spawn(move || {
+            let mut buffer = [0u8; 4096];
+            loop {
+                match stderr.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        if let Some(observer) = stderr_observer.as_ref() {
+                            observer.record_bytes(
+                                "generic-cli.stderr",
+                                RawExecutionDirection::Stderr,
+                                &buffer[..count],
+                            );
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+        })
+    });
+    let stdout_observer = capture_stdout.then(RawExecutionObserver::current).flatten();
     let (sender, receiver) = mpsc::channel::<Option<Vec<u8>>>();
     thread::spawn(move || {
         let mut reader = reader;
@@ -227,6 +265,13 @@ fn collect_output<R: Read + Send + 'static>(
                     break;
                 }
                 Ok(count) => {
+                    if let Some(observer) = stdout_observer.as_ref() {
+                        observer.record_bytes(
+                            "generic-cli.stdout",
+                            RawExecutionDirection::Received,
+                            &buffer[..count],
+                        );
+                    }
                     if sender.send(Some(buffer[..count].to_vec())).is_err() {
                         break;
                     }
@@ -307,6 +352,9 @@ fn collect_output<R: Read + Send + 'static>(
             }
         }
     };
+    if let Some(handle) = stderr_handle {
+        let _ = join_bounded(handle, IO_THREAD_EXIT_GRACE);
+    }
     Ok(Captured {
         ok: !timed_out && status_code.unwrap_or(0) == 0,
         text: output,
@@ -392,6 +440,51 @@ mod tests {
         .expect("cat execute");
         assert!(result.ok);
         assert!(result.output.contains("stdin-prompt"));
+    }
+
+    #[test]
+    fn raw_stdio_keeps_stdin_stdout_and_stderr_outside_the_output_cap() {
+        let records = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&records);
+        let observer = RawExecutionObserver::new(move |source, direction, raw| {
+            sink.lock()
+                .unwrap()
+                .push((source.to_owned(), direction, raw.to_owned()));
+            Ok(())
+        });
+        let _scope = crate::platform::raw_execution::RawExecutionScope::enter(Some(observer));
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "cat; printf 'metadata-tail' >&2"]);
+        let result = run_stdio(command, "complete-prompt", true, 5_000, Some(4)).unwrap();
+        assert_eq!(result.text, "comp");
+        assert!(result.truncated);
+        let records = records.lock().unwrap();
+        for (source, direction, expected) in [
+            (
+                "generic-cli.stdin",
+                RawExecutionDirection::Sent,
+                "complete-prompt\n",
+            ),
+            (
+                "generic-cli.stdout",
+                RawExecutionDirection::Received,
+                "complete-prompt\n",
+            ),
+            (
+                "generic-cli.stderr",
+                RawExecutionDirection::Stderr,
+                "metadata-tail",
+            ),
+        ] {
+            assert_eq!(
+                records
+                    .iter()
+                    .filter(|record| record.0 == source && record.1 == direction)
+                    .map(|record| record.2.as_str())
+                    .collect::<String>(),
+                expected
+            );
+        }
     }
 
     #[test]

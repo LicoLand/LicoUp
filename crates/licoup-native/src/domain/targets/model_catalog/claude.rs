@@ -66,9 +66,9 @@ pub(super) fn claude_code_model_catalog(config_path: Option<&Path>, params: &Val
             "default" => "Default".to_string(),
             "opusplan" => "Claude Opus Plan".to_string(),
             "fable" | "fable[1m]" | "opus" | "sonnet" | "haiku" | "opus[1m]" | "sonnet[1m]" => {
-                let base = pinned.map(canonical_model_display_name).unwrap_or_else(|| {
-                    format!("Claude {}", normalization::canonical_model_part(alias))
-                });
+                let base = pinned
+                    .map(canonical_model_display_name)
+                    .unwrap_or_else(|| format!("Claude {}", canonical_model_display_name(alias)));
                 if selector.ends_with("[1m]") && !base.ends_with("[1m]") {
                     format!("{base} (1M)")
                 } else {

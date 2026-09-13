@@ -8,6 +8,7 @@ mod contract;
 mod incremental;
 mod model_identity;
 mod persistence;
+mod variant;
 mod window;
 pub(crate) mod workflow_ledger;
 

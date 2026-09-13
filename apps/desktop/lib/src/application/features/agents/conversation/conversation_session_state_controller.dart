@@ -1,3 +1,4 @@
+import 'package:licoup/src/contracts/conversation_execution.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
@@ -510,6 +511,17 @@ mixin AgentConversationSessionStateController
     if (coveredScopes.isEmpty) {
       return;
     }
+    final nativeReferences = _assistantExecutionReferences(
+      providerReadback.messages,
+    );
+    for (final scopeKey in coveredScopes) {
+      final references = _assistantExecutionReferences(
+        conversationStateHolder.messagesFor(scopeKey),
+      );
+      if (references.isNotEmpty && nativeReferences.containsAll(references)) {
+        conversationStateHolder.removeScope(scopeKey);
+      }
+    }
     conversationTurnProcessStateByScope = {
       for (final entry in conversationTurnProcessStateByScope.entries)
         if (!coveredScopes.contains(entry.key)) entry.key: entry.value,
@@ -550,6 +562,11 @@ mixin AgentConversationSessionStateController
     AgentConversationSession session,
     List<AgentConversationMessage> pendingMessages,
   ) {
+    final pendingReferences = _assistantExecutionReferences(pendingMessages);
+    if (pendingReferences.isNotEmpty) {
+      final nativeReferences = _assistantExecutionReferences(session.messages);
+      if (nativeReferences.containsAll(pendingReferences)) return true;
+    }
     final nativeMessages = session.messages
         .where(_conversationMessageParticipatesInReadback)
         .toList(growable: false);
@@ -611,17 +628,24 @@ mixin AgentConversationSessionStateController
             selectedConversationAgentId == normalizedAgent
         ? selectedConversationSession
         : null;
+    // Waiting rows are a live view only, never committed transcript messages.
+    final committedMessages = messages
+        .where(
+          (message) =>
+              !message.waitingForReply && message.replyTerminalState == null,
+        )
+        .toList(growable: false);
     final mergedMessages =
         previous != null && previous.nativeSessionId.trim() == normalizedSession
         ? [
             ...previous.messages,
-            for (final message in messages)
+            for (final message in committedMessages)
               if (!previous.messages.any(
                 (existing) => existing.stableIdentity == message.stableIdentity,
               ))
                 message,
           ]
-        : messages;
+        : committedMessages;
     final now = DateTime.now().toUtc().toIso8601String();
     final projectedSessionId = normalizedSession;
     final resolvedSourcePath = sourcePath.trim().isNotEmpty
@@ -768,6 +792,18 @@ mixin AgentConversationSessionStateController
         : incoming;
   }
 }
+
+Set<ConversationExecutionReference> _assistantExecutionReferences(
+  Iterable<AgentConversationMessage> messages,
+) => messages
+    .where(
+      (message) =>
+          message.kind == AgentConversationMessageKind.assistant &&
+          (message.text.trim().isNotEmpty || message.images.isNotEmpty),
+    )
+    .map((message) => message.executionReference)
+    .whereType<ConversationExecutionReference>()
+    .toSet();
 
 String _conversationTurnWorkingDirectory({
   required String requested,

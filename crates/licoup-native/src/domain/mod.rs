@@ -30,6 +30,7 @@ pub(crate) mod llm_gateway_stream;
 pub mod mcp_adapter;
 pub mod mobile_relay;
 pub mod model_planning;
+pub mod model_registry;
 pub mod native_roles;
 pub mod protocol_input_admission;
 pub mod provider_model_pricing;

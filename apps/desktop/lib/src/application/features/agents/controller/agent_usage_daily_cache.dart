@@ -20,17 +20,10 @@ AgentUsageReport? projectViewport(
   final agents = [
     for (final agent in source.agents) _projectAgent(agent, bucketKeys),
   ]..sort((a, b) => a.agentId.compareTo(b.agentId));
-  return AgentUsageReport(
-    schemaVersion: source.schemaVersion,
-    generatedAt: source.generatedAt,
+  return source.copyWith(
     summary: _summaryFromAgents(agents),
     agents: agents,
-    warnings: source.warnings,
-    mode: source.mode,
-    tokenSourceMode: source.tokenSourceMode,
     window: {'days': normalizedDays},
-    workflows: source.workflows,
-    workflowSummary: source.workflowSummary,
   );
 }
 

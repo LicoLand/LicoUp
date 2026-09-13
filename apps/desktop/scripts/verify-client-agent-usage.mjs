@@ -211,7 +211,8 @@ assertIncludes(
     "usage_daily_totals",
     "usage_daily_models",
     "compact_historical_details",
-    "remove_obsolete_cache_databases",
+    "invalidate_mutable_sources",
+    "locked_version",
     "VACUUM",
     "refreshDeferred",
     "forceRefresh"
@@ -241,7 +242,8 @@ assertIncludes(
     "incremental_vacuum",
     "estimated_records",
     "agent-usage-rollups-v2.sqlite3",
-    "remove_legacy_cache",
+    "migrate_variant_columns",
+    "snapshot_cursor",
     // Cursor's ledger is hosted: local bubble counters are never projected,
     // paging is reconciled against Cursor's own count, and a tokenless request
     // stays a request count.

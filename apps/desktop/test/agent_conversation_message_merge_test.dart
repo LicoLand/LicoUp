@@ -1,6 +1,5 @@
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -309,78 +308,6 @@ void main() {
       expect(merged[3].stableIdentity, 'live-process-1');
     },
   );
-
-  test('multi-block readback converges into one turn card in the timeline', () {
-    // One assistant reply is recorded as several content blocks with tool
-    // operations between them; all of them belong to the same turn card.
-    final persisted = [
-      _message('native-user', 'user', 'build it'),
-      _structured('native-thinking', 'reasoning', 'thinking...'),
-      _structured('native-tool-1', 'tool-call', 'Bash'),
-      _message('native-assistant-1', 'assistant', 'checking...'),
-      _structured('native-tool-2', 'tool-call', 'Grep'),
-      _message('native-assistant-2', 'assistant', 'done'),
-    ];
-    final live = [
-      _message('live-user', 'user', 'build it'),
-      _structured('live-lifecycle', 'lifecycle', 'completed'),
-      _message('live-assistant', 'assistant', 'done'),
-    ];
-
-    final merged = mergeConversationReadbackAndLiveMessages(persisted, live);
-
-    final items = buildConversationTimelineItems(merged, 'claude-code|s-1');
-    final cards = items.whereType<ConversationProcessTimelineItem>().toList();
-    expect(cards, hasLength(1));
-    expect(cards.single.events.map((message) => message.text), [
-      'completed',
-      'thinking...',
-      'Bash',
-      'Grep',
-    ]);
-  });
-
-  test('the turn card keeps its key across the readback handover', () {
-    const scope = 'claude-code|sess-1|native-1';
-    final liveFrame = buildConversationTimelineItems([
-      _message('live-user', 'user', 'build it'),
-      _structured('live-lifecycle', 'lifecycle', 'processing'),
-      _structured('live-process-0', 'reasoning', 'thinking...'),
-      _structured('live-process-1', 'tool-call', 'Bash'),
-      _message('live-assistant', 'assistant', 'done'),
-    ], scope);
-
-    final merged = mergeConversationReadbackAndLiveMessages(
-      [
-        _message('native-user', 'user', 'build it'),
-        _structured('native-thinking', 'reasoning', 'thinking...'),
-        _structured('native-tool', 'tool-call', 'Bash'),
-        _message('native-assistant', 'assistant', 'done'),
-      ],
-      [
-        _message('live-user', 'user', 'build it'),
-        _structured('live-lifecycle', 'lifecycle', 'processing'),
-        _structured('live-process-0', 'reasoning', 'thinking...'),
-        _structured('live-process-1', 'tool-call', 'Bash'),
-        _message('live-assistant', 'assistant', 'done'),
-      ],
-    );
-    final converged = buildConversationTimelineItems(merged, scope);
-
-    final liveCard = liveFrame
-        .whereType<ConversationProcessTimelineItem>()
-        .single;
-    final convergedCards = converged
-        .whereType<ConversationProcessTimelineItem>()
-        .toList();
-    expect(convergedCards, hasLength(1));
-    expect(convergedCards.single.storageKey, liveCard.storageKey);
-    expect(convergedCards.single.events.map((message) => message.text), [
-      'processing',
-      'thinking...',
-      'Bash',
-    ]);
-  });
 
   test(
     'merge cache returns the same list instance when identity is unchanged',

@@ -7,6 +7,10 @@ use super::launch::CodexLaunchSpec;
 use super::model::{ProtocolFailure, RunResult};
 use super::supervision::{pipe_failure, run_protocol_loop};
 use crate::platform::native_agent_parser::adapters::codex::CodexParser;
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+    RawExecutionScope,
+};
 use serde_json::Value;
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -75,11 +79,24 @@ pub(in crate::platform) fn execute(
     let mut stdin = BoundedStdinWriter::new(stdin);
 
     let (sender, receiver) = mpsc::channel();
-    let stdout_handle =
-        thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
+    let raw_observer = RawExecutionObserver::current();
+    let stdout_binding = RawExecutionBinding::default();
+    let _raw_stdout_scope = stdout_binding.bind(raw_observer.clone());
+    let stdout_handle = thread::spawn(move || {
+        let reader = RawExecutionReader::new(
+            stdout,
+            stdout_binding,
+            "codex-app-server",
+            RawExecutionDirection::Received,
+        );
+        read_protocol_messages(BufReader::new(reader), max_stdout, sender)
+    });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+    let stderr_handle = thread::spawn(move || {
+        let _raw_scope = RawExecutionScope::enter(raw_observer);
+        drain_stderr(stderr, max_stderr, &stderr_flag)
+    });
 
     let mut protocol = CodexParser::new(config);
     let (control_sender, control_receiver) = mpsc::sync_channel(16);

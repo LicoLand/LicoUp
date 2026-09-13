@@ -28,6 +28,7 @@ authority.
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 - [Native CLI](architecture/NATIVE-CLI.md) · [原生 CLI](architecture/NATIVE-CLI.zh-CN.md)
+- [Global model registry](architecture/MODEL-REGISTRY.md) · [全局模型注册表](architecture/MODEL-REGISTRY.zh-CN.md)
 - [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
   [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)

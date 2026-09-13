@@ -135,6 +135,7 @@ pub(super) fn mark_codex_runtime_activity(
 #[derive(Debug)]
 pub(super) struct CodexRolloutGroup {
     session_id: String,
+    native_turn_id: Option<String>,
     parent_session_id: Option<String>,
     subagent_title: Option<String>,
     is_subagent: bool,
@@ -334,11 +335,68 @@ pub(super) fn parse_codex_rollout_line(
     if event_type == "session_meta" {
         update_codex_rollout_group_lineage(groups, &session_id, payload);
     }
-
-    if let Some(message) = codex_rollout_message(path, index, event_type, payload, &value) {
-        push_codex_rollout_message(groups, session_id, message, cwd, scan_config);
+    if !groups.iter().any(|group| group.session_id == session_id) {
+        update_codex_rollout_group_cwd(groups, session_id.clone(), cwd.clone());
+    }
+    let group = groups
+        .iter_mut()
+        .find(|group| group.session_id == session_id)
+        .expect("session group exists");
+    let lifecycle = payload.get("type").and_then(Value::as_str);
+    if event_type == "session_meta"
+        || event_type == "turn_context"
+        || (event_type == "event_msg" && lifecycle == Some("task_started"))
+    {
+        group.native_turn_id = if event_type == "session_meta" {
+            None
+        } else {
+            find_string(payload, &["turn_id", "turnId"]).filter(|id| !id.is_empty())
+        };
+    }
+    let native_turn_id =
+        find_string(payload, &["turn_id", "turnId"]).or_else(|| group.native_turn_id.clone());
+    if let Some(mut message) = codex_rollout_message(path, index, event_type, payload, &value) {
+        if matches!(
+            message.get("role").and_then(Value::as_str),
+            Some("agent" | "assistant")
+        ) {
+            if let Some(id) = native_turn_id {
+                message["sourceTurnId"] = json!(id);
+            }
+            if event_type == "response_item"
+                && payload.get("type").and_then(Value::as_str) == Some("message")
+            {
+                if let Some(id) = payload
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
+                    message["sourceMessageId"] = json!(id);
+                }
+            }
+        }
+        push_codex_rollout_message(groups, session_id.clone(), message, cwd, scan_config);
     } else if cwd.is_some() {
-        update_codex_rollout_group_cwd(groups, session_id, cwd);
+        update_codex_rollout_group_cwd(groups, session_id.clone(), cwd);
+    }
+    if event_type == "event_msg"
+        && matches!(
+            lifecycle,
+            Some(
+                "task_complete"
+                    | "task_cancelled"
+                    | "turn_aborted"
+                    | "turn_cancelled"
+                    | "turn_completed"
+            )
+        )
+    {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group.session_id == session_id)
+        {
+            group.native_turn_id = None;
+        }
     }
 }
 
@@ -358,6 +416,7 @@ pub(super) fn update_codex_rollout_group_cwd(
     }
     groups.push(CodexRolloutGroup {
         session_id,
+        native_turn_id: None,
         parent_session_id: None,
         subagent_title: None,
         is_subagent: false,
@@ -479,6 +538,7 @@ pub(super) fn push_codex_rollout_message(
     }
     let mut group = CodexRolloutGroup {
         session_id,
+        native_turn_id: None,
         parent_session_id: None,
         subagent_title: None,
         is_subagent: false,

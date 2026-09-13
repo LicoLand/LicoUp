@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:licoup/src/application/features/agents/conversation/conversation_execution_observer.dart';
+import 'package:licoup/src/contracts/conversation_execution_port.dart';
+
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -18,6 +21,7 @@ import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/conversation/conversation_execution_projection_producer.dart';
 
 /// Conversation read-side composition with separate native-history and
 /// Canonical Conversation authorities. Both 1:1 and group turns are projected
@@ -85,6 +89,13 @@ final class ConversationProjectionProducer {
   }
 
   final ClientController _controller;
+  late final execution = ConversationExecutionProjectionProducer(
+    _controller.conversationGateway is ConversationExecutionSource
+        ? NativeConversationExecutionReader(
+            _controller.conversationGateway as ConversationExecutionSource,
+          )
+        : null,
+  );
   final _groupTurns = <String, _GroupTurn>{};
   final _groupTurnSubscriptions =
       <String, StreamSubscription<AgentDispatchEvent>>{};
@@ -452,6 +463,8 @@ final class ConversationProjectionProducer {
                 'sessionId': event.sessionId,
                 'turnId': 'live-${turn.handle}',
                 'turnHandle': turn.handle,
+                'conversationId': turn.conversationId,
+                'membershipId': turn.membershipId,
                 'payload': event.payload,
               }),
               scopeKey: turn.scopeKey,
@@ -627,6 +640,7 @@ final class ConversationProjectionProducer {
     }
     await _detachGroupTurns();
     await Future.wait<void>([
+      execution.close(),
       projection.close(),
       nativeCatalog.close(),
       canonicalEvents.close(),
@@ -873,6 +887,7 @@ PersistentTurnProjection _readPersistentTurns(
               participantRole: turn.role,
               turnHandle: turn.handle,
               observed: turn.observing,
+              waitingVisible: turn.observing,
               fallbackFailure:
                   controller.clientConversationController.failureCode,
             ),
@@ -892,6 +907,7 @@ PersistentTurnProjection _readPersistentTurns(
         ? [
             _membershipTurn(
               state,
+              waitingVisible: controller.isSendingConversationMessage,
               membershipId: controller.selectedConversationAgentId,
               agentLabel:
                   agent?.label ?? controller.selectedConversationAgentId,
@@ -911,20 +927,28 @@ MembershipTurnProjection _membershipTurn(
   String participantRole = '',
   String turnHandle = '',
   bool observed = false,
+  bool waitingVisible = true,
   String fallbackFailure = '',
 }) {
   var phase = _turnPhase(state.turnState.phase, fallbackFailure);
   if (phase == PersistentTurnPhase.idle && observed) {
     phase = PersistentTurnPhase.running;
   }
+  // A detached observer cannot claim visible waiting. Execution phase remains
+  // the last native fact; stopping observation never fabricates a terminal.
+  final messages = waitingVisible
+      ? state.messages
+      : state.messages
+            .where((message) => !message.waitingForReply)
+            .toList(growable: false);
   return MembershipTurnProjection(
     membershipId: membershipId,
     agentLabel: agentLabel,
     phase: phase,
     inputEnabled:
         state.turnState.inputEnabled ?? phase != PersistentTurnPhase.waiting,
-    liveParts: _messageParts(state.messages),
-    messages: state.messages,
+    liveParts: _messageParts(messages),
+    messages: messages,
     turnHandle: turnHandle,
     participantAgentId: participantAgentId,
     participantRole: participantRole,

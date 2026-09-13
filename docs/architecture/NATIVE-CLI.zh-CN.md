@@ -60,7 +60,14 @@ attach、活跃 turn 查询、会话动作、目录观察和策略执行均保�
 原生可执行程序拥有宿主的启动与生命周期，无需 Flutter 启动或操作它。
 内部 `rpc conversation-host` 入口由该原生进程监督器使用。
 
+本地 `agent.conversation.execution` 流查看一轮精确 dispatch。
+记录归属、游标与观察契约由
+[本地执行过程查看](CONVERSATION-DOMAIN.zh-CN.md#13-本地执行过程查看) 定义。
+
 ## 独立 MCP 进程
+
+本地[模型注册表](MODEL-REGISTRY.zh-CN.md)拥有公开模型目录刷新与标准身份，
+其命令不属于远程 MCP 操作。
 
 `subagents catalog` 提供原生调用者与操作 schema；`subagents execute`
 准入包含 `name`、`arguments`、`caller` 的本地调用。原生 Subagents

@@ -186,11 +186,22 @@ where
                 } => {
                     let persistent_operation = matches!(
                         operation.as_str(),
-                        "send" | "dispatch" | "stream" | "steer" | "cancel" | "active" | "attach"
+                        "send"
+                            | "dispatch"
+                            | "stream"
+                            | "steer"
+                            | "cancel"
+                            | "active"
+                            | "attach"
+                            | "execution"
+                            | "execution.detach"
                     );
                     if persistent_operation && conversation_runtime.is_none() {
                         let rejection = persistent_runtime_rejection();
-                        if matches!(operation.as_str(), "send" | "stream" | "attach") {
+                        if matches!(
+                            operation.as_str(),
+                            "send" | "stream" | "attach" | "execution"
+                        ) {
                             write_stdio_rpc_terminal_success(
                                 &writer,
                                 &request.id,
@@ -246,6 +257,44 @@ where
                             request.workflow_id.clone(),
                             params,
                             portable_data_dir,
+                            runtime.clone(),
+                        ) {
+                            Ok(worker) => conversation_workers.push(worker),
+                            Err(error) => write_stdio_rpc_terminal_error(
+                                &writer,
+                                &request.id,
+                                &request.workflow_id,
+                                1,
+                                &error,
+                            )?,
+                        }
+                    } else if operation == "execution.detach" {
+                        let runtime = conversation_runtime
+                            .as_ref()
+                            .expect("persistent operation validated");
+                        match runtime.detach_execution(&params) {
+                            Ok(value) => write_stdio_rpc_success_shared(
+                                &writer,
+                                &request.id,
+                                &request.workflow_id,
+                                value,
+                            )?,
+                            Err(error) => write_stdio_rpc_client_error_shared(
+                                &writer,
+                                Some(&request.id),
+                                Some(&request.workflow_id),
+                                &error,
+                            )?,
+                        }
+                    } else if operation == "execution" {
+                        let runtime = conversation_runtime
+                            .as_ref()
+                            .expect("persistent operation validated");
+                        match conversation::spawn_execution(
+                            Arc::clone(&writer),
+                            request.id.clone(),
+                            request.workflow_id.clone(),
+                            params,
                             runtime.clone(),
                         ) {
                             Ok(worker) => conversation_workers.push(worker),

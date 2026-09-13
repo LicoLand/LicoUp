@@ -208,9 +208,24 @@ impl StrategyService {
                 self.admit_revision_identity(revision)?;
                 self.bind_detected_runtimes(revision)?;
                 let definition = self.store.definition_by_revision(revision)?;
+                let projection = self.store.projection_for_definition(revision)?;
+                // Saved overrides may no longer occur in an Agent's selectable
+                // catalog. Their labels are read-only presentation facts, kept
+                // outside BindingValue and its persisted authorization identity.
+                let mut model_display_names = BTreeMap::new();
+                for binding in &projection.bindings {
+                    if !binding.model.trim().is_empty() {
+                        model_display_names
+                            .entry(binding.model.clone())
+                            .or_insert_with(|| {
+                                crate::domain::model_registry::model_display_name(&binding.model)
+                            });
+                    }
+                }
                 Ok(json!({
-                    "projection": self.store.projection_for_definition(revision)?,
+                    "projection": projection,
                     "workflow": definition.workflow,
+                    "modelDisplayNames": model_display_names,
                 }))
             }
             "strategy.runtime.discover" | "strategy.runtime.list" => Ok(serde_json::to_value(
@@ -2911,6 +2926,59 @@ mod tests {
         #[cfg(not(unix))]
         permissions.set_readonly(false);
         fs::set_permissions(path, permissions).unwrap();
+    }
+
+    #[test]
+    fn definition_inspection_labels_saved_models_without_changing_bindings() {
+        let root = root();
+        let (store, revision) = authorized_entry_store(&root, "claude-code");
+        let model = "deepseek-v4-flash-vision-exp";
+        store
+            .replace_slot_bindings(
+                &revision,
+                "entry",
+                &[BindingCandidate {
+                    value_id: "claude-code".to_owned(),
+                    model: model.to_owned(),
+                    reasoning_effort: String::new(),
+                }],
+                None,
+            )
+            .unwrap();
+        let authorization = store.authorization_preview(&revision).unwrap();
+        let authorization = store
+            .grant_authorization(&revision, &authorization.authorization_digest)
+            .unwrap();
+        let before = store.projection_for_definition(&revision).unwrap();
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        );
+        let response = service
+            .execute(json!({
+                "action": "strategy.definition.inspect",
+                "revisionDigest": revision,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true);
+        assert_eq!(
+            response["result"]["modelDisplayNames"],
+            json!({model: "DeepSeek V4 Flash Vision Exp"})
+        );
+        assert_eq!(
+            response["result"]["projection"],
+            serde_json::to_value(&before).unwrap()
+        );
+        assert_eq!(store.projection_for_definition(&revision).unwrap(), before);
+        assert_eq!(
+            store
+                .definition_by_revision(&revision)
+                .unwrap()
+                .authorization,
+            Some(authorization),
+        );
+        remove_root(root);
     }
 
     #[test]

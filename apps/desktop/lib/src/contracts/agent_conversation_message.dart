@@ -1,3 +1,4 @@
+import 'conversation_execution.dart';
 import 'agent_conversation_message_page.dart';
 
 enum AgentConversationMessageKind {
@@ -15,6 +16,14 @@ enum AgentConversationMessageKind {
 enum AgentConversationSemanticLayer { thread, execution, artifacts, audit, raw }
 
 enum AgentConversationMessageDeliveryState { ordinary, failed }
+
+/// A native terminal mirrored as a reply view when no body was produced.
+enum AgentConversationReplyTerminalState {
+  completed,
+  cancelled,
+  failed,
+  interrupted,
+}
 
 AgentConversationSemanticLayer? agentConversationSemanticLayerFor(
   String? value,
@@ -36,6 +45,9 @@ class AgentConversationMessage {
     required this.text,
     required this.createdAt,
     this.layer,
+    this.executionReference,
+    this.waitingForReply = false,
+    this.replyTerminalState,
     this.cardType = '',
     this.cardTitle = '',
     this.cardSubtitle = '',
@@ -59,6 +71,12 @@ class AgentConversationMessage {
   final String role;
   final String text;
   final String createdAt;
+  final ConversationExecutionReference? executionReference;
+
+  /// Ephemeral mirror of an accepted/submitted turn awaiting its first body.
+  /// It is never serialized into native or canonical history.
+  final bool waitingForReply;
+  final AgentConversationReplyTerminalState? replyTerminalState;
   final AgentConversationSemanticLayer? layer;
   final String cardType;
   final String cardTitle;
@@ -117,7 +135,9 @@ class AgentConversationMessage {
       (!_messageRoleIsInternal(role) ||
           isSubagentCard ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
-      (text.trim().isNotEmpty ||
+      (waitingForReply ||
+          replyTerminalState != null ||
+          text.trim().isNotEmpty ||
           images.isNotEmpty ||
           isSubagentCard ||
           isStructuredEvent);
@@ -160,6 +180,9 @@ class AgentConversationMessage {
       text: text,
       createdAt: createdAt,
       layer: layer,
+      executionReference: executionReference,
+      waitingForReply: waitingForReply,
+      replyTerminalState: replyTerminalState,
       cardType: cardType,
       cardTitle: cardTitle,
       cardSubtitle: cardSubtitle,
@@ -180,12 +203,49 @@ class AgentConversationMessage {
     );
   }
 
+  /// Carries an explicitly known execution identity across a native revision
+  /// of this same message. Callers must establish message identity first.
+  AgentConversationMessage withExecutionReference(
+    ConversationExecutionReference reference,
+  ) {
+    if (executionReference == reference) return this;
+    return AgentConversationMessage(
+      id: id,
+      role: role,
+      text: text,
+      createdAt: createdAt,
+      layer: layer,
+      cardType: cardType,
+      cardTitle: cardTitle,
+      cardSubtitle: cardSubtitle,
+      collapsed: collapsed,
+      providerSummary: providerSummary,
+      stableIdentity: stableIdentity,
+      participantAgentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+      childMessagesTruncated: childMessagesTruncated,
+      childSessionId: childSessionId,
+      childMessageCount: childMessageCount,
+      childSourceRevision: childSourceRevision,
+      childMessagePage: childMessagePage,
+      childMessages: childMessages,
+      images: images,
+      deliveryState: deliveryState,
+      waitingForReply: waitingForReply,
+      replyTerminalState: replyTerminalState,
+      executionReference: reference,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'role': role,
       'text': text,
       'createdAt': createdAt,
+      if (executionReference != null)
+        'executionReference': executionReference!.toJson(),
       if (layer != null) 'layer': layer!.name,
       if (cardType.isNotEmpty) 'cardType': cardType,
       if (cardTitle.isNotEmpty) 'cardTitle': cardTitle,

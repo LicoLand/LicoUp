@@ -10,6 +10,9 @@ use crate::platform::process_supervisor::SupervisedChild;
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, join_bounded};
 #[cfg(unix)]
 use crate::platform::pty_transport::PtyEvent;
+use crate::platform::raw_execution::{
+    RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -100,6 +103,15 @@ pub(in crate::platform) fn execute(
     // private control identity, but never publish that provisional identity as
     // a canonical stream session.
     let event_session_id = config.requested_session_id.as_str();
+    if let Some(observer) = RawExecutionObserver::current() {
+        for (index, arg) in command.get_args().enumerate() {
+            observer.record_bytes(
+                &format!("antigravity.argv.{index}"),
+                RawExecutionDirection::Sent,
+                arg.as_encoded_bytes(),
+            );
+        }
+    }
     let outcome = match run_turn_process(
         command,
         timeout_ms,
@@ -257,7 +269,11 @@ fn run_turn_process(
             json!({ "evidenceKind": "native-event" }),
         );
     }
-    let stderr_handle = thread::spawn(move || count_stderr(stderr, max_stderr));
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _raw_scope = RawExecutionScope::enter(stderr_observer);
+        count_stderr(stderr, max_stderr)
+    });
     let (sender, receiver) = mpsc::channel();
     let reader_handle = thread::spawn(move || {
         crate::platform::pty_transport::read_master(master, sender, max_stdout)
@@ -334,17 +350,25 @@ fn emit_resume_chunk(event_session_id: &str, control_session_id: &str, turn_id: 
 
 /// Counts stderr bytes up to `max_stderr` and reports whether the cap was hit.
 /// The pty lane keeps stderr as a real pipe with count-only semantics; text is
-/// never read because stderr noise must not enter the conversation stream.
+/// captured only for the invocation-owned raw viewer.
 #[cfg(unix)]
 fn count_stderr(mut reader: impl Read, max_stderr: usize) -> bool {
     let mut buffer = [0u8; 8192];
     let mut counted = 0usize;
+    let raw_observer = RawExecutionObserver::current();
     loop {
         let read = match reader.read(&mut buffer) {
             Ok(0) => break,
             Ok(count) => count,
             Err(_) => break,
         };
+        if let Some(observer) = raw_observer.as_ref() {
+            observer.record_bytes(
+                "antigravity.stderr",
+                RawExecutionDirection::Stderr,
+                &buffer[..read],
+            );
+        }
         counted = counted.saturating_add(read);
         if counted >= max_stderr {
             return true;
@@ -395,8 +419,16 @@ fn run_turn_process(
     if registered {
         register_active_turn(control_session_id, child.pid());
     }
-    let stdout_handle = thread::spawn(move || read_bounded(stdout, max_stdout));
-    let stderr_handle = thread::spawn(move || read_bounded(stderr, Some(max_stderr)));
+    let stdout_observer = RawExecutionObserver::current();
+    let stdout_handle = thread::spawn(move || {
+        let _raw_scope = RawExecutionScope::enter(stdout_observer);
+        read_bounded(stdout, max_stdout, RawExecutionDirection::Received)
+    });
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _raw_scope = RawExecutionScope::enter(stderr_observer);
+        read_bounded(stderr, Some(max_stderr), RawExecutionDirection::Stderr)
+    });
     let deadline = if timeout_ms == 0 {
         None
     } else {
@@ -636,11 +668,16 @@ struct BoundedRead {
 }
 
 #[cfg(not(unix))]
-fn read_bounded(mut reader: impl Read, max_output: Option<usize>) -> BoundedRead {
+fn read_bounded(
+    mut reader: impl Read,
+    max_output: Option<usize>,
+    direction: RawExecutionDirection,
+) -> BoundedRead {
     // None means unbounded: read everything the agent produces.
     let max_output = max_output.unwrap_or(usize::MAX);
     let mut buffer = vec![0u8; 8192.min(max_output.max(1))];
     let mut collected = Vec::new();
+    let raw_observer = RawExecutionObserver::current();
     let mut truncated = false;
     loop {
         let read = match reader.read(&mut buffer) {
@@ -648,6 +685,9 @@ fn read_bounded(mut reader: impl Read, max_output: Option<usize>) -> BoundedRead
             Ok(count) => count,
             Err(_) => break,
         };
+        if let Some(observer) = raw_observer.as_ref() {
+            observer.record_bytes("antigravity.stdio", direction, &buffer[..read]);
+        }
         if collected.len() >= max_output {
             truncated = true;
             break;

@@ -1,3 +1,4 @@
+import 'package:licoup/src/contracts/conversation_execution.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
@@ -7,7 +8,8 @@ import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 /// Desktop conversation adapter. Every operation uses the owned structured
 /// transport even when stateless commands use an injected one-shot executor.
 /// Mobile conversation dispatch stays on its secure relay/FFI gateway.
-final class StdioConversationNativePort implements ConversationNativePort {
+final class StdioConversationNativePort
+    implements ConversationNativePort, ConversationExecutionNativePort {
   const StdioConversationNativePort({
     required NativeStdioRpcTransport transport,
     required bool desktopRuntime,
@@ -68,6 +70,15 @@ final class StdioConversationNativePort implements ConversationNativePort {
     int afterCursor = 0,
   }) => _stream(ConversationProtocolMethod.agentConversationAttach, {
     ..._turnFields(turn),
+    'afterCursor': afterCursor,
+  });
+
+  @override
+  Stream<Map<String, dynamic>> execution(
+    ConversationExecutionReference reference, {
+    int afterCursor = 0,
+  }) => _stream(ConversationProtocolMethod.agentConversationExecution, {
+    ...reference.toJson(),
     'afterCursor': afterCursor,
   });
 

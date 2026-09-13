@@ -20,10 +20,12 @@ class AgentUsageTimelineData {
     this.requestOnlyShareLabels = const [],
     this.grouping = AgentUsageChartGrouping.agent,
     this.modelSources = const {},
+    this.displayNames = const {},
   });
 
   final AgentUsageChartGrouping grouping;
   final Map<String, List<AgentUsageModelSource>> modelSources;
+  final Map<String, String> displayNames;
   final List<AgentUsageSnapshot> snapshots;
   final List<AgentUsageSeries> series;
   final Map<String, double> seriesTotals;
@@ -49,6 +51,9 @@ class AgentUsageTimelineData {
   );
 
   double totalFor(String label) => seriesTotals[label] ?? 0;
+
+  String displayNameFor(String seriesKey) =>
+      displayNames[seriesKey] ?? seriesKey;
 
   int requestCountFor(String label) => requestCounts[label] ?? 0;
 
@@ -106,9 +111,12 @@ class AgentUsageSnapshot {
 }
 
 class AgentUsageSeries {
-  const AgentUsageSeries({required this.label});
+  const AgentUsageSeries({required this.label, String? displayName})
+    : displayName = displayName ?? label;
 
+  /// Series lookup key. Model grouping uses the native canonical model ID.
   final String label;
+  final String displayName;
 }
 
 class AgentUsageModelSource {

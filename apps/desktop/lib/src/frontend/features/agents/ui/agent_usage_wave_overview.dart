@@ -96,10 +96,7 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
       return const SizedBox.shrink();
     }
     final screenSize = MediaQuery.sizeOf(context);
-    final tooltipWidth = math.min(
-      340.0,
-      math.max(240.0, screenSize.width - 16),
-    );
+    final tooltipWidth = math.min(340.0, math.max(0.0, screenSize.width - 16));
     final visibleSeriesCount = widget.timeline.series.where((series) {
       return (widget.timeline.snapshots[index].values[series.label] ?? 0) > 0;
     }).length;

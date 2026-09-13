@@ -164,6 +164,11 @@ content with a full-page loading barrier. Refresh keeps existing content visible
 and indicates only the work still in flight. Cached usage appears before its
 fresh scan completes. Errors belong to their owning result or notification.
 
+Before the first usable usage report, Statistics shows the shared rotating
+particle globe with `正在加载中` (`Loading` in English) beneath it. This state
+covers the initial cache read and scan. A completed empty result has an empty
+state; refreshing an existing report keeps its charts visible.
+
 Statistics selects only usage data and relevant controls. Quota or diagnostic
 updates do not rebuild its chart subtree. Usage viewport projections and chart
 series are cached by their actual data, grouping and display window. Color
@@ -185,9 +190,12 @@ efforts and speed modes. A source name such as Cursor is not a model name.
 An expandable row uses a right-pointing disclosure arrow when closed and a
 downward arrow when open. Its expanded view shows a segmented source-share bar
 and the corresponding numeric usage below. Hovering a source segment exposes
-that source's effort and speed breakdown. Unknown attribution remains unknown;
-it is not assigned to a guessed model. Native usage reporting owns identity and
-numeric aggregation; the renderer owns color and disclosure state.
+that source's effort and speed breakdown in the same glass card as the waveform
+hover: header and total above, color swatches and names aligned left, amounts
+aligned right. Missing effort has no placeholder row. A partially known
+breakdown does not change the header total. Unknown attribution stays unknown.
+The Rust [model registry](../architecture/MODEL-REGISTRY.md) owns identity;
+native usage owns aggregation, and the renderer owns color and disclosure state.
 
 ## Assistant model selection
 
@@ -196,6 +204,12 @@ Official models precede custom-provider models. Within each provider group,
 numeric model versions sort from newest to oldest; textual sorting must not
 place version 5.9 ahead of 5.10. Product names retain their spacing, including
 `GPT-6 Astra`.
+
+Assistant and workflow model pickers prepare their catalog, provider groups,
+search results and row positions when those inputs change. Scrolling and hover
+reuse that projection and construct only visible rows. A large loaded catalog
+must not cause a new fetch, full-directory label scan or complete list layout
+on each interaction. Row keys and the selected-model position stay stable.
 
 Provider groups remain visible for multi-provider Agents, including Antigravity
 and Kimi Code. Claude Code exposes its admitted model catalog, rather than only
@@ -237,9 +251,38 @@ the message count is unchanged. Display timestamps do not act as cache revisions
 Nested work and tool-only children remain accessible. Collapsing a card never
 cancels work. A bounded first page is not a content truncation policy.
 
-Message text remains selectable and copyable. Process metadata stays distinct
-from authored content. Sender identity, activity, copy and disclosure controls
+Message text remains selectable and copyable. An accepted Agent dispatch creates
+its reply bubble before response text arrives. Three metal-like points exchange
+velocity through equal-mass elastic collisions while waiting. The first reply
+text replaces that waiting treatment immediately; reasoning and tool events do
+not count as reply text. A terminal failure, cancellation, or completion also
+ends the waiting treatment and retains its real outcome.
+
+Thinking and tool activity are not inline process cards in the transcript.
+Each Agent bubble has an ellipsis action outside its upper-right corner. Its
+**Execution process / 执行过程** menu item uses an eye icon and opens the
+execution viewer for that reply. Sender identity and all message actions
 retain semantics and keyboard access across layout profiles.
+
+The execution viewer is a floating surface. Its header places the Agent icon,
+name and conversation title on the left, search in the center, and close on
+the right. Available execution records and metadata appear oldest to newest,
+with full selectable content, clear event boundaries, and code treatment for
+structured or literal output. The local viewer does not redact, summarize,
+trim, or silently truncate the contents it receives. Information never emitted
+by an upstream Agent is not invented. Public fixtures and visual evidence
+remain synthetic.
+
+The viewer initially positions at the newest record and updates while work
+continues. Following the latest record stops when the reader scrolls away or
+jumps to a search match; new records remain available through a return-to-latest
+action. Enter moves through keyword matches and highlights the selected match,
+including records outside the current rendered viewport. Closing restores
+focus to the invoking action.
+
+Large raw outputs use bounded text chunks and cooperative layout. Preparing a
+long history must leave search and close responsive; live additions retain the
+already displayed content while the new paragraphs are prepared.
 
 Conversation lists keep their scroll simulation active after a gesture ends.
 Release velocity produces inertia, and overscroll springs back into range.
@@ -250,11 +293,34 @@ the Scrollable's own simulation.
 
 ## Motion and accessibility
 
-Silver-white parsing grains and flowing highlights indicate active work. They
-are deterministic, bounded paint operations over an existing small surface.
-There is no idle particle field or continuous animation after the activity
-ends. Offstage tickers and reduced-motion tickers stop; the activity remains
-legible as a static state.
+An empty conversation shows a silver-white particle sphere centered in the
+conversation content area. Particles form a dense, irregularly sampled thin
+spherical shell. Continuous tangential curl motion creates folding density and
+overlapping front and rear layers; it is not a latitude grid rotating as one
+object or a pair of sinusoidal bands. Fine flow and depth shading give the sphere
+volume without explanatory text. The visual reference is the particle
+study on [Van Lent](https://vanlent.dev/); LicoUp owns its Flutter rendering and
+interaction implementation. Only the particle motion is referenced. The renderer
+leaves its canvas transparent and adds no background grid, reference-site
+decoration, or texture behind the sphere.
+
+Statistics loading and the empty conversation share one pure visual particle
+engine. Each screen owns its loading state independently of that renderer.
+
+On the first send, the same particle identities flow left into layered waves,
+then settle into the actual Agent avatar and composer outline. Transition
+positions and velocities remain continuous. Targets come from measured layout
+geometry, including a relocated desktop composer; no fixed screen coordinates
+or replacement screenshots define the transition. The composer remains usable
+throughout. Sending, dispatch, and streamed text never wait for an animation.
+Changing conversations disposes that conversation's visual transition.
+
+Particle and waiting effects use isolated paint updates rather than rebuilding
+conversation content each frame. Particle buffers remain stable during motion;
+completed assembly stops its ticker. Offstage and reduced-motion tickers stop.
+Reduced motion keeps a static sphere and a legible waiting state without the
+travel or collision effect. Existing nonempty conversations do not replay the
+empty-state assembly.
 
 Conversation work is shown on the composer's existing outline, with breathing
 as the default treatment and a pulse as an alternate theme effect. The effect

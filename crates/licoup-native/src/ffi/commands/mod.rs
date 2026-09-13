@@ -19,6 +19,7 @@ mod gateway;
 mod llm_gateway;
 mod mcp;
 mod mobile;
+mod model_registry;
 pub mod native_rpc;
 mod opencode_serve;
 mod provider_quota;
@@ -4770,6 +4771,28 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: state::handle_activity_list,
         help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "model_registry.rs",
+        handler_name: "handle_read",
+        path: &["model-registry", "read"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: model_registry::handle_read,
+        help: "Read the cached public model registry without network access",
+    });
+    table.register_command(CommandSpec {
+        source_module: "model_registry.rs",
+        handler_name: "handle_refresh",
+        path: &["model-registry", "refresh"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: model_registry::handle_refresh,
+        help: "Refresh public model identities and retain the previous catalog on failure",
     });
     table.register_command(CommandSpec {
         source_module: "targets.rs",

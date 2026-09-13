@@ -15,7 +15,7 @@ pub(super) fn open_serve_session(
             &["session", &config.requested_session_id],
             &config.cwd,
         )?;
-        return match super::super::opencode_serve::get_json(&url) {
+        return match super::super::opencode_serve::get_session_json(&url) {
             Ok(payload) => match serve_parser::session_id(&payload) {
                 Some(id) if id == config.requested_session_id => Ok(id.to_string()),
                 // A returned different identity is an exact-lookup mismatch:

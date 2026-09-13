@@ -300,6 +300,7 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
             mismatched_exact_hydration,
         )?;
         apply_exact_message_page(&mut sessions[0], params)?;
+        super::execution_provenance::annotate_selected_session(&agent_id, &mut sessions[0])?;
     }
     let total_sessions = sessions.len();
     let exact = scan_config.has_single_session_filter();

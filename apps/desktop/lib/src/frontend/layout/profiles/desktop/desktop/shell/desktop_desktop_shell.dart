@@ -22,6 +22,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desk
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_launchpad.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
@@ -319,9 +320,11 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
           skipTraversal: true,
           child: Material(
             color: Colors.transparent,
-            child: LayoutBuilder(
-              builder: (context, constraints) =>
-                  _buildZStack(context, constraints),
+            child: ConversationMotionHost(
+              child: LayoutBuilder(
+                builder: (context, constraints) =>
+                    _buildZStack(context, constraints),
+              ),
             ),
           ),
         ),
@@ -363,6 +366,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
               .firstOrNull;
 
     return Stack(
+      key: const Key('desktop-desktop-z-stack'),
       fit: StackFit.expand,
       children: [
         Positioned.fill(

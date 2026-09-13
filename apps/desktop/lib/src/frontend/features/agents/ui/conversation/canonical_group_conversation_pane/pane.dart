@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -598,6 +600,19 @@ class _CanonicalGroupConversationPaneState
       ),
     );
     final actions = AgentConversationPaneActions(
+      onOpenExecution: (context, message, speakingTarget, returnFocusNode) =>
+          unawaited(
+            showBoundConversationExecution(
+              context: context,
+              message: message,
+              target: speakingTarget,
+              conversationTitle: state.conversationLabel,
+              projection: widget.conversation.execution,
+              intents: widget.conversation.intents,
+              onCopyText: _copyText,
+              returnFocusNode: returnFocusNode,
+            ),
+          ),
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
       onDraftChanged: (draft) => widget.conversation.intents.send(
