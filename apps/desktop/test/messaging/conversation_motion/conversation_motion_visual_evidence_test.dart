@@ -10,8 +10,8 @@ import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_b
 
 const _output = String.fromEnvironment('LICO_MOTION_EVIDENCE_DIR');
 const _size = Size(1040, 700);
-const _anchors = ConversationParticleAnchors(
-  sphere: Rect.fromLTWH(450, 150, 360, 360),
+const _anchors = ConversationMotionAnchors(
+  content: Rect.fromLTWH(450, 150, 360, 360),
   avatar: Rect.fromLTWH(48, 112, 40, 40),
   composer: RRect.fromLTRBXY(48, 566, 992, 652, 24, 24),
 );
@@ -30,11 +30,11 @@ void main() {
               ..addFont(rootBundle.load('assets/fonts/GeistSans-Regular.ttf')))
             .load();
         const size = Size(1040, 600);
-        const darkAnchors = ConversationParticleAnchors(
-          sphere: Rect.fromLTWH(30, 76, 460, 460),
+        const darkAnchors = ConversationMotionAnchors(
+          content: Rect.fromLTWH(30, 76, 460, 460),
         );
-        const lightAnchors = ConversationParticleAnchors(
-          sphere: Rect.fromLTWH(550, 76, 460, 460),
+        const lightAnchors = ConversationMotionAnchors(
+          content: Rect.fromLTWH(550, 76, 460, 460),
         );
         final geometry = ConversationParticleGeometry();
         final clock = ValueNotifier<double>(0);
@@ -144,7 +144,7 @@ setInterval(()=>{if(playing){i=(i+1)%361;show()}},1000/30);
         );
         final markPicture = markRecorder.endRecording();
         final mark = await markPicture.toImage(64, 64);
-        final glyph = await ConversationParticleGlyph.fromImage(mark);
+        final glyph = await ConversationMotionGlyph.fromImage(mark);
         mark.dispose();
         markPicture.dispose();
         final geometry = ConversationParticleGeometry();

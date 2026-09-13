@@ -1,6 +1,8 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
@@ -758,6 +760,23 @@ class _AppearanceSettings extends StatelessWidget {
             binding.intents.send(SetAppearancePreference(presetId));
           },
         ),
+        SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-loading-effect-dropdown'),
+          icon: Icons.motion_photos_on_outlined,
+          title: strings.isChinese ? '加载动画' : 'Loading animation',
+          value: loadingEffectForId(projection.loadingEffectId).id,
+          items: [
+            for (final effect in builtInLoadingEffects)
+              SettingsDropdownItem(
+                value: effect.id,
+                label: strings.isChinese
+                    ? effect.chineseLabel
+                    : effect.englishLabel,
+              ),
+          ],
+          onSelected: (id) =>
+              binding.intents.send(SetLoadingEffectPreference(id)),
+        ),
         _ReduceMotionSetting(
           binding: binding,
           manualReduced: projection.reduceMotion,
@@ -1015,7 +1034,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: LicoLoadingIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save_outlined, size: 15),
                 label: Text(strings.save),

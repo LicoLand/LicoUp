@@ -15,6 +15,7 @@
     "package.json",
     "package-lock.json",
     "crates/licoup-native",
+    "crates/licoup-mcp",
     "apps/desktop",
     "packages/protocols",
     "tools"
@@ -62,7 +63,7 @@
       "schemaVersion": "licomesh.secure-mesh.release-cli-proof-report.v1",
       "producer": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
       "targetIds": ["macos-direct-arm64"],
-      "args": ["--cli", "/Applications/LicoUp.app/Contents/MacOS/licoup-cli", "--platform", "macos", "--report", "build/reports/secure-mesh-release-cli-proof-macos.json"],
+      "args": ["--cli", "/Applications/LicoUp.app/Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli", "--platform", "macos", "--report", "build/reports/secure-mesh-release-cli-proof-macos.json"],
       "timeoutMs": 180000
     },
     "redaction": { "ref": "build/reports/secure-mesh-report-redaction.json", "schemaVersion": "licomesh.secure-mesh.report-redaction-verifier.v1", "producer": "tools/scripts/client-secure-mesh-report-redaction-verify.mjs" }

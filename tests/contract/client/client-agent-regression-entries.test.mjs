@@ -118,12 +118,12 @@ test("one Agent static failure blocks only its own live branch", async () => {
   assert.equal(started.includes("agent-beta"), true);
 });
 
-test("DeepSeek Harness remains represented without manufacturing live readiness", async () => {
+test("An adapter without a live harness is not misclassified as a missing runtime", async () => {
   const deepseek = AGENT_REGRESSION_ENTRIES.find((entry) =>
     entry.id === "deepseek-harness");
   assert.deepEqual(await deepseek.probe(), {
     eligible: false,
-    reason: "deepseek_harness_jsonrpc_carrier_unverified",
+    reason: "agent_live_harness_unavailable",
   });
   assert.equal(deepseek.liveCommand, null);
 });

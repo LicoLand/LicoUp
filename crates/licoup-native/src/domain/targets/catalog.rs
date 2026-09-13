@@ -87,11 +87,9 @@ pub(super) fn candidate_runtime_is_available(
     if runtime_adapters::runtime_driver_profile(target).is_none() {
         return false;
     }
-    // The developer-preview DeepSeek carrier is callable only after canonical
-    // readiness establishes the official JSON-RPC wire. Detection alone must
-    // not turn an unverified carrier into a send-capable target.
-    let available = executable.is_some()
-        && (target != "deepseek-harness" || capabilities.conversation_readiness == "ready");
+    // Runtime admission depends on the installed official driver. Release
+    // readiness remains independently visible and never grants a model route.
+    let available = executable.is_some();
     if available {
         capabilities.conversation_blocker = None;
     }
@@ -359,12 +357,17 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_detection_preserves_unverified_readiness_and_disables_send() {
+    fn deepseek_detection_allows_official_runtime_without_claiming_release_readiness() {
         let mut capabilities = adapter_capabilities_for("deepseek-harness");
-        assert!(!candidate_runtime_is_available(
+        assert!(candidate_runtime_is_available(
             &mut capabilities,
             "deepseek-harness",
             Some(Path::new("dsh")),
+        ));
+        assert!(!candidate_runtime_is_available(
+            &mut capabilities,
+            "deepseek-harness",
+            None,
         ));
         assert_eq!(capabilities.conversation_blocker, None);
         assert_eq!(capabilities.conversation_readiness, "unverified");

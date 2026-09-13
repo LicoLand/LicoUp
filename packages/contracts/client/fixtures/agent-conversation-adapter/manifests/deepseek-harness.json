@@ -15,7 +15,7 @@
     "capabilityProbe": "initialize response and declared SDK protocol methods",
     "newSessionMethod": "session/prompt with a caller-created session id",
     "exactResumeMethod": "session/prompt with the same caller-supplied session id",
-    "streamingMethod": "session.event and session.status notifications",
+    "streamingMethod": "completed session events and status notifications; no live text deltas",
     "historyMethod": "official protocol does not expose a history read method",
     "cleanupMethod": "shutdown followed by supervised process-tree termination",
     "officialReferences": [
@@ -62,8 +62,8 @@
       "method": "official session/prompt JSON-RPC request"
     },
     "stream": {
-      "status": "supported",
-      "method": "official session.event and session.status notifications"
+      "status": "unsupported",
+      "method": "SDK publishes completed assistant/message events, not live text deltas"
     },
     "cancel": {
       "status": "unsupported",
@@ -96,11 +96,7 @@
   },
   "events": {
     "framing": "jsonl",
-    "realtimeKinds": [
-      "agent.message.chunk",
-      "agent.tool.started",
-      "agent.tool.completed"
-    ],
+    "realtimeKinds": ["agent.message.completed"],
     "terminalKinds": [
       "dispatch.turn.completed",
       "dispatch.turn.failed"

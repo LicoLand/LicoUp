@@ -87,16 +87,34 @@ fn codex_params(
 }
 
 #[test]
-fn deepseek_send_is_rejected_before_launch_while_carrier_is_unverified() {
-    let error = send_message(&json!({
+fn deepseek_send_reaches_native_validation_without_claiming_release_readiness() {
+    let result = send_message(&json!({
         "agent": "deepseek-harness",
-        "text": "must not launch",
-        "model": "profile-authorized-model",
-        "binaryPath": "must-not-run"
+        "text": "synthetic prompt",
+        "workingDirectory": "/synthetic",
+        "binaryPath": std::env::current_exe().unwrap()
     }))
-    .unwrap_err();
+    .unwrap();
 
-    assert_eq!(error, RuntimeAdapterError::RuntimeProfileUnavailable);
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["error"]["code"], "deepseek_harness_model_required");
+}
+
+#[test]
+fn deepseek_assistant_guidance_uses_ordinary_wire_without_changing_user_text() {
+    let source = "exact synthetic user message";
+    let delivery = super::super::compose_generated_instruction_delivery(
+        "deepseek-harness",
+        source,
+        Some("synthetic Assistant guidance"),
+    )
+    .unwrap();
+    assert_eq!(
+        delivery.text,
+        "synthetic Assistant guidance\n\nexact synthetic user message"
+    );
+    assert!(delivery.field.is_none());
+    assert!(delivery.guidance.is_none());
 }
 
 #[cfg(unix)]

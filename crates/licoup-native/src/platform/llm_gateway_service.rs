@@ -943,8 +943,7 @@ fn validate_config(path: &Path) -> Result<()> {
 
 fn sidecar_path() -> Result<PathBuf> {
     let current = std::env::current_exe().map_err(|_| anyhow!("llm_gateway_sidecar_missing"))?;
-    let parent = current
-        .parent()
+    let parent = super::paths::packaged_binary_directory(&current)
         .ok_or_else(|| anyhow!("llm_gateway_sidecar_missing"))?;
     for name in [SIDECAR_BINARY, LEGACY_SIDECAR_BINARY] {
         let sibling = parent.join(format!("{}{}", name, std::env::consts::EXE_SUFFIX));

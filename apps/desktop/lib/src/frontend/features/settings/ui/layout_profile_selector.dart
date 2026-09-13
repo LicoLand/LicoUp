@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -397,7 +398,7 @@ final class _LayoutSelectorStatus extends StatelessWidget {
             SizedBox(
               width: LicoContentSpacing.item,
               height: LicoContentSpacing.item,
-              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              child: LicoLoadingIndicator(strokeWidth: 2, color: color),
             ),
             const SizedBox(width: LicoContentSpacing.compact),
           ] else ...[

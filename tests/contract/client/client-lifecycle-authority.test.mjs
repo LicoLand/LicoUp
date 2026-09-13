@@ -15,7 +15,7 @@ const projectionConsumers = Object.freeze([
   `${controllerRoot}/client_conversation_facade.dart`,
   "apps/desktop/lib/src/application/features/agents/conversation/conversation_refresh_controller.dart",
   "apps/desktop/lib/src/application/features/agents/workspace/agent_workspace_coordinator.dart",
-  "apps/desktop/lib/src/application/product_acceptance/agent_conversation_release_live.dart",
+  "apps/desktop/lib/src/composition/product_acceptance/agent_conversation_release_live.dart",
 ]);
 
 const lifecycleComposition = Object.freeze([
@@ -262,7 +262,7 @@ test("ClientLifecycleCoordinator owns an immutable lifecycle projection", async 
 
   assert.match(
     coordinator,
-    /@visibleForTesting\s+ClientLifecycleReport\s+transitionForTesting\s*\(/u,
+    /ClientLifecycleReport\s+transitionForTesting\s*\(/u,
     "the transition table must have one explicit typed behavior seam",
   );
 });
@@ -282,14 +282,16 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   const dispose = dartFunctionBlock(controller, "dispose");
   assert.match(
     dispose,
-    /if\s*\(\s*lifecycleProjection\.disposed\s*\)\s*return\s*;/u,
-    "ClientController.dispose must guard through the coordinator projection",
+    /unawaited\s*\(\s*close\s*\(\s*\)\s*\)/u,
+    "ClientController.dispose must delegate to the single-flight close",
   );
   assert.match(
-    dispose,
+    dartFunctionBlock(controller, "_closeOnce"),
     /lifecycleController\.dispose\s*\(\s*\)\s*;/u,
-    "ClientController.dispose must request the authoritative disposed transition",
+    "ClientController.close must request the authoritative disposed transition",
   );
+
+  assert.match(controller, /Future<void>\s+close\s*\(\s*\)\s*=>\s*_closing\s*\?\?=\s*_closeOnce\s*\(\s*\)/u);
 
   const lifecycle = sources[`${controllerRoot}/client_lifecycle_facade.dart`];
   assert.match(
@@ -357,7 +359,7 @@ test("declared lifecycle consumers read specific projection facts", async () => 
   }
 
   const product =
-    sources["apps/desktop/lib/src/application/product_acceptance/agent_conversation_release_live.dart"];
+    sources["apps/desktop/lib/src/composition/product_acceptance/agent_conversation_release_live.dart"];
   const run = dartFunctionBlock(product, "_run");
   assert.match(
     run,

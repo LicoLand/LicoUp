@@ -152,6 +152,18 @@ impl RegistrySnapshot {
         &self.revision
     }
 
+    /// Resolve a published canonical ID without following provider routes or
+    /// display aliases. Confirmed execution-mode identities can be corrected
+    /// even after their original directory entry has disappeared.
+    pub fn canonical_model(&self, id: &str) -> Option<&CanonicalModel> {
+        match self.canonical_ids.get(&id.to_lowercase()) {
+            Some(Alias::Unique(index)) => Some(&self.models[*index]),
+            Some(Alias::Ambiguous) => None,
+            None if id.contains('/') => confirmed_execution_model(&normalize(id)),
+            None => None,
+        }
+    }
+
     /// Catalog provider labels and admitted Agent labels identify a source,
     /// not a model. Qualified selectors remain resolvable model evidence.
     pub fn is_provider_label(&self, value: &str) -> bool {
@@ -159,7 +171,7 @@ impl RegistrySnapshot {
         !key.is_empty() && self.wrappers.contains(&key)
     }
 
-    /// Only unique catalog evidence resolves. Unknown versions, modalities,
+    /// Only unique model evidence resolves. Unknown versions, modalities,
     /// provider-only labels, and conflicting aliases remain unclassified.
     pub fn resolve(&self, raw: &str, source_agent_id: Option<&str>) -> Option<&CanonicalModel> {
         self.resolve_with_provider(raw, None, source_agent_id)
@@ -219,7 +231,7 @@ impl RegistrySnapshot {
         }
         let mut pending = VecDeque::from([raw.to_owned()]);
         let mut seen = HashSet::new();
-        let mut resolved = None;
+        let mut resolved: Option<&CanonicalModel> = None;
         let source = source_agent_id.map(normalize);
         while let Some(candidate) = pending.pop_front() {
             if !seen.insert(candidate.clone()) {
@@ -227,7 +239,7 @@ impl RegistrySnapshot {
             }
             let key = normalize(&candidate);
             let exact = candidate.to_lowercase();
-            match self
+            let model = match self
                 .canonical_ids
                 .get(&exact)
                 .or_else(|| {
@@ -252,14 +264,15 @@ impl RegistrySnapshot {
                     }
                 }) {
                 Some(Alias::Ambiguous) => return None,
-                Some(Alias::Unique(index)) => {
-                    if resolved.is_some_and(|previous| previous != *index) {
-                        return None;
-                    }
-                    resolved = Some(*index);
-                    continue;
+                Some(Alias::Unique(index)) => Some(&self.models[*index]),
+                None => confirmed_execution_model(&key),
+            };
+            if let Some(model) = model {
+                if resolved.is_some_and(|previous| previous.id != model.id) {
+                    return None;
                 }
-                None => {}
+                resolved = Some(model);
+                continue;
             }
             if let Some(unwrapped) = strip_suffix(&candidate, source.as_deref() == Some("cursor")) {
                 pending.push_back(unwrapped.to_owned());
@@ -291,7 +304,7 @@ impl RegistrySnapshot {
                 previous_digit = false;
             }
         }
-        resolved.map(|index| &self.models[index])
+        resolved
     }
 
     fn provider_index(&self, id: &str) -> Option<usize> {
@@ -314,17 +327,34 @@ impl RegistrySnapshot {
         if let Some(index) = ids.get(id) {
             return *index;
         }
-        let index = self.models.len();
+        let confirmed = confirmed_execution_model(&normalize(id));
+        let canonical_id = confirmed.map_or(id, |model| model.id.as_str());
         let name = facts.get("name").and_then(Value::as_str).unwrap_or(id);
-        self.models.push(CanonicalModel {
-            id: id.to_owned(),
-            display_name: super::model_display_name(name),
-            lab_id: id.split('/').next().unwrap_or_default().to_owned(),
-            family: facts
-                .get("family")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-        });
+        let index = if let Some(index) = ids.get(canonical_id) {
+            *index
+        } else {
+            let index = self.models.len();
+            self.models.push(confirmed.cloned().unwrap_or_else(|| {
+                CanonicalModel {
+                    id: id.to_owned(),
+                    display_name: super::model_display_name(name),
+                    lab_id: id.split('/').next().unwrap_or_default().to_owned(),
+                    family: facts
+                        .get("family")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                }
+            }));
+            index
+        };
+        if canonical_id != id {
+            ids.insert(canonical_id.to_owned(), index);
+            insert_index(&mut self.canonical_ids, canonical_id.to_lowercase(), index);
+            self.insert_alias(canonical_id, index);
+            if let Some((_, short)) = canonical_id.split_once('/') {
+                self.insert_alias(short, index);
+            }
+        }
         ids.insert(id.to_owned(), index);
         insert_index(&mut self.canonical_ids, id.to_lowercase(), index);
         self.insert_alias(id, index);
@@ -362,6 +392,26 @@ impl RegistrySnapshot {
         }
         matched
     }
+}
+
+/// Official identity facts supplement directory rows that list serving tiers
+/// as separate models. This is deliberately not a generic `-fast` rule:
+/// other products use Fast as a distinct model name.
+/// https://cursor.com/docs/models/cursor-composer-2-5
+fn confirmed_execution_model(key: &str) -> Option<&'static CanonicalModel> {
+    if !matches!(
+        key,
+        "composer2.5" | "composer2.5fast" | "cursorcomposer2.5" | "cursorcomposer2.5fast"
+    ) {
+        return None;
+    }
+    static COMPOSER: std::sync::OnceLock<CanonicalModel> = std::sync::OnceLock::new();
+    Some(COMPOSER.get_or_init(|| CanonicalModel {
+        id: "cursor/composer-2.5".to_owned(),
+        display_name: "Composer 2.5".to_owned(),
+        lab_id: "cursor".to_owned(),
+        family: Some("composer".to_owned()),
+    }))
 }
 
 fn insert_index<K: Eq + std::hash::Hash>(indexes: &mut HashMap<K, Alias>, key: K, index: usize) {

@@ -1,4 +1,6 @@
 import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'dart:io' show Platform;
 
@@ -144,7 +146,7 @@ void main() {
   });
 
   testWidgets(
-    'new conversation keeps its empty particle content during catalog refresh',
+    'new conversation uses lightweight loading before its empty particle scene',
     (tester) async {
       const recentSession = AgentConversationSession(
         id: 'cached-session',
@@ -171,14 +173,26 @@ void main() {
       await tester.pump();
 
       expect(find.text('Cached conversation'), findsNothing);
-      expect(
-        find.byKey(const Key('conversation-empty-content')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('conversation-empty-content')), findsNothing);
+      expect(find.byType(LicoLoadingIndicator), findsOneWidget);
+      expect(find.byType(ConversationParticleField), findsNothing);
       expect(
         find.byKey(const Key('agent-conversation-recent-loading')),
         findsNothing,
       );
+
+      await tester.pumpWidget(
+        paneTestApp(
+          AgentConversationActivePane(
+            state: paneTestState(preparingNewConversation: true),
+            actions: paneTestActions(),
+            header: paneTestHeader(),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(LicoLoadingIndicator), findsNothing);
+      expect(find.byType(ConversationParticleField), findsNothing);
     },
   );
 

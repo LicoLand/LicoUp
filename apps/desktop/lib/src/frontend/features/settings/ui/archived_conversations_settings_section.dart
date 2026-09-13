@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -272,7 +273,7 @@ class _ArchivedConversationsLoading extends StatelessWidget {
           const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: LicoLoadingIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: LicoContentSpacing.compact),
           Text(strings.loading),
@@ -314,7 +315,7 @@ class _ArchivedConversationRow extends StatelessWidget {
           ? const SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: LicoLoadingIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.unarchive_outlined, size: 17),
       label: Text(strings.restore),

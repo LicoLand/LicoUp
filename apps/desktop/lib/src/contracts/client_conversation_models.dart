@@ -96,6 +96,8 @@ final class ClientConversationSummary {
 }
 
 final class ClientConversation {
+  static const defaultLocalAgentGroupId = 'lico-group-default';
+
   const ClientConversation({
     required this.id,
     required this.title,
@@ -147,7 +149,7 @@ final class ClientConversation {
   final int eventCount;
   final List<ClientConversationNativeSessionReference> nativeSessionReferences;
 
-  bool get isDefaultLocalAgentGroup => id == 'lico-group-default';
+  bool get isDefaultLocalAgentGroup => id == defaultLocalAgentGroupId;
 
   ClientConversationMembership? get assistantMembership {
     if (assistantMembershipId.isEmpty) return null;

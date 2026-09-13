@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -222,7 +223,7 @@ class _AgentConversationSubagentCardBlockState
                         child: loading || (canLoad && history == null)
                             ? const Padding(
                                 padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
+                                child: LicoLoadingIndicator(),
                               )
                             : errorCode.isNotEmpty
                             ? _ChildHistoryPageControl(
@@ -429,7 +430,7 @@ class _ChildHistoryPageControl extends StatelessWidget {
                   child: SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: LicoLoadingIndicator(strokeWidth: 2),
                   ),
                 )
               : TextButton.icon(

@@ -186,6 +186,47 @@ void main() {
     });
 
     test(
+      'installed app requires its custody helper without developer fallback',
+      () async {
+        final macos = Directory('${bundleDir.path}/LicoUp.app/Contents/MacOS');
+        await macos.create(recursive: true);
+        final app = File('${macos.path}/licoup');
+        await app.writeAsString('app');
+        await File('${macos.path}/licoup-cli').writeAsString('old-cli');
+        await sidecarBinary.writeAsString('external-cli');
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: app.path,
+          environment: {'LICO_CLIENT_PATH': sidecarBinary.path},
+          workingDirectory: bundleDir.path,
+        );
+        expect(resolved, isNull);
+      },
+    );
+
+    test(
+      'installed app rejects a custody helper symlink outside its bundle',
+      () async {
+        final macos = Directory('${bundleDir.path}/LicoUp.app/Contents/MacOS');
+        await macos.create(recursive: true);
+        final app = File('${macos.path}/licoup');
+        await app.writeAsString('app');
+        await sidecarBinary.writeAsString('external-cli');
+        final helper = Link(
+          '${macos.parent.path}/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli',
+        );
+        await helper.parent.create(recursive: true);
+        await helper.create(sidecarBinary.path);
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: app.path,
+          environment: const {},
+          workingDirectory: bundleDir.path,
+        );
+        expect(resolved, isNull);
+      },
+      skip: Platform.isWindows,
+    );
+
+    test(
       'installed app bundle ignores CARGO_TARGET_DIR debug sidecars',
       () async {
         final appRoot = await Directory.systemTemp.createTemp('lico-app-');
@@ -193,7 +234,10 @@ void main() {
         final macos = Directory('${appRoot.path}/LicoUp.app/Contents/MacOS');
         await macos.create(recursive: true);
         final appExecutable = File('${macos.path}/licoup');
-        final bundledCli = File('${macos.path}/licoup-cli');
+        final bundledCli = File(
+          '${macos.parent.path}/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli',
+        );
+        await bundledCli.parent.create(recursive: true);
         final cargoDir = await Directory.systemTemp.createTemp('lico-cargo-');
         addTearDown(() => cargoDir.delete(recursive: true));
         final cargoCli = File('${cargoDir.path}/debug/licoup-cli');
@@ -218,7 +262,10 @@ void main() {
         final macos = Directory('${appRoot.path}/LicoUp.app/Contents/MacOS');
         await macos.create(recursive: true);
         final appExecutable = File('${macos.path}/licoup');
-        final bundledCli = File('${macos.path}/licoup-cli');
+        final bundledCli = File(
+          '${macos.parent.path}/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli',
+        );
+        await bundledCli.parent.create(recursive: true);
         final externalDir = await Directory.systemTemp.createTemp(
           'lico-external-cli-',
         );

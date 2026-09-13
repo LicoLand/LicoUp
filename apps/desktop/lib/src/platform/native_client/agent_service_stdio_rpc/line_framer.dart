@@ -39,7 +39,11 @@ class StdioRpcLineFramer {
       _currentFrameBytes = 0;
       return;
     }
-    _currentFrame.add(chunk.sublist(start, end));
+    _currentFrame.add(
+      chunk is Uint8List
+          ? Uint8List.sublistView(chunk, start, end)
+          : chunk.sublist(start, end),
+    );
     _currentFrameBytes += length;
   }
 

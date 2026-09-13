@@ -68,10 +68,11 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         workflowId: _workflowId,
         sessionManager: _sessionManager,
       );
-      // Migration owns a cross-process lock and deliberately waits for the
-      // current holder. Interrupting that wait can strand startup between
-      // durable schema steps, so this single startup gate is unbounded.
-      if (_isClientStateMigrationAdmission(requestArgs)) {
+      // State admission can wait for a cross-process migration lock. Explicit
+      // credential migration can wait for macOS keychain approval. Neither
+      // operation may lose its native session to an ordinary response timeout.
+      if (_isClientStateMigrationAdmission(requestArgs) ||
+          _isCredentialMigration(requestArgs)) {
         return execution;
       }
       return execution.timeout(
@@ -189,3 +190,9 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
 
 bool _isClientStateMigrationAdmission(List<String> args) =>
     args.length == 3 && args[0] == 'state' && args[1] == 'admit';
+
+bool _isCredentialMigration(List<String> args) =>
+    args.length == 3 &&
+    args[0] == 'llm-gateway' &&
+    args[1] == 'credentials' &&
+    args[2] == 'migrate';

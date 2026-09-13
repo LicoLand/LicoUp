@@ -112,7 +112,7 @@ pub(super) fn project_model_usage(
                 model_display_name(&selection.id),
             ),
         };
-        // Only a unique catalog match admits model suffixes as execution
+        // Only a unique registry match admits model suffixes as execution
         // variants. Unknown `research-high` remains a separate model.
         let (stem, candidate_variant) = terminal_variant(&selection.id);
         let suffix_variant = if resolved.is_some_and(|model| {
@@ -144,7 +144,9 @@ pub(super) fn project_model_usage(
 }
 
 fn terminal_variant(raw: &str) -> (String, UsageVariant) {
-    let normalized = raw.to_ascii_lowercase().replace(['-', '_'], " ");
+    let normalized = raw
+        .to_ascii_lowercase()
+        .replace(['-', '_', '(', ')', '[', ']'], " ");
     let mut words = normalized.split_whitespace().collect::<Vec<_>>();
     let mut variant = UsageVariant::default();
     loop {
@@ -300,10 +302,40 @@ fn preserve_published_models(
         return None;
     }
     let has_raw = bucket.get("rawModelUsage").is_some();
+    let corrected_ids = existing
+        .keys()
+        .filter_map(|id| registry.canonical_model(id).filter(|model| model.id != *id))
+        .map(|model| model.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut corrected_totals = BTreeMap::<&str, ModelTokenUsageSummary>::new();
+    for (id, value) in existing {
+        if let Some(model) = registry.canonical_model(id)
+            && corrected_ids.contains(model.id.as_str())
+        {
+            corrected_totals
+                .entry(model.id.as_str())
+                .or_default()
+                .merge(ModelTokenUsageSummary::from_json(value));
+        }
+    }
+    let mut corrected_raw = BTreeMap::<&str, RawModelUsage>::new();
     let mut raw_by_identity = BTreeMap::<String, RawModelUsage>::new();
     let mut observed_identities = BTreeSet::new();
     for (key, usage) in raw {
         let selection = model_selection(&key.0);
+        if !corrected_ids.is_empty()
+            && let Some(model) = registry.resolve_historical(
+                &selection.id,
+                selection.provider_id.as_deref(),
+                source_agent,
+            )
+            && corrected_ids.contains(model.id.as_str())
+        {
+            corrected_raw
+                .entry(model.id.as_str())
+                .or_default()
+                .insert(key.clone(), *usage);
+        }
         let identity = selection.unresolved_identity();
         observed_identities.insert(identity.clone());
         // The previous serializer omitted the serving provider when a raw ID
@@ -318,11 +350,27 @@ fn preserve_published_models(
             .insert(key.clone(), *usage);
     }
     let mut models = BTreeMap::<String, ModelProjection>::new();
+    // Reproject each corrected identity as a whole when its retained raw rows
+    // account for the published totals. This preserves explicit request
+    // controls even when several former identities used different raw aliases.
+    for (id, selected) in corrected_raw {
+        let mut total = ModelTokenUsageSummary::default();
+        for usage in selected.values() {
+            total.merge(*usage);
+        }
+        if corrected_totals.get(id) == Some(&total) {
+            for (id, value) in project_model_usage(&selected, source_agent, registry) {
+                models.insert(id, ModelProjection::from_published(&value));
+            }
+        }
+    }
+    let reprojected_ids = models.keys().cloned().collect::<BTreeSet<_>>();
     for (id, value) in existing {
         let selection = model_selection(id);
-        let current = registry
-            .resolve_historical(id, None, None)
-            .filter(|model| model.id == *id);
+        let current = registry.canonical_model(id);
+        if current.is_some_and(|model| reprojected_ids.contains(&model.id)) {
+            continue;
+        }
         let is_model_id =
             selection.id == *id && (current.is_some() || !is_unattributed_selector(&selection.id));
         // Before the explicit marker existed, a published key different from
@@ -336,7 +384,7 @@ fn preserve_published_models(
                 .unwrap_or_else(|| {
                     current.is_some() || (has_raw && !observed_identities.contains(id))
                 });
-        if canonical || id == UNATTRIBUTED_MODEL {
+        if (canonical && current.is_none_or(|model| model.id == *id)) || id == UNATTRIBUTED_MODEL {
             let mut model = ModelProjection::from_published(value);
             model.is_canonical = canonical;
             model.display_name = current
@@ -405,6 +453,130 @@ mod tests {
             ..Default::default()
         }
     }
+    #[test]
+    fn composer_usage_merges_speed_tiers_and_preserves_observed_controls() {
+        let raw = [
+            ("composer-2.5", UsageVariant::default(), 10),
+            ("composer-2.5-fast", UsageVariant::default(), 20),
+            ("Composer 2.5 (Fast)", UsageVariant::default(), 30),
+            (
+                r#"{"id":"composer-2.5-fast","providerID":"cursor","variant":"high","fast":false}"#,
+                UsageVariant::default(),
+                40,
+            ),
+            (
+                "composer-2.5-fast",
+                UsageVariant {
+                    effort: Some("xhigh".to_owned()),
+                    fast: Some(false),
+                },
+                50,
+            ),
+        ]
+        .into_iter()
+        .map(|(model, variant, total)| ((model.to_owned(), variant), count(total)))
+        .collect();
+        for agent in ["cursor", "opencode", "codex"] {
+            let models = project_model_usage(&raw, Some(agent), &RegistrySnapshot::empty());
+            assert_eq!(models.len(), 1);
+            let model = &models["cursor/composer-2.5"];
+            assert_eq!(model["displayName"], "Composer 2.5");
+            assert_eq!(model["isCanonical"], true);
+            assert_eq!(model["totalTokens"], 150);
+            assert_eq!(model["requestCount"], 5);
+            assert_eq!(model["variants"]["Fast"]["totalTokens"], 50);
+            assert_eq!(model["variants"]["High"]["totalTokens"], 40);
+            assert_eq!(model["variants"]["Extra High"]["totalTokens"], 50);
+            assert_eq!(model["unattributedVariantUsage"]["totalTokens"], 10);
+        }
+    }
+
+    #[test]
+    fn retained_composer_speed_identity_is_corrected_without_losing_usage() {
+        let standard = ModelTokenUsageSummary {
+            total_tokens: 30,
+            prompt_tokens: 20,
+            cached_input_tokens: 5,
+            completion_tokens: 10,
+            request_count: 1,
+            token_unavailable_requests: 1,
+            ..Default::default()
+        };
+        let fast = ModelTokenUsageSummary {
+            total_tokens: 70,
+            prompt_tokens: 50,
+            cached_input_tokens: 15,
+            completion_tokens: 20,
+            request_count: 2,
+            token_unavailable_requests: 1,
+            ..Default::default()
+        };
+        let raw = RawModelUsage::from([
+            (
+                ("composer-2.5".to_owned(), UsageVariant::default()),
+                standard,
+            ),
+            (
+                ("composer-2.5-fast".to_owned(), UsageVariant::default()),
+                fast,
+            ),
+        ]);
+        let mut published = serde_json::Map::new();
+        for (id, usage) in [
+            ("cursor/composer-2.5", standard),
+            ("cursor/composer-2.5-fast", fast),
+        ] {
+            let mut value = usage.to_json();
+            value["isCanonical"] = json!(true);
+            value["displayName"] = json!(model_display_name(id));
+            published.insert(id.to_owned(), value);
+        }
+        let bucket = json!({"rawModelUsage":raw_usage_json(&raw),"modelTokenUsage":published});
+        let mut report = json!({"modelRegistryRevision":"earlier-catalog","agents":[{
+            "agentId":"cursor", "history":{
+                "rawModelUsage":bucket["rawModelUsage"],
+                "modelTokenUsage":bucket["modelTokenUsage"],
+                "dailyUsage":[bucket]
+            }
+        }]});
+        normalize_retained_report(&mut report, &RegistrySnapshot::empty());
+        let history = &report["agents"][0]["history"];
+        let mut expected = standard;
+        expected.merge(fast);
+        for bucket in [history, &history["dailyUsage"][0]] {
+            assert_eq!(bucket["rawModelUsage"], raw_usage_json(&raw));
+            assert_eq!(bucket["modelTokenUsage"].as_object().unwrap().len(), 1);
+            let model = &bucket["modelTokenUsage"]["cursor/composer-2.5"];
+            assert_eq!(ModelTokenUsageSummary::from_json(model), expected);
+            assert_eq!(
+                ModelTokenUsageSummary::from_json(&model["variants"]["Fast"]),
+                fast
+            );
+            assert_eq!(
+                ModelTokenUsageSummary::from_json(&model["unattributedVariantUsage"]),
+                standard
+            );
+        }
+        let normalized = report.clone();
+        normalize_retained_report(&mut report, &RegistrySnapshot::empty());
+        assert_eq!(report, normalized);
+
+        // An old canonical Fast label must not override a retained request's
+        // explicit speed control, including when its raw selector was short.
+        let mut report = json!({"modelRegistryRevision":"earlier-catalog","agents":[{
+            "agentId":"cursor", "history":bucket
+        }]});
+        report["agents"][0]["history"]["rawModelUsage"][1]["fast"] = json!(false);
+        normalize_retained_report(&mut report, &RegistrySnapshot::empty());
+        let model = &report["agents"][0]["history"]["modelTokenUsage"]["cursor/composer-2.5"];
+        assert_eq!(ModelTokenUsageSummary::from_json(model), expected);
+        assert!(model["variants"].as_object().unwrap().is_empty());
+        assert_eq!(
+            ModelTokenUsageSummary::from_json(&model["unattributedVariantUsage"]),
+            expected
+        );
+    }
+
     #[test]
     fn registry_merges_only_admitted_aliases_and_preserves_actual_request_options() {
         let rows = [

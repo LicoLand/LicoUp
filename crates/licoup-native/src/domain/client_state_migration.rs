@@ -22,6 +22,7 @@ const DOMAIN_MARKER_SCHEMA: &str = "v0.0.1:client-state-domain-marker-1";
 const UPDATE_HANDOFF_SCHEMA: &str = "v0.0.1:client-update-handoff-1";
 const MAX_MIGRATION_JSON_BYTES: usize = 4 * 1024 * 1024;
 const FRONTIER_JSON: &str = include_str!("../../resources/client-state-migration-frontier.json");
+const GATEWAY_CUSTODY_DOMAIN: &str = "gateway-credential-custody";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -136,6 +137,7 @@ pub struct AdmissionResult {
     pub frontier_id: String,
     pub applied_domain_ids: Vec<String>,
     pub skipped_domain_ids: Vec<String>,
+    pub pending_authorization_domain_ids: Vec<String>,
 }
 
 struct PlannedStep<'a> {
@@ -195,8 +197,20 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
     let mut observed = BTreeMap::new();
     let mut plan = Vec::new();
     let mut skipped = Vec::new();
+    let mut pending_authorization = Vec::new();
     for domain in &frontier.domains {
-        let version = probe_domain(&marker_root, domain)?;
+        let mut version = probe_domain(&marker_root, domain)?;
+        // A data root alone cannot prove that this account has no legacy
+        // Keychain items. Only the explicit protected operation can complete
+        // this domain; startup never reads secrets or opens a native dialog.
+        if domain.domain_id == GATEWAY_CUSTODY_DOMAIN && version == 0 {
+            if cfg!(target_os = "macos") {
+                observed.insert(domain.domain_id.clone(), version);
+                pending_authorization.push(domain.domain_id.clone());
+                continue;
+            }
+            version = domain.target_schema_version;
+        }
         observed.insert(domain.domain_id.clone(), version);
         if version == domain.target_schema_version {
             skipped.push(domain.domain_id.clone());
@@ -286,7 +300,87 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
         frontier_id: frontier.frontier_id,
         applied_domain_ids: applied.into_iter().collect(),
         skipped_domain_ids: skipped,
+        pending_authorization_domain_ids: pending_authorization,
     })
+}
+
+/// Metadata-only projection of the deferred upgrade. The completion marker
+/// is written only after the vault confirms every copied item and cleanup.
+pub fn gateway_credential_migration_pending(root: &Path) -> Result<bool> {
+    let frontier = embedded_frontier()?;
+    let domain = frontier
+        .domains
+        .iter()
+        .find(|domain| domain.domain_id == GATEWAY_CUSTODY_DOMAIN)
+        .ok_or_else(|| anyhow!("migration_frontier_incomplete"))?;
+    let marker_root = root.join("client-state/migrations/domain-state");
+    Ok(cfg!(target_os = "macos")
+        && probe_domain(&marker_root, domain)? < domain.target_schema_version)
+}
+
+/// Explicit protected continuation of the embedded migration frontier.
+/// The long native prompt holds only the custody lock, so normal admission
+/// and unrelated client state remain available while the user responds.
+pub fn migrate_gateway_credentials(
+    root: &Path,
+) -> Result<crate::domain::llm_api_key_vault::LlmApiKeyInventory> {
+    migrate_gateway_credentials_with(root, || {
+        crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(root)?
+            .migrate_legacy_credentials()
+    })
+}
+
+fn migrate_gateway_credentials_with(
+    root: &Path,
+    migrate: impl FnOnce() -> Result<crate::domain::llm_api_key_vault::LlmApiKeyInventory>,
+) -> Result<crate::domain::llm_api_key_vault::LlmApiKeyInventory> {
+    admit(root)?;
+    let migration_root = root.join("client-state/migrations");
+    let custody_lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(migration_root.join("gateway-credential-custody.lock"))
+        .context("migration_lock_unavailable")?;
+    custody_lock
+        .lock_exclusive()
+        .context("migration_lock_unavailable")?;
+    if !gateway_credential_migration_pending(root)? {
+        return crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(root)?
+            .list();
+    }
+    let inventory = migrate()?;
+    complete_gateway_custody_migration(root)?;
+    Ok(inventory)
+}
+
+fn complete_gateway_custody_migration(root: &Path) -> Result<()> {
+    let migration_root = root.join("client-state/migrations");
+    let admission_lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(migration_root.join("admission.lock"))
+        .context("migration_lock_unavailable")?;
+    admission_lock
+        .lock_exclusive()
+        .context("migration_lock_unavailable")?;
+    let frontier = embedded_frontier()?;
+    let domain = frontier
+        .domains
+        .iter()
+        .find(|domain| domain.domain_id == GATEWAY_CUSTODY_DOMAIN)
+        .ok_or_else(|| anyhow!("migration_frontier_incomplete"))?;
+    let ledger_path = migration_root.join("ledger.json");
+    let mut ledger = load_ledger(&ledger_path, &frontier)?;
+    reject_older_binary(&ledger, running_product_version()?)?;
+    reconcile_current_marker(&migration_root.join("domain-state"), domain)?;
+    for edge in &domain.steps {
+        reconcile_ledger(&mut ledger, domain, edge);
+    }
+    write_json_atomic(&ledger_path, &ledger).context("migration_ledger_invalid")
 }
 
 fn validate_ledger_reconciliation(
@@ -723,6 +817,10 @@ fn portable_root(marker_root: &Path) -> Result<&Path> {
 fn probe_authoritative_store(marker_root: &Path, domain_id: &str) -> Result<AuthoritativeProbe> {
     let root = portable_root(marker_root)?;
     match domain_id {
+        "gateway-credential-custody" => Ok(AuthoritativeProbe {
+            version: 0,
+            present: false,
+        }),
         "client-state" => {
             let (version, present) = crate::platform::client_state::probe_collections(root)?;
             Ok(AuthoritativeProbe { version, present })
@@ -1036,6 +1134,7 @@ fn apply_authoritative_store(
     );
     let root = portable_root(marker_root)?;
     match domain_id {
+        "gateway-credential-custody" => bail!("migration_authorization_required"),
         "client-state" => {
             crate::platform::client_state::migrate_collections(root)
                 .context("migration_step_failed")?;
@@ -1111,6 +1210,7 @@ fn migration_handler_target(domain_id: &str, from_schema_version: u32) -> Option
                 | "agent-tab-order"
                 | "agent-tool-allowlist"
                 | "current-view"
+                | "gateway-credential-custody"
                 | "mobile-home-layout"
                 | "skill-hub-preferences",
             0
@@ -1253,6 +1353,61 @@ fn frontier_projection_for(frontier: &MigrationFrontier) -> serde_json::Value {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn protected_custody_upgrade_defers_until_success_and_retries_without_reset() {
+        let root =
+            std::env::temp_dir().join(format!("licoup-custody-migration-{}", uuid::Uuid::new_v4()));
+        admit(&root).unwrap();
+        assert!(gateway_credential_migration_pending(&root).unwrap());
+        // An installed older frontier has no custody completion receipt.
+        let ledger_path = root.join("client-state/migrations/ledger.json");
+        let frontier = embedded_frontier().unwrap();
+        let mut ledger = load_ledger(&ledger_path, &frontier).unwrap();
+        ledger.domains.remove(GATEWAY_CUSTODY_DOMAIN);
+        ledger.frontier_id = "licoup-state-0.1.1".to_owned();
+        write_json_atomic(&ledger_path, &ledger).unwrap();
+
+        let startup = admit(&root).unwrap();
+        assert_eq!(
+            startup.pending_authorization_domain_ids,
+            [GATEWAY_CUSTODY_DOMAIN]
+        );
+        assert_eq!(startup.status, "ready");
+        assert!(gateway_credential_migration_pending(&root).unwrap());
+        let failure = migrate_gateway_credentials_with(&root, || {
+            Err(anyhow!("synthetic_native_cancellation"))
+        });
+        assert_eq!(
+            failure.unwrap_err().to_string(),
+            "synthetic_native_cancellation"
+        );
+        assert!(gateway_credential_migration_pending(&root).unwrap());
+        let inventory = migrate_gateway_credentials_with(&root, || {
+            // Native approval can take arbitrarily long. Its dedicated lock
+            // must not block unrelated startup admission while waiting.
+            assert_eq!(admit(&root)?.status, "ready");
+            crate::domain::llm_api_key_vault::LlmApiKeyInventory::new(
+                crate::domain::llm_api_key_vault::GatewayCredentialLeaseDays::default(),
+                Vec::new(),
+            )
+        })
+        .unwrap();
+        assert!(inventory.entries.is_empty());
+        assert!(!gateway_credential_migration_pending(&root).unwrap());
+        assert!(
+            admit(&root)
+                .unwrap()
+                .pending_authorization_domain_ids
+                .is_empty()
+        );
+        migrate_gateway_credentials_with(&root, || {
+            panic!("completed migration must not authenticate again")
+        })
+        .unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn admission_is_incremental_and_rerun_is_a_noop() {
         let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
@@ -1262,7 +1417,7 @@ mod tests {
         let second = admit(&root).unwrap();
         assert!(second.applied_domain_ids.is_empty());
         assert_eq!(
-            second.skipped_domain_ids.len(),
+            second.skipped_domain_ids.len() + second.pending_authorization_domain_ids.len(),
             embedded_frontier().unwrap().domains.len()
         );
         let _ = fs::remove_dir_all(root);
@@ -1523,9 +1678,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            ledger.domains.len(),
+            ledger.domains.len() + recovered.pending_authorization_domain_ids.len(),
             embedded_frontier().unwrap().domains.len()
         );
+        for pending in &recovered.pending_authorization_domain_ids {
+            assert!(!ledger.domains.contains_key(pending));
+        }
         let _ = fs::remove_dir_all(root);
     }
 

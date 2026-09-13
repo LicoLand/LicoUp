@@ -1940,6 +1940,7 @@ export const FLUTTER_MODULES = Object.freeze([
       summary: "Client bootstrap, portable data, and initial relay behavior",
       inputs: [
         "apps/desktop/test/client_bootstrap_test.dart",
+        "apps/desktop/test/local_conversation_startup_priority_test.dart",
         "apps/desktop/test/fixtures/client_controller_scenarios.dart",
         "apps/desktop/test/fixtures/client_controller/bootstrap_scenarios.dart",
         "apps/desktop/test/fixtures/client_controller/entry_hook_scenarios.dart",
@@ -1950,7 +1951,10 @@ export const FLUTTER_MODULES = Object.freeze([
         ...FAKE_AGENT_SERVICE_INPUTS,
         "apps/desktop/test/fixtures/client_controller/support/fake_mobile_relay_service.dart",
       ],
-      command: flutterTests(["test/client_bootstrap_test.dart"]),
+      command: flutterTests([
+        "test/client_bootstrap_test.dart",
+        "test/local_conversation_startup_priority_test.dart",
+      ]),
     }),
   defineModule({
       id: "flutter.controller.scenario.target",
@@ -2114,6 +2118,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/composer_activity_border_test.dart",
         "apps/desktop/test/messaging/conversation_material_profiles_test.dart",
         "apps/desktop/test/messaging/conversation_motion_surface_test.dart",
+        "apps/desktop/test/loading_effect_test.dart",
         "apps/desktop/test/messaging/conversation_motion/steel_ball_motion_test.dart",
         "apps/desktop/test/messaging/conversation_motion/conversation_particle_geometry_test.dart",
         "apps/desktop/test/messaging/conversation_motion/conversation_motion_widget_test.dart",
@@ -2156,6 +2161,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/composer_activity_border_test.dart",
         "test/messaging/conversation_material_profiles_test.dart",
         "test/messaging/conversation_motion_surface_test.dart",
+        "test/loading_effect_test.dart",
         "test/messaging/conversation_motion/steel_ball_motion_test.dart",
         "test/messaging/conversation_motion/conversation_particle_geometry_test.dart",
         "test/messaging/conversation_motion/conversation_motion_widget_test.dart",

@@ -98,6 +98,7 @@ export function parsePackageClientArgs(
     installDir: "",
     dryRun: false,
     productionEntitlements: false,
+    macosCustodySigning: false,
     targetId: "",
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -139,6 +140,8 @@ export function parsePackageClientArgs(
       } else {
         options.productionEntitlements = true;
       }
+    } else if (arg === "--macos-custody-signing") {
+      options.macosCustodySigning = true;
     } else if (arg === "--target" && next) {
       options.targetId = String(next).trim();
       index += 1;
@@ -195,6 +198,12 @@ export function validatePackagingOptions(options, environment = process.env) {
     packageFailure("packaging_target_not_supported_for_platform");
   }
   validateReleaseBuildPolicy(options);
+  if (options.macosCustodySigning) {
+    if (options.platform !== "macos" || options.mode !== "release") {
+      packageFailure("macos_custody_signing_requires_macos_release");
+    }
+    options.productionEntitlements = true;
+  }
   if (options.productionEntitlements && options.platform !== "macos") {
     packageFailure("production_entitlements_platform_unsupported");
   }

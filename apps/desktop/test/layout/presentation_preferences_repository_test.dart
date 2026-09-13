@@ -44,6 +44,7 @@ void main() {
       repository.setAppearancePreset('dark'),
       repository.setLocalePreference('zh'),
       repository.setReduceMotion(true),
+      repository.setLoadingEffect('particles'),
     ]);
 
     final loaded = await repository.load();
@@ -51,6 +52,7 @@ void main() {
     expect(loaded.preferences.appearancePresetId, 'dark');
     expect(loaded.preferences.localePreference, 'zh');
     expect(loaded.preferences.reduceMotion, isTrue);
+    expect(loaded.preferences.loadingEffectId, 'particles');
   });
 
   test('canonical writes omit unknown runtime-only fields', () async {
@@ -80,6 +82,7 @@ void main() {
       'appearancePresetId',
       'localePreference',
       'reduceMotion',
+      'loadingEffectId',
     });
     expect(decoded['layoutProfileId'], 'atlas');
     expect(decoded['reduceMotion'], isFalse);

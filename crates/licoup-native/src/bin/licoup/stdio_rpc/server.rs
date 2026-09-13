@@ -15,6 +15,8 @@ mod client_conversation;
 #[path = "server/conversation.rs"]
 mod conversation;
 pub(crate) use conversation::PersistentConversationRuntime;
+#[path = "server/blocking_commands.rs"]
+mod blocking_commands;
 #[path = "server/state.rs"]
 mod state;
 
@@ -24,7 +26,14 @@ where
     W: Write + Send + 'static,
     F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
 {
-    serve_stdio_rpc_inner(reader, writer, execute, None, None)
+    serve_stdio_rpc_inner(
+        reader,
+        writer,
+        execute,
+        None,
+        None,
+        blocking_commands::Workers::default(),
+    )
 }
 
 #[cfg(test)]
@@ -39,7 +48,14 @@ where
     W: Write + Send + 'static,
     F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
 {
-    serve_stdio_rpc_inner(reader, writer, execute, Some(conversation_runtime), None)
+    serve_stdio_rpc_inner(
+        reader,
+        writer,
+        execute,
+        Some(conversation_runtime),
+        None,
+        blocking_commands::Workers::default(),
+    )
 }
 
 pub(crate) fn serve_stdio_rpc_with_persistent_conversation<R, W, F>(
@@ -60,6 +76,7 @@ where
         execute,
         Some(conversation_runtime),
         Some(conversation_service),
+        blocking_commands::Workers::default(),
     )
 }
 
@@ -69,6 +86,7 @@ fn serve_stdio_rpc_inner<R, W, F>(
     mut execute: F,
     conversation_runtime: Option<PersistentConversationRuntime>,
     initial_conversation_service: Option<ConversationService>,
+    mut blocking_commands: blocking_commands::Workers,
 ) -> Result<W>
 where
     R: BufRead,
@@ -87,6 +105,7 @@ where
     }
     loop {
         conversation::reap_finished(&mut conversation_workers);
+        blocking_commands.reap_finished();
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
         let bytes = match line {
             StdioRpcLine::Eof => {
@@ -95,6 +114,7 @@ where
                 // state. Only the explicit conversation cancel operation may
                 // interrupt a running turn.
                 conversation::join_until_completion(&mut conversation_workers);
+                blocking_commands.join_until_completion();
                 return recover_stdio_rpc_writer(writer);
             }
             StdioRpcLine::TooLarge => {
@@ -177,6 +197,7 @@ where
                     // Shutdown closes the RPC session, not the Agent turns it has
                     // already accepted. Acknowledge first so the client can leave.
                     conversation::join_until_completion(&mut conversation_workers);
+                    blocking_commands.join_until_completion();
                     return Ok(true);
                 }
                 StdioRpcMethod::Conversation {
@@ -591,50 +612,41 @@ where
                         )?;
                         return Ok(false);
                     }
-                    let execution =
-                        catch_unwind(AssertUnwindSafe(|| execute(args, portable_data_dir)));
-                    match execution {
-                        Ok(Ok(licoup_native::ffi::commands::CliExecution::Json(value))) => {
-                            write_stdio_rpc_success_shared(
-                                &writer,
-                                &request.id,
-                                &request.workflow_id,
-                                value,
-                            )?;
-                        }
-                        Ok(Ok(licoup_native::ffi::commands::CliExecution::Usage)) => {
-                            write_stdio_rpc_error_shared(
-                                &writer,
-                                Some(&request.id),
-                                Some(&request.workflow_id),
-                                "command_usage",
-                            )?;
-                        }
-                        Ok(Ok(licoup_native::ffi::commands::CliExecution::Streamed)) => {
-                            write_stdio_rpc_error_shared(
-                                &writer,
-                                Some(&request.id),
-                                Some(&request.workflow_id),
-                                "streaming_command_unsupported",
-                            )?;
-                        }
-                        Ok(Err(error)) => {
+                    let admitted = match blocking_commands::admit(&args) {
+                        Ok(command) => command,
+                        Err(error) => {
                             write_stdio_rpc_client_error_shared(
                                 &writer,
                                 Some(&request.id),
                                 Some(&request.workflow_id),
                                 &stdio_rpc_command_error(&error),
                             )?;
+                            return Ok(false);
                         }
-                        Err(_) => {
-                            write_stdio_rpc_error_shared(
+                    };
+                    if let Some(command) = admitted {
+                        if let Err(error) = blocking_commands.spawn(
+                            Arc::clone(&writer),
+                            request.id.clone(),
+                            request.workflow_id.clone(),
+                            command,
+                            portable_data_dir,
+                        ) {
+                            write_stdio_rpc_client_error_shared(
                                 &writer,
                                 Some(&request.id),
                                 Some(&request.workflow_id),
-                                "command_panicked",
+                                &stdio_rpc_command_error(&error.into()),
                             )?;
                         }
+                        return Ok(false);
                     }
+                    blocking_commands::write_result(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        catch_unwind(AssertUnwindSafe(|| execute(args, portable_data_dir))),
+                    )?;
                 }
             }
             Ok(false)

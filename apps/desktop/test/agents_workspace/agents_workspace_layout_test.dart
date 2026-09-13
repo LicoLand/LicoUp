@@ -183,7 +183,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.text('Back up conversations'), findsNothing);
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('conversation-empty-content')), findsOneWidget);
-    expect(find.byType(ConversationParticleField), findsOneWidget);
+    expect(find.byType(ConversationParticleField), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_series_color_policy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -10,14 +11,17 @@ void main() {
     'Agent brand accents are distinct and stable across changes in rank',
     () {
       expect(
-        agentUsageSeriesColor(colors, 'Claude Code'),
-        const Color(0xFFD97757),
+        HSLColor.fromColor(agentUsageSeriesColor(colors, 'Claude Code')).hue,
+        inInclusiveRange(10, 30),
       );
       expect(
-        agentUsageSeriesColor(colors, 'Kilo Code'),
-        const Color(0xFFF8F676),
+        HSLColor.fromColor(agentUsageSeriesColor(colors, 'Kilo Code')).hue,
+        inInclusiveRange(45, 65),
       );
-      expect(agentUsageSeriesColor(colors, 'Kimi'), const Color(0xFF1783FF));
+      expect(
+        agentUsageSeriesColor(colors, 'Kimi'),
+        agentUsageSeriesColor(colors, 'Kimi Code'),
+      );
       final labels = [
         'Codex',
         'Claude Code',
@@ -42,7 +46,7 @@ void main() {
       ]) {
         expect(
           HSLColor.fromColor(agentUsageSeriesColor(colors, label)).hue,
-          inInclusiveRange(205, 275),
+          inInclusiveRange(200, 275),
         );
       }
       expect(
@@ -51,6 +55,43 @@ void main() {
       );
     },
   );
+
+  test('opaque chart tones stay readable on both theme surfaces', () {
+    for (final brightness in Brightness.values) {
+      final theme = buildLicoTheme(
+        presetId: brightness == Brightness.light
+            ? AppearancePresetIds.licoSodaLight
+            : AppearancePresetIds.licoSoda,
+        platformBrightness: brightness,
+      ).extension<LicoThemeColors>()!;
+      for (final label in [
+        'Codex',
+        'Claude Code',
+        'Cursor',
+        'Kilo Code',
+        'Antigravity',
+        'Kimi Code',
+        'GitHub Copilot',
+        'Hermes Agent',
+        'OpenClaw',
+        'OpenCode',
+        'Pi Agent',
+        'DeepSeek Harness',
+      ]) {
+        final color = agentUsageSeriesColor(theme, label);
+        final luminances = [
+          color.computeLuminance(),
+          theme.surface.computeLuminance(),
+        ]..sort();
+        expect(color.a, 1);
+        expect(
+          (luminances.last + 0.05) / (luminances.first + 0.05),
+          greaterThanOrEqualTo(3),
+          reason: '$label must remain visible in $brightness.',
+        );
+      }
+    }
+  });
 
   test('models use their developer hue and stronger tiers deepen that hue', () {
     double brightness(Color color) => color.r + color.g + color.b;

@@ -255,6 +255,61 @@ done
   );
 
   test(
+    'credential migration outwaits the RPC timeout and retains its session',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-credential-migration-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      await executable.writeAsString(r'''#!/bin/sh
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"execute"'*'"llm-gateway","credentials","migrate"'*)
+      sleep 1
+      migrated=true
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"migrationPending":false,"entries":[]}}\n' "$request_id" "$workflow_id"
+      ;;
+    *'"method":"execute"'*'"llm-gateway","credentials","authorize"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"authorized":%s}}\n' "$request_id" "$workflow_id" "${migrated:-false}"
+      ;;
+    *'"method":"shutdown"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      exit 0
+      ;;
+  esac
+done
+''');
+      expect((await Process.run('chmod', ['+x', executable.path])).exitCode, 0);
+      final context = _LiveProcessContext(
+        executable,
+        requestTimeout: const Duration(milliseconds: 100),
+      );
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+
+      final result = await client
+          .execute(const ['llm-gateway', 'credentials', 'migrate'])
+          .timeout(const Duration(seconds: 3));
+
+      expect(result['ok'], isTrue);
+      expect(result['migrationPending'], isFalse);
+      expect(
+        (await client.execute(const [
+          'llm-gateway',
+          'credentials',
+          'authorize',
+        ]))['authorized'],
+        isTrue,
+      );
+      expect(context.startCount, 1);
+    },
+  );
+
+  test(
     'conversation command EOF reconnects once without replaying the command',
     () async {
       if (Platform.isWindows) return;

@@ -14,6 +14,8 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
 
   String _presetId;
   bool _reduceMotion;
+  String _loadingEffectId = 'spinner';
+  String get loadingEffectId => _loadingEffectId;
   String _fontPreference = 'system';
   List<AppearancePresetConfig> _presets;
   String _directoryPath = '';
@@ -54,6 +56,13 @@ final class AppearancePreferenceOwner extends ApplicationStateOwner {
   bool replaceReduceMotion(bool value, {ApplicationCause? cause}) {
     if (_reduceMotion == value) return false;
     _reduceMotion = value;
+    publishChange(cause);
+    return true;
+  }
+
+  bool replaceLoadingEffect(String id, {ApplicationCause? cause}) {
+    if (_loadingEffectId == id) return false;
+    _loadingEffectId = id;
     publishChange(cause);
     return true;
   }

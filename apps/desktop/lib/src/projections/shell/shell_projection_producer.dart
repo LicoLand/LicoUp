@@ -119,6 +119,7 @@ AppearanceProjection resolveAppearanceProjection(
   presetId: appearance.presetId,
   fontPreference: appearance.fontPreference,
   reduceMotion: appearance.reduceMotion,
+  loadingEffectId: appearance.loadingEffectId,
   presets: appearance.presets.map(
     ShellProjectionProducer._projectAppearancePreset,
   ),

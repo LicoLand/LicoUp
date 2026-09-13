@@ -531,6 +531,12 @@ final class MemoryPreferencesRepository
   }
 
   @override
+  Future<PresentationPreferences> setLoadingEffect(String id) async {
+    value = value.copyWith(loadingEffectId: id);
+    return value;
+  }
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async {
     value = value.copyWith(appearancePresetId: id);
     return value;

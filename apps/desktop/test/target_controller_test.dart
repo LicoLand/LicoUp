@@ -7,6 +7,64 @@ import 'package:licoup/src/contracts/target_management.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('cached runtime binding does not wait for the model catalog', () async {
+    final modelGate = Completer<void>();
+    final modelStarted = Completer<void>();
+    final candidate = _cursor(modelCatalog: const {});
+    final gateway = _Gateway(
+      probes: {'cursor': candidate},
+      selectedProbes: {
+        'cursor': candidate.withModelCatalog({
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh-model'},
+          ],
+        }),
+      },
+      modelGate: modelGate,
+      modelStarted: modelStarted,
+    );
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository()
+        ..loaded = [
+          TargetCandidate.fromJson({...candidate.toJson(), 'binaryPath': null}),
+        ],
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['cursor'],
+      isMobileRuntime: () => false,
+      scanMobileTargets: () async => const [],
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(() {
+      if (!modelGate.isCompleted) modelGate.complete();
+      controller.dispose();
+    });
+    await controller.hydrateCache();
+    var bound = false;
+    final binding = controller
+        .ensureConversationRuntimeBinding('cursor')
+        .then((value) => bound = value);
+    await modelStarted.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(bound, isTrue, reason: 'Model discovery must not block history.');
+    expect(controller.isRefreshingNativeModelCatalog('cursor'), isTrue);
+    expect(gateway.catalogLookups, [false, true]);
+    modelGate.complete();
+    await binding;
+    while (controller.isRefreshingNativeModelCatalog('cursor')) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(
+      (controller.targets.single.modelCatalog['models'] as List).single['name'],
+      'fresh-model',
+    );
+  });
+
   test(
     'cache restore uses current catalog and preserves manual lanes',
     () async {
@@ -583,6 +641,8 @@ class _Gateway implements TargetManagementGateway {
     this.failTools = false,
     this.catalogIds,
     this.failCatalog = false,
+    this.modelGate,
+    this.modelStarted,
   });
 
   final Map<String, TargetCandidate?> probes;
@@ -591,6 +651,8 @@ class _Gateway implements TargetManagementGateway {
   final bool failTools;
   final Set<String>? catalogIds;
   final bool failCatalog;
+  final Completer<void>? modelGate;
+  final Completer<void>? modelStarted;
 
   var _inFlight = 0;
   var maxInFlight = 0;
@@ -630,6 +692,10 @@ class _Gateway implements TargetManagementGateway {
     maxInFlight = _inFlight > maxInFlight ? _inFlight : maxInFlight;
     try {
       await Future<void>.delayed(delays[targetId] ?? Duration.zero);
+      if (enableAgentCliModelLookup) {
+        if (modelStarted?.isCompleted == false) modelStarted!.complete();
+        await modelGate?.future;
+      }
       if (enableAgentCliModelLookup && selectedProbes.containsKey(targetId)) {
         return TargetScanSlot(
           targetId: targetId,

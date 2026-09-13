@@ -104,6 +104,7 @@ final class SettingsProjectionProducer
     return SettingsProjection(
       appearancePresetId: controller.appearancePresetId,
       reduceMotion: controller.reduceMotion,
+      loadingEffectId: controller.loadingEffectId,
       appearancePresets: [
         for (final config in controller.appearancePresetConfigs)
           SettingsAppearancePresetProjection(
@@ -218,6 +219,7 @@ final class SettingsProjectionProducer
   static bool _same(SettingsProjection left, SettingsProjection right) =>
       left.appearancePresetId == right.appearancePresetId &&
       left.reduceMotion == right.reduceMotion &&
+      left.loadingEffectId == right.loadingEffectId &&
       samePresentationList(left.appearancePresets, right.appearancePresets) &&
       samePresentationList(left.localeChoices, right.localeChoices) &&
       samePresentationList(left.layoutChoices, right.layoutChoices) &&

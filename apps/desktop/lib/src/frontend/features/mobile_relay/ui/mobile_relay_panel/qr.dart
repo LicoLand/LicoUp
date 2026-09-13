@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -76,9 +77,7 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
                             if (busy)
                               const SizedBox.square(
                                 dimension: 28,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
+                                child: LicoLoadingIndicator(strokeWidth: 2),
                               )
                             else
                               Icon(

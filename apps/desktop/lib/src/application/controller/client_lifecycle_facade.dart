@@ -76,6 +76,13 @@ mixin ClientLifecycleFacade
       id: 'client_state_migration',
       action: _admitClientStateMigration,
     ),
+    // Local is the highest-priority startup data target. Native state
+    // admission is its only prerequisite; target-cache hydration can itself
+    // start Agent history/model reads, so it must follow Local's first page.
+    ClientBootstrapStep(
+      id: 'client_local_conversation',
+      action: _initializeLocalConversation,
+    ),
     ClientBootstrapStep(id: 'client_storage', action: _initializeClientStorage),
     ClientBootstrapStep(
       id: 'client_preferences',
@@ -147,6 +154,11 @@ mixin ClientLifecycleFacade
     await layoutManager.initialize();
   }
 
+  Future<void> _initializeLocalConversation() async {
+    if (mobileClientRuntimePlatform || lifecycleProjection.disposed) return;
+    await clientConversationController.initialize();
+  }
+
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
@@ -166,6 +178,9 @@ mixin ClientLifecycleFacade
     );
     appearancePreferenceOwner.replaceReduceMotion(
       presentation?.reduceMotion ?? false,
+    );
+    appearancePreferenceOwner.replaceLoadingEffect(
+      presentation?.loadingEffectId ?? 'spinner',
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();

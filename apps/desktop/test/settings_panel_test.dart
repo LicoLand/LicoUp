@@ -70,7 +70,14 @@ void main() {
           find.byType(SettingsDropdownList<String>),
         )
         .toList();
-    expect(dropdowns, hasLength(2));
+    expect(dropdowns, hasLength(3));
+    expect(find.text('加载动画'), findsOneWidget);
+    expect(find.text('简单转圈（默认）'), findsOneWidget);
+    final loading = tester.widget<SettingsDropdownList<String>>(
+      find.byKey(const Key('settings-loading-effect-dropdown')),
+    );
+    loading.onSelected('static');
+    expect(fixture.intents.values.last, isA<SetLoadingEffectPreference>());
     expect(dropdowns.every((dropdown) => !dropdown.locked), isTrue);
   });
 

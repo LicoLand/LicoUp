@@ -121,7 +121,7 @@ function assertExecutable(filePath, label) {
 
 function verifyRunnable(appPath) {
   const executable = path.join(appPath, "Contents", "MacOS", "licoup");
-  const sidecar = path.join(appPath, "Contents", "MacOS", "licoup-cli");
+  const sidecar = path.join(appPath, "Contents", "Helpers", "LicoUpCustody.app", "Contents", "MacOS", "licoup-cli");
   assertExecutable(executable, "canonical Flutter executable");
   assertExecutable(sidecar, "canonical licoup sidecar");
 

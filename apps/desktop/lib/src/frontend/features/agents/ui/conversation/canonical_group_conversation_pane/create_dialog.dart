@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -190,7 +191,7 @@ class _CreateCanonicalGroupConversationDialogState
           child: _creating
               ? const SizedBox.square(
                   dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: LicoLoadingIndicator(strokeWidth: 2),
                 )
               : Text(strings.createGroupConversation),
         ),

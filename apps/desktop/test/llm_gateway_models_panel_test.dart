@@ -10,6 +10,7 @@ import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';
+import 'package:licoup/src/presentation/models/models_intent.dart';
 import 'package:licoup/src/presentation/models/models_projection.dart';
 
 import 'fixtures/models_renderer_binding_fixture.dart';
@@ -61,6 +62,92 @@ void main() {
       const ['llm-gateway', 'credentials', 'list'],
     ]);
     authorization.dispose();
+  });
+
+  test('automatic authorization leaves legacy migration to the user', () async {
+    final runner = _FakeCredentialsRunner()..migrationPending = true;
+    final authorization = LlmVaultAuthorization();
+    addTearDown(authorization.dispose);
+
+    expect(await authorization.authorizeExisting(runner), isFalse);
+    expect(authorization.migrationPending, isTrue);
+    expect(
+      authorization.failure,
+      LlmVaultAuthorizationFailure.keychainActionRequired,
+    );
+    expect(runner.calls, [
+      const ['llm-gateway', 'credentials', 'list'],
+    ]);
+  });
+
+  test(
+    'migration preserves grants and retries a failed native result',
+    () async {
+      const existingId = '11111111-1111-4111-8111-111111111111';
+      final runner = _FakeCredentialsRunner()
+        ..migrationOverride = {'ok': false, 'migrationPending': false};
+      final authorization = LlmVaultAuthorization();
+      addTearDown(authorization.dispose);
+      await authorization.authorizeCredential(runner, existingId);
+      authorization.adoptInventory({
+        'migrationPending': true,
+        'entries': [
+          _entry(
+            id: existingId,
+            provider: 'kimi',
+            label: 'Existing synthetic key',
+            created: _daysFromNow(-1),
+          ),
+        ],
+      });
+      runner.calls.clear();
+
+      expect(await authorization.migrateCredentials(runner), isFalse);
+      expect(authorization.migrationPending, isTrue);
+      expect(authorization.inventoryEntries, hasLength(1));
+      expect(authorization.authorizedCredentialIds, [existingId]);
+
+      runner.migrationOverride = null;
+      expect(await authorization.migrateCredentials(runner), isTrue);
+      expect(authorization.migrationPending, isFalse);
+      expect(authorization.failure, isNull);
+      expect(authorization.authorizedCredentialIds, [existingId]);
+      expect(runner.calls, [
+        const ['llm-gateway', 'credentials', 'migrate'],
+        const ['llm-gateway', 'credentials', 'migrate'],
+      ]);
+    },
+  );
+
+  test('credential writes preserve pending legacy migration', () async {
+    final runner = _FakeCredentialsRunner()..migrationPending = true;
+    final feature = ModelsRendererBindingFixture(runner: runner);
+    addTearDown(feature.dispose);
+    await feature.refreshCredentials();
+
+    for (final intent in const <ModelsIntent>[
+      CreateGatewayCredential(
+        provider: 'kimi',
+        label: 'New synthetic key',
+        apiKey: '<synthetic>',
+        leaseDays: 30,
+      ),
+      UpdateGatewayCredential(
+        credentialId: '11111111-1111-4111-8111-111111111111',
+        label: 'Renamed synthetic key',
+      ),
+    ]) {
+      feature.binding.intents.send(intent);
+      await feature.settle();
+      expect(
+        feature.binding.projection.current.credentialMigrationPending,
+        isTrue,
+      );
+    }
+    expect(runner.stdinCalls, hasLength(2));
+    expect(runner.calls, [
+      const ['llm-gateway', 'credentials', 'list'],
+    ]);
   });
 
   test(
@@ -177,8 +264,8 @@ void main() {
         expect(
           find.text(
             chinese
-                ? '钥匙串访问未获允许，或钥匙串已锁定。请先在系统中处理锁定或访问权限问题，再重试。'
-                : 'macOS credential storage is locked or access was denied. Resolve the lock or access permissions in macOS, then try again.',
+                ? '旧密钥需要钥匙串访问权限。请点击“迁移旧密钥”，按 macOS 提示完成迁移。'
+                : 'Legacy keys need keychain access. Select “Migrate legacy keys” and follow the macOS prompts.',
           ),
           findsOneWidget,
         );
@@ -187,6 +274,7 @@ void main() {
           findsNothing,
         );
         expect(authorization.authorized, isFalse);
+        expect(find.byKey(const Key('credentials-migrate')), findsOneWidget);
         expect(authorization.authorizedCredentialIds, isEmpty);
         expect(authorization.inventoryEntries, hasLength(1));
         expect(
@@ -211,6 +299,104 @@ void main() {
         expect(serviceRunner.calls, isEmpty);
       },
     );
+
+    testWidgets(
+      'legacy migration is explicit and retryable in ${locale.languageCode}',
+      (tester) async {
+        final runner = _FakeCredentialsRunner()
+          ..migrationPending = true
+          ..failOnMigrate = true;
+        final authorization = LlmVaultAuthorization();
+        addTearDown(authorization.dispose);
+        await _pumpCredentials(
+          tester,
+          runner,
+          locale: locale,
+          authorization: authorization,
+        );
+        await tester.pumpAndSettle();
+        runner.calls.clear();
+        final chinese = locale.languageCode == 'zh';
+        final migrate = find.byKey(const Key('credentials-migrate'));
+        final confirm = find.byKey(const Key('credentials-migrate-confirm'));
+
+        await tester.tap(migrate);
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            chinese
+                ? '本次迁移可能需要在 macOS 提示中输入旧钥匙串密码。无需重新输入 API Key。'
+                : 'macOS may ask for the old keychain password during this one-time migration. You do not need to enter your API keys again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.byType(TextField), findsNothing);
+        await tester.tap(find.text(chinese ? '取消' : 'Cancel'));
+        await tester.pumpAndSettle();
+        expect(runner.calls, isEmpty);
+        expect(authorization.migrationPending, isTrue);
+
+        await tester.tap(migrate);
+        await tester.pumpAndSettle();
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            chinese
+                ? '迁移未完成，请重试并按 macOS 提示操作。'
+                : 'Migration did not complete. Try again and follow the macOS prompts.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('synthetic native failure'), findsNothing);
+        expect(authorization.migrationPending, isTrue);
+        expect(migrate, findsOneWidget);
+        expect(authorization.authorized, isFalse);
+
+        runner
+          ..failOnMigrate = false
+          ..entries = [
+            _entry(
+              id: '22222222-2222-4222-8222-222222222222',
+              provider: 'kimi',
+              label: 'Migrated synthetic key',
+              created: _daysFromNow(-1),
+            ),
+          ];
+        await tester.tap(migrate);
+        await tester.pumpAndSettle();
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+
+        expect(migrate, findsNothing);
+        expect(find.text('Migrated synthetic key'), findsOneWidget);
+        expect(
+          find.text(
+            chinese
+                ? '旧密钥已迁移。可点击“授权”启用。'
+                : 'Legacy keys migrated. Select Authorize to enable them.',
+          ),
+          findsOneWidget,
+        );
+        expect(authorization.migrationPending, isFalse);
+        expect(authorization.failure, isNull);
+        expect(authorization.authorized, isFalse);
+        expect(authorization.authorizedCredentialIds, isEmpty);
+        expect(runner.calls, [
+          const ['llm-gateway', 'credentials', 'migrate'],
+          const ['llm-gateway', 'credentials', 'migrate'],
+        ]);
+        expect(runner.stdinCalls, isEmpty);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('credentials-authorize')),
+              )
+              .onPressed,
+          isNotNull,
+        );
+      },
+    );
   }
 
   testWidgets('inventory load failure does not request authorization', (
@@ -223,6 +409,7 @@ void main() {
     expect(find.text('授权'), findsNWidgets(2));
     expect(find.text('授权并启动'), findsNothing);
     expect(find.byKey(const Key('credentials-authorize')), findsOneWidget);
+    expect(find.byKey(const Key('credentials-migrate')), findsNothing);
     expect(find.text('添加'), findsOneWidget);
     expect(find.byKey(const Key('credentials-table')), findsOneWidget);
     expect(find.text('模型服务商'), findsOneWidget);
@@ -872,6 +1059,7 @@ Future<void> _pumpCredentials(
             select: (projection) => projection,
             builder: (context, projection) => LlmGatewayCredentialsCard(
               credentials: projection.credentials,
+              migrationPending: projection.credentialMigrationPending,
               gatewayRunning: projection.gateway.running,
               phase: projection.phase,
               notice: projection.notice,
@@ -951,6 +1139,9 @@ final class _FakeCredentialsRunner implements AgentCommandRunner {
   List<Map<String, dynamic>> entries = const [];
   Set<String> authorizedIds = {};
   bool failOnList = false;
+  bool failOnMigrate = false;
+  bool migrationPending = false;
+  Map<String, dynamic>? migrationOverride;
   Map<String, dynamic>? authorizationOverride;
 
   @override
@@ -958,6 +1149,13 @@ final class _FakeCredentialsRunner implements AgentCommandRunner {
     calls.add(List.of(args));
     if (failOnList) {
       throw StateError('authorization cancelled');
+    }
+    if (args.length > 2 && args[2] == 'migrate') {
+      if (failOnMigrate) throw StateError('synthetic native failure');
+      final overridden = migrationOverride;
+      if (overridden != null) return overridden;
+      migrationPending = false;
+      return {'ok': true, 'entries': entries, 'migrationPending': false};
     }
     if (args.length > 2 && args[2] == 'authorize') {
       final overridden = authorizationOverride;
@@ -995,7 +1193,12 @@ final class _FakeCredentialsRunner implements AgentCommandRunner {
         'authorizedCredentialIds': authorizedIds.toList(),
       };
     }
-    return {'ok': true, 'entries': entries, 'leaseDays': 7};
+    return {
+      'ok': true,
+      'entries': entries,
+      'leaseDays': 7,
+      'migrationPending': migrationPending,
+    };
   }
 
   @override

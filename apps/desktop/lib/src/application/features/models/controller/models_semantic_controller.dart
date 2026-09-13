@@ -139,6 +139,17 @@ final class ModelsSemanticController extends ApplicationStateOwner {
     traceId: traceId,
   );
 
+  Future<bool> migrateCredentials({String? traceId}) => _execute(
+    () async {
+      if (!await _authorization.migrateCredentials(_runner)) {
+        throw const _SemanticCommandFailure();
+      }
+    },
+    failureCode: 'credential_migration_failed',
+    successCode: 'credential_migrated',
+    traceId: traceId,
+  );
+
   Future<bool> createCredential({
     required String provider,
     required String label,

@@ -29,8 +29,8 @@ class ConversationParticleField extends StatefulWidget {
   });
 
   final bool assembled;
-  final ConversationParticleAnchors anchors;
-  final ConversationParticleGlyph? avatarGlyph;
+  final ConversationMotionAnchors anchors;
+  final ConversationMotionGlyph? avatarGlyph;
   final VoidCallback? onAssembled;
   final int particleCount;
 
@@ -209,7 +209,7 @@ class ConversationParticlePainter extends CustomPainter {
        super(repaint: clock);
 
   final ConversationParticleGeometry geometry;
-  final ConversationParticleAnchors anchors;
+  final ConversationMotionAnchors anchors;
   final ValueListenable<double> clock;
   final Color color;
   final bool hidden;

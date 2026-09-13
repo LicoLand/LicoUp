@@ -401,11 +401,15 @@ class TargetController extends ApplicationStateOwner {
     if (!_cachedTargetIds.contains(id)) {
       return false;
     }
-    final refreshCatalog = !_nativeModelCatalogRefreshedIds.contains(id);
-    return _revalidateConversationRuntimeBinding(
+    // History needs an executable binding, not the CLI model catalog. Release
+    // that dependency as soon as the lightweight probe has settled; model
+    // discovery can continue while the conversation's first page is read.
+    final bound = await _revalidateConversationRuntimeBinding(
       id,
-      enableAgentCliModelLookup: refreshCatalog,
+      enableAgentCliModelLookup: false,
     );
+    if (bound && !_disposed) ensureSelectedAgentModelCatalog(id);
+    return bound;
   }
 
   /// Loads the native model catalog for an Agent whose conversation interface

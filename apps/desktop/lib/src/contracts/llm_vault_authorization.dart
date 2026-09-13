@@ -20,6 +20,7 @@ final class LlmVaultAuthorization extends ChangeNotifier {
   List<String> _authorizedCredentialIds = const [];
   List<Map<String, dynamic>> _inventoryEntries = const [];
   bool _inventoryHydrated = false;
+  bool _migrationPending = false;
   LlmVaultAuthorizationFailure? _failure;
   Future<bool>? _inFlight;
   Future<void>? _inventoryInFlight;
@@ -30,6 +31,7 @@ final class LlmVaultAuthorization extends ChangeNotifier {
   List<String> get authorizedCredentialIds => _authorizedCredentialIds;
   List<Map<String, dynamic>> get inventoryEntries => _inventoryEntries;
   bool get inventoryHydrated => _inventoryHydrated;
+  bool get migrationPending => _migrationPending;
   LlmVaultAuthorizationFailure? get failure => _failure;
 
   bool isCredentialAuthorized(String credentialId) =>
@@ -76,13 +78,22 @@ final class LlmVaultAuthorization extends ChangeNotifier {
     );
   }
 
+  /// Moves legacy keys through the native, user-approved migration flow.
+  /// Migration does not grant Gateway access to any credential.
+  Future<bool> migrateCredentials(AgentCommandRunner runner) =>
+      _runExclusive(() => _migrateCredentials(runner));
+
   /// Starts the automatic client bootstrap without opening the protected
-  /// store when the public metadata inventory is empty. Manual authorization
-  /// deliberately bypasses this preflight so it can migrate a legacy vault.
+  /// store when metadata is empty or legacy keys need explicit migration.
   Future<bool> authorizeExisting(AgentCommandRunner runner) async {
     if (_authorized) return true;
     try {
       await refreshInventory(runner);
+      if (_migrationPending) {
+        _failure = LlmVaultAuthorizationFailure.keychainActionRequired;
+        notifyListeners();
+        return false;
+      }
       if (_inventoryEntries.isEmpty) {
         _providers = const [];
         _authorizedCredentialIds = const [];
@@ -129,7 +140,35 @@ final class LlmVaultAuthorization extends ChangeNotifier {
           .map((entry) => Map<String, dynamic>.unmodifiable(entry)),
     );
     _inventoryHydrated = true;
+    final migrationPending = inventory['migrationPending'];
+    if (migrationPending is bool) _migrationPending = migrationPending;
     notifyListeners();
+  }
+
+  Future<bool> _migrateCredentials(AgentCommandRunner runner) async {
+    _busy = true;
+    _failure = null;
+    _migrationPending = true;
+    notifyListeners();
+    try {
+      final result = await runner.runCli(const [
+        'llm-gateway',
+        'credentials',
+        'migrate',
+      ]);
+      if (result['ok'] != true || result['migrationPending'] != false) {
+        _failure = LlmVaultAuthorizationFailure.unavailable;
+        return false;
+      }
+      adoptInventory(result);
+      return true;
+    } catch (_) {
+      _failure = LlmVaultAuthorizationFailure.unavailable;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> _runExclusive(Future<bool> Function() operation) {
