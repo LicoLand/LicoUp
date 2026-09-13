@@ -75,7 +75,6 @@ pub(super) fn normalize_agent_alias(agent: &str) -> String {
         "hermes" | "hermes-agent" => "hermes",
         "kilo" | "kilo-code" => "kilo-code",
         "kimi-code" | "kimicode" => "kimi-code",
-        "kimi" | "moonshot" => "kimi",
         "pi" | "pi-agent" | "pi-coding-agent" => "pi",
         other => other,
     }

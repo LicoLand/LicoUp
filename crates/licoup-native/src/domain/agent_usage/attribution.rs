@@ -1,7 +1,7 @@
 //! Metadata-first native-history token extraction and model attribution.
 
 use super::contract::{HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field, text_field};
-use super::variant::{UsageVariant, model_label};
+use super::variant::{UsageVariant, model_label, prefer_recorded_model};
 use super::window::UsageWindow;
 use serde_json::Value;
 
@@ -163,20 +163,8 @@ pub(super) fn message_usage(
     if total_tokens == 0 {
         return None;
     }
-    let model = text_field(
-        usage,
-        &[
-            "model",
-            "modelId",
-            "model_id",
-            "modelName",
-            "model_name",
-            "modelLabel",
-            "model_label",
-        ],
-    )
-    .or_else(|| message_model_label(message))
-    .or(default_model);
+    let model =
+        prefer_recorded_model(model_label(usage), message_model_label(message)).or(default_model);
     Some(MessageUsage {
         prompt_tokens,
         cached_input_tokens: number_field(
@@ -357,6 +345,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(usage.model.as_deref(), Some("composer-2.5-fast"));
+    }
+
+    #[test]
+    fn placeholder_usage_prefers_same_record_evidence_but_not_session_fallback() {
+        for record in [
+            json!({"model":"actual-model","usage":{"model":"default","totalTokens":12}}),
+            json!({"model":"default","message":{"model":"actual-model"},"usage":{"totalTokens":12}}),
+            json!({"model":"unknown","response":{"model":"actual-model"},"usage":{"totalTokens":12}}),
+            json!({"model":"auto","modelInfo":{"modelName":"actual-model"},"usage":{"totalTokens":12}}),
+            json!({"model":"default","responseUsage":{"model":"actual-model"},"usage":{"totalTokens":12}}),
+            json!({"model":"default","status":{"tokenUsage":{"model":"actual-model"}},"usage":{"totalTokens":12}}),
+        ] {
+            let usage = message_usage(&record, Some("session-final-model".into())).unwrap();
+            assert_eq!(usage.model.as_deref(), Some("actual-model"));
+            assert_eq!(usage.total_tokens, 12);
+        }
+        let usage = message_usage(&json!({"model":"default","messages":[{"model":"unrelated-model"}],"text":"actual-model","usage":{"totalTokens":7}}),Some("session-final-model".into())).unwrap();
+        assert_eq!(usage.model.as_deref(), Some("default"));
+        assert_eq!(usage.total_tokens, 7);
     }
 
     #[test]

@@ -100,7 +100,7 @@ mod tests {
         assert_eq!(count, 1);
         let model = entries.values().next().unwrap();
         assert_eq!(model.name, "acme/alpha");
-        assert_eq!(model.display_name, "alpha");
+        assert_eq!(model.display_name, "Alpha");
         assert_eq!(model.provider_id.as_deref(), Some("acme"));
         assert!(model.reasoning_efforts.contains(&"max".to_string()));
     }

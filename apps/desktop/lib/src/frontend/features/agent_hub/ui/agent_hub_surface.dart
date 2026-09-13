@@ -19,5 +19,5 @@ final class AgentHubDetailSelectorSurface extends BaseControlSurface {
     required super.child,
     required super.fill,
     required super.stroke,
-  }) : super(borderRadius: const BorderRadius.all(Radius.circular(16)));
+  }) : super(borderRadius: const BorderRadius.all(Radius.circular(12)));
 }

@@ -184,6 +184,10 @@ String? _credentialMessage(String? code, bool chinese) => switch (code) {
     chinese
         ? '系统授权未完成，请重试。'
         : 'System authorization did not complete. Try again.',
+  'credential_keychain_action_required' =>
+    chinese
+        ? '钥匙串访问未获允许，或钥匙串已锁定。请先在系统中处理锁定或访问权限问题，再重试。'
+        : 'macOS credential storage is locked or access was denied. Resolve the lock or access permissions in macOS, then try again.',
   'credential_revoke_failed' =>
     chinese ? '未能撤销授权，请重试。' : 'Could not revoke authorization. Try again.',
   _ => null,

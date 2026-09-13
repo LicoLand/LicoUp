@@ -2218,3 +2218,74 @@ support_efforts = ["max"]
         assert_eq!(catalog["defaultModel"], "kimi-code/kimi-k3");
     }
 }
+
+mod deepseek {
+    use super::super::deepseek::SOURCE;
+    use super::*;
+
+    #[test]
+    fn disabled_lookup_does_not_execute_an_installed_adapter() {
+        let catalog = model_catalog_for_target(
+            "deepseek-harness",
+            None,
+            &json!({
+                "enableAgentCliModelLookup":false,
+                "deepseekHarnessCliPath":"not-a-real-harness",
+                "deepseekHarnessNodePath":"not-a-real-node",
+            }),
+        );
+        assert!(catalog["models"].as_array().unwrap().is_empty());
+        assert!(
+            catalog["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| { item["source"] == SOURCE && item["status"] == "disabled" })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_catalog_preserves_native_ids_provider_and_supported_efforts() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory =
+            std::env::temp_dir().join(format!("licoup-dsh-catalog-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let node = directory.join("node");
+        fs::write(&node, r##"#!/bin/sh
+case "$1 $2" in '--input-type=module --eval') ;; *) exit 9 ;; esac
+printf '%s' '{"models":[{"name":"deepseek-native-next","displayName":"DeepSeek Native Next","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off","low","high","max"]},{"name":"deepseek-vision-experiment","displayName":"DeepSeek Vision Experiment","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off"]}]}'
+"##).unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+        let catalog = model_catalog_for_target(
+            "deepseek-harness",
+            None,
+            &json!({
+                "enableAgentCliModelLookup":true,
+                "deepseekHarnessCliPath":directory.join("dsh"),
+                "deepseekHarnessNodePath":node,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        let model = models
+            .iter()
+            .find(|model| model["name"] == "deepseek-native-next")
+            .unwrap();
+        assert_eq!(model["displayName"], "DeepSeek Native Next");
+        assert_eq!(model["providerId"], "deepseek-official");
+        assert_eq!(model["provider"], "DeepSeek");
+        assert_eq!(
+            model["reasoningEfforts"],
+            json!(["off", "low", "high", "max"])
+        );
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(SOURCE))
+        );
+        assert_eq!(catalog["defaultModel"], "");
+        fs::remove_dir_all(directory).unwrap();
+    }
+}

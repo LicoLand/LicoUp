@@ -8,6 +8,64 @@ use std::fs;
 use std::io::Write;
 
 #[test]
+fn placeholder_models_use_actual_same_turn_evidence_without_leaking_next_turn() {
+    let history_root = temp_dir("placeholder-history");
+    let state_root = temp_dir("placeholder-state");
+    let token = |index: u64, model: &str, payload_model: Option<&str>, effort: Option<&str>| {
+        let mut value: serde_json::Value = serde_json::from_str(&token_event(
+            &format!("2026-07-10T10:00:0{index}Z"),
+            (index * 8, 0, index * 2),
+            (8, 0, 2),
+        ))
+        .unwrap();
+        value["payload"]["info"]["model"] = json!(model);
+        if let Some(model) = payload_model {
+            value["payload"]["model"] = json!(model);
+        }
+        if let Some(effort) = effort {
+            value["payload"]["info"]["effort"] = json!(effort);
+        }
+        value
+    };
+    fs::write(history_root.join("rollout.jsonl"),[
+        json!({"type":"session_meta","payload":{"id":"placeholder-session"}}),
+        json!({"type":"turn_context","payload":{"turn_id":"one","model":"actual-context","effort":"high"}}),
+        json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"one","model":"default"}}),
+        token(1,"default",None,None),
+        token(2,"unknown",Some("actual-direct"),Some("low")),
+        json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":"one"}}),
+        json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"two","model":"auto","effort":"medium"}}),
+        token(3,"default",None,None),
+        token(4,"actual-response",None,None),
+        json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"three"}}),
+        token(5,"default",None,None),
+    ].iter().map(serde_json::Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();
+    let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
+    assert_eq!(result["summary"]["totalTokens"], 50);
+    let models = &result["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"];
+    assert_eq!(
+        models["actual-context"]["variants"]["High"]["totalTokens"],
+        10
+    );
+    assert_eq!(
+        models["actual-direct"]["variants"]["Low"]["totalTokens"],
+        10
+    );
+    assert_eq!(
+        models["actual-response"]["variants"]["Medium"]["totalTokens"],
+        10
+    );
+    assert_eq!(models["Others"]["totalTokens"], 20);
+    assert_eq!(models["Others"]["variants"]["Medium"]["totalTokens"], 10);
+    assert_eq!(
+        models["Others"]["unattributedVariantUsage"]["totalTokens"],
+        10
+    );
+    fs::remove_dir_all(history_root).unwrap();
+    fs::remove_dir_all(state_root).unwrap();
+}
+
+#[test]
 fn parser_keeps_actual_variants_separate_and_missing_context_unspecified() {
     let history_root = temp_dir("actual-variants-history");
     let state_root = temp_dir("actual-variants-state");

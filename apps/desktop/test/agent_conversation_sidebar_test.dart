@@ -36,8 +36,10 @@ void main() {
       'Codex',
     );
     expect(
-      agentConversationTargetDisplayName(_target('kimi', 'Kimi - Desktop')),
-      'Kimi',
+      agentConversationTargetDisplayName(
+        _target('kimi-code', 'Kimi Code - CLI'),
+      ),
+      'Kimi Code',
     );
     expect(
       agentConversationTargetDisplayName(
@@ -252,12 +254,17 @@ void main() {
     await _pumpSidebar(
       tester,
       targets: [
-        _target('kimi', 'Kimi - Desktop'),
+        _target('codex', 'Codex - CLI'),
         _target('kimi-code', 'Kimi Code - CLI'),
       ],
       sessionsByAgent: {
-        'kimi': [
-          _session('kimi-session', 'kimi', 'Kimi session', updatedHoursAgo: 1),
+        'codex': [
+          _session(
+            'codex-session',
+            'codex',
+            'Codex session',
+            updatedHoursAgo: 1,
+          ),
         ],
         'kimi-code': [
           _session(
@@ -275,7 +282,7 @@ void main() {
         .widgetList<AgentBrandIcon>(find.byType(AgentBrandIcon))
         .map((icon) => icon.target.target)
         .toSet();
-    expect(targets, containsAll(['kimi', 'kimi-code']));
+    expect(targets, containsAll(['codex', 'kimi-code']));
     expect(tester.takeException(), isNull);
   });
 

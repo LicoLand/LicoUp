@@ -19,11 +19,13 @@ final class ClientConversationController extends ApplicationStateOwner {
     required ClientConversationNativePort native,
     ClientConversationService? service,
     void Function(String conversationId)? onSelectionChanged,
+    void Function(ClientConversation conversation)? onSnapshotApplied,
     ClientMemoryDiagnosticJournal? memoryJournal,
     Duration? pendingNoticePollInterval,
     Duration? activityEchoInterval,
   }) : _service = service ?? ClientConversationService(native: native),
        _onSelectionChanged = onSelectionChanged,
+       _onSnapshotApplied = onSnapshotApplied,
        _memoryJournal = memoryJournal,
        _pendingNoticePollInterval =
            pendingNoticePollInterval ?? defaultPendingNoticePollInterval,
@@ -42,6 +44,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
+  final void Function(ClientConversation conversation)? _onSnapshotApplied;
   final ClientMemoryDiagnosticJournal? _memoryJournal;
   final Duration _pendingNoticePollInterval;
   final Duration _activityEchoInterval;
@@ -363,6 +366,7 @@ final class ClientConversationController extends ApplicationStateOwner {
         await _service.execute({
           'action': 'conversation.get',
           'conversationId': id,
+          'includeNativeSessionReferences': true,
         }),
       );
     } on ClientConversationServiceFailure {
@@ -1357,6 +1361,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       await _service.execute({
         'action': 'conversation.get',
         'conversationId': id,
+        'includeNativeSessionReferences': true,
       }),
     );
     if (_disposed || (_historyGenerations[id] ?? 0) != generation) return;
@@ -1512,6 +1517,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   ) {
     _selectedConversation = conversation;
     _events = events;
+    _onSnapshotApplied?.call(conversation);
     _recentParticipants.applySnapshot(
       conversation: conversation,
       events: _events,

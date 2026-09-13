@@ -2,7 +2,7 @@
 //! Raw selectors remain lossless; only stable model evidence classifies history.
 
 use super::contract::{ModelTokenUsageSummary, UNATTRIBUTED_MODEL, UsageVariant};
-use super::variant::model_selection;
+use super::variant::{is_placeholder_id as is_unattributed_selector, model_selection};
 use crate::domain::model_registry::{RegistrySnapshot, model_display_name};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -87,15 +87,19 @@ pub(super) fn project_model_usage(
     let mut models = BTreeMap::<String, ModelProjection>::new();
     for ((raw_model, observed_variant), usage) in raw {
         let selection = model_selection(raw_model);
-        let resolved = registry.resolve_historical(
-            &selection.id,
-            selection.provider_id.as_deref(),
-            source_agent,
-        );
+        let placeholder = is_unattributed_selector(&selection.id);
+        let resolved = registry
+            .resolve_historical(
+                &selection.id,
+                selection.provider_id.as_deref(),
+                source_agent,
+            )
+            // A literal placeholder cannot establish which concrete model a
+            // floating route selected, even if a catalog short name matches.
+            .filter(|model| !placeholder || model.id == selection.id);
         let (id, display_name) = match resolved {
             Some(model) => (model.id.clone(), model.display_name.clone()),
-            None if selection.id.trim().is_empty()
-                || selection.id == UNATTRIBUTED_MODEL
+            None if is_unattributed_selector(&selection.id)
                 || (selection.provider_id.is_none()
                     && (registry.is_provider_label(&selection.id)
                         || source_agent
@@ -315,20 +319,23 @@ fn preserve_published_models(
     }
     let mut models = BTreeMap::<String, ModelProjection>::new();
     for (id, value) in existing {
+        let selection = model_selection(id);
         let current = registry
             .resolve_historical(id, None, None)
             .filter(|model| model.id == *id);
+        let is_model_id =
+            selection.id == *id && (current.is_some() || !is_unattributed_selector(&selection.id));
         // Before the explicit marker existed, a published key different from
         // every recorded selector is evidence that an earlier registry had
         // already assigned a canonical identity. A removed catalog entry must
         // not turn that historical assignment back into a floating selector.
-        let canonical = value
-            .get("isCanonical")
-            .and_then(Value::as_bool)
-            .unwrap_or_else(|| {
-                id != UNATTRIBUTED_MODEL
-                    && (current.is_some() || (has_raw && !observed_identities.contains(id)))
-            });
+        let canonical = is_model_id
+            && value
+                .get("isCanonical")
+                .and_then(Value::as_bool)
+                .unwrap_or_else(|| {
+                    current.is_some() || (has_raw && !observed_identities.contains(id))
+                });
         if canonical || id == UNATTRIBUTED_MODEL {
             let mut model = ModelProjection::from_published(value);
             model.is_canonical = canonical;
@@ -483,6 +490,146 @@ mod tests {
         assert_eq!(models["deepseek/flash"]["totalTokens"], 60);
         assert_eq!(models["deepseek/flash-vision"]["totalTokens"], 70);
     }
+
+    #[test]
+    fn placeholders_keep_usage_and_actual_options_without_becoming_models() {
+        let mut raw = ["", " Default ", "AUTO", "unknown", "Unspecified", "Others"]
+            .into_iter()
+            .map(|id| ((id.to_owned(), UsageVariant::default()), count(10)))
+            .collect::<RawModelUsage>();
+        raw.insert(
+            (
+                json!({"id":"default","providerID":"synthetic-relay","variant":"high"}).to_string(),
+                UsageVariant::default(),
+            ),
+            count(20),
+        );
+        raw.insert(
+            ("research-high".to_owned(), UsageVariant::default()),
+            count(30),
+        );
+        let models = project_model_usage(&raw, Some("cursor"), &catalog());
+        assert_eq!(models.len(), 2);
+        assert_eq!(models["Others"]["totalTokens"], 80);
+        assert_eq!(models["Others"]["variants"]["High"]["totalTokens"], 20);
+        assert_eq!(
+            models["Others"]["unattributedVariantUsage"]["totalTokens"],
+            60
+        );
+        assert_eq!(models["research-high"]["totalTokens"], 30);
+
+        let registry = RegistrySnapshot::from_catalog(json!({
+            "models":{"lab/default":{"name":"Named Model"}},
+            "providers":{"relay":{"models":{"default":{"base_model":"lab/default"}}}}
+        }))
+        .unwrap();
+        let qualified = [
+            ("relay/default", 10),
+            ("relay/Auto", 20),
+            ("default", 30),
+            ("lab/default", 40),
+            ("research-default", 50),
+            ("default-v2", 60),
+        ]
+        .into_iter()
+        .map(|(id, total)| ((id.to_owned(), UsageVariant::default()), count(total)))
+        .collect();
+        let qualified = project_model_usage(&qualified, Some("opencode"), &registry);
+        assert_eq!(qualified.len(), 4);
+        assert_eq!(qualified["Others"]["totalTokens"], 60);
+        assert_eq!(qualified["lab/default"]["totalTokens"], 40);
+        assert_eq!(qualified["research-default"]["totalTokens"], 50);
+        assert_eq!(qualified["default-v2"]["totalTokens"], 60);
+
+        let mut report = json!({"modelRegistryRevision":"earlier-catalog","agents":[{"agentId":"cursor","history":{
+            "rawModelUsage":raw_usage_json(&RawModelUsage::from([(("relay/default".to_owned(),UsageVariant::default()),count(10))])),
+            "modelTokenUsage":{"relay/default":{"totalTokens":10,"promptTokens":10,"requestCount":1,"isCanonical":false,"displayName":"Default"}}
+        }}]});
+        let original_raw = report["agents"][0]["history"]["rawModelUsage"].clone();
+        normalize_retained_report(&mut report, &catalog());
+        let history = &report["agents"][0]["history"];
+        assert_eq!(history["rawModelUsage"], original_raw);
+        assert_eq!(history["modelTokenUsage"]["Others"]["totalTokens"], 10);
+        assert!(history["modelTokenUsage"].get("relay/default").is_none());
+    }
+
+    #[test]
+    fn complete_selectors_resolve_but_damaged_projection_keys_never_pin_an_identity() {
+        let registry = RegistrySnapshot::from_catalog(json!({"models":{
+            "anthropic/claude-opus-4.6":{"name":"Claude Opus 4.6"},
+            "anthropic/claude-opus-4.7":{"name":"Claude Opus 4.7"}
+        },"providers":{}}))
+        .unwrap();
+        let complete = json!({"id":"anthropic/claude-opus-4.6","providerID":"synthetic-relay","variant":"high"}).to_string();
+        let damaged = "claude-opus-4.6\" ,\n  \"providerid\" : \"synthetic-relay\",\n  \"variant\" : \"max\"\n}";
+        let raw = RawModelUsage::from([
+            ((complete.clone(), UsageVariant::default()), count(30)),
+            ((damaged.to_owned(), UsageVariant::default()), count(20)),
+            (("default".to_owned(), UsageVariant::default()), count(10)),
+        ]);
+        let fresh = project_model_usage(&raw, Some("opencode"), &registry);
+        assert_eq!(fresh.len(), 2);
+        assert_eq!(
+            fresh["anthropic/claude-opus-4.6"]["displayName"],
+            "Claude Opus 4.6"
+        );
+        assert_eq!(
+            fresh["anthropic/claude-opus-4.6"]["variants"]["High"]["totalTokens"],
+            30
+        );
+        assert_eq!(fresh["Others"]["totalTokens"], 30);
+        assert!(fresh["Others"]["variants"].as_object().unwrap().is_empty());
+
+        for marker in [Some(false), Some(true), None] {
+            let mut published = serde_json::Map::new();
+            for ((id, _), usage) in &raw {
+                let mut value = usage.to_json();
+                value["displayName"] = json!(id);
+                if let Some(marker) = marker {
+                    value["isCanonical"] = json!(marker);
+                }
+                published.insert(id.clone(), value);
+            }
+            // This assignment is an actual earlier canonical identity and
+            // must survive even when its catalog entry has since disappeared.
+            let mut earlier = count(40).to_json();
+            earlier["isCanonical"] = json!(true);
+            earlier["displayName"] = json!("Claude Opus 4.5");
+            earlier["variants"] = json!({"Max":count(40).to_json()});
+            published.insert("anthropic/claude-opus-4.5".to_owned(), earlier);
+            let mut retained_raw = raw.clone();
+            retained_raw.insert(
+                ("earlier-private-slot".to_owned(), UsageVariant::default()),
+                count(40),
+            );
+            let original_raw = raw_usage_json(&retained_raw);
+            let mut report = json!({"modelRegistryRevision":"earlier-catalog","agents":[{"agentId":"opencode","history":{
+                "rawModelUsage":original_raw,"modelTokenUsage":published
+            }}]});
+            normalize_retained_report(&mut report, &registry);
+            let history = &report["agents"][0]["history"];
+            let models = history["modelTokenUsage"].as_object().unwrap();
+            assert_eq!(models.len(), 3);
+            assert_eq!(models["anthropic/claude-opus-4.6"]["totalTokens"], 30);
+            assert_eq!(models["Others"]["totalTokens"], 30);
+            assert_eq!(
+                models["anthropic/claude-opus-4.5"]["variants"]["Max"]["totalTokens"],
+                40
+            );
+            assert_eq!(
+                models
+                    .values()
+                    .map(|value| value["totalTokens"].as_u64().unwrap())
+                    .sum::<u64>(),
+                100
+            );
+            assert_eq!(history["rawModelUsage"], original_raw);
+            let normalized = report.clone();
+            normalize_retained_report(&mut report, &registry);
+            assert_eq!(report, normalized);
+        }
+    }
+
     #[test]
     fn retained_raw_identity_can_reproject_after_registry_refresh_without_losing_residual() {
         let mut report = json!({"usageParserRevision":"old-parser", "agents":[{"agentId":"kimi-code","history":{"dailyUsage":[{

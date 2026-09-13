@@ -510,6 +510,15 @@ impl ConversationService {
             "conversation.get" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let mut value = serde_json::to_value(self.store.get(conversation_id)?)?;
+                if object
+                    .get("includeNativeSessionReferences")
+                    .and_then(Value::as_bool)
+                    == Some(true)
+                {
+                    value["nativeSessionReferences"] = serde_json::to_value(
+                        self.store.native_session_references(conversation_id)?,
+                    )?;
+                }
                 if let Some(continuity) = &self.continuity {
                     continuity.enrich_get(&mut value, conversation_id);
                 }
@@ -2045,7 +2054,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "timeout.policy.get" => &["action"],
         "timeout.policy.set" => &["action", "policy"],
         "conversation.list" => &["action", "includeArchived"],
-        "conversation.get" => &["action", "conversationId"],
+        "conversation.get" => &["action", "conversationId", "includeNativeSessionReferences"],
         "conversation.events.page" => &[
             "action",
             "conversationId",
@@ -3256,6 +3265,55 @@ mod tests {
             missing.unwrap_err().to_string(),
             "conversation_event_not_found"
         );
+    }
+
+    #[test]
+    fn group_native_sessions_are_opt_in_local_get_facts() {
+        let service = ConversationService::from_store(ConversationStore::open_in_memory().unwrap());
+        let (conversation_id, _, membership_id) = group_fixture(&service);
+        let agent_id = service
+            .store()
+            .get(&conversation_id)
+            .unwrap()
+            .memberships
+            .into_iter()
+            .find(|membership| membership.id == membership_id)
+            .unwrap()
+            .principal
+            .agent_id
+            .unwrap();
+        let scope = service
+            .store()
+            .prepare_runtime_dispatch(
+                &agent_id,
+                "synthetic-session",
+                "Synthetic request",
+                Some(&conversation_id),
+                Some(&membership_id),
+                None,
+                None,
+            )
+            .unwrap();
+        service
+            .store()
+            .bind_runtime_session(&scope, &agent_id, "synthetic-session", None, None)
+            .unwrap();
+        let ordinary = service
+            .execute(json!({"action":"conversation.get","conversationId":conversation_id}))
+            .unwrap();
+        assert!(ordinary.get("nativeSessionReferences").is_none());
+        let local = service
+            .execute(
+                json!({"action":"conversation.get","conversationId":conversation_id,
+            "includeNativeSessionReferences":true}),
+            )
+            .unwrap();
+        assert_eq!(
+            local["nativeSessionReferences"],
+            json!([{"membershipId":membership_id,
+            "agentId":agent_id,"nativeSessionId":"synthetic-session"}])
+        );
+        assert!(local.get("runtimeBindings").is_none());
     }
 
     #[test]

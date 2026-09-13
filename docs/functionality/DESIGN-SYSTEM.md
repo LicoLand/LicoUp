@@ -137,9 +137,17 @@ the existing install/update controls. The detail page provides Overview,
 Plugins and Skills. Descriptions come from official Agent sources maintained
 in the catalog; subjective ratings, rankings and adaptation-depth opinions do
 not appear. Plugin and Skill views use the selected Agent context.
-The three detail destinations form one compact, integrated selector. Selection
-and content transitions share the motion policy and preserve the detail page's
-identity and context.
+The three detail destinations form one compact glass selector in the title bar,
+immediately left of refresh. Its 16 px labels sit inside a 2 px inset, with a
+12 px outer radius and 10 px selection radius. Localized text and text scaling
+determine its width. On narrow panes, the title stays on the first line and
+the selector and refresh move together to a second line. Keyboard selection,
+theme changes and reduced motion follow the shared control policy.
+
+The single title-bar refresh acts on the selected Overview, Plugins or Skills
+view and reflects only that view's loading state. Embedded Plugin and Skill
+views have no second refresh button; standalone views keep their own title bar.
+Selection and content transitions preserve each page's scroll and filter state.
 
 Settings builds and subscribes to the section being used. Locale, theme,
 layout, storage, archive, updater and logs select their own projection fields.
@@ -174,6 +182,12 @@ updates do not rebuild its chart subtree. Usage viewport projections and chart
 series are cached by their actual data, grouping and display window. Color
 assignments remain stable across refreshes, windows and source ordering.
 Labels, values and tooltips identify series independently of hue.
+
+Data fills, series swatches and usage bars are fully opaque. The Total usage
+bar is pure white in both themes. Stacked areas have no colored outline:
+each positive run closes at adjacent zero samples, and zero-only intervals
+draw no series area. A day with zero usage contributes no height or colored
+line above another series; rendering never changes the reported usage values.
 
 Agent charts use a rainbow palette. Antigravity, Kimi Code and GitHub Copilot
 use distinct blue-to-purple colors; Kilo Code uses yellow and Claude Code uses

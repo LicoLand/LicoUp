@@ -13,7 +13,7 @@ pub(super) const BINARY_SOURCE_APPLICATION_STORE: &str = "application-store";
 pub(super) const BINARY_SOURCE_PACKAGE_MANAGER: &str = "package-manager";
 pub(super) const BINARY_SOURCE_EXECUTABLE_PATH: &str = "executable-path";
 
-pub(super) fn find_binary(names: &[&str]) -> Option<PathBuf> {
+pub(crate) fn find_binary(names: &[&str]) -> Option<PathBuf> {
     find_binary_with_path_dirs(
         names,
         &crate::platform::user_shell_environment::search_path_dirs(),
@@ -96,10 +96,7 @@ pub(super) fn find_target_binary_with_source(
 /// instead of a PATH-visible install. Kilo Code bundles `bin/kilo` (or
 /// `bin/kilo.exe` on Windows) inside the VS Code extension directory, and
 /// that binary speaks the same `kilo serve` contract as the standalone CLI,
-/// so an extension-only install is a full runtime source. The Kimi desktop
-/// app installs as a macOS application bundle whose executable is the
-/// product's only local binary; discovering it keeps desktop detection
-/// honest even though the app exposes no local conversation lane.
+/// so an extension-only install is a full runtime source.
 pub(super) fn find_extension_bundled_binary(def: &TargetDef) -> Option<PathBuf> {
     match def.id {
         "kilo-code" => find_kilo_code_extension_cli(&scan_paths::extension_roots(
@@ -107,13 +104,6 @@ pub(super) fn find_extension_bundled_binary(def: &TargetDef) -> Option<PathBuf> 
             std::env::consts::OS,
             &HostRoots::from_environment(),
         )),
-        "kimi" => scan_paths::app_executables(
-            "kimi",
-            std::env::consts::OS,
-            &HostRoots::from_environment(),
-        )
-        .into_iter()
-        .find(|path| probe_is_file(path)),
         _ => None,
     }
 }
@@ -358,11 +348,6 @@ pub(super) fn find_macos_app_executable(
 }
 
 #[cfg(test)]
-pub(super) fn find_kimi_desktop_app_executable(roots: &[PathBuf]) -> Option<PathBuf> {
-    find_macos_app_executable("Kimi.app", "Kimi", roots)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -592,45 +577,6 @@ mod tests {
 
         assert!(find_kilo_code_extension_cli(&[root, dir.join("empty-root")]).is_none());
         assert!(find_kilo_code_extension_cli(&[dir.join("missing-root")]).is_none());
-    }
-
-    #[test]
-    fn kimi_desktop_app_executable_resolves_bundle_in_install_roots() {
-        let dir = unique_temp_dir("kimi-desktop-app");
-        let system_root = dir.join("Applications");
-        let executable = system_root
-            .join("Kimi.app")
-            .join("Contents")
-            .join("MacOS")
-            .join("Kimi");
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        fs::write(&executable, "kimi").unwrap();
-
-        let found = find_kimi_desktop_app_executable(&[system_root]).unwrap();
-
-        assert_eq!(found, executable);
-    }
-
-    #[test]
-    fn kimi_desktop_app_executable_prefers_earlier_root_and_skips_incomplete_bundles() {
-        let dir = unique_temp_dir("kimi-desktop-app-roots");
-        let first_root = dir.join("first");
-        let second_root = dir.join("second");
-        // First root has a bundle without the executable; second root is complete.
-        fs::create_dir_all(first_root.join("Kimi.app").join("Contents")).unwrap();
-        let executable = second_root
-            .join("Kimi.app")
-            .join("Contents")
-            .join("MacOS")
-            .join("Kimi");
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        fs::write(&executable, "kimi").unwrap();
-
-        let found = find_kimi_desktop_app_executable(&[first_root, second_root]).unwrap();
-
-        assert_eq!(found, executable);
-        assert!(find_kimi_desktop_app_executable(&[dir.join("missing")]).is_none());
-        assert!(find_kimi_desktop_app_executable(&[]).is_none());
     }
 
     #[test]

@@ -9,6 +9,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
@@ -20,11 +21,165 @@ mixin AgentConversationSessionController
         AgentWorkspaceCoordinator,
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController {
+  Future<void>? _groupHydration;
+  int _groupHydrationGeneration = -1;
+
+  void selectGroupConversationHistory(String conversationId) {
+    final previous = groupNativeSessions.conversationId;
+    groupNativeSessions.select(conversationId);
+    stopConversationRefreshScheduling();
+    if (previous != conversationId) {
+      selectedConversationSessionId = '';
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+    }
+  }
+
+  Future<void> hydrateGroupConversationSessions(
+    ClientConversation conversation,
+  ) {
+    if (agentWorkspaceMobileRuntime || agentWorkspaceDisposed) {
+      return Future.value();
+    }
+    groupNativeSessions.synchronize(conversation);
+    if (conversation.group &&
+        selectedConversationSessionId.isNotEmpty &&
+        groupNativeSessions.resolve(
+              selectedConversationAgentId,
+              selectedConversationSessionId,
+            ) ==
+            null) {
+      selectedConversationSessionId = '';
+    }
+    return _readGroupNativeSessions();
+  }
+
+  Future<void> refreshGroupConversationSessions() {
+    if (groupNativeSessions.conversationId.isEmpty || agentWorkspaceDisposed) {
+      return Future.value();
+    }
+    groupNativeSessions.generation++;
+    return _readGroupNativeSessions(refresh: true);
+  }
+
+  Future<void> _readGroupNativeSessions({bool refresh = false}) {
+    final generation = groupNativeSessions.generation;
+    if (_groupHydrationGeneration == generation && _groupHydration != null) {
+      return _groupHydration!;
+    }
+    final pending =
+        (refresh ? groupNativeSessions.identities : groupNativeSessions.missing)
+            .toList(growable: false);
+    if (pending.isEmpty) {
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+      return Future.value();
+    }
+    _groupHydrationGeneration = generation;
+    groupNativeSessions.loading = true;
+    agentWorkspaceNotifyConversationStructureChanged();
+    agentWorkspaceNotifyStateChanged();
+    var cursor = 0;
+    bool current() =>
+        !agentWorkspaceDisposed && generation == groupNativeSessions.generation;
+    Future<void> worker() async {
+      while (current() && cursor < pending.length) {
+        final identity = pending[cursor++];
+        try {
+          final page = await readConversationSessionPage(
+            identity.agentId,
+            sessionId: identity.nativeSessionId,
+            offset: 0,
+            pageSize: 1,
+            messageLimit: _conversationMessagePageSize,
+          );
+          if (!current()) {
+            return;
+          }
+          var exact = page.sessions
+              .where(
+                (session) =>
+                    session.agentId == identity.agentId &&
+                    session.nativeSessionId == identity.nativeSessionId,
+              )
+              .firstOrNull;
+          final previous = groupNativeSessions.resolve(
+            identity.agentId,
+            identity.nativeSessionId,
+          );
+          if (exact != null &&
+              previous != null &&
+              previous.messages.isNotEmpty) {
+            exact = await _mergeLatestConversationMessagePage(
+              identity.agentId,
+              previous,
+              exact,
+            );
+          }
+          if (!current()) {
+            return;
+          }
+          if (exact == null) {
+            groupNativeSessions.failed(generation, identity);
+          }
+          if (exact != null &&
+              groupNativeSessions.put(generation, identity, exact)) {
+            agentWorkspaceNotifyConversationStructureChanged();
+            agentWorkspaceNotifyStateChanged();
+          }
+        } catch (_) {
+          // Preserve the binding as retryable, without a guessed metadata row.
+          groupNativeSessions.failed(generation, identity);
+        }
+      }
+    }
+
+    final operation =
+        Future.wait([
+          for (var i = 0; i < pending.length && i < 4; i++) worker(),
+        ]).then<void>((_) {
+          if (current()) {
+            groupNativeSessions.loading = false;
+            _groupHydration = null;
+            agentWorkspaceNotifyConversationStructureChanged();
+            agentWorkspaceNotifyStateChanged();
+          }
+        });
+    _groupHydration = operation;
+    return operation;
+  }
+
+  void selectGroupConversationSession(
+    String conversationId,
+    String agentId,
+    String sessionId,
+  ) {
+    if (groupNativeSessions.conversationId != conversationId) {
+      return;
+    }
+    final session = groupNativeSessions.resolve(agentId, sessionId);
+    if (session == null) {
+      return;
+    }
+    selectedConversationAgentId = agentId;
+    selectConversationSession(session.id);
+  }
+
+  bool _canApplyAgentBrowseRequest(String agentId, int sequence) =>
+      groupNativeSessions.conversationId.isEmpty &&
+      canApplyConversationRequest(agentId, sequence);
+
   @override
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
   }) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (foreground) {
+        await refreshGroupConversationSessions();
+      }
+      return;
+    }
     if (agentId.isEmpty ||
         agentWorkspaceMobileRuntime ||
         conversationSessionLoadingTargets.contains(agentId)) {
@@ -49,7 +204,7 @@ mixin AgentConversationSessionController
         offset: 0,
         pageSize: conversationSessionPageSize,
       );
-      if (!canApplyConversationRequest(agentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
         return;
       }
       conversationCommitCatalog(
@@ -75,6 +230,13 @@ mixin AgentConversationSessionController
     String agentId,
     String sessionId,
   ) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (selectedConversationAgentId == agentId &&
+          groupNativeSessions.resolve(agentId, sessionId) != null) {
+        await _loadSelectedConversationMessagePage(earlier: false);
+      }
+      return;
+    }
     final key = (agentId: agentId, sessionId: sessionId);
     if (!conversationActiveRefreshTargets.add(key)) {
       return;
@@ -101,7 +263,7 @@ mixin AgentConversationSessionController
         return;
       }
       exactSessionFound = true;
-      if (!canApplyConversationRequest(agentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
         return;
       }
       final previous = conversationSessionsByAgent[agentId] ?? const [];
@@ -119,7 +281,7 @@ mixin AgentConversationSessionController
           refreshed,
         );
       }
-      if (!canApplyConversationRequest(agentId, sequence)) return;
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) return;
       final next = insertConversationSessionByUpdatedAt(previous, refreshed);
       if (conversationSessionListsEquivalent(previous, next)) {
         return;
@@ -256,6 +418,9 @@ mixin AgentConversationSessionController
   }
 
   Future<void> loadMoreConversationSessions(String agentId) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      return;
+    }
     final normalized = agentId.trim();
     if (agentWorkspaceMobileRuntime) {
       await loadMoreMobileConversationSessions(normalized);
@@ -288,7 +453,7 @@ mixin AgentConversationSessionController
         offset: offset,
         pageSize: pageSize,
       );
-      if (!canApplyConversationRequest(normalized, sequence)) {
+      if (!_canApplyAgentBrowseRequest(normalized, sequence)) {
         return;
       }
       final previous = conversationSessionsByAgent[normalized] ?? const [];
@@ -342,6 +507,10 @@ mixin AgentConversationSessionController
     String agentId, {
     String preferredNativeSessionId = '',
   }) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      await _loadSelectedConversationMessagePage(earlier: false);
+      return selectedConversationSession != null;
+    }
     final preferred = preferredNativeSessionId.trim();
     bool stillOwnsActiveSelection() {
       if (preferred.isEmpty) return true;
@@ -372,7 +541,11 @@ mixin AgentConversationSessionController
       if (delay > Duration.zero) {
         await Future<void>.delayed(delay);
       }
-      if (agentWorkspaceDisposed || !stillOwnsActiveSelection()) return false;
+      if (agentWorkspaceDisposed ||
+          groupNativeSessions.conversationId.isNotEmpty ||
+          !stillOwnsActiveSelection()) {
+        return false;
+      }
       try {
         final page = preferred.isEmpty
             ? await readConversationSessionPage(
@@ -419,6 +592,14 @@ mixin AgentConversationSessionController
 
   void selectConversationSession(String sessionId) {
     final normalizedSessionId = sessionId.trim();
+    if (groupNativeSessions.conversationId.isNotEmpty &&
+        groupNativeSessions.resolve(
+              selectedConversationAgentId,
+              normalizedSessionId,
+            ) ==
+            null) {
+      return;
+    }
     final activeNativeSessionId = sendingConversationNativeSessionId.trim();
     final selectedAgentId =
         selectedConversationAgent?.target.trim() ??
@@ -616,12 +797,13 @@ mixin AgentConversationSessionController
     required bool earlier,
   }) async {
     if (agentWorkspaceDisposed) return;
+    final groupGeneration = groupNativeSessions.generation;
     final agentId = selectedConversationAgentId.trim();
     final selected = selectedConversationSession;
     final nativeSessionId = selected?.nativeSessionId.trim() ?? '';
     if (agentId.isEmpty || selected == null || nativeSessionId.isEmpty) return;
     if (earlier && !selected.messagePage.hasEarlier) return;
-    final key = '$agentId\u0000$nativeSessionId';
+    final key = selectedConversationMessagePageKey;
     if (!conversationMessagePageLoadingKeys.add(key)) return;
     conversationMessagePageErrors = {
       for (final entry in conversationMessagePageErrors.entries)
@@ -654,6 +836,7 @@ mixin AgentConversationSessionController
         incoming = page.sessions.single;
       }
       if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation ||
           selectedConversationAgentId.trim() != agentId ||
           selectedConversationSession?.nativeSessionId.trim() !=
               nativeSessionId) {
@@ -671,6 +854,7 @@ mixin AgentConversationSessionController
             )
           : incoming;
       if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation ||
           selectedConversationAgentId.trim() != agentId ||
           selectedConversationSession?.nativeSessionId.trim() !=
               nativeSessionId) {
@@ -679,7 +863,10 @@ mixin AgentConversationSessionController
       _replaceConversationSession(agentId, merged);
       lastError = '';
     } on Object catch (error) {
-      if (agentWorkspaceDisposed) return;
+      if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation) {
+        return;
+      }
       final code = _conversationMessagePageErrorCode(error);
       conversationMessagePageErrors = {
         ...conversationMessagePageErrors,
@@ -704,6 +891,15 @@ mixin AgentConversationSessionController
     String agentId,
     AgentConversationSession replacement,
   ) {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (groupNativeSessions.put(groupNativeSessions.generation, (
+        agentId: agentId,
+        nativeSessionId: replacement.nativeSessionId,
+      ), replacement)) {
+        selectedConversationSessionId = replacement.id;
+      }
+      return;
+    }
     final previous = conversationSessionsByAgent[agentId] ?? const [];
     final next = <AgentConversationSession>[
       for (final session in previous)
@@ -732,7 +928,7 @@ mixin AgentConversationSessionController
     if (agent.hasValidVirtualMachineConnection) {
       return agent.remoteWorkingDirectory.trim();
     }
-    final agentSessions = conversationSessionsByAgent[agent.target] ?? const [];
+    final agentSessions = conversationSessionCatalogFor(agent.target);
     // Explicit user bind for the next turn wins over session provenance and
     // the shared client-owned fallback.
     final draftDirectory =
@@ -941,6 +1137,13 @@ mixin AgentConversationSessionController
     if (normalizedAgentId.isEmpty) {
       return;
     }
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      selectedConversationAgentId = normalizedAgentId;
+      selectedConversationSessionId = '';
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+      return;
+    }
     if (normalizedAgentId == selectedConversationAgentId &&
         selectedConversationSessions.isNotEmpty) {
       var runtimeBound = true;
@@ -1018,6 +1221,9 @@ mixin AgentConversationSessionController
   }
 
   Future<void> loadConversationSessions(String agentId) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      return;
+    }
     final normalizedAgentId = agentId.trim();
     if (normalizedAgentId.isEmpty ||
         conversationSessionLoadingTargets.contains(normalizedAgentId)) {
@@ -1042,7 +1248,7 @@ mixin AgentConversationSessionController
         offset: 0,
         pageSize: conversationSessionPageSize,
         onProgress: (progress) {
-          if (!canApplyConversationRequest(normalizedAgentId, sequence)) {
+          if (!_canApplyAgentBrowseRequest(normalizedAgentId, sequence)) {
             return;
           }
           conversationCommitCatalog(
@@ -1053,7 +1259,7 @@ mixin AgentConversationSessionController
           );
         },
       );
-      if (!canApplyConversationRequest(normalizedAgentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(normalizedAgentId, sequence)) {
         return;
       }
       conversationCommitCatalog(
@@ -1162,9 +1368,7 @@ mixin AgentConversationSessionController
     if (sessionId.isEmpty) {
       return null;
     }
-    final sessions =
-        conversationSessionsByAgent[agentId] ??
-        const <AgentConversationSession>[];
+    final sessions = conversationSessionCatalogFor(agentId);
     for (final session in sessions) {
       if (session.id == sessionId) {
         final nativeId = session.nativeSessionId.trim();

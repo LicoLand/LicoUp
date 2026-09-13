@@ -4796,6 +4796,17 @@ fn build_command_table() -> CommandTable {
     });
     table.register_command(CommandSpec {
         source_module: "targets.rs",
+        handler_name: "handle_targets_catalog",
+        path: &["targets", "catalog"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: targets::handle_targets_catalog,
+        help: "List current target catalog IDs without target discovery",
+    });
+    table.register_command(CommandSpec {
+        source_module: "targets.rs",
         handler_name: "handle_targets_scan",
         path: &["targets", "scan"],
         required_positionals: &[],

@@ -10,7 +10,7 @@
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
     "interfaceName": "official DeepSeek Harness SDK JSON-RPC stdio server",
-    "assessedVersion": "DeepSeek Harness developer preview SDK protocol",
+    "assessedVersion": "DeepSeek Harness npm SDK profile 0.1.5-rc.2",
     "versionProbe": "fixed initialize handshake against the SDK runtime carrier",
     "capabilityProbe": "initialize response and declared SDK protocol methods",
     "newSessionMethod": "session/prompt with a caller-created session id",
@@ -21,7 +21,8 @@
     "officialReferences": [
       "https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sdk/server/README.md",
       "https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sdk/protocol/README.md",
-      "https://github.com/deepseek-ai/deepseek-harness/blob/master/python/sdk-runtime/README.md"
+      "https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/sdk-app/README.md",
+      "https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md"
     ]
   },
   "transport": {
@@ -32,7 +33,7 @@
     "workingDirectoryChannel": "protocol-field",
     "framing": "jsonl",
     "sessionScope": "persistent",
-    "fixedLaunchArguments": []
+    "fixedLaunchArguments": ["--profile", "sdk"]
   },
   "configuration": {
     "binaryEnvironmentKeys": [
@@ -40,7 +41,7 @@
     ],
     "authentication": "runtime-owned",
     "modelSelection": "request-field",
-    "reasoningSelection": "unavailable",
+    "reasoningSelection": "request-field",
     "permissionSelection": "runtime-owned"
   },
   "operations": {

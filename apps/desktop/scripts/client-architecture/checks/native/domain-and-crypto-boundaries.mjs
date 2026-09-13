@@ -133,6 +133,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     `${agentUsageCodexRoot}/constants.rs`,
     `${agentUsageCodexRoot}/event_hash.rs`,
     `${agentUsageCodexRoot}/file_collection.rs`,
+    `${agentUsageCodexRoot}/identity_refresh.rs`,
     `${agentUsageCodexRoot}/lineage.rs`,
     `${agentUsageCodexRoot}/models.rs`,
     `${agentUsageCodexRoot}/parser.rs`,

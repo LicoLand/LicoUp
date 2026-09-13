@@ -67,22 +67,6 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
                     ),
                   ),
                 ),
-              if (widget.embedded)
-                SliverToBoxAdapter(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      key: const Key('skill-hub-refresh'),
-                      onPressed: projection.phase == PresentationPhase.loading
-                          ? null
-                          : () => widget.binding.intents.send(
-                              const RefreshSkillHub(),
-                            ),
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: Text(LicoStrings.of(context).refresh),
-                    ),
-                  ),
-                ),
               SliverToBoxAdapter(
                 child: SkillCategoryFilter(
                   selectedCategory: _category,

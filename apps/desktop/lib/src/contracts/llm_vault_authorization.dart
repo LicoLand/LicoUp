@@ -2,7 +2,11 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 
-enum LlmVaultAuthorizationFailure { noCredentials, unavailable }
+enum LlmVaultAuthorizationFailure {
+  noCredentials,
+  keychainActionRequired,
+  unavailable,
+}
 
 /// One process-scoped authorization session for loading model API keys.
 ///
@@ -153,12 +157,18 @@ final class LlmVaultAuthorization extends ChangeNotifier {
           ..add(credentialId);
       }
       final result = await runner.runCli(args);
-      _adoptAuthorizationResult(result);
-      if (!_authorized) {
-        _failure = result['reasonCode'] == 'no_credentials'
-            ? LlmVaultAuthorizationFailure.noCredentials
-            : LlmVaultAuthorizationFailure.unavailable;
+      if (result['authorized'] != true) {
+        _failure = switch (result['reasonCode']) {
+          'no_credentials' => LlmVaultAuthorizationFailure.noCredentials,
+          'secure_mesh_keychain_classic_access_requires_user_action' =>
+            LlmVaultAuthorizationFailure.keychainActionRequired,
+          _ => LlmVaultAuthorizationFailure.unavailable,
+        };
+        // A failed attempt grants nothing and does not revoke credentials
+        // already admitted by a previous successful native operation.
+        return false;
       }
+      _adoptAuthorizationResult(result);
       return _authorized;
     } catch (_) {
       _authorized = false;

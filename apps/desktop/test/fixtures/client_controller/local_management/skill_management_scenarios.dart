@@ -1,14 +1,23 @@
 import '../support/client_controller_scenario_dependencies.dart';
+import '../support/client_controller_scenario_environment.dart';
 import '../support/fake_agent_service.dart';
 
 void registerClientSkillManagementScenarios() {
   test('supports skill hub state machine and busy lock', () async {
+    final temporaryRoot = await Directory.systemTemp.createTemp(
+      'lico-skill-hub-',
+    );
+    addTearDown(() => deleteTempDirectory(temporaryRoot));
     final service = FakeAgentService();
-    final controller = ClientController(agentService: service);
+    final controller = ClientController(
+      agentService: service,
+      portableData: PortableDataRoot(dataDirectoryOverride: temporaryRoot),
+    );
     addTearDown(controller.dispose);
 
     await controller.requestSkillHubPairing('codex', target: 'manual');
     await controller.approveSkillHubPairing('codex');
+    expect(await service.listPairings(agent: 'workbuddy'), isEmpty);
     await controller.refreshSkillHub('codex');
 
     expect(controller.skillHubPairings, hasLength(1));
@@ -29,8 +38,15 @@ void registerClientSkillManagementScenarios() {
   });
 
   test('reports skill hub action failures', () async {
+    final temporaryRoot = await Directory.systemTemp.createTemp(
+      'lico-skill-hub-',
+    );
+    addTearDown(() => deleteTempDirectory(temporaryRoot));
     final service = FakeAgentService()..throwListPairings = true;
-    final controller = ClientController(agentService: service);
+    final controller = ClientController(
+      agentService: service,
+      portableData: PortableDataRoot(dataDirectoryOverride: temporaryRoot),
+    );
     addTearDown(controller.dispose);
 
     await controller.refreshSkillHub('codex');

@@ -10,6 +10,7 @@ import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -300,7 +301,7 @@ void main() {
   ) async {
     final agentService = _GroupNavigationAgentService();
     addTearDown(agentService.dispose);
-    final controller = ClientController(
+    final controller = _GroupNavigationController(
       agentService: agentService,
       conversationNativePort: agentService,
       llmGatewayMonitorInterval: Duration.zero,
@@ -377,7 +378,7 @@ void main() {
     );
     expect(conversationRow, findsOneWidget);
     expect(find.text('Historical group Agent detail'), findsOneWidget);
-    expect(find.text('其它对话'), findsOneWidget);
+    expect(find.text('其它对话'), findsNothing);
     expect(find.text('Unrelated Agent detail'), findsNothing);
     expect(
       tester
@@ -495,6 +496,7 @@ AgentConversationSession _navigationSession({
     id: id,
     agentId: agentId,
     title: title,
+    nativeSessionId: 'native:$id',
     createdAt: at,
     updatedAt: at,
     messages: [
@@ -506,6 +508,48 @@ AgentConversationSession _navigationSession({
       ),
     ],
   );
+}
+
+final class _GroupNavigationController extends ClientController {
+  _GroupNavigationController({
+    required super.agentService,
+    required super.conversationNativePort,
+    super.llmGatewayMonitorInterval,
+  });
+
+  @override
+  Future<ConversationSessionPage> readConversationSessionPage(
+    String agentId, {
+    String sessionId = '',
+    required int offset,
+    required int pageSize,
+    String messageBefore = '',
+    int? messageLimit,
+    ConversationSessionProgressCallback? onProgress,
+  }) async {
+    expect(
+      sessionId,
+      isNotEmpty,
+      reason: 'Group navigation must request an exact bound session.',
+    );
+    expect([
+      'native:session:codex',
+      'native:session:claude',
+    ], contains(sessionId));
+    return ConversationSessionPage(
+      sessions: [
+        _navigationSession(
+          id: sessionId.substring('native:'.length),
+          agentId: agentId,
+          title: agentId == 'codex'
+              ? 'Agent detail'
+              : 'Historical group Agent detail',
+          at: '2026-09-13T00:00:00Z',
+        ),
+      ],
+      hasMore: false,
+    );
+  }
 }
 
 final class _GroupNavigationAgentService extends AgentService
@@ -531,7 +575,22 @@ final class _GroupNavigationAgentService extends AgentService
       'ok': true,
       'result': switch (request['action']) {
         'conversation.list' => [_groupSummary],
-        'conversation.get' => _groupConversation,
+        'conversation.get' => {
+          ..._groupConversation,
+          if (request['includeNativeSessionReferences'] == true)
+            'nativeSessionReferences': [
+              {
+                'membershipId': 'membership:codex',
+                'agentId': 'codex',
+                'nativeSessionId': 'native:session:codex',
+              },
+              {
+                'membershipId': 'membership:claude',
+                'agentId': 'claude-code',
+                'nativeSessionId': 'native:session:claude',
+              },
+            ],
+        },
         'conversation.events.page' => {
           'events': <Map<String, dynamic>>[],
           'nextCursor': null,

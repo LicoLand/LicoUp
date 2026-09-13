@@ -2,6 +2,9 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Narrow native boundary used by target discovery and configuration.
 abstract interface class TargetManagementGateway {
+  /// Current catalog membership, including discovery-only and registered lanes.
+  Future<Set<String>> targetCatalogIds();
+
   Future<TargetScanBatch> scanTargetsBatch(
     List<String> targetIds, {
     bool enableAgentCliModelLookup = false,

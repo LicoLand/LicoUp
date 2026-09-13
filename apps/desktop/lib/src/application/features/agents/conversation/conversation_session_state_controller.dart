@@ -651,6 +651,12 @@ mixin AgentConversationSessionStateController
     final resolvedSourcePath = sourcePath.trim().isNotEmpty
         ? sourcePath.trim()
         : previous?.sourcePath.trim() ?? '';
+    final groupPage =
+        groupNativeSessions.conversationId.isNotEmpty &&
+            previous?.nativeSessionId == normalizedSession
+        ? previous?.messagePage
+        : null;
+    final pageStart = groupPage?.start ?? 0;
     final session = AgentConversationSession(
       id: projectedSessionId,
       agentId: normalizedAgent,
@@ -669,18 +675,31 @@ mixin AgentConversationSessionStateController
       messageCount: mergedMessages.length,
       sourceMessageCount: mergedMessages.length,
       messagePage: AgentConversationMessagePage(
-        start: 0,
-        endExclusive: mergedMessages.length,
+        start: pageStart,
+        endExclusive: pageStart + mergedMessages.length,
         returned: mergedMessages.length,
-        total: mergedMessages.length,
-        hasEarlier: false,
-        nextBefore: '',
+        total: pageStart + mergedMessages.length,
+        hasEarlier: groupPage?.hasEarlier ?? false,
+        nextBefore: groupPage?.nextBefore ?? '',
       ),
       workingDirectory: _conversationTurnWorkingDirectory(
         requested: workingDirectory,
         previous: previous?.workingDirectory ?? '',
       ),
     );
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      final applied = groupNativeSessions.put(groupNativeSessions.generation, (
+        agentId: normalizedAgent,
+        nativeSessionId: normalizedSession,
+      ), session);
+      if (!applied) {
+        return Future<bool>.value(false);
+      }
+      setSelectedConversationSessionId(normalizedAgent, projectedSessionId);
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+      return _conversationPersistProjection(session);
+    }
     // Merge into the existing catalog instead of replacing it with a single
     // turn projection. A replaceAll of `[session]` wiped every recovered
     // project directory for the agent and left only the client-owned fallback.

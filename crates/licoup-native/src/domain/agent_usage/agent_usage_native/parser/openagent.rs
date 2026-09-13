@@ -5,7 +5,7 @@ use crate::domain::agent_usage::agent_usage_native::models::{
 use crate::domain::agent_usage::attribution::message_usage;
 use crate::domain::agent_usage::contract::{HistoryUsageSummary, MessageUsage, UsageVariant};
 use crate::domain::agent_usage::variant::{
-    model_label, model_selection, model_with_provider_fallback,
+    model_label, model_selection, model_with_provider_fallback, prefer_recorded_model,
 };
 use crate::domain::agent_usage::window::UsageWindow;
 use crate::domain::conversation::usage::extract_token_usage;
@@ -268,25 +268,24 @@ fn collect_message_usage_metadata(
         metadata["usage"] = raw_usage;
         let parent_metadata = decode_metadata(parent_metadata.as_deref());
         let recorded_model = selected_model(&metadata);
-        let direct_model = selected_model(&metadata["usage"])
-            .map(|model| {
+        let direct_model = prefer_recorded_model(
+            selected_model(&metadata["usage"]).map(|model| {
                 recorded_model
                     .as_deref()
                     .map(|request| model_with_provider_fallback(&model, request))
                     .unwrap_or(model)
-            })
-            .or(recorded_model);
+            }),
+            recorded_model,
+        );
         let parent_model = selected_model(&parent_metadata);
         let variant = request_variant(&metadata, direct_model.as_deref())
             .with_fallback(&request_variant(&parent_metadata, parent_model.as_deref()));
-        let model = direct_model
-            .map(|model| {
-                parent_model
-                    .as_deref()
-                    .map(|request| model_with_provider_fallback(&model, request))
-                    .unwrap_or(model)
-            })
-            .or(parent_model);
+        let model = prefer_recorded_model(direct_model, parent_model.clone()).map(|model| {
+            parent_model
+                .as_deref()
+                .map(|request| model_with_provider_fallback(&model, request))
+                .unwrap_or(model)
+        });
         let envelope = json!({"model": model, "usage": normalized});
         let Some(mut usage) = message_usage(&envelope, model) else {
             continue;
@@ -449,6 +448,56 @@ mod tests {
             }
         }
         totals
+    }
+
+    #[test]
+    fn placeholder_models_use_exact_parent_or_same_usage_record_only() {
+        let connection = database();
+        message(
+            &connection,
+            "request",
+            "s",
+            TODAY,
+            json!({"modelID":"actual-parent","variant":"high"}),
+        );
+        message(
+            &connection,
+            "one",
+            "s",
+            TODAY + 1,
+            json!({"parentID":"request","modelID":"default","tokens":{"input":10,"output":2}}),
+        );
+        message(
+            &connection,
+            "two",
+            "s",
+            TODAY + 2,
+            json!({"modelID":"auto","tokens":{"model":"actual-response","input":6,"output":2}}),
+        );
+        message(
+            &connection,
+            "wrong-parent",
+            "different-session",
+            TODAY,
+            json!({"modelID":"unrelated-model"}),
+        );
+        message(
+            &connection,
+            "three",
+            "s",
+            TODAY + 3,
+            json!({"parentID":"wrong-parent","modelID":"unknown","tokens":{"input":3,"output":2}}),
+        );
+        let parsed = parse_openagent_connection(&connection, &calendar()).unwrap();
+        assert_eq!(parsed.summary.total_tokens(), 25);
+        let models = &parsed.summary.to_json()["dailyUsage"][0]["modelTokenUsage"];
+        assert_eq!(
+            models["actual-parent"]["variants"]["High"]["totalTokens"],
+            12
+        );
+        assert_eq!(models["actual-response"]["totalTokens"], 8);
+        assert_eq!(models["Others"]["totalTokens"], 5);
+        assert!(models.get("unrelated-model").is_none());
     }
 
     #[test]
