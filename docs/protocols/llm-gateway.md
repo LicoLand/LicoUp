@@ -16,10 +16,11 @@ pair; there is no global active provider. Messaging channels are documented in
   `previous_response_id` history.
 - Claude Code `/v1/messages` requests can route each model independently to an
   Anthropic Messages or OpenAI Chat Completions upstream.
-- Kimi, DeepSeek, and Kilo API keys are separate system-keyring items protected
-  by macOS owner authentication (Touch ID, Face ID where available, or the system
-  password fallback). Inventory responses contain no secret suffix or value.
-- Owner authorization (Touch ID or the system password fallback) unlocks
+- Kimi, DeepSeek, and Kilo API keys are separate system-keyring items. The
+  native host requires macOS owner authorization before exposing key material.
+  Inventory responses contain no secret suffix or value.
+- Owner authorization (Touch ID whenever usable, with a system password only
+  when biometry is unavailable) unlocks
   credentials in the long-lived `licoup-cli` process. A cold Gateway start
   hands the unlocked session to the sidecar over an inherited file descriptor;
   the sidecar never reads the Keychain itself. While a managed Gateway is
@@ -93,6 +94,37 @@ endpoints, redirects, unknown providers, unnamespaced dynamic models, and
 unknown fields fail closed.
 
 ## Credential custody
+
+An explicit authorize operation admits one exact operation or bounded batch,
+with at most one native authentication. All selected keys share its retained
+`LAContext`; an existing valid scoped grant needs no extra prompt. Cancellation,
+rejected biometry, and biometric lockout do not trigger password fallback. The
+sidecar receives the authorized handoff and does not authenticate again.
+
+Data Protection Keychain calls reuse that context with interaction disabled.
+Classic Keychain ACLs use a separate authorization mechanism: the adapter
+serializes a temporary prohibition of classic Keychain UI and restores the
+previous setting after each effect, including failed effects. A classic ACL
+or locked keychain that cannot be accessed silently returns
+`secure_mesh_keychain_classic_access_requires_user_action`. The batch does not publish a
+partial handoff or change the denied item's ACL. Authorization does not rewrite
+each credential. This error alone does not distinguish a locked keychain from
+an ACL or signing-identity mismatch. Existing classic items remain usable when
+their unchanged ACL allows silent access. A blocked read or migration is not a
+successful single-prompt unlock.
+The native authorize result exposes only this allowlisted reason with
+`authorized: false`; existing grants remain intact. The desktop explains that
+the user must resolve the keychain lock or access permissions in macOS before
+retrying, without claiming that migration is necessarily required.
+
+`SecAccessControl` does not convert classic ACLs. Data Protection access requires
+the custody process's own valid access-group entitlements and provisioning;
+signing a local executable alone does not provide it. Moving classic items to
+that store requires a separately reviewed migration or replacement flow when
+their current ACL denies silent access. No automatic ACL relaxation, plaintext
+file export, or per-key password retry is allowed. See Apple's
+[keychain implementations](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)
+and [provisioning requirements](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
 
 The desktop settings page accepts multiple Kimi, DeepSeek, and Kilo keys. The API-key
 field is obscured and sent to the native CLI over private stdin. After saving,

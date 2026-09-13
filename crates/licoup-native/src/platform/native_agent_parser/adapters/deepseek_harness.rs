@@ -49,9 +49,13 @@ pub(in crate::platform) fn initialize_request(
     cwd: &str,
     provider: &str,
     model: &str,
+    reasoning_effort: Option<&str>,
     max_tokens: Option<u64>,
 ) -> Value {
     let mut params = json!({"cwd":cwd,"provider":provider,"model":model});
+    if let Some(reasoning_effort) = reasoning_effort {
+        params["reasoningEffort"] = json!(reasoning_effort);
+    }
     if let Some(max_tokens) = max_tokens {
         params["maxTokens"] = json!(max_tokens);
     }
@@ -119,14 +123,6 @@ impl TurnParser {
         frame: ProtocolFrame,
     ) -> Result<Option<TurnResult>, TurnParseError> {
         if frame.value.get("id").and_then(Value::as_str) == Some(self.request_id.as_str()) {
-            if frame
-                .value
-                .pointer("/result/sessionId")
-                .and_then(Value::as_str)
-                != Some(self.session_id.as_str())
-            {
-                return Err(TurnParseError::SessionMismatch);
-            }
             let Some(message_id) = frame
                 .value
                 .pointer("/result/messageId")
@@ -291,12 +287,34 @@ mod tests {
     }
 
     #[test]
+    fn initialize_preserves_native_model_and_optional_reasoning_selection() {
+        let automatic = initialize_request(
+            "/synthetic",
+            "deepseek-official",
+            "native-model",
+            None,
+            None,
+        );
+        assert!(automatic["params"].get("reasoningEffort").is_none());
+        let selected = initialize_request(
+            "/synthetic",
+            "deepseek-official",
+            "native-model",
+            Some("max"),
+            Some(4096),
+        );
+        assert_eq!(selected["params"]["model"], "native-model");
+        assert_eq!(selected["params"]["reasoningEffort"], "max");
+        assert_eq!(selected["params"]["maxTokens"], 4096);
+    }
+
+    #[test]
     fn parser_attributes_only_the_receipted_turn_until_idle() {
         let mut parser = TurnParser::new("prompt-1", "session-1");
         assert!(
             parser
                 .ingest(frame(
-                    json!({"id":"prompt-1","result":{"sessionId":"session-1","messageId":"message-1"}})
+                    json!({"id":"prompt-1","result":{"messageId":"message-1"}})
                 ))
                 .unwrap()
                 .is_none()
@@ -314,16 +332,16 @@ mod tests {
     }
 
     #[test]
-    fn parser_rejects_matching_response_or_event_bound_to_another_session() {
+    fn parser_rejects_missing_receipt_or_event_bound_to_another_session() {
         let mut response_parser = TurnParser::new("prompt-1", "session-1");
         assert_eq!(
             response_parser
                 .ingest(frame(json!({
                     "id":"prompt-1",
-                    "result":{"sessionId":"other-session","messageId":"message-1"}
+                    "result":{}
                 })))
                 .unwrap_err(),
-            TurnParseError::SessionMismatch
+            TurnParseError::Incomplete
         );
 
         let mut event_parser = TurnParser::new("prompt-1", "session-1");

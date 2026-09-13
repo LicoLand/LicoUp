@@ -2,6 +2,13 @@ use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::{Result, ensure};
 use serde_json::Value;
 
+pub(super) fn handle_targets_catalog(_command: AdmittedCommand) -> Result<CliExecution> {
+    Ok(CliExecution::Json(serde_json::json!({
+        "ok": true,
+        "targetIds": crate::domain::agent_catalog::ids(),
+    })))
+}
+
 pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecution> {
     let mut params = admitted_params(
         &[
@@ -109,4 +116,24 @@ pub(super) fn handle_targets_inspect(command: AdmittedCommand) -> Result<CliExec
     Ok(CliExecution::Json(
         crate::domain::targets::inspect_target_with_params(&params)?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{CliExecution, execute_cli};
+
+    #[test]
+    fn catalog_includes_discovery_only_targets_and_registered_lanes() {
+        let CliExecution::Json(value) =
+            execute_cli(vec!["targets".into(), "catalog".into()]).unwrap()
+        else {
+            panic!("target catalog must return JSON");
+        };
+        assert_eq!(value["ok"], true);
+        let ids = value["targetIds"].as_array().unwrap();
+        for id in ["code", "workbuddy", "kimi-code", "command-code"] {
+            assert!(ids.iter().any(|value| value.as_str() == Some(id)));
+        }
+        assert_eq!(value.as_object().unwrap().len(), 2);
+    }
 }

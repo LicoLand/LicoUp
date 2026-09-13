@@ -6,8 +6,8 @@ use super::super::attribution::{
 };
 use super::super::contract::{HistoryUsageSummary, MessageUsage, text_field};
 use super::super::variant::{
-    UsageRequestContext, UsageVariant, model_label, model_with_provider_fallback,
-    same_model_selection,
+    UsageRequestContext, UsageVariant, compatible_recorded_models, model_label,
+    model_with_provider_fallback, prefer_recorded_model,
 };
 use super::super::window::UsageWindow;
 use super::models::{CumulativeSnapshot, CumulativeTotals, ParseResult};
@@ -141,10 +141,8 @@ fn parse_append_reader(
             );
             continue;
         }
-        if !matches!(
-            adapter,
-            HistoryAdapter::Kimi | HistoryAdapter::OpenClaw | HistoryAdapter::Hermes
-        ) && let Some(mut parsed) = estimated_usage_event(adapter, &event, calendar)
+        if !matches!(adapter, HistoryAdapter::OpenClaw | HistoryAdapter::Hermes)
+            && let Some(mut parsed) = estimated_usage_event(adapter, &event, calendar)
         {
             apply_request_context(&event, &mut parsed.usage, &request_context);
             record_append_usage(
@@ -201,10 +199,7 @@ pub(super) fn parse_snapshot_source(
     }
     let config = HistoryScanConfig::from_params(&json!({"archiveMode": true}));
     let sessions = parse_history_file(adapter, path, source_kind, metadata, config);
-    let summary = if matches!(
-        adapter,
-        HistoryAdapter::Kimi | HistoryAdapter::OpenClaw | HistoryAdapter::Hermes
-    ) {
+    let summary = if matches!(adapter, HistoryAdapter::OpenClaw | HistoryAdapter::Hermes) {
         summarize_sessions_exact_only(&sessions, calendar)
     } else {
         summarize_sessions(&sessions, calendar)
@@ -488,20 +483,16 @@ fn apply_request_context(event: &Value, usage: &mut MessageUsage, context: &Usag
         context
             .model
             .as_ref()
-            .is_none_or(|previous| same_model_selection(previous, model))
+            .is_none_or(|previous| compatible_recorded_models(previous, model))
     });
     if same_model {
-        usage.model = usage
-            .model
-            .take()
-            .map(|raw| {
-                context
-                    .model
-                    .as_deref()
-                    .map(|prior| model_with_provider_fallback(&raw, prior))
-                    .unwrap_or(raw)
-            })
-            .or_else(|| context.model.clone());
+        usage.model = prefer_recorded_model(usage.model.take(), context.model.clone()).map(|raw| {
+            context
+                .model
+                .as_deref()
+                .map(|prior| model_with_provider_fallback(&raw, prior))
+                .unwrap_or(raw)
+        });
         usage.variant = usage.variant.with_fallback(&context.variant);
     }
 }
@@ -657,35 +648,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(second.summary.total_tokens(), 100);
-        fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn kimi_desktop_append_parser_uses_only_native_counters() {
-        let path = temp_file("kimi-desktop-append");
-        fs::write(
-            &path,
-            [
-                r#"{"type":"user.message","timestamp":"2026-07-15T10:00:00Z","message":"history text is not usage"}"#,
-                r#"{"type":"assistant.message","timestamp":"2026-07-15T10:00:01Z","message":"response text is not usage"}"#,
-                r#"{"type":"StatusUpdate","time":"2026-07-15T10:00:02Z","model":"kimi-test","token_usage":{"input_other":80,"input_cache_read":20,"input_cache_creation":5,"output":15}}"#,
-            ]
-            .join("\n"),
-        )
-        .unwrap();
-
-        let parsed = parse_append_source(
-            HistoryAdapter::Kimi,
-            &path,
-            0,
-            &window(),
-            false,
-            Default::default(),
-        )
-        .unwrap();
-        assert_eq!(parsed.summary.total_tokens(), 120);
-        assert_eq!(parsed.summary.explicit_records, 1);
-        assert_eq!(parsed.summary.estimated_records, 0);
         fs::remove_file(path).unwrap();
     }
 
@@ -952,11 +914,11 @@ mod tests {
 
     #[test]
     fn catalog_file_adapters_preserve_actual_options_and_counter_conservation() {
-        use crate::domain::conversation::source_catalog::adapter_for_agent;
+        use crate::domain::conversation::source_catalog::usage_adapter_for_agent;
         let path = temp_file("all-file-adapters");
         fs::write(&path,json!({"type":"usage.record","timestamp":"2026-07-15T10:00:00Z","model":"synthetic-model","effort":"medium","fast":true,"usage":{"input_tokens":10,"output_tokens":2}}).to_string()+"\n").unwrap();
         for agent in crate::domain::agent_usage::contract::supported_agents() {
-            let Some(adapter) = adapter_for_agent(agent.id) else {
+            let Some(adapter) = usage_adapter_for_agent(agent.id) else {
                 continue;
             };
             if matches!(
@@ -992,6 +954,143 @@ mod tests {
             );
         }
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn file_adapters_resolve_placeholders_from_same_record_or_current_request_only() {
+        use crate::domain::conversation::source_catalog::usage_adapter_for_agent;
+        let path = temp_file("placeholder-file-adapters");
+        let records = [
+            json!({"type":"request.start","model":"default","effort":"high"}),
+            json!({"type":"usage.record","model":"default","message":{"model":"actual-a"},"timestamp":"2026-07-15T10:00:00Z","usage":{"input_tokens":10,"output_tokens":2}}),
+            json!({"type":"request.start","model":"actual-b","effort":"medium"}),
+            json!({"type":"usage.record","model":"unknown","timestamp":"2026-07-15T10:00:01Z","usage":{"input_tokens":7,"output_tokens":1}}),
+            json!({"type":"turn.completed"}),
+            json!({"type":"usage.record","model":"auto","timestamp":"2026-07-15T10:00:02Z","usage":{"input_tokens":4,"output_tokens":1}}),
+            json!({"type":"usage.record","model":"default","response":{"model":"actual-c"},"timestamp":"2026-07-15T10:00:03Z","usage":{"input_tokens":8,"output_tokens":2}}),
+            json!({"type":"request.start","model":{"id":"default","providerID":"provider-a"},"effort":"max"}),
+            json!({"type":"usage.record","model":{"id":"actual-d","providerID":"provider-b"},"timestamp":"2026-07-15T10:00:04Z","usage":{"input_tokens":2,"output_tokens":1}}),
+        ];
+        fs::write(
+            &path,
+            records
+                .iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        for agent in crate::domain::agent_usage::contract::supported_agents() {
+            let Some(adapter) = usage_adapter_for_agent(agent.id) else {
+                continue;
+            };
+            if matches!(
+                adapter,
+                HistoryAdapter::Codex
+                    | HistoryAdapter::Cursor
+                    | HistoryAdapter::DeepSeekHarness
+                    | HistoryAdapter::OpenClaw
+                    | HistoryAdapter::Hermes
+            ) {
+                continue;
+            }
+            let parsed =
+                parse_append_source(adapter, &path, 0, &window(), false, Default::default())
+                    .unwrap();
+            let day = &parsed.summary.daily_usage["2026-07-15"];
+            assert_eq!(day.total_tokens, 38, "{}", agent.id);
+            assert_eq!(day.model_usage["actual-a"].total_tokens, 12, "{}", agent.id);
+            assert_eq!(day.model_usage["actual-b"].total_tokens, 8, "{}", agent.id);
+            assert_eq!(day.model_usage["actual-c"].total_tokens, 10, "{}", agent.id);
+            assert_eq!(day.model_usage["auto"].total_tokens, 5, "{}", agent.id);
+            assert_eq!(
+                day.model_variants[&(
+                    "actual-a".into(),
+                    UsageVariant {
+                        effort: Some("high".into()),
+                        fast: None
+                    }
+                )]
+                    .total_tokens,
+                12
+            );
+            assert_eq!(
+                day.model_variants[&(
+                    "actual-b".into(),
+                    UsageVariant {
+                        effort: Some("medium".into()),
+                        fast: None
+                    }
+                )]
+                    .total_tokens,
+                8
+            );
+            let (_, recorded) = day
+                .model_variants
+                .iter()
+                .find(|((raw, variant), _)| {
+                    let selected = super::super::super::variant::model_selection(raw);
+                    selected.id == "actual-d"
+                        && selected.provider_id.as_deref() == Some("provider-b")
+                        && variant == &UsageVariant::default()
+                })
+                .expect("different explicit provider does not inherit request effort");
+            assert_eq!(recorded.total_tokens, 3);
+        }
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn snapshot_adapters_preserve_actual_model_inside_the_same_native_record() {
+        let cases = [
+            (
+                HistoryAdapter::ClaudeCode,
+                json!({"type":"assistant","model":"default","timestamp":"2026-07-15T10:00:00Z","message":{"role":"assistant","content":"synthetic reply","model":"actual-model","usage":{"input_tokens":10,"output_tokens":2}}}),
+            ),
+            (
+                HistoryAdapter::Pi,
+                json!({"type":"message","model":"default","timestamp":"2026-07-15T10:00:00Z","message":{"role":"assistant","content":"synthetic reply","model":"actual-model","usage":{"input_tokens":10,"output_tokens":2}}}),
+            ),
+            (
+                HistoryAdapter::Copilot,
+                json!({"type":"assistant.message","timestamp":"2026-07-15T10:00:00Z","data":{"content":"synthetic reply","model":"default","usage":{"model":"actual-model","input_tokens":10,"output_tokens":2}}}),
+            ),
+            (
+                HistoryAdapter::KimiCode,
+                json!({"type":"usage.record","usageScope":"turn","model":"default","timestamp":"2026-07-15T10:00:00Z","usage":{"model":"actual-model","input_tokens":10,"output_tokens":2}}),
+            ),
+            (
+                HistoryAdapter::LicoAgent,
+                json!({"type":"usage.record","model":"default","timestamp":"2026-07-15T10:00:00Z","usage":{"model":"actual-model","input_tokens":10,"output_tokens":2}}),
+            ),
+        ];
+        for (adapter, record) in cases {
+            let directory = temp_file("placeholder-native-snapshot");
+            let path = if adapter == HistoryAdapter::KimiCode {
+                directory.join("agents").join("worker").join("wire.jsonl")
+            } else {
+                directory.join("transcript.jsonl")
+            };
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, record.to_string() + "\n").unwrap();
+            let parsed = parse_snapshot_source(
+                adapter,
+                &path,
+                "fixture",
+                &fs::metadata(&path).unwrap(),
+                &window(),
+            )
+            .unwrap();
+            assert_eq!(parsed.summary.total_tokens(), 12, "{}", adapter.id());
+            assert_eq!(
+                parsed.summary.daily_usage["2026-07-15"].model_usage["actual-model"].total_tokens,
+                12,
+                "{}",
+                adapter.id()
+            );
+            fs::remove_dir_all(directory).unwrap();
+        }
     }
     #[test]
     fn observed_estimated_variant_survives_an_explicit_model_change() {

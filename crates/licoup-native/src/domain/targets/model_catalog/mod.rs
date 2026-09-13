@@ -16,6 +16,7 @@ mod builtin;
 mod claude;
 mod config;
 mod cursor;
+mod deepseek;
 mod history;
 mod kilo;
 mod kimi;
@@ -232,6 +233,13 @@ pub(super) fn model_catalog_for_target(
         if collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics) {
             sources.insert("pi-cli:list-models".to_string());
         }
+    }
+
+    if target == "deepseek-harness"
+        && model_catalog_fixture_for_target(target, params).is_none()
+        && deepseek::collect_installed_model_catalog(params, &mut entries, &mut diagnostics)
+    {
+        sources.insert(deepseek::SOURCE.to_owned());
     }
 
     if !authoritative_native_catalog

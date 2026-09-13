@@ -284,10 +284,6 @@
     "code": {
       "models": [],
       "notes": "VS Code Copilot model line is account- and update-dependent; scanned data passes through."
-    },
-    "kimi": {
-      "models": [],
-      "notes": "Kimi desktop app exposes no documented effort levels; scanned data passes through."
     }
   }
 }

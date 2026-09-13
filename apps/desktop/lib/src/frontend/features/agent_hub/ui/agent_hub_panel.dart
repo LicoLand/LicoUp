@@ -20,8 +20,10 @@ import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_intent.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
@@ -79,6 +81,8 @@ List<AgentHubEntryProjection> shuffleAgentHubRecipes(
 typedef AgentHubExternalOpener = Future<void> Function(Uri uri);
 typedef AgentHubOpenAgent = ValueChanged<String>;
 
+enum _AgentHubDetailDestination { overview, plugins, skills }
+
 /// Pure semantic Agent Hub renderer. All catalog state and lifecycle work enter
 /// through [AgentHubBinding]; this widget owns only transient presentation state.
 final class AgentHubPanel extends StatefulWidget {
@@ -108,7 +112,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   final Set<String> _orderedIds = {};
   String _busyEntryId = '';
   String? _detailEntryId;
-  int _detailTab = 0;
+  _AgentHubDetailDestination _detailTab = _AgentHubDetailDestination.overview;
   final Map<String, List<String>> _events = {};
   final Set<String> _visitFailed = {};
 
@@ -116,6 +120,12 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   /// dialog's in-place progress state until the operation effect arrives.
   final Map<String, ValueNotifier<AgentHubInstallStatus>> _installStatuses = {};
   int _refreshRevision = -1;
+
+  List<_AgentHubDetailDestination> get _detailDestinations => [
+    _AgentHubDetailDestination.overview,
+    if (widget.plugins != null) _AgentHubDetailDestination.plugins,
+    if (widget.skills != null) _AgentHubDetailDestination.skills,
+  ];
 
   AgentHubEntryProjection? get _detailEntry {
     final id = _detailEntryId;
@@ -213,7 +223,7 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   void _openDetail(String entryId) {
     setState(() {
       _detailEntryId = entryId;
-      _detailTab = 0;
+      _detailTab = _AgentHubDetailDestination.overview;
     });
     // Start both resources without making either one wait for its sibling.
     widget.plugins?.intents.send(const RefreshPlugins());
@@ -297,6 +307,17 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     final entries = _orderedProjection(projection);
     final strings = LicoStrings.of(context);
     final detail = _detailEntry;
+    final destinations = _detailDestinations;
+    final selectedIndex = math.max(0, destinations.indexOf(_detailTab));
+    final labels = [
+      for (final destination in destinations)
+        switch (destination) {
+          _AgentHubDetailDestination.overview =>
+            strings.isChinese ? '概览' : 'Overview',
+          _AgentHubDetailDestination.plugins => strings.pluginsNav,
+          _AgentHubDetailDestination.skills => strings.skillsNav,
+        },
+    ];
     Widget body;
     if (projection.phase == PresentationPhase.loading && entries.isEmpty) {
       body = const Center(
@@ -340,41 +361,22 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         onUninstall: () => _uninstall(detail),
         onVisit: () => _visit(detail),
       );
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body = AgentHubDetailTabView(
+        selectedIndex: selectedIndex,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: AgentHubDetailTabs(
-              labels: [
-                strings.isChinese ? '概览' : 'Overview',
-                if (widget.plugins != null) strings.pluginsNav,
-                if (widget.skills != null) strings.skillsNav,
-              ],
-              selectedIndex: _detailTab,
-              onSelected: (index) => setState(() => _detailTab = index),
+          SingleChildScrollView(child: overview),
+          if (widget.plugins != null)
+            AdapterPluginPanel(
+              binding: widget.plugins!,
+              agentId: detail.id,
+              embedded: true,
             ),
-          ),
-          Expanded(
-            child: AgentHubDetailTabView(
-              selectedIndex: _detailTab,
-              children: [
-                SingleChildScrollView(child: overview),
-                if (widget.plugins != null)
-                  AdapterPluginPanel(
-                    binding: widget.plugins!,
-                    agentId: detail.id,
-                    embedded: true,
-                  ),
-                if (widget.skills != null)
-                  SkillHubPanel(
-                    binding: widget.skills!,
-                    agentId: detail.id,
-                    embedded: true,
-                  ),
-              ],
+          if (widget.skills != null)
+            SkillHubPanel(
+              binding: widget.skills!,
+              agentId: detail.id,
+              embedded: true,
             ),
-          ),
         ],
       );
     } else {
@@ -419,26 +421,110 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         ],
       );
     }
-    return LicoPaneScaffold(
-      key: const Key('agent-hub-panel'),
-      titleBarKey: const Key('agent-hub-top-bar'),
-      title: strings.agentHub,
-      refreshTooltip: strings.agentHubRefresh,
-      onRefresh: () => widget.binding.intents.send(const RefreshAgentHub()),
-      refreshing:
-          projection.phase == PresentationPhase.loading ||
-          entries.any((entry) => entry.busy),
-      refreshButtonKey: const Key('agent-hub-refresh'),
-      refreshingIconKey: const Key('agent-hub-catalog-refresh'),
-      leading: detail == null
-          ? null
-          : LicoIconButton(
-              key: const Key('agent-hub-back'),
-              tooltip: strings.agentHubBack,
-              onPressed: () => setState(() => _detailEntryId = null),
-              icon: const Icon(Icons.arrow_back),
-            ),
-      body: body,
+    Widget scaffold({
+      required bool refreshing,
+      required VoidCallback refresh,
+      required String refreshTooltip,
+    }) => LayoutBuilder(
+      builder: (context, constraints) {
+        final available = math.max(
+          0.0,
+          constraints.maxWidth - LicoContentSpacing.paneTitlePadding.horizontal,
+        );
+        final refreshExtent = LicoIconButtonSize.medium.extent;
+        const actionGaps = LicoContentSpacing.compact * 2;
+        final tabsWidth = detail == null
+            ? 0.0
+            : math.min(
+                AgentHubDetailTabs.preferredWidth(context, labels),
+                math.max(0.0, available - refreshExtent - actionGaps),
+              );
+        final titleExtent = MediaQuery.textScalerOf(context).scale(96);
+        final separateActions =
+            detail != null &&
+            available <
+                tabsWidth + refreshExtent * 2 + actionGaps * 2 + titleExtent;
+        return LicoPaneScaffold(
+          key: const Key('agent-hub-panel'),
+          titleBarKey: const Key('agent-hub-top-bar'),
+          title: strings.agentHub,
+          refreshTooltip: refreshTooltip,
+          onRefresh: refreshing ? null : refresh,
+          refreshing: refreshing,
+          refreshButtonKey: const Key('agent-hub-refresh'),
+          refreshingIconKey: const Key('agent-hub-catalog-refresh'),
+          leading: detail == null
+              ? null
+              : LicoIconButton(
+                  key: const Key('agent-hub-back'),
+                  tooltip: strings.agentHubBack,
+                  onPressed: () => setState(() => _detailEntryId = null),
+                  icon: const Icon(Icons.arrow_back),
+                ),
+          trailing: detail == null
+              ? null
+              : SizedBox(
+                  width: tabsWidth,
+                  child: AgentHubDetailTabs(
+                    labels: labels,
+                    selectedIndex: selectedIndex,
+                    onSelected: (index) =>
+                        setState(() => _detailTab = destinations[index]),
+                  ),
+                ),
+          actionsOnSeparateLine: separateActions,
+          body: body,
+        );
+      },
+    );
+    final active = detail == null
+        ? _AgentHubDetailDestination.overview
+        : destinations[selectedIndex];
+    Widget render(bool pluginsBusy, bool skillsBusy) => switch (active) {
+      _AgentHubDetailDestination.plugins => scaffold(
+        refreshing: pluginsBusy,
+        refresh: () => widget.plugins!.intents.send(const RefreshPlugins()),
+        refreshTooltip: strings.refresh,
+      ),
+      _AgentHubDetailDestination.skills => scaffold(
+        refreshing: skillsBusy,
+        refresh: () => widget.skills!.intents.send(const RefreshSkillHub()),
+        refreshTooltip: strings.refreshSkills,
+      ),
+      _AgentHubDetailDestination.overview => scaffold(
+        refreshing:
+            projection.phase == PresentationPhase.loading ||
+            entries.any((entry) => entry.busy),
+        refresh: () => widget.binding.intents.send(const RefreshAgentHub()),
+        refreshTooltip: strings.agentHubRefresh,
+      ),
+    };
+    // Keep the same wrapper slots across selection so the embedded page state
+    // survives. Only the active resource's phase participates in header updates.
+    Widget observeSkills(bool pluginsBusy) {
+      final binding = widget.skills;
+      if (binding == null) {
+        return render(pluginsBusy, false);
+      }
+      return ProjectionBuilder<SkillHubProjection, bool>(
+        source: binding.projection,
+        select: (projection) =>
+            active == _AgentHubDetailDestination.skills &&
+            projection.phase == PresentationPhase.loading,
+        builder: (context, skillsBusy) => render(pluginsBusy, skillsBusy),
+      );
+    }
+
+    final plugins = widget.plugins;
+    if (plugins == null) {
+      return observeSkills(false);
+    }
+    return ProjectionBuilder<PluginManagementProjection, bool>(
+      source: plugins.projection,
+      select: (projection) =>
+          active == _AgentHubDetailDestination.plugins &&
+          projection.phase == PresentationPhase.loading,
+      builder: (context, pluginsBusy) => observeSkills(pluginsBusy),
     );
   }
 }

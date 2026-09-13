@@ -101,6 +101,9 @@ pub(super) enum PlannedSourceAction {
         append_guard: String,
     },
     Reuse,
+    RefreshIdentity {
+        parsed: Option<Box<ParseResult>>,
+    },
     ReuseSeal {
         session_count: u64,
     },
@@ -118,6 +121,8 @@ pub(super) enum PlannedSourceAction {
 pub(super) struct ScanStats {
     pub(super) discovered_sources: u64,
     pub(super) reused_sources: u64,
+    pub(super) identity_refreshed_sources: u64,
+    pub(super) identity_skipped_sources: u64,
     pub(super) appended_sources: u64,
     pub(super) replaced_sources: u64,
     pub(super) sealed_sources: u64,
@@ -139,6 +144,8 @@ impl ScanStats {
             "fresh": self.cache_fresh,
             "discoveredSources": self.discovered_sources,
             "reusedSources": self.reused_sources,
+            "identityRefreshedSources": self.identity_refreshed_sources,
+            "identitySkippedSources": self.identity_skipped_sources,
             "appendedSources": self.appended_sources,
             "replacedSources": self.replaced_sources,
             "sealedSources": self.sealed_sources,

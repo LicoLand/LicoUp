@@ -76,6 +76,12 @@ mixin FakeAgentStateSupport on AgentService {
   List<List<String>> cliCalls = const [];
 
   @override
+  Future<Set<String>> targetCatalogIds() async => {
+    ...AgentService.packagedScanTargetIds,
+    ...scanTargetsResult.map((target) => target.target),
+  };
+
+  @override
   Future<List<TargetCandidate>> scanTargets() async {
     scanTargetsCalls++;
     if (throwScanTargets) {
@@ -163,6 +169,9 @@ mixin FakeAgentStateSupport on AgentService {
     listPairingsCalls++;
     if (throwListPairings) {
       throw Exception('listPairings failed');
+    }
+    if (agent.isNotEmpty && pairedAgent.isNotEmpty && agent != pairedAgent) {
+      return const [];
     }
     if (agent.isNotEmpty && pairedAgent.isEmpty) {
       return pairings.map((pairing) {

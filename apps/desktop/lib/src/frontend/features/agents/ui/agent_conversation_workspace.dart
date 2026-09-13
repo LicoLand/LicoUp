@@ -634,31 +634,16 @@ class _AgentConversationWorkspaceState
     final selectedId = _selectedSession(native)?.id ?? '';
     var showConversationList = false;
     var conversationListTargets = const <TargetCandidate>[];
-    Set<String>? conversationListRelatedAgentIds;
     var conversationListPriorityAgentId = '';
     var showConversationAgentIcons = false;
     if (_conversationListGroupId.isNotEmpty) {
       showConversationList = true;
       final selectedGroup = canonical.conversation;
-      if (selectedGroup?.id == _conversationListGroupId) {
-        final memberProductIds = {
-          for (final membership in selectedGroup!.memberships)
-            if (membership.principal.agentId.trim().isNotEmpty)
-              agentConversationProductId(membership.principal.agentId.trim()),
-        };
+      if (selectedGroup != null &&
+          selectedGroup.id == _conversationListGroupId) {
         conversationListTargets = agents.targetDetails
             .where((target) => target.isConversationAgent)
             .toList(growable: false);
-        conversationListRelatedAgentIds = <String>{};
-        for (final target in conversationListTargets) {
-          if (memberProductIds.contains(
-            agentConversationProductId(target.target),
-          )) {
-            conversationListRelatedAgentIds
-              ..add(target.id)
-              ..add(target.target);
-          }
-        }
         conversationListPriorityAgentId =
             selectedGroup.assistantMembership?.principal.agentId.trim() ?? '';
       }
@@ -684,12 +669,17 @@ class _AgentConversationWorkspaceState
             .toList(growable: false);
       }
     }
-    final sessionsByAgent = <String, List<AgentConversationSession>>{
-      for (final catalog in native.agentCatalogs)
-        catalog.agentId: catalog.sessions,
-      if (native.agentCatalogs.isEmpty && agents.selectedAgentId.isNotEmpty)
-        agents.selectedAgentId: native.nativeSessions,
-    };
+    final sessionsByAgent = _conversationListGroupId.isNotEmpty
+        ? (native.groupConversationId == _conversationListGroupId
+              ? native.groupSessionsByAgent
+              : const <String, List<AgentConversationSession>>{})
+        : <String, List<AgentConversationSession>>{
+            for (final catalog in native.agentCatalogs)
+              catalog.agentId: catalog.sessions,
+            if (native.agentCatalogs.isEmpty &&
+                agents.selectedAgentId.isNotEmpty)
+              agents.selectedAgentId: native.nativeSessions,
+          };
     AgentConversationTabActivity activityFor(String agentId) =>
         _activityFor(tabActivity, agentId);
     bool runningFor(AgentConversationSession session) =>
@@ -788,14 +778,15 @@ class _AgentConversationWorkspaceState
         onOpenWelcome: _showWelcomePage,
         showConversationList: showConversationList,
         conversationListTargets: conversationListTargets,
-        conversationListRelatedAgentIds: conversationListRelatedAgentIds,
         selectedSessionId: selectedId,
         showConversationAgentIcons: showConversationAgentIcons,
         onSelectSession: onSelectSession,
         onBack: _returnToPreviousConversationList,
-        onPrefetchSessions: (agentId) => widget.conversation.intents.send(
-          RefreshConversationCatalog(agentId: agentId),
-        ),
+        onPrefetchSessions: _conversationListGroupId.isNotEmpty
+            ? null
+            : (agentId) => widget.conversation.intents.send(
+                RefreshConversationCatalog(agentId: agentId),
+              ),
         isPinned: (targetId) {
           for (final target in agents.targets) {
             if (target.id == targetId) return target.pinned;
@@ -820,9 +811,11 @@ class _AgentConversationWorkspaceState
       onSelectSession: onSelectSession,
       onNewConversation: () =>
           widget.conversation.intents.send(const StartConversationSession()),
-      onPrefetchSessions: (agentId) => widget.conversation.intents.send(
-        RefreshConversationCatalog(agentId: agentId),
-      ),
+      onPrefetchSessions: _conversationListGroupId.isNotEmpty
+          ? null
+          : (agentId) => widget.conversation.intents.send(
+              RefreshConversationCatalog(agentId: agentId),
+            ),
       onArchive: () => unawaited(
         showConversationArchiveDialog(
           context,

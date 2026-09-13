@@ -114,6 +114,27 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
                 && (!force_refresh || append_guard_matches(&path, cached))
             {
                 stats.reused_files += 1;
+                if force_refresh
+                    && super::identity_refresh::needed(
+                        &transaction,
+                        &root_key,
+                        &source_key,
+                        &window.end,
+                    )?
+                {
+                    if super::identity_refresh::apply(
+                        &transaction,
+                        &root_key,
+                        &source_key,
+                        &path,
+                        cached,
+                        &parse_window,
+                    )? {
+                        stats.identity_refreshed_files += 1;
+                    } else {
+                        stats.identity_skipped_files += 1;
+                    }
+                }
                 continue;
             }
 

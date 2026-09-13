@@ -16,7 +16,6 @@ String? agentProductDisplayName(String value) =>
       'deepseek-harness' || 'dsh' => 'DeepSeek Harness',
       'hermes' || 'hermes-agent' => 'Hermes Agent',
       'kilo' || 'kilo-code' => 'Kilo Code',
-      'kimi' => 'Kimi',
       'kimi-code' => 'Kimi Code',
       'grok' || 'xai-grok' => 'Grok',
       'command-code' || 'cmdc' => 'Command Code',

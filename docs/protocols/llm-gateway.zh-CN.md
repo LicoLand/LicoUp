@@ -14,9 +14,10 @@ LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于
   包括工具调用、流事件以及有界 `previous_response_id` 历史。
 - Claude Code 的 `/v1/messages` 可以按模型分别路由到 Anthropic Messages 或
   OpenAI Chat Completions 上游。
-- Kimi、DeepSeek 与 Kilo API Key 分别存为独立的系统密钥库项目，并由 macOS 机主验证
-  （Touch ID、可用时的 Face ID，或系统密码回退）保护；清单不返回密钥尾号或内容。
-- 机主授权（Touch ID 或系统密码回退）在长驻的 `licoup-cli` 进程中解锁密钥。
+- Kimi、DeepSeek 与 Kilo API Key 分别存为独立的系统密钥库项目。原生宿主在释放
+  密钥内容前要求 macOS 机主授权；清单不返回密钥尾号或内容。
+- 机主授权（Touch ID 可用时必须使用，仅生物识别不可用时允许系统密码）在长驻的
+  `licoup-cli` 进程中解锁密钥。
   冷启动 Gateway 时，通过继承的文件描述符把已解锁会话交给 sidecar；sidecar
   自身从不读取 Keychain。若托管 Gateway 已在运行，授权与撤销会通过 Gateway
   状态目录下的私有 Unix 控制套接字（权限 0600、同 uid）热加载更新后的租约，
@@ -77,6 +78,28 @@ OpenCode/Pi 一键脚本拒绝应用空快照。
 模型和未知字段都会关闭失败。
 
 ## 密钥托管
+
+一次显式授权只准入一个精确操作或有界批次，最多进行一次原生认证。所有选中
+密钥共用保留的 `LAContext`；已有有效的精确授权不额外弹窗。取消、生物识别失败
+或锁定不会触发密码回退。Sidecar 接收已授权交接，不再次认证。
+
+Data Protection Keychain 调用复用该上下文并禁止交互。Classic Keychain ACL
+使用独立的授权机制：适配器串行地临时禁止旧钥匙串 UI，每次效果结束后恢复
+原设置，失败时也恢复。旧 ACL 或锁定的钥匙串阻止静默读取时返回
+`secure_mesh_keychain_classic_access_requires_user_action`；批次不会发布部分交接，也不会
+修改被拒绝项目的 ACL。授权不会逐项重写凭据。该错误本身不能区分钥匙串锁定、
+ACL 不匹配或签名身份变化。原 ACL 允许静默访问的旧项目仍可使用；读取或迁移
+受阻不等于单提示解锁成功。
+原生授权结果只通过 `authorized: false` 和白名单原因码投影这类失败，既有授权
+保持不变。桌面端提示用户先在 macOS 中处理钥匙串锁定或访问权限问题，再重试，
+不会断言一定需要迁移。
+
+`SecAccessControl` 不能转换旧 ACL。Data Protection 访问要求实际保管进程具有
+有效的访问组 entitlement 和 provisioning；仅对本地可执行文件签名并不满足要求。
+旧 ACL 拒绝静默访问时，迁入该存储需要另行审阅的迁移或替换流程。禁止自动放宽
+ACL、导出明文文件或逐项重试密码。参见 Apple 的
+[钥匙串实现说明](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)
+与 [provisioning 要求](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)。
 
 桌面设置页可保存多个 Kimi、DeepSeek 与 Kilo 密钥。输入框默认模糊，内容通过私有 stdin
 传给原生 CLI。保存后没有查看、复制和修改操作，只能删除；删除会移除对应 Keychain

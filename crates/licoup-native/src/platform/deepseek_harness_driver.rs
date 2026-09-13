@@ -127,8 +127,8 @@ struct TransportConfig {
     cwd: PathBuf,
     provider: String,
     model: String,
+    reasoning_effort: Option<String>,
     max_tokens: Option<u64>,
-    cordis_config: Option<PathBuf>,
     output_limit: Option<usize>,
     stderr_limit: usize,
 }
@@ -210,23 +210,6 @@ pub(super) fn execute(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("deepseek-official");
-    let cordis_config = params
-        .get("cordisConfigPath")
-        .and_then(Value::as_str)
-        .map(PathBuf::from);
-    if cordis_config
-        .as_ref()
-        .is_some_and(|path| !path.is_absolute())
-    {
-        return RunResult::failed(
-            failure(
-                "deepseek_harness_absolute_config_required",
-                "DeepSeek Harness requires an absolute Cordis configuration path.",
-                "params/cordisConfigPath",
-            ),
-            started_at,
-        );
-    }
     let session_id = if session_id.trim().is_empty() {
         uuid::Uuid::new_v4().to_string()
     } else {
@@ -237,11 +220,17 @@ pub(super) fn execute(
         cwd: cwd.to_path_buf(),
         provider: provider.to_string(),
         model: model.to_string(),
+        reasoning_effort: params
+            .get("reasoningEffort")
+            .or_else(|| params.get("effort"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned),
         max_tokens: params
             .get("maxTokens")
             .and_then(Value::as_u64)
             .filter(|value| *value > 0),
-        cordis_config,
         output_limit: max_stdout,
         stderr_limit: max_stderr,
     };
@@ -289,6 +278,7 @@ pub(super) fn execute(
         effective: EffectiveSettings {
             cwd: Some(config.cwd.to_string_lossy().into_owned()),
             model: Some(config.model),
+            reasoning_effort: config.reasoning_effort,
             ..EffectiveSettings::default()
         },
         status_code: None,
@@ -364,14 +354,11 @@ fn spawn_transport(
     let mut command = Command::new(&config.executable);
     super::user_shell_environment::apply_to_command(&mut command);
     command
+        .args(["--profile", "sdk"])
         .current_dir(&config.cwd)
-        .env("DSH_CWD", &config.cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(path) = config.cordis_config.as_ref() {
-        command.env("DSH_CORDIS_CONFIG", path);
-    }
     let mut child = SupervisedChild::spawn(&mut command).map_err(|_| {
         failure(
             "deepseek_harness_jsonrpc_carrier_unavailable",
@@ -436,6 +423,7 @@ fn spawn_transport(
         &config.cwd.to_string_lossy(),
         &config.provider,
         &config.model,
+        config.reasoning_effort.as_deref(),
         config.max_tokens,
     );
     if write_frame(&mut stdin, &initialize).is_err() {
@@ -739,10 +727,11 @@ mod tests {
         let log = root.join("protocol.log");
         let source = format!(
             r#"#!/bin/sh
+[ "$#" -eq 2 ] && [ "$1" = '--profile' ] && [ "$2" = 'sdk' ] || exit 9
 while IFS= read -r line; do
  case "$line" in
   *'"method":"initialize"'*) printf 'initialize %s\n' "$$" >> '{}'; printf '%s\n' '{{"jsonrpc":"2.0","id":"initialize","result":{{"serverInfo":{{"name":"deepseek-harness-sdk-runtime"}}}}}}' ;;
-  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"sessionId":"%s","messageId":"%s"}}}}\n' "$request_id" "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
+  *'"method":"session/prompt"'*) count=$(grep -c '^prompt ' '{}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); printf 'prompt %s %s\n' "$$" "$count" >> '{}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"messageId":"%s"}}}}\n' "$request_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"process-%s-turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$$" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id" ;;
   *'"method":"shutdown"'*) printf 'shutdown %s\n' "$$" >> '{}'; exit 0 ;;
  esac
 done
@@ -756,7 +745,7 @@ done
         let mut permissions = fs::metadata(&executable).unwrap().permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).unwrap();
-        let params = json!({"model":"deepseek-test"});
+        let params = json!({"model":"deepseek-test","reasoningEffort":"high"});
         let captures = Arc::new(Mutex::new([Vec::new(), Vec::new()]));
         let observer_for = |index: usize| {
             let captures = Arc::clone(&captures);
@@ -795,6 +784,8 @@ done
         };
         assert!(first.ok, "first turn failed: {:?}", first.error);
         assert!(second.ok, "second turn failed: {:?}", second.error);
+        assert_eq!(first.effective.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(second.effective.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(
             first.output.split("-turn-").next(),
             second.output.split("-turn-").next()
@@ -806,13 +797,14 @@ done
             let first_raw = captures[0].concat();
             let second_raw = captures[1].concat();
             assert!(first_raw.contains("\"method\":\"initialize\""));
+            assert!(first_raw.contains("\"reasoningEffort\":\"high\""));
             assert!(!second_raw.contains("\"method\":\"initialize\""));
             assert!(second_raw.contains("message-2"));
             assert!(!first_raw.contains("message-2"));
         }
         let drifted = execute(
             executable.to_str().unwrap(),
-            &json!({"model":"different-model"}),
+            &json!({"model":"deepseek-test","reasoningEffort":"max"}),
             "must not run",
             "persistent-session",
             Some(&root),

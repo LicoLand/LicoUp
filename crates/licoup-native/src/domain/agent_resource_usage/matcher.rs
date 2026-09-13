@@ -81,7 +81,7 @@ fn target_process_names(target: &str) -> &'static [&'static str] {
         "claude-code" => &["claude", "claude.exe"],
         "codex" => &["codex", "codex.exe"],
         "cursor" => &["Cursor", "Cursor.exe"],
-        "kimi" | "kimi-code" => &["kimi", "kimi.exe"],
+        "kimi-code" => &["kimi", "kimi.exe"],
         "grok" => &["grok", "grok.exe", "xai-grok-pager", "xai-grok-pager.exe"],
         "command-code" => &["command-code", "command-code.exe", "cmdc", "cmdc.exe"],
         "kilo-code" => &["kilo", "kilo-code", "kilo-code.exe"],
@@ -131,15 +131,19 @@ mod tests {
     #[test]
     fn first_target_claim_wins_for_shared_process_names() {
         let targets = vec![
-            ("kimi".to_string(), "Kimi".to_string(), None),
-            ("kimi-code".to_string(), "Kimi Code".to_string(), None),
+            ("codex".to_string(), "Codex".to_string(), None),
+            (
+                "custom".to_string(),
+                "Custom".to_string(),
+                Some("codex".to_string()),
+            ),
         ];
-        let snapshots = vec![snapshot(1, "kimi", 10)];
+        let snapshots = vec![snapshot(1, "codex", 10)];
         let agents = match_processes_to_targets(&targets, &snapshots);
-        let kimi = agents.iter().find(|a| a.target == "kimi").unwrap();
-        let kimi_code = agents.iter().find(|a| a.target == "kimi-code").unwrap();
-        assert_eq!(kimi.processes.len(), 1);
-        assert!(kimi_code.processes.is_empty());
+        let codex = agents.iter().find(|a| a.target == "codex").unwrap();
+        let custom = agents.iter().find(|a| a.target == "custom").unwrap();
+        assert_eq!(codex.processes.len(), 1);
+        assert!(custom.processes.is_empty());
     }
 
     #[test]

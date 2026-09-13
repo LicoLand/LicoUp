@@ -632,6 +632,31 @@ sequenceDiagram
 
 ## 12. Trusted History and Recovery Boundary
 
+The group sidebar binds directly to the group's own associated-session subset.
+`conversation_native_sessions` is the membership authority and retains
+each confirmed `(conversationId, membershipId, nativeSessionId)` once; replacing
+the current runtime binding, changing a model, or a Membership leaving does not
+erase earlier associations. The same Agent and native session can belong to
+multiple groups only when each group has its own recorded binding. Schema 15
+backfills current bindings, explicit dispatch provenance, and the exact recorded
+owner of old runtime source links. Missing evidence never creates a relationship.
+
+Desktop `conversation.get` opts into `includeNativeSessionReferences: true` to
+receive local `membershipId`, `agentId`, and `nativeSessionId` lookup facts. The
+ordinary get, portable Conversation, export, and MCP/protocol contracts remain
+unchanged; runtime paths and dispatch handles are not included. Application
+state maps these references directly into a dedicated group session collection.
+The list consumes that collection's projection. Missing metadata is fetched by
+exact native identity with at most four reads in flight; each completed read
+updates the projection immediately. Selection, refresh and message paging use
+the same group collection and exact readers. Group state neither enumerates nor
+filters the Agents' browse catalogs, and never writes its subset back into them.
+Unrelated browse changes do not rebuild or replace the group collection. Group
+switches and binding changes invalidate stale responses. No recorded relationship
+means an empty group collection; product names, projects, models and timestamps
+cannot create membership. Unreadable native rows are not replaced with invented
+conversations. Existing message paging and execution remain shared mechanisms.
+
 The canonical `conversation.events.page` action returns ascending events with a
 default page size of 20 (maximum 100). `latest: true` reads the newest retained
 events; `beforeSequence` reads the preceding page with an exclusive sequence

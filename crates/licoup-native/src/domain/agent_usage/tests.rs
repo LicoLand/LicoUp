@@ -177,92 +177,6 @@ fn command_kimi_code_keeps_exact_turn_and_session_usage_with_model_dimension() {
 }
 
 #[test]
-fn command_kimi_desktop_does_not_present_history_text_as_consumption() {
-    let history_root = temp_root("kimi-desktop-history");
-    let state_root = temp_root("kimi-desktop-state");
-    fs::create_dir_all(&history_root).unwrap();
-    fs::write(
-        history_root.join("session.json"),
-        json!({
-            "id": "synthetic-kimi-session",
-            "model": "kimi-test",
-            "messages": [
-                {
-                    "role": "user",
-                    "text": "history text is not a provider token counter",
-                    "createdAt": "2026-07-10T10:00:00Z"
-                },
-                {
-                    "role": "assistant",
-                    "text": "response text must not be presented as consumption",
-                    "createdAt": "2026-07-10T10:00:01Z"
-                }
-            ]
-        })
-        .to_string(),
-    )
-    .unwrap();
-
-    let result = scan(&json!({
-        "agent": "kimi",
-        "root": history_root.to_string_lossy(),
-        "stateRoot": state_root.to_string_lossy(),
-        "now": "2026-07-10T12:00:00Z"
-    }))
-    .unwrap();
-    let history = &result["agents"][0]["history"];
-    assert_eq!(history["totalTokens"], 0);
-    assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 0);
-    assert_eq!(history["tokenSourceBreakdown"]["estimatedRecords"], 0);
-    assert_eq!(result["agents"][0]["confidence"], "unavailable");
-
-    fs::write(
-        history_root.join("exact-session.json"),
-        json!({
-            "id": "synthetic-kimi-exact-session",
-            "model": "kimi-test",
-            "messages": [
-                {
-                    "role": "assistant",
-                    "text": "native counters remain visible",
-                    "createdAt": "2026-07-10T10:01:00Z",
-                    "usage": {
-                        "prompt_tokens": 11,
-                        "cached_input_tokens": 4,
-                        "completion_tokens": 7,
-                        "total_tokens": 18
-                    }
-                }
-            ]
-        })
-        .to_string(),
-    )
-    .unwrap();
-    let refreshed = scan(&json!({
-        "agent": "kimi",
-        "root": history_root.to_string_lossy(),
-        "stateRoot": state_root.to_string_lossy(),
-        "forceRefresh": true,
-        "now": "2026-07-10T12:00:00Z"
-    }))
-    .unwrap();
-    let refreshed_history = &refreshed["agents"][0]["history"];
-    assert_eq!(refreshed_history["totalTokens"], 18);
-    assert_eq!(
-        refreshed_history["tokenSourceBreakdown"]["explicitRecords"],
-        1
-    );
-    assert_eq!(
-        refreshed_history["tokenSourceBreakdown"]["estimatedRecords"],
-        0
-    );
-    assert_eq!(refreshed["agents"][0]["confidence"], "high");
-
-    fs::remove_dir_all(history_root).unwrap();
-    fs::remove_dir_all(state_root).unwrap();
-}
-
-#[test]
 fn command_hermes_uses_reconciled_gateway_counters_without_text_estimates() {
     let history_root = temp_root("hermes-gateway-history");
     let state_root = temp_root("hermes-gateway-state");
@@ -367,10 +281,10 @@ fn command_hermes_uses_reconciled_gateway_counters_without_text_estimates() {
 
 #[test]
 fn catalog_agents_without_historical_usage_sources_report_explicit_unavailability() {
-    use crate::domain::conversation::source_catalog::adapter_for_agent;
+    use crate::domain::conversation::source_catalog::usage_adapter_for_agent;
     let unsupported = super::contract::supported_agents()
         .into_iter()
-        .filter(|agent| adapter_for_agent(agent.id).is_none())
+        .filter(|agent| usage_adapter_for_agent(agent.id).is_none())
         .map(|agent| agent.id)
         .collect::<Vec<_>>();
     assert_eq!(
@@ -378,9 +292,7 @@ fn catalog_agents_without_historical_usage_sources_report_explicit_unavailabilit
             .iter()
             .copied()
             .collect::<std::collections::BTreeSet<_>>(),
-        ["deepseek-harness", "grok", "command-code"]
-            .into_iter()
-            .collect()
+        ["grok", "command-code"].into_iter().collect()
     );
     let state_root = temp_root("unavailable-source-state");
     for agent in unsupported {

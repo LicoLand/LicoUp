@@ -80,6 +80,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-conversation/src/store/mod.rs",
         "crates/licoup-conversation/src/store/events.rs",
         "crates/licoup-conversation/src/store/execution.rs",
+        "crates/licoup-conversation/src/store/native_sessions.rs",
         "crates/licoup-conversation/src/lib.rs",
         "crates/licoup-native/src/domain/application_port.rs",
         "crates/licoup-native/src/domain/client_conversation/**",
@@ -98,6 +99,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
           "--",
           "domain::client_conversation::",
           "store::execution::tests::",
+          "store::native_sessions::tests::",
         ],
         10 * 60_000,
       ),
@@ -276,7 +278,10 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache_variant_tests.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cursor.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.mjs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/identity_refresh.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/migration_tests.rs",
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser.rs",
@@ -288,6 +293,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
       ],
       command: rustLayer("domain::agent_usage::agent_usage_native::"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage.deepseek-reader",
+      kind: "rust-domain",
+      summary: "Official DeepSeek session persistence usage extraction and attempt accounting",
+      inputs: [
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.mjs",
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.test.mjs",
+      ],
+      command: command("node", ["--test", "crates/licoup-native/src/domain/agent_usage/agent_usage_native/deepseek_reader.test.mjs"], 60_000),
     }),
   defineModule({
       id: "rust.domain.agent-usage-cache",
@@ -562,6 +577,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/rollup.rs",
       ],
       command: rustLayer("domain::agent_usage::agent_usage_codex::tests::parser::"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage.codex-identity-refresh",
+      kind: "rust-domain",
+      summary: "Current-day model identity correction with unchanged source and token evidence",
+      inputs: [
+        "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/identity_refresh.rs",
+      ],
+      command: rustLayer("domain::agent_usage::agent_usage_codex::identity_refresh::"),
     }),
   defineModule({
       id: "rust.domain.agent-usage.codex-aggregation",
@@ -2364,6 +2388,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/targets/model_catalog/builtin.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/builtin_catalog.json",
+        "crates/licoup-native/src/domain/targets/model_catalog/deepseek.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/kimi.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/mod.rs",
         "crates/licoup-native/src/domain/targets/model_catalog/pi.rs",

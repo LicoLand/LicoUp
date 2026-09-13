@@ -41,6 +41,9 @@ pub(super) fn is_usage_source(adapter: HistoryAdapter, path: &Path, source_kind:
         .unwrap_or_default()
         .to_ascii_lowercase();
     match adapter {
+        HistoryAdapter::DeepSeekHarness => {
+            crate::domain::conversation::source_catalog::deepseek_generation(path).is_some()
+        }
         HistoryAdapter::Antigravity
             if matches!(source_kind, "antigravity-bridge" | "antigravity-cli") =>
         {

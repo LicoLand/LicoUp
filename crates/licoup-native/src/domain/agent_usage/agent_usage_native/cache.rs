@@ -1,6 +1,8 @@
 //! Private aggregate-cache ownership for native usage sources.
 
-use super::super::contract::{HistoryUsageSummary, ModelTokenUsageSummary, UsageVariant};
+use super::super::contract::{
+    DailyUsageSummary, HistoryUsageSummary, ModelTokenUsageSummary, UsageVariant,
+};
 use super::super::variant::UsageRequestContext;
 use super::super::window::UsageWindow;
 use super::models::{CachedSource, SourceMetadata};
@@ -796,30 +798,56 @@ impl<'a> RefreshStatements<'a> {
             ]);
             self.count();
             day_saved?;
-            for ((model, variant), model_usage) in &usage.model_variants {
-                let model_saved = self.model_upsert.execute(params![
-                    scope_key,
-                    source_key,
-                    day,
-                    model,
-                    to_i64(model_usage.prompt_tokens),
-                    to_i64(
-                        model_usage
-                            .cached_input_tokens
-                            .min(model_usage.prompt_tokens)
-                    ),
-                    to_i64(model_usage.completion_tokens),
-                    to_i64(model_usage.total_tokens),
-                    to_i64(model_usage.estimated_prompt_tokens),
-                    to_i64(model_usage.estimated_completion_tokens),
-                    variant.effort.as_deref().unwrap_or_default(),
-                    variant.fast.map(i64::from).unwrap_or(-1),
-                    to_i64(model_usage.request_count),
-                    to_i64(model_usage.token_unavailable_requests),
-                ]);
-                self.count();
-                model_saved?;
-            }
+            self.add_model_rows(scope_key, source_key, day, usage)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn replace_model_rows(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        day: &str,
+        usage: &DailyUsageSummary,
+    ) -> Result<()> {
+        self.transaction.execute(
+            "DELETE FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2 AND day=?3",
+            params![scope_key, source_key, day],
+        )?;
+        self.count();
+        self.add_model_rows(scope_key, source_key, day, usage)
+    }
+
+    fn add_model_rows(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        day: &str,
+        usage: &DailyUsageSummary,
+    ) -> Result<()> {
+        for ((model, variant), model_usage) in &usage.model_variants {
+            let model_saved = self.model_upsert.execute(params![
+                scope_key,
+                source_key,
+                day,
+                model,
+                to_i64(model_usage.prompt_tokens),
+                to_i64(
+                    model_usage
+                        .cached_input_tokens
+                        .min(model_usage.prompt_tokens)
+                ),
+                to_i64(model_usage.completion_tokens),
+                to_i64(model_usage.total_tokens),
+                to_i64(model_usage.estimated_prompt_tokens),
+                to_i64(model_usage.estimated_completion_tokens),
+                variant.effort.as_deref().unwrap_or_default(),
+                variant.fast.map(i64::from).unwrap_or(-1),
+                to_i64(model_usage.request_count),
+                to_i64(model_usage.token_unavailable_requests),
+            ]);
+            self.count();
+            model_saved?;
         }
         Ok(())
     }

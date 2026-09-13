@@ -1,8 +1,8 @@
 //! Local-only report retention and retrieval.
 
 use super::contract::{
-    AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE, MAX_REPORTS,
-    REPORT_COLLECTION,
+    AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE,
+    HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, number_field, supported_agents,
 };
 use super::model_identity::normalize_retained_report;
 use super::workflow_ledger::{
@@ -12,6 +12,7 @@ use crate::domain::conversation::parameters::text_param;
 use crate::platform::client_state::ClientStateStore;
 use anyhow::{Context, Result};
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -78,8 +79,16 @@ pub(super) fn read_retained_reports(
             .map(std::mem::take)
             .unwrap_or_default();
     }
+    let supported = supported_agents()
+        .into_iter()
+        .map(|agent| agent.id)
+        .collect::<BTreeSet<_>>();
     let mut reports = retained_items
         .into_iter()
+        .map(|mut report| {
+            project_supported_agents(&mut report, &supported);
+            report
+        })
         .filter(|report| {
             agent_filter
                 .map(|agent_id| report_has_agent(report, agent_id))
@@ -91,6 +100,58 @@ pub(super) fn read_retained_reports(
     }
     reports.reverse();
     Ok(reports)
+}
+
+/// Restrict the returned view to current adapters without rewriting retained
+/// accounting records when an adapter is removed.
+fn project_supported_agents(report: &mut Value, supported: &BTreeSet<&str>) {
+    let Some(agents) = report.get_mut("agents").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let previous_count = agents.len();
+    agents.retain(|agent| {
+        agent
+            .get("agentId")
+            .and_then(Value::as_str)
+            .is_some_and(|id| supported.contains(id))
+    });
+    if agents.len() == previous_count {
+        return;
+    }
+    let mut totals = serde_json::Map::new();
+    totals.insert("agentCount".to_owned(), Value::from(agents.len()));
+    for field in [
+        "sessionCount",
+        "messageCount",
+        "promptTokens",
+        "cachedInputTokens",
+        "completionTokens",
+        "totalTokens",
+    ] {
+        let total = agents.iter().fold(0_u64, |total, agent| {
+            total.saturating_add(number_field(&agent["history"], &[field]).unwrap_or(0))
+        });
+        totals.insert(field.to_owned(), Value::from(total));
+    }
+    let mut coverage = HistoryUsageSummary::default();
+    for agent in agents {
+        let history = &agent["history"];
+        let sources = &history["tokenSourceBreakdown"];
+        coverage.explicit_records = coverage
+            .explicit_records
+            .saturating_add(number_field(sources, &["explicitRecords"]).unwrap_or(0));
+        coverage.estimated_records = coverage
+            .estimated_records
+            .saturating_add(number_field(sources, &["estimatedRecords"]).unwrap_or(0));
+        coverage.token_unavailable_records = coverage
+            .token_unavailable_records
+            .saturating_add(number_field(history, &["tokenUnavailableRequests"]).unwrap_or(0));
+    }
+    totals.insert("confidence".to_owned(), Value::from(coverage.confidence()));
+    if !report["summary"].is_object() {
+        report["summary"] = Value::Object(serde_json::Map::new());
+    }
+    report["summary"].as_object_mut().unwrap().extend(totals);
 }
 
 pub(super) fn client_state_store(params: &Value) -> Result<ClientStateStore> {
@@ -174,6 +235,54 @@ mod tests {
             "generatedAt": format!("2026-07-{:02}T00:00:00Z", index + 1),
             "agents": [{"agentId": agent_id}]
         })
+    }
+
+    #[test]
+    fn report_projection_uses_current_membership_without_deleting_accounting() {
+        let root = temp_root();
+        let params = json!({"stateRoot": root});
+        let mut stored = report(1, "unsupported-agent");
+        stored["summary"] = json!({"agentCount":2,"totalTokens":30});
+        stored["agents"] = json!([
+            {"agentId":"unsupported-agent","history":{"totalTokens":10}},
+            {"agentId":"kimi-code","history":{
+                "totalTokens":20,"promptTokens":12,"completionTokens":8,
+                "tokenSourceBreakdown":{"explicitRecords":1},
+                "modelTokenUsage":{"moonshotai/kimi-k3":{"totalTokens":20,"requestCount":1}}
+            }}
+        ]);
+        persist_report(&params, &stored).unwrap();
+        let registry = crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({
+            "models":{"moonshotai/kimi-k3":{"name":"Kimi K3"}},"providers":{}
+        }))
+        .unwrap();
+
+        let reports = read_retained_reports(&params, None, 10, &registry).unwrap();
+        assert_eq!(reports[0]["agents"].as_array().unwrap().len(), 1);
+        assert_eq!(reports[0]["agents"][0]["agentId"], "kimi-code");
+        assert_eq!(reports[0]["summary"]["totalTokens"], 20);
+        assert_eq!(reports[0]["summary"]["agentCount"], 1);
+        assert_eq!(reports[0]["summary"]["confidence"], "high");
+        assert_eq!(
+            reports[0]["agents"][0]["history"]["modelTokenUsage"]["moonshotai/kimi-k3"]["totalTokens"],
+            20
+        );
+        assert!(
+            read_retained_reports(&params, Some("unsupported-agent"), 10, &registry)
+                .unwrap()
+                .is_empty()
+        );
+        let retained = client_state_store(&params)
+            .unwrap()
+            .read_collection(REPORT_COLLECTION)
+            .unwrap();
+        assert_eq!(retained["items"][0]["agents"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            retained["items"][0]["agents"][0]["history"]["totalTokens"],
+            10
+        );
+        assert_eq!(retained["items"][0]["summary"]["totalTokens"], 30);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

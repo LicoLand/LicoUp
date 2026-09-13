@@ -26,7 +26,7 @@ pub(super) fn supported_agents() -> Vec<AgentDef> {
         .into_iter()
         .filter(|entry| {
             entry.has_adapter
-                || crate::domain::conversation::source_catalog::adapter_for_agent(&entry.id)
+                || crate::domain::conversation::source_catalog::usage_adapter_for_agent(&entry.id)
                     .is_some_and(|adapter| {
                         adapter != crate::domain::conversation::source_catalog::HistoryAdapter::Code
                     })
@@ -616,7 +616,6 @@ pub(super) fn normalize_agent_id(value: &str) -> String {
         "github-copilot" => "copilot".to_owned(),
         "vscode" | "vs-code" => "code".to_owned(),
         "kilo" => "kilo-code".to_owned(),
-        "kimi" | "moonshot" => "kimi".to_owned(),
         "hermes-agent" => "hermes".to_owned(),
         "pi-agent" | "pi-coding-agent" => "pi".to_owned(),
         other => other.to_owned(),
@@ -636,7 +635,6 @@ mod tests {
 
         assert_eq!(labels.get("codex"), Some(&"Codex"));
         assert_eq!(labels.get("kimi-code"), Some(&"Kimi Code"));
-        assert_eq!(labels.get("kimi"), Some(&"Kimi"));
         let authoritative =
             crate::domain::agent_catalog::supported_membership(std::iter::empty::<&str>())
                 .into_iter()

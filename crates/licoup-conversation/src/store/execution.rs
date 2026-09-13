@@ -89,6 +89,7 @@ impl ConversationStore {
                 agent_id:agent_id.to_owned(),native_session_id:native_session_id.to_owned(),..Default::default()
             });
             if provenance.agent_id != agent_id || provenance.native_session_id != native_session_id { return Ok(false); }
+            native_sessions::record_native_session(&transaction, &scope.conversation_id, &scope.membership_id, native_session_id)?;
             let mut changed = false;
             if let Some(id) = native_turn_id.filter(|id|!id.is_empty()) { changed |= provenance.turn_ids.insert(id.to_owned()); }
             if let Some(id) = source_message_id.filter(|id|!id.is_empty()) { changed |= provenance.message_ids.insert(id.to_owned()); }

@@ -6,6 +6,7 @@ mod cache_cleanup;
 mod constants;
 mod event_hash;
 mod file_collection;
+mod identity_refresh;
 mod lineage;
 mod models;
 mod parser;

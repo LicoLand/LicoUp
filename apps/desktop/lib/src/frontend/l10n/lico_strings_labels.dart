@@ -1076,6 +1076,7 @@ extension LicoStringsLabels on LicoStrings {
       'ultra' => 'Ultra',
       'minimal' => 'Minimal',
       'none' => 'None',
+      'off' => 'Off',
       'enabled' => 'Enabled',
       'disabled' => 'Disabled',
       _ => fallback,

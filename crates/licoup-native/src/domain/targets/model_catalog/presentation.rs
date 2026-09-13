@@ -82,7 +82,7 @@ fn official_provider_rank(target: &str, provider: &str) -> u8 {
         "codex" => &["openai", "chatgpt"][..],
         "claude-code" => &["anthropic", "claude"][..],
         "kimi-code" => &["kimi-code", "moonshot", "kimi"][..],
-        "deepseek-harness" => &["deepseek"][..],
+        "deepseek-harness" => &["deepseek", "deepseek-official"][..],
         "antigravity" => {
             return match provider {
                 "google" | "gemini" => 0,

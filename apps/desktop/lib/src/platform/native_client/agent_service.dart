@@ -378,6 +378,9 @@ class AgentService
   Future<Map<String, dynamic>> stopOpencodeServe() =>
       _commandActions.stopOpencodeServe();
 
+  @override
+  Future<Set<String>> targetCatalogIds() => _commandActions.targetCatalogIds();
+
   Future<List<TargetCandidate>> scanTargets() => _commandActions.scanTargets();
 
   @override

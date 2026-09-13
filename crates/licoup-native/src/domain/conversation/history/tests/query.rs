@@ -114,37 +114,6 @@ fn explicit_history_root_keeps_user_selection_authority() {
 }
 
 #[test]
-fn history_roots_cover_kimi_app_data_locations() {
-    let home = temp_dir("history-kimi-roots");
-
-    let roots = history_roots(
-        HistoryAdapter::Kimi,
-        &json!({"homeDir": display_path(&home)}),
-    );
-
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join("Library/Application Support/Kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join("Library/Application Support/com.moonshot.kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join(".config/Kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join(".local/share/Kimi"))
-    );
-}
-
-#[test]
 fn conversations_list_paginates_native_history_sessions() {
     let dir = temp_dir("codex-history-pagination");
     let lines = (0..120)
@@ -391,7 +360,6 @@ fn every_supported_agent_has_dedicated_history_adapter() {
         "cursor",
         "hermes",
         "kilo-code",
-        "kimi",
         "openclaw",
         "opencode",
     ] {
