@@ -153,7 +153,21 @@ export function verifyProtectedPushTopology({
     : { ok: false, code: "promotion-source-tip-mismatch" };
 }
 
-export function verifyCandidatePush({ after, deleted = false, releaseRevision = git(["rev-parse", "refs/remotes/origin/release^{commit}"]),
+// Each track publishes from its own filled source branch: the stable candidate
+// is cut from `release`, the nightly candidate from `nightly`, and both are
+// pushed once at that exact revision.
+export const CANDIDATE_SOURCE_REFS = Object.freeze({
+  [MACOS_CANDIDATE]: "refs/remotes/origin/release",
+  [MACOS_NIGHTLY_CANDIDATE]: "refs/remotes/origin/nightly"
+});
+
+export function resolveCandidateSourceRevision(branch,
+  resolve = (ref) => git(["rev-parse", `${ref}^{commit}`])) {
+  return resolve(`${CANDIDATE_SOURCE_REFS[branch] || CANDIDATE_SOURCE_REFS[MACOS_CANDIDATE]}^{commit}`);
+}
+
+export function verifyCandidatePush({ branch = MACOS_CANDIDATE, after, deleted = false,
+  releaseRevision = resolveCandidateSourceRevision(branch),
   candidateTree = (commit) => git(["rev-parse", `${commit}^{tree}`]) } = {}) {
   if (deleted || !after || after === ZERO_OID || after !== releaseRevision) {
     return { ok: false, code: "candidate-source-mismatch" };
@@ -258,7 +272,7 @@ function verifyCurrentEvent() {
   }
   if (process.env.GITHUB_EVENT_NAME === "push") {
     const topology = CANDIDATE_BRANCHES.includes(process.env.GITHUB_REF_NAME || "")
-      ? verifyCandidatePush({ after: payload.after || process.env.GITHUB_SHA || "", deleted: payload.deleted })
+      ? verifyCandidatePush({ branch: process.env.GITHUB_REF_NAME || "", after: payload.after || process.env.GITHUB_SHA || "", deleted: payload.deleted })
       : verifyProtectedPushTopology({
       branch: process.env.GITHUB_REF_NAME || "",
       before: payload.before || "",
