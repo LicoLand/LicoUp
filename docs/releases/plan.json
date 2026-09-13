@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "repository": "LicoLand/LicoUp",
   "profile": "semver",
-  "currentVersion": "0.2.0",
+  "currentVersion": "0.2.1",
   "versionSources": [
     {
       "format": "json",
@@ -18,28 +18,35 @@
   ],
   "changelog": "CHANGELOG.md",
   "nextRelease": {
-    "version": "0.2.1",
-    "classification": "patch",
+    "version": "0.3.0",
+    "classification": "minor",
     "status": "ready",
-    "targetDate": "2026-09-11",
+    "targetDate": "2026-09-14",
     "integrationBranch": "nightly",
     "features": [
       {
-        "id": "clear-window-veil",
-        "type": "fix",
-        "title": "Clear window veil and quieter glass chrome",
+        "id": "native-cli-custody-and-presentation",
+        "type": "capability",
+        "title": "Native CLI custody and the modernized client presentation",
         "status": "accepted",
-        "pullRequest": "https://github.com/LicoLand/LicoUp/pull/306",
+        "pullRequest": "https://github.com/LicoLand/LicoUp/pull/338",
         "dependsOn": [],
-        "risk": "low",
+        "risk": "medium",
         "acceptance": [
-          "The desktop window uses a see-through color veil instead of a frosted visual-effect material.",
-          "Structural glass rims use one alpha on all four sides.",
-          "Token Usage and Communication no longer show redundant inner titles."
+          "Theme style offers Orbital Dark and Orbital Light without changing preset IDs, and the motion-scale token scales animation durations.",
+          "Desktop navigation is four floating apps, with Plugin Management and Skill Hub on the Agent detail page and Chat Channels in Mobile Pairing.",
+          "An Execution process viewer with search, copy, step-through and live follow replaces inline process cards, and an accepted dispatch shows its waiting treatment until the first real reply text.",
+          "Loading animation is a persisted setting: a simple spinner by default, a static indicator, and the previous conversation particles as an opt-in that alone keeps anchor measurement and glyph sampling.",
+          "licoup is the documented local CLI facade, one biometric authorization covers all selected Gateway keys through LicoUpCustody.app, and the MCP allowlist is five tools with lico-conversation-mcp removed.",
+          "Migrate legacy keys moves Gateway credentials to the Data Protection Keychain without re-entering them.",
+          "DeepSeek Harness is a first-class agent, and Claude Code pickers list the real model catalog.",
+          "Group conversations bind to their own recorded history through store schema 14 to 15.",
+          "Startup stages around the Local conversation, and large replies and long-running commands no longer block the UI or the native host.",
+          "Removed the Kimi Desktop target; Kimi Code CLI is unaffected."
         ],
         "evidence": [
-          "PR #306 required Client source policy, Flutter checks, and Client required aggregates passed.",
-          "Installed macOS client launch and stable-survival verification passed for the clear-veil build."
+          "PR #338 required Branch flow, Commit identity, Auditor, Client source policy, Flutter checks, Rust checks and the Client required aggregate passed on the exact head.",
+          "The stable edge's client gate builds and installs the macOS arm64 client, then observes the installed app's bounded survival proof."
         ]
       }
     ],
