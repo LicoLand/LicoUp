@@ -125,8 +125,10 @@ final class _MonitoringProjectionSource
             ),
       ],
       historyDays: controller.agentUsageController.historyDays,
-      phase: controller.agentUsageController.scanning
+      phase: controller.agentUsageController.loading
           ? PresentationPhase.loading
+          : controller.agentUsageController.loadFailed
+          ? PresentationPhase.failed
           : report == null
           ? PresentationPhase.idle
           : PresentationPhase.ready,
@@ -153,12 +155,10 @@ final class _MonitoringIntentSink implements IntentSink<MonitoringIntent> {
         );
       case StartAutomaticMonitoring():
         _controller.startAgentUsagePolling();
-        if (_controller.agentUsageReport == null) {
-          _run(
-            () => _controller.ensureAgentUsageLoadedAndFresh(limit: 20),
-            intent,
-          );
-        }
+        _run(
+          () => _controller.ensureAgentUsageLoadedAndFresh(limit: 20),
+          intent,
+        );
       case StopAutomaticMonitoring():
         _controller.stopAgentUsagePolling();
       case SetMonitoringHistoryDays(:final days):

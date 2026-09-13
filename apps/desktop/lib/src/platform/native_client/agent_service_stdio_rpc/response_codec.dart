@@ -91,6 +91,7 @@ class StdioRpcConversationDecoder {
   StdioRpcConversationDecoder({
     required this.requestId,
     required this.workflowId,
+    this.executionObservation = false,
   }) : _deltaDecoder = ConversationDeltaDecoder(
          requestId: requestId,
          workflowId: workflowId,
@@ -98,6 +99,7 @@ class StdioRpcConversationDecoder {
 
   final String requestId;
   final String workflowId;
+  final bool executionObservation;
   final ConversationDeltaDecoder _deltaDecoder;
 
   StdioRpcConversationFrame decode(Uint8List bytes) {
@@ -113,7 +115,9 @@ class StdioRpcConversationDecoder {
           (event['turnHandle'] ?? '').toString().trim().isNotEmpty &&
           (event['conversationId'] ?? '').toString().trim().isNotEmpty &&
           event['cursor'] is int &&
-          (event['cursor'] as int) > 0;
+          (executionObservation
+              ? (event['cursor'] as int) >= 0
+              : (event['cursor'] as int) > 0);
       if (!persistent &&
           ((event['sessionId'] ?? '').toString().trim().isEmpty ||
               (event['turnId'] ?? '').toString().trim().isEmpty)) {

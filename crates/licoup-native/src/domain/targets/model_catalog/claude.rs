@@ -1,42 +1,123 @@
 use super::*;
 
-const CLAUDE_CODE_CURRENT_MODEL_SOURCE: &str = "claude-current";
+const CLAUDE_CODE_MODEL_SOURCE: &str = "claude-settings";
 
-/// Claude Code has no non-interactive model-catalog command. Project the one
-/// model configured for the next native session instead of turning an
-/// unsupported `claude models` argument into a prompt and parsing its reply.
-pub(super) fn claude_code_current_model_catalog(
-    config_path: Option<&Path>,
-    params: &Value,
-) -> Value {
+/// Claude Code has no non-interactive catalog command. Its documented aliases
+/// remain selectable alongside configured models, subject to availableModels.
+/// Never invoke an unsupported `claude models` command: that sends a prompt.
+pub(super) fn claude_code_model_catalog(config_path: Option<&Path>, params: &Value) -> Value {
     let mut diagnostics = Vec::<Value>::new();
-    let configured_model = claude_code_settings_path(config_path, params)
-        .and_then(|path| read_claude_code_current_model(&path, &mut diagnostics));
-    let model = configured_model.unwrap_or_else(|| "default".to_string());
-
+    let settings = claude_code_settings_path(config_path, params)
+        .and_then(|path| read_claude_code_settings(&path, &mut diagnostics))
+        .unwrap_or_else(|| json!({}));
+    let configured_model = claude_code_current_model_from_settings(&settings);
+    let allowed = settings.get("availableModels").and_then(Value::as_array);
     let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
-    let provider_id = inferred_provider_id_from_model(&model);
-    add_model_catalog_entry_with_provider(
-        &mut entries,
-        &model,
-        model.eq_ignore_ascii_case("default").then_some("Default"),
-        provider_id.as_deref(),
-        None,
-        CLAUDE_CODE_CURRENT_MODEL_SOURCE,
-        BTreeSet::new(),
-    );
-    if provider_id.is_some() {
-        for entry in entries.values_mut() {
-            entry.provider_inferred = true;
+    let mut sources = BTreeSet::from([CLAUDE_CODE_MODEL_SOURCE.to_string()]);
+    let mut selectors = allowed
+        .map(|models| models.iter().map(model_name_from_value).collect::<Vec<_>>())
+        .unwrap_or_else(|| {
+            [
+                "opus",
+                "opus[1m]",
+                "sonnet",
+                "sonnet[1m]",
+                "haiku",
+                "opusplan",
+            ]
+            .map(str::to_string)
+            .to_vec()
+        });
+    if allowed.is_none() {
+        if let Some(model) = configured_model.as_ref() {
+            selectors.push(model.clone());
+        }
+        // Fable's native picker is account-gated. A local explicit binding is
+        // usable evidence; the global built-in table is not an entitlement.
+        if settings
+            .pointer("/env/ANTHROPIC_DEFAULT_FABLE_MODEL")
+            .and_then(Value::as_str)
+            .is_some()
+        {
+            selectors.push("fable".to_string());
+        }
+        if let Some(custom) = settings
+            .pointer("/env/ANTHROPIC_CUSTOM_MODEL_OPTION")
+            .and_then(Value::as_str)
+        {
+            selectors.push(custom.to_string());
         }
     }
-
-    build_model_catalog(
-        entries,
-        BTreeSet::from([CLAUDE_CODE_CURRENT_MODEL_SOURCE.to_string()]),
-        diagnostics,
-        Some(model),
-    )
+    // Default is always admitted by Claude Code, even for an empty allowlist.
+    selectors.push("default".to_string());
+    for selector in selectors {
+        let alias = selector.split('[').next().unwrap_or(&selector);
+        let env_key = match alias {
+            "fable" => Some("ANTHROPIC_DEFAULT_FABLE_MODEL"),
+            "opus" => Some("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+            "sonnet" => Some("ANTHROPIC_DEFAULT_SONNET_MODEL"),
+            "haiku" => Some("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+            _ => None,
+        };
+        let pinned = env_key
+            .and_then(|key| settings.get("env").and_then(|env| env.get(key)))
+            .and_then(Value::as_str);
+        let display = match selector.as_str() {
+            "default" => "Default".to_string(),
+            "opusplan" => "Claude Opus Plan".to_string(),
+            "fable" | "fable[1m]" | "opus" | "sonnet" | "haiku" | "opus[1m]" | "sonnet[1m]" => {
+                let base = pinned
+                    .map(canonical_model_display_name)
+                    .unwrap_or_else(|| format!("Claude {}", canonical_model_display_name(alias)));
+                if selector.ends_with("[1m]") && !base.ends_with("[1m]") {
+                    format!("{base} (1M)")
+                } else {
+                    base
+                }
+            }
+            _ => canonical_model_display_name(&selector),
+        };
+        let provider = presentation::inferred_model_provider(pinned.unwrap_or(&selector));
+        let provider = provider
+            .as_deref()
+            .or((selector == "default").then_some("anthropic"));
+        let efforts = pinned
+            .map(|model| builtin::builtin_reasoning_efforts("claude-code", model))
+            .unwrap_or_default();
+        add_model_catalog_entry_with_provider(
+            &mut entries,
+            &selector,
+            Some(&display),
+            provider,
+            None,
+            CLAUDE_CODE_MODEL_SOURCE,
+            efforts.into_iter().collect(),
+        );
+        for entry in entries.values_mut().filter(|entry| entry.name == selector) {
+            entry.provider_inferred = provider.is_some();
+        }
+    }
+    if let Some(fixture) = model_catalog_fixture_for_target("claude-code", params) {
+        merge_model_catalog_value_into(
+            &fixture,
+            "fixture",
+            &mut entries,
+            &mut sources,
+            &mut diagnostics,
+        );
+        if let Some(allowed) = allowed {
+            let allowed = allowed
+                .iter()
+                .map(model_name_from_value)
+                .collect::<BTreeSet<_>>();
+            entries.retain(|_, entry| entry.name == "default" || allowed.contains(&entry.name));
+        }
+    }
+    apply_builtin_model_catalog_overlay("claude-code", &mut entries, &mut sources);
+    let default = configured_model
+        .filter(|model| entries.values().any(|entry| &entry.name == model))
+        .unwrap_or_else(|| "default".to_string());
+    build_model_catalog("claude-code", entries, sources, diagnostics, Some(default))
 }
 
 fn claude_code_settings_path(config_path: Option<&Path>, params: &Value) -> Option<PathBuf> {
@@ -45,21 +126,20 @@ fn claude_code_settings_path(config_path: Option<&Path>, params: &Value) -> Opti
     })
 }
 
-fn read_claude_code_current_model(path: &Path, diagnostics: &mut Vec<Value>) -> Option<String> {
-    let source = CLAUDE_CODE_CURRENT_MODEL_SOURCE;
+fn read_claude_code_settings(path: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
         Err(_) => {
-            diagnostics.push(json!({"source": source, "status": "not-readable"}));
+            diagnostics.push(json!({"source": CLAUDE_CODE_MODEL_SOURCE, "status": "not-readable"}));
             return None;
         }
     };
-    let Some(settings) = parse_model_config_document(path, &raw) else {
-        diagnostics.push(json!({"source": source, "status": "not-parseable"}));
-        return None;
-    };
-    claude_code_current_model_from_settings(&settings)
+    let settings = parse_model_config_document(path, &raw);
+    if settings.is_none() {
+        diagnostics.push(json!({"source": CLAUDE_CODE_MODEL_SOURCE, "status": "not-parseable"}));
+    }
+    settings
 }
 
 fn claude_code_current_model_from_settings(settings: &Value) -> Option<String> {
@@ -76,14 +156,4 @@ fn claude_code_current_model_from_settings(settings: &Value) -> Option<String> {
                 .map(model_name_from_value)
                 .filter(|model| !model.is_empty())
         })
-}
-
-fn inferred_provider_id_from_model(model: &str) -> Option<String> {
-    let prefix = model
-        .split_once('/')
-        .map(|(provider, _)| provider)
-        .or_else(|| model.split_once('-').map(|(provider, _)| provider))?;
-    let normalized = sanitize_option_name(prefix)?;
-    (normalized.len() >= 2 && normalized.chars().all(|ch| ch.is_ascii_alphanumeric()))
-        .then(|| normalized.to_ascii_lowercase())
 }

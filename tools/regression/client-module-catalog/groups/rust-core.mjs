@@ -1,4 +1,5 @@
 import {
+  command,
   rustLayer,
   rustBinaryTests,
   defineModule,
@@ -6,6 +7,17 @@ import {
 } from "../helpers.mjs";
 
 export const RUST_CORE_MODULES = Object.freeze([
+  defineModule({
+      id: "rust.core.mcp-server",
+      kind: "rust-core",
+      summary: "Independent MCP protocol, caller admission, and public CLI process adapter",
+      inputs: ["crates/licoup-mcp/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
   defineModule({
       id: "rust.core.acp.composition",
       kind: "rust-core",

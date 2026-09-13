@@ -4,9 +4,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
-import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_conversation_command_policy.dart';
 
 const int _privateRuntimeMaxInputBytes = 1024 * 1024;
 const int _privateRuntimeMaxStdoutBytes = 20 * 1024 * 1024;
@@ -37,6 +37,11 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) {
+    if (nativeCliTargetsConversation(args)) {
+      return Future.error(
+        const LicoClientRpcException('conversation_port_required'),
+      );
+    }
     return _commandExecutor.execute(args);
   }
 
@@ -45,6 +50,9 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     List<String> args,
     String stdinText,
   ) async {
+    if (nativeCliTargetsConversation(args)) {
+      throw const LicoClientRpcException('conversation_port_required');
+    }
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
       throw Exception('licoup private runtime request is too large.');
@@ -147,30 +155,8 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     List<String> args,
     String stdinText,
   ) async* {
-    if (_persistentStdioRpcEnabled) {
-      final route = conversationProtocolCliRoute(args);
-      if (route != null &&
-          conversationProtocolMethodIsStream(route.method.wireName)) {
-        final operation =
-            route.method.wireName.startsWith('agent.conversation.')
-            ? route.method.wireName.substring('agent.conversation.'.length)
-            : route.method.wireName;
-        try {
-          await for (final event in _stdioRpcTransport.streamConversation({
-            ..._routeStdinParams(route, args, stdinText),
-            // The default conversation exchange operation is 'send'; only
-            // non-default operations need an explicit operation marker.
-            if (operation != 'send') '_rpcOperation': operation,
-          })) {
-            yield event;
-          }
-        } on LicoClientRpcException catch (error) {
-          throw AgentDispatchStreamException(error.code);
-        } on Object {
-          throw const AgentDispatchStreamException('transport_failed');
-        }
-        return;
-      }
+    if (nativeCliTargetsConversation(args)) {
+      throw const LicoClientRpcException('conversation_port_required');
     }
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {

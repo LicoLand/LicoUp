@@ -1,3 +1,5 @@
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'dart:io' show Platform;
 
 import 'package:licoup/src/frontend/environment/workspace_home_directory_scope.dart';
@@ -45,7 +47,7 @@ void main() {
   });
 
   testWidgets(
-    'running turn pulses along the header divider, not the composer',
+    'running turn uses the composer border and removes the header progress',
     (tester) async {
       await tester.pumpWidget(
         paneTestApp(
@@ -58,10 +60,10 @@ void main() {
       );
       await tester.pump();
 
-      final pulse = tester.widget<LicoTopEdgePulse>(
-        find.byKey(const Key('conversation-header-running-edge')),
+      final pulse = tester.widget<ComposerActivityBorder>(
+        find.byType(ComposerActivityBorder),
       );
-      expect(pulse.enabled, isTrue);
+      expect(pulse.active, isTrue);
       expect(
         pulse.color,
         tester
@@ -70,12 +72,8 @@ void main() {
             .primaryStrong,
       );
       expect(
-        find.byKey(const Key('lico-top-edge-pulse-paint')),
+        find.byKey(const Key('composer-activity-border-paint')),
         findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('agent-conversation-composer-running-edge')),
-        findsNothing,
       );
 
       await tester.pumpWidget(
@@ -88,14 +86,15 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsNothing);
+      expect(
+        find.byKey(const Key('composer-activity-border-paint')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('loading conversations pulse along the header divider', (
-    tester,
-  ) async {
+  testWidgets('loading conversations use the composer border', (tester) async {
     await tester.pumpWidget(
       paneTestApp(
         AgentConversationActivePane(
@@ -107,47 +106,81 @@ void main() {
     );
     await tester.pump();
 
-    final pulse = tester.widget<LicoTopEdgePulse>(
-      find.byKey(const Key('conversation-header-running-edge')),
+    final pulse = tester.widget<ComposerActivityBorder>(
+      find.byType(ComposerActivityBorder),
     );
-    expect(pulse.enabled, isTrue);
-    expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsOneWidget);
+    expect(pulse.active, isTrue);
+    expect(
+      find.byKey(const Key('composer-activity-border-paint')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('cached recent sessions stay visible during refresh', (
+  testWidgets('relocated hidden composer does not keep an activity ticker', (
     tester,
   ) async {
-    const recentSession = AgentConversationSession(
-      id: 'cached-session',
-      agentId: 'codex',
-      title: 'Cached conversation',
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-      messages: [],
-    );
     await tester.pumpWidget(
       paneTestApp(
-        AgentConversationActivePane(
-          state: paneTestState(
-            recentSessions: const [recentSession],
-            preparingNewConversation: true,
-            loading: true,
-            recentSessionsCached: true,
+        LayoutExternalComposerScope(
+          hosted: true,
+          child: AgentConversationActivePane(
+            state: paneTestState(turnActive: true),
+            actions: paneTestActions(),
+            header: paneTestHeader(),
           ),
-          actions: paneTestActions(),
-          header: paneTestHeader(),
         ),
       ),
     );
-    await tester.pump();
-
-    expect(find.text('Cached conversation'), findsOneWidget);
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('agent-conversation-recent-loading')),
-      findsNothing,
+      tester
+          .widget<ComposerActivityBorder>(find.byType(ComposerActivityBorder))
+          .active,
+      isTrue,
     );
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'new conversation keeps its empty particle content during catalog refresh',
+    (tester) async {
+      const recentSession = AgentConversationSession(
+        id: 'cached-session',
+        agentId: 'codex',
+        title: 'Cached conversation',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        messages: [],
+      );
+      await tester.pumpWidget(
+        paneTestApp(
+          AgentConversationActivePane(
+            state: paneTestState(
+              recentSessions: const [recentSession],
+              preparingNewConversation: true,
+              loading: true,
+              recentSessionsCached: true,
+            ),
+            actions: paneTestActions(),
+            header: paneTestHeader(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Cached conversation'), findsNothing);
+      expect(
+        find.byKey(const Key('conversation-empty-content')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('agent-conversation-recent-loading')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('new conversation reveals live messages as soon as send starts', (
     tester,
@@ -173,7 +206,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Recent conversations'), findsOneWidget);
+    expect(find.byKey(const Key('conversation-empty-content')), findsOneWidget);
 
     await tester.pumpWidget(
       paneTestApp(

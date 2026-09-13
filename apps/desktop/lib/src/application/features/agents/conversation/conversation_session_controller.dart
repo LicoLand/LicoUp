@@ -9,8 +9,11 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+
+const int _conversationMessagePageSize = 20;
 
 /// Desktop history paging plus user-driven session and agent selection.
 mixin AgentConversationSessionController
@@ -18,11 +21,165 @@ mixin AgentConversationSessionController
         AgentWorkspaceCoordinator,
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController {
+  Future<void>? _groupHydration;
+  int _groupHydrationGeneration = -1;
+
+  void selectGroupConversationHistory(String conversationId) {
+    final previous = groupNativeSessions.conversationId;
+    groupNativeSessions.select(conversationId);
+    stopConversationRefreshScheduling();
+    if (previous != conversationId) {
+      selectedConversationSessionId = '';
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+    }
+  }
+
+  Future<void> hydrateGroupConversationSessions(
+    ClientConversation conversation,
+  ) {
+    if (agentWorkspaceMobileRuntime || agentWorkspaceDisposed) {
+      return Future.value();
+    }
+    groupNativeSessions.synchronize(conversation);
+    if (conversation.group &&
+        selectedConversationSessionId.isNotEmpty &&
+        groupNativeSessions.resolve(
+              selectedConversationAgentId,
+              selectedConversationSessionId,
+            ) ==
+            null) {
+      selectedConversationSessionId = '';
+    }
+    return _readGroupNativeSessions();
+  }
+
+  Future<void> refreshGroupConversationSessions() {
+    if (groupNativeSessions.conversationId.isEmpty || agentWorkspaceDisposed) {
+      return Future.value();
+    }
+    groupNativeSessions.generation++;
+    return _readGroupNativeSessions(refresh: true);
+  }
+
+  Future<void> _readGroupNativeSessions({bool refresh = false}) {
+    final generation = groupNativeSessions.generation;
+    if (_groupHydrationGeneration == generation && _groupHydration != null) {
+      return _groupHydration!;
+    }
+    final pending =
+        (refresh ? groupNativeSessions.identities : groupNativeSessions.missing)
+            .toList(growable: false);
+    if (pending.isEmpty) {
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+      return Future.value();
+    }
+    _groupHydrationGeneration = generation;
+    groupNativeSessions.loading = true;
+    agentWorkspaceNotifyConversationStructureChanged();
+    agentWorkspaceNotifyStateChanged();
+    var cursor = 0;
+    bool current() =>
+        !agentWorkspaceDisposed && generation == groupNativeSessions.generation;
+    Future<void> worker() async {
+      while (current() && cursor < pending.length) {
+        final identity = pending[cursor++];
+        try {
+          final page = await readConversationSessionPage(
+            identity.agentId,
+            sessionId: identity.nativeSessionId,
+            offset: 0,
+            pageSize: 1,
+            messageLimit: _conversationMessagePageSize,
+          );
+          if (!current()) {
+            return;
+          }
+          var exact = page.sessions
+              .where(
+                (session) =>
+                    session.agentId == identity.agentId &&
+                    session.nativeSessionId == identity.nativeSessionId,
+              )
+              .firstOrNull;
+          final previous = groupNativeSessions.resolve(
+            identity.agentId,
+            identity.nativeSessionId,
+          );
+          if (exact != null &&
+              previous != null &&
+              previous.messages.isNotEmpty) {
+            exact = await _mergeLatestConversationMessagePage(
+              identity.agentId,
+              previous,
+              exact,
+            );
+          }
+          if (!current()) {
+            return;
+          }
+          if (exact == null) {
+            groupNativeSessions.failed(generation, identity);
+          }
+          if (exact != null &&
+              groupNativeSessions.put(generation, identity, exact)) {
+            agentWorkspaceNotifyConversationStructureChanged();
+            agentWorkspaceNotifyStateChanged();
+          }
+        } catch (_) {
+          // Preserve the binding as retryable, without a guessed metadata row.
+          groupNativeSessions.failed(generation, identity);
+        }
+      }
+    }
+
+    final operation =
+        Future.wait([
+          for (var i = 0; i < pending.length && i < 4; i++) worker(),
+        ]).then<void>((_) {
+          if (current()) {
+            groupNativeSessions.loading = false;
+            _groupHydration = null;
+            agentWorkspaceNotifyConversationStructureChanged();
+            agentWorkspaceNotifyStateChanged();
+          }
+        });
+    _groupHydration = operation;
+    return operation;
+  }
+
+  void selectGroupConversationSession(
+    String conversationId,
+    String agentId,
+    String sessionId,
+  ) {
+    if (groupNativeSessions.conversationId != conversationId) {
+      return;
+    }
+    final session = groupNativeSessions.resolve(agentId, sessionId);
+    if (session == null) {
+      return;
+    }
+    selectedConversationAgentId = agentId;
+    selectConversationSession(session.id);
+  }
+
+  bool _canApplyAgentBrowseRequest(String agentId, int sequence) =>
+      groupNativeSessions.conversationId.isEmpty &&
+      canApplyConversationRequest(agentId, sequence);
+
   @override
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
   }) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (foreground) {
+        await refreshGroupConversationSessions();
+      }
+      return;
+    }
     if (agentId.isEmpty ||
         agentWorkspaceMobileRuntime ||
         conversationSessionLoadingTargets.contains(agentId)) {
@@ -47,7 +204,7 @@ mixin AgentConversationSessionController
         offset: 0,
         pageSize: conversationSessionPageSize,
       );
-      if (!canApplyConversationRequest(agentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
         return;
       }
       conversationCommitCatalog(
@@ -73,6 +230,13 @@ mixin AgentConversationSessionController
     String agentId,
     String sessionId,
   ) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (selectedConversationAgentId == agentId &&
+          groupNativeSessions.resolve(agentId, sessionId) != null) {
+        await _loadSelectedConversationMessagePage(earlier: false);
+      }
+      return;
+    }
     final key = (agentId: agentId, sessionId: sessionId);
     if (!conversationActiveRefreshTargets.add(key)) {
       return;
@@ -85,7 +249,7 @@ mixin AgentConversationSessionController
         sessionId: sessionId,
         offset: 0,
         pageSize: 1,
-        messageLimit: 50,
+        messageLimit: _conversationMessagePageSize,
       );
       AgentConversationSession? refreshed;
       for (final session in page.sessions) {
@@ -99,7 +263,7 @@ mixin AgentConversationSessionController
         return;
       }
       exactSessionFound = true;
-      if (!canApplyConversationRequest(agentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) {
         return;
       }
       final previous = conversationSessionsByAgent[agentId] ?? const [];
@@ -111,11 +275,13 @@ mixin AgentConversationSessionController
           )
           .firstOrNull;
       if (previousExact != null && previousExact.messages.isNotEmpty) {
-        refreshed = previousExact.mergeExactMessagePage(
+        refreshed = await _mergeLatestConversationMessagePage(
+          agentId,
+          previousExact,
           refreshed,
-          allowMessageRevisions: true,
         );
       }
+      if (!_canApplyAgentBrowseRequest(agentId, sequence)) return;
       final next = insertConversationSessionByUpdatedAt(previous, refreshed);
       if (conversationSessionListsEquivalent(previous, next)) {
         return;
@@ -155,10 +321,13 @@ mixin AgentConversationSessionController
     final bind = _historyBindFor(agentId);
     // The sidebar hands over the display id, while the native reader matches
     // the stable native session id. Resolving against the local catalog keeps
-    // an exact-session read on the full transcript instead of falling back to
-    // the 50-message browse preview (which drops cards placed mid-conversation).
+    // an exact-session read on the requested message page instead of falling
+    // back to the browse preview.
     final resolvedSessionId =
         _resolveNativeSessionIdForRead(agentId, sessionId) ?? sessionId;
+    final effectiveMessageLimit = resolvedSessionId.isEmpty
+        ? messageLimit
+        : messageLimit ?? _conversationMessagePageSize;
     try {
       final streamedByIdentity = <String, AgentConversationSession>{};
       var hasMore = false;
@@ -169,7 +338,7 @@ mixin AgentConversationSessionController
         limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
         offset: offset,
         messageBefore: messageBefore,
-        messageLimit: messageLimit,
+        messageLimit: effectiveMessageLimit,
         bind: bind,
       )) {
         final identity = session.nativeSessionId.trim().isNotEmpty
@@ -215,7 +384,7 @@ mixin AgentConversationSessionController
           limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
           offset: offset,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: effectiveMessageLimit,
           bind: bind,
         ),
       );
@@ -249,6 +418,9 @@ mixin AgentConversationSessionController
   }
 
   Future<void> loadMoreConversationSessions(String agentId) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      return;
+    }
     final normalized = agentId.trim();
     if (agentWorkspaceMobileRuntime) {
       await loadMoreMobileConversationSessions(normalized);
@@ -281,7 +453,7 @@ mixin AgentConversationSessionController
         offset: offset,
         pageSize: pageSize,
       );
-      if (!canApplyConversationRequest(normalized, sequence)) {
+      if (!_canApplyAgentBrowseRequest(normalized, sequence)) {
         return;
       }
       final previous = conversationSessionsByAgent[normalized] ?? const [];
@@ -335,6 +507,10 @@ mixin AgentConversationSessionController
     String agentId, {
     String preferredNativeSessionId = '',
   }) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      await _loadSelectedConversationMessagePage(earlier: false);
+      return selectedConversationSession != null;
+    }
     final preferred = preferredNativeSessionId.trim();
     bool stillOwnsActiveSelection() {
       if (preferred.isEmpty) return true;
@@ -365,7 +541,11 @@ mixin AgentConversationSessionController
       if (delay > Duration.zero) {
         await Future<void>.delayed(delay);
       }
-      if (agentWorkspaceDisposed || !stillOwnsActiveSelection()) return false;
+      if (agentWorkspaceDisposed ||
+          groupNativeSessions.conversationId.isNotEmpty ||
+          !stillOwnsActiveSelection()) {
+        return false;
+      }
       try {
         final page = preferred.isEmpty
             ? await readConversationSessionPage(
@@ -412,6 +592,14 @@ mixin AgentConversationSessionController
 
   void selectConversationSession(String sessionId) {
     final normalizedSessionId = sessionId.trim();
+    if (groupNativeSessions.conversationId.isNotEmpty &&
+        groupNativeSessions.resolve(
+              selectedConversationAgentId,
+              normalizedSessionId,
+            ) ==
+            null) {
+      return;
+    }
     final activeNativeSessionId = sendingConversationNativeSessionId.trim();
     final selectedAgentId =
         selectedConversationAgent?.target.trim() ??
@@ -446,25 +634,182 @@ mixin AgentConversationSessionController
   Future<void> loadEarlierConversationMessages() =>
       _loadSelectedConversationMessagePage(earlier: true);
 
+  String get selectedConversationChildHistoryScope =>
+      '$selectedConversationAgentId\u0000${selectedConversationSession?.nativeSessionId ?? ''}';
+
+  Future<void> loadChildConversationMessages(
+    String childSessionId, {
+    bool earlier = false,
+  }) async {
+    final agentId = selectedConversationAgentId.trim();
+    final parent = selectedConversationSession;
+    if (agentWorkspaceDisposed || agentId.isEmpty || parent == null) return;
+    final scope = selectedConversationChildHistoryScope;
+    if (conversationChildHistoryScope != scope) {
+      conversationChildHistoryScope = scope;
+      conversationChildSessions = const {};
+      conversationChildLoadingSessions.clear();
+      conversationChildPageErrors = const {};
+    }
+    // Only a child explicitly supplied by native lineage is addressable here.
+    final pending = <AgentConversationMessage>[
+      ...parent.messages,
+      ...selectedLiveConversationMessages,
+      for (final child in conversationChildSessions.values) ...child.messages,
+    ];
+    AgentConversationMessage? recordedChild;
+    while (pending.isNotEmpty) {
+      final message = pending.removeLast();
+      if (message.childSessionId == childSessionId) {
+        recordedChild = message;
+        break;
+      }
+      pending.addAll(message.childMessages);
+    }
+    if (recordedChild == null || childSessionId.isEmpty) return;
+    final previous = conversationChildSessions[childSessionId];
+    if (earlier && previous?.messagePage.hasEarlier != true) return;
+    if (!earlier &&
+        previous != null &&
+        previous.sourceMessageCount >= recordedChild.childMessageCount &&
+        previous.sourceRevision == recordedChild.childSourceRevision) {
+      return;
+    }
+    if (!conversationChildLoadingSessions.add(childSessionId)) return;
+    conversationChildPageErrors = {...conversationChildPageErrors}
+      ..remove(childSessionId);
+    agentWorkspaceNotifyActiveConversationChanged();
+    agentWorkspaceNotifyStateChanged();
+    try {
+      final before = earlier ? previous!.messagePage.nextBefore : '';
+      final AgentConversationSession incoming;
+      if (agentWorkspaceMobileRuntime) {
+        final described = await describeMobileConversationSession(
+          agentId,
+          childSessionId,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        if (described == null) {
+          throw const FormatException('native_history_session_not_found');
+        }
+        incoming = described;
+      } else {
+        final page = await readConversationSessionPage(
+          agentId,
+          sessionId: childSessionId,
+          offset: 0,
+          pageSize: 1,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        incoming = page.sessions.single;
+      }
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      final merged = previous == null
+          ? incoming
+          : earlier
+          ? previous.mergeExactMessagePage(
+              incoming,
+              allowMessageRevisions: true,
+            )
+          : await _mergeLatestConversationMessagePage(
+              agentId,
+              previous,
+              incoming,
+            );
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      conversationChildSessions = {
+        ...conversationChildSessions,
+        childSessionId: merged,
+      };
+    } on Object catch (error) {
+      if (agentWorkspaceDisposed ||
+          selectedConversationChildHistoryScope != scope) {
+        return;
+      }
+      conversationChildPageErrors = {
+        ...conversationChildPageErrors,
+        childSessionId: _conversationMessagePageErrorCode(error),
+      };
+    } finally {
+      if (!agentWorkspaceDisposed && conversationChildHistoryScope == scope) {
+        conversationChildLoadingSessions.remove(childSessionId);
+        agentWorkspaceNotifyActiveConversationChanged();
+        agentWorkspaceNotifyStateChanged();
+      }
+    }
+  }
+
+  Future<AgentConversationSession> _mergeLatestConversationMessagePage(
+    String agentId,
+    AgentConversationSession previous,
+    AgentConversationSession incoming,
+  ) async {
+    var latest = incoming;
+    // A busy native turn can append more than one page between observations.
+    // Fill only that gap, in ordinary 20-message pages, before joining it to
+    // the reader's retained history.
+    while (previous.messages.isNotEmpty &&
+        previous.messagePage.endExclusive < latest.messagePage.start) {
+      final before = latest.messagePage.nextBefore;
+      final AgentConversationSession earlier;
+      if (agentWorkspaceMobileRuntime) {
+        final described = await describeMobileConversationSession(
+          agentId,
+          latest.nativeSessionId,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        if (described == null) {
+          throw const FormatException('native_history_session_not_found');
+        }
+        earlier = described;
+      } else {
+        final page = await readConversationSessionPage(
+          agentId,
+          sessionId: latest.nativeSessionId,
+          offset: 0,
+          pageSize: 1,
+          messageBefore: before,
+          messageLimit: _conversationMessagePageSize,
+        );
+        earlier = page.sessions.single;
+      }
+      if (earlier.messagePage.start >= latest.messagePage.start) {
+        throw const FormatException('native_history_message_page_gap');
+      }
+      latest = latest.mergeExactMessagePage(
+        earlier,
+        allowMessageRevisions: true,
+      );
+    }
+    return previous.mergeExactMessagePage(latest, allowMessageRevisions: true);
+  }
+
   Future<void> _loadSelectedConversationMessagePage({
     required bool earlier,
   }) async {
     if (agentWorkspaceDisposed) return;
+    final groupGeneration = groupNativeSessions.generation;
     final agentId = selectedConversationAgentId.trim();
     final selected = selectedConversationSession;
     final nativeSessionId = selected?.nativeSessionId.trim() ?? '';
     if (agentId.isEmpty || selected == null || nativeSessionId.isEmpty) return;
     if (earlier && !selected.messagePage.hasEarlier) return;
-    final key = '$agentId\u0000$nativeSessionId';
+    final key = selectedConversationMessagePageKey;
     if (!conversationMessagePageLoadingKeys.add(key)) return;
     conversationMessagePageErrors = {
       for (final entry in conversationMessagePageErrors.entries)
         if (entry.key != key) entry.key: entry.value,
     };
     agentWorkspaceNotifyStateChanged();
-    final completedContinuations =
-        conversationMessagePageContinuationCounts[key] ?? 0;
-    final messageLimit = earlier && completedContinuations > 0 ? 100 : 50;
     final messageBefore = earlier ? selected.messagePage.nextBefore : '';
     try {
       final AgentConversationSession incoming;
@@ -473,7 +818,7 @@ mixin AgentConversationSessionController
           agentId,
           nativeSessionId,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: _conversationMessagePageSize,
         );
         if (described == null) {
           throw const FormatException('native_history_session_not_found');
@@ -486,11 +831,12 @@ mixin AgentConversationSessionController
           offset: 0,
           pageSize: 1,
           messageBefore: messageBefore,
-          messageLimit: messageLimit,
+          messageLimit: _conversationMessagePageSize,
         );
         incoming = page.sessions.single;
       }
       if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation ||
           selectedConversationAgentId.trim() != agentId ||
           selectedConversationSession?.nativeSessionId.trim() !=
               nativeSessionId) {
@@ -498,21 +844,29 @@ mixin AgentConversationSessionController
       }
       final current = selectedConversationSession!;
       final merged = earlier
-          ? current.mergeExactMessagePage(incoming)
+          ? current.mergeExactMessagePage(incoming, allowMessageRevisions: true)
           : (current.messagePage.start < incoming.messagePage.start ||
                 current.messages.length > incoming.messages.length)
-          ? current.mergeExactMessagePage(incoming, allowMessageRevisions: true)
+          ? await _mergeLatestConversationMessagePage(
+              agentId,
+              current,
+              incoming,
+            )
           : incoming;
-      _replaceConversationSession(agentId, merged);
-      if (earlier) {
-        conversationMessagePageContinuationCounts = {
-          ...conversationMessagePageContinuationCounts,
-          key: completedContinuations + 1,
-        };
+      if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation ||
+          selectedConversationAgentId.trim() != agentId ||
+          selectedConversationSession?.nativeSessionId.trim() !=
+              nativeSessionId) {
+        return;
       }
+      _replaceConversationSession(agentId, merged);
       lastError = '';
     } on Object catch (error) {
-      if (agentWorkspaceDisposed) return;
+      if (agentWorkspaceDisposed ||
+          groupGeneration != groupNativeSessions.generation) {
+        return;
+      }
       final code = _conversationMessagePageErrorCode(error);
       conversationMessagePageErrors = {
         ...conversationMessagePageErrors,
@@ -537,6 +891,15 @@ mixin AgentConversationSessionController
     String agentId,
     AgentConversationSession replacement,
   ) {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      if (groupNativeSessions.put(groupNativeSessions.generation, (
+        agentId: agentId,
+        nativeSessionId: replacement.nativeSessionId,
+      ), replacement)) {
+        selectedConversationSessionId = replacement.id;
+      }
+      return;
+    }
     final previous = conversationSessionsByAgent[agentId] ?? const [];
     final next = <AgentConversationSession>[
       for (final session in previous)
@@ -565,7 +928,7 @@ mixin AgentConversationSessionController
     if (agent.hasValidVirtualMachineConnection) {
       return agent.remoteWorkingDirectory.trim();
     }
-    final agentSessions = conversationSessionsByAgent[agent.target] ?? const [];
+    final agentSessions = conversationSessionCatalogFor(agent.target);
     // Explicit user bind for the next turn wins over session provenance and
     // the shared client-owned fallback.
     final draftDirectory =
@@ -774,6 +1137,13 @@ mixin AgentConversationSessionController
     if (normalizedAgentId.isEmpty) {
       return;
     }
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      selectedConversationAgentId = normalizedAgentId;
+      selectedConversationSessionId = '';
+      agentWorkspaceNotifyConversationStructureChanged();
+      agentWorkspaceNotifyStateChanged();
+      return;
+    }
     if (normalizedAgentId == selectedConversationAgentId &&
         selectedConversationSessions.isNotEmpty) {
       var runtimeBound = true;
@@ -851,6 +1221,9 @@ mixin AgentConversationSessionController
   }
 
   Future<void> loadConversationSessions(String agentId) async {
+    if (groupNativeSessions.conversationId.isNotEmpty) {
+      return;
+    }
     final normalizedAgentId = agentId.trim();
     if (normalizedAgentId.isEmpty ||
         conversationSessionLoadingTargets.contains(normalizedAgentId)) {
@@ -875,7 +1248,7 @@ mixin AgentConversationSessionController
         offset: 0,
         pageSize: conversationSessionPageSize,
         onProgress: (progress) {
-          if (!canApplyConversationRequest(normalizedAgentId, sequence)) {
+          if (!_canApplyAgentBrowseRequest(normalizedAgentId, sequence)) {
             return;
           }
           conversationCommitCatalog(
@@ -886,7 +1259,7 @@ mixin AgentConversationSessionController
           );
         },
       );
-      if (!canApplyConversationRequest(normalizedAgentId, sequence)) {
+      if (!_canApplyAgentBrowseRequest(normalizedAgentId, sequence)) {
         return;
       }
       conversationCommitCatalog(
@@ -995,9 +1368,7 @@ mixin AgentConversationSessionController
     if (sessionId.isEmpty) {
       return null;
     }
-    final sessions =
-        conversationSessionsByAgent[agentId] ??
-        const <AgentConversationSession>[];
+    final sessions = conversationSessionCatalogFor(agentId);
     for (final session in sessions) {
       if (session.id == sessionId) {
         final nativeId = session.nativeSessionId.trim();

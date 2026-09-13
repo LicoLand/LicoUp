@@ -3,7 +3,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 
 void main() {
-  test('picker label renders allowlisted catalog facts from the model row', () {
+  test('picker shows only the model name and keeps planning facts private', () {
     final target = TargetCandidate(
       target: 'kimi-code',
       label: 'kimi-code',
@@ -25,9 +25,6 @@ void main() {
         ],
       },
     );
-    expect(
-      agentOrchestrationModelPickerLabel(target, 'kimi-k3'),
-      'Kimi K3 · 61 · frontend · backend',
-    );
+    expect(agentOrchestrationModelPickerLabel(target, 'kimi-k3'), 'Kimi K3');
   });
 }

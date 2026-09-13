@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/plugin_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
@@ -19,9 +20,16 @@ import 'package:licoup/src/presentation/plugin_management/plugin_management_proj
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 final class AdapterPluginPanel extends StatelessWidget {
-  const AdapterPluginPanel({super.key, required this.binding});
+  const AdapterPluginPanel({
+    super.key,
+    required this.binding,
+    this.agentId,
+    this.embedded = false,
+  });
 
   final PluginManagementBinding binding;
+  final String? agentId;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -35,45 +43,59 @@ final class AdapterPluginPanel extends StatelessWidget {
           >(
             source: binding.projection,
             select: (projection) => projection,
-            builder: (context, projection) => LicoPaneScaffold(
-              key: const Key('adapter-plugin-panel'),
-              titleBarKey: const Key('adapter-plugin-title-bar'),
-              title: LicoStrings.of(context).pluginManagement,
-              refreshTooltip: LicoStrings.of(context).refresh,
-              onRefresh: projection.phase == PresentationPhase.loading
-                  ? null
-                  : () => binding.intents.send(const RefreshPlugins()),
-              refreshing: projection.phase == PresentationPhase.loading,
-              refreshButtonKey: const Key('adapter-plugin-refresh'),
-              body: projection.plugins.isEmpty
-                  ? LicoEmptyState(
-                      icon: Icons.extension_outlined,
-                      title: LicoStrings.of(context).pluginManagement,
-                      message: LicoStrings.of(context).isChinese
-                          ? '插件目录中没有适配器。'
-                          : 'No adapters were returned by the plugin catalog.',
-                    )
-                  : ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        _PluginCardGrid(
-                          plugins: projection.plugins,
-                          busy: projection.phase == PresentationPhase.loading,
-                          binding: binding,
-                        ),
-                        if (projection.notice != null) ...[
-                          const SizedBox(height: 4),
-                          SelectableText(
-                            projection.notice!.reasonCode,
-                            key: const Key('adapter-plugin-error'),
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                        ],
-                      ],
+            builder: (context, projection) {
+              final plugins = agentId == null
+                  ? projection.plugins
+                  : projection.plugins
+                        .where((plugin) => plugin.id == agentId)
+                        .toList(growable: false);
+              final loading = projection.phase == PresentationPhase.loading;
+              final strings = LicoStrings.of(context);
+              final body = ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  if (loading)
+                    const LinearProgressIndicator(
+                      key: Key('adapter-plugin-loading'),
                     ),
-            ),
+                  if (plugins.isNotEmpty)
+                    _PluginCardGrid(
+                      plugins: plugins,
+                      busy: loading,
+                      binding: binding,
+                    )
+                  else if (!loading)
+                    LicoEmptyState(
+                      icon: Icons.extension_outlined,
+                      title: strings.pluginsNav,
+                      message: strings.isChinese
+                          ? '此 Agent 尚无可用插件。'
+                          : 'No plugins are available for this Agent.',
+                    ),
+                  if (projection.notice != null)
+                    Text(
+                      projection.notice!.reasonCode,
+                      key: const Key('adapter-plugin-error'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                ],
+              );
+              if (embedded) return body;
+              return LicoPaneScaffold(
+                key: const Key('adapter-plugin-panel'),
+                titleBarKey: const Key('adapter-plugin-title-bar'),
+                title: strings.pluginManagement,
+                refreshTooltip: strings.refresh,
+                onRefresh: loading
+                    ? null
+                    : () => binding.intents.send(const RefreshPlugins()),
+                refreshing: loading,
+                refreshButtonKey: const Key('adapter-plugin-refresh'),
+                body: body,
+              );
+            },
           ),
     );
   }
@@ -304,15 +326,8 @@ final class _PluginCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    return Card(
+    return PluginSurface(
       key: Key('adapter-plugin-${plugin.id}'),
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(LicoRadius.card),
-        side: BorderSide(color: colors.line),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

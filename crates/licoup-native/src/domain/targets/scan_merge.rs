@@ -393,6 +393,7 @@ pub(super) fn model_catalog_params(
         "antigravity" => "antigravityCliPath",
         "claude-code" => "claudeCliPath",
         "cursor" => "cursorCliPath",
+        "deepseek-harness" => "deepseekHarnessCliPath",
         "kilo-code" => "kiloCliPath",
         "opencode" => "opencodeCliPath",
         "pi" => "piCliPath",

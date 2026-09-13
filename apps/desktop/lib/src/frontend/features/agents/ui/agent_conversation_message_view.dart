@@ -8,14 +8,14 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_notice.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -28,12 +28,12 @@ class AgentConversationMessageList extends StatefulWidget {
     required this.session,
     required this.target,
     this.messagePageLoading = false,
+    this.hasEarlierMessages,
     this.messagePageError = '',
     this.onLoadEarlier,
     this.turnActive = false,
     this.liveMessages = const [],
     this.messageStyle = AgentsMessageStyle.documentTranscript,
-    this.processStyle = AgentsProcessStyle.processCard,
     this.participantTargets = const [],
     this.participantConversationIds = const {},
     this.participantRuntimeProfiles = const {},
@@ -50,6 +50,7 @@ class AgentConversationMessageList extends StatefulWidget {
   final AgentConversationSession? session;
   final TargetCandidate target;
   final bool messagePageLoading;
+  final bool? hasEarlierMessages;
   final String messagePageError;
   final Future<void> Function()? onLoadEarlier;
   final bool turnActive;
@@ -65,8 +66,6 @@ class AgentConversationMessageList extends StatefulWidget {
   /// participant flow.
   final AgentsMessageStyle messageStyle;
 
-  /// How structured process events render between messages.
-  final AgentsProcessStyle processStyle;
   final List<TargetCandidate> participantTargets;
 
   /// Agent id → conversation id used on hover next to message timestamps.
@@ -94,7 +93,12 @@ class AgentConversationMessageList extends StatefulWidget {
 
 class AgentConversationMessageListState
     extends State<AgentConversationMessageList> {
+  bool get _hasEarlierMessages =>
+      widget.hasEarlierMessages ??
+      widget.session?.messagePage.hasEarlier ??
+      false;
   bool _showDiagnostics = false;
+  final _messageMergeCache = ConversationMessageMergeCache();
   late Future<AgentRenderAdapter> _adapterFuture;
   (AgentRenderAdapterRegistry, String, String, String, String)?
   _adapterResolutionKey;
@@ -115,7 +119,6 @@ class AgentConversationMessageListState
 
   int _timelineTotal = 0;
   bool _pageRequestInFlight = false;
-  String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
   /// Owned anchor controller used when the pane does not provide one; keeps
@@ -132,25 +135,25 @@ class AgentConversationMessageListState
     super.initState();
     _syncAdapterFuture();
     _syncTimelineCache();
-    _syncActiveProcessStorageKey();
   }
 
   @override
   void didUpdateWidget(covariant AgentConversationMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncAdapterFuture();
-    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
-      // The incoming history page lands at the far (oldest) end, which is
-      // already position-stable; skip exactly one reading-position hold.
-      final controller = _effectiveScrollController;
-      if (controller is ReadingPositionScrollController) {
-        controller.notifyFarEndAppend();
+    final readingController = _effectiveScrollController;
+    if (readingController is ReadingPositionScrollController) {
+      final sameConversation =
+          oldWidget.target.target == widget.target.target &&
+          oldWidget.session?.id == widget.session?.id &&
+          oldWidget.session?.nativeSessionId == widget.session?.nativeSessionId;
+      if (sameConversation) {
+        readingController.captureReadingAnchor();
+      } else {
+        readingController.clearReadingAnchor();
       }
     }
-    final timelineChanged = _syncTimelineCache();
-    if (timelineChanged || oldWidget.turnActive != widget.turnActive) {
-      _syncActiveProcessStorageKey();
-    }
+    _syncAdapterFuture();
+    _syncTimelineCache();
   }
 
   @override
@@ -201,7 +204,7 @@ class AgentConversationMessageListState
       return true;
     }
 
-    final messages = mergeConversationReadbackAndLiveMessages(
+    final messages = _messageMergeCache.merge(
       session?.messages ?? const [],
       widget.liveMessages,
     );
@@ -334,19 +337,6 @@ class AgentConversationMessageListState
         !next.isStructuredEvent;
   }
 
-  void _syncActiveProcessStorageKey() {
-    _activeProcessStorageKey = '';
-    if (!widget.turnActive) {
-      return;
-    }
-    for (final item in _timelineItems) {
-      if (item is ConversationProcessTimelineItem) {
-        _activeProcessStorageKey = item.storageKey;
-        return;
-      }
-    }
-  }
-
   /// Ids of the live assistant replies whose bodies are still streaming.
   ///
   /// The signal is the real turn state, never text shape: a message streams
@@ -369,6 +359,18 @@ class AgentConversationMessageListState
     }
     return ids;
   }
+
+  String get _motionAvatarMessageId =>
+      _timelineItems.reversed
+          .whereType<ConversationMessageTimelineItem>()
+          .where(
+            (item) =>
+                item.message.kind == AgentConversationMessageKind.assistant,
+          )
+          .firstOrNull
+          ?.message
+          .id ??
+      '';
 
   @override
   Widget build(BuildContext context) {
@@ -408,8 +410,8 @@ class AgentConversationMessageListState
             items: _timelineItems,
             adapter: adapter,
             target: widget.target,
-            activeProcessStorageKey: _activeProcessStorageKey,
             sessionKey: _timelineSessionKey,
+            motionAvatarMessageId: _motionAvatarMessageId,
             participantTargets: widget.participantTargets,
             participantConversationIds: widget.participantConversationIds,
             participantRuntimeProfiles: widget.participantRuntimeProfiles,
@@ -421,7 +423,7 @@ class AgentConversationMessageListState
             bottomOverlayInset: widget.bottomOverlayInset,
             messagePageLoading: widget.messagePageLoading,
             messagePageError: widget.messagePageError,
-            hasEarlier: widget.session?.messagePage.hasEarlier ?? false,
+            hasEarlier: _hasEarlierMessages,
             onLoadEarlier: widget.onLoadEarlier,
             onCopyText: widget.onCopyText,
             onRetryMessage: widget.onRetryMessage,
@@ -429,7 +431,7 @@ class AgentConversationMessageListState
           );
         }
         final showPageRow =
-            (widget.session?.messagePage.hasEarlier ?? false) ||
+            _hasEarlierMessages ||
             widget.messagePageLoading ||
             widget.messagePageError.isNotEmpty;
         return NotificationListener<ScrollNotification>(
@@ -487,8 +489,14 @@ class AgentConversationMessageListState
         _pageRequestInFlight) {
       return false;
     }
+    final movingEarlier = switch (notification) {
+      ScrollUpdateNotification(:final scrollDelta) => (scrollDelta ?? 0) > 0,
+      OverscrollNotification(:final overscroll) => overscroll > 0,
+      _ => false,
+    };
+    if (!movingEarlier) return false;
     final metrics = notification.metrics;
-    if (!(widget.session?.messagePage.hasEarlier ?? false)) {
+    if (!_hasEarlierMessages) {
       return false;
     }
     // Start the page one full viewport ahead of the oldest loaded edge so the
@@ -549,37 +557,33 @@ class AgentConversationMessageListState
     final item = _timelineItems[index - _footerCount];
     final content = switch (item) {
       ConversationMessageTimelineItem(:final message) =>
-        AgentConversationMessageBlock(
-          message: message,
-          adapter: adapter,
-          isStreaming: streamingMessageIds.contains(message.id),
-        ),
-      ConversationProcessTimelineItem(:final events) =>
-        switch (widget.processStyle) {
-          AgentsProcessStyle.processCard => ConversationProcessCard(
-            events: events,
-            adapter: adapter,
-            detailsBuilder: buildAgentConversationEventDetails,
-            active: item.storageKey == _activeProcessStorageKey,
-            topOverlayInset: widget.topOverlayInset,
-          ),
-          AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
-            events: events,
-            adapter: adapter,
-            detailsBuilder: buildAgentConversationEventDetails,
-            active: item.storageKey == _activeProcessStorageKey,
-          ),
-        },
-      ConversationLogTimelineItem(:final events) => ConversationLogEventRow(
-        events: events,
-        detailsBuilder: buildAgentConversationEventDetails,
+        message.kind == AgentConversationMessageKind.assistant
+            ? MessagingMessageGroup(
+                authorIsUser: false,
+                motionAvatar: message.id == _motionAvatarMessageId,
+                participantLabel: message.participantLabel,
+                participantRole: message.participantRole,
+                participantTarget: widget.participantTargets
+                    .where(
+                      (target) => target.target == message.participantAgentId,
+                    )
+                    .firstOrNull,
+                messages: [message],
+                target: widget.target,
+                adapter: adapter,
+                streamingMessageIds: streamingMessageIds,
+                onCopyText: widget.onCopyText,
+              )
+            : AgentConversationMessageBlock(
+                message: message,
+                adapter: adapter,
+                isStreaming: streamingMessageIds.contains(message.id),
+              ),
+      ConversationFailureTimelineItem(:final message) =>
+        ConversationFailureNotice(message: message, target: widget.target),
+      ConversationNoticeTimelineItem(:final message) => ConversationNotice(
+        message: message,
       ),
-      ConversationRuntimeUpdateTimelineItem(:final message) =>
-        AgentRuntimeUpdateCard(
-          message: message,
-          adapter: adapter,
-          active: widget.turnActive,
-        ),
       ConversationTruncationTimelineItem(
         :final historyTruncated,
         :final messageTreeTruncated,
@@ -591,14 +595,19 @@ class AgentConversationMessageListState
     };
     // A streamed reply changes one item per frame. Without a repaint
     // boundary per item the whole visible transcript repaints with it.
-    return Padding(
+    return ReadingPositionAnchor(
       key: ValueKey<String>(item.storageKey),
-      padding: EdgeInsets.only(
-        bottom: index + 1 < _timelineItems.length + _footerCount
-            ? LicoContentSpacing.item
-            : 0,
+      controller: _effectiveScrollController,
+      anchorId: item.storageKey,
+      isRow: true,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: index + 1 < _timelineItems.length + _footerCount
+              ? LicoContentSpacing.item
+              : 0,
+        ),
+        child: RepaintBoundary(child: content),
       ),
-      child: RepaintBoundary(child: content),
     );
   }
 }
@@ -643,35 +652,40 @@ final class _ConversationEarlierPageRow extends StatelessWidget {
   }
 }
 
-/// One-slot identity for [mergeConversationReadbackAndLiveMessages]. A
-/// streamed pane republishes new list wrappers every frame while ids and
-/// text are unchanged; returning the same merged instance skips the O(n)
-/// copies and the O(n²) tail walk.
-({int readBack, int live})? _mergeConversationIdentity;
-List<AgentConversationMessage>? _mergedConversationMessages;
+/// One pane's last merge. Messages are immutable, so reference comparison
+/// includes child content, attachments, and metadata without hashing their
+/// contents or retaining another pane's conversation.
+final class ConversationMessageMergeCache {
+  List<AgentConversationMessage> _readBack = const [];
+  List<AgentConversationMessage> _live = const [];
+  List<AgentConversationMessage>? _merged;
 
-int _conversationMergeListIdentity(List<AgentConversationMessage> messages) {
-  if (messages.isEmpty) {
-    return 0;
+  List<AgentConversationMessage> merge(
+    List<AgentConversationMessage> readBack,
+    List<AgentConversationMessage> live,
+  ) {
+    final cached = _merged;
+    if (cached != null &&
+        _sameMessages(_readBack, readBack) &&
+        _sameMessages(_live, live)) {
+      return cached;
+    }
+    _readBack = readBack;
+    _live = live;
+    return _merged = mergeConversationReadbackAndLiveMessages(readBack, live);
   }
-  var hash = messages.length;
-  hash = Object.hash(
-    hash,
-    messages.first.id,
-    messages.first.text.length,
-    messages.last.id,
-    messages.last.text.length,
-  );
-  for (final message in messages) {
-    hash = Object.hash(
-      hash,
-      message.id,
-      message.text.hashCode,
-      message.stableIdentity,
-      message.cardType,
-    );
+
+  static bool _sameMessages(
+    List<AgentConversationMessage> previous,
+    List<AgentConversationMessage> next,
+  ) {
+    if (identical(previous, next)) return true;
+    if (previous.length != next.length) return false;
+    for (var index = 0; index < next.length; index += 1) {
+      if (!identical(previous[index], next[index])) return false;
+    }
+    return true;
   }
-  return hash;
 }
 
 /// Keeps a completed live turn visible until readback arrives without briefly
@@ -680,26 +694,39 @@ List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
   List<AgentConversationMessage> readBack,
   List<AgentConversationMessage> live,
 ) {
-  final identity = (
-    readBack: _conversationMergeListIdentity(readBack),
-    live: _conversationMergeListIdentity(live),
-  );
-  final cached = _mergedConversationMessages;
-  if (cached != null && _mergeConversationIdentity == identity) {
-    return cached;
-  }
-  final merged = _mergeConversationReadbackAndLiveMessages(readBack, live);
-  _mergeConversationIdentity = identity;
-  _mergedConversationMessages = merged;
-  return merged;
-}
-
-List<AgentConversationMessage> _mergeConversationReadbackAndLiveMessages(
-  List<AgentConversationMessage> readBack,
-  List<AgentConversationMessage> live,
-) {
   if (readBack.isEmpty || live.isEmpty) {
     return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
+  }
+  // Canonical Events and live Membership frames share exact execution and
+  // reply identities. Prefer available body text to its transient waiting slot
+  // without inferring a match from a participant name or message contents.
+  if (!live.any(
+    (message) => message.kind == AgentConversationMessageKind.user,
+  )) {
+    final indexes = {
+      for (var index = 0; index < readBack.length; index++)
+        if (readBack[index].executionReference != null)
+          (readBack[index].executionReference, readBack[index].stableIdentity):
+              index,
+    };
+    final result = List<AgentConversationMessage>.of(readBack);
+    var matched = false;
+    for (final message in live) {
+      final index =
+          indexes[(message.executionReference, message.stableIdentity)];
+      if (index == null || message.executionReference == null) {
+        result.add(message);
+      } else {
+        matched = true;
+        final stored = result[index];
+        if (!message.waitingForReply &&
+            !(stored.text.length > message.text.length &&
+                stored.text.startsWith(message.text))) {
+          result[index] = message;
+        }
+      }
+    }
+    if (matched) return List.unmodifiable(result);
   }
   final liveConversation = live
       .where(_isConversationParticipantMessage)
@@ -874,6 +901,9 @@ List<AgentConversationMessage> _convergeTurnReadbackOperations(
       participantAgentId: message.participantAgentId,
       participantLabel: message.participantLabel,
       participantRole: message.participantRole,
+      executionReference: message.executionReference,
+      waitingForReply: message.waitingForReply,
+      replyTerminalState: message.replyTerminalState,
       childMessagesTruncated: message.childMessagesTruncated,
       childMessages: message.childMessages,
       images: message.images,

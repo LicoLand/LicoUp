@@ -1,4 +1,5 @@
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_conversation_command_policy.dart';
 
 /// Chooses the persistent transport without exposing transport details to
 /// command builders or the public service facade.
@@ -17,6 +18,11 @@ class NativeCommandRouter implements NativeCommandExecutor {
 
   @override
   Future<Map<String, dynamic>> execute(List<String> arguments) {
+    if (nativeCliTargetsConversation(arguments)) {
+      return Future.error(
+        const LicoClientRpcException('conversation_port_required'),
+      );
+    }
     if (_persistentStdioRpcEnabled) {
       return _stdioRpcTransport.execute(arguments);
     }

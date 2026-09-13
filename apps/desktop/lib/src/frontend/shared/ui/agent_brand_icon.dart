@@ -21,7 +21,6 @@ const _agentIconAssets = <String, String>{
   'cursor': 'assets/agent-icons/cursor.svg',
   'deepseek-harness': 'assets/agent-icons/deepseek-harness.svg',
   'hermes': 'assets/agent-icons/hermes.png',
-  'kimi': 'assets/agent-icons/kimi-light.svg',
   'kimi-code': 'assets/agent-icons/kimi-light.svg',
   'pi': 'assets/agent-icons/pi.svg',
   'grok': 'assets/agent-icons/grok.svg',
@@ -30,7 +29,6 @@ const _agentIconAssets = <String, String>{
 
 const _agentIconDarkAssets = <String, String>{
   'codex': 'assets/agent-icons/codex-dark.svg',
-  'kimi': 'assets/agent-icons/kimi-dark.svg',
   'kimi-code': 'assets/agent-icons/kimi-dark.svg',
   'opencode': 'assets/agent-icons/opencode-dark.svg',
 };

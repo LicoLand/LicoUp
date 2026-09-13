@@ -177,6 +177,10 @@ void main() {
           theme: buildLicoTheme(
             platformBrightness: Brightness.dark,
           ).copyWith(platform: TargetPlatform.android),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           home: SizedBox(
             width: 390,
             height: 844,
@@ -763,6 +767,10 @@ final class _TestPresentationPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences = _preferences.copyWith(reduceMotion: enabled);
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       _preferences = _preferences.copyWith(appearancePresetId: id);
 
@@ -893,7 +901,6 @@ class _NoopConversationService extends AgentConversationService {
 
   @override
   Future<AgentDispatchTurnResult> send({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,

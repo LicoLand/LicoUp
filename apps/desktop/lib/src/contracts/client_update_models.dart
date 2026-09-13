@@ -32,6 +32,7 @@ enum ClientUpdatePhase {
   idle,
   checking,
   upToDate,
+  unavailable,
   updateAvailable,
   downloading,
   downloaded,
@@ -120,6 +121,7 @@ final class ClientUpdateStatus {
       phase: switch (phaseRaw) {
         'checking' => ClientUpdatePhase.checking,
         'upToDate' => ClientUpdatePhase.upToDate,
+        'unavailable' => ClientUpdatePhase.unavailable,
         'updateAvailable' => ClientUpdatePhase.updateAvailable,
         'downloading' => ClientUpdatePhase.downloading,
         'downloaded' => ClientUpdatePhase.downloaded,

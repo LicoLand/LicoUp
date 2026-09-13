@@ -220,14 +220,6 @@ pub(crate) fn target_defs() -> Vec<TargetDef> {
             process_names: &["hermes.exe", "hermes"],
         },
         TargetDef {
-            id: "kimi",
-            label: "Kimi Desktop",
-            kind: "desktop-agent",
-            config_hint: "Kimi desktop application data",
-            binary_names: &[],
-            process_names: &["Kimi", "kimi", "Kimi.exe", "kimi.exe", "com.moonshot.kimi"],
-        },
-        TargetDef {
             id: "kimi-code",
             label: "Kimi Code CLI",
             kind: "cli",
@@ -372,7 +364,7 @@ mod tests {
         assert!(!candidate_runtime_is_available(
             &mut capabilities,
             "deepseek-harness",
-            Some(Path::new("dsh-jsonrpc-agent")),
+            Some(Path::new("dsh")),
         ));
         assert_eq!(capabilities.conversation_blocker, None);
         assert_eq!(capabilities.conversation_readiness, "unverified");

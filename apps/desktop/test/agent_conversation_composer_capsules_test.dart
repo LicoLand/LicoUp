@@ -65,8 +65,12 @@ void main() {
       'gpt-5.6-sol · Medium',
     );
     expect(
-      composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: '高', fast: true),
-      'gpt-5.6-sol · 高 · Fast',
+      composeRuntimeCapsuleLabel(
+        model: 'gpt-5.6-sol',
+        effort: 'High',
+        fast: true,
+      ),
+      'gpt-5.6-sol · High · Fast',
     );
     expect(
       composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: '', fast: false),
@@ -433,50 +437,51 @@ void main() {
     expect(tester.getRect(primaryCard), primaryRect);
   });
 
-  testWidgets('primary panel labels both rows in Simplified Chinese', (
-    tester,
-  ) async {
-    _useComposerPopoverViewport(tester);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('zh'),
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomLeft,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ComposerRuntimeCapsule(
-                modelOptions: const ['k3', 'k3-256k'],
-                selectedModel: '',
-                defaultModel: 'k3',
-                enabled: true,
-                onModelChanged: (_) {},
-                reasoningEffortOptions: const ['low', 'medium', 'high'],
-                selectedReasoningEffort: 'high',
-                onReasoningEffortChanged: (_) {},
+  testWidgets(
+    'primary panel keeps Chinese headings and English effort values',
+    (tester) async {
+      _useComposerPopoverViewport(tester);
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposerRuntimeCapsule(
+                  modelOptions: const ['k3', 'k3-256k'],
+                  selectedModel: '',
+                  defaultModel: 'k3',
+                  enabled: true,
+                  onModelChanged: (_) {},
+                  reasoningEffortOptions: const ['low', 'medium', 'high'],
+                  selectedReasoningEffort: 'high',
+                  onReasoningEffortChanged: (_) {},
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    await tester.tap(find.byKey(const Key('conversation-model-button')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('conversation-model-button')));
+      await tester.pumpAndSettle();
 
-    expect(find.text('模型'), findsOneWidget);
-    expect(find.text('思考强度'), findsOneWidget);
-    // The effort row summarizes the active effort with the product's own copy.
-    expect(find.text('高'), findsWidgets);
-  });
+      expect(find.text('模型'), findsOneWidget);
+      expect(find.text('思考强度'), findsOneWidget);
+      // Effort values retain English labels in the Chinese interface.
+      expect(find.text('High'), findsWidgets);
+    },
+  );
 
   testWidgets('model submenu keeps fused labels in full', (tester) async {
     _useComposerPopoverViewport(tester);

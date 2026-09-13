@@ -31,6 +31,7 @@ import {
   retireStaleCleanBuildRuns,
   stagedPresentationContractRoot,
 } from "./package-client/source-staging.mjs";
+import { buildNativeSidecars } from "./package-client/build/native.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const packageScript = "apps/desktop/scripts/package-client.mjs";
@@ -69,6 +70,29 @@ function outputIsReferenceOnly(value) {
     !output.includes(repoRoot) &&
     (!home || !output.includes(home));
 }
+
+const sidecarBuilds = [];
+buildNativeSidecars(
+  [
+    { cargoBin: "licoup-cli" },
+    { cargoBin: "lico-gateway" },
+    { cargoBin: "lico-subagent-mcp" },
+    { embeddedCargoBin: "lico-subagent-mcp" },
+  ],
+  { mode: "debug", platform: "windows" },
+  { runProcess: (_command, args) => sidecarBuilds.push(args) },
+);
+requireValue(
+  sidecarBuilds.length === 2 &&
+    sidecarBuilds[0].includes(path.join("crates", "licoup-native", "Cargo.toml")) &&
+    sidecarBuilds[0].includes("licoup-cli") &&
+    sidecarBuilds[0].includes("lico-gateway") &&
+    !sidecarBuilds[0].includes("lico-subagent-mcp") &&
+    sidecarBuilds[1].includes(path.join("crates", "licoup-mcp", "Cargo.toml")) &&
+    sidecarBuilds[1].filter((arg) => arg === "lico-subagent-mcp").length === 1 &&
+    sidecarBuilds.every((args) => args.includes("--target")),
+  "native_and_mcp_sidecars_must_build_from_their_own_crates",
+);
 
 assertReleaseSourceDigestStable(digest, digest);
 expectRejected(

@@ -21,6 +21,7 @@ import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
 
 import '../../presentation/composed_client_shell_test_helper.dart';
+import '../../support/fake_conversation_transport.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
@@ -85,7 +86,9 @@ final class ProductionClientShellFixture {
     final controller = ClientController(
       portableData: portableData,
       agentService: agentService,
-      conversationService: const _FixtureConversationService(),
+      conversationService: _FixtureConversationService(
+        native: agentService.conversationNativePort,
+      ),
       layoutCatalog: layoutCatalog,
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
@@ -231,6 +234,10 @@ final class InMemoryPresentationPreferencesRepository
       PresentationPreferencesLoadResult(preferences: _preferences);
 
   @override
+  Future<PresentationPreferences> setReduceMotion(bool enabled) async =>
+      _preferences = _preferences.copyWith(reduceMotion: enabled);
+
+  @override
   Future<PresentationPreferences> setAppearancePreset(String id) async =>
       _preferences = _preferences.copyWith(appearancePresetId: id);
 
@@ -247,6 +254,9 @@ final class InMemoryPresentationPreferencesRepository
 final class _FixtureAgentService extends AgentService {
   _FixtureAgentService({required this.targets, required this.primaryTargetId})
     : super(
+        conversationNativePort: FakeConversationTransport(
+          command: (_, _) async => {'ok': true, 'turns': [], 'result': []},
+        ).native,
         runCliExecutable: (executable, arguments, environment) async =>
             ProcessResult(0, 0, '{}', ''),
       );
@@ -312,7 +322,7 @@ final class _FixtureAgentService extends AgentService {
 }
 
 final class _FixtureConversationService extends AgentConversationService {
-  const _FixtureConversationService();
+  const _FixtureConversationService({required super.native});
 
   @override
   Future<List<AgentConversationSession>> loadSessions({

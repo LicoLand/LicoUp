@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
-
 /// Shared renderer measurements for the Messaging presentation.
 abstract final class MessagingDesktopMetrics {
   /// Far-left destination column on the unified clear-veil shell.
@@ -538,24 +536,6 @@ abstract final class MessagingDesktopMetrics {
   static Color chromeSearchPlaceholder() =>
       chromeForegroundColor.withAlpha(chromeSearchPlaceholderAlpha);
 
-  /// Content height of one sidebar bottom-nav button: compact vertical
-  /// padding ×2 (16) + icon (20) + icon–label gap (4) + label line
-  /// (10 × 1.1 = 11) = 51.
-  static const double sidebarBottomNavButtonExtent = 51;
-
-  /// Horizontal margin on each sidebar bottom-nav button. At the default
-  /// sidebar width the row slot is (224 − 4 card inset − 16 nav padding) / 3
-  /// = 68; margin 8.5 makes the visible button exactly
-  /// [sidebarBottomNavButtonExtent] wide — a perfect square by default.
-  /// Wider sidebars stretch the buttons wider than square.
-  static const double sidebarBottomNavButtonMargin =
-      ((conversationListExtent -
-                  conversationListCardInset -
-                  LicoContentSpacing.compact * 2) /
-              3 -
-          sidebarBottomNavButtonExtent) /
-      2;
-
   static const double searchFieldHeight = 32;
 
   /// Vertical rhythm between stacked primary sidebar controls and the next
@@ -574,5 +554,5 @@ abstract final class MessagingDesktopMetrics {
 
   static const double windowCornerRadius = 24;
 
-  static const double hairline = 0.5;
+  static const double hairline = 1;
 }

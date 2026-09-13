@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -971,7 +973,8 @@ void main() {
     );
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('更新'), findsOneWidget);
-    expect(find.text('工具'), findsOneWidget);
+    expect(find.text('通用'), findsOneWidget);
+    expect(find.text('工具'), findsNothing);
     expect(find.text('存储'), findsOneWidget);
     expect(find.text('诊断'), findsOneWidget);
     expect(find.text('启动'), findsOneWidget);
@@ -1034,6 +1037,65 @@ void main() {
       (skillsContainer.decoration! as BoxDecoration).color,
       isNot(colors.primary),
     );
+  });
+
+  for (final showConversations in [false, true]) {
+    testWidgets(
+      '${showConversations ? 'conversation' : 'contact'} list forwards pull refresh',
+      (tester) async {
+        var refreshes = 0;
+        await _pumpContacts(
+          tester,
+          sessionsByAgent: const {},
+          showConversationList: showConversations,
+          onRefresh: () => refreshes += 1,
+        );
+        final list = find.byType(ListView);
+        await tester.drag(list, const Offset(0, 220));
+        await tester.pumpAndSettle();
+        expect(refreshes, 1);
+        expect(
+          tester
+              .state<ScrollableState>(find.byType(Scrollable))
+              .position
+              .pixels,
+          0,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('labeled bottom tabs have no hover bubbles and keep semantics', (
+    tester,
+  ) async {
+    await _pumpContacts(tester, sessionsByAgent: const {});
+    final semantics = tester.ensureSemantics();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: const Offset(700, 500));
+    for (final item in MessagingSidebarNavItem.values) {
+      final button = find.byKey(Key(messagingSidebarNavKey(item)));
+      expect(
+        find.descendant(of: button, matching: find.byType(Tooltip)),
+        findsNothing,
+      );
+      final node = tester.getSemantics(button);
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      expect(node.label, isNotEmpty);
+      await mouse.moveTo(tester.getCenter(button));
+      await tester.pump(const Duration(seconds: 1));
+      await mouse.moveTo(const Offset(700, 500));
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('messaging-sidebar-bottom-nav')),
+          matching: find.byType(Tooltip),
+        ),
+        findsNothing,
+      );
+    }
+    semantics.dispose();
   });
 
   testWidgets('bottom nav maps the three tabs onto existing destinations', (
@@ -1131,6 +1193,7 @@ Future<void> _pumpContacts(
   ValueChanged<String>? onArchiveGroupConversation,
   VoidCallback? onNewConversation,
   VoidCallback? onSearch,
+  VoidCallback? onRefresh,
   VoidCallback? onNewGroupConversation,
   bool showConversationList = false,
   List<TargetCandidate> conversationListTargets = const [],
@@ -1176,6 +1239,7 @@ Future<void> _pumpContacts(
                   onSelectAgent: onSelectAgent ?? (_) {},
                   onNewConversation: onNewConversation ?? () {},
                   onSearch: onSearch,
+                  onRefresh: onRefresh,
                   onNewGroupConversation: onNewGroupConversation,
                   groupConversations: groupConversations,
                   selectedGroupConversationId: selectedGroupConversationId,

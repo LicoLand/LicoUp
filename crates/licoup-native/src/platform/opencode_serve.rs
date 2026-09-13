@@ -67,12 +67,16 @@ pub(super) fn get_json(url: &str) -> std::result::Result<Value, HttpFailure> {
     local_service::http::get_json(url, std::time::Duration::from_secs(5))
 }
 
+pub(super) fn get_session_json(url: &str) -> std::result::Result<Value, HttpFailure> {
+    local_service::http::get_json_observed(url, std::time::Duration::from_secs(5), "opencode.http")
+}
+
 pub(super) fn post_json_with_optional_timeout(
     url: &str,
     body: &Value,
     timeout: Option<std::time::Duration>,
 ) -> std::result::Result<Value, HttpFailure> {
-    local_service::http::post_json_with_optional_timeout(url, body, timeout)
+    local_service::http::post_json_observed(url, body, timeout, "opencode.http")
 }
 
 pub(super) fn watch_session_events_url(
@@ -83,15 +87,27 @@ pub(super) fn watch_session_events_url(
 ) -> std::result::Result<(), EventStreamFailure> {
     let mut parser = ServeEventParser::new(session_id);
     let mut decode_failure = None;
-    let result = local_service::sse::watch_data(url, stop, |data| match parser.observe(data) {
-        Ok(Some(text)) => {
-            let _ = chunks.try_send(text);
-            true
+    let raw_observer = super::raw_execution::RawExecutionObserver::current();
+    let result = local_service::sse::watch_frames(url, stop, |data, frame| {
+        if let Some(observer) = raw_observer.as_ref()
+            && local_service::sse::frame_belongs_to_session(data, session_id)
+        {
+            observer.record_bytes(
+                "opencode.sse",
+                super::raw_execution::RawExecutionDirection::Received,
+                frame,
+            );
         }
-        Ok(None) => true,
-        Err(failure) => {
-            decode_failure = Some(failure);
-            false
+        match parser.observe(data) {
+            Ok(Some(text)) => {
+                let _ = chunks.try_send(text);
+                true
+            }
+            Ok(None) => true,
+            Err(failure) => {
+                decode_failure = Some(failure);
+                false
+            }
         }
     });
     if let Some(failure) = decode_failure {

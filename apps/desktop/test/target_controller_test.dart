@@ -7,6 +7,78 @@ import 'package:licoup/src/contracts/target_management.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'cache restore uses current catalog and preserves manual lanes',
+    () async {
+      final manual = TargetCandidate.fromJson({
+        ..._target('workbuddy').toJson(),
+        'manual': true,
+      });
+      final registered = _target('custom-cli-agent');
+      final snapshots = _SnapshotRepository()
+        ..loaded = [
+          _target('retired-agent'),
+          _target('kimi-code'),
+          manual,
+          registered,
+        ];
+      final gateway = _Gateway(
+        catalogIds: {'kimi-code', 'workbuddy', 'custom-cli-agent'},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: snapshots,
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['kimi-code'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.hydrateCache();
+
+      expect(controller.targets.map((target) => target.target), [
+        'kimi-code',
+        'workbuddy',
+        'custom-cli-agent',
+      ]);
+      expect(controller.targets[1], same(manual));
+      expect(controller.targets[2], same(registered));
+      expect(gateway.scanCounts, isEmpty);
+      expect(snapshots.loaded, hasLength(4));
+      expect(snapshots.saveCalls, 0);
+    },
+  );
+
+  test('unavailable catalog skips cache without deleting it', () async {
+    final snapshots = _SnapshotRepository()..loaded = [_target('codex')];
+    final controller = TargetController(
+      gateway: _Gateway(failCatalog: true),
+      snapshotRepository: snapshots,
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      scanMobileTargets: () async => const [],
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.hydrateCache();
+
+    expect(controller.targets, isEmpty);
+    expect(snapshots.loaded.single.target, 'codex');
+    expect(snapshots.saveCalls, 0);
+  });
+
   test('incremental plan skips known targets unless explicitly rescanned', () {
     final known = [_target('codex')];
     expect(
@@ -110,9 +182,9 @@ void main() {
     );
   });
 
-  test('Claude current model is a settled native catalog', () {
+  test('Claude settings model list is a settled native catalog', () {
     final target = _target('claude-code').withModelCatalog({
-      'sources': ['claude-current'],
+      'sources': ['claude-settings'],
       'models': [
         {'name': 'configured-current-model'},
       ],
@@ -509,16 +581,29 @@ class _Gateway implements TargetManagementGateway {
     this.selectedProbes = const {},
     this.delays = const {},
     this.failTools = false,
+    this.catalogIds,
+    this.failCatalog = false,
   });
 
   final Map<String, TargetCandidate?> probes;
   final Map<String, TargetCandidate?> selectedProbes;
   final Map<String, Duration> delays;
   final bool failTools;
+  final Set<String>? catalogIds;
+  final bool failCatalog;
+
   var _inFlight = 0;
   var maxInFlight = 0;
   final Map<String, int> scanCounts = {};
   final List<bool> catalogLookups = [];
+
+  @override
+  Future<Set<String>> targetCatalogIds() async {
+    if (failCatalog) {
+      throw StateError('target_catalog_unavailable');
+    }
+    return catalogIds ?? probes.keys.toSet();
+  }
 
   @override
   Future<TargetScanBatch> scanTargetsBatch(

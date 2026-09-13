@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 
 void main() {
@@ -21,7 +20,7 @@ void main() {
       gate: delayA,
     );
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -42,7 +41,7 @@ void main() {
   test('close-goal acceptance does not queue or consume a notice', () async {
     final runner = _ContinuityBridgeRunner();
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -74,7 +73,7 @@ void main() {
       gate: delayA,
     );
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -92,17 +91,20 @@ void main() {
   });
 
   test(
-    'card event beyond newest-50 is recovered by sequence without tail reinsert',
+    'card event beyond newest-20 is recovered by sequence without tail reinsert',
     () async {
       final runner = _WindowedBridgeRunner();
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(hours: 1),
       );
       await controller.initialize();
       await controller.selectConversation('conversation:wide');
-      expect(controller.events.map((event) => event.sequence), [3, 11, 12]);
-      expect(controller.events.last.sequence, 12);
+      expect(controller.events.map((event) => event.sequence), [
+        3,
+        ...List.generate(20, (index) => index + 41),
+      ]);
+      expect(controller.events.last.sequence, 60);
       expect(controller.events.first.sequence, 3);
       expect(controller.events.first.id, 'event:card-3');
       controller.dispose();
@@ -116,7 +118,7 @@ void main() {
         getNoticeFieldsFor: 'conversation:b',
       );
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(hours: 1),
       );
       await controller.initialize();
@@ -133,7 +135,7 @@ void main() {
     () async {
       final runner = _ContinuityBridgeRunner();
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(milliseconds: 20),
       );
       await controller.initialize();
@@ -184,7 +186,7 @@ void main() {
   test('failed list retains pending; ack after publish is once-only', () async {
     final runner = _ContinuityBridgeRunner()..failList = true;
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -221,7 +223,7 @@ void main() {
   test('denied ack prefix does not starve later eligible notices', () async {
     final runner = _ContinuityBridgeRunner();
     final controller = ClientConversationController(
-      runner: runner,
+      native: runner,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     addTearDown(controller.dispose);
@@ -252,7 +254,7 @@ void main() {
     () async {
       final runner = _ContinuityBridgeRunner();
       final controller = ClientConversationController(
-        runner: runner,
+        native: runner,
         pendingNoticePollInterval: const Duration(hours: 1),
       );
       await controller.initialize();
@@ -271,7 +273,7 @@ void main() {
   );
 }
 
-final class _ContinuityBridgeRunner implements AgentCommandRunner {
+final class _ContinuityBridgeRunner implements ClientConversationNativePort {
   _ContinuityBridgeRunner({
     this.delayGetFor,
     this.gate,
@@ -290,12 +292,10 @@ final class _ContinuityBridgeRunner implements AgentCommandRunner {
   bool failResolve = false;
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    expect(args, ['conversation', 'execute', '--stdin-json', 'true']);
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = request['action'];
     final conversationId = (request['conversationId'] ?? '').toString();
@@ -392,20 +392,6 @@ final class _ContinuityBridgeRunner implements AgentCommandRunner {
         .toList();
     return ids;
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _summary(String id) => {
@@ -450,13 +436,12 @@ Map<String, dynamic> _conversation(String id) => {
   ],
 };
 
-final class _WindowedBridgeRunner implements AgentCommandRunner {
+final class _WindowedBridgeRunner implements ClientConversationNativePort {
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     final action = request['action'];
     final afterSequence = (request['afterSequence'] as num?)?.toInt() ?? 0;
     return {
@@ -482,14 +467,16 @@ final class _WindowedBridgeRunner implements AgentCommandRunner {
           ],
         },
         'conversation.events.page' =>
-          afterSequence >= 10
+          request['latest'] == true
               ? {
                   'events': [
-                    _eventAt('conversation:wide', 11),
-                    _eventAt('conversation:wide', 12),
+                    for (var sequence = 41; sequence <= 60; sequence += 1)
+                      _eventAt('conversation:wide', sequence),
                   ],
                   'nextCursor': null,
                   'totalCount': 60,
+                  'hasEarlier': true,
+                  'nextBeforeSequence': 41,
                 }
               : {
                   'events': [_eventAt('conversation:wide', afterSequence + 1)],
@@ -503,20 +490,6 @@ final class _WindowedBridgeRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _eventAt(String conversationId, int sequence) => {

@@ -63,6 +63,156 @@ void main() {
     authorization.dispose();
   });
 
+  test(
+    'keychain action failure preserves grants without adopting or retrying',
+    () async {
+      const existingId = '11111111-1111-4111-8111-111111111111';
+      const deniedId = '22222222-2222-4222-8222-222222222222';
+      for (final previouslyAuthorized in [false, true]) {
+        final runner = _FakeCredentialsRunner();
+        final authorization = LlmVaultAuthorization();
+        if (previouslyAuthorized) {
+          expect(
+            await authorization.authorizeCredential(runner, existingId),
+            isTrue,
+          );
+        }
+        runner.calls.clear();
+        runner.authorizationOverride = {
+          'ok': true,
+          'authorized': false,
+          'reasonCode':
+              'secure_mesh_keychain_classic_access_requires_user_action',
+          // A false result never admits even an inconsistent nonempty payload.
+          'providers': ['kilo'],
+          'authorizedCredentialIds': [deniedId],
+        };
+
+        expect(
+          await authorization.authorizeCredential(runner, deniedId),
+          isFalse,
+        );
+        expect(
+          authorization.failure,
+          LlmVaultAuthorizationFailure.keychainActionRequired,
+        );
+        expect(authorization.authorized, previouslyAuthorized);
+        expect(
+          authorization.authorizedCredentialIds,
+          previouslyAuthorized ? [existingId] : isEmpty,
+        );
+        expect(authorization.isCredentialAuthorized(deniedId), isFalse);
+        expect(authorization.busy, isFalse);
+        expect(runner.calls, [
+          [
+            'llm-gateway',
+            'credentials',
+            'authorize',
+            '--credential-id',
+            deniedId,
+          ],
+        ]);
+        expect(runner.stdinCalls, isEmpty);
+        authorization.dispose();
+      }
+    },
+  );
+
+  for (final locale in [const Locale('zh'), const Locale('en')]) {
+    testWidgets(
+      'keychain action failure reaches an actionable ${locale.languageCode} notice',
+      (tester) async {
+        const credentialId = '11111111-1111-4111-8111-111111111111';
+        final runner = _FakeCredentialsRunner()
+          ..entries = [
+            _entry(
+              id: credentialId,
+              provider: 'kimi',
+              label: 'Synthetic key',
+              created: _daysFromNow(-1),
+            ),
+          ]
+          ..authorizationOverride = {
+            'ok': true,
+            'authorized': false,
+            'reasonCode':
+                'secure_mesh_keychain_classic_access_requires_user_action',
+            'providers': const <String>[],
+            'authorizedCredentialIds': const <String>[],
+          };
+        final serviceRunner = _FakeServiceRunner()
+          ..statusResult = _statusPayload(state: 'running', pid: 42189);
+        final lifecycle = LlmGatewayLifecycleController(
+          agentService: serviceRunner,
+          readSettings: () async => const {},
+          monitorInterval: Duration.zero,
+        );
+        addTearDown(lifecycle.dispose);
+        await lifecycle.initialize();
+        final authorization = LlmVaultAuthorization();
+        addTearDown(authorization.dispose);
+        await _pumpCredentials(
+          tester,
+          runner,
+          locale: locale,
+          authorization: authorization,
+          lifecycleController: lifecycle,
+        );
+        await tester.pumpAndSettle();
+        runner.calls.clear();
+        serviceRunner.calls.clear();
+
+        final chinese = locale.languageCode == 'zh';
+        await tester.tap(
+          find.byKey(
+            Key(
+              chinese
+                  ? 'credentials-authorize'
+                  : 'credential-authorize-$credentialId',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            chinese
+                ? '钥匙串访问未获允许，或钥匙串已锁定。请先在系统中处理锁定或访问权限问题，再重试。'
+                : 'macOS credential storage is locked or access was denied. Resolve the lock or access permissions in macOS, then try again.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('secure_mesh_keychain_classic_access_requires_user_action'),
+          findsNothing,
+        );
+        expect(authorization.authorized, isFalse);
+        expect(authorization.authorizedCredentialIds, isEmpty);
+        expect(authorization.inventoryEntries, hasLength(1));
+        expect(
+          authorization.failure,
+          LlmVaultAuthorizationFailure.keychainActionRequired,
+        );
+        expect(
+          tester
+              .widget<Switch>(
+                find.byKey(const Key('credential-authorize-$credentialId')),
+              )
+              .value,
+          isFalse,
+        );
+        expect(runner.calls, hasLength(1));
+        expect(runner.calls.single.take(3), [
+          'llm-gateway',
+          'credentials',
+          'authorize',
+        ]);
+        expect(runner.stdinCalls, isEmpty);
+        expect(serviceRunner.calls, isEmpty);
+      },
+    );
+  }
+
   testWidgets('inventory load failure does not request authorization', (
     tester,
   ) async {
@@ -701,6 +851,7 @@ Future<void> _pumpCredentials(
   _FakeCredentialsRunner runner, {
   LlmVaultAuthorization? authorization,
   LlmGatewayLifecycleController? lifecycleController,
+  Locale locale = const Locale('zh'),
 }) async {
   final feature = ModelsRendererBindingFixture(
     runner: runner,
@@ -711,7 +862,7 @@ Future<void> _pumpCredentials(
   await feature.refreshCredentials();
   await tester.pumpWidget(
     MaterialApp(
-      locale: const Locale('zh'),
+      locale: locale,
       supportedLocales: _zhLocales,
       localizationsDelegates: _zhDelegates,
       home: Scaffold(
@@ -800,6 +951,7 @@ final class _FakeCredentialsRunner implements AgentCommandRunner {
   List<Map<String, dynamic>> entries = const [];
   Set<String> authorizedIds = {};
   bool failOnList = false;
+  Map<String, dynamic>? authorizationOverride;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
@@ -808,6 +960,8 @@ final class _FakeCredentialsRunner implements AgentCommandRunner {
       throw StateError('authorization cancelled');
     }
     if (args.length > 2 && args[2] == 'authorize') {
+      final overridden = authorizationOverride;
+      if (overridden != null) return overridden;
       final idIndex = args.indexOf('--credential-id');
       if (idIndex >= 0 && idIndex + 1 < args.length) {
         authorizedIds.add(args[idIndex + 1]);

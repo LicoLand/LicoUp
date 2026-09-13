@@ -6,7 +6,7 @@ import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/backend/features/conversations/services/client_conversation_service.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_recent_participants.dart';
 import 'package:licoup/src/application/features/conversations/client_memory_diagnostic_journal.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -16,15 +16,16 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 
 final class ClientConversationController extends ApplicationStateOwner {
   ClientConversationController({
-    required AgentCommandRunner runner,
-    ClientConversationService service = const ClientConversationService(),
+    required ClientConversationNativePort native,
+    ClientConversationService? service,
     void Function(String conversationId)? onSelectionChanged,
+    void Function(ClientConversation conversation)? onSnapshotApplied,
     ClientMemoryDiagnosticJournal? memoryJournal,
     Duration? pendingNoticePollInterval,
     Duration? activityEchoInterval,
-  }) : _runner = runner,
-       _service = service,
+  }) : _service = service ?? ClientConversationService(native: native),
        _onSelectionChanged = onSelectionChanged,
+       _onSnapshotApplied = onSnapshotApplied,
        _memoryJournal = memoryJournal,
        _pendingNoticePollInterval =
            pendingNoticePollInterval ?? defaultPendingNoticePollInterval,
@@ -41,9 +42,9 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// pending notices — and folding a transcript read into it would break that.
   static const Duration defaultActivityEchoInterval = Duration(seconds: 30);
 
-  final AgentCommandRunner _runner;
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
+  final void Function(ClientConversation conversation)? _onSnapshotApplied;
   final ClientMemoryDiagnosticJournal? _memoryJournal;
   final Duration _pendingNoticePollInterval;
   final Duration _activityEchoInterval;
@@ -78,6 +79,11 @@ final class ClientConversationController extends ApplicationStateOwner {
   ClientConversation? _selectedConversation;
   List<ClientConversationEvent> _events = const [];
   final Map<String, _CachedClientConversation> _conversationCache = {};
+  static const int _eventPageSize = 20;
+  final Set<String> _loadingEarlierConversations = {};
+  final Map<String, String> _earlierPageErrors = {};
+  final Map<String, int> _historyGenerations = {};
+  final Map<String, int> _latestReadVersions = {};
   final ClientConversationRecentParticipants _recentParticipants =
       ClientConversationRecentParticipants();
   List<String> _availableConversationAgentIds = const [];
@@ -122,6 +128,12 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   ClientConversation? get selectedConversation => _selectedConversation;
   List<ClientConversationEvent> get events => _events;
+  bool get hasEarlierEvents =>
+      _conversationCache[_selectedConversationId]?.hasEarlier ?? false;
+  bool get loadingEarlierEvents =>
+      _loadingEarlierConversations.contains(_selectedConversationId);
+  String get earlierEventsError =>
+      _earlierPageErrors[_selectedConversationId] ?? '';
   List<String> get recentParticipantAgentIds => _recentParticipants.agentIds;
   List<ClientConversationSummary> get archivedConversations =>
       _archivedSummaries;
@@ -239,7 +251,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       'goalId': goalId,
       ...?extra,
     };
-    await _service.execute(_runner, payload);
+    await _service.execute(payload);
     await reloadSelected();
   }
 
@@ -254,7 +266,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     if (anchor == null || owner == null) return;
     try {
       final raw = _objectMap(
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'resolve-completion-notice',
           'conversationId': anchor.id,
           'ownerMembershipId': owner.id,
@@ -351,9 +363,10 @@ final class ClientConversationController extends ApplicationStateOwner {
     final Map<String, dynamic> latest;
     try {
       latest = _objectMap(
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'conversation.get',
           'conversationId': id,
+          'includeNativeSessionReferences': true,
         }),
       );
     } on ClientConversationServiceFailure {
@@ -404,7 +417,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     if (selected == null || owner == null) return;
     try {
       final raw = _objectMap(
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'list-pending-completion-notices',
           'conversationId': selected.id,
           'ownerMembershipId': owner.id,
@@ -440,7 +453,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       for (var start = 0; start < ids.length && !_disposed; start += 50) {
         final end = start + 50 < ids.length ? start + 50 : ids.length;
         final raw = _objectMap(
-          await _service.execute(_runner, {
+          await _service.execute({
             'action': 'ack-completion-notices',
             'conversationId': selected.id,
             'ownerMembershipId': owner.id,
@@ -599,7 +612,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       return true;
     }
     return _guard('member-add', () async {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.membership.add',
         'conversationId': selected.id,
         'principal': {
@@ -631,7 +644,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     }
     if (selected.strategyRevision == normalized) return true;
     return _guard('strategy-set', () async {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.strategy.set',
         'conversationId': selected.id,
         'strategyRevision': normalized.isEmpty ? null : normalized,
@@ -658,7 +671,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     final owner = selected.localOwnerMembership;
     if (owner == null) return false;
     return _guard('assistant-set', () async {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.assistant.set',
         'conversationId': selected.id,
         'ownerMembershipId': owner.id,
@@ -680,7 +693,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       throw const ClientConversationServiceFailure('conversation_not_found');
     }
     return _objectMap(
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.profile.candidates',
         'conversationId': conversation.id,
         'filters': filters ?? const <String, dynamic>{},
@@ -700,7 +713,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       throw const ClientConversationServiceFailure('local_owner_required');
     }
     return _objectMap(
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.profile.update',
         'conversationId': conversation.id,
         'membershipId': membershipId.trim(),
@@ -713,7 +726,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   /// Reads one Membership's persistent Profile intent (null when absent).
   Future<Map<String, dynamic>?> membershipProfile(String membershipId) async {
-    final value = await _service.execute(_runner, {
+    final value = await _service.execute({
       'action': 'conversation.profile.get',
       'membershipId': membershipId.trim(),
     });
@@ -769,13 +782,13 @@ final class ClientConversationController extends ApplicationStateOwner {
               ),
               'preferredEnvironment': profile['preferredEnvironment'],
             };
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.membership.leave',
         'conversationId': conversationId,
         'membershipId': assistant.id,
       });
       final added = _objectMap(
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'conversation.membership.add',
           'conversationId': conversationId,
           'principal': {
@@ -800,7 +813,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       if (reloaded == null || reloaded.id != conversationId) {
         throw const ClientConversationServiceFailure('conversation_not_found');
       }
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.assistant.set',
         'conversationId': conversationId,
         'ownerMembershipId': owner.id,
@@ -810,7 +823,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       // A freshly added Agent Membership owns a default Profile at revision 0;
       // the carried-over intent lands on top of it.
       if (carriedIntent != null) {
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'conversation.profile.update',
           'conversationId': conversationId,
           'membershipId': rotatedMembershipId,
@@ -842,7 +855,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     _clearFailure();
     _publishChange();
     try {
-      final posted = await _service.execute(_runner, {
+      final posted = await _service.execute({
         'action': 'conversation.message.post',
         'conversationId': conversation.id,
         'authorMembershipId': author.id,
@@ -871,7 +884,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       }
       if (dispatch) {
         try {
-          final dispatched = await _service.execute(_runner, {
+          final dispatched = await _service.execute({
             'action': 'conversation.dispatch.after-post',
             'conversationId': conversation.id,
             'eventId': eventId,
@@ -944,7 +957,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     required String code,
   }) async {
     try {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.event.append',
         'conversationId': conversationId,
         'kind': 'message',
@@ -1007,12 +1020,14 @@ final class ClientConversationController extends ApplicationStateOwner {
       return Future.value(false);
     }
     return _guard('delete', () async {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.message.delete',
         'conversationId': conversation.id,
         'eventId': eventId,
         'ownerMembershipId': owner.id,
       });
+      _historyGenerations[conversation.id] =
+          (_historyGenerations[conversation.id] ?? 0) + 1;
       await _refreshCatalogWithoutGuard();
       await _loadSelected();
     });
@@ -1062,7 +1077,7 @@ final class ClientConversationController extends ApplicationStateOwner {
         throw const ClientConversationServiceFailure('invalid_request');
       }
       final created = _objectMap(
-        await _service.execute(_runner, {
+        await _service.execute({
           'action': 'conversation.create',
           'title': normalizedTitle,
           'owner': {
@@ -1101,7 +1116,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     final id = conversationId.trim();
     if (id.isEmpty) return false;
     return _guard('archive', () async {
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.archive',
         'conversationId': id,
         'archived': true,
@@ -1125,7 +1140,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       if (id.isEmpty) {
         throw const ClientConversationServiceFailure('invalid_request');
       }
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.archive',
         'conversationId': id,
         'archived': false,
@@ -1142,7 +1157,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       if (id.isEmpty) {
         throw const ClientConversationServiceFailure('invalid_request');
       }
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.pin.set',
         'conversationId': id,
         'pinned': pinned,
@@ -1173,11 +1188,15 @@ final class ClientConversationController extends ApplicationStateOwner {
     }
     return _guard('clear', () async {
       final conversationId = selected.id;
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.clear',
         'conversationId': conversationId,
         'ownerMembershipId': selected.localOwnerMembership!.id,
       });
+      _historyGenerations[conversationId] =
+          (_historyGenerations[conversationId] ?? 0) + 1;
+      _conversationCache.remove(conversationId);
+      _earlierPageErrors.remove(conversationId);
       _liveTurns = const [];
       _dispatchPending = false;
       await _refreshCatalogWithoutGuard();
@@ -1200,7 +1219,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<void> _refreshCatalogWithoutGuard() async {
     _summaries = _summaryList(
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.list',
         'includeArchived': false,
       }),
@@ -1216,6 +1235,9 @@ final class ClientConversationController extends ApplicationStateOwner {
     _conversationCache.removeWhere((id, cached) {
       final summary = summariesById[id];
       if (summary == null) return true;
+      // The selected window is reconciled by _loadSelected below. Keeping it
+      // here retains pages the reader opened when a post updates the catalog.
+      if (id == _selectedConversationId) return false;
       final conversation = cached.conversation;
       return summary.revision != conversation.revision ||
           summary.updatedAtUnixMs != conversation.updatedAtUnixMs ||
@@ -1234,7 +1256,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<void> _refreshArchivedWithoutGuard() async {
     _archivedSummaries = _summaryList(
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.list',
         'includeArchived': true,
       }),
@@ -1255,15 +1277,94 @@ final class ClientConversationController extends ApplicationStateOwner {
     }
   }
 
+  /// Adds one preceding native page without changing the selected surface or
+  /// its live turns. Sparse task-card recovery is never a history cursor.
+  Future<void> loadEarlierEvents() async {
+    final id = _selectedConversationId;
+    final cached = _conversationCache[id];
+    final before = cached?.nextBeforeSequence;
+    if (_disposed ||
+        cached == null ||
+        !cached.hasEarlier ||
+        before == null ||
+        !_loadingEarlierConversations.add(id)) {
+      return;
+    }
+    final generation = _historyGenerations[id] ?? 0;
+    _earlierPageErrors.remove(id);
+    _publishChange();
+    try {
+      final page = await _readEventPage(id, beforeSequence: before);
+      if (_disposed || (_historyGenerations[id] ?? 0) != generation) return;
+      final current = _conversationCache[id];
+      if (current == null) return;
+      if (page.hasEarlier &&
+          (page.nextBeforeSequence == null ||
+              page.nextBeforeSequence! >= before)) {
+        throw const ClientConversationServiceFailure(
+          'conversation_events_page_no_progress',
+        );
+      }
+      final events = _mergeEventPages(page.events, current.events);
+      final next = _CachedClientConversation(
+        conversation: current.conversation,
+        events: events,
+        taskViews: current.taskViews,
+        windowStartSequence: page.events.isEmpty
+            ? current.windowStartSequence
+            : page.events.first.sequence,
+        hasEarlier: page.hasEarlier,
+        nextBeforeSequence: page.nextBeforeSequence,
+      );
+      _conversationCache[id] = next;
+      if (_selectedConversationId == id) {
+        _applySelectedSnapshot(next.conversation, events);
+      }
+    } on ClientConversationServiceFailure catch (failure) {
+      if ((_historyGenerations[id] ?? 0) == generation) {
+        _earlierPageErrors[id] = failure.code;
+      }
+    } catch (_) {
+      if ((_historyGenerations[id] ?? 0) == generation) {
+        _earlierPageErrors[id] = 'conversation_events_page_failed';
+      }
+    } finally {
+      _loadingEarlierConversations.remove(id);
+      _publishChange();
+    }
+  }
+
+  Future<ClientConversationEventPage> _readEventPage(
+    String id, {
+    bool latest = false,
+    int? beforeSequence,
+    int? afterSequence,
+    int limit = _eventPageSize,
+  }) async => ClientConversationEventPage.fromJson(
+    _objectMap(
+      await _service.execute({
+        'action': 'conversation.events.page',
+        'conversationId': id,
+        if (latest) 'latest': true,
+        'beforeSequence': ?beforeSequence,
+        'afterSequence': ?afterSequence,
+        'limit': limit,
+      }),
+    ),
+  );
+
   Future<void> _loadSelected() async {
     final id = _selectedConversationId;
     if (id.isEmpty) return;
+    final generation = _historyGenerations[id] ?? 0;
     final raw = _objectMap(
-      await _service.execute(_runner, {
+      await _service.execute({
         'action': 'conversation.get',
         'conversationId': id,
+        'includeNativeSessionReferences': true,
       }),
     );
+    if (_disposed || (_historyGenerations[id] ?? 0) != generation) return;
     await _applySelectedRaw(id, raw);
   }
 
@@ -1274,28 +1375,106 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// `conversation.get` result does not read the same record twice.
   Future<void> _applySelectedRaw(String id, Map<String, dynamic> raw) async {
     final conversation = ClientConversation.fromJson(raw);
+    final cached = _conversationCache[id];
+    if (cached != null &&
+        cached.conversation.revision > conversation.revision) {
+      return;
+    }
+    final generation = _historyGenerations[id] ?? 0;
+    final readVersion = (_latestReadVersions[id] ?? 0) + 1;
+    _latestReadVersions[id] = readVersion;
     final stagedTaskViews = _maps(raw['taskViews']);
-    final afterSequence = conversation.eventCount > 50
-        ? conversation.eventCount - 50
-        : 0;
-    final page = ClientConversationEventPage.fromJson(
-      _objectMap(
-        await _service.execute(_runner, {
-          'action': 'conversation.events.page',
-          'conversationId': id,
-          'afterSequence': afterSequence,
-          'limit': 50,
-        }),
-      ),
+    final page = await _readEventPage(id, latest: true);
+    bool currentRead() =>
+        !_disposed &&
+        (_historyGenerations[id] ?? 0) == generation &&
+        _latestReadVersions[id] == readVersion;
+    if (!currentRead()) return;
+
+    final preceding = <ClientConversationEvent>[];
+    final previous = _conversationCache[id];
+    final removedEvents =
+        previous != null &&
+        conversation.eventCount < previous.conversation.eventCount;
+    ClientConversationEventPage? repairedWindow;
+    if (previous != null &&
+        previous.events.isNotEmpty &&
+        page.events.isNotEmpty) {
+      var after = removedEvents
+          ? (previous.windowStartSequence ?? page.events.first.sequence) - 1
+          : previous.events.last.sequence;
+      final newestStart = page.events.first.sequence;
+      // One native observation can contain more than twenty new events. Fill
+      // only that gap in bounded pages; the captured newest page is our stop.
+      // A deletion rechecks only the already-opened window, also twenty at a
+      // time, so a removed older row cannot survive in the retained cache.
+      while (after + 1 < newestStart) {
+        final missing = await _readEventPage(id, afterSequence: after);
+        if (removedEvents) repairedWindow ??= missing;
+        if (!currentRead()) return;
+        if (missing.events.isEmpty || missing.events.last.sequence <= after) {
+          throw const ClientConversationServiceFailure(
+            'conversation_events_page_no_progress',
+          );
+        }
+        preceding.addAll(
+          missing.events.where((event) => event.sequence < newestStart),
+        );
+        after = missing.events.last.sequence;
+      }
+    }
+
+    // Re-read the cache after awaits: an earlier page may have finished while
+    // this latest page was loading. The latest range replaces its old copy so
+    // changed event parts and deletions in that range become authoritative.
+    final current = _conversationCache[id];
+    final retained = page.events.isEmpty || removedEvents
+        ? const <ClientConversationEvent>[]
+        : current?.events
+                  .where((event) => event.sequence < page.events.first.sequence)
+                  .toList(growable: false) ??
+              const <ClientConversationEvent>[];
+    final merged = _mergeEventPages(retained, [...preceding, ...page.events]);
+    var events = List<ClientConversationEvent>.unmodifiable(
+      await _recoverAnchoredCardEvents(id, merged, stagedTaskViews),
     );
-    final events = List<ClientConversationEvent>.unmodifiable(
-      await _recoverAnchoredCardEvents(id, page.events, stagedTaskViews),
-    );
-    _conversationCache[id] = _CachedClientConversation(
+    if (!currentRead()) return;
+    final afterRecovery = _conversationCache[id];
+    final loadedEarlierDuringRecovery =
+        afterRecovery?.windowStartSequence != null &&
+        current?.windowStartSequence != null &&
+        afterRecovery!.windowStartSequence! < current!.windowStartSequence!;
+    if (loadedEarlierDuringRecovery) {
+      events = _mergeEventPages(
+        afterRecovery.events
+            .where((event) => event.sequence < current.windowStartSequence!)
+            .toList(growable: false),
+        events,
+      );
+    }
+    final window = loadedEarlierDuringRecovery ? afterRecovery : current;
+    final hasRetainedWindow =
+        window?.windowStartSequence != null &&
+        page.events.isNotEmpty &&
+        window!.windowStartSequence! < page.events.first.sequence;
+    final next = _CachedClientConversation(
       conversation: conversation,
       events: events,
       taskViews: stagedTaskViews,
+      windowStartSequence: hasRetainedWindow
+          ? (repairedWindow?.events.firstOrNull?.sequence ??
+                window.windowStartSequence)
+          : page.events.firstOrNull?.sequence,
+      hasEarlier: hasRetainedWindow
+          ? (repairedWindow?.hasEarlier ?? window.hasEarlier)
+          : page.hasEarlier,
+      nextBeforeSequence: hasRetainedWindow
+          ? (repairedWindow == null
+                ? window.nextBeforeSequence
+                : repairedWindow.nextBeforeSequence)
+          : page.nextBeforeSequence,
     );
+    _conversationCache[id] = next;
     if (_selectedConversationId != id) return;
     _selectedTaskViews = stagedTaskViews;
     _applySelectedSnapshot(conversation, events);
@@ -1307,7 +1486,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     List<Map<String, dynamic>> taskViews,
   ) async {
     final present = <int>{for (final event in window) event.sequence};
-    final recovered = List<ClientConversationEvent>.from(window);
+    final recovered = <ClientConversationEvent>[];
     for (final view in taskViews) {
       final relation = view['relation'];
       if (relation is! Map) continue;
@@ -1317,15 +1496,10 @@ final class ClientConversationController extends ApplicationStateOwner {
       if (sequence == null || sequence <= 0 || present.contains(sequence)) {
         continue;
       }
-      final page = ClientConversationEventPage.fromJson(
-        _objectMap(
-          await _service.execute(_runner, {
-            'action': 'conversation.events.page',
-            'conversationId': conversationId,
-            'afterSequence': sequence - 1,
-            'limit': 1,
-          }),
-        ),
+      final page = await _readEventPage(
+        conversationId,
+        afterSequence: sequence - 1,
+        limit: 1,
       );
       for (final event in page.events) {
         if (event.sequence == sequence && present.add(sequence)) {
@@ -1334,7 +1508,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       }
     }
     recovered.sort((left, right) => left.sequence.compareTo(right.sequence));
-    return recovered;
+    return _mergeEventPages(window, recovered);
   }
 
   void _applySelectedSnapshot(
@@ -1343,6 +1517,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   ) {
     _selectedConversation = conversation;
     _events = events;
+    _onSnapshotApplied?.call(conversation);
     _recentParticipants.applySnapshot(
       conversation: conversation,
       events: _events,
@@ -1459,12 +1634,44 @@ final class _CachedClientConversation {
   const _CachedClientConversation({
     required this.conversation,
     required this.events,
+    required this.windowStartSequence,
+    required this.hasEarlier,
+    required this.nextBeforeSequence,
     this.taskViews = const <Map<String, dynamic>>[],
   });
 
   final ClientConversation conversation;
   final List<ClientConversationEvent> events;
+  final int? windowStartSequence;
+  final bool hasEarlier;
+  final int? nextBeforeSequence;
   final List<Map<String, dynamic>> taskViews;
+}
+
+/// Native pages are sequence-ordered. A linear merge keeps stable identities
+/// for retained rows and lets the newer page replace revised event content.
+List<ClientConversationEvent> _mergeEventPages(
+  List<ClientConversationEvent> retained,
+  List<ClientConversationEvent> incoming,
+) {
+  final merged = <ClientConversationEvent>[];
+  var left = 0;
+  var right = 0;
+  while (left < retained.length && right < incoming.length) {
+    final old = retained[left];
+    final next = incoming[right];
+    if (old.sequence < next.sequence) {
+      merged.add(old);
+      left += 1;
+    } else {
+      merged.add(next);
+      right += 1;
+      if (old.sequence == next.sequence) left += 1;
+    }
+  }
+  merged.addAll(retained.skip(left));
+  merged.addAll(incoming.skip(right));
+  return List<ClientConversationEvent>.unmodifiable(merged);
 }
 
 List<ClientConversationSummary> _summaryList(Object? value) => value is List

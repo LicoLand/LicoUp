@@ -27,6 +27,7 @@ class AgentConversationWorkspaceFixture extends StatefulWidget {
     required this.onAddTarget,
     this.onSearch,
     this.allowManualTargetActions = true,
+    this.disableAnimations = true,
   });
 
   final ClientController controller;
@@ -36,6 +37,7 @@ class AgentConversationWorkspaceFixture extends StatefulWidget {
   final VoidCallback onAddTarget;
   final VoidCallback? onSearch;
   final bool allowManualTargetActions;
+  final bool disableAnimations;
 
   @override
   State<AgentConversationWorkspaceFixture> createState() =>
@@ -85,37 +87,42 @@ class _AgentConversationWorkspaceFixtureState
   @override
   Widget build(BuildContext context) {
     final conversation = _conversation.binding;
-    return AgentConversationWorkspace(
-      agents: AgentsBinding(
-        projection: _FixtureAgentsProjectionSource(
-          delegate: _agents.binding.projection,
-          targets: widget.targets,
-          scanning: widget.scanning,
-          adding: widget.adding,
+    return MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(disableAnimations: widget.disableAnimations),
+      child: AgentConversationWorkspace(
+        agents: AgentsBinding(
+          projection: _FixtureAgentsProjectionSource(
+            delegate: _agents.binding.projection,
+            targets: widget.targets,
+            scanning: widget.scanning,
+            adding: widget.adding,
+          ),
+          intents: _agents.binding.intents,
+          effects: _agents.binding.effects,
         ),
-        intents: _agents.binding.intents,
-        effects: _agents.binding.effects,
-      ),
-      conversation: ConversationBinding(
-        projection: conversation.projection,
-        nativeCatalog: conversation.nativeCatalog,
-        canonicalEvents: conversation.canonicalEvents,
-        persistentTurns: _FixturePersistentTurnsProjectionSource(
-          delegate: conversation.persistentTurns,
-          controller: widget.controller,
+        conversation: ConversationBinding(
+          projection: conversation.projection,
+          nativeCatalog: conversation.nativeCatalog,
+          canonicalEvents: conversation.canonicalEvents,
+          persistentTurns: _FixturePersistentTurnsProjectionSource(
+            delegate: conversation.persistentTurns,
+            controller: widget.controller,
+          ),
+          composer: conversation.composer,
+          attachments: conversation.attachments,
+          tabActivity: conversation.tabActivity,
+          notifications: conversation.notifications,
+          archive: conversation.archive,
+          intents: conversation.intents,
+          effects: conversation.effects,
         ),
-        composer: conversation.composer,
-        attachments: conversation.attachments,
-        tabActivity: conversation.tabActivity,
-        notifications: conversation.notifications,
-        archive: conversation.archive,
-        intents: conversation.intents,
-        effects: conversation.effects,
+        relay: _relay.binding,
+        onAddTarget: widget.onAddTarget,
+        onSearch: widget.onSearch,
+        allowManualTargetActions: widget.allowManualTargetActions,
       ),
-      relay: _relay.binding,
-      onAddTarget: widget.onAddTarget,
-      onSearch: widget.onSearch,
-      allowManualTargetActions: widget.allowManualTargetActions,
     );
   }
 }

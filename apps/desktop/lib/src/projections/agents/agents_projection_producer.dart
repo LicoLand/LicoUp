@@ -237,6 +237,7 @@ final class AgentsProjectionProducer
     if (inspection == null) return null;
     return AdaptiveFlywheelInspectionProjection(
       status: inspection.status,
+      modelDisplayNames: inspection.modelDisplayNames,
       currentStates: inspection.currentStates,
       neighborStates: inspection.neighborStates,
       allowedOperations: inspection.allowedOperations,

@@ -594,10 +594,17 @@ class TargetController extends ApplicationStateOwner {
 
   Future<List<TargetCandidate>> _loadCachedTargets() async {
     try {
-      return await _snapshotRepository.load(_portableData);
+      final cached = await _snapshotRepository.load(_portableData);
+      if (cached.isEmpty) {
+        return const [];
+      }
+      final currentIds = await _gateway.targetCatalogIds();
+      return cached
+          .where((target) => currentIds.contains(target.target.trim()))
+          .toList(growable: false);
     } catch (_) {
-      // Discovery remains authoritative when the local acceleration cache is
-      // unavailable, corrupt, or not yet backed by a platform data provider.
+      // Discovery remains authoritative when the acceleration cache or current
+      // catalog is unavailable. Restoring metadata never edits durable state.
       return const [];
     }
   }

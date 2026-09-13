@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 164;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 175;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -211,6 +211,52 @@ fn readonly_registry_projection_exactly_matches_public_help_authority() {
 }
 
 #[test]
+fn command_discovery_exposes_every_admitted_route_and_generated_method_without_runtime_state() {
+    use licoup_native::contracts::conversation_protocol::{
+        CONVERSATION_PROTOCOL_METHODS, CONVERSATION_PROTOCOL_VERSION,
+    };
+    let CliExecution::Json(catalog) = execute_cli(strings(["commands"])).unwrap() else {
+        panic!("command discovery must return a JSON catalog");
+    };
+    assert_eq!(catalog["schema"], "licoup.cli-catalog/v1");
+    assert_eq!(catalog["rpc"]["protocol"], CONVERSATION_PROTOCOL_VERSION);
+    assert_eq!(
+        catalog["rpc"]["methods"],
+        json!(CONVERSATION_PROTOCOL_METHODS)
+    );
+    let commands = catalog["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), AUTHORITATIVE_ROUTE_COUNT);
+    for schema in cli_command_schemas() {
+        let command = commands
+            .iter()
+            .find(|command| command["path"] == json!(schema.path()))
+            .unwrap();
+        assert_eq!(
+            command["requiredPositionals"],
+            json!(schema.required_positionals())
+        );
+        assert_eq!(command["options"], json!(schema.options()));
+        assert_eq!(command["constraints"], json!(schema.constraints()));
+        assert!(!command.as_object().unwrap().contains_key("sourceModule"));
+    }
+    let help = licoup_native::ffi::commands::cli_command_help().join("\n");
+    for route in route_authorities() {
+        assert!(
+            help.lines().any(|line| {
+                line.strip_prefix("  licoup ").is_some_and(|line| {
+                    line == route.path
+                        || line
+                            .strip_prefix(route.path)
+                            .is_some_and(|tail| tail.starts_with(' '))
+                })
+            }),
+            "registered route must be discoverable in help"
+        );
+    }
+    assert!(help.contains("caller state is advisory and cannot authorize"));
+}
+
+#[test]
 fn stdin_json_routes_freeze_value_json_admission() {
     for (path, required) in [
         ("mcp http preview", true),
@@ -269,9 +315,14 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
         insufficient
             .pop()
             .expect("every authority route has at least one literal path token");
+        let missing = if insufficient.is_empty() {
+            MISSING_COMMAND
+        } else {
+            MISSING_ARGUMENT
+        };
         let insufficient_error = admit_cli_command(insufficient)
             .expect_err("one token below the route minimum must fail admission");
-        assert_admission_error(&insufficient_error, MISSING_ARGUMENT, &[]);
+        assert_admission_error(&insufficient_error, missing, &[]);
 
         let mut valid = minimum.clone();
         let mut present_options = route
@@ -1362,6 +1413,84 @@ fn run_lico_client(args: &[String]) -> Output {
         .expect("the real licoup binary must be runnable")
 }
 
+#[test]
+fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
+    let root = temporary_directory("native-cli-durable-host");
+    let run = |args: &[&str], body: Value| {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+            .args(args)
+            .args(["--stdin-json", "true"])
+            .env("LICOUP_PORTABLE_DIR", &root)
+            .env("LICOUP_CLIENT_PID", std::process::id().to_string())
+            .env("LICOUP_MCP_AUTOSTART", "0")
+            .env_remove("RUST_LOG")
+            .env_remove("RUST_BACKTRACE")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        serde_json::to_writer(child.stdin.take().unwrap(), &body).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "native CLI operation must succeed");
+        serde_json::from_slice::<Value>(&output.stdout).unwrap()
+    };
+    let first = run(
+        &["conversation", "execute"],
+        json!({"action": "conversation.list"}),
+    );
+    assert_eq!(first["ok"], true);
+    let response = run(
+        &["rpc", "call", "client.conversation.execute"],
+        json!({"action": "conversation.list"}),
+    );
+    assert_eq!(response["protocol"], "licoup.stdio.v1");
+    assert_eq!(response["ok"], true);
+    assert_eq!(response["result"], first);
+    let created = run(
+        &["conversation", "execute"],
+        json!({
+            "action": "conversation.create",
+            "title": "Synthetic CLI acceptance",
+            "owner": {"id": "human:synthetic", "kind": "human"},
+            "members": [{"principal": {
+                "id": "agent:synthetic", "kind": "agent", "agentId": "synthetic-agent",
+            }}],
+        }),
+    );
+    assert_eq!(created["ok"], true);
+    let conversation = &created["result"];
+    let owner_id = &conversation["memberships"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|membership| membership["principal"]["id"] == "human:synthetic")
+        .unwrap()["id"];
+    let posted = run(
+        &["conversation", "execute"],
+        json!({
+            "action": "conversation.message.post",
+            "conversationId": conversation["id"],
+            "authorMembershipId": owner_id,
+            "content": "Synthetic local message",
+        }),
+    );
+    assert_eq!(posted["ok"], true);
+    // No Agent is addressed and no strategy is selected. The runtime-required
+    // action succeeds without launching an Agent or using user content.
+    let dispatched = run(
+        &["conversation", "execute"],
+        json!({
+            "action": "conversation.dispatch.after-post",
+            "conversationId": conversation["id"],
+            "eventId": posted["result"]["event"]["id"],
+        }),
+    );
+    assert_eq!(dispatched["ok"], true);
+    assert_eq!(dispatched["result"]["turns"], json!([]));
+    let _ = fs::remove_dir_all(root);
+}
+
 fn run_lico_client_rpc(args: Vec<String>) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(["rpc", "stdio"])
@@ -1717,6 +1846,33 @@ fn route_authorities() -> Vec<RouteAuthority> {
     use RequiredArgumentKind::{Json, Text};
 
     let mut routes = Vec::with_capacity(AUTHORITATIVE_ROUTE_COUNT);
+    for (module, handler, path) in [
+        ("mod.rs", "handle_commands", "commands"),
+        ("model_registry.rs", "handle_read", "model-registry read"),
+        (
+            "model_registry.rs",
+            "handle_refresh",
+            "model-registry refresh",
+        ),
+        ("native_rpc.rs", "handle_rpc_call", "rpc call"),
+        (
+            "subagents.rs",
+            "handle_subagents_catalog",
+            "subagents catalog",
+        ),
+        (
+            "subagents.rs",
+            "handle_subagents_execute",
+            "subagents execute",
+        ),
+        ("subagents.rs", "handle_mcp_start", "mcp start"),
+        ("subagents.rs", "handle_mcp_stop", "mcp stop"),
+        ("subagents.rs", "handle_mcp_reload", "mcp reload"),
+        ("subagents.rs", "handle_mcp_status", "mcp status"),
+    ] {
+        add_authority_routes(&mut routes, module, handler, &[path], Exact);
+    }
+
     add_authority_routes(
         &mut routes,
         "adapter.rs",
@@ -2412,6 +2568,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
     add_authority_routes(
         &mut routes,
         "targets.rs",
+        "handle_targets_catalog",
+        &["targets catalog"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "targets.rs",
         "handle_targets_scan",
         &["targets scan"],
         Options,
@@ -2435,6 +2598,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
     for route in &mut routes {
         route.required = match route.path {
             "skill get" | "skill visibility set" => &[("skill-id", Text)],
+            "rpc call" => &[("method", Text)],
             _ => route.required,
         };
         route.options = options_for_route(route.path);
@@ -2493,6 +2657,8 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
+        "rpc call" | "subagents execute" => &[value_option("stdin-json", Json, true)],
+        "mcp start" | "mcp reload" => &[value_option("binary", Text, false)],
         "gateway client-token" => &[value_option("agent", Text, true)],
         "gateway service status"
         | "gateway service start"

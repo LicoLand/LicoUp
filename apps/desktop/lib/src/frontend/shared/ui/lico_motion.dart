@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 
 /// The client's motion scale.
 ///
@@ -65,12 +66,15 @@ extension LicoMotionContext on BuildContext {
   /// Returns [duration], or [Duration.zero] when the user has asked for
   /// reduced motion.
   Duration motion(Duration duration) {
-    return MediaQuery.disableAnimationsOf(this) ? Duration.zero : duration;
+    if (MediaQuery.disableAnimationsOf(this)) return Duration.zero;
+    return duration * appearanceVisuals.motionScale;
   }
 
   /// Whether continuous, ambient loops should run at all.
   ///
   /// Looping activity indicators must be replaced by a static state rather
   /// than sped up, because a zero-duration loop busy-spins the ticker.
-  bool get allowsAmbientMotion => !MediaQuery.disableAnimationsOf(this);
+  bool get allowsAmbientMotion =>
+      !MediaQuery.disableAnimationsOf(this) &&
+      TickerMode.valuesOf(this).enabled;
 }

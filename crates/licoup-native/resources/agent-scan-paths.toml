@@ -284,36 +284,6 @@ history = [
 ]
 
 [[agents]]
-id = "kimi"
-apps = [
-  { oses = ["macos"], path = "/Applications/Kimi.app/Contents/MacOS/Kimi" },
-  { oses = ["macos"], path = "{home}/Applications/Kimi.app/Contents/MacOS/Kimi" },
-]
-config = [
-  { oses = ["macos"], path = "{home}/Library/Application Support/Kimi/config.json" },
-  { oses = ["windows"], path = "{appdata}/Kimi/config.json" },
-  { oses = ["linux"], path = "{xdg_config}/Kimi/config.json" },
-]
-detection = [
-  { oses = ["macos"], path = "{home}/Library/Application Support/Kimi" },
-  { oses = ["macos"], path = "{home}/Library/Application Support/com.moonshot.kimi" },
-  { oses = ["windows"], path = "{appdata}/Kimi" },
-  { oses = ["windows"], path = "{appdata}/com.moonshot.kimi" },
-  { oses = ["linux"], path = "{xdg_config}/Kimi" },
-  { oses = ["linux"], path = "{xdg_data}/Kimi" },
-]
-history = [
-  { path = "{home}/Library/Application Support/Kimi", kind = "kimi-app-state" },
-  { path = "{home}/Library/Application Support/com.moonshot.kimi", kind = "kimi-app-state" },
-  { path = "{home}/Library/Logs/Kimi", kind = "kimi-log" },
-  { path = "{appdata}/Kimi", kind = "kimi-appdata" },
-  { path = "{appdata}/com.moonshot.kimi", kind = "kimi-appdata" },
-  { path = "{local_appdata}/Kimi", kind = "kimi-local-appdata" },
-  { path = "{xdg_config}/Kimi", kind = "kimi-config" },
-  { path = "{xdg_data}/Kimi", kind = "kimi-data" },
-]
-
-[[agents]]
 id = "kimi-code"
 config = [{ path = "{home}/.kimi-code/config.toml" }]
 detection = [
@@ -415,3 +385,6 @@ id = "trae-agent"
 
 [[agents]]
 id = "deepseek-harness"
+history = [
+  { path = "{home}/.dsh/sessions", kind = "deepseek-harness-session-store" },
+]

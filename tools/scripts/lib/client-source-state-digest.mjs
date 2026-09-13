@@ -12,6 +12,7 @@ export const CANONICAL_CLIENT_SOURCE_ROOTS = Object.freeze([
   "package.json",
   "package-lock.json",
   "crates/licoup-native",
+  "crates/licoup-mcp",
   "apps/desktop",
   "packages/protocols",
   "tools",

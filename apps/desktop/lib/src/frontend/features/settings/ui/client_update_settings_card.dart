@@ -47,17 +47,22 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
   Widget build(BuildContext context) {
     return ProjectionBuilder<
       SettingsProjection,
-      SettingsClientUpdateProjection
+      ({SettingsClientUpdateProjection status, String repository})
     >(
       source: widget.binding.projection,
-      select: (projection) => projection.clientUpdate,
-      builder: _buildCard,
+      select: (projection) => (
+        status: projection.clientUpdate,
+        repository: projection.clientUpdateRepo,
+      ),
+      builder: (context, selected) =>
+          _buildCard(context, selected.status, selected.repository),
     );
   }
 
   Widget _buildCard(
     BuildContext context,
     SettingsClientUpdateProjection status,
+    String repository,
   ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
@@ -75,7 +80,7 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
         (status.phase == ClientUpdatePhase.verified ||
             status.phase == ClientUpdatePhase.applyPlanned);
     final sourceAddress = clientUpdatePublicSourceAddress(
-      repo: widget.binding.projection.current.clientUpdateRepo,
+      repo: repository,
       githubReleaseUrl: status.githubReleaseUrl,
     );
 
@@ -95,22 +100,12 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
               ),
               const SizedBox(width: LicoContentSpacing.compact),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.clientUpdate,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: colors.text,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: LicoContentSpacing.inline / 2),
-                    Text(
-                      strings.clientUpdateHint,
-                      style: TextStyle(fontSize: 11, color: colors.textMuted),
-                    ),
-                  ],
+                child: Text(
+                  strings.clientUpdate,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colors.text,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -135,10 +130,6 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
           else
             _InfoLine(label: strings.channel, value: strings.stableChannel),
           _InfoLine(
-            label: strings.updateSource,
-            value: strings.updateSourceGithub,
-          ),
-          _InfoLine(
             key: const Key('client-update-source-address'),
             label: strings.sourceAddress,
             value: sourceAddress,
@@ -148,29 +139,72 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
               label: strings.availableVersion,
               value: status.availableVersion,
             ),
-          if (status.artifactSha256.isNotEmpty)
-            _InfoLine(label: strings.digest, value: status.artifactSha256),
+          if (status.phase != ClientUpdatePhase.idle)
+            Padding(
+              padding: const EdgeInsets.only(top: LicoContentSpacing.compact),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  _updatePhaseLabel(
+                    status.phase,
+                    strings.isChinese,
+                    errorCode: status.errorCode,
+                  ),
+                  key: const Key('client-update-status'),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: switch (status.phase) {
+                      ClientUpdatePhase.upToDate => colors.success,
+                      ClientUpdatePhase.failed => colors.error,
+                      _ => colors.textSecondary,
+                    },
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: LicoContentSpacing.item),
-          Wrap(
-            spacing: LicoContentSpacing.compact,
-            runSpacing: LicoContentSpacing.compact,
-            children: [
-              FilledButton(
-                key: const Key('client-update-check-github'),
-                onPressed: canCheck ? _checkFromGithub : null,
-                child: Text(strings.checkUpdate),
-              ),
-              OutlinedButton(
-                key: const Key('client-update-download-local'),
-                onPressed: canDownload ? _downloadFromGithub : null,
-                child: Text(strings.downloadToLocal),
-              ),
-              FilledButton(
-                key: const Key('client-update-apply-restart'),
-                onPressed: canApply ? _applyAndRestart : null,
-                child: Text(strings.updateAndRestart),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 560 ? 3 : 1;
+              final width =
+                  (constraints.maxWidth -
+                      LicoContentSpacing.compact * (columns - 1)) /
+                  columns;
+              final style = ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size.zero),
+                fixedSize: WidgetStatePropertyAll(Size(width, 40)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 12),
+                ),
+                textStyle: WidgetStatePropertyAll(
+                  Theme.of(context).textTheme.labelLarge,
+                ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
+              return Wrap(
+                spacing: LicoContentSpacing.compact,
+                runSpacing: LicoContentSpacing.compact,
+                children: [
+                  OutlinedButton(
+                    key: const Key('client-update-check-github'),
+                    style: style,
+                    onPressed: canCheck ? _checkFromGithub : null,
+                    child: Text(strings.checkUpdate),
+                  ),
+                  OutlinedButton(
+                    key: const Key('client-update-download-local'),
+                    style: style,
+                    onPressed: canDownload ? _downloadFromGithub : null,
+                    child: Text(strings.downloadToLocal),
+                  ),
+                  FilledButton(
+                    key: const Key('client-update-apply-restart'),
+                    style: style,
+                    onPressed: canApply ? _applyAndRestart : null,
+                    child: Text(strings.updateAndRestart),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -197,17 +231,17 @@ class _ReleaseTrackSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Padding(
-      padding: const EdgeInsets.only(bottom: LicoContentSpacing.inline),
+      padding: const EdgeInsets.symmetric(vertical: LicoContentSpacing.compact),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 120,
+            width: 112,
             child: Text(
               LicoStrings.of(context).channel,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+              ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
             ),
           ),
           Expanded(
@@ -225,6 +259,13 @@ class _ReleaseTrackSelector extends StatelessWidget {
                     label: Text(stableLabel),
                   ),
                 ],
+                style: ButtonStyle(
+                  textStyle: WidgetStatePropertyAll(
+                    Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 selected: {selected},
                 showSelectedIcon: false,
                 onSelectionChanged: enabled
@@ -249,17 +290,17 @@ class _InfoLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Padding(
-      padding: const EdgeInsets.only(bottom: LicoContentSpacing.inline),
+      padding: const EdgeInsets.symmetric(vertical: LicoContentSpacing.compact),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 112,
             child: Text(
               label,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+              ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
             ),
           ),
           Expanded(
@@ -267,7 +308,7 @@ class _InfoLine extends StatelessWidget {
               value,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: colors.text),
+              ).textTheme.bodyMedium?.copyWith(color: colors.text),
             ),
           ),
         ],
@@ -275,3 +316,35 @@ class _InfoLine extends StatelessWidget {
     );
   }
 }
+
+String _updatePhaseLabel(
+  ClientUpdatePhase phase,
+  bool chinese, {
+  String errorCode = '',
+}) => switch (phase) {
+  ClientUpdatePhase.idle => '',
+  ClientUpdatePhase.checking => chinese ? '正在检查更新…' : 'Checking for updates…',
+  ClientUpdatePhase.upToDate => chinese ? '已是最新版本' : 'Up to date',
+  ClientUpdatePhase.unavailable =>
+    chinese
+        ? '当前发布尚未提供更新资料'
+        : 'Update information is not available for this release',
+  ClientUpdatePhase.updateAvailable => chinese ? '有可用更新' : 'Update available',
+  ClientUpdatePhase.downloading => chinese ? '正在下载…' : 'Downloading…',
+  ClientUpdatePhase.downloaded => chinese ? '下载完成' : 'Downloaded',
+  ClientUpdatePhase.verifying => chinese ? '正在验证…' : 'Verifying…',
+  ClientUpdatePhase.verified || ClientUpdatePhase.applyPlanned =>
+    chinese ? '已验证，可以更新并重启' : 'Verified and ready to restart',
+  ClientUpdatePhase.applied => chinese ? '更新已安装' : 'Update installed',
+  ClientUpdatePhase.failed => switch (errorCode) {
+    'client_update_check_failed' =>
+      chinese ? '无法检查更新，请重试' : 'Could not check for updates. Try again.',
+    'client_update_download_failed' =>
+      chinese ? '下载失败，请重试' : 'Download failed. Try again.',
+    'client_update_verify_failed' =>
+      chinese ? '更新包验证失败，请重新下载' : 'Verification failed. Download again.',
+    'client_update_apply_failed' =>
+      chinese ? '安装失败，请重试' : 'Installation failed. Try again.',
+    _ => chinese ? '更新未完成，请重试' : 'Update incomplete. Try again.',
+  },
+};

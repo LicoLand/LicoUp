@@ -152,7 +152,7 @@ pub(super) fn collapse_kimi_code_qualified_duplicates(
         .iter()
         .filter_map(|(key, entry)| {
             let (provider, model) = entry.name.split_once('/')?;
-            if !provider.eq_ignore_ascii_case("kimi-code") {
+            if !provider.eq_ignore_ascii_case("kimi-code") || entry.sources.contains("config") {
                 return None;
             }
             canonical_keys
@@ -175,14 +175,31 @@ pub(super) fn collapse_kimi_code_qualified_duplicates(
 }
 
 pub(super) fn build_model_catalog(
+    target: &str,
     entries: BTreeMap<String, ModelCatalogEntry>,
     sources: BTreeSet<String>,
     diagnostics: Vec<Value>,
     default_model: Option<String>,
 ) -> Value {
-    let models = entries
-        .into_values()
-        .map(model_catalog_entry_json)
+    let registry = crate::domain::model_registry::refresh_cached_snapshot();
+    let models = presentation::ordered_model_entries(target, entries)
+        .into_iter()
+        .map(|entry| {
+            let canonical = registry.resolve_with_provider(
+                &entry.name,
+                entry
+                    .provider_id
+                    .as_deref()
+                    .filter(|_| !entry.provider_inferred),
+                Some(target),
+            );
+            let mut value = model_catalog_entry_json(entry);
+            if let Some(model) = canonical {
+                value["canonicalModelId"] = json!(model.id);
+                value["modelLabId"] = json!(model.lab_id);
+            }
+            value
+        })
         .collect::<Vec<_>>();
     let status = if !models.is_empty() {
         "available"
@@ -201,13 +218,14 @@ pub(super) fn build_model_catalog(
         "defaultModel": default_model.unwrap_or_default(),
         "models": models,
         "diagnostics": diagnostics,
+        "modelRegistryRevision": registry.revision(),
     })
 }
 
 pub(super) fn model_catalog_entry_json(entry: ModelCatalogEntry) -> Value {
     let mut object = json!({
         "name": entry.name,
-        "displayName": entry.display_name,
+        "displayName": crate::domain::model_registry::model_display_name(&entry.display_name),
         "providerId": entry.provider_id.unwrap_or_default(),
         "provider": entry.provider.unwrap_or_default(),
         "providerInferred": entry.provider_inferred,

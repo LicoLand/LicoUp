@@ -6,12 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
-import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
@@ -103,20 +101,28 @@ void main() {
     await _pumpFeatureList(
       tester,
       store: _RecordingOrderStore(const [
-        'chatChannels',
         'statsPanel',
         'agentHub',
         'modelGateway',
         'mobilePairing',
-        'pluginManagement',
-        'skillHub',
       ]),
       selections: selections,
     );
 
     double dyOf(String id) =>
         tester.getTopLeft(find.byKey(Key('messaging-sidebar-list-$id'))).dy;
-    expect(dyOf('chatChannels'), lessThan(dyOf('statsPanel')));
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-pluginManagement')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('messaging-sidebar-list-skillHub')),
+      findsNothing,
+    );
     expect(dyOf('statsPanel'), lessThan(dyOf('agentHub')));
     expect(dyOf('agentHub'), lessThan(dyOf('modelGateway')));
     expect(tester.takeException(), isNull);
@@ -150,9 +156,6 @@ void main() {
       'mobilePairing',
       'agentHub',
       'statsPanel',
-      'pluginManagement',
-      'skillHub',
-      'chatChannels',
     ]);
 
     // A remount restores the reordered list from the store.
@@ -164,7 +167,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('模型网关 and 聊天频道 open models on their distinct panes', (
+  testWidgets('model gateway and mobile pairing select their destinations', (
     tester,
   ) async {
     final selections = <ClientSection>[];
@@ -174,34 +177,14 @@ void main() {
       selections: selections,
       current: ClientSection.models,
     );
-
     await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+      find.byKey(const Key('messaging-sidebar-list-mobilePairing')),
     );
-    await tester.pump();
-    expect(selections, [ClientSection.models]);
-
-    final listContext = tester.element(
-      find.byKey(const Key('messaging-sidebar-feature-list')),
-    );
-    final scopedState = LayoutScope.maybeOf(listContext)!.state;
-    var pane = scopedState.readIfDeclaredFor(
-      ClientSection.models,
-      LayoutStateChannels.communicationSection,
-    );
-    expect(pane, isA<LayoutTabState>());
-    expect((pane! as LayoutTabState).index, 1);
-
     await tester.tap(
       find.byKey(const Key('messaging-sidebar-list-modelGateway')),
     );
     await tester.pump();
-    pane = scopedState.readIfDeclaredFor(
-      ClientSection.models,
-      LayoutStateChannels.communicationSection,
-    );
-    expect((pane! as LayoutTabState).index, 0);
-    expect(selections, [ClientSection.models, ClientSection.models]);
+    expect(selections, [ClientSection.mobileRelay, ClientSection.models]);
     expect(tester.takeException(), isNull);
   });
 
@@ -230,20 +213,7 @@ void main() {
       colors.primary,
     );
     expect(
-      (rowContainer('chatChannels').decoration! as BoxDecoration).color,
-      isNot(colors.primary),
-    );
-
-    await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
-    );
-    await tester.pump();
-    expect(
-      (rowContainer('chatChannels').decoration! as BoxDecoration).color,
-      colors.primary,
-    );
-    expect(
-      (rowContainer('modelGateway').decoration! as BoxDecoration).color,
+      (rowContainer('mobilePairing').decoration! as BoxDecoration).color,
       isNot(colors.primary),
     );
     expect(tester.takeException(), isNull);

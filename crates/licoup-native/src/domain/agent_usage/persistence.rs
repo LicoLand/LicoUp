@@ -1,22 +1,27 @@
 //! Local-only report retention and retrieval.
 
 use super::contract::{
-    AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE, MAX_REPORTS,
-    REPORT_COLLECTION,
+    AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE,
+    HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, number_field, supported_agents,
 };
+use super::model_identity::normalize_retained_report;
 use super::workflow_ledger::{
     WORKFLOW_LEDGER_REPORT_SCHEMA, WORKFLOW_LEDGER_RESULT_KIND, WORKFLOW_LEDGER_SCHEMA_VERSION,
 };
 use crate::domain::conversation::parameters::text_param;
 use crate::platform::client_state::ClientStateStore;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(super) fn persist_report(params: &Value, report: &Value) -> Result<()> {
-    let store = client_state_store(params)?;
-    let mut collection = store.read_collection(REPORT_COLLECTION)?;
+    let store =
+        client_state_store(params).context("usage report snapshot storage could not be opened")?;
+    let mut collection = store
+        .read_collection(REPORT_COLLECTION)
+        .context("usage report snapshots could not be read")?;
     let mut items = collection
         .get("items")
         .and_then(Value::as_array)
@@ -27,14 +32,12 @@ pub(super) fn persist_report(params: &Value, report: &Value) -> Result<()> {
         .collect::<Vec<_>>();
     items.push(report.clone());
     sort_reports_by_generated_at(&mut items);
-    if items.len() > MAX_REPORTS {
-        items = items[items.len() - MAX_REPORTS..].to_vec();
-    }
     if let Some(object) = collection.as_object_mut() {
         object.insert("items".to_owned(), Value::Array(items));
     }
     store
-        .write_collection(REPORT_COLLECTION, collection)
+        .write_collection_retaining_latest_items(REPORT_COLLECTION, collection, MAX_REPORTS)
+        .context("usage report snapshots could not be saved")
         .map(|_| ())
 }
 
@@ -42,9 +45,13 @@ pub(super) fn read_retained_reports(
     params: &Value,
     agent_filter: Option<&str>,
     limit: usize,
+    registry: &crate::domain::model_registry::RegistrySnapshot,
 ) -> Result<Vec<Value>> {
-    let store = client_state_store(params)?;
-    let mut collection = store.read_collection(REPORT_COLLECTION)?;
+    let store =
+        client_state_store(params).context("usage report snapshot storage could not be opened")?;
+    let mut collection = store
+        .read_collection(REPORT_COLLECTION)
+        .context("usage report snapshots could not be read")?;
     let stored_items = collection
         .get("items")
         .and_then(Value::as_array)
@@ -55,15 +62,33 @@ pub(super) fn read_retained_reports(
         .filter(|report| is_current_report(report))
         .cloned()
         .collect::<Vec<_>>();
-    sort_reports_by_generated_at(&mut retained_items);
-    if retained_items != stored_items {
-        if let Some(object) = collection.as_object_mut() {
-            object.insert("items".to_owned(), Value::Array(retained_items.clone()));
-        }
-        store.write_collection(REPORT_COLLECTION, collection)?;
+    for report in &mut retained_items {
+        normalize_retained_report(report, registry);
     }
+    sort_reports_by_generated_at(&mut retained_items);
+    if retained_items != stored_items || retained_items.len() > MAX_REPORTS {
+        if let Some(object) = collection.as_object_mut() {
+            object.insert("items".to_owned(), Value::Array(retained_items));
+        }
+        let mut saved = store
+            .write_collection_retaining_latest_items(REPORT_COLLECTION, collection, MAX_REPORTS)
+            .context("normalized usage report snapshots could not be saved")?;
+        retained_items = saved
+            .get_mut("items")
+            .and_then(Value::as_array_mut)
+            .map(std::mem::take)
+            .unwrap_or_default();
+    }
+    let supported = supported_agents()
+        .into_iter()
+        .map(|agent| agent.id)
+        .collect::<BTreeSet<_>>();
     let mut reports = retained_items
         .into_iter()
+        .map(|mut report| {
+            project_supported_agents(&mut report, &supported);
+            report
+        })
         .filter(|report| {
             agent_filter
                 .map(|agent_id| report_has_agent(report, agent_id))
@@ -75,6 +100,58 @@ pub(super) fn read_retained_reports(
     }
     reports.reverse();
     Ok(reports)
+}
+
+/// Restrict the returned view to current adapters without rewriting retained
+/// accounting records when an adapter is removed.
+fn project_supported_agents(report: &mut Value, supported: &BTreeSet<&str>) {
+    let Some(agents) = report.get_mut("agents").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let previous_count = agents.len();
+    agents.retain(|agent| {
+        agent
+            .get("agentId")
+            .and_then(Value::as_str)
+            .is_some_and(|id| supported.contains(id))
+    });
+    if agents.len() == previous_count {
+        return;
+    }
+    let mut totals = serde_json::Map::new();
+    totals.insert("agentCount".to_owned(), Value::from(agents.len()));
+    for field in [
+        "sessionCount",
+        "messageCount",
+        "promptTokens",
+        "cachedInputTokens",
+        "completionTokens",
+        "totalTokens",
+    ] {
+        let total = agents.iter().fold(0_u64, |total, agent| {
+            total.saturating_add(number_field(&agent["history"], &[field]).unwrap_or(0))
+        });
+        totals.insert(field.to_owned(), Value::from(total));
+    }
+    let mut coverage = HistoryUsageSummary::default();
+    for agent in agents {
+        let history = &agent["history"];
+        let sources = &history["tokenSourceBreakdown"];
+        coverage.explicit_records = coverage
+            .explicit_records
+            .saturating_add(number_field(sources, &["explicitRecords"]).unwrap_or(0));
+        coverage.estimated_records = coverage
+            .estimated_records
+            .saturating_add(number_field(sources, &["estimatedRecords"]).unwrap_or(0));
+        coverage.token_unavailable_records = coverage
+            .token_unavailable_records
+            .saturating_add(number_field(history, &["tokenUnavailableRequests"]).unwrap_or(0));
+    }
+    totals.insert("confidence".to_owned(), Value::from(coverage.confidence()));
+    if !report["summary"].is_object() {
+        report["summary"] = Value::Object(serde_json::Map::new());
+    }
+    report["summary"].as_object_mut().unwrap().extend(totals);
 }
 
 pub(super) fn client_state_store(params: &Value) -> Result<ClientStateStore> {
@@ -161,6 +238,54 @@ mod tests {
     }
 
     #[test]
+    fn report_projection_uses_current_membership_without_deleting_accounting() {
+        let root = temp_root();
+        let params = json!({"stateRoot": root});
+        let mut stored = report(1, "unsupported-agent");
+        stored["summary"] = json!({"agentCount":2,"totalTokens":30});
+        stored["agents"] = json!([
+            {"agentId":"unsupported-agent","history":{"totalTokens":10}},
+            {"agentId":"kimi-code","history":{
+                "totalTokens":20,"promptTokens":12,"completionTokens":8,
+                "tokenSourceBreakdown":{"explicitRecords":1},
+                "modelTokenUsage":{"moonshotai/kimi-k3":{"totalTokens":20,"requestCount":1}}
+            }}
+        ]);
+        persist_report(&params, &stored).unwrap();
+        let registry = crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({
+            "models":{"moonshotai/kimi-k3":{"name":"Kimi K3"}},"providers":{}
+        }))
+        .unwrap();
+
+        let reports = read_retained_reports(&params, None, 10, &registry).unwrap();
+        assert_eq!(reports[0]["agents"].as_array().unwrap().len(), 1);
+        assert_eq!(reports[0]["agents"][0]["agentId"], "kimi-code");
+        assert_eq!(reports[0]["summary"]["totalTokens"], 20);
+        assert_eq!(reports[0]["summary"]["agentCount"], 1);
+        assert_eq!(reports[0]["summary"]["confidence"], "high");
+        assert_eq!(
+            reports[0]["agents"][0]["history"]["modelTokenUsage"]["moonshotai/kimi-k3"]["totalTokens"],
+            20
+        );
+        assert!(
+            read_retained_reports(&params, Some("unsupported-agent"), 10, &registry)
+                .unwrap()
+                .is_empty()
+        );
+        let retained = client_state_store(&params)
+            .unwrap()
+            .read_collection(REPORT_COLLECTION)
+            .unwrap();
+        assert_eq!(retained["items"][0]["agents"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            retained["items"][0]["agents"][0]["history"]["totalTokens"],
+            10
+        );
+        assert_eq!(retained["items"][0]["summary"]["totalTokens"], 30);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn retention_is_local_bounded_current_schema_and_filterable() {
         let root = temp_root();
         let params = json!({"stateRoot": root.to_string_lossy()});
@@ -171,9 +296,105 @@ mod tests {
         let store = client_state_store(&params).unwrap();
         let retained = store.read_collection(REPORT_COLLECTION).unwrap();
         assert_eq!(retained["items"].as_array().unwrap().len(), MAX_REPORTS);
-        let codex = read_retained_reports(&params, Some("codex"), 3).unwrap();
+        let codex = read_retained_reports(
+            &params,
+            Some("codex"),
+            3,
+            &crate::domain::model_registry::snapshot(),
+        )
+        .unwrap();
         assert_eq!(codex.len(), 3);
         assert!(codex.iter().all(|item| report_has_agent(item, "codex")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn byte_retention_keeps_complete_latest_reports_and_rejects_an_oversized_latest() {
+        let root = temp_root();
+        let params = json!({"stateRoot": root.to_string_lossy()});
+        let padding = "x".repeat(6 * 1024 * 1024);
+        let mut latest = Value::Null;
+        for index in 0..4 {
+            latest = report(index, "codex");
+            latest["syntheticPadding"] = json!(padding);
+            latest["agents"][0]["history"] = json!({
+                "totalTokens": 73,
+                "modelTokenUsage": {"synthetic-model": {"totalTokens": 73}},
+                "dailyUsage": [{"date": "2026-07-01", "totalTokens": 73}]
+            });
+            persist_report(&params, &latest).unwrap();
+        }
+        let store = client_state_store(&params).unwrap();
+        let saved = store.read_collection(REPORT_COLLECTION).unwrap();
+        let items = saved["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["generatedAt"], report(2, "codex")["generatedAt"]);
+        assert!(items.last() == Some(&latest));
+        let path = store.collection_path(REPORT_COLLECTION).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert_eq!(
+            before.len(),
+            serde_json::to_vec_pretty(&saved).unwrap().len() + 1
+        );
+        assert!(before.len() < 16 * 1024 * 1024);
+
+        let mut oversized = report(4, "codex");
+        oversized["syntheticPadding"] = json!("x".repeat(16 * 1024 * 1024));
+        let error = persist_report(&params, &oversized).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("usage report snapshots could not be saved"));
+        assert!(message.contains("complete latest collection item exceeds its bounded size"));
+        assert!(fs::read(&path).unwrap() == before);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retrieval_applies_byte_retention_when_normalization_grows_reports() {
+        let root = temp_root();
+        let params = json!({"stateRoot": root.to_string_lossy()});
+        let store = client_state_store(&params).unwrap();
+        let mut collection = store
+            .write_collection(
+                REPORT_COLLECTION,
+                json!({"items": [report(0, "codex"), report(1, "codex")]}),
+            )
+            .unwrap();
+        for item in collection["items"].as_array_mut().unwrap() {
+            item["syntheticPadding"] = json!("");
+            item["agents"][0]["history"] = json!({
+                "modelUsage": {"synthetic-model": 73}, "totalTokens": 73
+            });
+        }
+        // Fill the original representation exactly to the existing 16 MiB
+        // policy. Registry normalization adds fields without changing usage.
+        let budget = 16 * 1024 * 1024;
+        let base_bytes = serde_json::to_vec_pretty(&collection).unwrap().len() + 1;
+        let padding = budget - base_bytes;
+        collection["items"][0]["syntheticPadding"] = json!("x".repeat(padding / 2));
+        collection["items"][1]["syntheticPadding"] = json!("x".repeat(padding - padding / 2));
+        let registry = crate::domain::model_registry::snapshot();
+        let mut expected = collection["items"][1].clone();
+        normalize_retained_report(&mut expected, &registry);
+        assert!(
+            serde_json::to_vec_pretty(&expected).unwrap().len()
+                > serde_json::to_vec_pretty(&collection["items"][1])
+                    .unwrap()
+                    .len()
+        );
+        store
+            .write_collection(REPORT_COLLECTION, collection)
+            .unwrap();
+        let path = store.collection_path(REPORT_COLLECTION).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), budget as u64);
+
+        let reports = read_retained_reports(&params, None, MAX_REPORTS, &registry).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0] == expected);
+        let saved = store.read_collection(REPORT_COLLECTION).unwrap();
+        assert!(saved["items"] == json!([expected]));
+        assert!(fs::metadata(&path).unwrap().len() < budget as u64);
+        let again = read_retained_reports(&params, None, MAX_REPORTS, &registry).unwrap();
+        assert!(again == reports);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -197,7 +418,13 @@ mod tests {
                 }),
             )
             .unwrap();
-        let reports = read_retained_reports(&params, None, 10).unwrap();
+        let reports = read_retained_reports(
+            &params,
+            None,
+            10,
+            &crate::domain::model_registry::snapshot(),
+        )
+        .unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0]["schemaVersion"], AGENT_USAGE_SCHEMA_VERSION);
         fs::remove_dir_all(root).unwrap();
@@ -225,7 +452,13 @@ mod tests {
         store
             .write_collection(REPORT_COLLECTION, json!({ "items": [legacy, current] }))
             .unwrap();
-        let reports = read_retained_reports(&params, None, 10).unwrap();
+        let reports = read_retained_reports(
+            &params,
+            None,
+            10,
+            &crate::domain::model_registry::snapshot(),
+        )
+        .unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(
             reports[0]["workflow"]["schemaVersion"],

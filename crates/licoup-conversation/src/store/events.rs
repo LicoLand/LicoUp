@@ -3,6 +3,15 @@
 use super::{ConversationStore, StoreResult};
 use crate::{ConversationEvent, EventPage};
 
+/// Exclusive sequence anchors for forward and backward reads. Latest starts
+/// from the newest persisted event, independently of the number of retained rows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EventPagePosition {
+    After(i64),
+    Before(i64),
+    Latest,
+}
+
 /// Durable Event reads shared by initial load and post-reconnect projection.
 pub trait EventRepository {
     fn event_page(

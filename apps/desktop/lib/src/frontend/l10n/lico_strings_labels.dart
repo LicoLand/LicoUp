@@ -2,6 +2,40 @@ import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings_base.dart';
 
 extension LicoStringsLabels on LicoStrings {
+  // Execution process and reply state.
+  String get executionProcess => isChinese ? '执行过程' : 'Execution process';
+  String get executionProcessSearch =>
+      isChinese ? '搜索全部记录，按 Enter 跳转' : 'Search all records · Enter to jump';
+  String get executionProcessEmpty =>
+      isChinese ? '暂无执行记录' : 'No execution records yet';
+  String get executionProcessLoading =>
+      isChinese ? '正在读取执行记录…' : 'Loading execution records…';
+  String get executionProcessPreparing =>
+      isChinese ? '正在准备显示…' : 'Preparing display…';
+  String get executionProcessUnavailable => isChinese
+      ? '该回复没有可用的执行记录'
+      : 'Execution records are unavailable for this reply';
+  String get executionProcessIncomplete => isChinese
+      ? '历史记录不完整：该次执行的终态原文不可用'
+      : 'Historical records are incomplete: the raw terminal result is unavailable.';
+  String get replyCompletedWithoutText =>
+      isChinese ? '已结束，未生成正文' : 'Completed without a text reply';
+  String get replyCancelled => isChinese ? '已取消' : 'Cancelled';
+  String get replyInterrupted => isChinese ? '已中断' : 'Interrupted';
+  String get replyFailed => isChinese ? '回复失败' : 'Reply failed';
+  String get executionProcessLatest => isChinese ? '回到最新' : 'Back to latest';
+  String get executionProcessCopyRecord =>
+      isChinese ? '复制完整原始记录' : 'Copy complete raw record';
+  String get executionProcessPreviousMatch =>
+      isChinese ? '上一处匹配' : 'Previous match';
+  String get executionProcessNextMatch => isChinese ? '下一处匹配' : 'Next match';
+  String get executionProcessNoMatches => isChinese ? '无匹配' : 'No matches';
+  String executionProcessRecord(int number) =>
+      isChinese ? '记录 $number' : 'Record $number';
+  String executionProcessRecords(int count) =>
+      isChinese ? '$count 条记录' : '$count records';
+  String executionProcessMatches(int current, int total) => '$current / $total';
+
   // Shared interface actions and labels.
   String get clearSearch => isChinese ? '清除搜索' : 'Clear search';
   String get details => isChinese ? '详情' : 'Details';
@@ -49,6 +83,10 @@ extension LicoStringsLabels on LicoStrings {
   String get customize => isChinese ? '自定义' : 'Customize';
 
   // Usage report chrome. Product and model names remain untranslated.
+  String get usageLoading => isChinese ? '正在加载中' : 'Loading usage';
+  String get usageLoadFailed => isChinese
+      ? '用量加载失败，请刷新重试'
+      : 'Usage could not be loaded. Refresh to retry.';
   String get noAgentUsageInLatestReport =>
       isChinese ? '最新报表中没有智能体用量' : 'No agent usage in the latest report';
   String get noModelUsageInLatestReport =>
@@ -842,7 +880,7 @@ extension LicoStringsLabels on LicoStrings {
   String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
   String get appearanceDay => isChinese ? '明亮' : 'Light';
   String get appearanceNight => isChinese ? '暗黑' : 'Dark';
-  String get appearancePreset => isChinese ? '外观预设' : 'Appearance Preset';
+  String get appearancePreset => isChinese ? '主题风格' : 'Theme style';
   String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
   String get layoutProfileDescription => isChinese
       ? '选择整套组件风格、页面排布与交互外观。'
@@ -868,10 +906,10 @@ extension LicoStringsLabels on LicoStrings {
   };
 
   String get appearancePresetDirectory =>
-      isChinese ? '外观预设目录' : 'Appearance Preset Directory';
+      isChinese ? '主题目录' : 'Theme directory';
   String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
-      isChinese ? '$count 个外观预设配置无效' : '$count invalid preset configs';
+      isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
   String get portableData =>
       isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
@@ -1029,12 +1067,18 @@ extension LicoStringsLabels on LicoStrings {
   String get reasoningEffort => isChinese ? '思考强度' : 'Reasoning Effort';
   String reasoningEffortOptionLabel(String value, String fallback) {
     return switch (value.trim().toLowerCase()) {
-      '' => isChinese ? '自动' : 'Auto',
-      'low' => isChinese ? '低' : 'Low',
-      'medium' => isChinese ? '中' : 'Medium',
-      'high' => isChinese ? '高' : 'High',
-      'enabled' => isChinese ? '启用' : 'Enabled',
-      'disabled' => isChinese ? '关闭' : 'Disabled',
+      '' => 'Auto',
+      'low' => 'Low',
+      'medium' => 'Medium',
+      'high' => 'High',
+      'xhigh' || 'extra_high' || 'extra high' => 'Extra High',
+      'max' => 'Max',
+      'ultra' => 'Ultra',
+      'minimal' => 'Minimal',
+      'none' => 'None',
+      'off' => 'Off',
+      'enabled' => 'Enabled',
+      'disabled' => 'Disabled',
       _ => fallback,
     };
   }

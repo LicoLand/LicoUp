@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_controls.dart';
@@ -33,6 +34,48 @@ class AgentUsageCharts extends StatefulWidget {
 
 final class _AgentUsageChartsState extends State<AgentUsageCharts> {
   AgentUsageChartGrouping _grouping = AgentUsageChartGrouping.agent;
+  AgentUsageReport? _cachedReport;
+  Set<String> _cachedDetected = const {};
+  AgentUsageChartGrouping? _cachedGrouping;
+  int? _cachedWindowDays;
+  List<AgentUsageAgentSummary> _agents = const [];
+  List<_UsageSourceTotal> _sourceTotals = const [];
+  int _totalTokens = 0;
+  AgentUsageTimelineData? _timeline;
+
+  void _updateChartData(AgentUsageReport report) {
+    final reportChanged =
+        !identical(_cachedReport, report) ||
+        !setEquals(_cachedDetected, widget.detectedAgentIds);
+    if (reportChanged) {
+      _cachedReport = report;
+      _cachedDetected = Set.unmodifiable(widget.detectedAgentIds);
+      _agents = [
+        for (final agent in report.agents)
+          if (shouldShowAgentUsage(agent, widget.detectedAgentIds)) agent,
+      ]..sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
+      _totalTokens = _agents.fold(
+        0,
+        (total, agent) => total + agent.totalTokens,
+      );
+      _sourceTotals = _aggregateSourceTotals(_agents);
+    }
+    final grouping = _grouping == AgentUsageChartGrouping.workflow
+        ? AgentUsageChartGrouping.agent
+        : _grouping;
+    if (reportChanged ||
+        _cachedGrouping != grouping ||
+        _cachedWindowDays != widget.windowDays) {
+      _cachedGrouping = grouping;
+      _cachedWindowDays = widget.windowDays;
+      _timeline = buildAgentUsageTimelineData(
+        report,
+        grouping,
+        widget.detectedAgentIds,
+        displayDayCount: widget.windowDays,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,24 +83,16 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
     final report = widget.report;
     if (report == null) return const AgentUsageEmptyState();
 
-    final agents = [
-      for (final agent in report.agents)
-        if (shouldShowAgentUsage(agent, widget.detectedAgentIds)) agent,
-    ]..sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
-    final totalTokens = agents.fold<int>(
-      0,
-      (total, agent) => total + agent.totalTokens,
-    );
-    final sourceTotals = _aggregateSourceTotals(agents);
-    final timelineGrouping = _grouping == AgentUsageChartGrouping.workflow
-        ? AgentUsageChartGrouping.agent
-        : _grouping;
-    final timeline = buildAgentUsageTimelineData(
-      report,
-      timelineGrouping,
-      widget.detectedAgentIds,
-      displayDayCount: widget.windowDays,
-    );
+    _updateChartData(report);
+    final totalTokens = _totalTokens;
+    final sourceTotals = _sourceTotals;
+    final timeline = _timeline!;
+    // A source without a native adapter is already shown as Unavailable in
+    // its source row. It is not a second report-wide warning.
+    final warnings = report.warnings
+        .where((warning) => warning != 'native_usage_source_unavailable')
+        .map((warning) => agentUsageWarningLabel(warning, strings))
+        .toSet();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -90,13 +125,10 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             ),
           ),
         ],
-        if (report.warnings.isNotEmpty) ...[
+        if (warnings.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(
-            report.warnings
-                .map((warning) => agentUsageWarningLabel(warning, strings))
-                .toSet()
-                .join(' · '),
+            warnings.join(' · '),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: context.licoColors.textMuted, fontSize: 12),
@@ -135,31 +167,49 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
           ),
       ],
       AgentUsageChartGrouping.model => [
-        for (final series in timeline.series)
+        for (final label in timeline.shareSeriesLabels)
           AgentUsageBarData(
-            label: series.label,
-            value: formatAgentUsageNumber(timeline.totalFor(series.label)),
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
+            value: formatAgentUsageNumber(timeline.shareTotalFor(label)),
             trailing: formatAgentUsagePercent(
-              timeline.totalFor(series.label),
+              timeline.shareTotalFor(label),
               timeline.groupTotal,
             ),
             fraction: agentUsageShareFraction(
-              timeline.totalFor(series.label),
+              timeline.shareTotalFor(label),
               timeline.groupTotal,
             ),
-            accent: agentUsageSeriesColor(colors, series.label),
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
           ),
         // Hosted-ledger models with requests but no token fields stay request
         // counts; nothing is estimated to make them look like token totals.
         for (final label in timeline.requestOnlyShareLabels)
           AgentUsageBarData(
-            label: label,
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
             value: strings.agentUsageIncludedRequests(
               timeline.requestCountFor(label),
             ),
             trailing: '—',
             fraction: 0,
-            accent: agentUsageSeriesColor(colors, label),
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
           ),
       ],
       AgentUsageChartGrouping.workflow => const <AgentUsageBarData>[],
@@ -174,7 +224,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
             value: formatAgentUsageNumber(sectionTotal),
             trailing: '100%',
             fraction: sectionTotal > 0 ? 1 : 0,
-            accent: colors.primary,
+            accent: Colors.white,
           ),
         ...detailRows,
       ],

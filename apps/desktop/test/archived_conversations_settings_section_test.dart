@@ -6,6 +6,7 @@ import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
@@ -13,6 +14,43 @@ import 'fixtures/settings_binding_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
+  testWidgets('archive readiness is independent of other settings operations', (
+    tester,
+  ) async {
+    final source = SettingsProjectionFixture(
+      settingsProjectionFixture(phase: PresentationPhase.applying),
+    );
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(),
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        home: Scaffold(
+          body: ArchivedConversationsSettingsSection(binding: binding),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('archived-conversation-empty')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('archived-conversation-loading')),
+      findsNothing,
+    );
+    source.publish(
+      settingsProjectionFixture(archivedConversationsLoading: true),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('archived-conversation-loading')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('searches and dispatches restore for an archived conversation', (
     tester,
   ) async {

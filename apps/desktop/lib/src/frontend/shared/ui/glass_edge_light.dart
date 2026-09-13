@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Static specular edge light for clear-glass surfaces: a thin rim of one
@@ -15,6 +16,7 @@ class GlassEdgeLight extends StatelessWidget {
     required this.child,
     this.sheenExtent = MessagingDesktopMetrics.glassEdgeSheenExtent,
     this.rimWidth = MessagingDesktopMetrics.glassEdgeRimWidth,
+    this.rimColor,
   });
 
   final Widget child;
@@ -26,6 +28,7 @@ class GlassEdgeLight extends StatelessWidget {
 
   /// Crisp rim stroke width.
   final double rimWidth;
+  final Color? rimColor;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +36,9 @@ class GlassEdgeLight extends StatelessWidget {
     return CustomPaint(
       foregroundPainter: GlassEdgeLightPainter(
         borderRadius: borderRadius,
-        rimColor: MessagingDesktopMetrics.glassEdgeRimColor(isDark: isDark),
+        rimColor:
+            rimColor ??
+            MessagingDesktopMetrics.glassEdgeRimColor(isDark: isDark),
         sheenGradient: MessagingDesktopMetrics.glassEdgeSheenGradient(
           isDark: isDark,
         ),
@@ -82,11 +87,11 @@ class GlassEdgeLightPainter extends CustomPainter {
       canvas.restore();
     }
     if (rimWidth > 0) {
-      final rim = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = rimWidth
-        ..color = rimColor;
-      canvas.drawRRect(rrect.deflate(rimWidth / 2), rim);
+      ContinuousStrokePainter(
+        borderRadius: borderRadius,
+        color: rimColor,
+        width: rimWidth,
+      ).paint(canvas, size);
     }
   }
 

@@ -1,5 +1,76 @@
 use super::*;
 
+#[test]
+fn native_model_catalog_attaches_registry_identity_without_rewriting_admitted_selector() {
+    let registry = crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({
+        "models": {"example/model-3": {"name": "Example Model 3"}},
+        "providers": {"relay": {"name": "Relay", "models": {
+            "native-selector": {"base_model": "example/model-3"}
+        }}}
+    }))
+    .unwrap();
+    crate::domain::model_registry::with_test_snapshot(registry, || {
+        let mut entries = BTreeMap::new();
+        add_model_catalog_entry_with_provider(
+            &mut entries,
+            "native-selector",
+            Some("Native Model"),
+            Some("relay"),
+            Some("Relay"),
+            "native-cli",
+            BTreeSet::from(["high".to_owned()]),
+        );
+        let value = build_model_catalog(
+            "codex",
+            entries,
+            BTreeSet::from(["native-cli".to_owned()]),
+            Vec::new(),
+            Some("native-selector".to_owned()),
+        );
+        assert_eq!(value["defaultModel"], "native-selector");
+        assert_eq!(value["models"][0]["name"], "native-selector");
+        assert_eq!(value["models"][0]["canonicalModelId"], "example/model-3");
+        assert_eq!(value["models"][0]["reasoningEfforts"], json!(["high"]));
+        assert!(!value["modelRegistryRevision"].as_str().unwrap().is_empty());
+    });
+}
+
+#[test]
+fn native_catalog_uses_shared_display_typography_for_unresolved_models() {
+    for (name, expected) in [
+        ("custom/deepseek-v4-flash", "DeepSeek V4 Flash"),
+        ("custom/gpt-reserve", "GPT Reserve"),
+        ("custom/grok-bot-default", "Grok Bot"),
+    ] {
+        let mut entries = BTreeMap::new();
+        add_model_catalog_entry(&mut entries, name, "native-cli", BTreeSet::new());
+        let catalog = build_model_catalog("codex", entries, BTreeSet::new(), Vec::new(), None);
+        assert_eq!(catalog["models"][0]["name"], name);
+        assert_eq!(catalog["models"][0]["displayName"], expected);
+        assert!(catalog["models"][0].get("canonicalModelId").is_none());
+        let display_only = json!({"displayName": name});
+        assert_eq!(model_name_from_value(&display_only), name);
+        assert_eq!(
+            model_display_name_from_value(&display_only, "").as_deref(),
+            Some(expected)
+        );
+    }
+}
+
+// Catalog tests must not discover the developer's real Agent configuration or
+// launch a login shell. Explicit fixture homes remain owned by each case.
+fn model_catalog_for_target(target: &str, config_path: Option<&Path>, params: &Value) -> Value {
+    let _snapshot =
+        crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+    let mut params = params.clone();
+    params
+        .as_object_mut()
+        .unwrap()
+        .entry("homeDir")
+        .or_insert_with(|| json!(display_path(temp_test_dir("isolated-home"))));
+    super::model_catalog_for_target(target, config_path, &params)
+}
+
 mod config_documents {
     use super::*;
 
@@ -34,7 +105,7 @@ model = "gpt-5.4-mini"
                     .contains(&json!("high"))
         }));
         assert!(models.iter().any(|model| {
-            model["name"] == "gpt-5.4-mini" && model["displayName"] == "GPT-5.4-Mini"
+            model["name"] == "gpt-5.4-mini" && model["displayName"] == "GPT-5.4 Mini"
         }));
         let rendered = serde_json::to_string(&catalog).unwrap();
         assert!(!rendered.contains("api_key"));
@@ -122,7 +193,7 @@ model = "gpt-5.4-mini"
                     },
                     {
                         "slug": "gpt-5.4-mini",
-                        "display_name": "GPT-5.4-Mini",
+                        "display_name": "GPT-5.4 Mini",
                         "supported_reasoning_levels": [
                             {"effort": "low"},
                             {"effort": "medium"},
@@ -170,7 +241,7 @@ model = "gpt-5.4-mini"
         }));
         assert!(models.iter().any(|model| {
             model["name"] == "gpt-5.4-mini"
-                && model["displayName"] == "GPT-5.4-Mini"
+                && model["displayName"] == "GPT-5.4 Mini"
                 && model["reasoningEfforts"]
                     .as_array()
                     .unwrap()
@@ -559,10 +630,11 @@ printf 'gemini-account-model\nclaude-account-model\n'
         let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
             &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
         );
-        let catalog = model_catalog_for_target(
+        let catalog = super::super::model_catalog_for_target(
             "antigravity",
             None,
             &json!({
+                "homeDir": display_path(dir),
                 "includeHistoryModelCatalog": false,
                 "enableAgentCliModelLookup": true,
                 "antigravityCliPath": display_path(executable),
@@ -845,10 +917,11 @@ printf 'Available models\n\nauto - Auto (default)\nfull-cursor-model - Full Curs
         let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
             &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
         );
-        let catalog = model_catalog_for_target(
+        let catalog = super::super::model_catalog_for_target(
             "cursor",
             None,
             &json!({
+                "homeDir": display_path(dir),
                 "includeHistoryModelCatalog": false,
                 "enableAgentCliModelLookup": true,
                 "cursorCliPath": display_path(executable),
@@ -999,7 +1072,7 @@ printf 'kilo/kilo-auto/free\nanthropic/claude-opus-4-6\nopenai/gpt-5.5\n'
         let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(
             &[("LICO_TEST_SHELL_SNAPSHOT_MARKER", "shell-snapshot-env")],
         );
-        let catalog = model_catalog_for_target(
+        let catalog = super::super::model_catalog_for_target(
             "kilo-code",
             None,
             &json!({
@@ -1403,7 +1476,7 @@ mod normalization {
 
     #[test]
     fn model_normalization_rejects_untrusted_names_and_canonicalizes_known_families() {
-        assert_eq!(canonical_model_display_name("gpt-5.5-mini"), "GPT-5.5-Mini");
+        assert_eq!(canonical_model_display_name("gpt-5.5-mini"), "GPT-5.5 Mini");
         assert_eq!(
             canonical_model_display_name("deepseek-v4-pro"),
             "DeepSeek V4 Pro"
@@ -1476,6 +1549,7 @@ mod merge {
         );
 
         let catalog = build_model_catalog(
+            "codex",
             entries,
             ["config".to_string(), "history".to_string()]
                 .into_iter()
@@ -1491,7 +1565,7 @@ mod merge {
         );
         assert_eq!(
             catalog["models"][0]["reasoningEfforts"],
-            json!(["high", "low"])
+            json!(["low", "high"])
         );
     }
 }
@@ -1685,54 +1759,102 @@ mod claude_code {
     use super::*;
 
     #[test]
-    fn catalog_exposes_only_the_configured_current_model() {
-        let home = temp_test_dir("claude-code-current-model");
-        let settings_path = home.join(".claude").join("settings.json");
-        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
-        fs::write(
-            &settings_path,
-            json!({
-                "model": "sonnet",
-                "env": {
-                    "ANTHROPIC_MODEL": "deepseek-v4-flash",
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "ignored-opus-model",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "ignored-sonnet-model",
-                    "CLAUDE_CODE_SUBAGENT_MODEL": "ignored-subagent-model"
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-
+    fn catalog_lists_native_aliases_and_the_configured_current_model() {
+        let home = temp_test_dir("claude-code-model-options");
+        let settings_path = home.join("settings.json");
+        fs::write(&settings_path, json!({
+            "model": "sonnet",
+            "env": {"ANTHROPIC_MODEL": "deepseek-v4-flash", "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-8"}
+        }).to_string()).unwrap();
         let catalog = model_catalog_for_target(
             "claude-code",
             Some(&settings_path),
             &json!({"homeDir": display_path(home)}),
         );
-        assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
-        assert_eq!(catalog["models"][0]["name"], json!("deepseek-v4-flash"));
+        let rows = catalog["models"].as_array().unwrap();
+        for name in [
+            "default",
+            "opus",
+            "opus[1m]",
+            "sonnet",
+            "sonnet[1m]",
+            "haiku",
+            "opusplan",
+            "deepseek-v4-flash",
+        ] {
+            assert!(rows.iter().any(|row| row["name"] == name), "missing {name}");
+        }
+        let opus = rows.iter().find(|row| row["name"] == "opus").unwrap();
+        assert_eq!(opus["provider"], "Anthropic");
+        assert_eq!(opus["displayName"], "Claude Opus 4.8");
         assert_eq!(
-            catalog["models"][0]["displayName"],
-            json!("DeepSeek V4 Flash")
+            opus["reasoningEfforts"],
+            json!(["low", "medium", "high", "xhigh", "max"])
         );
-        assert_eq!(catalog["models"][0]["providerId"], json!("deepseek"));
-        assert_eq!(catalog["models"][0]["provider"], json!("DeepSeek"));
-        assert_eq!(catalog["models"][0]["providerInferred"], json!(true));
-        assert_eq!(catalog["models"][0]["sources"], json!(["claude-current"]));
-        assert_eq!(catalog["sources"], json!(["claude-current"]));
-        assert_eq!(catalog["defaultModel"], json!("deepseek-v4-flash"));
+        assert_eq!(opus["providerInferred"], true);
+        assert_eq!(catalog["defaultModel"], "deepseek-v4-flash");
+        assert_eq!(catalog["sources"], json!(["claude-settings"]));
     }
 
     #[test]
-    fn catalog_falls_back_to_default_without_a_configured_model() {
+    fn configured_fable_alias_uses_its_pinned_admitted_model() {
+        let home = temp_test_dir("claude-code-fable-alias");
+        let path = home.join("settings.json");
+        fs::write(&path, json!({"availableModels": ["fable"], "env": {"ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5-1"}}).to_string()).unwrap();
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            Some(&path),
+            &json!({"homeDir": display_path(home)}),
+        );
+        let rows = catalog["models"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["name"], "fable");
+        assert_eq!(rows[0]["displayName"], "Claude Fable 5.1");
+        assert_eq!(
+            rows[0]["reasoningEfforts"],
+            json!(["low", "medium", "high", "xhigh", "max"])
+        );
+    }
+
+    #[test]
+    fn catalog_honors_available_models_and_always_keeps_default() {
+        let home = temp_test_dir("claude-code-allowed-models");
+        let settings_path = home.join("settings.json");
+        fs::write(
+            &settings_path,
+            json!({"model": "opus", "availableModels": ["sonnet", "haiku"]}).to_string(),
+        )
+        .unwrap();
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            Some(&settings_path),
+            &json!({"homeDir": display_path(home.clone())}),
+        );
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(names, BTreeSet::from(["default", "sonnet", "haiku"]));
+        assert_eq!(catalog["defaultModel"], "default");
+        fs::write(&settings_path, r#"{"availableModels":[]}"#).unwrap();
+        let empty = model_catalog_for_target(
+            "claude-code",
+            Some(&settings_path),
+            &json!({"homeDir": display_path(home)}),
+        );
+        assert_eq!(empty["models"].as_array().unwrap().len(), 1);
+        assert_eq!(empty["models"][0]["name"], "default");
+    }
+
+    #[test]
+    fn catalog_lists_native_aliases_without_a_configured_model() {
         let home = temp_test_dir("claude-code-default-model");
         let catalog =
             model_catalog_for_target("claude-code", None, &json!({"homeDir": display_path(home)}));
-
-        assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
-        assert_eq!(catalog["models"][0]["name"], json!("default"));
-        assert_eq!(catalog["models"][0]["displayName"], json!("Default"));
-        assert_eq!(catalog["defaultModel"], json!("default"));
+        assert_eq!(catalog["models"].as_array().unwrap().len(), 7);
+        assert_eq!(catalog["defaultModel"], "default");
     }
 }
 
@@ -1959,4 +2081,211 @@ fn temp_test_dir(name: &str) -> PathBuf {
     ));
     fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+mod picker_revision {
+    use super::*;
+
+    fn fixture_catalog(target: &str, models: Value) -> Value {
+        let home = temp_test_dir("picker-catalog");
+        model_catalog_for_target(
+            target,
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "disableAntigravityCliModelLookup": true,
+                "modelCatalogFixture": {target: {"models": models}}
+            }),
+        )
+    }
+
+    #[test]
+    fn codex_official_models_precede_custom_and_versions_sort_numerically() {
+        let catalog = fixture_catalog(
+            "codex",
+            json!([
+                {"name": "gateway/gpt-8", "providerId": "gateway", "provider": "Gateway"},
+                {"name": "gpt-5.9"},
+                {"name": "gpt-6-astra"},
+                {"name": "gpt-5.10"},
+                {"name": "gpt-5.6-sol"},
+                {"name": "gpt-5.6-luna"},
+                {"name": "gpt-5.6-terra"},
+                {"name": "gateway/gpt-7", "providerId": "gateway", "provider": "Gateway"}
+            ]),
+        );
+        let rows = catalog["models"].as_array().unwrap();
+        let names = rows
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                "gpt-6-astra",
+                "gpt-5.10",
+                "gpt-5.9",
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gateway/gpt-8",
+                "gateway/gpt-7"
+            ]
+        );
+        assert_eq!(rows[0]["displayName"], "GPT-6 Astra");
+        assert_eq!(rows[0]["provider"], "OpenAI");
+    }
+
+    #[test]
+    fn antigravity_groups_existing_models_by_their_vendor() {
+        let catalog = fixture_catalog(
+            "antigravity",
+            json!([
+                "gpt-oss-120b",
+                "claude-opus-4-8",
+                "gemini-3.6-flash",
+                "gemini-3.7-flash"
+            ]),
+        );
+        let rows = catalog["models"].as_array().unwrap();
+        let providers = rows
+            .iter()
+            .map(|row| row["provider"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(providers, ["Google", "Google", "Anthropic", "OpenAI"]);
+        assert_eq!(rows[0]["name"], "gemini-3.7-flash");
+        assert!(
+            rows.iter()
+                .all(|row| row["reasoningEfforts"].as_array().unwrap().is_empty())
+        );
+    }
+
+    #[test]
+    fn scanned_efforts_keep_supported_values_in_increasing_order() {
+        let catalog = fixture_catalog(
+            "codex",
+            json!([{"name": "custom-new-model", "reasoningEfforts": ["max", "high", "xhigh", "low", "medium"]}]),
+        );
+        assert_eq!(
+            catalog["models"][0]["reasoningEfforts"],
+            json!(["low", "medium", "high", "xhigh", "max"])
+        );
+    }
+
+    #[test]
+    fn kimi_config_preserves_selector_and_provider_and_per_model_efforts() {
+        let home = temp_test_dir("kimi-provider-models");
+        let path = home.join("config.toml");
+        fs::write(
+            &path,
+            r#"
+default_model = "kimi-code/kimi-k3"
+[providers.kimi-code]
+type = "kimi"
+[providers.gateway]
+type = "openai"
+name = "Gateway"
+[models."gateway/gemini-3.6-flash"]
+provider = "gateway"
+model = "gemini-3.6-flash"
+support_efforts = ["high", "low"]
+[models."gateway/gemini-3.7-flash"]
+provider = "gateway"
+model = "gemini-3.7-flash"
+support_efforts = []
+[models."kimi-code/kimi-k3"]
+provider = "kimi-code"
+model = "kimi-k3"
+support_efforts = ["max"]
+"#,
+        )
+        .unwrap();
+        let catalog = model_catalog_for_target(
+            "kimi-code",
+            Some(&path),
+            &json!({"homeDir": display_path(home), "includeHistoryModelCatalog": false}),
+        );
+        let rows = catalog["models"].as_array().unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0]["name"], "kimi-code/kimi-k3");
+        assert_eq!(rows[0]["provider"], "Kimi Code");
+        assert_eq!(rows[0]["displayName"], "Kimi K3");
+        assert_eq!(rows[1]["name"], "gateway/gemini-3.7-flash");
+        assert_eq!(rows[1]["provider"], "Gateway");
+        assert_eq!(rows[1]["reasoningEfforts"], json!([]));
+        assert_eq!(rows[2]["reasoningEfforts"], json!(["low", "high"]));
+        assert_eq!(catalog["defaultModel"], "kimi-code/kimi-k3");
+    }
+}
+
+mod deepseek {
+    use super::super::deepseek::SOURCE;
+    use super::*;
+
+    #[test]
+    fn disabled_lookup_does_not_execute_an_installed_adapter() {
+        let catalog = model_catalog_for_target(
+            "deepseek-harness",
+            None,
+            &json!({
+                "enableAgentCliModelLookup":false,
+                "deepseekHarnessCliPath":"not-a-real-harness",
+                "deepseekHarnessNodePath":"not-a-real-node",
+            }),
+        );
+        assert!(catalog["models"].as_array().unwrap().is_empty());
+        assert!(
+            catalog["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| { item["source"] == SOURCE && item["status"] == "disabled" })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_catalog_preserves_native_ids_provider_and_supported_efforts() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory =
+            std::env::temp_dir().join(format!("licoup-dsh-catalog-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let node = directory.join("node");
+        fs::write(&node, r##"#!/bin/sh
+case "$1 $2" in '--input-type=module --eval') ;; *) exit 9 ;; esac
+printf '%s' '{"models":[{"name":"deepseek-native-next","displayName":"DeepSeek Native Next","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off","low","high","max"]},{"name":"deepseek-vision-experiment","displayName":"DeepSeek Vision Experiment","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off"]}]}'
+"##).unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+        let catalog = model_catalog_for_target(
+            "deepseek-harness",
+            None,
+            &json!({
+                "enableAgentCliModelLookup":true,
+                "deepseekHarnessCliPath":directory.join("dsh"),
+                "deepseekHarnessNodePath":node,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        let model = models
+            .iter()
+            .find(|model| model["name"] == "deepseek-native-next")
+            .unwrap();
+        assert_eq!(model["displayName"], "DeepSeek Native Next");
+        assert_eq!(model["providerId"], "deepseek-official");
+        assert_eq!(model["provider"], "DeepSeek");
+        assert_eq!(
+            model["reasoningEfforts"],
+            json!(["off", "low", "high", "max"])
+        );
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(SOURCE))
+        );
+        assert_eq!(catalog["defaultModel"], "");
+        fs::remove_dir_all(directory).unwrap();
+    }
 }

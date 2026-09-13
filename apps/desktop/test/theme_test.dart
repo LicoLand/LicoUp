@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dart';
+import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -18,6 +19,63 @@ Iterable<AppearancePresetConfig> get _fixedPresets =>
     );
 
 void main() {
+  test(
+    'runtime theme tokens change visual roles without changing geometry',
+    () {
+      final original = builtInAppearancePresetConfigs.firstWhere(
+        (preset) => preset.id == AppearancePresetIds.licoSoda,
+      );
+      final custom = AppearancePresetConfig.fromJson({
+        'schemaVersion': 2,
+        'id': 'silver-study',
+        'label': {'en': 'Silver study', 'zh-CN': '银色样式'},
+        'mode': 'dark',
+        'tokens': {
+          ...original.tokens,
+          'font-family': 'system',
+          'icon-style': 'rounded',
+          'motion-scale': '0.75',
+          'surface-opacity': '0.9',
+          'component-finish': 'glass',
+        },
+      });
+      final before = buildLicoTheme();
+      final after = buildLicoTheme(
+        presetId: custom.id,
+        presets: [...builtInAppearancePresetConfigs, custom],
+      );
+      final visual = after.extension<AppearanceVisuals>()!;
+      expect(visual.useSystemFont, isTrue);
+      expect(visual.roundedIcons, isTrue);
+      expect(visual.motionScale, 0.75);
+      expect(visual.surfaceOpacity, 0.9);
+      expect(visual.glassFinish, isTrue);
+      expect(after.cardTheme.shape, before.cardTheme.shape);
+      expect(
+        after.inputDecorationTheme.contentPadding,
+        before.inputDecorationTheme.contentPadding,
+      );
+      expect(
+        after.textTheme.bodyLarge?.fontSize,
+        before.textTheme.bodyLarge?.fontSize,
+      );
+      expect(
+        after.textTheme.bodyLarge?.height,
+        before.textTheme.bodyLarge?.height,
+      );
+      expect(
+        validateAppearancePresetConfig({
+          'schemaVersion': 2,
+          'id': 'invalid-font',
+          'label': {'en': 'Invalid', 'zh-CN': '无效'},
+          'mode': 'dark',
+          'tokens': {...original.tokens, 'font-family': 'remote-font'},
+        }).ok,
+        isFalse,
+      );
+    },
+  );
+
   test('appearance projection adapter preserves theme pixels', () {
     final projected = _appearanceProjection();
     final adapted = appearancePresetConfigsFromProjection(projected);
@@ -272,7 +330,7 @@ void main() {
       }
     });
 
-    test('brand and accent are vivid, not muted', () {
+    test('electric brand and silver interaction remain distinct', () {
       // A brand that is scarce *and* desaturated is invisible. The reference
       // point is the brief's own electric yellow #D9F14A at chroma 0.1855.
       for (final preset in _fixedPresets) {
@@ -284,8 +342,8 @@ void main() {
         );
         expect(
           _chroma(c.accent),
-          greaterThanOrEqualTo(0.090),
-          reason: '${preset.id}: accent must carry real chroma',
+          lessThanOrEqualTo(0.06),
+          reason: '${preset.id}: interaction belongs to the silver ramp',
         );
       }
     });
@@ -564,7 +622,7 @@ void main() {
     );
   });
 
-  test('built-in preset labels use LicoUp product names', () {
+  test('built-in preset labels identify the Orbital theme style', () {
     final dark = findAppearancePresetConfig(
       AppearancePresetIds.licoSoda,
       builtInAppearancePresetConfigs,
@@ -573,10 +631,10 @@ void main() {
       AppearancePresetIds.licoSodaLight,
       builtInAppearancePresetConfigs,
     );
-    expect(dark.labelFor('en'), 'LicoUp Dark');
-    expect(dark.labelFor('zh-CN'), 'LicoUp 暗黑');
-    expect(light.labelFor('en'), 'LicoUp Light');
-    expect(light.labelFor('zh-CN'), 'LicoUp 明亮');
+    expect(dark.labelFor('en'), 'Orbital · Dark');
+    expect(dark.labelFor('zh-CN'), '轨道 · 深色');
+    expect(light.labelFor('en'), 'Orbital · Light');
+    expect(light.labelFor('zh-CN'), '轨道 · 浅色');
   });
 
   test('default-system resolves to configured light and dark presets', () {

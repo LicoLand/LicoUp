@@ -11,11 +11,11 @@ const store = readFileSync(
   "utf8",
 );
 const application = readFileSync(
-  "crates/licoup-native/src/domain/subagent_mcp/mod.rs",
+  "crates/licoup-native/src/domain/subagents/mod.rs",
   "utf8",
 );
 const production = readFileSync(
-  "crates/licoup-native/src/domain/subagent_mcp/production.rs",
+  "crates/licoup-native/src/domain/subagents/production.rs",
   "utf8",
 );
 const conversationHost = readFileSync(

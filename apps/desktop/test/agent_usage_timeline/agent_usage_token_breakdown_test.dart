@@ -20,10 +20,10 @@ void main() {
         'completionTokens': 10,
       }, totalTokens: 80);
       final models = agentUsageModelUsageMap(const {
-        'modelTokenUsage': [
-          {'model': 'openai/gpt-5.5', 'totalTokens': 500},
-          {'model': 'GPT_5.5', 'totalTokens': 50},
-        ],
+        'modelTokenUsage': {
+          'openai/gpt-5.5': {'displayName': 'GPT-5.5', 'totalTokens': 500},
+          'GPT_5.5': {'displayName': 'GPT-5.5', 'totalTokens': 50},
+        },
       });
 
       expect(exact.isExact, isTrue);
@@ -31,9 +31,11 @@ void main() {
       expect(missingCache.isExact, isTrue);
       expect(missingCache.cachedInputTokens, 0);
       expect(estimated.isExact, isFalse);
-      expect(models.keys, ['GPT 5.5']);
-      expect(models['GPT 5.5']?.totalTokens, 550);
-      expect(models['GPT 5.5']?.breakdown.isExact, isFalse);
+      expect(models.keys, ['openai/gpt-5.5', 'GPT_5.5']);
+      expect(models['openai/gpt-5.5']?.totalTokens, 500);
+      expect(models['GPT_5.5']?.totalTokens, 50);
+      expect(models['openai/gpt-5.5']?.displayName, 'GPT-5.5');
+      expect(models['openai/gpt-5.5']?.breakdown.isExact, isFalse);
     },
   );
 }

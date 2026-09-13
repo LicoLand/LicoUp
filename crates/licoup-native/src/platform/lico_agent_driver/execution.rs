@@ -12,6 +12,10 @@ use crate::platform::native_agent_parser::adapters::lico_agent::{
 use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+    RawExecutionScope,
+};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -209,11 +213,20 @@ fn execute_with_handshake_bound(
             &native_session_id,
         );
     };
+    let stderr_observer = RawExecutionObserver::current();
     let mut stderr_handle = Some(thread::spawn(move || {
+        let _scope = RawExecutionScope::enter(stderr_observer);
         drain_nonprojecting_stderr(stderr, max_stderr)
     }));
 
-    let reader = BufReader::new(stdout);
+    let binding = RawExecutionBinding::default();
+    let _raw_execution = binding.bind_current();
+    let reader = BufReader::new(RawExecutionReader::new(
+        stdout,
+        binding,
+        "lico-agent",
+        RawExecutionDirection::Received,
+    ));
     if write_line(&mut stdin, &json!({"id":"lico-1","type":"get_state"})).is_err() {
         cleanup_process(&mut child, &mut stderr_handle);
         return failed_for_session(
@@ -619,6 +632,9 @@ fn failed_for_session(
 
 fn write_line(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
     let encoded = encode_request(value).map_err(std::io::Error::other)?;
+    if let Some(observer) = RawExecutionObserver::current() {
+        observer.record_bytes("lico-agent", RawExecutionDirection::Sent, &encoded);
+    }
     stdin.write_all(&encoded)?;
     stdin.flush()
 }
@@ -705,7 +721,16 @@ fn drain_nonprojecting_stderr(mut stderr: impl Read, max_bytes: usize) -> bool {
     loop {
         match stderr.read(&mut buffer) {
             Ok(0) => return total > max_bytes,
-            Ok(read) => total = total.saturating_add(read),
+            Ok(read) => {
+                if let Some(observer) = RawExecutionObserver::current() {
+                    observer.record_bytes(
+                        "lico-agent",
+                        RawExecutionDirection::Stderr,
+                        &buffer[..read],
+                    );
+                }
+                total = total.saturating_add(read);
+            }
             Err(_) => return total > max_bytes,
         }
     }
@@ -720,4 +745,64 @@ fn cleanup_process(
         .take()
         .and_then(|handle| join_bounded(handle, IO_THREAD_EXIT_GRACE).ok())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod raw_execution_tests {
+    use super::*;
+    use std::io::Cursor;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn raw_execution_preserves_handshake_unknown_and_invalid_frames() {
+        let records = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&records);
+        let observer = RawExecutionObserver::new(move |_, direction, text| {
+            captured.lock().unwrap().push((direction, text.to_owned()));
+            Ok(())
+        });
+        let _scope = RawExecutionScope::enter(Some(observer));
+        let binding = RawExecutionBinding::default();
+        let _guard = binding.bind_current();
+        let ready = b" {\"type\":\"response\",\"success\":true,\"data\":{\"sessionId\":\"synthetic\"}} \r\n";
+        let reader = RawExecutionReader::new(
+            Cursor::new(ready.to_vec()),
+            binding.clone(),
+            "lico-agent",
+            RawExecutionDirection::Received,
+        );
+        let (_, session) = handshake(BufReader::new(reader), Duration::from_secs(5)).unwrap();
+        assert_eq!(session.as_deref(), Some("synthetic"));
+        let unknown = b" {\"future\":{\"toolResult\":\"exact\"}} \r\n";
+        let reader = RawExecutionReader::new(
+            Cursor::new(unknown),
+            binding.clone(),
+            "lico-agent",
+            RawExecutionDirection::Received,
+        );
+        assert!(matches!(
+            read_effect(&mut BufReader::new(reader)),
+            Ok(Some(RpcEffect::Ignored))
+        ));
+        let reader = RawExecutionReader::new(
+            Cursor::new(b"not-json\n"),
+            binding,
+            "lico-agent",
+            RawExecutionDirection::Received,
+        );
+        assert!(read_effect(&mut BufReader::new(reader)).is_err());
+        let mut wire = Vec::new();
+        write_line(&mut wire, &json!({"message":"unmodified\nrequest"})).unwrap();
+        let captured = records.lock().unwrap();
+        assert_eq!(captured[0].1.as_bytes(), ready);
+        assert_eq!(captured[1].1.as_bytes(), unknown);
+        assert_eq!(captured[2].1, "not-json\n");
+        assert_eq!(
+            captured[3],
+            (
+                RawExecutionDirection::Sent,
+                String::from_utf8(wire).unwrap()
+            )
+        );
+    }
 }

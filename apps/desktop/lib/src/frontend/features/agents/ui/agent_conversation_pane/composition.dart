@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
+
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
@@ -7,20 +9,21 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_virtual_machine_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/lico_plan_document_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Composes an already projected conversation view. Controller listening and
 /// domain-to-presentation adaptation belong exclusively to the workspace.
-class AgentConversationActivePane extends StatelessWidget {
+class AgentConversationActivePane extends StatefulWidget {
   const AgentConversationActivePane({
     super.key,
     required this.state,
@@ -37,6 +40,105 @@ class AgentConversationActivePane extends StatelessWidget {
   final ScrollController? messageScrollController;
 
   @override
+  State<AgentConversationActivePane> createState() =>
+      _AgentConversationActivePaneState();
+}
+
+class _AgentConversationActivePaneState
+    extends State<AgentConversationActivePane> {
+  AgentConversationPaneState get state => widget.state;
+  AgentConversationPaneActions get actions => widget.actions;
+  Widget get header => widget.header;
+  bool get framed => widget.framed;
+  ScrollController? get messageScrollController =>
+      widget.messageScrollController;
+
+  Object _motionKey = Object();
+  bool _motionVisible = false;
+  bool _motionAssembled = false;
+  bool _pendingDraftRollover = false;
+
+  bool _empty(AgentConversationPaneState value) =>
+      (value.preparingNewConversation || !value.loading) &&
+      !_hasConversationContent(value.session?.messages ?? const []) &&
+      !_hasConversationContent(value.liveMessages);
+
+  bool _hasConversationContent(List<AgentConversationMessage> messages) =>
+      messages.any(
+        (message) =>
+            message.cardType != 'membership-changed' &&
+            message.cardType != 'availability',
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _motionVisible = _empty(state);
+  }
+
+  @override
+  void didUpdateWidget(AgentConversationActivePane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previous = oldWidget.state;
+    final sameTarget = previous.target.target == state.target.target;
+    final sameConversation =
+        sameTarget &&
+        previous.session?.id == state.session?.id &&
+        previous.session?.nativeSessionId == state.session?.nativeSessionId;
+    final draftRollover =
+        _pendingDraftRollover &&
+        sameTarget &&
+        previous.session == null &&
+        state.liveMessages.any(
+          (message) => message.kind == AgentConversationMessageKind.user,
+        );
+    if (draftRollover) {
+      // A real composer submit armed this one draft-to-session handover.
+      _pendingDraftRollover = state.session == null;
+    } else if (!sameConversation) {
+      _motionKey = Object();
+      _motionVisible = _empty(state);
+      _motionAssembled = false;
+      _pendingDraftRollover = false;
+    } else if (!_motionAssembled) {
+      // Loading an existing history is never a first-send animation.
+      _motionVisible = _empty(state);
+    }
+    if (_motionAssembled &&
+        !state.turnActive &&
+        (previous.turnActive || state.sendGateReasonCode.isNotEmpty) &&
+        !state.liveMessages.any(
+          (message) => message.kind == AgentConversationMessageKind.assistant,
+        )) {
+      _motionVisible = false;
+      _pendingDraftRollover = false;
+    }
+  }
+
+  Widget _motionScene(Widget child) => ConversationMotionScene(
+    conversationKey: _motionKey,
+    visible: _motionVisible,
+    assembled: _motionAssembled,
+    onSendInitiated: () {
+      if (!_motionVisible || _motionAssembled) return;
+      setState(() {
+        _motionAssembled = true;
+        _pendingDraftRollover =
+            state.session == null && state.preparingNewConversation;
+      });
+    },
+    onAssembled: () {
+      if (mounted && _motionVisible) {
+        setState(() {
+          _motionVisible = false;
+          _pendingDraftRollover = false;
+        });
+      }
+    },
+    child: child,
+  );
+
+  @override
   Widget build(BuildContext context) {
     final mobileClient = isMobileClientPlatform(context);
     final strings = LicoStrings.of(context);
@@ -47,51 +149,57 @@ class AgentConversationActivePane extends StatelessWidget {
     );
     final messagingFlow =
         strategy.messageStyle == AgentsMessageStyle.participantFlow;
-    final composer = RuntimeMessageComposer(
-      // Keyed per conversation scope: a switch starts a fresh composer state
-      // seeded from that conversation's stored draft instead of relying on
-      // didUpdateWidget restores that can race the debounced draft echo.
-      key: ValueKey<String>(
-        'composer-${state.target.target}-'
-        '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
+    final composer = TickerMode(
+      enabled: !LayoutExternalComposerScope.isHosted(context),
+      child: RuntimeMessageComposer(
+        // Keyed per conversation scope: a switch starts a fresh composer state
+        // seeded from that conversation's stored draft instead of relying on
+        // didUpdateWidget restores that can race the debounced draft echo.
+        key: ValueKey<String>(
+          'composer-${state.target.target}-'
+          '${state.session?.id ?? (state.preparingNewConversation ? 'draft' : 'none')}',
+        ),
+        targetLabel: state.conversationLabel.trim().isNotEmpty
+            ? state.conversationLabel.trim()
+            : agentConversationTargetDisplayName(state.target),
+        initialDraft: state.composerDraft,
+        hasAttachments: state.hasAttachments,
+        busy: state.composerBusy,
+        activityVisible:
+            state.turnActive || state.loading || state.composerBusy,
+        enabled: state.composerEnabled && state.inputEnabled,
+        cancelEnabled: state.cancelEnabled,
+        modelOptions: state.modelOptions,
+        selectedModel: state.selectedModel,
+        reasoningEffortOptions: state.reasoningEffortOptions,
+        selectedReasoningEffort: state.selectedReasoningEffort,
+        onModelChanged: actions.onModelChanged,
+        onReasoningEffortChanged: actions.onReasoningEffortChanged,
+        onDraftChanged: actions.onDraftChanged,
+        onSend: actions.onSend,
+        onSlashNewConversation: actions.onNewConversation,
+        onCancel: actions.onCancel,
+        defaultModel: state.defaultModel,
+        defaultReasoningEffort: state.defaultReasoningEffort,
+        showRuntimeSettings:
+            strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
+        showWorkingDirectory: state.showWorkingDirectory,
+        workingDirectory: state.workingDirectory,
+        workingDirectorySelectable: state.workingDirectorySelectable,
+        onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
+        floatingMatteCapsule: !mobileClient && messagingFlow,
+        onAttach: actions.onAttach,
+        onPasteImage: actions.onPasteImage,
+        mentionTargets: state.participantTargets
+            .where(
+              (target) =>
+                  state.composerMentionLabels.containsKey(target.target),
+            )
+            .toList(growable: false),
+        mentionLabels: state.composerMentionLabels,
+        leading: state.composerLeading,
+        fieldLeading: state.composerFieldLeading,
       ),
-      targetLabel: state.conversationLabel.trim().isNotEmpty
-          ? state.conversationLabel.trim()
-          : agentConversationTargetDisplayName(state.target),
-      initialDraft: state.composerDraft,
-      hasAttachments: state.hasAttachments,
-      busy: state.composerBusy,
-      enabled: state.composerEnabled && state.inputEnabled,
-      cancelEnabled: state.cancelEnabled,
-      modelOptions: state.modelOptions,
-      selectedModel: state.selectedModel,
-      reasoningEffortOptions: state.reasoningEffortOptions,
-      selectedReasoningEffort: state.selectedReasoningEffort,
-      onModelChanged: actions.onModelChanged,
-      onReasoningEffortChanged: actions.onReasoningEffortChanged,
-      onDraftChanged: actions.onDraftChanged,
-      onSend: actions.onSend,
-      onSlashNewConversation: actions.onNewConversation,
-      onCancel: actions.onCancel,
-      defaultModel: state.defaultModel,
-      defaultReasoningEffort: state.defaultReasoningEffort,
-      showRuntimeSettings:
-          strategy.composerStyle == AgentsComposerStyle.withRuntimeBar,
-      showWorkingDirectory: state.showWorkingDirectory,
-      workingDirectory: state.workingDirectory,
-      workingDirectorySelectable: state.workingDirectorySelectable,
-      onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
-      floatingMatteCapsule: !mobileClient && messagingFlow,
-      onAttach: actions.onAttach,
-      onPasteImage: actions.onPasteImage,
-      mentionTargets: state.participantTargets
-          .where(
-            (target) => state.composerMentionLabels.containsKey(target.target),
-          )
-          .toList(growable: false),
-      mentionLabels: state.composerMentionLabels,
-      leading: state.composerLeading,
-      fieldLeading: state.composerFieldLeading,
     );
     final sendUnavailable = state.composerEnabled
         ? null
@@ -157,25 +265,15 @@ class AgentConversationActivePane extends StatelessWidget {
                   : 0)
         : 0.0;
     final messageSurface =
-        state.session == null &&
-            state.preparingNewConversation &&
+        _empty(state) &&
+            (state.session?.messages.isEmpty ?? true) &&
             state.liveMessages.isEmpty
-        ? AgentConversationRecentSessions(
-            sessions: state.recentSessions,
-            runningSessionIds: state.runningRecentSessionIds,
-            loading: state.loading && !state.recentSessionsCached,
-            hasMore: state.recentSessionsHasMore,
-            loadingMore: state.recentSessionsLoadingMore,
-            onNewConversation: actions.onNewConversation ?? () {},
-            onSelectSession: actions.onSelectSession,
-            onLoadMore: actions.onLoadMoreRecentSessions,
-            topOverlayInset: headerOverlayInset,
-            bottomOverlayInset: composerOverlayInset,
-          )
+        ? const SizedBox.expand(key: Key('conversation-empty-content'))
         : AgentConversationMessageList(
             scrollController: messageScrollController,
             loading: state.loading,
             messagePageLoading: state.messagePageLoading,
+            hasEarlierMessages: state.hasEarlierMessages,
             messagePageError: state.messagePageError,
             onLoadEarlier: actions.onLoadEarlierMessages,
             session: state.session,
@@ -183,7 +281,6 @@ class AgentConversationActivePane extends StatelessWidget {
             turnActive: state.turnActive,
             liveMessages: state.liveMessages,
             messageStyle: strategy.messageStyle,
-            processStyle: strategy.processStyle,
             participantTargets: state.participantTargets,
             participantConversationIds: state.participantConversationIds,
             participantRuntimeProfiles: state.participantRuntimeProfiles,
@@ -196,7 +293,7 @@ class AgentConversationActivePane extends StatelessWidget {
           );
     final messages = RepaintBoundary(
       key: const Key('conversation-streaming-repaint-boundary'),
-      child: messageSurface,
+      child: ConversationMotionContent(child: messageSurface),
     );
     final showPlanDocumentPanel =
         !mobileClient &&
@@ -208,59 +305,64 @@ class AgentConversationActivePane extends StatelessWidget {
       // Every text in the conversation pane is selectable for copy; the
       // mobile path hosts the same single pane-level SelectionArea as the
       // desktop return below.
-      return SelectionArea(
-        child: Column(
-          children: [
-            // Console mobile surfaces the parity and VM chips above the
-            // transcript; messaging keeps them inside the details sheet.
-            if (!messagingFlow)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ConversationParityDisclosurePanel(
-                        target: state.target,
-                        compact: true,
+      return _motionScene(
+        ConversationExecutionScope(
+          onOpen: actions.onOpenExecution,
+          child: SelectionArea(
+            child: Column(
+              children: [
+                // Console mobile surfaces the parity and VM chips above the
+                // transcript; messaging keeps them inside the details sheet.
+                if (!messagingFlow)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          ConversationParityDisclosurePanel(
+                            target: state.target,
+                            compact: true,
+                          ),
+                          if (state.target.hasValidVirtualMachineConnection)
+                            ConversationVirtualMachineDestinationChip(
+                              destination:
+                                  state.target.virtualMachineDestination,
+                            ),
+                        ],
                       ),
-                      if (state.target.hasValidVirtualMachineConnection)
-                        ConversationVirtualMachineDestinationChip(
-                          destination: state.target.virtualMachineDestination,
-                        ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            Expanded(child: messages),
-            ?sendUnavailable,
-            ?sendFailure,
-            ?permissionRetry,
-            if (showComposerCapsuleRow)
-              ComposerCapsuleRow(
-                modelOptions: state.modelOptions,
-                selectedModel: state.selectedModel,
-                defaultModel: state.defaultModel,
-                modelSelectionEnabled: state.composerEnabled,
-                onModelChanged: actions.onModelChanged,
-                reasoningEffortOptions: state.reasoningEffortOptions,
-                selectedReasoningEffort: state.selectedReasoningEffort,
-                defaultReasoningEffort: state.defaultReasoningEffort,
-                onReasoningEffortChanged: actions.onReasoningEffortChanged,
-                licoProfileCapsule: licoProfileCapsule,
-                flywheel: state.composerFlywheel,
-              ),
-            MobileComposerSurface(child: composer),
-          ],
+                Expanded(child: messages),
+                ?sendUnavailable,
+                ?sendFailure,
+                ?permissionRetry,
+                if (showComposerCapsuleRow)
+                  ComposerCapsuleRow(
+                    modelOptions: state.modelOptions,
+                    selectedModel: state.selectedModel,
+                    defaultModel: state.defaultModel,
+                    modelSelectionEnabled: state.composerEnabled,
+                    onModelChanged: actions.onModelChanged,
+                    reasoningEffortOptions: state.reasoningEffortOptions,
+                    selectedReasoningEffort: state.selectedReasoningEffort,
+                    defaultReasoningEffort: state.defaultReasoningEffort,
+                    onReasoningEffortChanged: actions.onReasoningEffortChanged,
+                    licoProfileCapsule: licoProfileCapsule,
+                    flywheel: state.composerFlywheel,
+                  ),
+                MobileComposerSurface(child: composer),
+              ],
+            ),
+          ),
         ),
       );
     }
-    final colors = context.licoColors;
-    // Messaging: header + matte composer overlay the full-height transcript.
-    // Console keeps the classic band + running-edge divider.
+    // Messaging: header and composer overlay the full-height transcript.
+    // Execution feedback belongs to the composer border in every layout.
     final bottomDock = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -298,25 +400,19 @@ class AgentConversationActivePane extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: LicoTopEdgePulse(
-                          key: const Key('conversation-header-running-edge'),
-                          enabled: state.turnActive || state.loading,
-                          borderRadius: BorderRadius.zero,
-                          color: colors.primaryStrong,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              messages,
-                              Align(
-                                alignment: Alignment.topCenter,
-                                child: messagingHeader,
-                              ),
-                              Align(
-                                alignment: Alignment.bottomCenter,
-                                child: bottomDock,
-                              ),
-                            ],
-                          ),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            messages,
+                            Align(
+                              alignment: Alignment.topCenter,
+                              child: messagingHeader,
+                            ),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: bottomDock,
+                            ),
+                          ],
                         ),
                       ),
                       SizedBox(
@@ -331,36 +427,24 @@ class AgentConversationActivePane extends StatelessWidget {
                       ),
                     ],
                   )
-                : LicoTopEdgePulse(
-                    key: const Key('conversation-header-running-edge'),
-                    enabled: state.turnActive || state.loading,
-                    borderRadius: BorderRadius.zero,
-                    color: colors.primaryStrong,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        messages,
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: messagingHeader,
-                        ),
-                        Align(
-                          alignment: Alignment.bottomCenter,
-                          child: bottomDock,
-                        ),
-                      ],
-                    ),
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      messages,
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: messagingHeader,
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: bottomDock,
+                      ),
+                    ],
                   ),
           )
         else ...[
           header,
-          LicoTopEdgePulse(
-            key: const Key('conversation-header-running-edge'),
-            enabled: state.turnActive || state.loading,
-            borderRadius: BorderRadius.zero,
-            color: colors.primaryStrong,
-            child: const Divider(height: 2),
-          ),
+          const Divider(height: 2),
           Expanded(child: messages),
           const Divider(height: 1),
           ?sendUnavailable,
@@ -394,7 +478,12 @@ class AgentConversationActivePane extends StatelessWidget {
     final useFrame = framed && !messagingFlow;
     final pane = useFrame ? PanelFrame(child: content) : content;
     // Every text in the conversation pane is selectable for copy.
-    return SelectionArea(child: pane);
+    return _motionScene(
+      ConversationExecutionScope(
+        onOpen: actions.onOpenExecution,
+        child: SelectionArea(child: pane),
+      ),
+    );
   }
 }
 

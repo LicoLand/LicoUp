@@ -518,7 +518,7 @@ fn has_duplicate_connector_entry(config: &Value, connector: &Path) -> bool {
         if key == SERVER_KEY {
             return false;
         }
-        if key == crate::domain::subagent_mcp::SERVER_NAME {
+        if key == "lico-up-subagents" {
             return true;
         }
         value
@@ -681,7 +681,7 @@ mod tests {
         // reported identity as the key, no ownership fields, no `--caller`.
         let mut servers = Map::new();
         servers.insert(
-            crate::domain::subagent_mcp::SERVER_NAME.to_owned(),
+            "lico-up-subagents".to_owned(),
             json!({
                 "type": "stdio",
                 "command": connector.to_string_lossy(),

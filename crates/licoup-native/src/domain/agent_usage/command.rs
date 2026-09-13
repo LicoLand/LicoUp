@@ -5,7 +5,7 @@ use super::agent_usage_native;
 use super::agent_usage_native::runtime::CacheRuntime;
 use super::contract::{
     AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE,
-    HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, SUPPORTED_AGENTS, normalize_agent_id,
+    HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, normalize_agent_id, supported_agents,
 };
 use super::persistence::{persist_report, read_retained_reports};
 use super::window::UsageWindow;
@@ -15,6 +15,7 @@ use crate::domain::targets;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -26,6 +27,10 @@ fn cache_runtime() -> &'static CacheRuntime {
 }
 
 pub fn scan(params: &Value) -> Result<Value> {
+    let state_root = text_param(params, &["stateRoot"]).filter(|root| !root.trim().is_empty());
+    let registry = crate::domain::model_registry::refresh_cached_snapshot_for_state_root(
+        state_root.as_deref().map(Path::new),
+    );
     let generated_at = timestamp_rfc3339();
     let agent_filter = text_param(params, &["agent", "target"]);
     let include_target_status = bool_param(params, "includeTargetStatus").unwrap_or(false);
@@ -39,14 +44,14 @@ pub fn scan(params: &Value) -> Result<Value> {
     let mut agents = Vec::<Value>::new();
     let mut summary = HistoryUsageSummary::default();
 
-    for def in SUPPORTED_AGENTS {
+    for def in supported_agents() {
         if agent_filter
             .as_ref()
             .is_some_and(|filter| normalize_agent_id(filter) != def.id)
         {
             continue;
         }
-        let history = summarize_agent_history(def, params, &usage_window, &mut warnings);
+        let history = summarize_agent_history(&def, params, &usage_window, &mut warnings);
         summary.merge(&history);
         let confidence = history.confidence();
         agents.push(json!({
@@ -56,7 +61,7 @@ pub fn scan(params: &Value) -> Result<Value> {
                 .get(def.id)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_owned()),
-            "history": history.to_json(),
+            "history": history.to_json_for_agent(Some(def.id), &registry),
             "confidence": confidence,
             "sources": {
                 "historyRoots": history.source_paths.into_iter().collect::<Vec<_>>(),
@@ -81,6 +86,8 @@ pub fn scan(params: &Value) -> Result<Value> {
             "timezoneTransitionCount": usage_window.timezone_transitions.len()
         },
         "tokenSourceMode": AGENT_USAGE_TOKEN_SOURCE_MODE,
+        "usageParserRevision": super::contract::USAGE_PARSER_REVISION,
+        "modelRegistryRevision": registry.revision(),
         "summary": {
             "agentCount": agents.len(),
             "sessionCount": summary.session_count,
@@ -109,10 +116,14 @@ pub fn scan(params: &Value) -> Result<Value> {
 }
 
 pub fn report(params: &Value) -> Result<Value> {
+    let state_root = text_param(params, &["stateRoot"]).filter(|root| !root.trim().is_empty());
+    let registry = crate::domain::model_registry::refresh_cached_snapshot_for_state_root(
+        state_root.as_deref().map(Path::new),
+    );
     let agent_filter =
         text_param(params, &["agent", "target"]).map(|value| normalize_agent_id(&value));
     let limit = number_param(params, "limit").unwrap_or(10) as usize;
-    let reports = read_retained_reports(params, agent_filter.as_deref(), limit)?;
+    let reports = read_retained_reports(params, agent_filter.as_deref(), limit, &registry)?;
     let workflow_report_value = workflow_ledger::workflow_report(params)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     Ok(json!({
@@ -120,6 +131,8 @@ pub fn report(params: &Value) -> Result<Value> {
         "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
         "mode": AGENT_USAGE_MODE,
         "tokenSourceMode": AGENT_USAGE_TOKEN_SOURCE_MODE,
+        "usageParserRevision": super::contract::USAGE_PARSER_REVISION,
+        "modelRegistryRevision": registry.revision(),
         "resultKind": "retained-reports",
         "reports": reports,
         "workflow": workflow_report_value
@@ -134,6 +147,13 @@ fn summarize_agent_history(
 ) -> HistoryUsageSummary {
     if def.id == "codex" {
         return agent_usage_codex::summarize(params, window, warnings).unwrap_or_default();
+    }
+    if crate::domain::conversation::source_catalog::usage_adapter_for_agent(def.id).is_none() {
+        return HistoryUsageSummary {
+            source: Some("native-usage-source-unavailable"),
+            skipped: vec![json!({"code": "native_usage_source_unavailable", "agentId": def.id})],
+            ..HistoryUsageSummary::default()
+        };
     }
     agent_usage_native::summarize(def, params, window, warnings, cache_runtime())
         .unwrap_or_default()

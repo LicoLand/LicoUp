@@ -20,6 +20,11 @@ pub(crate) fn parse_history_file(
 }
 
 fn parser_kind(adapter: HistoryAdapter, path: &Path) -> Option<HistoryParserKind> {
+    // Harness historical usage has a separate exact metadata reader. Its
+    // compressed event log must never enter a generic transcript parser.
+    if adapter == HistoryAdapter::DeepSeekHarness {
+        return None;
+    }
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
@@ -81,6 +86,16 @@ mod tests {
 
     #[test]
     fn rejects_files_outside_the_selected_adapter_contract() {
+        use super::super::source_catalog::{adapter_for_agent, usage_adapter_for_agent};
+        assert_eq!(adapter_for_agent("deepseek-harness"), None);
+        assert_eq!(
+            usage_adapter_for_agent("deepseek-harness"),
+            Some(HistoryAdapter::DeepSeekHarness)
+        );
+        assert_eq!(
+            parser_kind(HistoryAdapter::DeepSeekHarness, Path::new("session.jsonl")),
+            None
+        );
         assert_eq!(
             parser_kind(HistoryAdapter::Cursor, Path::new("notes.md")),
             None

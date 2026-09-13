@@ -177,9 +177,9 @@ void main() {
       await first.load();
       first
         ..openApp(DesktopAppId.monitoring)
-        ..openApp(DesktopAppId.skillHub)
+        ..openApp(DesktopAppId.modelsGateway)
         ..openApp(DesktopAppId.agentHub);
-      first.mergeEntries('app:skillHub', 'app:monitoring');
+      first.mergeEntries('app:modelsGateway', 'app:monitoring');
       first.moveEntry('app:agentHub', 0);
 
       // The persists are fire-and-forget: poll a restarting controller until
@@ -195,7 +195,7 @@ void main() {
             last is DesktopDockFolderEntry &&
             last.children.length == 2 &&
             last.children.first == DesktopAppId.monitoring &&
-            last.children.last == DesktopAppId.skillHub;
+            last.children.last == DesktopAppId.modelsGateway;
       }
 
       DesktopDockModel? second;
@@ -217,7 +217,10 @@ void main() {
         DesktopAppId.agentHub,
       );
       final folder = second.entries.last as DesktopDockFolderEntry;
-      expect(folder.children, [DesktopAppId.monitoring, DesktopAppId.skillHub]);
+      expect(folder.children, [
+        DesktopAppId.monitoring,
+        DesktopAppId.modelsGateway,
+      ]);
     });
 
     test('unknown stored app names are dropped on load', () async {

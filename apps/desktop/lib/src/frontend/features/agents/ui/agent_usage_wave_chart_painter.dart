@@ -12,11 +12,13 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
     required this.timeline,
     required this.colors,
     required this.hoveredSnapshotIndex,
+    required this.labelStyle,
   });
 
   final AgentUsageTimelineData timeline;
   final LicoThemeColors colors;
   final int? hoveredSnapshotIndex;
+  final TextStyle labelStyle;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -114,10 +116,14 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
   }) {
     final cumulative = List<double>.filled(xPositions.length, 0);
     for (final series in timeline.series) {
+      final values = [
+        for (final snapshot in timeline.snapshots)
+          snapshot.values[series.label] ?? 0.0,
+      ];
+      if (!values.any((value) => value > 0)) continue;
       final bottomValues = List<double>.from(cumulative);
       for (var index = 0; index < cumulative.length; index += 1) {
-        cumulative[index] +=
-            timeline.snapshots[index].values[series.label] ?? 0;
+        cumulative[index] += values[index];
       }
       final bottomOffsets = [
         for (var index = 0; index < bottomValues.length; index += 1)
@@ -133,12 +139,30 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
             baseline - chartHeight * (cumulative[index] / maxValue),
           ),
       ];
-      _paintSeriesArea(
-        canvas,
-        topOffsets: topOffsets,
-        bottomOffsets: bottomOffsets,
-        color: agentUsageSeriesColor(colors, series.label),
+      final color = agentUsageSeriesColor(
+        colors,
+        series.label,
+        grouping: timeline.grouping,
+        displayName: timeline.displayNameFor(series.label),
       );
+      // Each positive run closes at its neighboring zero samples. No path or
+      // outline crosses a zero-only interval, including above another series.
+      for (var start = 0; start < values.length; start += 1) {
+        if (values[start] <= 0) continue;
+        var end = start;
+        while (end + 1 < values.length && values[end + 1] > 0) {
+          end += 1;
+        }
+        final first = math.max(0, start - 1);
+        final afterLast = math.min(values.length, end + 2);
+        _paintSeriesArea(
+          canvas,
+          topOffsets: topOffsets.sublist(first, afterLast),
+          bottomOffsets: bottomOffsets.sublist(first, afterLast),
+          color: color,
+        );
+        start = end;
+      }
     }
   }
 
@@ -206,7 +230,9 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
           ..color = agentUsageSeriesColor(
             colors,
             series.label,
-          ).withValues(alpha: 0.72)
+            grouping: timeline.grouping,
+            displayName: timeline.displayNameFor(series.label),
+          )
           ..style = PaintingStyle.fill,
       );
     }
@@ -237,16 +263,8 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
     canvas.drawPath(
       areaPath,
       Paint()
-        ..color = color.withValues(alpha: 0.38)
+        ..color = color
         ..style = PaintingStyle.fill,
-    );
-    canvas.drawPath(
-      _smoothPath(topOffsets),
-      Paint()
-        ..color = color.withValues(alpha: 0.92)
-        ..strokeWidth = 1.8
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke,
     );
   }
 
@@ -270,18 +288,12 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
 
   void _paintAxisLabel(Canvas canvas, String label, Offset offset) {
     final painter = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout(maxWidth: 40);
     painter.paint(canvas, offset);
+    painter.dispose();
   }
 
   void _paintXAxisLabels(
@@ -300,23 +312,18 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
           .toDouble();
       final rect = Rect.fromLTWH(left, y, painter.width, painter.height);
       if (painted.any((existing) => existing.inflate(10).overlaps(rect))) {
+        painter.dispose();
         continue;
       }
       painter.paint(canvas, rect.topLeft);
+      painter.dispose();
       painted.add(rect);
     }
   }
 
   TextPainter _xAxisLabelPainter(String label) {
     return TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
@@ -327,6 +334,7 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
   bool shouldRepaint(covariant AgentUsageWaveChartPainter oldDelegate) {
     return oldDelegate.timeline != timeline ||
         oldDelegate.colors != colors ||
+        oldDelegate.labelStyle != labelStyle ||
         oldDelegate.hoveredSnapshotIndex != hoveredSnapshotIndex;
   }
 }

@@ -21,9 +21,28 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
   final valuesByDay = {for (final key in bucketKeys) key: <String, double>{}};
   final modelShareTotals = <String, double>{};
   final modelRequestTotals = <String, int>{};
+  final modelSources = <String, Map<String, AgentUsageModelSource>>{};
+  final displayNames = <String, String>{};
 
-  void addModelShare(String model, AgentUsageModelTokens usage) {
-    final label = agentUsageModelDisplayName(model);
+  void addModelShare(
+    String model,
+    AgentUsageModelTokens usage, [
+    AgentUsageAgentSummary? agent,
+  ]) {
+    final label = model;
+    if (!displayNames.containsKey(label) || usage.displayName != model) {
+      displayNames[label] = usage.displayName.isEmpty
+          ? model
+          : usage.displayName;
+    }
+    if (agent != null) {
+      final sources = modelSources.putIfAbsent(label, () => {});
+      sources[agent.agentId] = AgentUsageModelSource(
+        agentId: agent.agentId,
+        label: agentUsageAgentDisplayName(agent),
+        usage: sources[agent.agentId]?.usage.merge(usage) ?? usage,
+      );
+    }
     if (usage.totalTokens > 0) {
       _addUsageValue(modelShareTotals, label, usage.totalTokens);
     }
@@ -49,7 +68,7 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
     if (dailyEntries.isEmpty) {
       if (grouping == AgentUsageChartGrouping.model) {
         for (final model in agentUsageModelUsageMap(agent.history).entries) {
-          addModelShare(model.key, model.value);
+          addModelShare(model.key, model.value, agent);
         }
       }
       continue;
@@ -65,9 +84,9 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
           _addUsageValue(valuesByDay[date]!, label, entry.totalTokens);
         case AgentUsageChartGrouping.model:
           for (final model in entry.modelUsage.entries) {
-            final label = agentUsageModelDisplayName(model.key);
+            final label = model.key;
             _addUsageValue(valuesByDay[date]!, label, model.value.totalTokens);
-            addModelShare(model.key, model.value);
+            addModelShare(model.key, model.value, agent);
           }
         case AgentUsageChartGrouping.workflow:
           // Workflow is a peer hierarchy view, not a daily agent/model
@@ -128,8 +147,22 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
       ),
   ];
   return AgentUsageTimelineData(
+    grouping: grouping,
+    displayNames: Map.unmodifiable(displayNames),
+    modelSources: Map.unmodifiable({
+      for (final entry in modelSources.entries)
+        entry.key: List<AgentUsageModelSource>.unmodifiable(
+          entry.value.values.toList()..sort((a, b) {
+            final tokens = b.usage.totalTokens.compareTo(a.usage.totalTokens);
+            return tokens != 0 ? tokens : a.agentId.compareTo(b.agentId);
+          }),
+        ),
+    }),
     snapshots: snapshots,
-    series: [for (final label in visibleLabels) AgentUsageSeries(label: label)],
+    series: [
+      for (final label in visibleLabels)
+        AgentUsageSeries(label: label, displayName: displayNames[label]),
+    ],
     seriesTotals: Map.unmodifiable(shareTotals),
     requestCounts: Map.unmodifiable(modelRequestTotals),
     requestOnlyShareLabels: List.unmodifiable(requestOnlyLabels),
@@ -166,12 +199,11 @@ List<DateTime> _recentDayBuckets({
 }
 
 void _addUsageValue(Map<String, double> values, String label, num tokens) {
-  final normalized = label.trim();
-  if (normalized.isEmpty || tokens <= 0) {
+  if (label.isEmpty || tokens <= 0) {
     return;
   }
   values.update(
-    normalized,
+    label,
     (value) => value + tokens.toDouble(),
     ifAbsent: () => tokens.toDouble(),
   );

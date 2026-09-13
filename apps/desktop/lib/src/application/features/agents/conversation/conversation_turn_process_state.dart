@@ -1,3 +1,4 @@
+import 'package:licoup/src/contracts/conversation_execution.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 
 /// Ordered lifecycle stages of an in-flight turn. `failed` is terminal: once
@@ -70,6 +71,7 @@ final class ConversationTurnProcessState {
     required this.userText,
     required String createdAt,
     this.scopeKey = '',
+    this.executionReference,
   }) : _createdAt = createdAt;
 
   final String turnId;
@@ -81,6 +83,8 @@ final class ConversationTurnProcessState {
   /// while the user is viewing this scope; other conversations never show a
   /// turn that does not belong to them.
   final String scopeKey;
+  ConversationExecutionReference? executionReference;
+  String? _firstPrimaryReplyKey;
 
   ConversationTurnProcessStage _stage = ConversationTurnProcessStage.submitted;
   final List<String> _observedStages = [];
@@ -189,10 +193,36 @@ final class ConversationTurnProcessState {
       messages.add(update);
     }
     messages.addAll(_evidence);
-    for (final reply in replies) {
+    final visibleReplies = replies;
+    if (visibleReplies.isEmpty &&
+        _observedStages.isNotEmpty &&
+        _stage != ConversationTurnProcessStage.completed &&
+        _stage != ConversationTurnProcessStage.failed) {
+      messages.add(_waitingMessageFor());
+    }
+    for (final reply in visibleReplies) {
       messages.add(_replyMessageFor(reply));
     }
     return messages;
+  }
+
+  AgentConversationMessage _waitingMessageFor() => AgentConversationMessage(
+    id: '$turnId-assistant',
+    stableIdentity: '$turnId-assistant',
+    role: 'assistant',
+    text: '',
+    createdAt: _createdAt,
+    participantAgentId: _participantAgentId,
+    participantLabel: _participantLabel,
+    participantRole: _participantRole,
+    executionReference: executionReference,
+    waitingForReply: true,
+  );
+
+  void recordExecutionReference(ConversationExecutionReference? reference) {
+    if (reference == null || reference == executionReference) return;
+    executionReference = reference;
+    _markProjectionDirty();
   }
 
   AgentConversationMessage _userMessageFor() {
@@ -209,6 +239,9 @@ final class ConversationTurnProcessState {
     final key = [
       _stage.id,
       _observedStages.join(','),
+      executionReference?.conversationId ?? '',
+      executionReference?.membershipId ?? '',
+      executionReference?.turnHandle ?? '',
       _participantAgentId,
       _participantLabel,
       _participantRole,
@@ -225,6 +258,7 @@ final class ConversationTurnProcessState {
       cardTitle: 'lifecycle.${_stage.id}',
       cardSubtitle: _observedStages.join(','),
       stableIdentity: '$turnId-lifecycle',
+      executionReference: executionReference,
       participantAgentId: _participantAgentId,
       participantLabel: _participantLabel,
       participantRole: _participantRole,
@@ -237,11 +271,12 @@ final class ConversationTurnProcessState {
   AgentConversationMessage _replyMessageFor(
     ConversationParticipantReply reply,
   ) {
-    final primary = isPrimaryReplyKey(reply.key);
+    final primary =
+        isPrimaryReplyKey(reply.key) || reply.key == _firstPrimaryReplyKey;
     final participantIdentityBase = primary
         ? '$turnId-assistant'
         : '$turnId-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
-    final participantIdentity = reply.messageUnit.isEmpty
+    final participantIdentity = primary || reply.messageUnit.isEmpty
         ? participantIdentityBase
         : '$participantIdentityBase-message-${reply.messageUnit}';
     final cached = _replyMessages[reply.key];
@@ -251,7 +286,8 @@ final class ConversationTurnProcessState {
             (reply.createdAt.isEmpty ? _createdAt : reply.createdAt) &&
         cached.participantAgentId == reply.participantAgentId &&
         cached.participantLabel == reply.participantLabel &&
-        cached.participantRole == reply.participantRole) {
+        cached.participantRole == reply.participantRole &&
+        cached.executionReference == executionReference) {
       return cached;
     }
     final message = AgentConversationMessage(
@@ -260,6 +296,7 @@ final class ConversationTurnProcessState {
       text: reply.text,
       createdAt: reply.createdAt.isEmpty ? _createdAt : reply.createdAt,
       stableIdentity: participantIdentity,
+      executionReference: executionReference,
       participantAgentId: reply.participantAgentId,
       participantLabel: reply.participantLabel,
       participantRole: reply.participantRole,
@@ -423,6 +460,12 @@ final class ConversationTurnProcessState {
     String messageUnit = '',
   }) {
     final key = participantKey.isEmpty ? _primaryReplyKey : participantKey;
+    if (_firstPrimaryReplyKey == null &&
+        text.trim().isNotEmpty &&
+        (key == _primaryReplyKey ||
+            key.startsWith('$_primaryReplyKey\u0000'))) {
+      _firstPrimaryReplyKey = key;
+    }
     final existing = _repliesByParticipant[key];
     if (existing != null) {
       final textChanged = existing.text != text;

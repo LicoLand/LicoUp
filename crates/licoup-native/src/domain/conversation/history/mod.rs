@@ -27,6 +27,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(crate) const CONVERSATION_SCHEMA_VERSION: u32 = 2;
 const MAX_HISTORY_PAGE_LIMIT: usize = 500;
+const DEFAULT_HISTORY_MESSAGE_LIMIT: usize = 20;
 const ARCHIVE_DISCOVERY_PREVIEW_MESSAGES: usize = 12;
 const ARCHIVE_DISCOVERY_PREVIEW_TEXT_CHARS: usize = 8_000;
 
@@ -49,6 +50,7 @@ mod catalog;
 mod codex;
 mod cursor_openagent;
 mod delegated_transcripts;
+mod execution_provenance;
 mod generic;
 mod kimi;
 mod message_projection;

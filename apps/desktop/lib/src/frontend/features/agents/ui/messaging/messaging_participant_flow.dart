@@ -5,15 +5,14 @@ import 'package:flutter/rendering.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_notice.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -55,25 +54,16 @@ final class MessagingFlowMessageGroup extends MessagingFlowEntry {
   final List<AgentConversationMessage> messages;
 }
 
-/// A structured process run, rendered as an inline status row.
-final class MessagingFlowProcess extends MessagingFlowEntry {
-  const MessagingFlowProcess(this.item, {required this.active});
+/// Failures remain visible beside ordinary conversation messages.
+final class MessagingFlowFailure extends MessagingFlowEntry {
+  const MessagingFlowFailure(this.item);
 
-  final ConversationProcessTimelineItem item;
-  final bool active;
+  final ConversationFailureTimelineItem item;
 }
 
-final class MessagingFlowLog extends MessagingFlowEntry {
-  const MessagingFlowLog(this.item);
-
-  final ConversationLogTimelineItem item;
-}
-
-/// The agent runtime auto-update card, kept in its existing rendering.
-final class MessagingFlowRuntimeUpdate extends MessagingFlowEntry {
-  const MessagingFlowRuntimeUpdate(this.item);
-
-  final ConversationRuntimeUpdateTimelineItem item;
+final class MessagingFlowNotice extends MessagingFlowEntry {
+  const MessagingFlowNotice(this.item);
+  final ConversationNoticeTimelineItem item;
 }
 
 /// A subagent card, kept in its existing rendering inside the content column.
@@ -92,7 +82,7 @@ final class MessagingFlowTruncation extends MessagingFlowEntry {
 
 /// Projects chronological timeline items into participant-flow entries:
 /// consecutive same-author user/assistant messages group together, groups
-/// break on process items, subagent cards, and silences longer than
+/// break on failures, subagent cards, and silences longer than
 /// [maxGroupGap], and local-day changes insert day dividers.
 ///
 /// When [preferPeerAgents] is true (Lico group Conversation), subagent cards
@@ -100,7 +90,6 @@ final class MessagingFlowTruncation extends MessagingFlowEntry {
 /// cards.
 List<MessagingFlowEntry> buildMessagingFlowEntries(
   List<ConversationTimelineItem> chronologicalItems, {
-  String activeProcessStorageKey = '',
   Duration maxGroupGap = messagingFlowMaxGroupGap,
   bool preferPeerAgents = false,
 }) {
@@ -217,20 +206,12 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
         currentParticipantRole = participantRole;
         currentMessages.add(message);
         lastMessageTime = time ?? lastMessageTime;
-      case ConversationProcessTimelineItem():
+      case ConversationFailureTimelineItem():
         flushGroup();
-        entries.add(
-          MessagingFlowProcess(
-            item,
-            active: item.storageKey == activeProcessStorageKey,
-          ),
-        );
-      case ConversationLogTimelineItem():
+        entries.add(MessagingFlowFailure(item));
+      case ConversationNoticeTimelineItem():
         flushGroup();
-        entries.add(MessagingFlowLog(item));
-      case ConversationRuntimeUpdateTimelineItem():
-        flushGroup();
-        entries.add(MessagingFlowRuntimeUpdate(item));
+        entries.add(MessagingFlowNotice(item));
       case ConversationTruncationTimelineItem():
         flushGroup();
         entries.add(MessagingFlowTruncation(item));
@@ -241,7 +222,7 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
 }
 
 /// Discord-style participant flow: messages group by author under one header
-/// (avatar, name, AGENT badge), process runs collapse into inline status rows,
+/// (avatar, name, AGENT badge), with failures kept in the same timeline,
 /// and day dividers separate local days. The same timeline data the console
 /// transcript renders, projected into a chat surface.
 ///
@@ -253,8 +234,8 @@ class MessagingParticipantFlow extends StatefulWidget {
     required this.items,
     required this.adapter,
     required this.target,
-    this.activeProcessStorageKey = '',
     this.sessionKey = '',
+    this.motionAvatarMessageId = '',
     this.participantTargets = const [],
     this.participantConversationIds = const {},
     this.participantRuntimeProfiles = const {},
@@ -284,8 +265,8 @@ class MessagingParticipantFlow extends StatefulWidget {
   final List<ConversationTimelineItem> items;
   final AgentRenderAdapter adapter;
   final TargetCandidate target;
-  final String activeProcessStorageKey;
   final String sessionKey;
+  final String motionAvatarMessageId;
   final List<TargetCandidate> participantTargets;
 
   /// Agent id → that agent's conversation id for hover metadata.
@@ -452,6 +433,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   bool _atLatest = true;
   List<MessagingFlowEntry>? _cachedEntries;
   List<ConversationTimelineItem>? _cachedItems;
+  Map<String, int> _cachedEntryIndexes = const {};
   bool _pageRequestInFlight = false;
 
   /// Reverse lists keep the newest rows at offset 0. Treat a small residual
@@ -474,21 +456,20 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   @override
   void didUpdateWidget(MessagingParticipantFlow oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final readingController = _scrollController;
+    if (readingController is ReadingPositionScrollController) {
+      if (oldWidget.sessionKey == widget.sessionKey) {
+        readingController.captureReadingAnchor();
+      } else {
+        readingController.clearReadingAnchor();
+      }
+    }
     if (oldWidget.sessionKey != widget.sessionKey) {
       // A different conversation starts from its own newest window.
       _atLatest = true;
       _pageRequestInFlight = false;
     }
-    if (oldWidget.messagePageLoading && !widget.messagePageLoading) {
-      // The incoming history page lands at the far (oldest) end, which is
-      // already position-stable; skip exactly one reading-position hold.
-      final controller = _scrollController;
-      if (controller is ReadingPositionScrollController) {
-        controller.notifyFarEndAppend();
-      }
-    }
-    if (oldWidget.activeProcessStorageKey != widget.activeProcessStorageKey ||
-        oldWidget.preferPeerAgents != widget.preferPeerAgents) {
+    if (oldWidget.preferPeerAgents != widget.preferPeerAgents) {
       _cachedEntries = null;
     }
     if (oldWidget.scrollController != widget.scrollController) {
@@ -549,6 +530,12 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
     if (notification.depth != 0) {
       return false;
     }
+    final movingEarlier = switch (notification) {
+      ScrollUpdateNotification(:final scrollDelta) => (scrollDelta ?? 0) > 0,
+      OverscrollNotification(:final overscroll) => overscroll > 0,
+      _ => false,
+    };
+    if (!movingEarlier) return false;
     final metrics = notification.metrics;
     if (!widget.hasEarlier ||
         widget.messagePageLoading ||
@@ -598,14 +585,27 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
   ) {
     final entries = buildMessagingFlowEntries(
       items.reversed.toList(growable: false),
-      activeProcessStorageKey: widget.activeProcessStorageKey,
       preferPeerAgents: widget.preferPeerAgents,
     );
     final display = entries.reversed.toList(growable: false);
     _cachedItems = items;
     _cachedEntries = display;
+    _cachedEntryIndexes = {
+      for (var index = 0; index < display.length; index += 1)
+        _entryKey(display[index]): index,
+    };
     return display;
   }
+
+  String _entryKey(MessagingFlowEntry entry) => switch (entry) {
+    MessagingFlowDayDivider(:final day) => 'day-$day',
+    MessagingFlowMessageGroup(:final messages) =>
+      'message-${messages.first.stableIdentity.isNotEmpty ? messages.first.stableIdentity : '${messages.first.id}-${messages.first.createdAt}'}',
+    MessagingFlowFailure(:final item) => item.storageKey,
+    MessagingFlowNotice(:final item) => item.storageKey,
+    MessagingFlowSubagent(:final item) => item.storageKey,
+    MessagingFlowTruncation(:final item) => item.storageKey,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -626,6 +626,8 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               'messaging-participant-flow-${widget.sessionKey}',
             ),
             reverse: true,
+            findChildIndexCallback: (key) =>
+                key is ValueKey<String> ? _cachedEntryIndexes[key.value] : null,
             scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
             padding: EdgeInsets.fromLTRB(
               LicoContentSpacing.item,
@@ -654,7 +656,16 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
               // A streamed reply changes one entry per frame. Without a
               // repaint boundary per entry the whole visible flow
               // repaints with it.
-              return RepaintBoundary(child: _entryContent(context, entry));
+              final entryKey = _entryKey(entry);
+              return ReadingPositionAnchor(
+                key: ValueKey<String>(entryKey),
+                controller: entry is MessagingFlowMessageGroup
+                    ? null
+                    : _scrollController,
+                anchorId: entryKey,
+                isRow: true,
+                child: RepaintBoundary(child: _entryContent(context, entry)),
+              );
             },
           ),
           if (!_atLatest)
@@ -692,11 +703,15 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         Padding(
           padding: LicoContentSpacing.peerItem,
           child: MessagingMessageGroup(
+            scrollController: _scrollController,
             authorIsUser: authorIsUser,
             participantLabel: participantLabel,
             participantRole: participantRole,
             participantTarget: _participantTarget(participantAgentId),
             assistantActive: widget.assistantActive,
+            motionAvatar: messages.any(
+              (message) => message.id == widget.motionAvatarMessageId,
+            ),
             runtimeProfile:
                 widget.participantRuntimeProfiles[participantAgentId],
             streamingMessageIds: widget.streamingMessageIds,
@@ -714,35 +729,18 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
             onDeleteMessage: widget.onDeleteMessage,
           ),
         ),
-      MessagingFlowProcess(:final item, :final active) => Padding(
+      MessagingFlowFailure(:final item) => Padding(
         padding: LicoContentSpacing.peerItem,
-        child: SelectionContainer.disabled(
-          child: MessagingProcessStatusRow(
-            events: item.events,
-            adapter: widget.adapter,
-            detailsBuilder: buildAgentConversationEventDetails,
-            active: active,
-            topOverlayInset: widget.topOverlayInset,
-          ),
+        child: ConversationFailureNotice(
+          message: item.message,
+          target:
+              _participantTarget(item.message.participantAgentId) ??
+              widget.target,
         ),
       ),
-      MessagingFlowLog(:final item) => Padding(
+      MessagingFlowNotice(:final item) => Padding(
         padding: LicoContentSpacing.peerItem,
-        child: SelectionContainer.disabled(
-          child: ConversationLogEventRow(
-            events: item.events,
-            detailsBuilder: buildAgentConversationEventDetails,
-          ),
-        ),
-      ),
-      MessagingFlowRuntimeUpdate(:final item) => Padding(
-        padding: LicoContentSpacing.peerItem,
-        child: SelectionContainer.disabled(
-          child: AgentRuntimeUpdateCard(
-            message: item.message,
-            adapter: widget.adapter,
-          ),
-        ),
+        child: ConversationNotice(message: item.message),
       ),
       MessagingFlowSubagent(:final item) => Padding(
         padding: LicoContentSpacing.peerItem,

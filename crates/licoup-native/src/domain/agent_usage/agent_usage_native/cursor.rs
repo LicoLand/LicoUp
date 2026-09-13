@@ -21,7 +21,7 @@
 //! complete fails closed instead of publishing a partial total.
 
 use super::super::contract::{
-    DailyUsageSummary, HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field, text_field,
+    DailyUsageSummary, HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field,
 };
 use super::super::persistence::read_retained_reports;
 use super::super::window::UsageWindow;
@@ -142,7 +142,7 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
             continue;
         }
         requests = requests.saturating_add(1);
-        let model = text_field(event, &["model"]);
+        let model = super::super::variant::model_label(event);
         match event_token_usage(event) {
             Some(usage) => {
                 let message = MessageUsage {
@@ -150,6 +150,7 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
                     cached_input_tokens: usage.cached_input_tokens,
                     completion_tokens: usage.completion_tokens,
                     total_tokens: usage.total_tokens,
+                    variant: super::super::variant::UsageVariant::from_metadata(event),
                     model,
                     accuracy: UsageAccuracy::Exact,
                 };
@@ -157,7 +158,11 @@ fn aggregate_events(events: &[Value], window: &UsageWindow) -> HistoryUsageSumma
             }
             // A present request whose payload omits token fields stays a
             // request: no character or context estimate is ever substituted.
-            None => summary.add_token_unavailable_request(Some(day), model),
+            None => summary.add_token_unavailable_request_with_variant(
+                Some(day),
+                model,
+                super::super::variant::UsageVariant::from_metadata(event),
+            ),
         }
     }
     summary.message_count = requests;
@@ -429,7 +434,16 @@ fn window_days(window: &UsageWindow) -> Vec<String> {
 }
 
 fn load_coverage(scan_params: &Value, window: &UsageWindow) -> HostedCoverage {
-    let Ok(reports) = read_retained_reports(scan_params, Some("cursor"), 1) else {
+    let Ok(reports) = read_retained_reports(
+        scan_params,
+        Some("cursor"),
+        1,
+        &crate::domain::model_registry::refresh_cached_snapshot_for_state_root(
+            super::super::contract::text_field(scan_params, &["stateRoot"])
+                .as_deref()
+                .map(std::path::Path::new),
+        ),
+    ) else {
         return HostedCoverage::default();
     };
     reports
@@ -439,6 +453,11 @@ fn load_coverage(scan_params: &Value, window: &UsageWindow) -> HostedCoverage {
 }
 
 fn parse_coverage(report: &Value, window: &UsageWindow) -> Option<HostedCoverage> {
+    if report.get("usageParserRevision").and_then(Value::as_str)
+        != Some(super::super::contract::USAGE_PARSER_REVISION)
+    {
+        return None;
+    }
     let report_day = report
         .get("generatedAt")
         .and_then(Value::as_str)
@@ -489,30 +508,13 @@ fn parse_retained_day(entry: &Value) -> Option<(String, DailyUsageSummary)> {
         request_count: number_field(entry, &["requestCount"]).unwrap_or(0),
         token_unavailable_requests: number_field(entry, &["tokenUnavailableRequests"]).unwrap_or(0),
         model_usage: BTreeMap::new(),
+        model_variants: BTreeMap::new(),
     };
     if usage.total_tokens == 0 && usage.request_count == 0 {
         return None;
     }
-    if let Some(models) = entry.get("modelTokenUsage").and_then(Value::as_object) {
-        for (model, value) in models {
-            if model.trim().is_empty() {
-                continue;
-            }
-            usage.model_usage.insert(
-                model.clone(),
-                super::super::contract::ModelTokenUsageSummary {
-                    prompt_tokens: number_field(value, &["promptTokens"]).unwrap_or(0),
-                    cached_input_tokens: number_field(value, &["cachedInputTokens"]).unwrap_or(0),
-                    completion_tokens: number_field(value, &["completionTokens"]).unwrap_or(0),
-                    total_tokens: number_field(value, &["totalTokens"]).unwrap_or(0),
-                    estimated_prompt_tokens: 0,
-                    estimated_completion_tokens: 0,
-                    request_count: number_field(value, &["requestCount"]).unwrap_or(0),
-                    token_unavailable_requests: number_field(value, &["tokenUnavailableRequests"])
-                        .unwrap_or(0),
-                },
-            );
-        }
+    for ((model, variant), totals) in super::super::model_identity::raw_model_usage(entry) {
+        usage.add_model_variant_totals(model, variant, totals);
     }
     Some((day, usage))
 }
@@ -658,6 +660,21 @@ mod tests {
     }
 
     #[test]
+    fn hosted_placeholder_uses_only_actual_model_on_the_same_usage_event() {
+        let mut linked = event(1_784_080_800_000, "default", Some((10, 2, 0)));
+        linked["tokenUsage"]["model"] = json!("actual-response-model");
+        let unknown = event(1_784_080_800_001, "auto", Some((5, 1, 0)));
+        let summary = aggregate_events(&[linked, unknown], &window());
+        let report = summary.to_json();
+        assert_eq!(summary.total_tokens(), 18);
+        assert_eq!(
+            report["dailyUsage"][0]["modelUsage"]["actual-response-model"],
+            12
+        );
+        assert_eq!(report["dailyUsage"][0]["modelUsage"]["Others"], 6);
+    }
+
+    #[test]
     fn events_outside_the_window_or_without_timestamps_are_ignored() {
         let summary = aggregate_events(
             &[
@@ -758,6 +775,7 @@ mod tests {
         let window = window();
         let report = json!({
             "generatedAt": "2026-07-15T12:00:00Z",
+            "usageParserRevision": super::super::super::contract::USAGE_PARSER_REVISION,
             "agents": [{
                 "agentId": "cursor",
                 "history": {

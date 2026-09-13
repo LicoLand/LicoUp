@@ -54,37 +54,51 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 12,
               children: [
-                const Icon(Icons.key_outlined),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    strings.isChinese ? '模型 API 密钥' : 'Model API keys',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.key_outlined),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        strings.isChinese ? '模型 API 密钥' : 'Model API keys',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                  ],
                 ),
-                FilledButton.tonalIcon(
-                  key: const ValueKey<String>('credentials-add'),
-                  onPressed: _busy ? null : () => unawaited(_add(context)),
-                  icon: const Icon(Icons.add),
-                  label: Text(chinese ? '添加' : 'Add'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  key: const ValueKey<String>('credentials-authorize'),
-                  onPressed: _busy
-                      ? null
-                      : () => intents.send(
-                          const AuthorizeAllGatewayCredentials(),
-                        ),
-                  icon: _busy
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.fingerprint, size: 18),
-                  label: Text(chinese ? '授权' : 'Authorize'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      key: const ValueKey<String>('credentials-add'),
+                      onPressed: _busy ? null : () => unawaited(_add(context)),
+                      icon: const Icon(Icons.add),
+                      label: Text(chinese ? '添加' : 'Add'),
+                    ),
+                    FilledButton.icon(
+                      key: const ValueKey<String>('credentials-authorize'),
+                      onPressed: _busy
+                          ? null
+                          : () => intents.send(
+                              const AuthorizeAllGatewayCredentials(),
+                            ),
+                      icon: _busy
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.fingerprint, size: 18),
+                      label: Text(chinese ? '授权' : 'Authorize'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -170,6 +184,10 @@ String? _credentialMessage(String? code, bool chinese) => switch (code) {
     chinese
         ? '系统授权未完成，请重试。'
         : 'System authorization did not complete. Try again.',
+  'credential_keychain_action_required' =>
+    chinese
+        ? '钥匙串访问未获允许，或钥匙串已锁定。请先在系统中处理锁定或访问权限问题，再重试。'
+        : 'macOS credential storage is locked or access was denied. Resolve the lock or access permissions in macOS, then try again.',
   'credential_revoke_failed' =>
     chinese ? '未能撤销授权，请重试。' : 'Could not revoke authorization. Try again.',
   _ => null,
@@ -203,12 +221,18 @@ final class _CredentialsTable extends StatelessWidget {
     final headerStyle = theme.textTheme.labelMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final fontSize = theme.textTheme.bodyMedium?.fontSize ?? 14;
+    final textScale =
+        MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
+    final authorizeColumnWidth = _authorizeToggleWidth * textScale;
+    final minimumWidth =
+        120 * textScale * 5 + authorizeColumnWidth + _rowActionsWidth + 16;
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     Widget headerCell(String label, [int flex = 1]) => Expanded(
       flex: flex,
       child: Text(label, style: headerStyle),
     );
-    return Column(
+    final table = Column(
       key: const ValueKey<String>('credentials-table'),
       children: [
         Padding(
@@ -220,7 +244,7 @@ final class _CredentialsTable extends StatelessWidget {
               headerCell(chinese ? '创建时间' : 'Created'),
               headerCell(chinese ? '到期时间' : 'Expires'),
               SizedBox(
-                width: _authorizeToggleWidth,
+                width: authorizeColumnWidth,
                 child: Text(
                   chinese ? '授权' : 'Auth',
                   style: headerStyle,
@@ -256,12 +280,25 @@ final class _CredentialsTable extends StatelessWidget {
               busy: busy,
               chinese: chinese,
               nowEpoch: nowEpoch,
+              authorizeColumnWidth: authorizeColumnWidth,
               canToggleAuthorization: canToggleAuthorization,
               onAuthorizeChanged: onAuthorizeChanged,
               onEdit: onEdit,
               onDelete: onDelete,
             ),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        key: const ValueKey<String>('credentials-table-scroll'),
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: constraints.maxWidth < minimumWidth
+              ? minimumWidth
+              : constraints.maxWidth,
+          child: table,
+        ),
+      ),
     );
   }
 }
@@ -272,6 +309,7 @@ final class _CredentialRow extends StatelessWidget {
     required this.busy,
     required this.chinese,
     required this.nowEpoch,
+    required this.authorizeColumnWidth,
     required this.canToggleAuthorization,
     required this.onAuthorizeChanged,
     required this.onEdit,
@@ -282,6 +320,7 @@ final class _CredentialRow extends StatelessWidget {
   final bool busy;
   final bool chinese;
   final int nowEpoch;
+  final double authorizeColumnWidth;
   final bool canToggleAuthorization;
   final _CredentialAuthorizeChanged onAuthorizeChanged;
   final ValueChanged<GatewayCredentialProjection> onEdit;
@@ -304,14 +343,7 @@ final class _CredentialRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(_providerLabel(credential.providerLabel))),
-          Expanded(
-            flex: 2,
-            child: Text(
-              credential.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          Expanded(flex: 2, child: Text(credential.label)),
           Expanded(
             child: Text(
               credential.createdAtEpochSeconds == null
@@ -330,7 +362,7 @@ final class _CredentialRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: _authorizeToggleWidth,
+            width: authorizeColumnWidth,
             child: Center(
               child: Tooltip(
                 message: authorizeTooltip,

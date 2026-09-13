@@ -20,6 +20,7 @@
 //!   `--print` lanes need.
 
 use crate::platform::process_supervisor::SupervisedChild;
+use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::{Command, Stdio};
@@ -49,7 +50,13 @@ pub(super) fn spawn(command: Command) -> io::Result<(SupervisedChild, Master)> {
         .stdout(Stdio::from(slave));
     let child = SupervisedChild::spawn(&mut command)?;
     drop(command);
-    Ok((child, Master { fd: master }))
+    Ok((
+        child,
+        Master {
+            fd: master,
+            raw_observer: RawExecutionObserver::current(),
+        },
+    ))
 }
 
 /// Blocking byte handle on the pty master fd.
@@ -59,6 +66,7 @@ pub(super) fn spawn(command: Command) -> io::Result<(SupervisedChild, Master)> {
 /// and retries EINTR (child exit can deliver SIGCHLD).
 pub(super) struct Master {
     fd: OwnedFd,
+    raw_observer: Option<RawExecutionObserver>,
 }
 
 impl Read for Master {
@@ -72,6 +80,13 @@ impl Read for Master {
                 )
             };
             if count > 0 {
+                if let Some(observer) = self.raw_observer.as_ref() {
+                    observer.record_bytes(
+                        "pty",
+                        RawExecutionDirection::Received,
+                        &buf[..count as usize],
+                    );
+                }
                 return Ok(count as usize);
             }
             if count == 0 {
@@ -98,6 +113,15 @@ impl Write for Master {
                 )
             };
             if count >= 0 {
+                if count > 0
+                    && let Some(observer) = self.raw_observer.as_ref()
+                {
+                    observer.record_bytes(
+                        "pty",
+                        RawExecutionDirection::Sent,
+                        &buf[..count as usize],
+                    );
+                }
                 return Ok(count as usize);
             }
             let error = io::Error::last_os_error();
@@ -126,6 +150,7 @@ impl Master {
         }
         Ok(Self {
             fd: unsafe { OwnedFd::from_raw_fd(fd) },
+            raw_observer: self.raw_observer.clone(),
         })
     }
 
@@ -506,6 +531,13 @@ mod tests {
 
     #[test]
     fn byte_cap_truncates_and_still_reaches_closed() {
+        let records = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&records);
+        let observer = RawExecutionObserver::new(move |_, _, raw| {
+            sink.lock().unwrap().push(raw.to_owned());
+            Ok(())
+        });
+        let _scope = crate::platform::raw_execution::RawExecutionScope::enter(Some(observer));
         let (mut child, master) = spawn_sh("printf 'hello world\\n'; sleep 0.2; printf 'tail\\n'");
         let (sender, receiver) = mpsc::channel();
         let handle = thread::spawn(move || read_master(master, sender, Some(5)));
@@ -528,6 +560,7 @@ mod tests {
             status.success(),
             "drain-and-discard must not block natural exit"
         );
+        assert_eq!(records.lock().unwrap().concat(), "hello world\ntail\n");
     }
 
     #[test]

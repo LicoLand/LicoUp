@@ -100,21 +100,23 @@ flowchart TB
 ## 5. 供应商无关 Subagent Mesh
 
 Codex、Cursor 与 Antigravity 还会同时以已认证 caller 和 Membership 作用域
-target 身份参与客户端托管的 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md)。
+target 身份参与独立的 [Subagent MCP](../protocols/subagent-mcp.zh-CN.md)。
 
 ```mermaid
 flowchart LR
   P["供应商 MCP client"] --> C["轻量 stdio connector"]
   C --> H["已认证回环 HTTP"]
-  H --> A["SubagentMcpApplication"]
+  H --> CLI["公开原生 CLI"]
+  CLI --> A["SubagentApplication"]
   A --> R["唯一 caller + runtime adapter registry"]
   A --> S["Canonical Membership 与谱系 store"]
   R --> T["Target PersistentTurn"]
   T --> E["Canonical Event / Part"]
 ```
 
-`core::mcp` 只负责 framing。`SubagentMcpApplication` 独占冻结的入站修订与工具目录
-语义。`McpCallerIntegration` 与 `SubagentRuntimeAdapter` 是唯一供应商 port。caller
+独立的 `licoup-mcp` crate 负责 MCP 协议，并通过公开原生 CLI 转发已准入的 subagent
+操作。`SubagentApplication` 负责原生委派。`McpCallerIntegration` 与
+`SubagentRuntimeAdapter` 是唯一供应商 port。caller
 身份与服务器自有父谱系来自已认证请求 context，绝不作为工具参数。任何 adapter
 效果前都先提交持久 active-edge claim。
 

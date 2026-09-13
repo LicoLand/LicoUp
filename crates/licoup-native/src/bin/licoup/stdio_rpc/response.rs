@@ -67,6 +67,13 @@ pub(crate) fn write_stdio_rpc_event<W: Write>(
     let session_id = event.get("sessionId").and_then(Value::as_str);
     let turn_id = event.get("turnId").and_then(Value::as_str);
     let event_name = event.get("event").and_then(Value::as_str);
+    let execution = matches!(
+        event_name,
+        Some("agent.execution.record" | "agent.execution.ready")
+    ) && event
+        .get("membershipId")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.is_empty());
     let persistent = event
         .get("turnHandle")
         .and_then(Value::as_str)
@@ -78,7 +85,7 @@ pub(crate) fn write_stdio_rpc_event<W: Write>(
         && event
             .get("cursor")
             .and_then(Value::as_u64)
-            .is_some_and(|cursor| cursor > 0);
+            .is_some_and(|cursor| cursor > 0 || execution);
     if event_name.is_none_or(str::is_empty)
         || (!persistent
             && (session_id.is_none_or(str::is_empty) || turn_id.is_none_or(str::is_empty)))

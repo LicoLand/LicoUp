@@ -194,8 +194,10 @@ fn kimi_code_subagent_wires_collapse_into_main_session_cards() {
         .iter()
         .find(|card| card["cardTitle"] == "Survey the first synthetic subtask")
         .unwrap();
+    assert!(titled["messages"].as_array().unwrap().is_empty());
+    let child = conversation_list(&json!({"agent": "kimi-code", "root": display_path(&root), "sessionId": titled["childSessionId"]})).unwrap();
     assert!(
-        titled["messages"]
+        child["sessions"][0]["messages"]
             .as_array()
             .unwrap()
             .iter()

@@ -217,12 +217,25 @@ pub(in crate::platform) fn is_reserved_port(spec: ServeSpec, candidate: u16) -> 
     port::is_reserved(candidate, spec.reserved_ports)
 }
 
-pub(in crate::platform) fn get_json(spec: ServeSpec, url: &str) -> Result<Value> {
-    http::get_json(url, Duration::from_secs(5)).map_err(|failure| http_error(spec, failure))
+pub(in crate::platform) fn get_json(
+    spec: ServeSpec,
+    url: &str,
+    source: Option<&str>,
+) -> Result<Value> {
+    match source {
+        Some(source) => http::get_json_observed(url, Duration::from_secs(5), source),
+        None => http::get_json(url, Duration::from_secs(5)),
+    }
+    .map_err(|failure| http_error(spec, failure))
 }
 
-pub(in crate::platform) fn post_json(spec: ServeSpec, url: &str, body: &Value) -> Result<Value> {
-    http::post_json(url, body, Duration::from_secs(120))
+pub(in crate::platform) fn post_json(
+    spec: ServeSpec,
+    url: &str,
+    body: &Value,
+    source: &str,
+) -> Result<Value> {
+    http::post_json_observed(url, body, Some(Duration::from_secs(120)), source)
         .map_err(|failure| http_error(spec, failure))
 }
 

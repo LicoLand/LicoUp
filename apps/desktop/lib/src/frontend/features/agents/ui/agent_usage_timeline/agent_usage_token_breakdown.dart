@@ -1,4 +1,5 @@
-import 'agent_usage_display_names.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+
 import 'agent_usage_source_parser.dart';
 
 class AgentUsageModelTokens {
@@ -7,6 +8,10 @@ class AgentUsageModelTokens {
     required this.breakdown,
     this.requestCount = 0,
     this.tokenUnavailableRequests = 0,
+    this.variants = const {},
+    this.canonicalId = '',
+    this.displayName = '',
+    this.unattributedVariantUsage,
   });
 
   final double totalTokens;
@@ -19,6 +24,10 @@ class AgentUsageModelTokens {
 
   /// Requests counted here that carried no token fields at all.
   final int tokenUnavailableRequests;
+  final Map<String, AgentUsageModelVariant> variants;
+  final String canonicalId;
+  final String displayName;
+  final AgentUsageModelVariant? unattributedVariantUsage;
 
   AgentUsageModelTokens merge(AgentUsageModelTokens other) {
     return AgentUsageModelTokens(
@@ -27,6 +36,20 @@ class AgentUsageModelTokens {
       requestCount: requestCount + other.requestCount,
       tokenUnavailableRequests:
           tokenUnavailableRequests + other.tokenUnavailableRequests,
+      canonicalId: canonicalId,
+      displayName: displayName.isEmpty || displayName == canonicalId
+          ? other.displayName
+          : displayName,
+      unattributedVariantUsage: unattributedVariantUsage == null
+          ? other.unattributedVariantUsage
+          : other.unattributedVariantUsage == null
+          ? unattributedVariantUsage
+          : unattributedVariantUsage!.merge(other.unattributedVariantUsage!),
+      variants: {
+        ...variants,
+        for (final entry in other.variants.entries)
+          entry.key: variants[entry.key]?.merge(entry.value) ?? entry.value,
+      },
     );
   }
 
@@ -36,6 +59,10 @@ class AgentUsageModelTokens {
       breakdown: value,
       requestCount: requestCount,
       tokenUnavailableRequests: tokenUnavailableRequests,
+      variants: variants,
+      canonicalId: canonicalId,
+      displayName: displayName,
+      unattributedVariantUsage: unattributedVariantUsage,
     );
   }
 }
@@ -72,139 +99,41 @@ class AgentUsageTokenBreakdown {
   }
 }
 
+/// Reads model IDs and display facts from the native usage projection. Older
+/// retained numeric model maps remain readable without interpreting their IDs.
 Map<String, AgentUsageModelTokens> agentUsageModelUsageMap(Object? source) {
-  final values = <String, AgentUsageModelTokens>{};
-  if (source is List) {
-    mergeAgentUsageModelValues(values, source);
-    return values;
+  if (source is! Map) {
+    return const {};
   }
-  if (source is Map) {
-    for (final key in const ['modelTokenUsage', 'model_token_usage']) {
-      mergeAgentUsageModelValues(values, source[key]);
-    }
-    if (values.isNotEmpty) {
-      return values;
-    }
-    for (final key in const [
-      'modelUsage',
-      'model_usage',
-      'models',
-      'modelBreakdown',
-      'model_breakdown',
-      'byModel',
-      'by_model',
-    ]) {
-      mergeAgentUsageModelValues(values, source[key]);
-    }
-    if (agentUsageModelName(source).isNotEmpty) {
-      mergeAgentUsageModelValues(values, source);
-    }
-    return values;
+  final models = source['modelTokenUsage'] ?? source['modelUsage'];
+  if (models is! Map) {
+    return const {};
   }
-  mergeAgentUsageModelValues(values, source);
-  return values;
-}
-
-void mergeAgentUsageModelValues(
-  Map<String, AgentUsageModelTokens> values,
-  Object? source,
-) {
-  if (source == null) {
-    return;
-  }
-  if (source is List) {
-    for (final item in source) {
-      mergeAgentUsageModelValues(values, item);
-    }
-    return;
-  }
-  if (source is Map) {
-    final modelName = agentUsageModelName(source);
-    if (modelName.isNotEmpty) {
-      final tokens = agentUsageTokensFromSource(source);
-      final requests = agentUsageRequestCount(source);
-      if (tokens > 0 || requests > 0) {
-        final usage = AgentUsageModelTokens(
-          totalTokens: tokens,
-          breakdown: agentUsageTokenBreakdown(source, totalTokens: tokens),
-          requestCount: requests,
-          tokenUnavailableRequests: agentUsageTokenUnavailableRequests(source),
-        );
-        values.update(
-          modelName,
-          (value) => value.merge(usage),
-          ifAbsent: () => usage,
-        );
-      }
-      return;
-    }
-    for (final entry in source.entries) {
-      final label = agentUsageModelLabel(entry.key);
-      if (label.isEmpty) {
-        continue;
-      }
-      final tokens = agentUsageTokensFromSource(entry.value);
-      final requests = agentUsageRequestCount(entry.value);
-      if (tokens <= 0 && requests <= 0) {
-        continue;
-      }
-      final usage = AgentUsageModelTokens(
-        totalTokens: tokens,
-        breakdown: agentUsageTokenBreakdown(entry.value, totalTokens: tokens),
-        requestCount: requests,
-        tokenUnavailableRequests: agentUsageTokenUnavailableRequests(
+  return {
+    for (final entry in models.entries)
+      if (entry.key is String && (entry.key as String).isNotEmpty)
+        entry.key as String: _nativeModelUsage(
+          entry.key as String,
           entry.value,
         ),
-      );
-      values.update(
-        label,
-        (value) => value.merge(usage),
-        ifAbsent: () => usage,
-      );
-    }
-  }
+  };
 }
 
-/// Event-level request count carried by one model projection. Absent for
-/// aggregate-only sources, in which case the model stays token-only.
-int agentUsageRequestCount(Object? source) {
-  if (source is! Map) {
-    return 0;
-  }
-  for (final key in const ['requestCount', 'request_count', 'requests']) {
-    if (source.containsKey(key)) {
-      return _nonNegativeUsageInt(source[key]);
-    }
-  }
-  return 0;
-}
-
-/// Requests inside [agentUsageRequestCount] that carried no token fields.
-int agentUsageTokenUnavailableRequests(Object? source) {
-  if (source is! Map) {
-    return 0;
-  }
-  for (final key in const [
-    'tokenUnavailableRequests',
-    'token_unavailable_requests',
-  ]) {
-    if (source.containsKey(key)) {
-      return _nonNegativeUsageInt(source[key]);
-    }
-  }
-  return 0;
-}
-
-int _nonNegativeUsageInt(Object? value) {
-  if (value is int) {
-    return value < 0 ? 0 : value;
-  }
-  if (value is num) {
-    final rounded = value.toInt();
-    return rounded < 0 ? 0 : rounded;
-  }
-  final parsed = int.tryParse(value?.toString() ?? '') ?? 0;
-  return parsed < 0 ? 0 : parsed;
+AgentUsageModelTokens _nativeModelUsage(String canonicalId, Object? source) {
+  final native = AgentUsageModelUsage.fromJson(canonicalId, source);
+  final total = source is num
+      ? source.toDouble()
+      : native.totals.totalTokens.toDouble();
+  return AgentUsageModelTokens(
+    canonicalId: native.canonicalId,
+    displayName: native.displayName,
+    totalTokens: total,
+    breakdown: agentUsageTokenBreakdown(source, totalTokens: total),
+    requestCount: native.totals.requestCount,
+    tokenUnavailableRequests: native.totals.tokenUnavailableRequests,
+    variants: native.variants,
+    unattributedVariantUsage: native.unattributedVariantUsage,
+  );
 }
 
 AgentUsageTokenBreakdown agentUsageTokenBreakdown(

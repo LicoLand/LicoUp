@@ -36,11 +36,6 @@ void main() {
     );
   }
 
-  Finder stackUnderShell() => find.descendant(
-    of: find.byKey(const ValueKey<String>('desktop-desktop-shell')),
-    matching: find.byType(Stack),
-  );
-
   testWidgets('main area and floating capsule bar render as one screen', (
     tester,
   ) async {
@@ -128,7 +123,9 @@ void main() {
     await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
     await tester.pump();
 
-    final stack = tester.widget<Stack>(stackUnderShell().first);
+    final stack = tester.widget<Stack>(
+      find.byKey(const Key('desktop-desktop-z-stack')),
+    );
     final mainIndex = stack.children.indexWhere(
       (child) =>
           child is Positioned &&
@@ -235,17 +232,17 @@ void main() {
     dockModel.debugSeed(const []);
     dockModel
       ..openApp(DesktopAppId.monitoring)
-      ..openApp(DesktopAppId.skillHub);
+      ..openApp(DesktopAppId.modelsGateway);
     await pumpShell(tester);
 
     expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
       'app:monitoring',
-      'app:skillHub',
+      'app:modelsGateway',
       'app:conversation',
     ]);
 
     final start = tester.getCenter(
-      find.byKey(const Key('desktop-dock-entry-app:skillHub')),
+      find.byKey(const Key('desktop-dock-entry-app:modelsGateway')),
     );
     final gap = tester.getCenter(find.byKey(const Key('desktop-dock-gap-0')));
     final gesture = await tester.startGesture(
@@ -259,7 +256,7 @@ void main() {
     await tester.pump();
 
     expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
-      'app:skillHub',
+      'app:modelsGateway',
       'app:monitoring',
       'app:conversation',
     ]);
@@ -271,11 +268,11 @@ void main() {
     dockModel.debugSeed(const []);
     dockModel
       ..openApp(DesktopAppId.monitoring)
-      ..openApp(DesktopAppId.skillHub);
+      ..openApp(DesktopAppId.modelsGateway);
     await pumpShell(tester);
 
     final start = tester.getCenter(
-      find.byKey(const Key('desktop-dock-entry-app:skillHub')),
+      find.byKey(const Key('desktop-dock-entry-app:modelsGateway')),
     );
     final target = tester.getCenter(
       find.byKey(const Key('desktop-dock-entry-app:monitoring')),
@@ -292,7 +289,10 @@ void main() {
 
     expect(dockModel.entries, hasLength(2));
     final folder = dockModel.entries.first as DesktopDockFolderEntry;
-    expect(folder.children, [DesktopAppId.monitoring, DesktopAppId.skillHub]);
+    expect(folder.children, [
+      DesktopAppId.monitoring,
+      DesktopAppId.modelsGateway,
+    ]);
     expect(
       (dockModel.entries.last as DesktopDockAppEntry).app,
       DesktopAppId.conversation,
@@ -311,15 +311,17 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('desktop-folder-child-skillHub')),
+      find.byKey(const Key('desktop-folder-child-modelsGateway')),
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const Key('desktop-folder-child-skillHub')));
+    await tester.tap(
+      find.byKey(const Key('desktop-folder-child-modelsGateway')),
+    );
     await tester.pump();
     expect(find.byKey(const Key('desktop-folder-popup')), findsNothing);
     expect(
-      find.byKey(const Key('desktop-floating-card-skillHub')),
+      find.byKey(const Key('desktop-floating-card-modelsGateway')),
       findsOneWidget,
     );
   });
@@ -336,10 +338,10 @@ void main() {
       dockModel.openApp(app);
     }
     await tester.pump();
-    // 485 fixed + 8 entry slots + trailing drop zone.
+    // Fixed chrome plus visible app slots and trailing drop zone.
     expect(
       tester.getSize(find.byKey(const Key('desktop-dock-bar'))).width,
-      485 + 8 * 52 + 14,
+      485 + (desktopFloatingApps.length + 1) * 52 + 14,
     );
   });
 
@@ -458,26 +460,24 @@ void main() {
       LayoutStateChannels.settingsSection,
     );
     expect(tab, isA<LayoutTabState>());
-    expect((tab! as LayoutTabState).index, 5);
+    expect((tab! as LayoutTabState).index, 4);
   });
 
-  testWidgets('models pane apps host the models destination in a card', (
-    tester,
-  ) async {
+  testWidgets('mobile pairing opens from the feature catalog', (tester) async {
     await pumpShell(tester);
     await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
     await tester.pump();
     await tester.tap(
-      find.byKey(const Key('desktop-launchpad-app-modelsChatChannels')),
+      find.byKey(const Key('desktop-launchpad-app-mobileRelay')),
     );
     await tester.pump();
 
     expect(
-      find.byKey(const Key('desktop-floating-card-modelsChatChannels')),
+      find.byKey(const Key('desktop-floating-card-mobileRelay')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('desktop-fake-content-models')),
+      find.byKey(const Key('desktop-fake-content-mobileRelay')),
       findsOneWidget,
     );
   });
