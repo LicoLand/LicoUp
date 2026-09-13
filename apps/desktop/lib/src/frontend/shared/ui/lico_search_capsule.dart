@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -65,15 +66,10 @@ final class LicoSearchChrome extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: resolved.fill,
-          borderRadius: radius,
-          border: Border.all(
-            color: resolved.border,
-            width: AppleControlMetrics.hairline,
-          ),
-        ),
+      child: _SearchControlSurface(
+        fill: resolved.fill,
+        stroke: resolved.border,
+        borderRadius: radius,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: LicoContentSpacing.item,
@@ -225,4 +221,13 @@ final class LicoSearchField extends StatelessWidget {
       ),
     );
   }
+}
+
+final class _SearchControlSurface extends BaseControlSurface {
+  const _SearchControlSurface({
+    required super.fill,
+    required super.stroke,
+    required super.borderRadius,
+    required super.child,
+  }) : super(strokeWidth: AppleControlMetrics.hairline);
 }

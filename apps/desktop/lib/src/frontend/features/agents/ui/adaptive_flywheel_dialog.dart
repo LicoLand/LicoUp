@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
@@ -520,6 +521,7 @@ final class _AdaptiveFlywheelDialogState
                           idPrefix: 'strategy-${actorSlots[index].id}',
                           assignments:
                               _assignments[actorSlots[index].id] ?? const [],
+                          modelDisplayNames: inspection!.modelDisplayNames,
                           targets: _targets,
                           onChanged: (values) =>
                               _setAssignments(actorSlots[index].id, values),
@@ -556,7 +558,7 @@ final class _AdaptiveFlywheelDialogState
                       child: _assistantSaving
                           ? const SizedBox.square(
                               dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: LicoLoadingIndicator(strokeWidth: 2),
                             )
                           : Text(strings.save),
                     ),

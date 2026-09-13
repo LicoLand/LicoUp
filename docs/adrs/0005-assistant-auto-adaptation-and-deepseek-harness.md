@@ -22,11 +22,22 @@
     who initiates the Membership turn. Codex and Claude Code retain native
     active-turn steer; Cursor and OpenCode retain native safe-boundary behavior.
   - DeepSeek Harness is adapted through its official SDK JSON-RPC stdio carrier
-    (`dsh-jsonrpc-agent`). Session prompts, caller-supplied session continuity,
-    structured streaming events, and explicit model selection are supported.
-    Cancel, active-prompt steer, history readback, reasoning override, and
+    (`dsh --profile sdk`). Session prompts, caller-supplied session continuity,
+    completed-message/status events, explicit model selection, and optional
+    initialization reasoning effort are supported. Completed messages reach the
+    client as received, before the agent becomes idle. The SDK does not expose
+    live text deltas; embedded historical stream records are not replayed as
+    realtime output. Generated Assistant guidance uses the ordinary native
+    message prefix, leaving the canonical user Event and Part unchanged.
+    Cancel, active-prompt steer, history readback, and
     multimodal input remain unsupported until the official protocol exposes
-    them. Release readiness remains unverified until evidence is recorded.
+    them. The official SDK route is admitted under the shared installed-driver
+    rules; route/model authentication is still validated by initialization.
+    Release readiness remains unverified until its independent evidence is
+    recorded, and does not veto an installed official runtime.
+    Historical token usage is independently supported through the installed
+    read-only session persistence API; its source, compression, retry, and fork
+    boundaries are defined in [desktop usage](../functionality/CLIENT-DESKTOP.md#scenario-s-05--desktop-token-usage).
 - `rationale` — This preserves the existing Conversation, Profile, Adaptive
   Flywheel, discovery-cache, and runtime-adapter authorities. One batch removes
   repeated startup, diagnostics make requests repairable, and DeepSeek uses the
@@ -48,4 +59,5 @@ Official DeepSeek Harness references:
 - <https://github.com/deepseek-ai/deepseek-harness>
 - <https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sdk/server/README.md>
 - <https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sdk/protocol/README.md>
-- <https://github.com/deepseek-ai/deepseek-harness/blob/master/python/sdk-runtime/README.md>
+- <https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/sdk-app/README.md>
+- <https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md>

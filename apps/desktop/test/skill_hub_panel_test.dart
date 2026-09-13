@@ -313,7 +313,9 @@ void main() {
     );
     expect(boxes, isNotEmpty);
     final origin = paragraph.localToGlobal(Offset.zero);
-    final cardRect = tester.getRect(find.byType(Card));
+    final cardRect = tester.getRect(
+      find.byKey(const Key('skill-card-sample-short-skill')),
+    );
     for (final box in boxes) {
       expect(box.bottom - box.top, greaterThanOrEqualTo(12));
       expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.5));

@@ -32,6 +32,28 @@ test("every explicitly owned Flutter test runs in its module command", () => {
   }
 });
 
+test("native usage projection and rich hover use existing usage modules", () => {
+  const selections = new Map([
+    ["apps/desktop/test/agent_usage_native_projection_test.dart", [
+      "flutter.feature.agent-usage",
+    ]],
+    ["apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_hover_card.dart", [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-usage.visualization",
+    ]],
+    ["apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_source_hover.dart", [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-usage.visualization",
+    ]],
+    ["apps/desktop/test/agent_usage_hover_card_test.dart", [
+      "flutter.feature.agent-usage.visualization",
+    ]],
+  ]);
+  for (const [changedPath, expectedIds] of selections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), expectedIds);
+  }
+});
+
 test("changed Flutter feature paths select only their bounded feature module", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/contracts/mcp_adapter.dart",
@@ -42,6 +64,30 @@ test("changed Flutter feature paths select only their bounded feature module", (
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/features/agents/conversation/agent_conversation_controller.dart",
   ])), ["architecture.client-boundaries", "flutter.feature.agent-conversations"]);
+  for (const changedPath of [
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_execution_observer.dart",
+    "apps/desktop/lib/src/frontend/features/agents/ui/execution_process/conversation_execution_viewer.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-conversations",
+    ]);
+  }
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/conversation_execution_projection_test.dart",
+  ])), ["flutter.feature.agent-conversations"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart",
+  ])), ["architecture.client-boundaries", "flutter.layer.shell"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/agents_workspace/agents_workspace_renderer_diagnostics_test.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agents.workspace.renderer-diagnostics",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/conversation_execution_transport_test.dart",
+  ])), ["bridge.flutter-native-client.stdio-transport"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/features/agents/conversation/conversation_turn_queue.dart",
   ])), [

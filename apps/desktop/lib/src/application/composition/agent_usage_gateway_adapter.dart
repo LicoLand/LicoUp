@@ -9,6 +9,14 @@ final class AgentUsageGatewayAdapter implements AgentUsageGateway {
   final AgentCommandRunner runner;
 
   @override
+  Future<AgentModelRegistryResult> readModelRegistry() =>
+      service.readModelRegistry(agentService: runner);
+
+  @override
+  Future<AgentModelRegistryResult> refreshModelRegistry() =>
+      service.refreshModelRegistry(agentService: runner);
+
+  @override
   Future<AgentUsageReport> scan({
     String agentId = '',
     bool forceRefresh = false,

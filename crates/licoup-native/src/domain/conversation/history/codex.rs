@@ -135,6 +135,7 @@ pub(super) fn mark_codex_runtime_activity(
 #[derive(Debug)]
 pub(super) struct CodexRolloutGroup {
     session_id: String,
+    native_turn_id: Option<String>,
     parent_session_id: Option<String>,
     subagent_title: Option<String>,
     is_subagent: bool,
@@ -142,8 +143,10 @@ pub(super) struct CodexRolloutGroup {
     cwd: Option<String>,
     matched_terms: BTreeSet<String>,
     message_count: usize,
+    tool_call_count: usize,
     preview_count: usize,
     opening_user_title: Option<String>,
+    opening_created_at: Option<String>,
 }
 
 pub(crate) fn parse_codex_rollout_sessions(
@@ -179,14 +182,16 @@ pub(crate) fn parse_codex_rollout_sessions(
     codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, &scan_config)
 }
 
-/// Catalog-only streaming fold. It scans every record for exact count and
-/// opening facts while retaining only the requested newest projection ring.
-pub(super) fn parse_codex_rollout_browse_sessions(
+/// Streaming projection for browse rows and lazy child cards. Scan every record
+/// for exact counts and opening facts, retaining only the newest message window
+/// except for the explicitly selected session whose cursor is resolved later.
+pub(super) fn parse_codex_rollout_bounded_sessions(
     path: &Path,
     source_kind: &str,
     metadata: &fs::Metadata,
     scan_config: HistoryScanConfig,
     message_limit: usize,
+    complete_session: Option<&str>,
 ) -> Option<Vec<Value>> {
     let mut groups = Vec::<CodexRolloutGroup>::new();
     let mut current_session_id = rollout_session_id_from_filename(path);
@@ -206,6 +211,9 @@ pub(super) fn parse_codex_rollout_browse_sessions(
             &mut groups,
         );
         for group in &mut groups {
+            if complete_session == Some(group.session_id.as_str()) {
+                continue;
+            }
             let overflow = group.messages.len().saturating_sub(message_limit);
             if overflow > 0 {
                 group.messages.drain(0..overflow);
@@ -246,6 +254,10 @@ pub(super) fn codex_rollout_groups_to_sessions(
                 );
                 if let Some(object) = session.as_object_mut() {
                     object.insert("messageCount".to_string(), json!(message_count));
+                    object.insert("toolCallCount".to_string(), json!(group.tool_call_count));
+                    if let Some(created_at) = group.opening_created_at {
+                        object.insert("createdAt".to_string(), json!(created_at));
+                    }
                     if scan_config.has_match_filters() {
                         object.insert("archiveDiscoveryHasConversation".to_string(), json!(true));
                         object.insert(
@@ -323,11 +335,68 @@ pub(super) fn parse_codex_rollout_line(
     if event_type == "session_meta" {
         update_codex_rollout_group_lineage(groups, &session_id, payload);
     }
-
-    if let Some(message) = codex_rollout_message(path, index, event_type, payload, &value) {
-        push_codex_rollout_message(groups, session_id, message, cwd, scan_config);
+    if !groups.iter().any(|group| group.session_id == session_id) {
+        update_codex_rollout_group_cwd(groups, session_id.clone(), cwd.clone());
+    }
+    let group = groups
+        .iter_mut()
+        .find(|group| group.session_id == session_id)
+        .expect("session group exists");
+    let lifecycle = payload.get("type").and_then(Value::as_str);
+    if event_type == "session_meta"
+        || event_type == "turn_context"
+        || (event_type == "event_msg" && lifecycle == Some("task_started"))
+    {
+        group.native_turn_id = if event_type == "session_meta" {
+            None
+        } else {
+            find_string(payload, &["turn_id", "turnId"]).filter(|id| !id.is_empty())
+        };
+    }
+    let native_turn_id =
+        find_string(payload, &["turn_id", "turnId"]).or_else(|| group.native_turn_id.clone());
+    if let Some(mut message) = codex_rollout_message(path, index, event_type, payload, &value) {
+        if matches!(
+            message.get("role").and_then(Value::as_str),
+            Some("agent" | "assistant")
+        ) {
+            if let Some(id) = native_turn_id {
+                message["sourceTurnId"] = json!(id);
+            }
+            if event_type == "response_item"
+                && payload.get("type").and_then(Value::as_str) == Some("message")
+            {
+                if let Some(id) = payload
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
+                    message["sourceMessageId"] = json!(id);
+                }
+            }
+        }
+        push_codex_rollout_message(groups, session_id.clone(), message, cwd, scan_config);
     } else if cwd.is_some() {
-        update_codex_rollout_group_cwd(groups, session_id, cwd);
+        update_codex_rollout_group_cwd(groups, session_id.clone(), cwd);
+    }
+    if event_type == "event_msg"
+        && matches!(
+            lifecycle,
+            Some(
+                "task_complete"
+                    | "task_cancelled"
+                    | "turn_aborted"
+                    | "turn_cancelled"
+                    | "turn_completed"
+            )
+        )
+    {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group.session_id == session_id)
+        {
+            group.native_turn_id = None;
+        }
     }
 }
 
@@ -347,6 +416,7 @@ pub(super) fn update_codex_rollout_group_cwd(
     }
     groups.push(CodexRolloutGroup {
         session_id,
+        native_turn_id: None,
         parent_session_id: None,
         subagent_title: None,
         is_subagent: false,
@@ -354,8 +424,10 @@ pub(super) fn update_codex_rollout_group_cwd(
         cwd,
         matched_terms: BTreeSet::new(),
         message_count: 0,
+        tool_call_count: 0,
         preview_count: 0,
         opening_user_title: None,
+        opening_created_at: None,
     });
 }
 
@@ -373,7 +445,18 @@ pub(super) fn update_codex_rollout_group_lineage(
     else {
         return;
     };
-    group.parent_session_id = find_nested_string(
+    (
+        group.parent_session_id,
+        group.is_subagent,
+        group.subagent_title,
+    ) = codex_rollout_lineage(payload, session_id);
+}
+
+pub(super) fn codex_rollout_lineage(
+    payload: &Value,
+    session_id: &str,
+) -> (Option<String>, bool, Option<String>) {
+    let parent_session_id = find_nested_string(
         payload,
         &[
             "forked_from_id",
@@ -386,14 +469,15 @@ pub(super) fn update_codex_rollout_group_lineage(
         0,
     )
     .filter(|parent_id| parent_id != session_id);
-    group.is_subagent = contains_nested_key(payload, "subagent", 0)
+    let is_subagent = contains_nested_key(payload, "subagent", 0)
         || contains_nested_key(payload, "thread_spawn", 0)
         || contains_nested_key(payload, "threadSpawn", 0);
-    group.subagent_title = find_nested_string(
+    let subagent_title = find_nested_string(
         payload,
         &["agent_nickname", "agentNickname", "agent_role", "agentRole"],
         0,
     );
+    (parent_session_id, is_subagent, subagent_title)
 }
 
 pub(super) fn find_nested_string(value: &Value, keys: &[&str], _depth: usize) -> Option<String> {
@@ -454,6 +538,7 @@ pub(super) fn push_codex_rollout_message(
     }
     let mut group = CodexRolloutGroup {
         session_id,
+        native_turn_id: None,
         parent_session_id: None,
         subagent_title: None,
         is_subagent: false,
@@ -461,8 +546,10 @@ pub(super) fn push_codex_rollout_message(
         cwd,
         matched_terms: BTreeSet::new(),
         message_count: 0,
+        tool_call_count: 0,
         preview_count: 0,
         opening_user_title: None,
+        opening_created_at: None,
     };
     push_codex_rollout_message_into_group(&mut group, message, matched_terms, scan_config);
     groups.push(group);
@@ -476,6 +563,15 @@ pub(super) fn push_codex_rollout_message_into_group(
 ) {
     let is_conversation = history_message_is_matchable(&message);
     group.message_count += 1;
+    if group.opening_created_at.is_none() {
+        group.opening_created_at = message
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    if super::session_merge::subagent_card_child_message_is_tool_step(&message) {
+        group.tool_call_count += 1;
+    }
     if group.opening_user_title.is_none()
         && matches!(
             message.get("role").and_then(Value::as_str),

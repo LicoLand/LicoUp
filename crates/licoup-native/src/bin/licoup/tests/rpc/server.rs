@@ -104,6 +104,22 @@ fn stdio_rpc_rejects_streaming_execute_without_invoking_the_command() {
 }
 
 #[test]
+fn stdio_rpc_rejects_nested_native_calls_without_writing_outside_its_frames() {
+    let input = rpc_input(&[execute_request(
+        "request-1",
+        "workflow-1",
+        &["rpc", "call", "catalog.status", "--stdin-json", "{}"],
+    )]);
+    let output = serve_stdio_rpc(input, Vec::new(), |_, _| -> anyhow::Result<_> {
+        panic!("native call must not reach the command closure")
+    })
+    .unwrap();
+    let frames = rpc_output(output);
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0]["error"]["code"], "streaming_command_unsupported");
+}
+
+#[test]
 fn ordinary_stdio_rpc_rejects_every_conversation_dispatch_entry_point() {
     let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[

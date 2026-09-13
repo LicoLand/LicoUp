@@ -50,6 +50,36 @@ Mac App Store 兼容。
 远程工作流不得发布 macOS 直发产物。本机 Apple Release 引擎只能执行单次不可变发布
 授权中逐项列明的上传与公开变更。
 
+## 本机密钥托管验证
+
+唯一的密钥托管二进制 `licoup-cli` 位于
+`Contents/Helpers/LicoUpCustody.app/Contents/MacOS`，bundle ID 为
+`land.lico.licoup.custody`；主应用仍为 `land.lico.licoup`。
+`Contents/MacOS/licoup-cli` 是永久的相对符号链接，指向 helper 内的唯一执行体，
+保留已有自动启动和厂商 token helper 配置，无需重写私人配置。Flutter 直接启动
+helper，不回退到外部或旧同级二进制。布局及公开入口由桌面脚本中的
+`package-client/macos/metadata.mjs` 与 `package-client/resource-assembly.mjs` 维护。
+
+获得明确授权后，通过
+`npm run client:build -- --platform macos --macos-custody-signing` 进行本机
+Data Protection 验证。私人环境输入为 `LICO_MACOS_SIGNING_IDENTITY`（证书 SHA-1）、
+`LICO_MACOS_APP_IDENTIFIER_PREFIX`、`LICO_MACOS_APP_PROVISIONING_PROFILE` 和
+`LICO_MACOS_CUSTODY_PROVISIONING_PROFILE`。两个 profile 必须分别授权各自的应用
+ID、共同的主应用 keychain group 和选中的签名证书。打包校验有效期及 Developer ID
+全设备范围，各 profile 嵌入自己的 bundle；嵌套代码先于外层应用签名，启用
+Hardened Runtime，并严格验证每次签名。公开包元数据只记录模式及仓库定义的
+helper 路径。
+
+该模式只进行本机验证，不附安全时间戳、不公证、不发布，也不构成发行验收；
+不加载更新签名或公证凭据。普通本机构建仍为 ad hoc，不宣称具备 Data Protection
+授权；仅使用 `--production-entitlements` 也不能获得该授权。上文发行验收边界
+保持不变。真实验证必须分别通过 helper 直达路径与公开 CLI 链接操作受保护的合成
+项目；签名有效本身不能证明一次提示即可授权凭据。既有 classic ACL 不得放宽。
+
+Apple 说明了[命令行程序的 app-like provisioning 要求](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)，
+并建议用[公开符号链接指向 bundle 内 CLI](https://developer.apple.com/forums/thread/836816)
+来共享 Data Protection 钥匙串访问。
+
 ## 本机授权
 
 先在独立的 `apple-release` 检出目录中执行 `npm install --global .` 安装私有 CLI，

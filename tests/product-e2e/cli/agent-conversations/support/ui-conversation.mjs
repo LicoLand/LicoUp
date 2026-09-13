@@ -92,7 +92,7 @@ export function runUiConversation(options) {
   if (!existsSync(runnableApp)) {
     throw new Error("packaged_release_app_missing");
   }
-  if (!existsSync(join(runnableApp, "Contents/MacOS/licoup-cli"))) {
+  if (!existsSync(join(runnableApp, "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli"))) {
     throw new Error("packaged_release_sidecar_missing");
   }
   const model = modelForAgent(options.agent);
@@ -111,7 +111,7 @@ export function runUiConversation(options) {
     .digest("hex")}`;
   const environment = {
     ...process.env,
-    LICO_CLIENT_PATH: join(runnableApp, "Contents/MacOS/licoup-cli"),
+    LICO_CLIENT_PATH: join(runnableApp, "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli"),
     LICO_AGENT_CONVERSATION_ACCEPTANCE: "dispatch-lane-unified-1",
     LICO_AGENT_CONVERSATION_PRODUCT_AGENT: options.agent,
     LICO_AGENT_CONVERSATION_PRODUCT_MODEL: model || "agent-default",

@@ -100,7 +100,7 @@ Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Code
 
 ## 5. Provider-Neutral Subagent Mesh
 
-Codex, Cursor, and Antigravity additionally participate in the client-owned
+Codex, Cursor, and Antigravity additionally participate in the independent
 [Subagent MCP](../protocols/subagent-mcp.md) as both authenticated callers and
 Membership-scoped targets.
 
@@ -108,15 +108,17 @@ Membership-scoped targets.
 flowchart LR
   P["Provider MCP client"] --> C["Thin stdio connector"]
   C --> H["Authenticated loopback HTTP"]
-  H --> A["SubagentMcpApplication"]
+  H --> CLI["Public native CLI"]
+  CLI --> A["SubagentApplication"]
   A --> R["One caller + runtime adapter registry"]
   A --> S["Canonical Membership and lineage store"]
   R --> T["Target PersistentTurn"]
   T --> E["Canonical Event / Part"]
 ```
 
-`core::mcp` is framing only. `SubagentMcpApplication` owns the frozen inbound
-revision and tool-catalog semantics. `McpCallerIntegration` and
+The independent `licoup-mcp` crate owns the MCP protocol and forwards admitted
+subagent operations through the public native CLI. `SubagentApplication` owns
+native delegation. `McpCallerIntegration` and
 `SubagentRuntimeAdapter` are the sole provider ports. Caller identity and
 server-owned parent lineage enter through authenticated request context, never
 tool arguments. A durable active-edge claim is committed before adapter work.

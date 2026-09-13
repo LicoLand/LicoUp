@@ -5,7 +5,6 @@ import 'package:licoup/src/presentation/targets/targets_projection.dart';
 
 const _options = <ManualTargetOptionProjection>[
   ManualTargetOptionProjection(id: 'antigravity', label: 'Antigravity'),
-  ManualTargetOptionProjection(id: 'kimi', label: 'Kimi'),
   ManualTargetOptionProjection(id: 'kimi-code', label: 'Kimi Code'),
   ManualTargetOptionProjection(
     id: 'openclaw',
@@ -79,7 +78,6 @@ void main() {
 
     await tester.tap(find.byKey(const Key('manual-target-kind')));
     await tester.pumpAndSettle();
-    expect(find.text('Kimi'), findsOneWidget);
     await tester.tap(find.text('Kimi Code').last);
     await tester.pumpAndSettle();
 

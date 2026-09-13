@@ -42,6 +42,37 @@ fn client_update_selects_the_highest_valid_semver_for_track_and_target() {
 }
 
 #[test]
+fn client_update_ignores_build_metadata_when_comparing_versions() {
+    let fixture = UpdateFixture::new();
+    let manifest = fixture.unsigned_manifest(json!([release(
+        "1.0.0+newer-build",
+        fixture.artifact(TARGET_ID)
+    ),]));
+    let selected = super::super::release::select_highest_release(
+        &manifest,
+        "1.0.0+earlier-build",
+        TARGET_ID,
+        true,
+    )
+    .unwrap();
+    assert!(selected.is_none());
+
+    let mut next = release("1.1.0", fixture.artifact(TARGET_ID));
+    next["minimumSupportedVersion"] = json!("1.0.0+newer-build");
+    let manifest = fixture.unsigned_manifest(json!([next]));
+    assert!(
+        super::super::release::select_highest_release(
+            &manifest,
+            "1.0.0+earlier-build",
+            TARGET_ID,
+            true,
+        )
+        .unwrap()
+        .is_some()
+    );
+}
+
+#[test]
 fn client_update_rejects_prerelease_versions_in_a_stable_manifest() {
     let fixture = UpdateFixture::new();
     let manifest = fixture.sign_manifest(fixture.unsigned_manifest(json!([release(

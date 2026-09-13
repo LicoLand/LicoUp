@@ -24,28 +24,17 @@ void main() {
     }
   });
 
-  test('first run yields the frozen seven-entry default order', () async {
+  test('first run yields the four-entry default order', () async {
     expect(await store.load(portableData), [
       'agentHub',
       'modelGateway',
       'mobilePairing',
       'statsPanel',
-      'pluginManagement',
-      'skillHub',
-      'chatChannels',
     ]);
   });
 
   test('saved custom order survives a fresh load', () async {
-    final custom = [
-      'chatChannels',
-      'statsPanel',
-      'agentHub',
-      'modelGateway',
-      'mobilePairing',
-      'pluginManagement',
-      'skillHub',
-    ];
+    final custom = ['statsPanel', 'agentHub', 'modelGateway', 'mobilePairing'];
     await store.save(portableData, custom);
 
     expect(await store.load(portableData), custom);
@@ -62,13 +51,10 @@ void main() {
     );
 
     expect(await store.load(portableData), [
-      'chatChannels',
       'agentHub',
       'modelGateway',
       'mobilePairing',
       'statsPanel',
-      'pluginManagement',
-      'skillHub',
     ]);
   });
 
@@ -82,7 +68,7 @@ void main() {
     expect(raw, contains('statsPanel'));
     expect(raw, isNot(contains('unknownPane')));
     // The normalized document still round-trips every default entry.
-    expect((await store.load(portableData)).length, 7);
+    expect((await store.load(portableData)).length, 4);
   });
 
   test('a corrupt document is never projected as absence', () async {

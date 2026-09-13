@@ -203,6 +203,7 @@ test("direct HTTP admission accepts only exact loopback discovery and supervisor
   }), /discovery_token_invalid/u);
   const discovery = {
     schemaVersion: "licoup.subagent-mcp.discovery.v1",
+    controlToken: "f".repeat(64),
     endpoint: "http://127.0.0.1:34567/mcp",
     generation: "b".repeat(32),
     tokens: { antigravity: token, codex: token, cursor: token },
@@ -217,6 +218,7 @@ test("direct client initializes, lists, and sends exactly one authenticated dele
   mkdirSync(discoveryDir, { recursive: true });
   writeFileSync(join(discoveryDir, "discovery.json"), JSON.stringify({
     schemaVersion: "licoup.subagent-mcp.discovery.v1",
+    controlToken: "f".repeat(64),
     endpoint: "http://127.0.0.1:34567/mcp",
     generation: "c".repeat(32),
     tokens: { antigravity: "d".repeat(64), codex: "a".repeat(64), cursor: "e".repeat(64) },
@@ -227,7 +229,7 @@ test("direct client initializes, lists, and sends exactly one authenticated dele
     exchanges.push({ method: request.method, body, headers: request.headers, redirect: request.redirect });
     if (request.method === "DELETE") return new Response(null, { status: 204 });
     const result = body.method === "initialize"
-      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.13.0" } }
+      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.14.0" } }
       : body.method === "tools/list"
         ? { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) }
         : {
@@ -265,6 +267,7 @@ test("direct client preserves a safe structured target failure without retry", a
   mkdirSync(discoveryDir, { recursive: true });
   writeFileSync(join(discoveryDir, "discovery.json"), JSON.stringify({
     schemaVersion: "licoup.subagent-mcp.discovery.v1",
+    controlToken: "f".repeat(64),
     endpoint: "http://127.0.0.1:34567/mcp",
     generation: "c".repeat(32),
     tokens: { antigravity: "d".repeat(64), codex: "a".repeat(64), cursor: "e".repeat(64) },
@@ -275,7 +278,7 @@ test("direct client preserves a safe structured target failure without retry", a
     const body = JSON.parse(request.body);
     if (body.method === "tools/call") toolCalls += 1;
     const result = body.method === "initialize"
-      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.13.0" } }
+      ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.14.0" } }
       : body.method === "tools/list"
         ? { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) }
         : {
@@ -346,7 +349,7 @@ test("every MCP response must return the stable session and JSON media type", as
         else delete headers["content-type"];
       }
       const result = body.method === "initialize"
-        ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.13.0" } }
+        ? { protocolVersion: "2025-06-18", serverInfo: { name: "lico-up-subagents", version: "0.14.0" } }
         : { tools: FROZEN_TOOL_NAMES.map((name) => ({ name })) };
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }), {
         status: 200, headers,

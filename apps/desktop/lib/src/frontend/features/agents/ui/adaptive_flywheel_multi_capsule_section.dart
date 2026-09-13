@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_model_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
@@ -37,6 +38,7 @@ final class AdaptiveFlywheelMultiCapsuleSection extends StatefulWidget {
     this.showFast = false,
     this.highlightFirstAsCurrentConversation = false,
     this.description = '',
+    this.modelDisplayNames = const {},
     this.isRefreshingAgentCatalog,
     this.onAgentCatalogRequested,
   });
@@ -51,6 +53,7 @@ final class AdaptiveFlywheelMultiCapsuleSection extends StatefulWidget {
   final bool highlightFirstAsCurrentConversation;
   final List<DailyConversationAgentAssignment> assignments;
   final List<TargetCandidate> targets;
+  final Map<String, String> modelDisplayNames;
   final ValueChanged<List<DailyConversationAgentAssignment>> onChanged;
   final bool Function(String agentId)? isRefreshingAgentCatalog;
   final ValueChanged<String>? onAgentCatalogRequested;
@@ -62,6 +65,7 @@ final class AdaptiveFlywheelMultiCapsuleSection extends StatefulWidget {
 
 final class _AdaptiveFlywheelMultiCapsuleSectionState
     extends State<AdaptiveFlywheelMultiCapsuleSection> {
+  final _modelCatalogs = AgentOrchestrationModelCatalogCache();
   static const double _circleExtent = 32;
   static const double _capsuleWidth = 260;
   static const double _cascadeGap = 10;
@@ -121,6 +125,14 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
     return '${widget.idPrefix}-$agentId-${DateTime.now().microsecondsSinceEpoch}';
   }
 
+  String _modelDisplayName(TargetCandidate? target, String model) {
+    final catalog = target == null ? null : _modelCatalogs.forTarget(target);
+    if (catalog != null && catalog.contains(model)) {
+      return catalog.displayName(model);
+    }
+    return widget.modelDisplayNames[model] ?? model;
+  }
+
   String _draftFieldLabel(LicoStrings strings) {
     final target = _targetById(_draft.agentId);
     if (target == null && _draft.agentId.trim().isEmpty) {
@@ -137,9 +149,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
       fastLabel: strings.fastModeLabel,
       effortLabel: (effort) =>
           strings.reasoningEffortOptionLabel(effort, effort),
-      modelDisplayName: target == null
-          ? null
-          : (model) => agentOrchestrationModelDisplayName(target, model),
+      modelDisplayName: (model) => _modelDisplayName(target, model),
     );
   }
 
@@ -169,14 +179,13 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
     if (target == null) return draft;
     var next = draft;
     if (next.modelName.trim().isEmpty) {
-      final models = agentOrchestrationCommanderModels(target);
+      final models = _modelCatalogs.forTarget(target).models;
       next = next.copyWith(modelName: models.isEmpty ? '' : models.first);
     }
     if (next.reasoningEffort.trim().isEmpty) {
-      final efforts = agentOrchestrationReasoningEffortsForModel(
-        target,
-        next.modelName,
-      );
+      final efforts = _modelCatalogs
+          .forTarget(target)
+          .reasoningEfforts(next.modelName);
       next = next.copyWith(
         reasoningEffort: efforts.isEmpty ? '' : efforts.first,
       );
@@ -424,6 +433,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
                               itemCount: widget.assignments.length,
                               itemBuilder: (context, index) {
                                 final assignment = widget.assignments[index];
+                                final target = _targetById(assignment.agentId);
                                 return Padding(
                                   key: ValueKey<String>(
                                     '${widget.keyPrefix}-order-${assignment.id}',
@@ -439,7 +449,11 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
                                     child: _SelectedAgentCapsule(
                                       keyPrefix: widget.keyPrefix,
                                       assignment: assignment,
-                                      target: _targetById(assignment.agentId),
+                                      target: target,
+                                      modelLabel: _modelDisplayName(
+                                        target,
+                                        assignment.modelName,
+                                      ),
                                       isCurrentConversation:
                                           widget
                                               .highlightFirstAsCurrentConversation &&
@@ -664,11 +678,12 @@ final class _AgentRuntimeAssignmentCascadeCardsState
 
   String? _previewAgentId;
   String? _hoveredModel;
+  final _modelCatalogs = AgentOrchestrationModelCatalogCache();
   Timer? _dismissTimer;
   final TextEditingController _modelQueryController = TextEditingController();
   String _modelQuery = '';
   final Map<String, GlobalKey> _revealKeys = <String, GlobalKey>{};
-  final Set<String> _pendingReveal = <String>{'agent', 'model', 'effort'};
+  final Set<String> _pendingReveal = <String>{'agent', 'effort'};
   bool _revealScheduled = false;
 
   @override
@@ -729,7 +744,7 @@ final class _AgentRuntimeAssignmentCascadeCardsState
   }
 
   List<String> _modelsFor(TargetCandidate target) =>
-      agentOrchestrationCommanderModels(target);
+      _modelCatalogs.forTarget(target).models;
 
   DailyConversationAgentAssignment _draftSeed(TargetCandidate target) {
     return DailyConversationAgentAssignment(agentId: target.target);
@@ -743,9 +758,10 @@ final class _AgentRuntimeAssignmentCascadeCardsState
     // while no model has been confirmed for the active agent yet.
     if (widget.draft.agentId == target.target) {
       final selected = widget.draft.modelName.trim();
-      if (models.contains(selected)) return selected;
+      if (_modelCatalogs.forTarget(target).contains(selected)) return selected;
     }
-    if (_hoveredModel != null && models.contains(_hoveredModel)) {
+    if (_hoveredModel != null &&
+        _modelCatalogs.forTarget(target).contains(_hoveredModel!)) {
       return _hoveredModel!;
     }
     return models.first;
@@ -756,48 +772,22 @@ final class _AgentRuntimeAssignmentCascadeCardsState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final active = _activeTarget;
-    final modelGroups = active == null
-        ? const <AgentOrchestrationModelGroup>[]
-        : agentOrchestrationCommanderModelGroups(active);
-    final models = [for (final group in modelGroups) ...group.models];
-    final showProviderHeaders = modelGroups.any(
-      (group) => group.providerLabel.isNotEmpty,
-    );
+    final modelCatalog = active == null
+        ? null
+        : _modelCatalogs.forTarget(active);
     final refreshing =
         active != null &&
         widget.isRefreshingAgentCatalog?.call(active.target) == true;
     final effectiveModel = active == null ? '' : _effectiveModel(active);
     final efforts = active == null || effectiveModel.isEmpty
         ? const <String>[]
-        : agentOrchestrationReasoningEffortsForModel(active, effectiveModel);
+        : modelCatalog!.reasoningEfforts(effectiveModel);
     final draftForActive = active == null
         ? const DailyConversationAgentAssignment()
         : (widget.draft.agentId == active.target
               ? widget.draft
               : _draftSeed(active));
     final gap = MessagingDesktopMetrics.composerRuntimeSelectorSubmenuGap;
-    final modelQuery = _modelQuery.trim().toLowerCase();
-
-    bool modelMatchesQuery(String model) {
-      if (modelQuery.isEmpty) return true;
-      if (model.toLowerCase().contains(modelQuery)) return true;
-      final display = active == null
-          ? ''
-          : agentOrchestrationModelDisplayName(active, model).toLowerCase();
-      return display.contains(modelQuery);
-    }
-
-    final visibleGroups = <AgentOrchestrationModelGroup>[
-      for (final group in modelGroups)
-        if (group.models.any(modelMatchesQuery))
-          AgentOrchestrationModelGroup(
-            providerId: group.providerId,
-            providerLabel: group.providerLabel,
-            models: List.unmodifiable(group.models.where(modelMatchesQuery)),
-          ),
-    ];
-    final visibleModels = [for (final group in visibleGroups) ...group.models];
-
     Widget sectionHeader(String label) => Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       child: Text(
@@ -816,36 +806,14 @@ final class _AgentRuntimeAssignmentCascadeCardsState
       required double width,
       Widget? header,
       required List<Widget> children,
-      List<Widget> pinned = const <Widget>[],
     }) {
-      final Widget body = pinned.isEmpty
-          ? SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [?header, ...children, const SizedBox(height: 6)],
-              ),
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ?header,
-                ...pinned,
-                // SingleChildScrollView hugs short lists and caps long ones at
-                // the Flexible bound, and its Column builds every child so the
-                // reveal anchor exists even while it is scrolled off screen.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [...children, const SizedBox(height: 6)],
-                    ),
-                  ),
-                ),
-              ],
-            );
+      final body = SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [?header, ...children, const SizedBox(height: 6)],
+        ),
+      );
       return MessagingConversationOverlayGlass(
         key: key,
         borderRadius: widget.borderRadius,
@@ -870,34 +838,6 @@ final class _AgentRuntimeAssignmentCascadeCardsState
         reveal = true;
       }
       agentRows.add(_agentRow(target, selected: selected, reveal: reveal));
-    }
-
-    final modelRows = <Widget>[];
-    if (active != null) {
-      for (final group in visibleGroups) {
-        if (showProviderHeaders && group.providerLabel.isNotEmpty) {
-          modelRows.add(
-            Padding(
-              key: Key(
-                '${widget.keyPrefix}-provider-${active.target}-${group.providerId.isNotEmpty ? group.providerId : group.providerLabel}',
-              ),
-              padding: const EdgeInsets.fromLTRB(12, 9, 12, 3),
-              child: Text(
-                group.providerLabel,
-                style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  height: 14 / 11,
-                ),
-              ),
-            ),
-          );
-        }
-        for (final model in group.models) {
-          modelRows.add(_modelRow(active, model, draftForActive));
-        }
-      }
     }
 
     _scheduleRevealIfNeeded();
@@ -929,49 +869,58 @@ final class _AgentRuntimeAssignmentCascadeCardsState
             ),
             if (active != null) ...[
               SizedBox(width: gap),
-              glassCard(
+              MessagingConversationOverlayGlass(
                 key: Key('${widget.keyPrefix}-model-card'),
-                width: widget.modelCardWidth,
-                // No section title: the pinned search field is the header.
-                pinned: [
-                  _modelSearchField(colors, strings),
-                  if (refreshing)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                      child: LinearProgressIndicator(
-                        key: Key('${widget.keyPrefix}-model-loading'),
-                        minHeight: 2,
-                      ),
-                    ),
-                ],
-                children: [
-                  if (models.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Text(
-                        refreshing
+                borderRadius: widget.borderRadius,
+                readabilityVeil: true,
+                child: SizedBox(
+                  width: widget.modelCardWidth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _modelSearchField(colors, strings),
+                      if (refreshing)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                          child: LinearProgressIndicator(
+                            key: Key('${widget.keyPrefix}-model-loading'),
+                            minHeight: 2,
+                          ),
+                        ),
+                      AgentRuntimeModelList(
+                        key: ValueKey(active.target),
+                        keyPrefix: widget.keyPrefix,
+                        agentId: active.target,
+                        catalog: modelCatalog!,
+                        query: _modelQuery,
+                        selectedModel: draftForActive.modelName,
+                        maxHeight: widget.maxHeight - 42 - (refreshing ? 6 : 0),
+                        revealSelectionOnOpen: widget.revealSelectionOnOpen,
+                        emptyLabel: refreshing && modelCatalog.models.isEmpty
                             ? strings.discoveringModels
                             : strings.noModelsFound,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 12.5,
-                        ),
+                        onModelEnter: (model) {
+                          _dismissTimer?.cancel();
+                          if (modelCatalog.contains(draftForActive.modelName) ||
+                              _hoveredModel == model) {
+                            return;
+                          }
+                          setState(() => _hoveredModel = model);
+                        },
+                        onModelSelected: (model) {
+                          widget.onDraftChanged(
+                            draftForActive.copyWith(
+                              agentId: active.target,
+                              modelName: model,
+                              reasoningEffort: '',
+                            ),
+                          );
+                        },
                       ),
-                    )
-                  else if (visibleModels.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Text(
-                        strings.noModelsFound,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 12.5,
-                        ),
-                      ),
-                    )
-                  else
-                    ...modelRows,
-                ],
+                    ],
+                  ),
+                ),
               ),
               if (efforts.isNotEmpty || widget.showFast) ...[
                 SizedBox(width: gap),
@@ -1034,36 +983,6 @@ final class _AgentRuntimeAssignmentCascadeCardsState
     );
     if (!reveal) return row;
     return KeyedSubtree(key: _revealKey('agent'), child: row);
-  }
-
-  Widget _modelRow(
-    TargetCandidate active,
-    String model,
-    DailyConversationAgentAssignment draftForActive,
-  ) {
-    final row = _CascadeOptionRow(
-      key: Key('${widget.keyPrefix}-model-${active.target}-$model'),
-      label: agentOrchestrationModelPickerLabel(active, model),
-      selected: model == draftForActive.modelName,
-      wrapLabel: true,
-      onEnter: () {
-        _dismissTimer?.cancel();
-        setState(() => _hoveredModel = model);
-      },
-      onTap: () {
-        widget.onDraftChanged(
-          draftForActive.copyWith(
-            agentId: active.target,
-            modelName: model,
-            reasoningEffort: '',
-          ),
-        );
-      },
-    );
-    if (widget.revealSelectionOnOpen && model == draftForActive.modelName) {
-      return KeyedSubtree(key: _revealKey('model'), child: row);
-    }
-    return row;
   }
 
   Widget _effortRow(
@@ -1286,12 +1205,10 @@ final class _CascadeOptionRow extends StatelessWidget {
     required this.selected,
     required this.onEnter,
     required this.onTap,
-    this.wrapLabel = false,
   });
 
   final String label;
   final bool selected;
-  final bool wrapLabel;
   final VoidCallback onEnter;
   final VoidCallback onTap;
 
@@ -1303,25 +1220,17 @@ final class _CascadeOptionRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: wrapLabel ? 8 : 0,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: SizedBox(
-            height: wrapLabel ? null : 32,
+            height: 32,
             child: Row(
-              crossAxisAlignment: wrapLabel
-                  ? CrossAxisAlignment.start
-                  : CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Text(
                     label,
-                    maxLines: wrapLabel ? 4 : 1,
-                    softWrap: wrapLabel,
-                    overflow: wrapLabel
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: colors.text,
                       fontSize: 12.5,
@@ -1528,6 +1437,7 @@ final class _SelectedAgentCapsule extends StatelessWidget {
     required this.keyPrefix,
     required this.assignment,
     required this.target,
+    required this.modelLabel,
     required this.onRemove,
     this.isCurrentConversation = false,
   });
@@ -1535,6 +1445,7 @@ final class _SelectedAgentCapsule extends StatelessWidget {
   final String keyPrefix;
   final DailyConversationAgentAssignment assignment;
   final TargetCandidate? target;
+  final String modelLabel;
   final VoidCallback onRemove;
   final bool isCurrentConversation;
 
@@ -1553,9 +1464,7 @@ final class _SelectedAgentCapsule extends StatelessWidget {
       fastLabel: strings.fastModeLabel,
       effortLabel: (effort) =>
           strings.reasoningEffortOptionLabel(effort, effort),
-      modelDisplayName: target == null
-          ? null
-          : (model) => agentOrchestrationModelDisplayName(target!, model),
+      modelDisplayName: (_) => modelLabel,
     );
     final chipKey = assignment.id.trim().isEmpty
         ? assignment.agentId

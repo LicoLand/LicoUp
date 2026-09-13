@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -195,7 +196,7 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                                 ColoredBox(
                                   color: Colors.black.withValues(alpha: 0.32),
                                   child: const Center(
-                                    child: CircularProgressIndicator(),
+                                    child: LicoLoadingIndicator(),
                                   ),
                                 ),
                             ],
@@ -252,7 +253,7 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                                     ? const SizedBox(
                                         width: 18,
                                         height: 18,
-                                        child: CircularProgressIndicator(
+                                        child: LicoLoadingIndicator(
                                           strokeWidth: 2,
                                         ),
                                       )

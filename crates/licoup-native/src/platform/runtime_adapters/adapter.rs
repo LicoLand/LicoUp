@@ -186,7 +186,7 @@ impl RuntimeAdapter {
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
             Self::LicoAgent => "lico-agent",
-            Self::DeepSeekHarness => "dsh-jsonrpc-agent",
+            Self::DeepSeekHarness => "dsh",
         }
     }
 

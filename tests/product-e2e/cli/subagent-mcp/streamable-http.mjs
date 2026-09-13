@@ -1,13 +1,9 @@
 export const MCP_PROTOCOL_REVISION = "2025-06-18";
 export const MCP_SERVER_NAME = "lico-up-subagents";
-export const MCP_SERVER_VERSION = "0.13.0";
+export const MCP_SERVER_VERSION = "0.14.0";
 export const DISCOVERY_SCHEMA = "licoup.subagent-mcp.discovery.v1";
 const DISCOVERY_PROVIDERS = Object.freeze(["antigravity", "codex", "cursor"]);
 export const FROZEN_TOOL_NAMES = Object.freeze([
-  "lico_assistant_profiles",
-  "lico_assistant_workflow_execute",
-  "lico_assistant_workflow_inspect",
-  "lico_assistant_workflow_cancel",
   "lico_subagents_list",
   "lico_subagent_probe",
   "lico_subagent_delegate",
@@ -24,8 +20,9 @@ export function admitDiscoveryDocument(value) {
     ? Object.keys(value.tokens).sort()
     : [];
   if (
-    JSON.stringify(keys) !== JSON.stringify(["endpoint", "generation", "schemaVersion", "tokens"])
+    JSON.stringify(keys) !== JSON.stringify(["controlToken", "endpoint", "generation", "schemaVersion", "tokens"])
     || value.schemaVersion !== DISCOVERY_SCHEMA
+    || !/^[0-9a-f]{64}$/u.test(value.controlToken)
     || typeof value.endpoint !== "string"
     || !/^[0-9a-f]{32}$/u.test(value.generation)
     || JSON.stringify(tokenKeys) !== JSON.stringify(DISCOVERY_PROVIDERS)

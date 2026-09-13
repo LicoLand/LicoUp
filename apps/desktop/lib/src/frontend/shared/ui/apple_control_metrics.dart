@@ -35,7 +35,7 @@ abstract final class AppleControlMetrics {
   /// Shell search field matches the menu panel rounded-rect language.
   static const double searchCornerRadius = menuCornerRadius;
   static const double controlCornerRadius = 8;
-  static const double hairline = 0.5;
+  static const double hairline = 1;
   static const double searchFocusRingWidth = 2;
 
   static BorderRadius get searchFieldBorderRadius =>

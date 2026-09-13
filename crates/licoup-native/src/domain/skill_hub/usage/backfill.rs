@@ -61,7 +61,6 @@ const BACKFILL_AGENT_IDS: &[&str] = &[
     "cursor",
     "hermes",
     "kilo-code",
-    "kimi",
     "kimi-code",
     "openclaw",
     "opencode",

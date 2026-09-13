@@ -85,6 +85,8 @@ export async function checkShellIsolationAndNativeStdio(context) {
   `${nativeStdioRpcRoot}/operation_pending_queue.dart`,
   `${nativeStdioRpcRoot}/operation_queue.dart`,
   `${nativeStdioRpcRoot}/protocol.dart`,
+  `${nativeStdioRpcRoot}/read_policy.dart`,
+  `${nativeStdioRpcRoot}/read_pool.dart`,
   `${nativeStdioRpcRoot}/request_writer.dart`,
   `${nativeStdioRpcRoot}/response_codec.dart`,
   `${nativeStdioRpcRoot}/session.dart`,

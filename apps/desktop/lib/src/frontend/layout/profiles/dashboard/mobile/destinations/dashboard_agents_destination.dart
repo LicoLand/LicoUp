@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
@@ -31,10 +32,13 @@ Widget buildDashboardMobileAgentsDestination(
             strategy: const AgentsPresentationStrategy.messaging(),
             child: LayoutDestinationPresentationScope(
               agents: dashboardMobileAgentsPresentation,
-              child: Builder(
-                builder: (profileContext) => data.content.buildDestination(
-                  profileContext,
-                  data.destination,
+              child: ConversationMaterialScope(
+                opaqueBubbles: true,
+                child: Builder(
+                  builder: (profileContext) => data.content.buildDestination(
+                    profileContext,
+                    data.destination,
+                  ),
                 ),
               ),
             ),

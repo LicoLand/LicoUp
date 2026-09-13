@@ -67,16 +67,108 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
   }
 });
 
-test("Subagent MCP startup integration test keeps one bounded Rust selection", () => {
+test("model registry and typed usage reuse their existing Rust closures", () => {
+  for (const leaf of ["mod", "index", "source", "tests"]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([
+      `crates/licoup-native/src/domain/model_registry/${leaf}.rs`,
+    ])), ["architecture.client-boundaries", "rust.domain.model-planning"]);
+  }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/tests/subagent_mcp_startup.rs",
-  ])), ["rust.bin.licoup.subagent-mcp-startup"]);
+    "crates/licoup-native/src/domain/agent_usage/variant.rs",
+  ])), ["architecture.client-boundaries", "rust.domain.agent-usage"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache_variant_tests.rs",
+  ])), ["architecture.client-boundaries", "rust.domain.agent-usage.native-cache"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/ffi/commands/model_registry.rs",
+  ])), [
+    "regression.cli-command-admission-source-bundle",
+    "architecture.client-boundaries",
+    "rust.ffi",
+    "rust.ffi.cli-command-admission",
+  ]);
+  const planning = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "rust.domain.model-planning");
+  assert.equal(planning.command.args.at(-1), "domain::model_");
+  assert.equal(planning.command.args.includes("--"), false);
+  const ffi = CLIENT_MODULE_CATALOG.find((module) => module.id === "rust.ffi");
+  assert.equal(ffi.command.args.at(-1), "ffi::");
+});
+
+test("Independent MCP lifecycle tests use the standalone crate regression", () => {
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-mcp/tests/lifecycle.rs",
+  ])), ["regression.subagent-mcp-common", "rust.core.mcp-server"]);
   const module = CLIENT_MODULE_CATALOG.find((candidate) =>
-    candidate.id === "rust.bin.licoup.subagent-mcp-startup");
-  assert.deepEqual(module.command.args.slice(-2), ["--test", "subagent_mcp_startup"]);
+    candidate.id === "rust.core.mcp-server");
+  assert.deepEqual(module.command.args, ["test", "--manifest-path", "crates/licoup-mcp/Cargo.toml"]);
 });
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/platform/raw_execution.rs",
+  ])), ["architecture.client-boundaries", "rust.platform"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/domain/conversation/history/execution_provenance.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.agent-conversations.query",
+  ]);
+  const historyQuery = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "rust.domain.agent-conversations.query");
+  assert.deepEqual(historyQuery.command.args.slice(4), [
+    "domain::conversation::history::execution_provenance::tests::",
+    "--",
+    "domain::conversation::history::tests::query",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-conversation/src/store/execution.rs",
+  ])), [
+    "regression.subagent-mcp-common",
+    "rust.domain.client-conversations",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/server/conversation/execution.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.ffi.cli-command-admission",
+    "rust.bin.licoup.rpc",
+    "bridge.native-mcp-rpc-guard",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "schemas/conversation_protocol/conversation_protocol.schema.json",
+  ])), [
+    "rust.bin.licoup.rpc",
+    "bridge.flutter-native-client.stdio-codec",
+  ]);
+
+  const conversation = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "rust.domain.client-conversations");
+  assert.deepEqual(conversation.command.args, [
+    "test",
+    "--manifest-path",
+    "crates/licoup-native/Cargo.toml",
+    "-p",
+    "licoup-native",
+    "-p",
+    "licoup-conversation",
+    "--lib",
+    "--",
+    "domain::client_conversation::",
+    "store::execution::tests::",
+  ]);
+  const rpc = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "rust.bin.licoup.rpc");
+  assert.deepEqual(rpc.command.args, [
+    "test",
+    "-p",
+    "licoup-native",
+    "--bin",
+    "licoup-cli",
+    "--",
+    "tests::rpc::",
+    "stdio_rpc::server::conversation::",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mcp_adapter/plan.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mcp-adapter"]);
@@ -474,8 +566,6 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
       "domain::agent_usage::agent_usage_codex::tests::event_hash::"],
     ["rust.domain.agent-usage.codex-lineage",
       "domain::agent_usage::agent_usage_codex::tests::lineage::"],
-    ["rust.domain.agent-usage.codex-model-backfill",
-      "domain::agent_usage::agent_usage_codex::model_backfill::tests::"],
     ["rust.domain.agent-usage.codex-cache-database",
       "domain::agent_usage::agent_usage_codex::tests::cache::"],
     ["rust.domain.agent-usage.codex-cache-batch",

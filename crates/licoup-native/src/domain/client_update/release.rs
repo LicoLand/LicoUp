@@ -77,7 +77,7 @@ pub(super) fn select_highest_release<'a>(
                 selected_artifact = Some(parsed);
             }
         }
-        if current < minimum || version <= current {
+        if current.cmp_precedence(&minimum).is_lt() || !version.cmp_precedence(&current).is_gt() {
             continue;
         }
         if let Some(artifact) = selected_artifact {

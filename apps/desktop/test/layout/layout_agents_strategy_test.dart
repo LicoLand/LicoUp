@@ -9,7 +9,6 @@ void main() {
 
     expect(strategy.sidebarStyle, AgentsSidebarStyle.agentTree);
     expect(strategy.messageStyle, AgentsMessageStyle.documentTranscript);
-    expect(strategy.processStyle, AgentsProcessStyle.processCard);
     expect(strategy.composerStyle, AgentsComposerStyle.withRuntimeBar);
   });
 
@@ -18,7 +17,6 @@ void main() {
 
     expect(strategy.sidebarStyle, AgentsSidebarStyle.flatRecencyList);
     expect(strategy.messageStyle, AgentsMessageStyle.participantFlow);
-    expect(strategy.processStyle, AgentsProcessStyle.inlineStatus);
     expect(strategy.composerStyle, AgentsComposerStyle.plain);
   });
 
@@ -35,7 +33,6 @@ void main() {
       'AgentsPresentationStrategy('
       'sidebarStyle: agentTree, '
       'messageStyle: documentTranscript, '
-      'processStyle: processCard, '
       'composerStyle: withRuntimeBar)',
     );
   });

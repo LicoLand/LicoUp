@@ -65,6 +65,38 @@ fn partial_json_tail_remains_an_unterminated_protocol_failure() {
 }
 
 #[test]
+fn raw_execution_pipe_capture_precedes_pty_isolation_and_failed_tail() {
+    use crate::platform::raw_execution::{
+        RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+    };
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let captured = Arc::clone(&records);
+    let observer = RawExecutionObserver::new(move |_, _, text| {
+        captured.lock().unwrap().push(text.to_owned());
+        Ok(())
+    });
+    let binding = RawExecutionBinding::default();
+    let _guard = binding.bind(Some(observer));
+    let raw = b"\x1b[31m{\"future\":\"raw arguments\"}\x1b[0m\r\n{invalid";
+    let (sender, receiver) = mpsc::channel();
+    let reader = RawExecutionReader::new(
+        Cursor::new(raw),
+        binding,
+        "cursor",
+        RawExecutionDirection::Received,
+    );
+    read_protocol_messages(std::io::BufReader::new(reader), sender);
+    assert!(
+        matches!(receiver.recv().unwrap(), TransportEvent::Line(line) if line == b"{\"future\":\"raw arguments\"}\r\n")
+    );
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        TransportEvent::UnterminatedLine
+    ));
+    assert_eq!(records.lock().unwrap().concat().as_bytes(), raw);
+}
+
+#[test]
 fn cli_exact_resume_places_session_and_prompt_in_argv() {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

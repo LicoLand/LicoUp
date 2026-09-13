@@ -35,6 +35,7 @@ final class AdapterPluginController extends ApplicationStateOwner {
   int _pendingOperations = 0;
   AdapterPluginCatalog? _catalog;
   String _lastErrorCode = '';
+  Future<void>? _refreshFuture;
 
   AdapterPluginCatalog? get catalog => _catalog;
   List<AdapterPluginDescriptor> get adapters =>
@@ -42,11 +43,21 @@ final class AdapterPluginController extends ApplicationStateOwner {
   bool get busy => _pendingOperations > 0;
   String get lastErrorCode => _lastErrorCode;
 
-  Future<void> refresh() => _enqueue(() async {
-    if (await _loadCatalog()) {
-      _report('插件目录已刷新。', 'Plugin catalog refreshed.');
-    }
-  });
+  Future<void> refresh() {
+    final active = _refreshFuture;
+    if (active != null) return active;
+    late final Future<void> next;
+    next =
+        _enqueue(() async {
+          if (await _loadCatalog()) {
+            _report('插件目录已刷新。', 'Plugin catalog refreshed.');
+          }
+        }).whenComplete(() {
+          if (identical(_refreshFuture, next)) _refreshFuture = null;
+        });
+    _refreshFuture = next;
+    return next;
+  }
 
   Future<void> install(String agentId) =>
       _mutate(agentId, AdapterPluginLifecycleAction.install);

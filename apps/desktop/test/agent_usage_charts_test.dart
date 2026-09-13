@@ -1,61 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('usage charts switch between agent and model summaries', (
-    tester,
-  ) async {
-    final report = AgentUsageReport(
-      schemaVersion: AgentUsageReport.currentSchemaVersion,
-      generatedAt: DateTime.now().toUtc().toIso8601String(),
-      summary: const {'totalTokens': 120},
-      agents: [
-        AgentUsageAgentSummary(
-          agentId: 'codex',
-          label: 'Codex',
-          status: 'detected',
-          history: {
-            'totalTokens': 120,
-            'dailyUsage': [
-              {
-                'date': _todayKey(),
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'usage charts switch between agent and model summaries in $brightness',
+      (tester) async {
+        final report = AgentUsageReport(
+          schemaVersion: AgentUsageReport.currentSchemaVersion,
+          generatedAt: DateTime.now().toUtc().toIso8601String(),
+          summary: const {'totalTokens': 120},
+          agents: [
+            AgentUsageAgentSummary(
+              agentId: 'codex',
+              label: 'Codex',
+              status: 'detected',
+              history: {
                 'totalTokens': 120,
-                'modelUsage': {'gpt-5.5': 120},
+                'dailyUsage': [
+                  {
+                    'date': _todayKey(),
+                    'totalTokens': 120,
+                    'modelTokenUsage': {
+                      'gpt-5.5': {'displayName': 'GPT-5.5', 'totalTokens': 120},
+                    },
+                  },
+                ],
               },
-            ],
-          },
-          confidence: 'high',
-        ),
-      ],
-      warnings: const [],
-    );
+              confidence: 'high',
+            ),
+          ],
+          warnings: const [],
+        );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: SingleChildScrollView(
-          child: SizedBox(
-            width: 900,
-            child: AgentUsageCharts(
-              report: report,
-              detectedAgentIds: const {'codex'},
-              windowDays: 30,
-              windowBusy: false,
-              onWindowChanged: (_) {},
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLicoTheme(
+              presetId: brightness == Brightness.light
+                  ? AppearancePresetIds.licoSodaLight
+                  : AppearancePresetIds.licoSoda,
+              platformBrightness: brightness,
+            ),
+            home: SingleChildScrollView(
+              child: SizedBox(
+                width: 900,
+                child: AgentUsageCharts(
+                  report: report,
+                  detectedAgentIds: const {'codex'},
+                  windowDays: 30,
+                  windowBusy: false,
+                  onWindowChanged: (_) {},
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
+        );
 
-    expect(find.text('Codex'), findsAtLeastNWidgets(1));
-    await tester.tap(find.text('By Model'));
-    await tester.pumpAndSettle();
-    expect(find.text('GPT 5.5'), findsAtLeastNWidgets(1));
-  });
+        expect(find.text('Codex'), findsAtLeastNWidgets(1));
+        _expectOpaqueUsageBars(tester);
+        await tester.tap(find.text('By Model'));
+        await tester.pumpAndSettle();
+        expect(find.text('GPT-5.5'), findsAtLeastNWidgets(1));
+        _expectOpaqueUsageBars(tester);
+        await tester.tap(find.text('By Agent'));
+        await tester.pumpAndSettle();
+        _expectOpaqueUsageBars(tester);
+      },
+    );
+  }
 
   testWidgets('usage share combines forms from the same source product', (
     tester,
@@ -211,6 +227,22 @@ void main() {
       findsNothing,
     );
   });
+}
+
+void _expectOpaqueUsageBars(WidgetTester tester) {
+  final fills = tester
+      .widgetList<Container>(
+        find.descendant(
+          of: find.byKey(const ValueKey('agent-usage-token-share')),
+          matching: find.byKey(const ValueKey('usage-progress-fill')),
+        ),
+      )
+      .toList();
+  expect(fills, isNotEmpty);
+  expect((fills.first.decoration! as BoxDecoration).color, Colors.white);
+  for (final fill in fills) {
+    expect((fill.decoration! as BoxDecoration).color!.a, 1);
+  }
 }
 
 String _todayKey() {

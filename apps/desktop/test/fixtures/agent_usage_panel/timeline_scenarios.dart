@@ -101,7 +101,7 @@ void registerAgentUsageTimelineScenarios() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('agent-usage-token-share')),
-        matching: find.text('GPT 5.4'),
+        matching: find.text('GPT-5.4'),
       ),
       findsOneWidget,
     );
@@ -192,7 +192,7 @@ void registerAgentUsageTimelineScenarios() {
       final modelTooltip = find.byKey(const ValueKey('usage-wave-tooltip'));
       expect(modelTooltip, findsOneWidget);
       expect(
-        find.descendant(of: modelTooltip, matching: find.text('GPT 5.5')),
+        find.descendant(of: modelTooltip, matching: find.text('GPT-5.5')),
         findsOneWidget,
       );
       expect(

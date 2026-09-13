@@ -1,12 +1,18 @@
+import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/contracts/conversation_execution_port.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class AgentConversationGatewayAdapter
-    implements AgentConversationGateway, PersistentAgentConversationGateway {
+    implements
+        AgentConversationGateway,
+        PersistentAgentConversationGateway,
+        ConversationExecutionSource {
   const AgentConversationGatewayAdapter({
     required this.service,
     required this.runner,
@@ -16,13 +22,18 @@ final class AgentConversationGatewayAdapter
   final AgentCommandRunner runner;
 
   @override
+  Stream<ConversationExecutionEvent> watchExecution(
+    ConversationExecutionReference reference, {
+    int afterCursor = 0,
+  }) => service.watchExecution(reference, afterCursor: afterCursor);
+
+  @override
   Future<List<Map<String, dynamic>>> activeTurns({
     required String agentId,
     String sessionId = '',
     String conversationId = '',
     Duration waitForChange = Duration.zero,
   }) => service.activeTurns(
-    runner: runner,
     agentId: agentId,
     sessionId: sessionId,
     conversationId: conversationId,
@@ -41,13 +52,14 @@ final class AgentConversationGatewayAdapter
     int afterCursor = 0,
   }) async* {
     try {
-      yield* service.attachActiveTurn(
-        runner: runner,
+      await for (final event in service.attachActiveTurn(
         turnHandle: turnHandle,
         conversationId: conversationId,
         afterCursor: afterCursor,
-      );
-    } on LicoClientRpcException catch (error) {
+      )) {
+        yield event;
+      }
+    } on NativeConversationException catch (error) {
       throw AgentDispatchStreamException(error.code);
     }
   }
@@ -58,7 +70,6 @@ final class AgentConversationGatewayAdapter
     required String conversationId,
     required String text,
   }) => service.steerActiveTurn(
-    runner: runner,
     turnHandle: turnHandle,
     conversationId: conversationId,
     text: text,
@@ -69,7 +80,6 @@ final class AgentConversationGatewayAdapter
     required String turnHandle,
     required String conversationId,
   }) => service.cancelActiveTurn(
-    runner: runner,
     turnHandle: turnHandle,
     conversationId: conversationId,
   );
@@ -131,12 +141,8 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     String sessionId = '',
     AgentDispatchBind bind = const AgentDispatchBind(),
-  }) => service.openOrResume(
-    runner: runner,
-    agentId: agentId,
-    sessionId: sessionId,
-    bind: bind,
-  );
+  }) =>
+      service.openOrResume(agentId: agentId, sessionId: sessionId, bind: bind);
   @override
   Future<AgentDispatchTurnResult> send({
     required String agentId,
@@ -145,7 +151,6 @@ final class AgentConversationGatewayAdapter
     List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.send(
-    runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
@@ -162,7 +167,6 @@ final class AgentConversationGatewayAdapter
   }) async* {
     try {
       await for (final event in service.sendStreaming(
-        runner: runner,
         agentId: agentId,
         text: text,
         sessionId: sessionId,
@@ -171,7 +175,7 @@ final class AgentConversationGatewayAdapter
       )) {
         yield event;
       }
-    } on LicoClientRpcException catch (error) {
+    } on NativeConversationException catch (error) {
       throw AgentDispatchStreamException(error.code);
     }
   }
@@ -184,7 +188,6 @@ final class AgentConversationGatewayAdapter
     required String turnId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.steer(
-    runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
@@ -196,12 +199,7 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String sessionId,
     String turnId = '',
-  }) => service.cancel(
-    runner: runner,
-    agentId: agentId,
-    sessionId: sessionId,
-    turnId: turnId,
-  );
+  }) => service.cancel(agentId: agentId, sessionId: sessionId, turnId: turnId);
   @override
   Future<Map<String, dynamic>> previewArchiveJob({
     required String selectionMode,

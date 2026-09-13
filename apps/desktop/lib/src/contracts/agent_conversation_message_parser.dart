@@ -1,4 +1,6 @@
+import 'conversation_execution.dart';
 import 'agent_conversation_message.dart';
+import 'agent_conversation_message_page.dart';
 import 'agent_conversation_privacy_projection.dart';
 
 final class _PendingConversationMessage {
@@ -159,6 +161,9 @@ AgentConversationMessage _buildAgentConversationMessage(
       providerSummary: providerSummary,
     ),
     createdAt: createdAt,
+    executionReference: ConversationExecutionReference.fromJson(
+      json['executionReference'],
+    ),
     layer: layer,
     cardType: rawCardType.trim().isEmpty
         ? (isInternalConversationRole(role)
@@ -187,7 +192,20 @@ AgentConversationMessage _buildAgentConversationMessage(
     participantRole: sanitizeStructuredLabel(
       (json['participantRole'] ?? '').toString(),
     ),
-    childMessagesTruncated: false,
+    childMessagesTruncated: json['childMessagesTruncated'] == true,
+    childSessionId: (json['childSessionId'] ?? '').toString().trim(),
+    childMessageCount: (json['childMessageCount'] as num?)?.toInt() ?? 0,
+    childSourceRevision: (json['childSourceRevision'] ?? '').toString(),
+    childMessagePage: json['childMessagePage'] == null
+        ? null
+        : AgentConversationMessagePage.fromJson(
+            json['childMessagePage'],
+            messageCount: childMessages.length,
+            sourceMessageCount:
+                (json['childMessageCount'] as num?)?.toInt() ??
+                childMessages.length,
+            firstMessageId: childMessages.isEmpty ? '' : childMessages.first.id,
+          ),
     childMessages: List<AgentConversationMessage>.unmodifiable(childMessages),
     images: parseAgentConversationImageAttachments(json['images']),
     deliveryState: (json['deliveryState'] ?? '').toString() == 'failed'

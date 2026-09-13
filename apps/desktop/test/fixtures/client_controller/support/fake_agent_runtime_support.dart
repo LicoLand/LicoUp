@@ -1,3 +1,6 @@
+import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
+import '../../../support/fake_conversation_transport.dart';
 import 'client_controller_scenario_dependencies.dart';
 import 'fake_agent_conversation_fixture.dart';
 import 'fake_agent_conversation_support.dart';
@@ -23,6 +26,15 @@ mixin FakeAgentRuntimeSupport
   bool runtimeSteerThrows = false;
   Map<String, dynamic> runtimeSteerResult = const {'ok': true};
   Map<String, dynamic> runtimeCancelResult = const {'ok': true};
+  late final ConversationNativePort _fakeConversationNative =
+      FakeConversationTransport(
+        command: handleFakeConversationCommand,
+        events: streamFakeConversation,
+      ).native;
+
+  @override
+  ConversationNativePort get conversationNativePort => _fakeConversationNative;
+
   @override
   Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
     List<String> args,
@@ -47,18 +59,25 @@ mixin FakeAgentRuntimeSupport
       yield {'event': 'done', 'ok': true};
       return;
     }
+    throw StateError('unsupported stateless stream');
+  }
+
+  Stream<Map<String, dynamic>> streamFakeConversation(
+    ConversationProtocolMethod method,
+    Map<String, dynamic> request,
+  ) async* {
     if (runtimeMessageRpcErrorCode.isNotEmpty) {
       throw LicoClientRpcException(runtimeMessageRpcErrorCode);
     }
-    final submittedText = _fakeSubmittedText(stdinText);
+    final submittedText = (request['text'] ?? '').toString();
     final messageGate = runtimeMessageGate;
     late final Map<String, dynamic> result;
     if (messageGate != null &&
         !messageGate.isCompleted &&
-        args.take(3).join(' ') == 'agent conversation send') {
+        method == ConversationProtocolMethod.agentConversationSend) {
       runtimeMessageGate = null;
       try {
-        result = await runCliWithStdin(args, stdinText);
+        result = await handleFakeConversationCommand(method, request);
       } finally {
         runtimeMessageGate = messageGate;
       }
@@ -72,7 +91,7 @@ mixin FakeAgentRuntimeSupport
       };
       await messageGate.future;
     } else {
-      result = await runCliWithStdin(args, stdinText);
+      result = await handleFakeConversationCommand(method, request);
     }
     final streamEvents = runtimeMessageStreamEventQueue.isEmpty
         ? const <Map<String, dynamic>>[]
@@ -131,19 +150,6 @@ mixin FakeAgentRuntimeSupport
     };
   }
 
-  String _fakeSubmittedText(String stdinText) {
-    try {
-      final decoded = jsonDecode(stdinText);
-      if (decoded is Map<String, dynamic>) {
-        return (decoded['text'] ?? '').toString();
-      }
-    } on Object {
-      // Malformed fixture input yields an empty projection; the client drops
-      // an empty delta exactly as the real native host does.
-    }
-    return '';
-  }
-
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
     List<String> args,
@@ -162,30 +168,29 @@ mixin FakeAgentRuntimeSupport
         'sessions': fakeConversationSessionRequestPage(decoded),
       };
     }
-    if (args.length >= 3 &&
-        args[0] == 'agent' &&
-        args[1] == 'conversation' &&
-        args[2] == 'open') {
-      final decoded = jsonDecode(stdinText);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('runtime open stdin must be a JSON object');
-      }
+    throw StateError('unsupported stateless command');
+  }
+
+  Future<Map<String, dynamic>> handleFakeConversationCommand(
+    ConversationProtocolMethod method,
+    Map<String, dynamic> decoded,
+  ) async {
+    if (method == ConversationProtocolMethod.clientConversationExecute) {
+      return {'ok': true, 'result': []};
+    }
+    if (method == ConversationProtocolMethod.agentConversationActive) {
+      return {'ok': true, 'turns': []};
+    }
+    if (method == ConversationProtocolMethod.agentConversationOpen) {
       final sessionId = (decoded['sessionId'] ?? '').toString();
       return {
         'ok': true,
         if (sessionId.isNotEmpty) 'nativeSessionId': sessionId,
       };
     }
-    if (args.length >= 3 &&
-        args[0] == 'agent' &&
-        args[1] == 'conversation' &&
-        args[2] == 'steer') {
+    if (method == ConversationProtocolMethod.agentConversationSteer) {
       if (runtimeSteerThrows) {
         throw Exception('synthetic steer outcome unknown');
-      }
-      final decoded = jsonDecode(stdinText);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('runtime steer stdin must be a JSON object');
       }
       runtimeSteerCalls++;
       lastRuntimeSteerRequest = Map<String, dynamic>.from(decoded);
@@ -194,29 +199,12 @@ mixin FakeAgentRuntimeSupport
         ...runtimeSteerResult,
       };
     }
-    if (args.length >= 3 &&
-        args[0] == 'agent' &&
-        args[1] == 'conversation' &&
-        args[2] == 'cancel') {
-      final decoded = jsonDecode(stdinText);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('runtime cancel stdin must be a JSON object');
-      }
+    if (method == ConversationProtocolMethod.agentConversationCancel) {
       runtimeCancelCalls++;
       lastRuntimeCancelRequest = Map<String, dynamic>.from(decoded);
       return runtimeCancelResult;
     }
-    expect(args.take(5).toList(), [
-      'agent',
-      'conversation',
-      'send',
-      '--stdin-json',
-      'true',
-    ]);
-    final decoded = jsonDecode(stdinText);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('runtime message stdin must be a JSON object');
-    }
+    expect(method, ConversationProtocolMethod.agentConversationSend);
     runtimeMessageCalls++;
     lastRuntimeMessageRequest = Map<String, dynamic>.from(decoded);
     runtimeMessageRequests = [

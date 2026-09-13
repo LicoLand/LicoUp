@@ -96,6 +96,32 @@ fn exact_read(home: &Path, agent: &str, session_id: &str) -> Value {
     .unwrap()
 }
 
+fn read_lazy_child_messages(
+    home: &Path,
+    agent: &str,
+    card: &Value,
+    expected_id: &str,
+    expected_count: usize,
+) -> Vec<Value> {
+    assert_eq!(card["childSessionId"], expected_id);
+    assert!(card["messages"].as_array().unwrap().is_empty());
+    assert_eq!(card["childMessageCount"], expected_count);
+    let revision = card["childSourceRevision"].as_str().unwrap();
+    assert!(!revision.is_empty());
+
+    let exact = exact_read(home, agent, card["childSessionId"].as_str().unwrap());
+    assert_eq!(session_ids(&exact), vec![expected_id.to_string()]);
+    let child = &exact["sessions"][0];
+    assert_eq!(child["sourceMessageCount"], expected_count);
+    assert_eq!(child["sourceRevision"], revision);
+    let messages = child["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), expected_count);
+    assert_eq!(child["messagePage"]["total"], expected_count);
+    assert_eq!(child["messagePage"]["returned"], messages.len());
+    assert_eq!(child["messagePage"]["hasEarlier"], false);
+    messages.clone()
+}
+
 fn session_ids(listed: &Value) -> Vec<String> {
     listed["sessions"]
         .as_array()
@@ -653,12 +679,14 @@ fn lineage_outside_the_transcript_folds_delegated_work_into_the_parent() {
         cards[0]["cardSubtitle"], "general-purpose",
         "the declared agent role comes from the store record, not the transcript"
     );
-    let card_messages = cards[0]["messages"].as_array().unwrap();
-    assert!(
-        card_messages
+    let child_messages = read_lazy_child_messages(&home, "codex", cards[0], child_id, 2);
+    assert_eq!(
+        child_messages
             .iter()
-            .any(|message| message["text"] == "Survey complete"),
-        "the delegated trace stays inside its conversation"
+            .map(|message| message["text"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["Survey the adapter modules", "Survey complete"],
+        "expanding the delegated task reads its complete trace"
     );
 }
 
@@ -852,12 +880,17 @@ fn a_delegate_claiming_the_parent_identity_is_identified_as_the_child() {
         cards[0]["cardTitle"],
         "Map the scan pipeline for the sales dashboard"
     );
-    let card_messages = cards[0]["messages"].as_array().unwrap();
-    assert!(
-        card_messages
+    let child_messages = read_lazy_child_messages(&home, "cursor", cards[0], task_id, 2);
+    assert_eq!(
+        child_messages
             .iter()
-            .any(|message| message["text"] == "Pipeline mapping complete"),
-        "the delegated trace lives inside the card"
+            .map(|message| message["text"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "Map the scan pipeline for the sales dashboard",
+            "Pipeline mapping complete"
+        ],
+        "the card opens the child's identity and complete trace"
     );
     let thread_messages = text_messages(row);
     assert!(
@@ -1059,12 +1092,15 @@ fn folding_never_changes_the_parent_own_message_count() {
     assert_eq!(thread[1]["text"], "Release deployed");
     let cards = subagent_cards(row);
     assert_eq!(cards.len(), 1);
-    let card_messages = cards[0]["messages"].as_array().unwrap();
-    assert!(
-        card_messages
+    let child_messages =
+        read_lazy_child_messages(&home, "claude-code", cards[0], "agent-a7975e289d9a63743", 2);
+    assert_eq!(
+        child_messages
             .iter()
-            .any(|message| message["text"] == "Index the documentation"),
-        "the child's messages stay inside the card"
+            .map(|message| message["text"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["Index the documentation", "Documentation indexed"],
+        "expanding the card reads the child without changing the parent's thread"
     );
     assert!(
         thread
@@ -1081,9 +1117,8 @@ fn folding_never_changes_the_parent_own_message_count() {
 #[test]
 fn a_delegated_task_whose_whole_trace_is_tool_work_still_appears() {
     // An explore/verify subagent often produces nothing but tool steps.
-    // Filtering child messages down to prose leaves an empty card, and an
-    // empty card that is then discarded removes the task from the
-    // conversation entirely. The tool-only task must survive as a card.
+    // The lazy card must survive without embedded prose, and its exact child
+    // read must retain the recorded tool invocation and result.
     let home = temp_root("pure-tool-delegate-valid");
     let session_id = "cd2442dd-a04c-4503-8ce3-1d114047ce63";
     let project = claude_project(&home);
@@ -1116,11 +1151,11 @@ fn a_delegated_task_whose_whole_trace_is_tool_work_still_appears() {
         cards[0]["subagentToolCallCount"], 2,
         "the card reports the tool steps it recorded"
     );
-    let card_messages = cards[0]["messages"].as_array().unwrap();
-    assert!(
-        !card_messages.is_empty(),
-        "the tool steps stay visible inside the card"
-    );
+    let child_messages =
+        read_lazy_child_messages(&home, "claude-code", cards[0], "agent-tool-task", 2);
+    assert_eq!(child_messages[0]["role"], "tool_call");
+    assert_eq!(child_messages[1]["role"], "tool_result");
+    assert_eq!(child_messages[1]["text"], "tool output");
 }
 
 // ---------------------------------------------------------------------------

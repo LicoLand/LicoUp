@@ -11,7 +11,7 @@ pub const CONVERSATION_PROTOCOL_MAX_CLIENT_ARGS: usize = 256;
 pub const CONVERSATION_PROTOCOL_MAX_ERROR_CODE_BYTES: usize = 64;
 pub const CONVERSATION_PROTOCOL_MAX_STDERR_BYTES: usize = 524288;
 
-pub const CONVERSATION_PROTOCOL_METHODS: [&str; 29] = [
+pub const CONVERSATION_PROTOCOL_METHODS: [&str; 31] = [
     "execute",
     "shutdown",
     "catalog.status",
@@ -34,6 +34,8 @@ pub const CONVERSATION_PROTOCOL_METHODS: [&str; 29] = [
     "agent.conversation.dispatch",
     "agent.conversation.send",
     "agent.conversation.attach",
+    "agent.conversation.execution",
+    "agent.conversation.execution.detach",
     "agent.conversation.stream",
     "client.conversation.execute",
     "strategy.execute",
@@ -67,6 +69,8 @@ pub enum ConversationProtocolMethod {
     AgentConversationDispatch,
     AgentConversationSend,
     AgentConversationAttach,
+    AgentConversationExecution,
+    AgentConversationExecutionDetach,
     AgentConversationStream,
     ClientConversationExecute,
     StrategyExecute,
@@ -101,6 +105,8 @@ impl ConversationProtocolMethod {
             Self::AgentConversationDispatch => "agent.conversation.dispatch",
             Self::AgentConversationSend => "agent.conversation.send",
             Self::AgentConversationAttach => "agent.conversation.attach",
+            Self::AgentConversationExecution => "agent.conversation.execution",
+            Self::AgentConversationExecutionDetach => "agent.conversation.execution.detach",
             Self::AgentConversationStream => "agent.conversation.stream",
             Self::ClientConversationExecute => "client.conversation.execute",
             Self::StrategyExecute => "strategy.execute",
@@ -135,6 +141,8 @@ impl ConversationProtocolMethod {
             "agent.conversation.dispatch" => Some(Self::AgentConversationDispatch),
             "agent.conversation.send" => Some(Self::AgentConversationSend),
             "agent.conversation.attach" => Some(Self::AgentConversationAttach),
+            "agent.conversation.execution" => Some(Self::AgentConversationExecution),
+            "agent.conversation.execution.detach" => Some(Self::AgentConversationExecutionDetach),
             "agent.conversation.stream" => Some(Self::AgentConversationStream),
             "client.conversation.execute" => Some(Self::ClientConversationExecute),
             "strategy.execute" => Some(Self::StrategyExecute),

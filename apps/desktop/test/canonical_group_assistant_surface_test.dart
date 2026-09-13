@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
@@ -25,6 +26,94 @@ import 'support/canonical_group/canonical_group_binding_fixture.dart';
 
 void main() {
   testWidgets(
+    'canonical dispatch projects a stable waiting reply before first text',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 760);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final runner = _AssistantSurfaceRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:first',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final gateway = _PersistentGateway(acceptOnly: true);
+      addTearDown(gateway.dispose);
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+            reduceMotion: false,
+            persistentGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byType(TextField),
+        'Explain this synthetic example',
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(gateway.attachedHandles, ['dispatch:first']);
+      expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+      final before = tester
+          .widget<AgentConversationActivePane>(
+            find.byType(AgentConversationActivePane),
+          )
+          .state
+          .liveMessages
+          .singleWhere((message) => message.waitingForReply);
+      expect(before.executionReference?.conversationId, 'conversation:group');
+      expect(before.executionReference?.membershipId, 'membership:codex');
+      expect(before.executionReference?.turnHandle, 'dispatch:first');
+      gateway.emitReply('First text from the actual Membership observer');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.byType(SteelBallWaitingIndicator), findsNothing);
+      expect(
+        find.textContaining('actual Membership observer', findRichText: true),
+        findsOneWidget,
+      );
+      final after = tester
+          .widget<AgentConversationActivePane>(
+            find.byType(AgentConversationActivePane),
+          )
+          .state
+          .liveMessages
+          .singleWhere(
+            (message) => message.kind == AgentConversationMessageKind.assistant,
+          );
+      expect(after.id, before.id);
+      expect(after.executionReference, before.executionReference);
+      expect(
+        find.byKey(const Key('conversation-execution-menu')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
     'capsule shows the composed assistant identity and the popover still opens',
     (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -33,7 +122,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -100,7 +189,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -157,7 +246,7 @@ void main() {
     final unconfiguredRunner = _AssistantSurfaceRunner()
       ..assistantMembershipId = '';
     final unconfiguredController = ClientConversationController(
-      runner: unconfiguredRunner,
+      native: unconfiguredRunner,
     );
     addTearDown(unconfiguredController.dispose);
     await unconfiguredController.initialize();
@@ -188,7 +277,7 @@ void main() {
 
     // Paused: configured assistant, toggle tapped off.
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -237,7 +326,7 @@ void main() {
         },
       ]
       ..dispatchPending = true;
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -306,7 +395,7 @@ void main() {
         ..dispatchPending = true;
       final persistent = _PersistentGateway();
       addTearDown(persistent.dispose);
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -376,7 +465,7 @@ void main() {
       ],
     );
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -418,7 +507,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -466,118 +555,130 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets(
-    'plus menu floats exactly above the button, expands on hover, and dismisses outside',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
+  for (final reduceMotion in [true, false]) {
+    testWidgets(
+      'plus menu floats exactly above the button, expands on hover, and dismisses outside (reduceMotion=$reduceMotion)',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(900, 640);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
 
-      final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
+        final runner = _AssistantSurfaceRunner();
+        final controller = ClientConversationController(native: runner);
+        addTearDown(controller.dispose);
+        await controller.initialize();
+        await controller.selectConversation('conversation:group');
 
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPaneFixture(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
+        await tester.pumpWidget(
+          _groupApp(
+            CanonicalGroupConversationPaneFixture(
+              controller: controller,
+              targets: [_target('codex', 'Codex')],
+              onCopyText: (_) async {},
+              framed: false,
+              reduceMotion: reduceMotion,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
-      final button = find.byKey(const Key('canonical-group-assistant-actions'));
-      final field = find.byKey(const Key('agent-conversation-composer-field'));
-      expect(button, findsOneWidget);
-      final buttonRect = tester.getRect(button);
-      final fieldRect = tester.getRect(field);
-      expect(
-        find.byKey(const Key('canonical-group-assistant-actions-menu')),
-        findsNothing,
-      );
+        final button = find.byKey(
+          const Key('canonical-group-assistant-actions'),
+        );
+        final field = find.byKey(
+          const Key('agent-conversation-composer-field'),
+        );
+        expect(button, findsOneWidget);
+        final buttonRect = tester.getRect(button);
+        final fieldRect = tester.getRect(field);
+        expect(
+          find.byKey(const Key('canonical-group-assistant-actions-menu')),
+          findsNothing,
+        );
 
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        addTearDown(mouse.removePointer);
+        await mouse.addPointer(location: Offset.zero);
 
-      await tester.tap(
-        find.byKey(const Key('canonical-group-assistant-actions-trigger')),
-      );
-      await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
-      final menu = find.byKey(
-        const Key('canonical-group-assistant-actions-menu'),
-      );
-      expect(menu, findsOneWidget);
-      // Detached overlay: the composer's laid-out geometry is untouched.
-      expect(tester.getRect(field), fieldRect);
-      expect(tester.getRect(button), buttonRect);
-      // Exactly above the button: bottom edge at button top minus the gap,
-      // left edges aligned.
-      final menuRect = tester.getRect(menu);
-      expect(menuRect.bottom, closeTo(buttonRect.top - 8, 0.5));
-      expect(menuRect.left, closeTo(buttonRect.left, 0.5));
+        final menu = find.byKey(
+          const Key('canonical-group-assistant-actions-menu'),
+        );
+        expect(menu, findsOneWidget);
+        // Detached overlay: the composer's laid-out geometry is untouched.
+        expect(tester.getRect(field), fieldRect);
+        expect(tester.getRect(button), buttonRect);
+        // Exactly above the button: bottom edge at button top minus the gap,
+        // left edges aligned.
+        final menuRect = tester.getRect(menu);
+        expect(menuRect.bottom, closeTo(buttonRect.top - 8, 0.5));
+        expect(menuRect.left, closeTo(buttonRect.left, 0.5));
 
-      final attachments = find.byKey(
-        const Key('canonical-group-action-attachments'),
-      );
-      final newConversation = find.byKey(
-        const Key('canonical-group-action-new-conversation'),
-      );
-      final clearHistory = find.byKey(
-        const Key('canonical-group-action-clear-history'),
-      );
-      expect(attachments, findsOneWidget);
-      expect(newConversation, findsOneWidget);
-      expect(clearHistory, findsOneWidget);
-      expect(
-        find.byKey(const Key('canonical-group-action-discard-images')),
-        findsNothing,
-      );
-      // Attachments is nearest the button; reset history above it;
-      // new conversation is furthest from the button.
-      expect(
-        tester.getRect(attachments).bottom,
-        greaterThan(tester.getRect(clearHistory).bottom),
-      );
-      expect(
-        tester.getRect(clearHistory).bottom,
-        greaterThan(tester.getRect(newConversation).bottom),
-      );
-      expect(find.text('Attachments'), findsNothing);
+        final attachments = find.byKey(
+          const Key('canonical-group-action-attachments'),
+        );
+        final newConversation = find.byKey(
+          const Key('canonical-group-action-new-conversation'),
+        );
+        final clearHistory = find.byKey(
+          const Key('canonical-group-action-clear-history'),
+        );
+        expect(attachments, findsOneWidget);
+        expect(newConversation, findsOneWidget);
+        expect(clearHistory, findsOneWidget);
+        expect(
+          find.byKey(const Key('canonical-group-action-discard-images')),
+          findsNothing,
+        );
+        // Attachments is nearest the button; reset history above it;
+        // new conversation is furthest from the button.
+        expect(
+          tester.getRect(attachments).bottom,
+          greaterThan(tester.getRect(clearHistory).bottom),
+        );
+        expect(
+          tester.getRect(clearHistory).bottom,
+          greaterThan(tester.getRect(newConversation).bottom),
+        );
+        expect(find.text('Attachments'), findsNothing);
 
-      final collapsedWidth = tester.getSize(attachments).width;
-      expect(collapsedWidth, closeTo(40, 0.5));
-      final collapsedLeft = tester.getRect(attachments).left;
+        final collapsedWidth = tester.getSize(attachments).width;
+        expect(collapsedWidth, closeTo(40, 0.5));
+        final collapsedLeft = tester.getRect(attachments).left;
 
-      await mouse.moveTo(tester.getCenter(attachments));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 220));
+        await mouse.moveTo(tester.getCenter(attachments));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 220));
 
-      expect(find.text('Attachments'), findsOneWidget);
-      final expandedRect = tester.getRect(attachments);
-      expect(expandedRect.width, greaterThan(collapsedWidth + 20));
-      // The icon slot stays pinned left: the circle expands rightward only.
-      expect(expandedRect.left, closeTo(collapsedLeft, 0.5));
+        expect(find.text('Attachments'), findsOneWidget);
+        final expandedRect = tester.getRect(attachments);
+        expect(expandedRect.width, greaterThan(collapsedWidth + 20));
+        // The icon slot stays pinned left: the circle expands rightward only.
+        expect(expandedRect.left, closeTo(collapsedLeft, 0.5));
 
-      await mouse.moveTo(Offset.zero);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 220));
-      expect(find.text('Attachments'), findsNothing);
+        await mouse.moveTo(Offset.zero);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 220));
+        expect(find.text('Attachments'), findsNothing);
 
-      await tester.tapAt(const Offset(600, 200));
-      await tester.pumpAndSettle();
-      expect(menu, findsNothing);
-      expect(tester.getRect(field), fieldRect);
-      controller.dispose();
-    },
-  );
+        await tester.tapAt(const Offset(600, 200));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(menu, findsNothing);
+        expect(tester.getRect(field), fieldRect);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        controller.dispose();
+      },
+    );
+  }
 
   testWidgets('new-conversation action rotates the assistant thread in place', (
     tester,
@@ -588,7 +689,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -704,7 +805,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -775,7 +876,7 @@ void main() {
 
       final runner = _AssistantSurfaceRunner();
       final originalAgentId = runner.assistantAgentId;
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -851,7 +952,7 @@ void main() {
       ..dispatchPending = true;
     final persistent = _PersistentGateway();
     addTearDown(persistent.dispose);
-    final controller = ClientConversationController(runner: runner);
+    final controller = ClientConversationController(native: runner);
     addTearDown(controller.dispose);
     await controller.initialize();
     await controller.selectConversation('conversation:group');
@@ -908,7 +1009,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -1005,7 +1106,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(runner: runner);
+      final controller = ClientConversationController(native: runner);
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.selectConversation('conversation:group');
@@ -1170,7 +1271,7 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
 /// the membership left (and clears the assistant designation), add re-joins
 /// the same principal under a fresh Membership id with a default Profile, and
 /// assistant.set enforces the current conversation revision.
-final class _AssistantSurfaceRunner implements AgentCommandRunner {
+final class _AssistantSurfaceRunner implements ClientConversationNativePort {
   final List<Map<String, dynamic>> requests = [];
   int revision = 2;
   String assistantMembershipId = 'membership:codex';
@@ -1271,11 +1372,10 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
       _memberships.where((membership) => membership['status'] == 'active');
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = (request['action'] ?? '').toString();
     switch (action) {
@@ -1448,20 +1548,6 @@ final class _AssistantSurfaceRunner implements AgentCommandRunner {
       },
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _membership({
@@ -1493,12 +1579,29 @@ final class _PersistentGateway implements PersistentAgentConversationGateway {
   _PersistentGateway({
     List<Map<String, dynamic>> active = const [],
     this.waiting = false,
+    this.acceptOnly = false,
   }) : _active = List<Map<String, dynamic>>.unmodifiable(active) {
     _chunks = StreamController<AgentDispatchEvent>.broadcast();
   }
 
   final List<Map<String, dynamic>> _active;
   final bool waiting;
+  final bool acceptOnly;
+  void emitReply(String text) => _chunks.add(
+    AgentDispatchEvent(
+      kind: 'agent.message.chunk',
+      payload: {
+        'text': text,
+        'cursor': 2,
+        'lifecyclePrefix': [
+          'submitted',
+          'accepted',
+          'processing',
+          'responding',
+        ],
+      },
+    ),
+  );
   final List<String> attachedHandles = [];
   late final StreamController<AgentDispatchEvent> _chunks;
 
@@ -1527,7 +1630,15 @@ final class _PersistentGateway implements PersistentAgentConversationGateway {
     scheduleMicrotask(() {
       if (_chunks.isClosed) return;
       _chunks.add(
-        waiting
+        acceptOnly
+            ? const AgentDispatchEvent(
+                kind: 'agent.turn.accepted',
+                payload: {
+                  'lifecyclePrefix': ['submitted', 'accepted'],
+                  'cursor': 1,
+                },
+              )
+            : waiting
             ? const AgentDispatchEvent(
                 kind: 'agent.turn.processing',
                 payload: {

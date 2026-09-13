@@ -99,6 +99,8 @@ pub(crate) fn parse_stdio_rpc_request(
         | ConversationProtocolMethod::AgentConversationCapabilities
         | ConversationProtocolMethod::AgentConversationStream
         | ConversationProtocolMethod::AgentConversationActive
+        | ConversationProtocolMethod::AgentConversationExecution
+        | ConversationProtocolMethod::AgentConversationExecutionDetach
         | ConversationProtocolMethod::AgentConversationAttach => StdioRpcMethod::Conversation {
             operation: command
                 .method

@@ -5,6 +5,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::constants::CACHE_DATABASE_PREFIX;
 
+pub(super) fn install_v12_fixture_schema(connection: &rusqlite::Connection) {
+    connection
+        .execute_batch(
+            "ALTER TABLE usage_files DROP COLUMN current_effort;
+         ALTER TABLE usage_files DROP COLUMN current_fast;
+         ALTER TABLE usage_files DROP COLUMN pending_context;
+         ALTER TABLE usage_rows DROP COLUMN effort;
+         ALTER TABLE usage_rows DROP COLUMN fast;
+         ALTER TABLE usage_daily_models RENAME TO variant_models;
+         CREATE TABLE usage_daily_models (
+           root_key TEXT NOT NULL,day TEXT NOT NULL,model TEXT NOT NULL,
+           prompt_tokens INTEGER NOT NULL,cached_input_tokens INTEGER NOT NULL,
+           completion_tokens INTEGER NOT NULL,total_tokens INTEGER NOT NULL,
+           PRIMARY KEY(root_key,day,model)
+         );
+         INSERT INTO usage_daily_models
+           SELECT root_key,day,model,SUM(prompt_tokens),SUM(cached_input_tokens),
+                  SUM(completion_tokens),SUM(total_tokens)
+           FROM variant_models GROUP BY root_key,day,model;
+         DROP TABLE variant_models;
+         PRAGMA user_version=12;",
+        )
+        .unwrap();
+}
+
 pub(super) fn temp_dir(name: &str) -> PathBuf {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

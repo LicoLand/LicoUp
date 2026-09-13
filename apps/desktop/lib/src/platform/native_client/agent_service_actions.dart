@@ -31,7 +31,6 @@ class NativeCommandActions {
     'kilo-code',
     'cursor',
     'hermes',
-    'kimi',
     'kimi-code',
     'grok',
     'command-code',
@@ -178,6 +177,15 @@ class NativeCommandActions {
 
   Future<Map<String, dynamic>> stopOpencodeServe() {
     return _commandExecutor.execute(['opencode-serve', 'stop']);
+  }
+
+  Future<Set<String>> targetCatalogIds() async {
+    final output = await _commandExecutor.execute(['targets', 'catalog']);
+    final ids = output['targetIds'];
+    if (output['ok'] != true || ids is! List) {
+      throw StateError('target_catalog_unavailable');
+    }
+    return ids.cast<String>().toSet();
   }
 
   Future<List<TargetCandidate>> scanTargets() async {

@@ -206,5 +206,5 @@ void main() {
   });
 }
 
-Uint8List _frame(Map<String, dynamic> value) =>
-    Uint8List.fromList(utf8.encode(jsonEncode(value)));
+Map<String, dynamic> _frame(Map<String, dynamic> value) =>
+    decodeStdioRpcEnvelope(Uint8List.fromList(utf8.encode(jsonEncode(value))));

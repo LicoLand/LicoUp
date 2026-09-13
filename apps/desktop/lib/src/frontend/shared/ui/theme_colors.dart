@@ -104,7 +104,7 @@ class LicoThemeColors extends ThemeExtension<LicoThemeColors> {
   /// Ink placed on [primary]. At least 4.5:1 against it.
   final Color textOnPrimary;
 
-  /// Soda blue. The interaction color: focus rings, links, cursor, selection.
+  /// Silver. The interaction color: focus rings, links, cursor, selection.
   /// At least 4.5:1 against [surface] so it is safe as text.
   final Color accent;
 

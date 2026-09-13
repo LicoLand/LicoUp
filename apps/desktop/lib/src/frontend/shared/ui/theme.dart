@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_buttons.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -19,6 +21,9 @@ ThemeData buildLicoTheme({
     presets: presets,
     platformBrightness: platformBrightness,
   );
+  final visuals = AppearanceVisuals.fromTokens(
+    resolveAppearancePresetConfig(presetId, presets, platformBrightness).tokens,
+  );
   final base = colors.isDark
       ? ThemeData.dark(useMaterial3: true)
       : ThemeData.light(useMaterial3: true);
@@ -29,11 +34,13 @@ ThemeData buildLicoTheme({
     text: colors.text,
     textSecondary: colors.textSecondary,
     textMuted: colors.textMuted,
+    fontFamily: visuals.fontFamily,
   );
 
   return base.copyWith(
     scaffoldBackgroundColor: colors.background,
     textTheme: textTheme,
+    primaryTextTheme: textTheme,
     // Every ColorScheme role is set explicitly.
     //
     // Using `copyWith` on a Material baseline left twelve roles at Material's
@@ -99,7 +106,7 @@ ThemeData buildLicoTheme({
       shadow: Colors.black,
       scrim: Colors.black,
     ),
-    extensions: [colors],
+    extensions: [colors, visuals],
     iconTheme: IconThemeData(color: colors.textMuted, size: 20),
     dividerTheme: DividerThemeData(color: colors.line, thickness: 1, space: 1),
     // The text selection colors are part of the interaction language: a
@@ -138,13 +145,22 @@ ThemeData buildLicoTheme({
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: AppleControlButtons.glassFilled(colors),
+      style: AppleControlButtons.glassFilled(
+        colors,
+        fontFamily: visuals.fontFamily,
+      ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: AppleControlButtons.glassOutlined(colors),
+      style: AppleControlButtons.glassOutlined(
+        colors,
+        fontFamily: visuals.fontFamily,
+      ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: AppleControlButtons.glassText(colors),
+      style: AppleControlButtons.glassText(
+        colors,
+        fontFamily: visuals.fontFamily,
+      ),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {

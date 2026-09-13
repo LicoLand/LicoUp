@@ -27,8 +27,8 @@ authority.
 - [Continuous Assistant target architecture](architecture/CONTINUOUS-ASSISTANT.md) · [持续 Assistant 目标架构](architecture/CONTINUOUS-ASSISTANT.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
-- [Interface surface baseline](architecture/INTERFACE-SURFACE-BASELINE.md) ·
-  [接口表面基线](architecture/INTERFACE-SURFACE-BASELINE.zh-CN.md)
+- [Native CLI](architecture/NATIVE-CLI.md) · [原生 CLI](architecture/NATIVE-CLI.zh-CN.md)
+- [Global model registry](architecture/MODEL-REGISTRY.md) · [全局模型注册表](architecture/MODEL-REGISTRY.zh-CN.md)
 - [Client update and state migration](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
   [客户端更新与状态迁移](architecture/CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
 - [Canonical Conversation domain](architecture/CONVERSATION-DOMAIN.md) · [统一 Conversation 领域架构](architecture/CONVERSATION-DOMAIN.zh-CN.md)
@@ -54,8 +54,6 @@ authority.
   [Lico Arc 候选通讯站 Adapter](protocols/licoarc-station-adapter.zh-CN.md)
 - [Subagent MCP](protocols/subagent-mcp.md) ·
   [下属智能体 MCP](protocols/subagent-mcp.zh-CN.md)
-- [Conversation MCP and canonical model](protocols/lico-conversation-mcp.md) ·
-  [Conversation MCP 与统一模型](protocols/lico-conversation-mcp.zh-CN.md)
 - [Lico Agent](protocols/lico-agent.md) ·
   [Lico Agent 中文说明](protocols/lico-agent.zh-CN.md)
 - [Gateway runtime](protocols/gateway-runtime.md) ·

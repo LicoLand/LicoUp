@@ -41,6 +41,12 @@ final class CanonicalGroupRosterRevealState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncVisibility();
+  }
+
+  @override
   void didUpdateWidget(covariant CanonicalGroupRosterReveal oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.visible == widget.visible) return;

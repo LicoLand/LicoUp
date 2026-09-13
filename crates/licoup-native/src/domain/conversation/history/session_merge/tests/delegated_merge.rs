@@ -42,20 +42,34 @@ fn nested_delegated_lineage_merges_leaf_to_root_without_flattening_children() {
         vec![json!({"role": "assistant", "text": "Nested result", "createdAt": 1})],
     );
 
-    let merged = merge_delegated_subagent_sessions(vec![main, child, grandchild]);
+    let merged = merge_delegated_subagent_sessions(
+        vec![main.clone(), child.clone(), grandchild.clone()],
+        None,
+    );
     assert_eq!(merged.len(), 1);
     let main_messages = merged[0]["messages"].as_array().unwrap();
     let child_card = main_messages
         .iter()
         .find(|message| message["cardTitle"] == "child")
         .expect("child card");
-    let nested = child_card["messages"]
+    assert_eq!(child_card["childSessionId"], "child");
+    assert_eq!(child_card["childMessageCount"], 2);
+    assert_eq!(child_card["subagentDepth"], 2);
+    assert!(child_card["messages"].as_array().unwrap().is_empty());
+    let child_read =
+        merge_delegated_subagent_sessions(vec![main, child, grandchild], Some("child"));
+    let child = child_read
+        .iter()
+        .find(|session| session["nativeSessionId"] == "child")
+        .unwrap();
+    let nested = child["messages"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|message| message["cardTitle"] == "grandchild")
-        .expect("nested grandchild card");
-    assert_eq!(nested["messages"][0]["text"], "Nested result");
+        .find(|message| message["childSessionId"] == "grandchild")
+        .unwrap();
+    assert_eq!(nested["childMessageCount"], 1);
+    assert!(nested["messages"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -74,9 +88,26 @@ fn running_delegated_task_marks_its_conversation_running() {
     );
     child["running"] = json!(true);
 
-    let merged = merge_delegated_subagent_sessions(vec![main, child]);
+    let merged = merge_delegated_subagent_sessions(vec![main, child], None);
     assert_eq!(merged.len(), 1);
     assert_eq!(merged[0]["running"], true);
+}
+
+#[test]
+fn child_source_revision_is_stable_across_sibling_order_and_repeated_folding() {
+    let mut main = session("main", None, false, vec![]);
+    main["sourceRevision"] = json!("10:100");
+    let mut first = session("a", Some("main"), true, vec![]);
+    first["sourceRevision"] = json!("20:200");
+    let mut second = session("b", Some("main"), true, vec![]);
+    second["sourceRevision"] = json!("30:300");
+    let merged =
+        merge_delegated_subagent_sessions(vec![main.clone(), second.clone(), first.clone()], None);
+    let reordered = merge_delegated_subagent_sessions(vec![main, first.clone(), second], None);
+    assert_eq!(merged[0]["sourceRevision"], "10:100|20:200|30:300");
+    assert_eq!(merged[0]["sourceRevision"], reordered[0]["sourceRevision"]);
+    let repeated = merge_delegated_subagent_sessions(vec![merged[0].clone(), first], None);
+    assert_eq!(merged[0]["sourceRevision"], repeated[0]["sourceRevision"]);
 }
 
 #[test]
@@ -101,7 +132,7 @@ fn card_without_a_timestamp_sits_after_the_conversation_flow_not_past_events() {
         ],
     );
 
-    let merged = merge_delegated_subagent_sessions(vec![main, child]);
+    let merged = merge_delegated_subagent_sessions(vec![main, child], None);
     let main_messages = merged[0]["messages"].as_array().unwrap();
     let card = main_messages
         .iter()
@@ -117,7 +148,7 @@ fn card_without_a_timestamp_sits_after_the_conversation_flow_not_past_events() {
 }
 
 #[test]
-fn delegated_cycles_fail_closed_to_bounded_fallback_and_preview_is_bounded() {
+fn delegated_cycles_preserve_each_identity_without_guessing_a_parent() {
     let main = session(
         "main",
         None,
@@ -136,19 +167,65 @@ fn delegated_cycles_fail_closed_to_bounded_fallback_and_preview_is_bounded() {
         true,
         vec![json!({"role": "assistant", "text": "Right", "createdAt": 2})],
     );
-    let merged = merge_delegated_subagent_sessions(vec![main, left, right]);
-    assert_eq!(merged.len(), 1);
-    assert_eq!(
-        merged[0]["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|message| message["role"] == "subagent")
-            .count(),
-        2
-    );
+    let merged = merge_delegated_subagent_sessions(vec![main, left, right], None);
+    assert_eq!(merged.len(), 3);
+    assert_eq!(merged[0]["messageCount"], 1);
+    assert_eq!(merged[1]["nativeSessionId"], "left");
+    assert_eq!(merged[2]["nativeSessionId"], "right");
 
     let preview = subagent_card_preview_text(&"界".repeat(181));
     assert_eq!(preview.chars().count(), 183);
     assert!(preview.ends_with("..."));
+}
+
+#[test]
+fn missing_parent_preserves_child_instead_of_attaching_to_a_nearby_session() {
+    let main = session(
+        "main",
+        None,
+        false,
+        vec![json!({"role": "user", "text": "Start", "createdAt": 1})],
+    );
+    let child = session(
+        "child",
+        Some("missing"),
+        true,
+        vec![json!({"role": "tool", "text": "Result", "createdAt": 1})],
+    );
+    assert_eq!(
+        merge_delegated_subagent_sessions(vec![child.clone()], None),
+        vec![child.clone()]
+    );
+    assert_eq!(
+        merge_delegated_subagent_sessions(vec![main.clone(), child.clone()], None),
+        vec![main, child]
+    );
+}
+
+#[test]
+fn explicit_siblings_keep_timestamp_order_independent_of_discovery_order() {
+    let main = session(
+        "main",
+        None,
+        false,
+        vec![json!({"role": "user", "text": "Start", "createdAt": "2026-08-01T00:00:00Z"})],
+    );
+    let child = |id, at| {
+        session(
+            id,
+            Some("main"),
+            true,
+            vec![json!({"role": "user", "text": id, "createdAt": at})],
+        )
+    };
+    let merged = merge_delegated_subagent_sessions(
+        vec![
+            main,
+            child("late", "2026-08-01T00:00:02Z"),
+            child("early", "2026-08-01T00:00:01Z"),
+        ],
+        None,
+    );
+    assert_eq!(merged[0]["messages"][1]["cardTitle"], "early");
+    assert_eq!(merged[0]["messages"][2]["cardTitle"], "late");
 }

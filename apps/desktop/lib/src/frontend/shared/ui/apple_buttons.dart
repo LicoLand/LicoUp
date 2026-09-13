@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 
 /// Shared Apple-leaning button styles for remaining page actions.
 abstract final class AppleControlButtons {
-  static ButtonStyle glassFilled(LicoThemeColors colors) {
+  static ButtonStyle glassFilled(
+    LicoThemeColors colors, {
+    String? fontFamily = LicoTypography.sansFamily,
+  }) {
     return ButtonStyle(
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -34,8 +38,10 @@ abstract final class AppleControlButtons {
           width: AppleControlMetrics.hairline,
         );
       }),
-      textStyle: const WidgetStatePropertyAll(
+      textStyle: WidgetStatePropertyAll(
         TextStyle(
+          fontFamily: fontFamily,
+          fontFamilyFallback: LicoTypography.sansFallback,
           fontSize: 13,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.08,
@@ -55,7 +61,10 @@ abstract final class AppleControlButtons {
     );
   }
 
-  static ButtonStyle glassOutlined(LicoThemeColors colors) {
+  static ButtonStyle glassOutlined(
+    LicoThemeColors colors, {
+    String? fontFamily = LicoTypography.sansFamily,
+  }) {
     return ButtonStyle(
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -81,8 +90,10 @@ abstract final class AppleControlButtons {
           width: AppleControlMetrics.hairline,
         );
       }),
-      textStyle: const WidgetStatePropertyAll(
+      textStyle: WidgetStatePropertyAll(
         TextStyle(
+          fontFamily: fontFamily,
+          fontFamilyFallback: LicoTypography.sansFallback,
           fontSize: 13,
           fontWeight: FontWeight.w500,
           letterSpacing: -0.08,
@@ -102,11 +113,16 @@ abstract final class AppleControlButtons {
     );
   }
 
-  static ButtonStyle glassText(LicoThemeColors colors) {
+  static ButtonStyle glassText(
+    LicoThemeColors colors, {
+    String? fontFamily = LicoTypography.sansFamily,
+  }) {
     return TextButton.styleFrom(
       foregroundColor: colors.accent,
       disabledForegroundColor: colors.textDisabled,
-      textStyle: const TextStyle(
+      textStyle: TextStyle(
+        fontFamily: fontFamily,
+        fontFamilyFallback: LicoTypography.sansFallback,
         fontSize: 13,
         fontWeight: FontWeight.w500,
         letterSpacing: -0.08,

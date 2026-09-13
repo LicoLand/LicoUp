@@ -1,6 +1,8 @@
 pub(crate) fn rpc_command_writes_external_stdout(args: &[String]) -> bool {
-    (args.first().map(String::as_str) == Some("conversations")
-        && args.get(1).map(String::as_str) == Some("stream"))
+    (args.first().map(String::as_str) == Some("rpc")
+        && args.get(1).map(String::as_str) == Some("call"))
+        || (args.first().map(String::as_str) == Some("conversations")
+            && args.get(1).map(String::as_str) == Some("stream"))
         || (args.first().map(String::as_str) == Some("gateway")
             && args.get(1).map(String::as_str) == Some("client-token"))
 }

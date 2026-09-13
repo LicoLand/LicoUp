@@ -7,14 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_bubble.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
@@ -43,10 +41,10 @@ void main() {
       expect(second.messages.map((message) => message.text), ['three']);
     });
 
-    test('breaks groups on author change and on process items', () {
+    test('breaks groups on author change and on failures', () {
       final entries = buildMessagingFlowEntries([
         _messageItem('k1', 'user', 'question', _at(10, 0)),
-        _processItem('p1', [_event('e1', _at(10, 1))]),
+        ConversationFailureTimelineItem('f1', _event('e1', _at(10, 1))),
         _messageItem('k2', 'user', 'follow-up', _at(10, 2)),
         _messageItem('k3', 'assistant', 'answer', _at(10, 3)),
       ]);
@@ -54,7 +52,7 @@ void main() {
       expect(entries.map((entry) => entry.runtimeType).toList(), [
         MessagingFlowDayDivider,
         MessagingFlowMessageGroup,
-        MessagingFlowProcess,
+        MessagingFlowFailure,
         MessagingFlowMessageGroup,
         MessagingFlowMessageGroup,
       ]);
@@ -125,15 +123,6 @@ void main() {
         'implementation',
         'review',
       ]);
-    });
-
-    test('marks the active process entry from its storage key', () {
-      final entries = buildMessagingFlowEntries([
-        _processItem('p1', [_event('e1', _at(10, 1))]),
-      ], activeProcessStorageKey: 'p1');
-
-      final process = entries.single as MessagingFlowProcess;
-      expect(process.active, isTrue);
     });
 
     test('inserts day dividers when the local day changes', () {
@@ -580,10 +569,7 @@ void main() {
 
       expect(find.text('ASSISTANT'), findsOneWidget);
       expect(find.text('SUBAGENT'), findsOneWidget);
-      expect(
-        find.byKey(const Key('messaging-assistant-avatar')),
-        findsOneWidget,
-      );
+      expect(find.byType(AgentBrandIcon), findsNWidgets(2));
       expect(find.text('worker-model · High'), findsOneWidget);
 
       // Agent-side bubbles share one edge-lit veil: light on the rim, never
@@ -632,33 +618,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'an active assistant header carries the agent brand mark instead of the sparkles',
-    (tester) async {
-      final chronological = [
-        _participantMessageItem(
-          'assistant',
-          'codex',
-          'Codex',
-          'assistant answer',
-          _at(10, 0),
-          participantRole: 'assistant',
-        ),
-      ];
-      await _pumpFlow(
-        tester,
-        chronological.reversed.toList(),
-        participantTargets: [_flowTarget('codex', 'Codex')],
-        assistantActive: true,
-      );
+  testWidgets('an assistant header keeps its agent brand mark while active', (
+    tester,
+  ) async {
+    final chronological = [
+      _participantMessageItem(
+        'assistant',
+        'codex',
+        'Codex',
+        'assistant answer',
+        _at(10, 0),
+        participantRole: 'assistant',
+      ),
+    ];
+    await _pumpFlow(
+      tester,
+      chronological.reversed.toList(),
+      participantTargets: [_flowTarget('codex', 'Codex')],
+      assistantActive: true,
+    );
 
-      expect(find.byKey(const Key('messaging-assistant-avatar')), findsNothing);
-      expect(
-        find.byKey(const Key('messaging-agent-avatar-well')),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(find.byKey(const Key('messaging-assistant-avatar')), findsNothing);
+    expect(
+      find.byKey(const Key('messaging-agent-avatar-well')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'hover reveals per-message timestamp outside bubble bottom-right',
@@ -1127,118 +1112,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('flow renders process runs as inline status rows', (
-    tester,
-  ) async {
-    final chronological = [
-      _messageItem('k1', 'user', 'run it', _at(10, 0)),
-      _processItem('p1', [
-        _event('e1', _at(10, 1)),
-        _event('e2', _at(10, 1, 12)),
-      ]),
-      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
-    ];
-    await _pumpFlow(tester, chronological.reversed.toList());
-
-    expect(find.byType(MessagingProcessStatusRow), findsOneWidget);
-    expect(find.textContaining('Worked for 12s'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('process status rows span and center in transcript column', (
-    tester,
-  ) async {
-    final chronological = [
-      _messageItem('k1', 'user', 'run it', _at(10, 0)),
-      _processItem('p1', [
-        _lifecycleEvent(
-          'completed',
-          observed: 'submitted,accepted,processing,responding,completed',
-        ),
-        _event('e1', _at(10, 1)),
-        _event('e2', _at(10, 1, 12)),
-      ]),
-      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
-    ];
-    await _pumpFlow(tester, chronological.reversed.toList());
-
-    final processCard = tester.renderObject<RenderBox>(
-      find.byKey(const Key('messaging-process-status-idle')),
-    );
-    final agentBubble = tester.renderObject<RenderBox>(
-      find.ancestor(
-        of: find.text('done', findRichText: true),
-        matching: find.byKey(const Key('messaging-message-bubble')),
-      ),
-    );
-    final agentGroup = tester.renderObject<RenderBox>(
-      find.byKey(const Key('messaging-agent-message-group')),
-    );
-
-    expect(processCard.size.width, closeTo(agentGroup.size.width, 1));
-    expect(processCard.size.width, greaterThan(agentBubble.size.width));
-    final processCenter = processCard
-        .localToGlobal(Offset(processCard.size.width / 2, 0))
-        .dx;
-    final groupCenter = agentGroup
-        .localToGlobal(Offset(agentGroup.size.width / 2, 0))
-        .dx;
-    expect(processCenter, closeTo(groupCenter, 1));
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('runtime log cards span and center in transcript column', (
-    tester,
-  ) async {
-    final chronological = [
-      _messageItem('k1', 'user', 'run it', _at(10, 0)),
-      ConversationLogTimelineItem('log-1', [
-        AgentConversationMessage(
-          id: 'log-event',
-          role: 'event',
-          text: 'synthetic runtime detail',
-          createdAt: _at(10, 1),
-          cardType: 'provider-event',
-        ),
-      ]),
-      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
-    ];
-    await _pumpFlow(tester, chronological.reversed.toList());
-
-    expect(find.byType(ConversationLogEventRow), findsOneWidget);
-    final logCard = tester.renderObject<RenderBox>(
-      find.byKey(const Key('conversation-runtime-log-card')),
-    );
-    final agentGroup = tester.renderObject<RenderBox>(
-      find.byKey(const Key('messaging-agent-message-group')),
-    );
-
-    expect(logCard.size.width, closeTo(agentGroup.size.width, 1));
-    final logCenter = logCard
-        .localToGlobal(Offset(logCard.size.width / 2, 0))
-        .dx;
-    final groupCenter = agentGroup
-        .localToGlobal(Offset(agentGroup.size.width / 2, 0))
-        .dx;
-    expect(logCenter, closeTo(groupCenter, 1));
-    expect(tester.takeException(), isNull);
-  });
-}
-
-AgentConversationMessage _lifecycleEvent(
-  String stage, {
-  required String observed,
-}) {
-  return AgentConversationMessage(
-    id: 'lifecycle',
-    role: 'event',
-    text: stage,
-    createdAt: _at(10, 1, 0),
-    cardType: 'lifecycle',
-    cardTitle: 'lifecycle.$stage',
-    cardSubtitle: observed,
-  );
 }
 
 ConversationMessageTimelineItem _participantMessageItem(
@@ -1289,17 +1162,10 @@ ConversationMessageTimelineItem _messageItem(
 AgentConversationMessage _event(String id, String createdAt) {
   return AgentConversationMessage(
     id: id,
-    role: 'tool',
-    text: 'ran tool',
+    role: 'error',
+    text: 'Synthetic failure',
     createdAt: createdAt,
   );
-}
-
-ConversationProcessTimelineItem _processItem(
-  String key,
-  List<AgentConversationMessage> events,
-) {
-  return ConversationProcessTimelineItem(key, events);
 }
 
 Future<void> _pumpFlow(

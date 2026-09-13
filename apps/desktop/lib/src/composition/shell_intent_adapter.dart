@@ -47,6 +47,7 @@ final class ShellIntentAdapter implements IntentSink<ShellIntent> {
           EnvironmentState(
             environment: environment,
             runtimeSurface: _environment.current.runtimeSurface,
+            systemReduceMotion: _environment.current.systemReduceMotion,
           ),
           trace: intentTrace,
         );

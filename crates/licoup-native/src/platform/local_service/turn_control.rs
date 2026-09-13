@@ -1,6 +1,7 @@
 //! Bounded active-turn registry for native loopback serve APIs.
 
 use super::http;
+use crate::platform::raw_execution::{RawExecutionObserver, RawExecutionScope};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,6 +28,7 @@ struct ActiveTurn {
     abort_url: String,
     generation: u64,
     failure_observer: Option<ControlFailureObserver>,
+    raw_observer: Option<RawExecutionObserver>,
 }
 
 pub(in crate::platform) struct ActiveTurnGuard {
@@ -89,6 +91,7 @@ pub(in crate::platform) fn register(
             abort_url,
             generation,
             failure_observer,
+            raw_observer: RawExecutionObserver::current(),
         },
     );
     Ok(ActiveTurnGuard { key, generation })
@@ -106,7 +109,13 @@ pub(in crate::platform) fn cancel(driver_id: &str, session_id: &str) -> ControlD
     let Some(active_turn) = active_turn else {
         return ControlDisposition::NoActiveTurn;
     };
-    match http::post_json(&active_turn.abort_url, &json!({}), CONTROL_TIMEOUT) {
+    let _raw_scope = RawExecutionScope::enter(active_turn.raw_observer);
+    match http::post_json_observed(
+        &active_turn.abort_url,
+        &json!({}),
+        Some(CONTROL_TIMEOUT),
+        &format!("{driver_id}.http.control"),
+    ) {
         Ok(response) if accepted(&response) => ControlDisposition::Accepted,
         Ok(_) => ControlDisposition::NoActiveTurn,
         Err(failure) => {

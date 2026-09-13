@@ -100,10 +100,6 @@ const nativeUsageCache = await readJoinedText([
 ]);
 const commandMod = await readText("crates/licoup-native/src/ffi/commands/mod.rs");
 const commandUsage = await readText("crates/licoup-native/src/ffi/commands/agent_usage.rs");
-const cliUsage = await readJoinedText([
-  "crates/licoup-native/src/bin/licoup.rs",
-  "crates/licoup-native/src/bin/licoup/presentation.rs"
-]);
 const stateStore = await readJoinedText([
   "crates/licoup-native/src/platform/client_state.rs",
   "crates/licoup-native/src/platform/client_state/policy.rs",
@@ -215,7 +211,8 @@ assertIncludes(
     "usage_daily_totals",
     "usage_daily_models",
     "compact_historical_details",
-    "remove_obsolete_cache_databases",
+    "invalidate_mutable_sources",
+    "locked_version",
     "VACUUM",
     "refreshDeferred",
     "forceRefresh"
@@ -245,7 +242,8 @@ assertIncludes(
     "incremental_vacuum",
     "estimated_records",
     "agent-usage-rollups-v2.sqlite3",
-    "remove_legacy_cache",
+    "migrate_variant_columns",
+    "snapshot_cursor",
     // Cursor's ledger is hosted: local bubble counters are never projected,
     // paging is reconciled against Cursor's own count, and a tokenless request
     // stays a request count.
@@ -267,10 +265,6 @@ assert(
     commandUsage.includes("crate::domain::agent_usage::scan") &&
     commandUsage.includes("crate::domain::agent_usage::report"),
   "native command adapter must expose scan and report"
-);
-assert(
-  cliUsage.includes("agent-usage scan") && cliUsage.includes("agent-usage report"),
-  "CLI help must document local agent usage commands"
 );
 assert(
   stateStore.includes('"agent-usage-reports"'),

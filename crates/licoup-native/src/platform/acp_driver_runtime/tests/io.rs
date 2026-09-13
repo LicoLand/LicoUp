@@ -6,6 +6,54 @@ use std::thread;
 use std::time::Duration;
 
 #[test]
+fn raw_protocol_capture_preserves_unknown_fields_and_malformed_frames() {
+    use crate::platform::raw_execution::{
+        RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+        RawExecutionScope,
+    };
+    use std::sync::{Arc, Mutex};
+
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&records);
+    let observer = RawExecutionObserver::new(move |source, direction, text| {
+        sink.lock()
+            .unwrap()
+            .push((source.to_owned(), direction, text.to_owned()));
+        Ok(())
+    });
+    let _scope = RawExecutionScope::enter(Some(observer));
+    let first = " {\"method\":\"unknown/tool\", \"params\":{\"arguments\":\"完整参数\",\"result\":{\"future\":[1,true]}}} \r\n";
+    let malformed = "{\"unknown\": [ broken JSON";
+    let (sender, receiver) = mpsc::sync_channel(ACP_EVENT_CHANNEL_CAPACITY);
+    let binding = RawExecutionBinding::default();
+    let _binding_scope = binding.bind_current();
+    let reader = RawExecutionReader::new(
+        Cursor::new(format!("{first}{malformed}")),
+        binding,
+        "acp",
+        RawExecutionDirection::Received,
+    );
+    read_protocol_messages(std::io::BufReader::new(reader), None, sender);
+
+    assert_eq!(
+        *records.lock().unwrap(),
+        vec![(
+            "acp".to_owned(),
+            RawExecutionDirection::Received,
+            format!("{first}{malformed}")
+        ),]
+    );
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        super::super::events::TransportEvent::Frame(_)
+    ));
+    assert!(matches!(
+        receiver.recv().unwrap(),
+        super::super::events::TransportEvent::Frame(_)
+    ));
+}
+
+#[test]
 fn stderr_is_drained_to_a_truncation_bit_without_content_projection() {
     let truncated = AtomicBool::new(false);
     drain_stderr(Cursor::new(b"private-stderr-canary"), 4, &truncated);

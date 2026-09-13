@@ -29,6 +29,10 @@ const MAX_TRACKED_TURNS: usize = 64;
 const DEFAULT_TURN_CACHE_BYTES: usize = 16 * 1024 * 1024;
 const REPLAY_PAGE_SIZE: usize = 256;
 
+#[path = "conversation/execution.rs"]
+mod execution;
+pub(super) use execution::spawn_execution;
+
 #[derive(Clone)]
 pub(crate) struct PersistentConversationRuntime {
     inner: Arc<PersistentConversationRuntimeInner>,
@@ -36,6 +40,7 @@ pub(crate) struct PersistentConversationRuntime {
 
 struct PersistentConversationRuntimeInner {
     turns: Mutex<HashMap<String, Arc<PersistentTurn>>>,
+    execution_observers: Mutex<HashMap<(String, String), Arc<execution::ExecutionObservation>>>,
     turns_changed: Condvar,
     clients: AtomicUsize,
     store: ConversationStore,
@@ -78,6 +83,9 @@ struct PersistentTurnState {
     cache: VecDeque<CachedFrame>,
     cache_bytes: usize,
     high_water: u64,
+    execution_generation: u64,
+    raw_capture_failed: bool,
+    native_provenance_keys: BTreeSet<(String, String, String)>,
     terminal: Option<PersistentTerminal>,
 }
 
@@ -127,6 +135,7 @@ impl PersistentConversationRuntime {
         let runtime = Self {
             inner: Arc::new(PersistentConversationRuntimeInner {
                 turns: Mutex::new(HashMap::new()),
+                execution_observers: Mutex::new(HashMap::new()),
                 turns_changed: Condvar::new(),
                 clients: AtomicUsize::new(0),
                 store,
@@ -262,6 +271,10 @@ impl PersistentConversationRuntime {
             )
             .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
         let continuity_kind = admission.continuity_kind(params);
+        self.inner
+            .store
+            .record_runtime_request(&scope, params)
+            .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
         let admitted_assistant_turn = admission.admits_assistant_turn(params);
         if admitted_assistant_turn {
             self.inner
@@ -654,11 +667,17 @@ impl PersistentConversationRuntime {
             Self::persist_frame(&sink_turn, event, &sink_failed);
         }));
         let stream_guard = licoup_native::platform::StreamSinkGuard;
+        let raw_observer = Self::raw_execution_observer(&turn);
+        let raw_scope = licoup_native::platform::raw_execution::RawExecutionScope::enter(Some(
+            raw_observer.clone(),
+        ));
         let execution = catch_unwind(AssertUnwindSafe(|| {
             let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
             licoup_native::platform::dispatch_lane_operation("send", params)
         }));
         drop(stream_guard);
+        drop(raw_scope);
+        Self::close_raw_execution_observer(&turn, &raw_observer);
 
         let result = match execution {
             Ok(Ok(value)) => {
@@ -816,10 +835,44 @@ impl PersistentConversationRuntime {
         }
     }
 
+    fn raw_execution_observer(
+        turn: &Arc<PersistentTurn>,
+    ) -> licoup_native::platform::raw_execution::RawExecutionObserver {
+        let turn = Arc::clone(turn);
+        licoup_native::platform::raw_execution::RawExecutionObserver::new(
+            move |source, direction, text| {
+                let mut state = turn.state.lock().expect("turn state lock");
+                if state.terminal.is_some() {
+                    return Ok(());
+                }
+                turn.store.append_runtime_local_raw_frame(
+                    &turn.scope,
+                    &format!("protocol.{source}.{}", direction.as_str()),
+                    text,
+                )?;
+                state.execution_generation += 1;
+                turn.changed.notify_all();
+                Ok(())
+            },
+        )
+    }
+
+    fn close_raw_execution_observer(
+        turn: &Arc<PersistentTurn>,
+        observer: &licoup_native::platform::raw_execution::RawExecutionObserver,
+    ) {
+        observer.close();
+        turn.state
+            .lock()
+            .expect("turn state lock")
+            .raw_capture_failed |= observer.had_failure();
+    }
+
     fn record_event(
         turn: &Arc<PersistentTurn>,
         mut event: Value,
     ) -> licoup_native::domain::client_conversation::StoreResult<Value> {
+        Self::record_native_provenance(turn, &event, false)?;
         if let Some(session_id) = event.get("sessionId").and_then(Value::as_str) {
             if !session_id.trim().is_empty() {
                 *turn.session_id.lock().expect("turn session lock") = session_id.trim().to_owned();
@@ -847,6 +900,11 @@ impl PersistentConversationRuntime {
             }
         }
         if !ConversationStore::runtime_frame_commits_cursor(&event) {
+            let mut state = turn.state.lock().expect("turn state lock");
+            turn.store.append_runtime_local_frame(&turn.scope, &event)?;
+            state.execution_generation += 1;
+            turn.changed.notify_all();
+            drop(state);
             // User-speech is already a Canonical Message Event. Live observers
             // may still see the delta, but it must not occupy a replay cursor.
             let live_event = if turn.admitted_assistant_turn {
@@ -873,6 +931,10 @@ impl PersistentConversationRuntime {
                 Value::String(turn.scope.conversation_id.clone()),
             );
             object.insert("cursor".to_owned(), Value::from(cursor));
+            object.insert(
+                "membershipId".to_owned(),
+                Value::String(turn.scope.membership_id.clone()),
+            );
         }
         turn.store
             .append_runtime_frame(&turn.scope, cursor, &event)?;
@@ -886,6 +948,7 @@ impl PersistentConversationRuntime {
         };
         let encoded_bytes = serde_json::to_vec(&live_event)?.len();
         state.high_water = cursor;
+        state.execution_generation += 1;
         state.cache_bytes = state.cache_bytes.saturating_add(encoded_bytes);
         state.cache.push_back(CachedFrame {
             cursor,
@@ -904,13 +967,93 @@ impl PersistentConversationRuntime {
         Ok(live_event)
     }
 
-    fn finish(turn: &Arc<PersistentTurn>, terminal: PersistentTerminal) -> Result<()> {
+    fn record_native_provenance(
+        turn: &Arc<PersistentTurn>,
+        value: &Value,
+        terminal: bool,
+    ) -> Result<()> {
+        let explicit_turn = value
+            .get("nativeTurnId")
+            .or_else(|| value.pointer("/payload/nativeTurnId"));
+        // Codex's closed parser sets this result only from turn/start's
+        // result.turn.id. Other adapters may use host-generated turn ids.
+        let native_turn = explicit_turn
+            .or_else(|| {
+                (terminal
+                    && value.get("driverId").and_then(Value::as_str) == Some("codex-app-server"))
+                .then(|| value.get("turnId"))
+                .flatten()
+            })
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
+        let reply = matches!(
+            value.get("event").and_then(Value::as_str),
+            Some("agent.message.chunk" | "agent.message.completed")
+        );
+        let message_id = reply
+            .then(|| {
+                value
+                    .get("sourceMessageId")
+                    .or_else(|| value.pointer("/payload/sourceMessageId"))
+            })
+            .flatten()
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
+        if native_turn.is_none() && message_id.is_none() {
+            return Ok(());
+        }
+        let Some(session_id) = value
+            .get("nativeSessionId")
+            .or_else(|| value.get("sessionId"))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+        else {
+            return Ok(());
+        };
+        let mut state = turn.state.lock().expect("turn state lock");
+        let keys = [("turn", native_turn), ("message", message_id)]
+            .into_iter()
+            .filter_map(|(kind, id)| {
+                id.map(|id| (session_id.to_owned(), kind.to_owned(), id.to_owned()))
+            })
+            .collect::<Vec<_>>();
+        if keys
+            .iter()
+            .all(|key| state.native_provenance_keys.contains(key))
+        {
+            return Ok(());
+        }
+        turn.store.record_native_execution_provenance(
+            &turn.scope,
+            &turn.agent_id,
+            session_id,
+            native_turn,
+            message_id,
+        )?;
+        state.native_provenance_keys.extend(keys);
+        Ok(())
+    }
+
+    fn finish(turn: &Arc<PersistentTurn>, mut terminal: PersistentTerminal) -> Result<()> {
+        Self::record_native_provenance(turn, &terminal.payload, true)?;
         // Terminal settlement is one write: serialize persistence and the
         // in-memory projection so a later observer/transport closure cannot
         // race and replace the first exact native outcome.
         let mut persistent_state = turn.state.lock().expect("turn state lock");
         if persistent_state.terminal.is_some() {
             return Ok(());
+        }
+        if persistent_state.raw_capture_failed {
+            let failure = json!({"complete":false,"errorCode":"conversation_persistence_failed"});
+            if let Some(payload) = terminal.payload.as_object_mut() {
+                payload.insert("licoUpExecutionCapture".to_owned(), failure);
+            } else {
+                turn.store.append_runtime_local_raw_frame(
+                    &turn.scope,
+                    "capture.error",
+                    &failure.to_string(),
+                )?;
+            }
         }
         let response_ok = terminal
             .payload
@@ -1202,7 +1345,7 @@ impl PersistentConversationRuntime {
                 return;
             }
         }
-        let Some(params) = licoup_native::domain::subagent_mcp::subagent_callback_plan(
+        let Some(params) = licoup_native::domain::subagents::subagent_callback_plan(
             &self.inner.store,
             claim,
             state,
@@ -2548,7 +2691,7 @@ mod tests {
             .into_iter()
             .filter(|event| {
                 event.causation_id.as_deref()
-                    == Some(licoup_native::domain::subagent_mcp::CALLBACK_CAUSATION_ID)
+                    == Some(licoup_native::domain::subagents::CALLBACK_CAUSATION_ID)
             })
             .collect()
     }

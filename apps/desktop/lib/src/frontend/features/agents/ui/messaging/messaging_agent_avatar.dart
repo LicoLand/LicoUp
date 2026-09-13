@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -44,22 +45,32 @@ class MessagingAgentAvatar extends StatelessWidget {
     final resolvedTarget = target;
     final dotColor = onSolidAccent ? colors.textOnPrimary : activityColor;
     final dotBorderColor = onSolidAccent ? colors.primary : colors.surface;
-    final mark = Center(
-      child: resolvedTarget == null
-          ? Icon(
-              Icons.smart_toy_outlined,
-              size: iconSize,
-              color: colors.textMuted,
-            )
-          : AgentBrandIcon(
-              target: resolvedTarget,
-              size: size,
-              iconSize: iconSize,
-              selected: false,
-              detected:
-                  resolvedTarget.status == TargetCandidateStatus.detected ||
-                  resolvedTarget.configured,
-            ),
+    final mark = ConversationMotionBrandMark(
+      glyphIdentity: (
+        resolvedTarget?.target,
+        resolvedTarget?.id,
+        resolvedTarget?.manual,
+        Theme.of(context).brightness,
+        size,
+        iconSize,
+      ),
+      child: Center(
+        child: resolvedTarget == null
+            ? Icon(
+                Icons.smart_toy_outlined,
+                size: iconSize,
+                color: colors.textMuted,
+              )
+            : AgentBrandIcon(
+                target: resolvedTarget,
+                size: size,
+                iconSize: iconSize,
+                selected: false,
+                detected:
+                    resolvedTarget.status == TargetCandidateStatus.detected ||
+                    resolvedTarget.configured,
+              ),
+      ),
     );
     return SizedBox(
       width: size,

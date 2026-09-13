@@ -11,26 +11,6 @@ pub(super) fn message_role(message: &Value) -> String {
         .to_ascii_lowercase()
 }
 
-pub(super) fn session_order_key(session: &Value, fallback_index: usize) -> i128 {
-    session
-        .get("messages")
-        .and_then(Value::as_array)
-        .and_then(|messages| messages.iter().filter_map(message_order_key).next())
-        .or_else(|| {
-            session
-                .get("createdAt")
-                .and_then(Value::as_str)
-                .and_then(history_time_order_key)
-        })
-        .or_else(|| {
-            session
-                .get("updatedAt")
-                .and_then(Value::as_str)
-                .and_then(history_time_order_key)
-        })
-        .unwrap_or(fallback_index as i128)
-}
-
 pub(super) fn message_order_key(message: &Value) -> Option<i128> {
     message.get("createdAt").and_then(history_value_order_key)
 }

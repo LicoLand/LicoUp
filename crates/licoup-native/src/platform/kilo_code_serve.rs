@@ -24,11 +24,15 @@ pub(super) fn ensure_attachment(executable: &str) -> Result<local_service::Serve
 }
 
 pub(super) fn get_json(url: &str) -> Result<Value> {
-    local_service::serve::get_json(policy::SPEC, url)
+    local_service::serve::get_json(policy::SPEC, url, None)
+}
+
+pub(super) fn get_session_json(url: &str) -> Result<Value> {
+    local_service::serve::get_json(policy::SPEC, url, Some("kilo-code.http"))
 }
 
 pub(super) fn post_json(url: &str, body: &Value) -> Result<Value> {
-    local_service::serve::post_json(policy::SPEC, url, body)
+    local_service::serve::post_json(policy::SPEC, url, body, "kilo-code.http")
 }
 
 pub(super) fn watch_session_events(
@@ -40,15 +44,27 @@ pub(super) fn watch_session_events(
     let url = format!("{}/event", attach_url.trim_end_matches('/'));
     let mut parser = ServeEventParser::new(session_id);
     let mut decode_failure = None;
-    let result = local_service::sse::watch_data(&url, stop, |data| match parser.observe(data) {
-        Ok(Some(text)) => {
-            let _ = chunks.try_send(text);
-            true
+    let raw_observer = super::raw_execution::RawExecutionObserver::current();
+    let result = local_service::sse::watch_frames(&url, stop, |data, frame| {
+        if let Some(observer) = raw_observer.as_ref()
+            && local_service::sse::frame_belongs_to_session(data, session_id)
+        {
+            observer.record_bytes(
+                "kilo-code.sse",
+                super::raw_execution::RawExecutionDirection::Received,
+                frame,
+            );
         }
-        Ok(None) => true,
-        Err(failure) => {
-            decode_failure = Some(failure);
-            false
+        match parser.observe(data) {
+            Ok(Some(text)) => {
+                let _ = chunks.try_send(text);
+                true
+            }
+            Ok(None) => true,
+            Err(failure) => {
+                decode_failure = Some(failure);
+                false
+            }
         }
     });
     if let Some(failure) = decode_failure {

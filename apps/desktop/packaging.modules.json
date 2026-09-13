@@ -180,7 +180,7 @@
       "cargoBin": "licoup-cli"
     },
     "subagents-mcp": {
-      "label": "LicoUp authenticated local Subagent Mesh connector and desktop-owned service",
+      "label": "Independent LicoUp MCP connector and service using the native CLI",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -195,22 +195,6 @@
         "native-sidecar",
         "target-adapters",
         "skill-hub"
-      ]
-    },
-    "conversations-mcp": {
-      "label": "LicoUp canonical Conversation MCP",
-      "category": "agents",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "sidecar-binary",
-      "cargoBin": "lico-conversation-mcp",
-      "requires": [
-        "native-sidecar"
       ]
     },
     "gateway-sidecar": {

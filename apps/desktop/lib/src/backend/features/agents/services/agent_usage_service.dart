@@ -8,6 +8,18 @@ export 'package:licoup/src/contracts/agent_usage_models.dart';
 class AgentUsageService {
   const AgentUsageService();
 
+  Future<AgentModelRegistryResult> readModelRegistry({
+    required AgentCommandRunner agentService,
+  }) async => AgentModelRegistryResult.fromJson(
+    await agentService.runCli(['model-registry', 'read']),
+  );
+
+  Future<AgentModelRegistryResult> refreshModelRegistry({
+    required AgentCommandRunner agentService,
+  }) async => AgentModelRegistryResult.fromJson(
+    await agentService.runCli(['model-registry', 'refresh']),
+  );
+
   Future<AgentUsageReport> scan({
     required AgentCommandRunner agentService,
     String agentId = '',

@@ -86,6 +86,43 @@ final class NativeConversationAgentCatalogProjection {
   int get hashCode => Object.hash(agentId, Object.hashAll(sessions));
 }
 
+final class NativeChildConversationProjection {
+  const NativeChildConversationProjection({
+    required this.sessionId,
+    this.session,
+    this.loading = false,
+    this.errorCode = '',
+  });
+
+  final String sessionId;
+  final AgentConversationSession? session;
+  final bool loading;
+  final String errorCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NativeChildConversationProjection &&
+          other.sessionId == sessionId &&
+          other.session == session &&
+          other.loading == loading &&
+          other.errorCode == errorCode;
+
+  @override
+  int get hashCode => Object.hash(sessionId, session, loading, errorCode);
+}
+
+bool _sameGroupSessions(
+  Map<String, List<AgentConversationSession>> left,
+  Map<String, List<AgentConversationSession>> right,
+) =>
+    left.length == right.length &&
+    left.entries.every(
+      (entry) =>
+          right.containsKey(entry.key) &&
+          samePresentationList(entry.value, right[entry.key]!),
+    );
+
 final class NativeConversationCatalogProjection {
   NativeConversationCatalogProjection({
     required Iterable<NativeConversationSessionProjection> sessions,
@@ -93,7 +130,10 @@ final class NativeConversationCatalogProjection {
         const <AgentConversationSession>[],
     Iterable<NativeConversationAgentCatalogProjection> agentCatalogs =
         const <NativeConversationAgentCatalogProjection>[],
+    this.groupConversationId = '',
+    Map<String, List<AgentConversationSession>> groupSessionsByAgent = const {},
     Iterable<String> runningSessionIds = const <String>[],
+    Iterable<NativeChildConversationProjection> childHistories = const [],
     this.loadingMore = false,
     this.messagePageLoading = false,
     this.messagePageError = '',
@@ -112,12 +152,20 @@ final class NativeConversationCatalogProjection {
   }) : sessions = immutablePresentationList(sessions),
        nativeSessions = immutablePresentationList(nativeSessions),
        agentCatalogs = immutablePresentationList(agentCatalogs),
-       runningSessionIds = immutablePresentationList(runningSessionIds);
+       groupSessionsByAgent = Map.unmodifiable({
+         for (final entry in groupSessionsByAgent.entries)
+           entry.key: immutablePresentationList(entry.value),
+       }),
+       runningSessionIds = immutablePresentationList(runningSessionIds),
+       childHistories = immutablePresentationList(childHistories);
 
   final List<NativeConversationSessionProjection> sessions;
   final List<AgentConversationSession> nativeSessions;
   final List<NativeConversationAgentCatalogProjection> agentCatalogs;
+  final String groupConversationId;
+  final Map<String, List<AgentConversationSession>> groupSessionsByAgent;
   final List<String> runningSessionIds;
+  final List<NativeChildConversationProjection> childHistories;
   final bool loadingMore;
   final bool messagePageLoading;
   final String messagePageError;
@@ -141,7 +189,13 @@ final class NativeConversationCatalogProjection {
           samePresentationList(other.sessions, sessions) &&
           samePresentationList(other.nativeSessions, nativeSessions) &&
           samePresentationList(other.agentCatalogs, agentCatalogs) &&
+          other.groupConversationId == groupConversationId &&
+          _sameGroupSessions(
+            other.groupSessionsByAgent,
+            groupSessionsByAgent,
+          ) &&
           samePresentationList(other.runningSessionIds, runningSessionIds) &&
+          samePresentationList(other.childHistories, childHistories) &&
           other.loadingMore == loadingMore &&
           other.messagePageLoading == messagePageLoading &&
           other.messagePageError == messagePageError &&
@@ -163,7 +217,14 @@ final class NativeConversationCatalogProjection {
     Object.hashAll(sessions),
     Object.hashAll(nativeSessions),
     Object.hashAll(agentCatalogs),
+    groupConversationId,
+    Object.hashAllUnordered(
+      groupSessionsByAgent.entries.map(
+        (entry) => Object.hash(entry.key, Object.hashAll(entry.value)),
+      ),
+    ),
     Object.hashAll(runningSessionIds),
+    Object.hashAll(childHistories),
     loadingMore,
     messagePageLoading,
     messagePageError,
@@ -270,6 +331,8 @@ final class CanonicalConversationProjection {
     this.failureCopyBlob = '',
     this.sending = false,
     this.dispatchPending = false,
+    this.earlierLoading = false,
+    this.earlierError = '',
     required this.hasEarlier,
     required this.phase,
     this.notice,
@@ -305,6 +368,8 @@ final class CanonicalConversationProjection {
   final String failureCopyBlob;
   final bool sending;
   final bool dispatchPending;
+  final bool earlierLoading;
+  final String earlierError;
   final bool hasEarlier;
   final PresentationPhase phase;
   final PresentationNotice? notice;
@@ -336,6 +401,8 @@ final class CanonicalConversationProjection {
           other.failureCopyBlob == failureCopyBlob &&
           other.sending == sending &&
           other.dispatchPending == dispatchPending &&
+          other.earlierLoading == earlierLoading &&
+          other.earlierError == earlierError &&
           other.hasEarlier == hasEarlier &&
           other.phase == phase &&
           other.notice == notice &&
@@ -363,6 +430,8 @@ final class CanonicalConversationProjection {
     failureCopyBlob,
     sending,
     dispatchPending,
+    earlierLoading,
+    earlierError,
     hasEarlier,
     phase,
     notice,

@@ -10,6 +10,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
+    use crate::platform::raw_execution::{
+        RawExecutionDirection, RawExecutionObserver, RawExecutionScope,
+    };
+    use std::sync::{Arc, Mutex};
+
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
@@ -30,6 +35,17 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
         .status()
         .expect("fake Codex fixture should compile with the active Rust toolchain");
     assert!(compile.success());
+
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&records);
+    let _scope = RawExecutionScope::enter(Some(RawExecutionObserver::new(
+        move |source, direction, text| {
+            sink.lock()
+                .unwrap()
+                .push((source.to_owned(), direction, text.to_owned()));
+            Ok(())
+        },
+    )));
 
     let result = execute(
         &executable.to_string_lossy(),
@@ -57,6 +73,29 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
     assert_eq!(result.effective.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(result.effective.reasoning_effort.as_deref(), Some("high"));
     assert!(result.stderr_truncated);
+    let records = records.lock().unwrap();
+    assert!(
+        records
+            .iter()
+            .any(|(source, direction, text)| source == "codex-app-server"
+                && *direction == RawExecutionDirection::Sent
+                && text.contains("fake-child-private-prompt")
+                && text.ends_with('\n'))
+    );
+    let received: String = records
+        .iter()
+        .filter(|(_, direction, _)| *direction == RawExecutionDirection::Received)
+        .map(|(_, _, text)| text.as_str())
+        .collect();
+    assert!(received.contains("fake-thread") && received.ends_with('\n'));
+    assert!(
+        records
+            .iter()
+            .filter(|(_, direction, _)| *direction == RawExecutionDirection::Stderr)
+            .map(|(_, _, text)| text.len())
+            .sum::<usize>()
+            > 1024
+    );
 
     let _ = test_fs::remove_dir_all(temp_dir);
 }

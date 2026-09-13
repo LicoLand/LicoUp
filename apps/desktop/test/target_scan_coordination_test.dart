@@ -219,6 +219,9 @@ TargetCandidate _target(String targetId) => TargetCandidate(
 );
 
 final class _ControlledGateway implements TargetManagementGateway {
+  @override
+  Future<Set<String>> targetCatalogIds() async => const {};
+
   final List<_ScanCall> calls = [];
 
   @override

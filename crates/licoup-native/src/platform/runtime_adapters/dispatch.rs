@@ -9,9 +9,7 @@ use super::params::{
     MAX_IMAGE_ATTACHMENT_BYTES_TOTAL, binary_param, bounded_output_param, codex_binary_param,
     message_param, optional_output_param, parse_attachments, text_param,
 };
-use super::{
-    DEFAULT_MAX_STDERR_BYTES, RuntimeAdapter, RuntimeAdapterError, runtime_driver_profile,
-};
+use super::{DEFAULT_MAX_STDERR_BYTES, RuntimeAdapter, RuntimeAdapterError};
 use super::{RuntimeLane, runtime_lane_for_agent};
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
@@ -128,11 +126,6 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         }
     };
     crate::platform::native_agent_parser::require_registered(adapter);
-    if adapter == RuntimeAdapter::DeepSeekHarness
-        && runtime_driver_profile(adapter.id()).is_none_or(|profile| profile.readiness != "ready")
-    {
-        return Err(RuntimeAdapterError::RuntimeProfileUnavailable);
-    }
     let runtime_connection = SshRuntimeConnection::from_params(params, adapter.id())
         .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)?;
     if !attachments.is_empty() {

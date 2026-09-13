@@ -9,7 +9,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -46,7 +46,7 @@ void main() {
         final runner = _NoticeBridgeRunner()..failResolve = !authorized;
         final controller = ClientController(
           agentService: FakeAgentService(),
-          conversationCommandRunner: runner,
+          conversationNativePort: runner,
           pendingNoticePollInterval: const Duration(hours: 1),
         );
         addTearDown(controller.close);
@@ -294,18 +294,17 @@ Map<String, dynamic> _noticeA() => <String, dynamic>{
   'cardSequence': 3,
 };
 
-final class _NoticeBridgeRunner implements AgentCommandRunner {
+final class _NoticeBridgeRunner implements ClientConversationNativePort {
   final List<Map<String, dynamic>> requests = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> pendingNotices = <Map<String, dynamic>>[];
   final List<String> acked = <String>[];
   bool failResolve = false;
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     requests.add(request);
     final action = request['action'];
     final conversationId = (request['conversationId'] ?? '').toString();
@@ -361,20 +360,6 @@ final class _NoticeBridgeRunner implements AgentCommandRunner {
         .toList();
     return ids;
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => const Stream.empty();
 }
 
 Map<String, dynamic> _summary(String id, {int eventCount = 1}) => {

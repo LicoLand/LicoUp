@@ -44,7 +44,6 @@ fn scan_includes_required_first_targets() {
             "kilo-code",
             "cursor",
             "hermes",
-            "kimi",
             "kimi-code",
             "grok",
             "command-code",

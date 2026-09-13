@@ -686,7 +686,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   const interactiveContextStart =
     platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
   const authorizationOutcome =
-    platformUserPresenceRustSource.indexOf("match receiver.recv_timeout");
+    platformUserPresenceRustSource.indexOf("match receiver.recv()");
   const approvedContextSeal =
     platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
   assert(

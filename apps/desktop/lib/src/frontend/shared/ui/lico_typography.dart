@@ -12,30 +12,19 @@ import 'package:flutter/material.dart';
 ///    reflow as values update, which makes charts, token counters, byte sizes,
 ///    and timestamps visibly jitter.
 abstract final class LicoTypography {
-  /// The bundled UI family, or `null` to use the platform default.
-  ///
-  /// Set this to `'Geist Sans'` at the same time as declaring the font in
-  /// `pubspec.yaml`. Declaring a family that has no asset makes Flutter fall
-  /// back silently and inconsistently across platforms, so the two changes
-  /// must land together.
-  static const String? sansFamily = null;
-
-  /// The bundled monospace family, or `null` to use the platform chain.
-  ///
-  /// Set this to `'Geist Mono'` together with its `pubspec.yaml` declaration.
-  static const String? monoFamily = null;
+  /// Families are bundled with their SIL Open Font License.
+  static const String sansFamily = 'Geist Sans';
+  static const String monoFamily = 'Geist Mono';
 
   /// Fallback chain for the UI family.
   ///
-  /// A Latin-only bundled face has no CJK coverage, so Chinese text resolves
-  /// through this chain. Listing the platform CJK faces explicitly keeps the
-  /// apparent weight of mixed English/Chinese runs consistent instead of
-  /// letting each platform pick an arbitrary substitute.
+  /// Bundled Noto Sans SC owns Chinese text. Platform families only supply
+  /// glyphs outside the bundled font coverage.
   static const List<String> sansFallback = <String>[
+    'Noto Sans SC',
     'PingFang SC',
     'Microsoft YaHei',
     'Noto Sans CJK SC',
-    'Noto Sans SC',
   ];
 
   /// Fallback chain for monospace. Ends at the generic family so a platform
@@ -136,6 +125,7 @@ abstract final class LicoTypography {
     required Color text,
     required Color textSecondary,
     required Color textMuted,
+    String? fontFamily = sansFamily,
   }) {
     TextStyle style(
       double size,
@@ -146,7 +136,7 @@ abstract final class LicoTypography {
       bool numeric = false,
     }) {
       return TextStyle(
-        fontFamily: sansFamily,
+        fontFamily: fontFamily,
         fontFamilyFallback: sansFallback,
         fontSize: size,
         fontWeight: weight,

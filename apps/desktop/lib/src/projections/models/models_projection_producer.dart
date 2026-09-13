@@ -5,6 +5,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/models/controller/models_semantic_controller.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/presentation/models/models_projection.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
@@ -94,6 +95,10 @@ final class ModelsProjectionProducer
                 : null,
           ),
       ],
+      credentialMigrationPending:
+          authorization.migrationPending ||
+          authorization.failure ==
+              LlmVaultAuthorizationFailure.keychainActionRequired,
       telegram: TelegramProjection(
         stateLabel: owner.telegramState,
         configured: owner.telegramConfigured,
@@ -141,6 +146,7 @@ const _successNoticeCodes = {
   'gateway_endpoint_saved',
   'credential_authorized',
   'credential_revoked',
+  'credential_migrated',
   'telegram_token_saved',
   'telegram_token_cleared',
   'telegram_pairing_approved',

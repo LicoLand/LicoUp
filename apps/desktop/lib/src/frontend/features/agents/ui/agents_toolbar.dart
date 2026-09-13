@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -42,7 +43,7 @@ class AgentsToolbar extends StatelessWidget {
                   ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(
+                      child: LicoLoadingIndicator(
                         strokeWidth: 2,
                         color: colors.accent,
                       ),

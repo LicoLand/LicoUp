@@ -1,6 +1,4 @@
-import 'dart:convert';
-
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 
 final class ClientConversationServiceFailure implements Exception {
   const ClientConversationServiceFailure(this.code);
@@ -12,24 +10,20 @@ final class ClientConversationServiceFailure implements Exception {
 }
 
 final class ClientConversationService {
-  const ClientConversationService();
+  const ClientConversationService({
+    required ClientConversationNativePort native,
+  }) : _native = native;
 
-  Future<Object?> execute(
-    AgentCommandRunner runner,
-    Map<String, dynamic> request,
-  ) async {
+  final ClientConversationNativePort _native;
+
+  Future<Object?> execute(Map<String, dynamic> request) async {
     final Map<String, dynamic> output;
     try {
-      output = await runner.runCliWithStdin(const [
-        'conversation',
-        'execute',
-        '--stdin-json',
-        'true',
-      ], jsonEncode(request));
-    } catch (error) {
-      final mapped = _failureFromRpcException(error);
-      if (mapped != null) throw mapped;
-      rethrow;
+      output = await _native.executeClientConversation(
+        ClientConversationCommand(request),
+      );
+    } on NativeConversationException catch (error) {
+      throw ClientConversationServiceFailure(error.code);
     }
     if (output['ok'] != true) {
       final error = output['error'];
@@ -40,18 +34,4 @@ final class ClientConversationService {
     }
     return output['result'];
   }
-}
-
-/// Maps a platform RPC exception without importing platform types.
-ClientConversationServiceFailure? _failureFromRpcException(Object error) {
-  if (error.runtimeType.toString() != 'LicoClientRpcException') {
-    return null;
-  }
-  try {
-    final code = (error as dynamic).code;
-    if (code is String && code.trim().isNotEmpty) {
-      return ClientConversationServiceFailure(code);
-    }
-  } catch (_) {}
-  return null;
 }

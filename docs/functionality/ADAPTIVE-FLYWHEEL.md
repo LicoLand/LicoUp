@@ -143,8 +143,8 @@ Membership-scoped conversation projection that effect outputs use. The run
 resumes only when the master's decision arrives as a run input, and the
 callback request names that answer channel: `strategy.run.resume` for an
 imported run, or the same idempotent `lico_assistant_workflow_execute` call
-for a master agent driving an Assistant-run graph through the Subagent MCP
-surface. `advance`
+for a master agent driving an Assistant-run graph through the native CLI.
+`advance`
 enters the declared target, `return` re-enters the completed state, and
 `terminate` cancels the run. A decision binds one exact wait by state id and
 visit, so a replayed or foreign decision is stale and settles nothing.

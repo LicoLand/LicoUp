@@ -96,8 +96,10 @@ final class MonitoringProjectionProducer
             ),
       ],
       historyDays: controller.agentUsageController.historyDays,
-      phase: controller.agentUsageController.scanning
+      phase: controller.agentUsageController.loading
           ? PresentationPhase.loading
+          : controller.agentUsageController.loadFailed
+          ? PresentationPhase.failed
           : report == null
           ? PresentationPhase.idle
           : PresentationPhase.ready,

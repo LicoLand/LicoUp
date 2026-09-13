@@ -114,37 +114,6 @@ fn explicit_history_root_keeps_user_selection_authority() {
 }
 
 #[test]
-fn history_roots_cover_kimi_app_data_locations() {
-    let home = temp_dir("history-kimi-roots");
-
-    let roots = history_roots(
-        HistoryAdapter::Kimi,
-        &json!({"homeDir": display_path(&home)}),
-    );
-
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join("Library/Application Support/Kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join("Library/Application Support/com.moonshot.kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join(".config/Kimi"))
-    );
-    assert!(
-        roots
-            .iter()
-            .any(|root| root.path == home.join(".local/share/Kimi"))
-    );
-}
-
-#[test]
 fn conversations_list_paginates_native_history_sessions() {
     let dir = temp_dir("codex-history-pagination");
     let lines = (0..120)
@@ -272,6 +241,46 @@ fn exact_message_pages_cover_complete_session_without_overlap() {
 }
 
 #[test]
+fn default_message_pages_keep_twenty_and_preserve_anchors_after_append() {
+    let dir = temp_dir("default-message-page-append");
+    let path = dir.join("sessions.json");
+    let write_messages = |count: usize| {
+        let messages = (0..count)
+            .map(|index| json!({"role": "user", "text": format!("message-{index}")}))
+            .collect::<Vec<_>>();
+        fs::write(
+            &path,
+            json!({"sessions": [{"sessionId": "paged", "messages": messages}]}).to_string(),
+        )
+        .unwrap();
+    };
+    write_messages(45);
+    let mut params = json!({"agent": "opencode", "root": display_path(&dir), "sessionId": "paged"});
+    let first = conversation_list(&params).unwrap();
+    let first = &first["sessions"][0];
+    assert_eq!(first["messagePage"]["returned"], 20);
+    assert_eq!(first["messagePage"]["start"], 25);
+    assert_eq!(first["sourceMessageCount"], 45);
+    assert_eq!(first["semantic"]["thread"].as_array().unwrap().len(), 20);
+    assert_eq!(first["semantic"]["thread"][0]["text"], "message-25");
+    params["messageBefore"] = first["messagePage"]["nextBefore"].clone();
+    write_messages(48);
+    let older = conversation_list(&params).unwrap();
+    let older = &older["sessions"][0];
+    assert_eq!(older["messagePage"]["returned"], 20);
+    assert_eq!(older["messagePage"]["start"], 5);
+    assert_eq!(older["messagePage"]["endExclusive"], 25);
+    assert_eq!(older["sourceMessageCount"], 48);
+    assert_eq!(older["messages"][19]["text"], "message-24");
+    assert_eq!(older["semantic"]["thread"].as_array().unwrap().len(), 20);
+    assert_eq!(older["semantic"]["thread"][0]["text"], "message-5");
+    params["messageBefore"] = older["messagePage"]["nextBefore"].clone();
+    let oldest = conversation_list(&params).unwrap();
+    assert_eq!(oldest["sessions"][0]["messagePage"]["returned"], 5);
+    assert_eq!(oldest["sessions"][0]["messagePage"]["hasEarlier"], false);
+}
+
+#[test]
 fn exact_message_page_rejects_invalid_limits_and_stale_anchors() {
     let dir = temp_dir("exact-message-page-errors");
     fs::write(
@@ -351,7 +360,6 @@ fn every_supported_agent_has_dedicated_history_adapter() {
         "cursor",
         "hermes",
         "kilo-code",
-        "kimi",
         "openclaw",
         "opencode",
     ] {

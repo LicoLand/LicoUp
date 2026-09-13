@@ -68,7 +68,7 @@ test("session merge leaves are bounded and use an explicit acyclic dependency di
   assert.ok(source["composition.rs"].includes("super::delegated_merge"));
 });
 
-test("delegated merge uses deterministic leaf-to-root closure and bounded fallback", async () => {
+test("delegated merge uses explicit leaf-to-root closure and bounded previews", async () => {
   const source = (await sources())["delegated_merge.rs"];
   for (const token of [
     "merge_explicit_parent_child_lineages",
@@ -76,7 +76,6 @@ test("delegated merge uses deterministic leaf-to-root closure and bounded fallba
     "remaining_children",
     "VecDeque",
     "saturating_sub",
-    "nearest_main_session_index",
     "MAX_SUBAGENT_PREVIEW_CHARS",
   ]) {
     assert.ok(source.includes(token), `missing delegated merge boundary: ${token}`);

@@ -15,6 +15,8 @@ mixin ClientAppearanceCommands {
   void reportAppearanceReloadFailure();
 
   String get appearancePresetId => appearancePreferenceOwner.presetId;
+  bool get reduceMotion => appearancePreferenceOwner.reduceMotion;
+  String get loadingEffectId => appearancePreferenceOwner.loadingEffectId;
   set appearancePresetId(String value) {
     appearancePreferenceOwner.replacePreset(value);
   }
@@ -55,6 +57,20 @@ mixin ClientAppearanceCommands {
     } catch (_) {
       reportAppearanceReloadFailure();
     }
+  }
+
+  Future<void> setReduceMotion(bool enabled, {ApplicationCause? cause}) async {
+    if (!await layoutManager.setReduceMotion(enabled, cause: cause)) {
+      throw StateError('reduce_motion_preference_write_failed');
+    }
+    appearancePreferenceOwner.replaceReduceMotion(enabled, cause: cause);
+  }
+
+  Future<void> setLoadingEffect(String id, {ApplicationCause? cause}) async {
+    if (!await layoutManager.setLoadingEffect(id, cause: cause)) {
+      throw StateError('loading_effect_preference_write_failed');
+    }
+    appearancePreferenceOwner.replaceLoadingEffect(id, cause: cause);
   }
 
   bool applyAppearancePresetCatalog(AppearancePresetCatalogLoadResult catalog) {

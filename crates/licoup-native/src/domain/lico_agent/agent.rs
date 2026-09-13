@@ -91,6 +91,8 @@ impl Agent {
                         .ok_or("lico_agent_transcript_invalid")?;
                     history.push(json!({"role": role, "content": content}));
                 }
+                Some("usage.record")
+                    if header_seen && value.get("usage").is_some_and(Value::is_object) => {}
                 _ => return Err("lico_agent_transcript_invalid"),
             }
         }

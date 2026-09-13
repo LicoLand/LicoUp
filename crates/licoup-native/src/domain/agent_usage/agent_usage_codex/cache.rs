@@ -1,6 +1,5 @@
-use super::cache_cleanup::remove_obsolete_cache_databases;
 use super::constants::{CACHE_REFRESH_INTERVAL, CACHE_SCHEMA_VERSION};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior};
 use std::collections::BTreeSet;
 use std::fs;
@@ -17,22 +16,14 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
     let observed_version =
         connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
     if observed_version != CACHE_SCHEMA_VERSION {
-        let reset = connection
+        let migration = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("agent usage cache schema transaction failed")?;
         let locked_version =
-            reset.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
-        if locked_version != CACHE_SCHEMA_VERSION {
-            reset.execute_batch(
-                "DROP TABLE IF EXISTS usage_rows;
-                 DROP TABLE IF EXISTS usage_estimates;
-                 DROP TABLE IF EXISTS usage_estimate_coverage;
-                 DROP TABLE IF EXISTS usage_daily_totals;
-                 DROP TABLE IF EXISTS usage_daily_models;
-                 DROP TABLE IF EXISTS usage_daily_sessions;
-                 DROP TABLE IF EXISTS usage_files;
-                 DROP TABLE IF EXISTS usage_scans;
-                 CREATE TABLE usage_files (
+            migration.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        match locked_version {
+            0 => migration.execute_batch(
+                "CREATE TABLE usage_files (
                    root_key TEXT NOT NULL,
                    source_key TEXT NOT NULL,
                    modified_ns INTEGER NOT NULL,
@@ -54,6 +45,9 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    divergent INTEGER NOT NULL DEFAULT 0,
                    next_event_index INTEGER NOT NULL DEFAULT 0,
                    token_chain_hash TEXT NOT NULL DEFAULT '',
+                   current_effort TEXT,
+                   current_fast INTEGER,
+                   pending_context INTEGER NOT NULL DEFAULT 0,
                    PRIMARY KEY(root_key, source_key)
                  );
                  CREATE TABLE usage_rows (
@@ -68,6 +62,8 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    cached_input_tokens INTEGER NOT NULL,
                    output_tokens INTEGER NOT NULL,
                    event_identity TEXT NOT NULL,
+                   effort TEXT,
+                   fast INTEGER,
                    PRIMARY KEY(root_key, source_key, event_index)
                  );
                  CREATE INDEX usage_rows_window ON usage_rows(root_key, day);
@@ -91,7 +87,9 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    cached_input_tokens INTEGER NOT NULL,
                    completion_tokens INTEGER NOT NULL,
                    total_tokens INTEGER NOT NULL,
-                   PRIMARY KEY(root_key, day, model)
+                   effort TEXT NOT NULL,
+                   fast INTEGER NOT NULL,
+                   PRIMARY KEY(root_key, day, model, effort, fast)
                  );
                  CREATE TABLE usage_daily_sessions (
                    root_key TEXT NOT NULL,
@@ -103,23 +101,70 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    root_key TEXT PRIMARY KEY,
                    last_scan_ms INTEGER NOT NULL
                  );",
-            )?;
-            reset.pragma_update(None, "user_version", CACHE_SCHEMA_VERSION)?;
+            )?,
+            12 => {
+                migration.execute_batch(
+                    "ALTER TABLE usage_files ADD COLUMN current_effort TEXT;
+                     ALTER TABLE usage_files ADD COLUMN current_fast INTEGER;
+                     ALTER TABLE usage_files ADD COLUMN pending_context INTEGER NOT NULL DEFAULT 0;
+                     ALTER TABLE usage_rows ADD COLUMN effort TEXT;
+                     ALTER TABLE usage_rows ADD COLUMN fast INTEGER;
+                     ALTER TABLE usage_daily_models RENAME TO usage_daily_models_previous;
+                     CREATE TABLE usage_daily_models (
+                       root_key TEXT NOT NULL,
+                       day TEXT NOT NULL,
+                       model TEXT NOT NULL,
+                       prompt_tokens INTEGER NOT NULL,
+                       cached_input_tokens INTEGER NOT NULL,
+                       completion_tokens INTEGER NOT NULL,
+                       total_tokens INTEGER NOT NULL,
+                       effort TEXT NOT NULL,
+                       fast INTEGER NOT NULL,
+                       PRIMARY KEY(root_key, day, model, effort, fast)
+                     );
+                     INSERT INTO usage_daily_models
+                       SELECT root_key,day,model,prompt_tokens,cached_input_tokens,
+                              completion_tokens,total_tokens,'',-1
+                       FROM usage_daily_models_previous;
+                     DROP TABLE usage_daily_models_previous;",
+                )?;
+                invalidate_mutable_sources(&migration)?;
+            }
+            13 => invalidate_mutable_sources(&migration)?,
+            CACHE_SCHEMA_VERSION => {}
+            _ => bail!("unsupported agent usage cache schema"),
         }
-        reset
+        migration.pragma_update(None, "user_version", CACHE_SCHEMA_VERSION)?;
+        migration
             .commit()
             .context("agent usage cache schema commit failed")?;
-        connection.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
-        connection
-            .execute_batch("VACUUM;")
-            .context("agent usage cache schema compaction failed")?;
+        if locked_version == 0 {
+            connection.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+            connection
+                .execute_batch("VACUUM;")
+                .context("agent usage cache schema compaction failed")?;
+        }
     }
     #[cfg(unix)]
     if path.exists() {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
-    remove_obsolete_cache_databases(path)?;
     Ok(connection)
+}
+
+fn invalidate_mutable_sources(transaction: &Transaction<'_>) -> Result<()> {
+    // Daily rollups are the permanent ledger. Keep their baseline marker so
+    // the next scan seals existing past details before reparsing only today.
+    // Invalid fingerprints rebuild context without discarding unreadable
+    // sources' already completed days or adding a second historical total.
+    transaction.execute_batch(
+        "INSERT OR IGNORE INTO usage_scans(root_key,last_scan_ms)
+           SELECT root_key,0 FROM usage_files
+           UNION SELECT root_key,0 FROM usage_daily_totals;
+         UPDATE usage_scans SET last_scan_ms=0;
+         UPDATE usage_files SET modified_ns=-1,append_guard='';",
+    )?;
+    Ok(())
 }
 
 pub(super) fn sqlite_is_busy(error: &rusqlite::Error) -> bool {

@@ -273,21 +273,11 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
           );
           return;
         }
-        _run(() async {
-          final resolved = _resolveSessionId(
-            agentId,
-            sessionId,
-            nativeSessionId,
-          );
-          await _controller.selectConversationAgent(agentId);
-          if (_controller.clientConversationController.selectedConversationId !=
-              groupConversationId) {
-            return;
-          }
-          if (resolved.isNotEmpty) {
-            _controller.selectConversationSession(resolved);
-          }
-        }, trace);
+        _controller.selectGroupConversationSession(
+          groupConversationId,
+          agentId,
+          nativeSessionId.isNotEmpty ? nativeSessionId : sessionId,
+        );
       case StartAgentConversation(:final agentId):
         _run(() async {
           _controller.clientConversationController.clearSelection();

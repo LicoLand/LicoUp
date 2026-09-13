@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/layout/layout_scope.dart';
-import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_sidebar_navigation.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
 
@@ -455,7 +452,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('功能 list shows the seven frozen entries in order and selects '
+  testWidgets('功能 list shows the four visible entries in order and selects '
       'destinations with their panes', (tester) async {
     configureDashboardTestView(tester, const Size(1280, 700));
     final harness = DashboardDesktopHarness();
@@ -480,9 +477,6 @@ void main() {
       'modelGateway',
       'mobilePairing',
       'statsPanel',
-      'pluginManagement',
-      'skillHub',
-      'chatChannels',
     ];
     double? previousDy;
     for (final id in order) {
@@ -494,15 +488,7 @@ void main() {
       }
       previousDy = dy;
     }
-    for (final label in <String>[
-      '智能体中心',
-      '模型网关',
-      '移动配对',
-      '统计面板',
-      '插件管理',
-      '技能一览',
-      '聊天频道',
-    ]) {
+    for (final label in <String>['智能体中心', '模型网关', '移动配对', '统计面板']) {
       expect(find.text(label), findsOneWidget, reason: 'missing label $label');
     }
 
@@ -523,31 +509,13 @@ void main() {
     );
     await tester.pump();
     await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-chatChannels')),
+      find.byKey(const Key('messaging-sidebar-list-mobilePairing')),
     );
     await tester.pump();
-    expect(harness.selections, [ClientSection.models, ClientSection.models]);
-
-    final navContext = tester.element(
-      find.byKey(const Key('messaging-desktop-nav-sidebar')),
-    );
-    final scopedState = LayoutScope.maybeOf(navContext)?.state;
-    var pane = scopedState?.readIfDeclaredFor(
+    expect(harness.selections, [
       ClientSection.models,
-      LayoutStateChannels.communicationSection,
-    );
-    expect(pane, isA<LayoutTabState>());
-    expect((pane! as LayoutTabState).index, 1);
-
-    await tester.tap(
-      find.byKey(const Key('messaging-sidebar-list-modelGateway')),
-    );
-    await tester.pump();
-    pane = scopedState?.readIfDeclaredFor(
-      ClientSection.models,
-      LayoutStateChannels.communicationSection,
-    );
-    expect((pane! as LayoutTabState).index, 0);
+      ClientSection.mobileRelay,
+    ]);
 
     await tester.tap(
       find.byKey(const Key('messaging-sidebar-list-statsPanel')),

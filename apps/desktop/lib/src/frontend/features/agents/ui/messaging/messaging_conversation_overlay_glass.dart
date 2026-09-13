@@ -19,11 +19,13 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
     this.focused = false,
     this.readabilityVeil = false,
     this.veilFill,
+    this.drawRim = true,
   });
 
   final Widget child;
   final BorderRadius borderRadius;
   final bool focused;
+  final bool drawRim;
 
   /// When true, layers a black readability veil under the shared overlay-glass
   /// wash. Defaults to
@@ -41,10 +43,7 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
     final sigma = MessagingDesktopMetrics.conversationOverlayGlassBlurSigma;
     final border = focused
         ? colors.accent
-        : MessagingDesktopMetrics.conversationOverlayGlassBorder(
-            colors.line,
-            isDark: colors.isDark,
-          );
+        : MessagingDesktopMetrics.glassEdgeRimColor(isDark: colors.isDark);
     final isDark = colors.isDark;
     final washFill = MessagingDesktopMetrics.conversationOverlayGlassFill(
       isDark: isDark,
@@ -52,10 +51,6 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
     final decoration = BoxDecoration(
       color: readabilityVeil ? null : washFill,
       borderRadius: borderRadius,
-      border: Border.all(
-        color: border,
-        width: focused ? 1.5 : MessagingDesktopMetrics.hairline,
-      ),
       boxShadow: MessagingDesktopMetrics.conversationOverlayGlassShadows(
         isDark: isDark,
       ),
@@ -92,6 +87,8 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
         child: GlassEdgeLight(
           borderRadius: borderRadius,
           sheenExtent: 20,
+          rimWidth: drawRim ? MessagingDesktopMetrics.hairline : 0,
+          rimColor: border,
           child: DecoratedBox(decoration: decoration, child: content),
         ),
       ),

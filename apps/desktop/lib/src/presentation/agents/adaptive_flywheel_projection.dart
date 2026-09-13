@@ -157,7 +157,9 @@ final class AdaptiveFlywheelInspectionProjection {
     required Iterable<AdaptiveFlywheelGraphEdgeProjection> edges,
     required this.initialState,
     required this.diagnosticCode,
-  }) : currentStates = immutablePresentationList(currentStates),
+    Map<String, String> modelDisplayNames = const {},
+  }) : modelDisplayNames = Map.unmodifiable(modelDisplayNames),
+       currentStates = immutablePresentationList(currentStates),
        neighborStates = immutablePresentationList(neighborStates),
        allowedOperations = immutablePresentationList(allowedOperations),
        assignments = immutablePresentationList(assignments),
@@ -175,6 +177,7 @@ final class AdaptiveFlywheelInspectionProjection {
   final List<AdaptiveFlywheelGraphEdgeProjection> edges;
   final String initialState;
   final String diagnosticCode;
+  final Map<String, String> modelDisplayNames;
 
   List<AdaptiveFlywheelAssignmentProjection> assignmentsFor(String slotId) =>
       List<AdaptiveFlywheelAssignmentProjection>.unmodifiable(
@@ -196,7 +199,11 @@ final class AdaptiveFlywheelInspectionProjection {
           samePresentationList(other.states, states) &&
           samePresentationList(other.edges, edges) &&
           other.initialState == initialState &&
-          other.diagnosticCode == diagnosticCode;
+          other.diagnosticCode == diagnosticCode &&
+          other.modelDisplayNames.length == modelDisplayNames.length &&
+          modelDisplayNames.entries.every(
+            (entry) => other.modelDisplayNames[entry.key] == entry.value,
+          );
 
   @override
   int get hashCode => Object.hash(
@@ -210,6 +217,11 @@ final class AdaptiveFlywheelInspectionProjection {
     Object.hashAll(edges),
     initialState,
     diagnosticCode,
+    Object.hashAllUnordered(
+      modelDisplayNames.entries.map(
+        (entry) => Object.hash(entry.key, entry.value),
+      ),
+    ),
   );
 }
 

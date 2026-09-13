@@ -10,7 +10,8 @@ typedef RpcOp<T> = Future<T> Function();
 /// PersistentTurn observers are multiplexed by the session itself and never
 /// occupy this queue.
 final class StdioRpcOperationQueue {
-  final RpcOperationPendingQueue _pending = RpcOperationPendingQueue();
+  final RpcOperationPendingQueue<RpcOp<void>> _pending =
+      RpcOperationPendingQueue<RpcOp<void>>();
   var _running = false, _closing = false;
   Future<void>? _closeFuture;
 

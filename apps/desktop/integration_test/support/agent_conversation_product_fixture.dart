@@ -8,6 +8,12 @@ import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
+import '../../test/support/fake_conversation_transport.dart';
+
+final _acceptanceConversationNative = FakeConversationTransport(
+  command: (_, _) async => {'ok': true, 'turns': [], 'result': []},
+).native;
+
 final acceptanceAgentId = _safeEnvironmentValue(
   'LICO_AGENT_CONVERSATION_PRODUCT_AGENT',
   'codex',
@@ -22,7 +28,10 @@ const acceptanceNativeSessionId = 'acceptance-native-session';
 ClientController createAcceptanceController(
   AcceptanceConversationService conversationService,
 ) {
-  return ClientController(conversationService: conversationService)
+  return ClientController(
+      conversationService: conversationService,
+      conversationNativePort: _acceptanceConversationNative,
+    )
     ..currentSection = ClientSection.agents
     ..scannedTargets = [acceptanceAgentTarget]
     ..selectedConversationAgentId = acceptanceAgentId
@@ -53,6 +62,9 @@ final acceptanceAgentTarget = TargetCandidate(
 );
 
 class AcceptanceConversationService extends AgentConversationService {
+  AcceptanceConversationService()
+    : super(native: _acceptanceConversationNative);
+
   final List<AcceptanceRequest> requests = [];
   final List<AgentConversationMessage> _messages = [];
   _AcceptanceActiveTurn? _activeTurn;
@@ -146,7 +158,6 @@ class AcceptanceConversationService extends AgentConversationService {
 
   @override
   Stream<AgentDispatchEvent> sendStreaming({
-    required AgentCommandRunner runner,
     required String agentId,
     required String text,
     required String sessionId,

@@ -1,4 +1,5 @@
-use super::super::contract::text_field;
+use super::super::contract::{UsageVariant, text_field};
+use super::super::variant::{compatible_recorded_models, model_label, prefer_recorded_model};
 use super::super::window::UsageWindow;
 use super::event_hash::advance_event_chain;
 use super::models::{ParserState, TokenTotals};
@@ -20,8 +21,8 @@ impl<'connection> ParserBatch<'connection> {
             insert_usage: transaction.prepare(
                 "INSERT OR REPLACE INTO usage_rows(
                    root_key, source_key, event_index, session_id, turn_id, day, model,
-                   input_tokens, cached_input_tokens, output_tokens, event_identity
-                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                   input_tokens, cached_input_tokens, output_tokens, event_identity,effort,fast
+                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,?12,?13)",
             )?,
         })
     }
@@ -79,6 +80,10 @@ impl<'connection> ParserBatch<'connection> {
             .unwrap_or_default();
         let payload = value.get("payload").unwrap_or(&Value::Null);
         if event_type == "session_meta" {
+            state.current_model = None;
+            state.current_variant = UsageVariant::default();
+            state.current_turn_id = None;
+            state.pending_context = false;
             if state.session_id.is_none() {
                 state.session_id = text_field(payload, &["session_id", "sessionId", "id"])
                     .or_else(|| text_field(&value, &["session_id", "sessionId", "id"]));
@@ -98,12 +103,12 @@ impl<'connection> ParserBatch<'connection> {
         }
         match event_type {
             "turn_context" => {
-                if let Some(model) = text_field(
-                    payload,
-                    &["model", "model_name", "modelName", "model_id", "modelId"],
-                ) {
-                    state.current_model = Some(model);
-                }
+                // Each persisted context is a complete observation. Missing
+                // model/effort/speed cannot inherit a previous context's settings.
+                state.current_variant = UsageVariant::from_metadata(payload);
+                state.current_turn_id = turn_id(payload);
+                state.pending_context = true;
+                state.current_model = model_label(payload);
                 return Ok(());
             }
             "event_msg" => {}
@@ -114,7 +119,48 @@ impl<'connection> ParserBatch<'connection> {
             .and_then(Value::as_str)
             .unwrap_or_default();
         if payload_type == "task_started" {
-            state.current_turn_id = turn_id(payload);
+            let id = turn_id(payload);
+            // Rollouts write context before task_started. Older contexts lack
+            // a turn ID, so consume them once at the next start, never again.
+            let same_turn = (id.is_some() && id == state.current_turn_id)
+                || (state.pending_context && state.current_turn_id.is_none());
+            let observed_model = model_label(payload);
+            let same_model = observed_model.is_none()
+                || state.current_model.is_none()
+                || observed_model
+                    .as_deref()
+                    .zip(state.current_model.as_deref())
+                    .is_some_and(|(current, previous)| {
+                        compatible_recorded_models(current, previous)
+                    });
+            let observed = UsageVariant::from_metadata(payload);
+            state.current_variant = if same_turn && same_model {
+                observed.with_fallback(&state.current_variant)
+            } else {
+                observed
+            };
+            if !same_turn {
+                state.current_model = observed_model;
+            } else {
+                state.current_model =
+                    prefer_recorded_model(observed_model, state.current_model.take());
+            }
+            state.current_turn_id = id;
+            state.pending_context = false;
+            return Ok(());
+        }
+        if matches!(
+            payload_type,
+            "task_complete"
+                | "task_cancelled"
+                | "turn_completed"
+                | "turn_cancelled"
+                | "turn_aborted"
+        ) {
+            state.current_model = None;
+            state.current_variant = UsageVariant::default();
+            state.current_turn_id = None;
+            state.pending_context = false;
             return Ok(());
         }
         if payload_type != "token_count" {
@@ -123,6 +169,32 @@ impl<'connection> ParserBatch<'connection> {
         let Some(info) = payload.get("info") else {
             return Ok(());
         };
+        if let Some(id) = turn_id(payload)
+            && state.current_turn_id.as_ref() != Some(&id)
+        {
+            if !state.pending_context || state.current_turn_id.is_some() {
+                state.current_model = None;
+                state.current_variant = UsageVariant::default();
+            }
+            state.current_turn_id = Some(id);
+        }
+        state.pending_context = false;
+        let explicit_model = prefer_recorded_model(model_label(info), model_label(payload));
+        if let Some(model) = explicit_model.as_ref() {
+            if state
+                .current_model
+                .as_ref()
+                .is_some_and(|previous| !compatible_recorded_models(previous, model))
+            {
+                state.current_variant = UsageVariant::default();
+            }
+            state.current_model =
+                prefer_recorded_model(Some(model.clone()), state.current_model.take());
+        }
+        let variant = UsageVariant::from_metadata(info)
+            .with_fallback(&UsageVariant::from_metadata(payload))
+            .with_fallback(&state.current_variant);
+        state.current_variant = variant.clone();
         let total = info
             .get("total_token_usage")
             .and_then(TokenTotals::from_value);
@@ -138,11 +210,7 @@ impl<'connection> ParserBatch<'connection> {
         else {
             return Ok(());
         };
-        let model = state
-            .current_model
-            .clone()
-            .or_else(|| text_field(info, &["model", "model_name", "modelName"]))
-            .or_else(|| text_field(payload, &["model", "model_name", "modelName"]));
+        let model = prefer_recorded_model(explicit_model, state.current_model.clone());
         let raw_baseline = state.raw_totals;
         let counted_baseline = state.counted_totals.unwrap_or_default();
         let delta = match (last, total) {
@@ -210,6 +278,8 @@ impl<'connection> ParserBatch<'connection> {
             to_i64(delta.cached.min(delta.input)),
             to_i64(delta.output),
             event_identity,
+            variant.effort,
+            variant.fast,
         ])?;
         Ok(())
     }

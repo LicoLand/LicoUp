@@ -1,7 +1,10 @@
 import 'dart:async';
+
+import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_binding_viewer.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -70,7 +73,7 @@ class CanonicalGroupConversationPane extends StatefulWidget {
 class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
   bool _rosterVisible = true;
-  final ScrollController _messageScrollController = ScrollController();
+  final _messageScrollController = ReadingPositionScrollController();
   final Map<String, bool> _assistantActiveByConversation = <String, bool>{};
   AgentConversationSession? _cachedSession;
   ClientConversation? _cachedSessionConversation;
@@ -514,6 +517,9 @@ class _CanonicalGroupConversationPaneState
       recentSessions: const [],
       loading: canonical.phase == PresentationPhase.loading,
       turnActive: _turnActive,
+      hasEarlierMessages: canonical.hasEarlier,
+      messagePageLoading: canonical.earlierLoading,
+      messagePageError: canonical.earlierError,
       composerBusy: canonical.sending || _turnActive,
       inputEnabled: widget.turns.memberships.every(
         (membership) => membership.inputEnabled,
@@ -594,6 +600,19 @@ class _CanonicalGroupConversationPaneState
       ),
     );
     final actions = AgentConversationPaneActions(
+      onOpenExecution: (context, message, speakingTarget, returnFocusNode) =>
+          unawaited(
+            showBoundConversationExecution(
+              context: context,
+              message: message,
+              target: speakingTarget,
+              conversationTitle: state.conversationLabel,
+              projection: widget.conversation.execution,
+              intents: widget.conversation.intents,
+              onCopyText: _copyText,
+              returnFocusNode: returnFocusNode,
+            ),
+          ),
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
       onDraftChanged: (draft) => widget.conversation.intents.send(
@@ -602,6 +621,9 @@ class _CanonicalGroupConversationPaneState
       onSend: (text) => _sendComposerMessage(conversation, text),
       onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},
+      onLoadEarlierMessages: () async => widget.conversation.intents.send(
+        LoadEarlierConversationEvents(conversation.id),
+      ),
       onCopyText: _copyText,
       onRetryMessage: (eventId) async => widget.conversation.intents.send(
         RetryCanonicalConversationMessage(eventId),

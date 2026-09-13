@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,8 +7,9 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
-import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'support/fake_conversation_transport.dart';
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
@@ -151,9 +151,8 @@ void main() {
     'conversation service emits one exact ordered attachments field',
     () async {
       final runner = _WireRunner();
-      final events = await const AgentConversationService()
+      final events = await AgentConversationService(native: runner.native)
           .sendStreaming(
-            runner: runner,
             agentId: 'codex',
             text: '',
             sessionId: '',
@@ -162,7 +161,7 @@ void main() {
           .toList();
 
       expect(events.last.kind, 'dispatch.turn.completed');
-      final body = jsonDecode(runner.stdinText) as Map<String, dynamic>;
+      final body = runner.params;
       expect(body['text'], '');
       expect(body['attachments'], [image.toJson()]);
       expect(body.toString(), isNot(contains('data:')));
@@ -234,6 +233,7 @@ void main() {
     final clipboard = _RecordingClipboardService();
     final controller = ClientController(
       agentService: service,
+      conversationNativePort: service,
       clientClipboardService: clipboard,
     );
     await controller.clientConversationController.initialize();
@@ -315,18 +315,15 @@ final class _RecordingClipboardService extends ClientClipboardService {
   }
 }
 
-final class _CanonicalAttachmentAgentService extends FakeAgentService {
+final class _CanonicalAttachmentAgentService extends FakeAgentService
+    implements ClientConversationNativePort {
   List<Object?> postedAttachments = const [];
 
   @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
+  Future<Map<String, dynamic>> executeClientConversation(
+    ClientConversationCommand command,
   ) async {
-    if (args.length < 2 || args[0] != 'conversation') {
-      return super.runCliWithStdin(args, stdinText);
-    }
-    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    final request = command.payload;
     final action = (request['action'] ?? '').toString();
     if (action == 'conversation.message.post') {
       postedAttachments = List<Object?>.from(
@@ -408,42 +405,19 @@ const Map<String, dynamic> _canonicalConversation = {
   ],
 };
 
-final class _WireRunner implements AgentCommandRunner {
-  String stdinText = '';
+final class _WireRunner extends FakeConversationTransport {
+  Map<String, dynamic> params = const {};
 
   @override
-  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
-    List<String> args,
-    String stdinText,
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
   ) async* {
-    this.stdinText = stdinText;
-    expect(args, [
-      'agent',
-      'conversation',
-      'send',
-      '--stdin-json',
-      'true',
-      '--stream-events',
-      'true',
-    ]);
+    params = Map<String, dynamic>.from(request)..remove('_rpcOperation');
+    expect(request['_rpcOperation'], 'send');
     yield <String, dynamic>{
       'event': 'done',
       'ok': true,
       'nativeSessionId': 'session-1',
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> runCli(List<String> args) =>
-      throw UnimplementedError();
-
-  @override
-  Future<Map<String, dynamic>> runCliWithStdin(
-    List<String> args,
-    String stdinText,
-  ) => throw UnimplementedError();
-
-  @override
-  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
-      const Stream.empty();
 }

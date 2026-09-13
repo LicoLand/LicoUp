@@ -14,6 +14,7 @@ class CanonicalGroupEventMetadataParser {
     'responding',
     'completed',
     'failed',
+    'cancelled',
   };
 
   static Map<String, dynamic>? eventMetadata(ClientConversationEvent event) {

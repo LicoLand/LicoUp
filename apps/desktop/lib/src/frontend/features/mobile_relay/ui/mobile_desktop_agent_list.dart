@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
@@ -83,7 +84,7 @@ final class MobileDesktopAgentList extends StatelessWidget {
                   icon: scanning
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: LicoLoadingIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh_rounded),
                 ),

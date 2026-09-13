@@ -133,7 +133,7 @@ void registerClientBootstrapScenarios() {
       '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
     );
     await preferencesFile.writeAsString(
-      '{"schemaVersion":1,"appearancePresetId":"lico-soda"}',
+      '{"schemaVersion":1,"appearancePresetId":"lico-soda-light","reduceMotion":true}',
       flush: true,
     );
 
@@ -143,7 +143,8 @@ void registerClientBootstrapScenarios() {
     );
     addTearDown(controller.dispose);
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSodaLight);
+    expect(controller.reduceMotion, isTrue);
 
     await controller.setAppearancePreset(AppearancePresetIds.defaultSystem);
     expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
@@ -151,6 +152,15 @@ void registerClientBootstrapScenarios() {
       await preferencesFile.readAsString(),
       contains('"appearancePresetId": "default-system"'),
     );
+
+    final reloaded = ClientController(
+      portableData: portableData,
+      agentService: FakeAgentService(),
+    );
+    addTearDown(reloaded.dispose);
+    await reloaded.initialize();
+    expect(reloaded.appearancePresetId, AppearancePresetIds.defaultSystem);
+    expect(reloaded.reduceMotion, isTrue);
   });
 
   test('retired appearance preset falls back to the ready dark preset', () async {
@@ -397,7 +407,7 @@ void registerClientBootstrapScenarios() {
     addTearDown(controller.dispose);
 
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    expect(controller.appearancePresetId, 'agent-preview');
     expect(
       controller.appearancePresetConfigs
           .singleWhere((config) => config.id == 'agent-preview')
@@ -420,7 +430,7 @@ void registerClientBootstrapScenarios() {
     ).writeAsString('{"schemaVersion": 1, "id": "broken"}', flush: true);
     await controller.reloadAppearancePresets();
 
-    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
+    expect(controller.appearancePresetId, 'agent-preview');
     expect(controller.appearancePresetLoadErrors, isNotEmpty);
     expect(controller.statusMessage, '外观预设已重新加载，部分配置无效。');
     expect(controller.statusCaption, 'Appearance');

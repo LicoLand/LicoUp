@@ -14,7 +14,7 @@ use crate::core::secure_mesh_capability::{
 };
 use crate::core::secure_mesh_secret_store::{
     SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
-    SecretStoreHandle, SecureMeshSecretStore,
+    SecretStoreCallerChannel, SecretStoreHandle, SecureMeshSecretStore,
 };
 
 pub(super) const BACKEND: &str = "macos-keychain";
@@ -31,6 +31,10 @@ pub(super) fn begin_authorized_session(
     store: &PlatformSecretStore,
     request: &SecretStoreAuthorizationRequest,
 ) -> Result<SecretStoreAuthorizationSession> {
+    ensure!(
+        request.caller_channel() != SecretStoreCallerChannel::GatewayCredentialMigration,
+        "secure_mesh_keychain_migration_scope_required"
+    );
     if request.allow_interaction() {
         if let Some(access) = store
             .macos_secret_store_access()?

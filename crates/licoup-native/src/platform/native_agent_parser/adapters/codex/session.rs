@@ -478,7 +478,7 @@ impl CodexParser {
             "agent.turn.accepted",
             self.thread_id.as_deref().unwrap_or_default(),
             turn_id,
-            json!({ "evidenceKind": "turn-start-ack" }),
+            json!({ "evidenceKind": "turn-start-ack", "nativeTurnId": turn_id }),
         );
         if let Some(model) = self.config.model.as_ref() {
             self.effective.model = Some(model.clone());

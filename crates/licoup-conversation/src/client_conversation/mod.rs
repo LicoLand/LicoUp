@@ -337,6 +337,8 @@ pub struct EventPage {
     pub events: Vec<ConversationEvent>,
     pub next_cursor: Option<String>,
     pub total_count: i64,
+    pub has_earlier: bool,
+    pub next_before_sequence: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

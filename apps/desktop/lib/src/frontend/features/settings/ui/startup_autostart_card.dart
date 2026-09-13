@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
@@ -95,18 +96,13 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: LicoContentSpacing.inline / 2),
-                    Text(
-                      strings.startupAutostartHint,
-                      style: TextStyle(fontSize: 11, color: colors.textMuted),
-                    ),
                   ],
                 ),
               ),
               if (loading || busy)
                 const SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: LicoLoadingIndicator(strokeWidth: 2),
                 ),
             ],
           ),

@@ -1,3 +1,4 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -153,7 +154,7 @@ final class HistorySessionLoadMoreRow extends StatelessWidget {
               SizedBox(
                 width: 14,
                 height: 14,
-                child: CircularProgressIndicator(
+                child: LicoLoadingIndicator(
                   strokeWidth: 2,
                   color: colors.accent,
                 ),

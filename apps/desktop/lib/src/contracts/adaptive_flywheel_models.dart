@@ -225,6 +225,7 @@ final class AdaptiveFlywheelInspection {
     required this.edges,
     required this.initialState,
     required this.diagnosticCode,
+    this.modelDisplayNames = const {},
   });
 
   factory AdaptiveFlywheelInspection.fromJson(Map<String, dynamic> json) {
@@ -246,6 +247,10 @@ final class AdaptiveFlywheelInspection {
         workflow['transitions'],
       ).map(AdaptiveFlywheelGraphEdge.fromJson).toList(growable: false),
       initialState: (workflow['initial'] ?? '').toString(),
+      modelDisplayNames: Map.unmodifiable({
+        for (final entry in _stringMap(json['modelDisplayNames']).entries)
+          if (entry.value is String) entry.key: entry.value as String,
+      }),
       diagnosticCode: (_stringMap(projection['diagnostic'])['code'] ?? '')
           .toString(),
     );
@@ -261,6 +266,7 @@ final class AdaptiveFlywheelInspection {
   final List<AdaptiveFlywheelGraphEdge> edges;
   final String initialState;
   final String diagnosticCode;
+  final Map<String, String> modelDisplayNames;
 
   bool get authorized => allowedOperations.contains('strategy.run.start');
 

@@ -9,6 +9,10 @@ use super::model::{PROCESS_POLL_INTERVAL, RunResult};
 use super::params::ProtocolConfig;
 use super::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolOutcome};
 use super::supervision::{LaunchSpec, attach_mode, resolve_gateway_endpoint};
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
+    RawExecutionScope,
+};
 use serde_json::{Value, json};
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -129,11 +133,21 @@ pub(in crate::platform) fn execute_with_connection(
     let mut stdin = BoundedStdinWriter::new(stdin);
 
     let (sender, receiver) = mpsc::channel();
-    let stdout_handle =
-        thread::spawn(move || read_protocol_messages(BufReader::new(stdout), max_stdout, sender));
+    let stdout_observer = RawExecutionObserver::current();
+    let stdout_handle = thread::spawn(move || {
+        let binding = RawExecutionBinding::default();
+        let _guard = binding.bind(stdout_observer);
+        let stdout =
+            RawExecutionReader::new(stdout, binding, "openclaw", RawExecutionDirection::Received);
+        read_protocol_messages(BufReader::new(stdout), max_stdout, sender)
+    });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
-    let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+    let stderr_observer = RawExecutionObserver::current();
+    let stderr_handle = thread::spawn(move || {
+        let _scope = RawExecutionScope::enter(stderr_observer);
+        drain_stderr(stderr, max_stderr, &stderr_flag)
+    });
 
     let mut protocol = OpenClawProtocol::new(config);
     let initial_request = match protocol.initial_request() {

@@ -28,7 +28,7 @@ void main() {
         'opencode',
         'codex',
         'cursor',
-        'kimi',
+        'kimi-code',
         'kimi-code',
         'pi',
       ]) {

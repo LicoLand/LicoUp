@@ -7,7 +7,86 @@ const MAX_USAGE_NESTING_DEPTH: usize = 4;
 pub(crate) fn extract_token_usage(value: &Value) -> Option<Value> {
     let mut usage = UsageFields::default();
     collect_token_usage(value, 0, &mut usage);
-    usage.to_json()
+    let mut result = usage.to_json()?;
+    if let Some(object) = result.as_object_mut() {
+        object.extend(request_usage_metadata(value));
+    }
+    Some(result)
+}
+
+/// Copy actual request options alongside counters while excluding conversation
+/// content, capability defaults, and arbitrary metadata values.
+pub(crate) fn request_usage_metadata(value: &Value) -> Map<String, Value> {
+    let mut result = Map::new();
+    let mut objects = vec![value];
+    let mut start = 0;
+    for _ in 0..=MAX_USAGE_NESTING_DEPTH {
+        let end = objects.len();
+        for index in start..end {
+            let candidate = objects[index];
+            if !result.contains_key("reasoningEffort")
+                && let Some(effort) = [
+                    "reasoning_effort",
+                    "reasoningEffort",
+                    "effort",
+                    "thinking_level",
+                    "thinkingLevel",
+                ]
+                .into_iter()
+                .filter_map(|key| candidate.get(key).and_then(Value::as_str))
+                .find(|value| {
+                    let value = value.trim();
+                    !value.is_empty()
+                        && !["default", "unknown", "unspecified"]
+                            .into_iter()
+                            .any(|missing| value.eq_ignore_ascii_case(missing))
+                })
+            {
+                result.insert("reasoningEffort".to_owned(), json!(effort));
+            }
+            if !result.contains_key("fast") {
+                let fast = ["fast", "fast_mode", "fastMode"]
+                    .into_iter()
+                    .find_map(|key| candidate.get(key).and_then(Value::as_bool))
+                    .or_else(|| {
+                        ["service_tier", "serviceTier"]
+                            .into_iter()
+                            .filter_map(|key| candidate.get(key).and_then(Value::as_str))
+                            .find_map(|tier| match tier {
+                                "fast" | "priority" => Some(true),
+                                "default" => Some(false),
+                                _ => None,
+                            })
+                    });
+                if let Some(fast) = fast {
+                    result.insert("fast".to_owned(), json!(fast));
+                }
+            }
+            for key in [
+                "usage",
+                "token_usage",
+                "tokenUsage",
+                "message",
+                "data",
+                "payload",
+                "request",
+                "metadata",
+                "options",
+                "reasoning",
+                "generationConfig",
+                "output_config",
+                "thinking",
+                "collaboration_mode",
+                "settings",
+            ] {
+                if let Some(child) = candidate.get(key).filter(|value| value.is_object()) {
+                    objects.push(child);
+                }
+            }
+        }
+        start = end;
+    }
+    result
 }
 
 #[derive(Default)]
@@ -133,7 +212,8 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
         ],
         usage,
     );
-    let cached_subset = token_count_field(
+    let fields_before_cached = usage.explicit_fields;
+    let mut cached_subset = token_count_field(
         object,
         &[
             "cachedInputTokens",
@@ -149,6 +229,15 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
         ],
         usage,
     );
+    if usage.explicit_fields == fields_before_cached
+        && let Some(cached) = ["prompt_tokens_details", "input_tokens_details"]
+            .into_iter()
+            .filter_map(|key| object.get(key))
+            .find_map(|details| details.get("cached_tokens").and_then(token_count_value))
+    {
+        cached_subset = cached;
+        usage.explicit_fields += 1;
+    }
     let cache_read = token_count_field(
         object,
         &[
@@ -275,6 +364,32 @@ pub(crate) fn token_count_value(value: &Value) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openai_nested_cached_details_are_input_subsets_and_flat_fields_win() {
+        for details in ["prompt_tokens_details", "input_tokens_details"] {
+            let mut record = json!({"prompt_tokens":12,"completion_tokens":3,"total_tokens":15});
+            record[details] = json!({"cached_tokens":4});
+            let usage = extract_token_usage(&json!({"usage":record})).unwrap();
+            assert_eq!(usage["promptTokens"], 12);
+            assert_eq!(usage["cachedInputTokens"], 4);
+            assert_eq!(usage["totalTokens"], 15);
+            record["cached_input_tokens"] = json!(0);
+            assert_eq!(
+                extract_token_usage(&record).unwrap()["cachedInputTokens"],
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn usage_normalization_preserves_actual_options_without_copying_content() {
+        let usage=extract_token_usage(&json!({"effort":"high", "service_tier":"default", "usage":{"input_tokens":5,"output_tokens":2}, "collaboration_mode":{"settings":{"reasoning_effort":"xhigh","fast":true}},"text":"private-content-canary"})).unwrap();
+        assert_eq!(usage["totalTokens"], 7);
+        assert_eq!(usage["reasoningEffort"], "high");
+        assert_eq!(usage["fast"], false);
+        assert!(!usage.to_string().contains("private-content-canary"));
+    }
 
     #[test]
     fn normalized_cache_usage_is_additive_and_bounded_to_explicit_fields() {

@@ -12,11 +12,11 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:3fa6299268214ef4789a9d410487657c42ebd38078e330b8dd21d1168d79f8e8"
+      "digest": "sha256:f7ea5771a9ecca57e21b7b5074ca8bfc6b7f01170e52837994fdb48e3a47a58f"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:fa4911a579e1a03f858da9989b520591f1ed79fbec205552cfd140f9beeae480"
+      "digest": "sha256:839df52951e85f21127c29eaceacd48fddaed71d93be76fa865cb128553d89c8"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
@@ -46,7 +46,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_agents_destination.dart",
-      "digest": "sha256:e51cc870ec894a518682266d3eb875b513b3faba6dbf6b84004c8ef23a831c1d"
+      "digest": "sha256:b18c982f6158858eb775238bf20b6e69e918ea9279e1815a3328e855d1653a27"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_pairing_destination.dart",
@@ -62,11 +62,11 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/agents.png",
-      "digest": "sha256:f93b8861e81dfc9645ad1a11277b9886a6906e93555fd4be5ef987eeab43d1fe"
+      "digest": "sha256:b38c9cd30e18bb80db99016fc7b1028d26514c520f18e2b251982bf07762dfee"
     },
     {
       "path": "apps/desktop/test/goldens/layout/dashboard/mobile/production-baseline/settings.png",
-      "digest": "sha256:583bd15df61099bfabac367c328a69ca70e44917420e66ff21e5edd4eb9bdacc"
+      "digest": "sha256:8bda11b2cdb3e3cc72eab4acd3569add5ca2ef5dcaab316182ee1bbfa348ba9d"
     },
     {
       "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_bundle_test.dart",
@@ -81,5 +81,5 @@
       "digest": "sha256:32cb32b81a4bbf991fd36e4a09ad612aaddb3ceccdf616b28a0d59de8dc2cbc2"
     }
   ],
-  "manifestDigest": "sha256:9af58ffbb5e331ac8c731265da7562d475bca0d6ff8d60f785e891311f16afa2"
+  "manifestDigest": "sha256:293be1dd6506acb40f0ec1e6d18da2424f9e56405f8a0067efafe9f88192a67a"
 }

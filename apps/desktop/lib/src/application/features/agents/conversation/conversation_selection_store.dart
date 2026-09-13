@@ -21,10 +21,12 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
 
   @override
   List<AgentConversationSession> get selectedConversationSessions =>
-      conversationSessionsByAgent[selectedConversationAgentId] ?? const [];
+      conversationSessionCatalogFor(selectedConversationAgentId);
 
   bool get selectedConversationSessionsHasMore =>
-      conversationSessionsHasMoreByAgent[selectedConversationAgentId] ?? false;
+      groupNativeSessions.conversationId.isEmpty &&
+      (conversationSessionsHasMoreByAgent[selectedConversationAgentId] ??
+          false);
 
   bool get isLoadingMoreSelectedConversationSessions =>
       conversationSessionLoadMoreTargets.contains(selectedConversationAgentId);
@@ -320,7 +322,8 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
       }
       return null;
     }
-    if (preparingNewConversation) {
+    if (preparingNewConversation ||
+        groupNativeSessions.conversationId.isNotEmpty) {
       return null;
     }
     return selectedConversationSessions.isNotEmpty

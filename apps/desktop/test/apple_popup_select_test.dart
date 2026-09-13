@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -61,20 +62,22 @@ void main() {
     expect(focusedSurface.focused, isTrue);
     expect(focusedSurface.focusColor, brandGold);
 
-    final focusedMaterial = tester.widget<Material>(
-      find
-          .descendant(
-            of: find.byKey(const Key('apple-popup-select')),
-            matching: find.byType(Material),
-          )
-          .first,
+    final focusedPaint = tester.widget<CustomPaint>(
+      find.descendant(
+        of: find.byKey(const Key('apple-popup-select')),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.foregroundPainter is ContinuousStrokePainter,
+        ),
+      ),
     );
-    final shape = focusedMaterial.shape! as RoundedRectangleBorder;
+    final stroke = focusedPaint.foregroundPainter! as ContinuousStrokePainter;
     // The focus ring is drawn at full strength: a translucent one-pixel color
     // shift is not a reliable focus signal, so the ring is opaque and wider.
-    expect(shape.side.color, brandGold);
-    expect(shape.side.width, AppleControlMetrics.searchFocusRingWidth);
-    expect(shape.side.color, isNot(kAppleMenuSelectionBlue));
+    expect(stroke.color, brandGold);
+    expect(stroke.width, AppleControlMetrics.searchFocusRingWidth);
+    expect(stroke.color, isNot(kAppleMenuSelectionBlue));
 
     expect(find.text('Beta'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);
