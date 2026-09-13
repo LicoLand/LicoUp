@@ -514,10 +514,10 @@ test("client module regression tests retain seven ordinary owned leaves", async 
   const expectedTestCounts = new Map([
     ["catalog-integrity.mjs", 16],
     ["conversation-ownership.mjs", 6],
-    ["flutter-selection.mjs", 4],
+    ["flutter-selection.mjs", 5],
     ["platform-driver-ownership.mjs", 20],
     ["runner-safety.mjs", 16],
-    ["rust-selection.mjs", 11],
+    ["rust-selection.mjs", 12],
     ["secure-mesh-ownership.mjs", 17],
   ]);
   const registeredNames = new Set();
@@ -538,7 +538,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 90);
+  assert.equal(registeredNames.size, 92);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

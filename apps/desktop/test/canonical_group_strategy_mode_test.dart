@@ -1079,6 +1079,15 @@ void main() {
 
       conversationRunner.getFailuresRemaining = 2;
       persistent.completeObserver();
+      await tester.pump();
+      expect(find.text('streaming token'), findsOneWidget);
+      expect(controller.dispatchPending, isTrue);
+      // Drive the fixture's explicit durable-readback retry timers. A settled
+      // animation frame does not mean those asynchronous retries have finished.
+      for (final retryDelay in const [200, 400, 800]) {
+        await tester.pump(Duration(milliseconds: retryDelay));
+        expect(find.text('streaming token'), findsOneWidget);
+      }
       await tester.pumpAndSettle();
 
       expect(find.text('streaming token'), findsOneWidget);

@@ -11,7 +11,6 @@ import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -111,7 +110,7 @@ void main() {
       expect(session.messages[0].text, 'answer');
       expect(session.messages[1].cardType, 'reasoning');
       expect(session.messages[2].cardType, 'tool-call');
-      expect(session.messages[3].cardType, 'diagnostic');
+      expect(session.messages[3].cardType, 'error');
       expect(
         session.messages[3].text,
         contains('native_agent_executable_unavailable'),
@@ -658,13 +657,15 @@ void main() {
       final session = canonicalGroupConversationSession(conversation, [
         event,
       ], LicoStrings.forLocale(const Locale('en')));
-      final process = projectConversationProcessEvents(session.messages);
-      expect(process.totalOperations, 303);
+      expect(
+        session.messages.where((message) => message.isStructuredEvent),
+        hasLength(303),
+      );
       expect(
         session.messages
             .where((message) => message.isStructuredEvent)
             .map((message) => liveTurnKeyOf(message)),
-        everyElement('live-dispatch:one'),
+        everyElement('dispatch:one'),
       );
     },
   );
@@ -719,10 +720,15 @@ void main() {
     ], LicoStrings.forLocale(const Locale('en')));
     expect(session.messages.map((message) => message.cardTitle), [
       'lifecycle.accepted',
-      '',
+      'codex_turn_not_completed',
       'lifecycle.failed',
+      '',
     ]);
     expect(session.messages[1].text, contains('failed/Unauthorized'));
+    expect(
+      session.messages.last.replyTerminalState,
+      AgentConversationReplyTerminalState.failed,
+    );
   });
 
   test('canonical group does not translate retired lifecycle aliases', () {
@@ -763,7 +769,7 @@ void main() {
         'finalized': true,
         'parts': [
           _part('part:running', 0, 'metadata', '{"lifecycle":"running"}'),
-          _part('part:cancelled', 1, 'metadata', '{"lifecycle":"cancelled"}'),
+          _part('part:done', 1, 'metadata', '{"lifecycle":"done"}'),
         ],
       }),
     ], LicoStrings.forLocale(const Locale('en')));
@@ -776,6 +782,70 @@ void main() {
       everyElement(isEmpty),
     );
   });
+
+  test(
+    'canonical finalized empty replies retain exact stored terminal state and execution identity',
+    () {
+      final conversation = ClientConversation.fromJson({
+        'id': 'conversation:group',
+        'title': 'Synthetic',
+        'memberships': [
+          _membership(
+            id: 'membership:codex',
+            principalId: 'agent:codex',
+            kind: 'agent',
+            label: 'Codex',
+            agentId: 'codex',
+          ),
+        ],
+      });
+      for (final entry in {
+        'completed': AgentConversationReplyTerminalState.completed,
+        'failed': AgentConversationReplyTerminalState.failed,
+        'cancelled': AgentConversationReplyTerminalState.cancelled,
+      }.entries) {
+        final session = canonicalGroupConversationSession(conversation, [
+          ClientConversationEvent.fromJson({
+            'id': 'event:${entry.key}',
+            'conversationId': conversation.id,
+            'authorMembershipId': 'membership:codex',
+            'correlationId': 'dispatch:${entry.key}',
+            'kind': 'message',
+            'finalized': true,
+            'parts': [
+              _part('empty-text', 0, 'text', ' '),
+              _part('terminal', 1, 'metadata', '{"lifecycle":"${entry.key}"}'),
+            ],
+          }),
+        ], LicoStrings.forLocale(const Locale('en')));
+        final visible = buildConversationTimelineItems(
+          session.messages,
+          conversation.id,
+        );
+        expect(visible, hasLength(1));
+        final reply =
+            (visible.single as ConversationMessageTimelineItem).message;
+        expect(reply.id, 'dispatch:${entry.key}-assistant');
+        expect(reply.stableIdentity, reply.id);
+        expect(reply.replyTerminalState, entry.value);
+        expect(reply.waitingForReply, isFalse);
+        expect(reply.executionReference?.conversationId, conversation.id);
+        expect(reply.executionReference?.membershipId, 'membership:codex');
+        expect(reply.executionReference?.turnHandle, 'dispatch:${entry.key}');
+      }
+      final unknown = canonicalGroupConversationSession(conversation, [
+        ClientConversationEvent.fromJson({
+          'id': 'event:unknown',
+          'conversationId': conversation.id,
+          'authorMembershipId': 'membership:codex',
+          'kind': 'message',
+          'finalized': true,
+          'parts': const [],
+        }),
+      ], LicoStrings.forLocale(const Locale('en')));
+      expect(unknown.messages, isEmpty);
+    },
+  );
 
   test('canonical group history explains every non-message event', () {
     final conversation = ClientConversation.fromJson({

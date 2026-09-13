@@ -50,6 +50,7 @@ mod catalog;
 mod codex;
 mod cursor_openagent;
 mod delegated_transcripts;
+mod execution_provenance;
 mod generic;
 mod kimi;
 mod message_projection;

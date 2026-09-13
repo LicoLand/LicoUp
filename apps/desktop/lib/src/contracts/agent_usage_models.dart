@@ -448,6 +448,7 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
 
 class AgentUsageReport {
   static const currentSchemaVersion = 7;
+  static const currentUsageParserRevision = 'request-variant-usage-v1';
   static const currentMode = 'local-token-usage';
   static const currentTokenSourceMode = 'native-metadata-first-incremental';
 
@@ -462,6 +463,8 @@ class AgentUsageReport {
     this.mode = currentMode,
     this.tokenSourceMode = currentTokenSourceMode,
     this.window = const {},
+    this.usageParserRevision = currentUsageParserRevision,
+    this.modelRegistryRevision = '',
   });
 
   final int schemaVersion;
@@ -474,6 +477,11 @@ class AgentUsageReport {
   final String mode;
   final String tokenSourceMode;
   final Map<String, dynamic> window;
+  final String usageParserRevision;
+  final String modelRegistryRevision;
+
+  bool get hasCurrentParserRevision =>
+      usageParserRevision == currentUsageParserRevision;
 
   static void validateEnvelope(Map<String, dynamic> json) {
     final schemaVersion = json['schemaVersion'];
@@ -514,6 +522,8 @@ class AgentUsageReport {
     List<AgentUsageWorkflow>? workflows,
     AgentUsageTokenTotals? workflowSummary,
     Map<String, dynamic>? window,
+    String? usageParserRevision,
+    String? modelRegistryRevision,
   }) {
     return AgentUsageReport(
       schemaVersion: schemaVersion,
@@ -526,6 +536,9 @@ class AgentUsageReport {
       mode: mode,
       tokenSourceMode: tokenSourceMode,
       window: window ?? this.window,
+      usageParserRevision: usageParserRevision ?? this.usageParserRevision,
+      modelRegistryRevision:
+          modelRegistryRevision ?? this.modelRegistryRevision,
     );
   }
 
@@ -564,6 +577,8 @@ class AgentUsageReport {
       mode: (json['mode'] ?? '').toString(),
       tokenSourceMode: (json['tokenSourceMode'] ?? '').toString(),
       window: _map(json['window']),
+      usageParserRevision: (json['usageParserRevision'] ?? '').toString(),
+      modelRegistryRevision: (json['modelRegistryRevision'] ?? '').toString(),
     );
   }
 
@@ -698,5 +713,91 @@ class AgentUsageModelVariant {
         requestCount: requestCount + other.requestCount,
         tokenUnavailableRequests:
             tokenUnavailableRequests + other.tokenUnavailableRequests,
+      );
+}
+
+/// One model identity and display label supplied by the native registry.
+/// The map key is authoritative; Flutter never derives identity from a label.
+final class AgentUsageModelUsage {
+  const AgentUsageModelUsage({
+    required this.canonicalId,
+    required this.displayName,
+    required this.totals,
+    this.variants = const {},
+    this.unattributedVariantUsage,
+  });
+
+  final String canonicalId;
+  final String displayName;
+  final AgentUsageModelVariant totals;
+  final Map<String, AgentUsageModelVariant> variants;
+  final AgentUsageModelVariant? unattributedVariantUsage;
+
+  factory AgentUsageModelUsage.fromJson(String canonicalId, Object? raw) {
+    final value = _map(raw);
+    final displayName = value['displayName'];
+    final variants = value['variants'];
+    return AgentUsageModelUsage(
+      canonicalId: canonicalId,
+      displayName: displayName is String && displayName.isNotEmpty
+          ? displayName
+          : canonicalId,
+      totals: AgentUsageModelVariant.fromJson('', raw),
+      variants: variants is Map
+          ? Map.unmodifiable({
+              for (final entry in variants.entries)
+                if (entry.key is String && entry.value is Map)
+                  entry.key as String: AgentUsageModelVariant.fromJson(
+                    entry.key as String,
+                    entry.value,
+                  ),
+            })
+          : const {},
+      unattributedVariantUsage: value['unattributedVariantUsage'] is Map
+          ? AgentUsageModelVariant.fromJson(
+              '',
+              value['unattributedVariantUsage'],
+            )
+          : null,
+    );
+  }
+}
+
+/// Public metadata from a local model-directory read or refresh. Failed
+/// refreshes keep the last usable registry and never block local usage scans.
+final class AgentModelRegistryResult {
+  const AgentModelRegistryResult({
+    required this.ok,
+    required this.status,
+    required this.revision,
+    this.modelCount = 0,
+    this.providerCount = 0,
+    this.skippedEntries = 0,
+    this.source = '',
+    this.fetchedAt,
+    this.errorCode = '',
+  });
+
+  final bool ok;
+  final String status;
+  final String revision;
+  final int modelCount;
+  final int providerCount;
+  final int skippedEntries;
+  final String source;
+  final String? fetchedAt;
+  final String errorCode;
+
+  factory AgentModelRegistryResult.fromJson(Map<String, dynamic> json) =>
+      AgentModelRegistryResult(
+        ok: json['ok'] == true,
+        status: (json['status'] ?? '').toString(),
+        revision: (json['revision'] ?? '').toString(),
+        modelCount: _int(json['modelCount']),
+        providerCount: _int(json['providerCount']),
+        skippedEntries: _int(json['skippedEntries']),
+        source: (json['source'] ?? '').toString(),
+        fetchedAt: json['fetchedAt'] as String?,
+        errorCode: _safeCode(json['errorCode']),
       );
 }

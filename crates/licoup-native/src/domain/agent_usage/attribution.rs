@@ -1,9 +1,9 @@
 //! Metadata-first native-history token extraction and model attribution.
 
 use super::contract::{HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field, text_field};
+use super::variant::{UsageVariant, model_label};
 use super::window::UsageWindow;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 /// Prefers provider/runtime counters and estimates only message segments that
 /// are not covered by native usage metadata. The caller persists the result at
@@ -43,8 +43,7 @@ fn summarize_sessions_with_fallback(
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let session_model =
-            session_model_label(session).or_else(|| session_dominant_model(&messages));
+        let session_model = session_model_label(session);
         let session_date = session_date_key(session, calendar);
         let before = summary.total_tokens();
         if session.get("usage").is_some() {
@@ -194,6 +193,7 @@ pub(super) fn message_usage(
         completion_tokens,
         total_tokens,
         model,
+        variant: UsageVariant::from_metadata(message),
         accuracy: UsageAccuracy::Exact,
     })
 }
@@ -294,6 +294,7 @@ pub(super) fn estimated_message_usage(
         completion_tokens: if completion { tokens } else { 0 },
         total_tokens: tokens,
         model: message_model_label(message).or(default_model),
+        variant: UsageVariant::from_metadata(message),
         accuracy: UsageAccuracy::Estimated,
         ..MessageUsage::default()
     })
@@ -318,101 +319,17 @@ fn is_cjk(character: char) -> bool {
     )
 }
 
-/// When individual messages lack a model label, attribute their usage to the
-/// session's dominant labeled model instead of the unattributed bucket; a
-/// session that never names a model still falls back to "Others".
-fn session_dominant_model(messages: &[Value]) -> Option<String> {
-    fn visit(message: &Value, counts: &mut BTreeMap<String, u64>) {
-        if let Some(model) = message_model_label(message) {
-            *counts.entry(model).or_default() += 1;
-        }
-        if let Some(children) = message.get("messages").and_then(Value::as_array) {
-            for child in children {
-                visit(child, counts);
-            }
-        }
-    }
-    let mut counts = BTreeMap::<String, u64>::new();
-    for message in messages {
-        visit(message, &mut counts);
-    }
-    counts
-        .into_iter()
-        .max_by(|(left_model, left_count), (right_model, right_count)| {
-            left_count
-                .cmp(right_count)
-                .then(right_model.cmp(left_model))
-        })
-        .map(|(model, _)| model)
-}
-
 fn session_model_label(session: &Value) -> Option<String> {
-    text_field(
-        session,
-        &[
-            "model",
-            "modelId",
-            "model_id",
-            "modelName",
-            "model_name",
-            "modelLabel",
-            "model_label",
-        ],
-    )
-    .or_else(|| {
+    model_label(session).or_else(|| {
         session
             .pointer("/modelConfig/modelName")
-            .and_then(|value| value.as_str().map(|text| text.trim().to_owned()))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
     })
-    .map(normalize_model_label)
 }
 
 fn message_model_label(message: &Value) -> Option<String> {
-    text_field(
-        message,
-        &[
-            "model",
-            "modelId",
-            "model_id",
-            "modelName",
-            "model_name",
-            "modelLabel",
-            "model_label",
-        ],
-    )
-    .or_else(|| {
-        message.get("modelInfo").and_then(|info| {
-            text_field(
-                info,
-                &["modelName", "model_name", "model", "modelId", "model_id"],
-            )
-        })
-    })
-    .or_else(|| {
-        message.get("usage").and_then(|usage| {
-            text_field(
-                usage,
-                &[
-                    "model",
-                    "modelId",
-                    "model_id",
-                    "modelName",
-                    "model_name",
-                    "modelLabel",
-                    "model_label",
-                ],
-            )
-        })
-    })
-    .map(normalize_model_label)
-}
-
-fn normalize_model_label(value: String) -> String {
-    if value.eq_ignore_ascii_case("default") {
-        "cursor-auto".to_owned()
-    } else {
-        value
-    }
+    model_label(message)
 }
 
 #[cfg(test)]
@@ -462,7 +379,7 @@ mod tests {
         assert_eq!(usage.cached_input_tokens, 90);
         assert_eq!(usage.completion_tokens, 20);
         assert_eq!(usage.total_tokens, 110);
-        assert_eq!(usage.model.as_deref(), Some("cursor-auto"));
+        assert_eq!(usage.model.as_deref(), Some("default"));
     }
 
     #[test]
@@ -518,26 +435,17 @@ mod tests {
     }
 
     #[test]
-    fn session_dominant_model_prefers_most_frequent_label() {
-        let messages = vec![
-            json!({"role": "user", "text": "hello"}),
-            json!({"role": "agent", "text": "a", "model": "claude-opus-4-6"}),
-            json!({
-                "role": "agent",
-                "text": "b",
-                "messages": [
-                    {"role": "agent", "text": "c", "model": "claude-opus-4-6"}
-                ]
-            }),
-            json!({"role": "agent", "text": "d", "model": "gpt-5.5"}),
-        ];
-        assert_eq!(
-            session_dominant_model(&messages).as_deref(),
-            Some("claude-opus-4-6")
+    fn missing_model_is_not_inferred_from_another_message() {
+        let summary = summarize_sessions_exact_only(
+            &[json!({"updatedAt":"2026-07-10T10:00:00Z", "messages":[
+                {"model":"known", "usage":{"totalTokens":10}},
+                {"usage":{"totalTokens":5}}
+            ]})],
+            &window(),
         );
         assert_eq!(
-            session_dominant_model(&[json!({"role": "user", "text": "x"})]),
-            None
+            summary.to_json()["dailyUsage"][0]["modelUsage"]["Others"],
+            5
         );
     }
 }

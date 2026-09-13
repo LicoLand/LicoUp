@@ -2,11 +2,30 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
 
 sealed class ConversationIntent {
   const ConversationIntent({this.trace});
 
   final TraceContext? trace;
+}
+
+final class OpenConversationExecutionView extends ConversationIntent {
+  const OpenConversationExecutionView({
+    required this.viewId,
+    required this.reference,
+    super.trace,
+  });
+
+  final ConversationExecutionViewId viewId;
+  final ConversationExecutionReference reference;
+}
+
+final class CloseConversationExecutionView extends ConversationIntent {
+  const CloseConversationExecutionView(this.viewId, {super.trace});
+
+  final ConversationExecutionViewId viewId;
 }
 
 final class RefreshConversationCatalog extends ConversationIntent {

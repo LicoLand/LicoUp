@@ -133,19 +133,22 @@ fn command_kimi_code_keeps_exact_turn_and_session_usage_with_model_dimension() {
         wire,
         [
             r#"{"type":"context.append_message","time":"2026-07-10T10:00:00Z","message":{"role":"user","content":"local prompt covered by explicit turn usage"}}"#,
-            r#"{"type":"usage.record","time":"2026-07-10T10:00:01Z","model":"kimi-code/kimi-for-coding","usageScope":"turn","usage":{"inputOther":100,"inputCacheRead":20,"inputCacheCreation":5,"output":30}}"#,
-            r#"{"type":"usage.record","time":"2026-07-10T10:00:02Z","model":"kimi-code/kimi-for-coding","usageScope":"session","usage":{"inputOther":40,"inputCacheRead":10,"inputCacheCreation":3,"output":12}}"#,
+            r#"{"type":"usage.record","time":"2026-07-10T10:00:01Z","model":"kimi-code-k3-256k","usageScope":"turn","effort":"high","usage":{"inputOther":100,"inputCacheRead":20,"inputCacheCreation":5,"output":30}}"#,
+            r#"{"type":"usage.record","time":"2026-07-10T10:00:02Z","model":"kimi-code-k3-256k","usageScope":"session","effort":"max","usage":{"inputOther":40,"inputCacheRead":10,"inputCacheCreation":3,"output":12}}"#,
         ]
         .join("\n"),
     )
     .unwrap();
     let state_root = temp_root("kimi-code-state");
-    let result = scan(&json!({
-        "agent": "kimi-code",
-        "root": history_root.to_string_lossy(),
-        "stateRoot": state_root.to_string_lossy(),
-        "now": "2026-07-10T12:00:00Z"
-    }))
+    let registry=crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({"models":{"moonshotai/kimi-k3":{"name":"Kimi K3"}},"providers":{"kimi-for-coding":{"name":"Kimi Code","models":{"k3-256k":{"name":"Kimi Code K3 256K","base_model":"moonshotai/kimi-k3"}}}}})).unwrap();
+    let result = crate::domain::model_registry::with_test_snapshot(registry, || {
+        scan(&json!({
+            "agent": "kimi-code",
+            "root": history_root.to_string_lossy(),
+            "stateRoot": state_root.to_string_lossy(),
+            "now": "2026-07-10T12:00:00Z"
+        }))
+    })
     .unwrap();
     let history = &result["agents"][0]["history"];
     assert_eq!(history["promptTokens"], 178);
@@ -154,12 +157,20 @@ fn command_kimi_code_keeps_exact_turn_and_session_usage_with_model_dimension() {
     assert_eq!(history["totalTokens"], 220);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 2);
     assert_eq!(
-        history["dailyUsage"][0]["modelUsage"]["kimi-for-coding"],
+        history["dailyUsage"][0]["modelUsage"]["moonshotai/kimi-k3"],
         220
     );
     assert_eq!(
-        history["dailyUsage"][0]["modelTokenUsage"]["kimi-for-coding"]["cachedInputTokens"],
+        history["dailyUsage"][0]["modelTokenUsage"]["moonshotai/kimi-k3"]["cachedInputTokens"],
         30
+    );
+    assert_eq!(
+        history["dailyUsage"][0]["modelTokenUsage"]["moonshotai/kimi-k3"]["variants"]["High"]["totalTokens"],
+        155
+    );
+    assert_eq!(
+        history["dailyUsage"][0]["modelTokenUsage"]["moonshotai/kimi-k3"]["variants"]["Max"]["totalTokens"],
+        65
     );
     fs::remove_dir_all(history_root).unwrap();
     fs::remove_dir_all(state_root).unwrap();
@@ -350,6 +361,61 @@ fn command_hermes_uses_reconciled_gateway_counters_without_text_estimates() {
     assert_eq!(history["dailyUsage"][0]["modelUsage"]["hermes-test"], 42);
     assert_eq!(result["agents"][0]["confidence"], "high");
 
+    fs::remove_dir_all(history_root).unwrap();
+    fs::remove_dir_all(state_root).unwrap();
+}
+
+#[test]
+fn catalog_agents_without_historical_usage_sources_report_explicit_unavailability() {
+    use crate::domain::conversation::source_catalog::adapter_for_agent;
+    let unsupported = super::contract::supported_agents()
+        .into_iter()
+        .filter(|agent| adapter_for_agent(agent.id).is_none())
+        .map(|agent| agent.id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        unsupported
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        ["deepseek-harness", "grok", "command-code"]
+            .into_iter()
+            .collect()
+    );
+    let state_root = temp_root("unavailable-source-state");
+    for agent in unsupported {
+        let result=scan(&json!({"agent":agent,"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
+        assert_eq!(result["agents"][0]["agentId"], agent);
+        assert_eq!(
+            result["agents"][0]["history"]["source"],
+            "native-usage-source-unavailable"
+        );
+        assert_eq!(result["agents"][0]["confidence"], "unavailable");
+        assert_eq!(
+            result["agents"][0]["sources"]["skipped"][0]["code"],
+            "native_usage_source_unavailable"
+        );
+    }
+    fs::remove_dir_all(state_root).unwrap();
+}
+
+#[test]
+fn lico_agent_native_transcript_preserves_exact_model_and_request_effort_without_duplicate_ledger()
+{
+    let history_root = temp_root("lico-history");
+    let state_root = temp_root("lico-state");
+    fs::create_dir_all(&history_root).unwrap();
+    fs::write(history_root.join("fixture.jsonl"),[
+        json!({"type":"session","id":"synthetic-session"}),
+        json!({"type":"message","role":"assistant","text":"synthetic response","timestamp":"2026-07-15T10:00:00Z","model":"fixture-model","reasoning_effort":"high","usage":{"input_tokens":12,"output_tokens":3}})
+    ].iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();
+    let result=scan(&json!({"agent":"lico-agent","root":history_root.to_string_lossy(),"stateRoot":state_root.to_string_lossy(),"now":"2026-07-15T12:00:00Z"})).unwrap();
+    assert_eq!(result["agents"][0]["history"]["totalTokens"], 15);
+    assert_eq!(
+        result["agents"][0]["history"]["dailyUsage"][0]["modelTokenUsage"]["fixture-model"]["variants"]
+            ["High"]["totalTokens"],
+        15
+    );
     fs::remove_dir_all(history_root).unwrap();
     fs::remove_dir_all(state_root).unwrap();
 }

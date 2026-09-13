@@ -113,12 +113,14 @@ void main() {
       );
       expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
 
-      final recentSessionRow = find.byKey(
-        Key('agent-conversation-recent-${session.id}'),
+      expect(
+        find.byKey(const Key('conversation-empty-content')),
+        findsOneWidget,
       );
-      expect(recentSessionRow, findsOneWidget);
 
-      await tester.tap(recentSessionRow);
+      // Restore a concrete selection through the existing application intent;
+      // the new-conversation home is now occupied by the particle sphere.
+      controller.selectConversationSession(session.id);
       await tester.pump();
 
       expect(controller.selectedConversationSession?.id, session.id);

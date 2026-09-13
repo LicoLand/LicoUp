@@ -24,6 +24,7 @@ AgentUsageReport report({bool revised = false}) => AgentUsageReport.fromAgents(
               'totalTokens': agent == 'cursor' ? 750 : 250,
               'modelTokenUsage': {
                 'kimi-k3': {
+                  'displayName': 'Kimi K3',
                   'totalTokens': agent == 'cursor' ? 750 : 250,
                   'variants': agent == 'cursor'
                       ? {
@@ -31,9 +32,9 @@ AgentUsageReport report({bool revised = false}) => AgentUsageReport.fromAgents(
                           'Extra High': {'totalTokens': revised ? 300 : 150},
                           'Extra High Fast': {'totalTokens': 350},
                         }
-                      : {
-                          'Unspecified': {'totalTokens': 250},
-                        },
+                      : {},
+                  if (agent != 'cursor')
+                    'unattributedVariantUsage': {'totalTokens': 250},
                 },
               },
             },
@@ -59,11 +60,12 @@ Widget surface(AgentUsageReport source) {
         child: AgentUsageBarSection(
           rows: [
             AgentUsageBarData(
+              seriesKey: 'kimi-k3',
               label: 'Kimi K3',
               value: '1K',
               trailing: '100%',
               fraction: 1,
-              sources: data.modelSources['Kimi K3']!,
+              sources: data.modelSources['kimi-k3']!,
             ),
           ],
           emptyLabel: 'No usage',
@@ -78,9 +80,9 @@ void main() {
     'canonical model shares combine sources and keep every native variant',
     () {
       final data = timeline(report());
-      expect(data.shareSeriesLabels, ['Kimi K3']);
-      expect(data.totalFor('Kimi K3'), 1000);
-      final sources = data.modelSources['Kimi K3']!;
+      expect(data.shareSeriesLabels, ['kimi-k3']);
+      expect(data.totalFor('kimi-k3'), 1000);
+      final sources = data.modelSources['kimi-k3']!;
       expect(sources.map((source) => source.agentId), ['cursor', 'kimi-code']);
       expect(sources.first.usage.variants.keys, [
         'High',
@@ -96,48 +98,72 @@ void main() {
     (tester) async {
       await tester.pumpWidget(surface(report()));
       expect(
-        find.byKey(const ValueKey('usage-model-sources-Kimi K3')),
+        find.byKey(const ValueKey('usage-model-sources-kimi-k3')),
         findsNothing,
       );
       await tester.tap(
-        find.byKey(const ValueKey('usage-model-expand-Kimi K3')),
+        find.byKey(const ValueKey('usage-model-expand-kimi-k3')),
       );
       await tester.pumpAndSettle();
       final cursorSegment = find.byKey(
-        const ValueKey('usage-source-segment-Kimi K3-cursor'),
+        const ValueKey('usage-source-segment-kimi-k3-cursor'),
       );
       final kimiSegment = find.byKey(
-        const ValueKey('usage-source-segment-Kimi K3-kimi-code'),
+        const ValueKey('usage-source-segment-kimi-k3-kimi-code'),
       );
       expect(
         tester.getSize(cursorSegment).width / tester.getSize(kimiSegment).width,
         closeTo(3, 0.01),
       );
-      final tooltip = tester.widget<Tooltip>(
-        find.byKey(const ValueKey('usage-source-tooltip-Kimi K3-cursor')),
-      );
-      expect(tooltip.message, contains('Extra High Fast · 350'));
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
       await mouse.moveTo(tester.getCenter(cursorSegment));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump(const Duration(milliseconds: 200));
-      expect(find.textContaining('Extra High Fast · 350'), findsOneWidget);
+      final hover = find.byKey(
+        const ValueKey('usage-source-hover-card-cursor'),
+      );
+      expect(hover, findsOneWidget);
+      expect(
+        find.descendant(of: hover, matching: find.text('Extra High Fast')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: hover, matching: find.text('350')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: hover, matching: find.text('750')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: hover, matching: find.textContaining(' · ')),
+        findsNothing,
+      );
       await mouse.moveTo(Offset.zero);
       await tester.pumpAndSettle();
       await tester.pumpWidget(surface(report(revised: true)));
       await tester.pumpAndSettle();
-      final revised = tester.widget<Tooltip>(
-        find.byKey(const ValueKey('usage-source-tooltip-Kimi K3-cursor')),
+      await mouse.moveTo(tester.getCenter(cursorSegment));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        find.descendant(of: hover, matching: find.text('100')),
+        findsOneWidget,
       );
-      expect(revised.message, contains('High · 100'));
-      expect(revised.message, contains('Extra High · 300'));
+      expect(
+        find.descendant(of: hover, matching: find.text('300')),
+        findsOneWidget,
+      );
+      await mouse.moveTo(Offset.zero);
+      await tester.pumpAndSettle();
+      expect(hover, findsNothing);
       await tester.tap(
-        find.byKey(const ValueKey('usage-model-expand-Kimi K3')),
+        find.byKey(const ValueKey('usage-model-expand-kimi-k3')),
       );
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey('usage-model-sources-Kimi K3')),
+        find.byKey(const ValueKey('usage-model-sources-kimi-k3')),
         findsNothing,
       );
       await mouse.removePointer();

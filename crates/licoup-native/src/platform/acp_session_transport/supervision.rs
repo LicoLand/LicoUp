@@ -6,9 +6,12 @@ use super::command::{LaunchSpec, ProtocolConfig};
 use super::continuity::ControlRequest;
 use super::errors::ProtocolFailure;
 use super::events::{ConversationTransportEvent as TransportEvent, read_conversation_frames};
-use super::io::{drain_stderr, write_message};
+use super::io::{drain_stderr_observed, write_message};
 use super::protocol::{INITIALIZE_REQUEST_ID, SessionProtocol};
 use crate::core::acp;
+use crate::platform::raw_execution::{
+    RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionReader,
+};
 use std::io::{self, BufReader};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -25,6 +28,8 @@ pub(super) struct PersistentTransport {
     pub(super) stdout_handle: Option<thread::JoinHandle<()>>,
     pub(super) stderr_handle: Option<thread::JoinHandle<()>>,
     pub(super) stderr_truncated: Arc<AtomicBool>,
+    pub(super) raw_observer: RawExecutionBinding,
+    pub(super) initial_raw_observer: Option<RawExecutionBindingGuard>,
     pub(super) closed: bool,
 }
 
@@ -69,11 +74,26 @@ impl PersistentTransport {
         })?;
         let stdin = BoundedStdinWriter::new(stdin);
         let (sender, receiver) = mpsc::channel();
-        let stdout_handle =
-            thread::spawn(move || read_conversation_frames(BufReader::new(stdout), sender));
+        let raw_observer = RawExecutionBinding::default();
+        let initial_raw_observer = Some(raw_observer.bind_current());
+        let reader_observer = raw_observer.clone();
+        let stdout_handle = thread::spawn(move || {
+            let reader = RawExecutionReader::new(
+                stdout,
+                reader_observer,
+                "hermes-acp",
+                RawExecutionDirection::Received,
+            );
+            read_conversation_frames(BufReader::new(reader), sender)
+        });
         let stderr_truncated = Arc::new(AtomicBool::new(false));
         let stderr_flag = Arc::clone(&stderr_truncated);
-        let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
+        let stderr_observer = raw_observer.clone();
+        let stderr_handle = thread::spawn(move || {
+            drain_stderr_observed(stderr, max_stderr, &stderr_flag, |bytes| {
+                stderr_observer.record_bytes("hermes-acp", RawExecutionDirection::Stderr, bytes);
+            })
+        });
         let mut transport = Self {
             child,
             stdin,
@@ -82,6 +102,8 @@ impl PersistentTransport {
             stdout_handle: Some(stdout_handle),
             stderr_handle: Some(stderr_handle),
             stderr_truncated,
+            raw_observer,
+            initial_raw_observer,
             closed: false,
         };
         if let Err(failure) = transport.initialize(timeout_ms, max_stdout) {

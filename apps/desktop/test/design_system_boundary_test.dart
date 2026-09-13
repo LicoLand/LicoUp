@@ -130,23 +130,8 @@ void main() {
     final offenders = <String>[];
     for (final file in _dartFiles(frontend)) {
       final lines = file.readAsStringSync().split('\n');
-      for (var index = 0; index < lines.length; index += 1) {
-        final line = lines[index];
-        if (!_brandForeground.hasMatch(line)) {
-          continue;
-        }
-        // Look back a few lines to see what is being coloured.
-        final context = lines
-            .sublist(index < 4 ? 0 : index - 4, index + 1)
-            .join('\n');
-        final isGlyphOrText =
-            RegExp(
-              r'Icon\(|IconTheme|TextStyle\(|TextSpan\(',
-            ).hasMatch(context) ||
-            RegExp(r'(foregroundColor|iconColor):').hasMatch(line);
-        if (isGlyphOrText) {
-          offenders.add('${file.path}:${index + 1}: ${line.trim()}');
-        }
+      for (final index in _brandGlyphOrTextLines(lines)) {
+        offenders.add('${file.path}:${index + 1}: ${lines[index].trim()}');
       }
     }
     expect(
@@ -158,6 +143,32 @@ void main() {
           'or textOnPrimary when the glyph sits on a brand fill.\n'
           '${offenders.join('\n')}',
     );
+  });
+
+  test('brand foreground scan separates highlight fills from glyph ink', () {
+    const allowed = [
+      'TextStyle(backgroundColor: colors.primary, color: colors.textOnPrimary)',
+      'TextStyle(\n'
+          '  backgroundColor: selected\n'
+          '      ? colors.primary\n'
+          '      : colors.accentSurface,\n'
+          '  color: colors.textOnPrimary,\n'
+          ')',
+    ];
+    const rejected = [
+      'Icon(Icons.search, color: colors.primary)',
+      'TextStyle(color: colors.primary)',
+      'TextStyle(backgroundColor: colors.primary, color: colors.primary)',
+      'TextStyle(backgroundColor: colors.surface,\n'
+          '  color: selected ? colors.primary : colors.text)',
+      'IconThemeData(color: colors.primary)',
+    ];
+    for (final source in allowed) {
+      expect(_brandGlyphOrTextLines(source.split('\n')), isEmpty);
+    }
+    for (final source in rejected) {
+      expect(_brandGlyphOrTextLines(source.split('\n')), isNotEmpty);
+    }
   });
 
   test('feature-layer white/black alpha debt only shrinks', () {
@@ -309,6 +320,35 @@ void main() {
     );
   });
 }
+
+/// Match each brand reference separately: a background fill and an unsafe
+/// foreground can occur on the same line. Only an explicit backgroundColor
+/// assignment is exempt; the existing glyph/foreground checks still apply.
+Iterable<int> _brandGlyphOrTextLines(List<String> lines) sync* {
+  for (var index = 0; index < lines.length; index += 1) {
+    final history = lines.sublist(index < 4 ? 0 : index - 4, index).join('\n');
+    for (final match in _brandForeground.allMatches(lines[index])) {
+      final context = '$history\n${lines[index].substring(0, match.end)}';
+      final assignment = _colorAssignment.allMatches(context).lastOrNull;
+      if (assignment?.group(1) == 'backgroundColor') {
+        continue;
+      }
+      final isGlyphOrText =
+          RegExp(
+            r'Icon\(|IconTheme|TextStyle\(|TextSpan\(',
+          ).hasMatch(context) ||
+          RegExp(r'(foregroundColor|iconColor):').hasMatch(context);
+      if (isGlyphOrText) {
+        yield index;
+        break;
+      }
+    }
+  }
+}
+
+final _colorAssignment = RegExp(
+  r'\b(backgroundColor|color|foregroundColor|iconColor|foreground)\s*:',
+);
 
 Iterable<File> _dartFiles(Directory directory) {
   if (!directory.existsSync()) {

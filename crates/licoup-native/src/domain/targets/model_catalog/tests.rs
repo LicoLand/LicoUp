@@ -1,5 +1,62 @@
 use super::*;
 
+#[test]
+fn native_model_catalog_attaches_registry_identity_without_rewriting_admitted_selector() {
+    let registry = crate::domain::model_registry::RegistrySnapshot::from_catalog(json!({
+        "models": {"example/model-3": {"name": "Example Model 3"}},
+        "providers": {"relay": {"name": "Relay", "models": {
+            "native-selector": {"base_model": "example/model-3"}
+        }}}
+    }))
+    .unwrap();
+    crate::domain::model_registry::with_test_snapshot(registry, || {
+        let mut entries = BTreeMap::new();
+        add_model_catalog_entry_with_provider(
+            &mut entries,
+            "native-selector",
+            Some("Native Model"),
+            Some("relay"),
+            Some("Relay"),
+            "native-cli",
+            BTreeSet::from(["high".to_owned()]),
+        );
+        let value = build_model_catalog(
+            "codex",
+            entries,
+            BTreeSet::from(["native-cli".to_owned()]),
+            Vec::new(),
+            Some("native-selector".to_owned()),
+        );
+        assert_eq!(value["defaultModel"], "native-selector");
+        assert_eq!(value["models"][0]["name"], "native-selector");
+        assert_eq!(value["models"][0]["canonicalModelId"], "example/model-3");
+        assert_eq!(value["models"][0]["reasoningEfforts"], json!(["high"]));
+        assert!(!value["modelRegistryRevision"].as_str().unwrap().is_empty());
+    });
+}
+
+#[test]
+fn native_catalog_uses_shared_display_typography_for_unresolved_models() {
+    for (name, expected) in [
+        ("custom/deepseek-v4-flash", "DeepSeek V4 Flash"),
+        ("custom/gpt-reserve", "GPT Reserve"),
+        ("custom/grok-bot-default", "Grok Bot"),
+    ] {
+        let mut entries = BTreeMap::new();
+        add_model_catalog_entry(&mut entries, name, "native-cli", BTreeSet::new());
+        let catalog = build_model_catalog("codex", entries, BTreeSet::new(), Vec::new(), None);
+        assert_eq!(catalog["models"][0]["name"], name);
+        assert_eq!(catalog["models"][0]["displayName"], expected);
+        assert!(catalog["models"][0].get("canonicalModelId").is_none());
+        let display_only = json!({"displayName": name});
+        assert_eq!(model_name_from_value(&display_only), name);
+        assert_eq!(
+            model_display_name_from_value(&display_only, "").as_deref(),
+            Some(expected)
+        );
+    }
+}
+
 // Catalog tests must not discover the developer's real Agent configuration or
 // launch a login shell. Explicit fixture homes remain owned by each case.
 fn model_catalog_for_target(target: &str, config_path: Option<&Path>, params: &Value) -> Value {

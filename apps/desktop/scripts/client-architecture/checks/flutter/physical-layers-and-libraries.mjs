@@ -148,7 +148,7 @@ const splitTestLibraryRegistry = new Set([
   "apps/desktop/test/agents_workspace/agents_workspace_layout_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_renderer_cache_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_renderer_collapse_test.dart",
-  "apps/desktop/test/agents_workspace/agents_workspace_renderer_process_card_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_renderer_diagnostics_test.dart",
   "apps/desktop/test/agents_workspace/agents_workspace_state_test.dart",
   "apps/desktop/test/agents_workspace/support/agents_workspace_test_harness.dart",
 ]);

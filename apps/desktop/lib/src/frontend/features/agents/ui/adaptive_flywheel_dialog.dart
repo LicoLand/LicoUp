@@ -520,6 +520,7 @@ final class _AdaptiveFlywheelDialogState
                           idPrefix: 'strategy-${actorSlots[index].id}',
                           assignments:
                               _assignments[actorSlots[index].id] ?? const [],
+                          modelDisplayNames: inspection!.modelDisplayNames,
                           targets: _targets,
                           onChanged: (values) =>
                               _setAssignments(actorSlots[index].id, values),

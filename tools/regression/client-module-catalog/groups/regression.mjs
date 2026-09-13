@@ -1242,9 +1242,7 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane/resize.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart",
-        "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
-        "apps/desktop/test/agent_conversation_recent_sessions_test.dart",
         "tests/contract/client/agent-conversation-pane-source-bundle.test.mjs",
       ],
       command: command(

@@ -1,3 +1,4 @@
+use super::super::contract::UsageVariant;
 use super::file_collection::FileMetadata;
 use super::models::{CachedFile, ParserState};
 use super::utils::{from_i64, to_i64, totals_columns, totals_from_columns};
@@ -18,7 +19,7 @@ impl<'connection> CacheBatch<'connection> {
                 "SELECT modified_ns, size, file_id, parsed_bytes, append_guard, session_id,
                         forked_from_id, last_model, current_turn_id, raw_input, raw_cached,
                         raw_output, counted_input, counted_cached, counted_output, divergent,
-                        next_event_index, token_chain_hash
+                        next_event_index, token_chain_hash,current_effort,current_fast,pending_context
                  FROM usage_files WHERE root_key=?1 AND source_key=?2",
             )?,
             save_file: transaction.prepare(
@@ -26,10 +27,10 @@ impl<'connection> CacheBatch<'connection> {
                    root_key, source_key, modified_ns, size, file_id, parsed_bytes, append_guard,
                    session_id, forked_from_id, lineage_scope, last_model, current_turn_id,
                    raw_input, raw_cached, raw_output, counted_input, counted_cached,
-                   counted_output, divergent, next_event_index, token_chain_hash
+                   counted_output, divergent, next_event_index, token_chain_hash,current_effort,current_fast,pending_context
                  ) VALUES(
                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                   ?16, ?17, ?18, ?19, ?20, ?21
+                   ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
                  ) ON CONFLICT(root_key, source_key) DO UPDATE SET
                    modified_ns=excluded.modified_ns,
                    size=excluded.size,
@@ -49,7 +50,9 @@ impl<'connection> CacheBatch<'connection> {
                    counted_output=excluded.counted_output,
                    divergent=excluded.divergent,
                    next_event_index=excluded.next_event_index,
-                   token_chain_hash=excluded.token_chain_hash",
+                   token_chain_hash=excluded.token_chain_hash,
+                   current_effort=excluded.current_effort,current_fast=excluded.current_fast,
+                   pending_context=excluded.pending_context",
             )?,
             delete_rows: transaction
                 .prepare("DELETE FROM usage_rows WHERE root_key=?1 AND source_key=?2")?,
@@ -82,6 +85,11 @@ impl<'connection> CacheBatch<'connection> {
                         forked_from_id: row.get(6)?,
                         current_model: row.get(7)?,
                         current_turn_id: row.get(8)?,
+                        current_variant: UsageVariant {
+                            effort: row.get(18)?,
+                            fast: row.get(19)?,
+                        },
+                        pending_context: row.get(20)?,
                         raw_totals: totals_from_columns(raw_values),
                         counted_totals: totals_from_columns(counted_values),
                         has_divergent_totals: row.get::<_, i64>(15)? != 0,
@@ -133,6 +141,9 @@ impl<'connection> CacheBatch<'connection> {
             i64::from(state.has_divergent_totals),
             to_i64(state.next_event_index),
             state.token_chain_hash,
+            state.current_variant.effort,
+            state.current_variant.fast,
+            state.pending_context,
         ])?;
         Ok(())
     }

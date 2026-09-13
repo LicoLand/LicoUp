@@ -33,6 +33,7 @@ pub fn thread_wire_message_from_tagged(message: &Value) -> Option<Value> {
             "sourceKey",
             "sourceFields",
             "sourceMessageId",
+            "sourceTurnId",
         ] {
             if let Some(value) = message.get(key) {
                 object.insert(key.to_string(), value.clone());

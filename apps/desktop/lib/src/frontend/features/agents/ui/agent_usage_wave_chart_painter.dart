@@ -143,6 +143,7 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
           colors,
           series.label,
           grouping: timeline.grouping,
+          displayName: timeline.displayNameFor(series.label),
         ),
       );
     }
@@ -213,6 +214,7 @@ final class AgentUsageWaveChartPainter extends CustomPainter {
             colors,
             series.label,
             grouping: timeline.grouping,
+            displayName: timeline.displayNameFor(series.label),
           ).withValues(alpha: 0.72)
           ..style = PaintingStyle.fill,
       );

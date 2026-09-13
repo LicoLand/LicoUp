@@ -8,14 +8,14 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_notice.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -34,7 +34,6 @@ class AgentConversationMessageList extends StatefulWidget {
     this.turnActive = false,
     this.liveMessages = const [],
     this.messageStyle = AgentsMessageStyle.documentTranscript,
-    this.processStyle = AgentsProcessStyle.processCard,
     this.participantTargets = const [],
     this.participantConversationIds = const {},
     this.participantRuntimeProfiles = const {},
@@ -67,8 +66,6 @@ class AgentConversationMessageList extends StatefulWidget {
   /// participant flow.
   final AgentsMessageStyle messageStyle;
 
-  /// How structured process events render between messages.
-  final AgentsProcessStyle processStyle;
   final List<TargetCandidate> participantTargets;
 
   /// Agent id → conversation id used on hover next to message timestamps.
@@ -122,7 +119,6 @@ class AgentConversationMessageListState
 
   int _timelineTotal = 0;
   bool _pageRequestInFlight = false;
-  String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
   /// Owned anchor controller used when the pane does not provide one; keeps
@@ -139,7 +135,6 @@ class AgentConversationMessageListState
     super.initState();
     _syncAdapterFuture();
     _syncTimelineCache();
-    _syncActiveProcessStorageKey();
   }
 
   @override
@@ -158,10 +153,7 @@ class AgentConversationMessageListState
       }
     }
     _syncAdapterFuture();
-    final timelineChanged = _syncTimelineCache();
-    if (timelineChanged || oldWidget.turnActive != widget.turnActive) {
-      _syncActiveProcessStorageKey();
-    }
+    _syncTimelineCache();
   }
 
   @override
@@ -345,19 +337,6 @@ class AgentConversationMessageListState
         !next.isStructuredEvent;
   }
 
-  void _syncActiveProcessStorageKey() {
-    _activeProcessStorageKey = '';
-    if (!widget.turnActive) {
-      return;
-    }
-    for (final item in _timelineItems) {
-      if (item is ConversationProcessTimelineItem) {
-        _activeProcessStorageKey = item.storageKey;
-        return;
-      }
-    }
-  }
-
   /// Ids of the live assistant replies whose bodies are still streaming.
   ///
   /// The signal is the real turn state, never text shape: a message streams
@@ -380,6 +359,18 @@ class AgentConversationMessageListState
     }
     return ids;
   }
+
+  String get _motionAvatarMessageId =>
+      _timelineItems.reversed
+          .whereType<ConversationMessageTimelineItem>()
+          .where(
+            (item) =>
+                item.message.kind == AgentConversationMessageKind.assistant,
+          )
+          .firstOrNull
+          ?.message
+          .id ??
+      '';
 
   @override
   Widget build(BuildContext context) {
@@ -419,8 +410,8 @@ class AgentConversationMessageListState
             items: _timelineItems,
             adapter: adapter,
             target: widget.target,
-            activeProcessStorageKey: _activeProcessStorageKey,
             sessionKey: _timelineSessionKey,
+            motionAvatarMessageId: _motionAvatarMessageId,
             participantTargets: widget.participantTargets,
             participantConversationIds: widget.participantConversationIds,
             participantRuntimeProfiles: widget.participantRuntimeProfiles,
@@ -566,37 +557,33 @@ class AgentConversationMessageListState
     final item = _timelineItems[index - _footerCount];
     final content = switch (item) {
       ConversationMessageTimelineItem(:final message) =>
-        AgentConversationMessageBlock(
-          message: message,
-          adapter: adapter,
-          isStreaming: streamingMessageIds.contains(message.id),
-        ),
-      ConversationProcessTimelineItem(:final events) =>
-        switch (widget.processStyle) {
-          AgentsProcessStyle.processCard => ConversationProcessCard(
-            events: events,
-            adapter: adapter,
-            detailsBuilder: buildAgentConversationEventDetails,
-            active: item.storageKey == _activeProcessStorageKey,
-            topOverlayInset: widget.topOverlayInset,
-          ),
-          AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
-            events: events,
-            adapter: adapter,
-            detailsBuilder: buildAgentConversationEventDetails,
-            active: item.storageKey == _activeProcessStorageKey,
-          ),
-        },
-      ConversationLogTimelineItem(:final events) => ConversationLogEventRow(
-        events: events,
-        detailsBuilder: buildAgentConversationEventDetails,
+        message.kind == AgentConversationMessageKind.assistant
+            ? MessagingMessageGroup(
+                authorIsUser: false,
+                motionAvatar: message.id == _motionAvatarMessageId,
+                participantLabel: message.participantLabel,
+                participantRole: message.participantRole,
+                participantTarget: widget.participantTargets
+                    .where(
+                      (target) => target.target == message.participantAgentId,
+                    )
+                    .firstOrNull,
+                messages: [message],
+                target: widget.target,
+                adapter: adapter,
+                streamingMessageIds: streamingMessageIds,
+                onCopyText: widget.onCopyText,
+              )
+            : AgentConversationMessageBlock(
+                message: message,
+                adapter: adapter,
+                isStreaming: streamingMessageIds.contains(message.id),
+              ),
+      ConversationFailureTimelineItem(:final message) =>
+        ConversationFailureNotice(message: message, target: widget.target),
+      ConversationNoticeTimelineItem(:final message) => ConversationNotice(
+        message: message,
       ),
-      ConversationRuntimeUpdateTimelineItem(:final message) =>
-        AgentRuntimeUpdateCard(
-          message: message,
-          adapter: adapter,
-          active: widget.turnActive,
-        ),
       ConversationTruncationTimelineItem(
         :final historyTruncated,
         :final messageTreeTruncated,
@@ -709,6 +696,37 @@ List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
 ) {
   if (readBack.isEmpty || live.isEmpty) {
     return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
+  }
+  // Canonical Events and live Membership frames share exact execution and
+  // reply identities. Prefer available body text to its transient waiting slot
+  // without inferring a match from a participant name or message contents.
+  if (!live.any(
+    (message) => message.kind == AgentConversationMessageKind.user,
+  )) {
+    final indexes = {
+      for (var index = 0; index < readBack.length; index++)
+        if (readBack[index].executionReference != null)
+          (readBack[index].executionReference, readBack[index].stableIdentity):
+              index,
+    };
+    final result = List<AgentConversationMessage>.of(readBack);
+    var matched = false;
+    for (final message in live) {
+      final index =
+          indexes[(message.executionReference, message.stableIdentity)];
+      if (index == null || message.executionReference == null) {
+        result.add(message);
+      } else {
+        matched = true;
+        final stored = result[index];
+        if (!message.waitingForReply &&
+            !(stored.text.length > message.text.length &&
+                stored.text.startsWith(message.text))) {
+          result[index] = message;
+        }
+      }
+    }
+    if (matched) return List.unmodifiable(result);
   }
   final liveConversation = live
       .where(_isConversationParticipantMessage)
@@ -883,6 +901,9 @@ List<AgentConversationMessage> _convergeTurnReadbackOperations(
       participantAgentId: message.participantAgentId,
       participantLabel: message.participantLabel,
       participantRole: message.participantRole,
+      executionReference: message.executionReference,
+      waitingForReply: message.waitingForReply,
+      replyTerminalState: message.replyTerminalState,
       childMessagesTruncated: message.childMessagesTruncated,
       childMessages: message.childMessages,
       images: message.images,

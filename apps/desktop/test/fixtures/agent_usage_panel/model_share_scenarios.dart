@@ -181,9 +181,9 @@ void registerAgentUsageModelShareScenarios() {
       await tester.pumpAndSettle();
 
       expect(progressFillFactor(tester, 'Total'), closeTo(1.0, 0.01));
-      expect(progressFillFactor(tester, 'GPT-5.5'), closeTo(0.55, 0.01));
+      expect(progressFillFactor(tester, 'gpt-5.5'), closeTo(0.55, 0.01));
       expect(
-        progressFillFactor(tester, 'Claude Sonnet 4'),
+        progressFillFactor(tester, 'claude-sonnet-4'),
         closeTo(0.45, 0.01),
       );
       expect(find.text('55%'), findsOneWidget);

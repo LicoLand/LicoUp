@@ -9,6 +9,7 @@
 | **领域词汇** | [CONTEXT.md](../../CONTEXT.md) | 统一领域词汇与定义 |
 | **文档索引** | [docs/README.md](../README.md) | 完整文档索引目录 |
 | **持续 Assistant** | [CONTINUOUS-ASSISTANT.zh-CN.md](CONTINUOUS-ASSISTANT.zh-CN.md) | 持续协作目标语义；当前事实见 STATUS |
+| **全局模型注册表** | [MODEL-REGISTRY.zh-CN.md](MODEL-REGISTRY.zh-CN.md) | 标准模型身份、动态目录与实际用量控制参数 |
 
 长期产品目标与边界由 [PRODUCT.zh-CN.md](../../PRODUCT.zh-CN.md) 负责，当前状态由 [STATUS.zh-CN.md](../STATUS.zh-CN.md) 负责。当前组件和依赖事实由 Rust/Flutter 模块树、`apps/desktop/packaging.modules.json` 以及 `apps/desktop/scripts/client-architecture/` 下的架构验证器负责。本文件是这些来源的公开架构投影。
 

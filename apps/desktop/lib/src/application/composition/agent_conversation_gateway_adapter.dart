@@ -1,3 +1,5 @@
+import 'package:licoup/src/contracts/conversation_execution.dart';
+import 'package:licoup/src/contracts/conversation_execution_port.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -7,7 +9,10 @@ import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class AgentConversationGatewayAdapter
-    implements AgentConversationGateway, PersistentAgentConversationGateway {
+    implements
+        AgentConversationGateway,
+        PersistentAgentConversationGateway,
+        ConversationExecutionSource {
   const AgentConversationGatewayAdapter({
     required this.service,
     required this.runner,
@@ -15,6 +20,12 @@ final class AgentConversationGatewayAdapter
 
   final AgentConversationService service;
   final AgentCommandRunner runner;
+
+  @override
+  Stream<ConversationExecutionEvent> watchExecution(
+    ConversationExecutionReference reference, {
+    int afterCursor = 0,
+  }) => service.watchExecution(reference, afterCursor: afterCursor);
 
   @override
   Future<List<Map<String, dynamic>>> activeTurns({

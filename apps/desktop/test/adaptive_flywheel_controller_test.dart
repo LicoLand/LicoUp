@@ -294,6 +294,116 @@ void main() {
     expect(runner.actions, isNot(contains('strategy.run.start')));
   });
 
+  testWidgets(
+    'saved override uses its native display projection and preserves its model ID on save',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const modelId = 'deepseek-v4-flash-vision-exp';
+      final runner = _StrategyRunner(
+        modelDisplayNames: const {modelId: 'DeepSeek V4 Flash Vision Exp'},
+      );
+      runner.bindings.addAll({
+        'entry:0': {
+          'slotId': 'entry',
+          'ordinal': 0,
+          'valueId': 'claude-code',
+          'model': modelId,
+          'revision': 1,
+        },
+        'worker-a:0': {
+          'slotId': 'worker-a',
+          'ordinal': 0,
+          'valueId': 'codex',
+          'model': 'gpt-5',
+          'revision': 1,
+        },
+      });
+      final agentService = AgentService(
+        processIo: runner,
+        conversationNativePort: FakeConversationTransport().native,
+        persistentStdioRpcEnabled: false,
+      );
+      final clientController = ClientController(
+        agentService: agentService,
+        conversationNativePort: runner,
+      );
+      // The saved override intentionally does not occur in either selectable
+      // catalog. The inspect response supplies its label without adding a choice.
+      clientController.scannedTargets = [
+        _target('claude-code', callable: true),
+        _target('codex', callable: true),
+      ];
+      final bindings = AdaptiveFlywheelBindingFixture(clientController);
+      addTearDown(() async {
+        await bindings.close();
+        clientController.dispose();
+        await agentService.dispose();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: const [Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Claude Code · DeepSeek V4 Flash Vision Exp'),
+        findsOneWidget,
+      );
+      expect(find.textContaining(modelId), findsNothing);
+      expect(
+        (clientController.scannedTargets.first.modelCatalog['models'] as List)
+            .cast<Map<String, dynamic>>()
+            .map((model) => model['name']),
+        isNot(contains(modelId)),
+      );
+      // Add another route candidate so Save actually persists this slot.
+      await tester.tap(find.byKey(const Key('adaptive-flywheel-entry-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('adaptive-flywheel-entry-option-codex')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('adaptive-flywheel-entry-confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('main-agent-save')));
+      await tester.pumpAndSettle();
+      final saved = runner.strategyRequests.lastWhere(
+        (request) =>
+            request['action'] == 'strategy.binding.replace' &&
+            request['slotId'] == 'entry',
+      );
+      expect((saved['candidates'] as List).first['model'], modelId);
+      expect(saved['candidates'], hasLength(2));
+      expect(runner.bindings['entry:0']?['model'], modelId);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('empty catalog asks the user to import a package first', (
     tester,
   ) async {
@@ -596,12 +706,14 @@ final class _StrategyRunner
         ClientConversationNativePort {
   _StrategyRunner({
     this.includeRuntime = true,
+    this.modelDisplayNames = const {},
     List<Map<String, dynamic>>? definitions,
   }) : definitions = List<Map<String, dynamic>>.from(
          definitions ?? [_StrategyRunner.summary],
        );
 
   final bool includeRuntime;
+  final Map<String, String> modelDisplayNames;
   final List<Map<String, dynamic>> definitions;
   final List<String> actions = [];
   final List<Map<String, dynamic>> strategyRequests = [];
@@ -733,6 +845,7 @@ final class _StrategyRunner
   }
 
   Map<String, dynamic> _inspection() => {
+    'modelDisplayNames': modelDisplayNames,
     'projection': {
       'schema': 'licoup.adaptive-flywheel.state.v1',
       'definition': _StrategyRunner.summary,
