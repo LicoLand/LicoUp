@@ -8,6 +8,7 @@ on:
       - stable
       - release
       - macos-release-candidate
+      - macos-nightly-release-candidate
   workflow_dispatch:
 
 permissions:
@@ -27,7 +28,7 @@ jobs:
           path: target
 
       - name: Select the author README fast path
-        if: github.ref_name != 'macos-release-candidate'
+        if: github.ref_name != 'macos-release-candidate' && github.ref_name != 'macos-nightly-release-candidate'
         id: readme
         working-directory: target
         env:

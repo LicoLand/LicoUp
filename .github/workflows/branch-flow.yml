@@ -2,7 +2,7 @@ name: Branch flow
 
 on:
   push:
-    branches: ["nightly", "stable", "release", "macos-release-candidate"]
+    branches: ["nightly", "stable", "release", "macos-release-candidate", "macos-nightly-release-candidate"]
   pull_request:
     branches: ["nightly", "stable", "release"]
   workflow_dispatch:
