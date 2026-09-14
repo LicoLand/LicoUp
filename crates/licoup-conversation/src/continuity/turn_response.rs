@@ -130,8 +130,18 @@ fn project_admitted_text_role(value: &mut Value, public_text: &str) {
     }
 }
 
-/// Live observers may only see replyText after a successful terminal decode.
+/// Live observers see the Agent's own text. A complete typed envelope still
+/// unwraps `replyText`. Incomplete JSON, including a later delta of one, is
+/// held back so a private proposal is never flashed. Plain language is never
+/// blanked while waiting for a format.
 pub fn redact_live_runtime_event(event: &Value) -> Value {
+    let text = event_payload_text(event);
+    redact_live_runtime_event_with_assembly(event, text)
+}
+
+/// Same projection as [`redact_live_runtime_event`], using the turn's assembled
+/// raw text so a JSON envelope split across deltas is not published mid-stream.
+pub fn redact_live_runtime_event_with_assembly(event: &Value, assembled: &str) -> Value {
     let kind = event.get("event").and_then(Value::as_str).unwrap_or("");
     if kind != "agent.message.chunk" && kind != "agent.message.completed" {
         return event.clone();
@@ -142,19 +152,54 @@ pub fn redact_live_runtime_event(event: &Value) -> Value {
     };
     let text = payload.get("text").and_then(Value::as_str).unwrap_or("");
     let published = if kind == "agent.message.completed" {
-        published_terminal_envelope(text)
+        published_terminal_envelope(assembled)
     } else {
-        published_envelope(text)
+        published_envelope(assembled)
     };
     match published {
         Some((reply, _)) => {
             payload.insert("text".into(), json!(reply));
         }
-        None => {
+        None if hold_unpublished_live_text(assembled) || hold_unpublished_live_text(text) => {
             payload.insert("text".into(), json!(""));
+        }
+        None => {
+            payload.insert("text".into(), json!(text));
         }
     }
     redacted
+}
+
+fn event_payload_text(event: &Value) -> &str {
+    event
+        .pointer("/payload/text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+fn hold_unpublished_live_text(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if trimmed.starts_with('{') {
+        return true;
+    }
+    const PRIVATE_ENVELOPE_MARKERS: &[&str] = &[
+        "\"interpretationProposal\"",
+        "\"speechAct\"",
+        "\"replyText\"",
+        "\"commitmentProposals\"",
+        "\"agreementProposals\"",
+        "\"requestedReads\"",
+        "\"capabilityNeeds\"",
+        "\"uncertaintyReasons\"",
+        "\"matterAssociations\"",
+        "\"taskChildAdmission\"",
+        "\"sourceEventRefs\"",
+        "\"observedRevision\"",
+        "\"designationEpoch\"",
+    ];
+    PRIVATE_ENVELOPE_MARKERS
+        .iter()
+        .any(|marker| text.contains(marker))
 }
 
 fn extract_embedded_json_object(output: &str) -> Option<String> {
@@ -255,16 +300,34 @@ mod tests {
     }
 
     #[test]
-    fn live_chunks_hide_prose_until_completed() {
+    fn live_chunks_show_prose_as_the_agent_said_it() {
         let chunk = redact_live_runtime_event(&json!({
             "event": "agent.message.chunk",
             "payload": {"text": "普通中文回复"},
         }));
-        assert_eq!(chunk["payload"]["text"], "");
+        assert_eq!(chunk["payload"]["text"], "普通中文回复");
         let completed = redact_live_runtime_event(&json!({
             "event": "agent.message.completed",
             "payload": {"text": "普通中文回复"},
         }));
         assert_eq!(completed["payload"]["text"], "普通中文回复");
+        let json_chunk = redact_live_runtime_event(&json!({
+            "event": "agent.message.chunk",
+            "payload": {"text": "{\"replyText\":\"x\",\"interpretationProposal\":{"},
+        }));
+        assert_eq!(json_chunk["payload"]["text"], "");
+        let mid_envelope = redact_live_runtime_event_with_assembly(
+            &json!({
+                "event": "agent.message.chunk",
+                "payload": {"text": " then 均值 0."},
+            }),
+            "{\"replyText\":\"He said then 均值 0.",
+        );
+        assert_eq!(mid_envelope["payload"]["text"], "");
+        let leaked_key = redact_live_runtime_event(&json!({
+            "event": "agent.message.chunk",
+            "payload": {"text": " then 均值 0.\",\"interpretationProposal\":{"},
+        }));
+        assert_eq!(leaked_key["payload"]["text"], "");
     }
 }
