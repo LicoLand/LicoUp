@@ -17,6 +17,10 @@ import {
 } from "./lib/repository-sensitive-file-policy.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+// Windows filesystems carry no POSIX execute bit, so chmod on a managed hook
+// cannot be observed there; Git for Windows runs core.hooksPath hooks through
+// its bundled shell. Every other platform keeps the mandatory assertion.
+const posixExecutableBitRequired = process.platform !== "win32";
 const zeroObjectId = /^0+$/u;
 const githubLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const managedPolicyPaths = Object.freeze([
@@ -202,7 +206,11 @@ function hashFile(relativePath) {
   if (!metadata || !metadata.isFile() || metadata.isSymbolicLink()) {
     reject("POLICY_FILE_INVALID", "A managed identity policy file is missing or unsafe.");
   }
-  if (relativePath.startsWith(".githooks/") && (metadata.mode & 0o111) === 0) {
+  if (
+    posixExecutableBitRequired &&
+    relativePath.startsWith(".githooks/") &&
+    (metadata.mode & 0o111) === 0
+  ) {
     reject("HOOK_NOT_EXECUTABLE", "A managed Git hook is not executable.");
   }
   return createHash("sha256").update(readFileSync(absolutePath)).digest("hex");
