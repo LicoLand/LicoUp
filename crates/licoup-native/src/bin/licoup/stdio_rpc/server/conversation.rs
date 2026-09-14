@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use licoup_conversation::continuity::{
     ASSISTANT_TURN_INVALID_ERROR, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN,
     apply_admitted_validation_failure_facts, project_admitted_known_text_fields,
-    public_admitted_output, redact_live_runtime_event,
+    public_admitted_output, redact_live_runtime_event_with_assembly,
 };
 use licoup_native::domain::assistant_continuity::execution::CONTINUITY_KIND_USER_POSTED;
 use licoup_native::domain::client_conversation::{
@@ -87,6 +87,52 @@ struct PersistentTurnState {
     raw_capture_failed: bool,
     native_provenance_keys: BTreeSet<(String, String, String)>,
     terminal: Option<PersistentTerminal>,
+    live_raw_text: String,
+}
+
+impl PersistentTurnState {
+    fn take_live_assembly(&mut self, event: &Value) -> String {
+        let kind = event.get("event").and_then(Value::as_str).unwrap_or("");
+        let text = event
+            .pointer("/payload/text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        match kind {
+            "agent.message.chunk" => {
+                self.live_raw_text.push_str(text);
+                self.live_raw_text.clone()
+            }
+            "agent.message.completed" => {
+                if text.is_empty() {
+                    self.live_raw_text.clone()
+                } else {
+                    text.to_owned()
+                }
+            }
+            _ => self.live_raw_text.clone(),
+        }
+    }
+}
+
+fn redact_store_live_event(event: Value, assembled: &mut String) -> Value {
+    let kind = event.get("event").and_then(Value::as_str).unwrap_or("");
+    let text = event
+        .pointer("/payload/text")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let assembly = match kind {
+        "agent.message.chunk" => {
+            assembled.push_str(text);
+            assembled.clone()
+        }
+        "agent.message.completed" if !text.is_empty() => text.to_owned(),
+        _ => assembled.clone(),
+    };
+    if kind == "agent.message.chunk" || kind == "agent.message.completed" {
+        redact_live_runtime_event_with_assembly(&event, &assembly)
+    } else {
+        event
+    }
 }
 
 #[derive(Clone)]
@@ -903,15 +949,16 @@ impl PersistentConversationRuntime {
             let mut state = turn.state.lock().expect("turn state lock");
             turn.store.append_runtime_local_frame(&turn.scope, &event)?;
             state.execution_generation += 1;
+            let assembled = state.take_live_assembly(&event);
             turn.changed.notify_all();
-            drop(state);
             // User-speech is already a Canonical Message Event. Live observers
             // may still see the delta, but it must not occupy a replay cursor.
             let live_event = if turn.admitted_assistant_turn {
-                redact_live_runtime_event(&event)
+                redact_live_runtime_event_with_assembly(&event, &assembled)
             } else {
                 event
             };
+            drop(state);
             let _ = Self::attempt_deferred_cancel(turn);
             return Ok(live_event);
         }
@@ -941,8 +988,9 @@ impl PersistentConversationRuntime {
         let session_id = turn.session_id.lock().expect("turn session lock").clone();
         turn.store
             .bind_runtime_session(&turn.scope, &turn.agent_id, &session_id, None, None)?;
+        let assembled = state.take_live_assembly(&event);
         let live_event = if turn.admitted_assistant_turn {
-            redact_live_runtime_event(&event)
+            redact_live_runtime_event_with_assembly(&event, &assembled)
         } else {
             event.clone()
         };
@@ -1538,12 +1586,12 @@ fn replay_turn<W: Write>(
                         REPLAY_PAGE_SIZE,
                     )?
                     .into_iter()
-                    .map(|event| {
-                        if turn.admitted_assistant_turn {
-                            redact_live_runtime_event(&event)
+                    .scan(String::new(), |assembled, event| {
+                        Some(if turn.admitted_assistant_turn {
+                            redact_store_live_event(event, assembled)
                         } else {
                             event
-                        }
+                        })
                     })
                     .collect()
             };
@@ -4623,7 +4671,7 @@ mod tests {
             )
             .unwrap();
         for frame in frames {
-            let redacted = redact_live_runtime_event(&frame);
+            let redacted = licoup_conversation::continuity::redact_live_runtime_event(&frame);
             if let Some(text) = redacted.pointer("/payload/text").and_then(Value::as_str) {
                 assert!(
                     !text.contains("interpretationProposal"),
