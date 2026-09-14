@@ -177,6 +177,14 @@ the smallest relevant checks. Before handoff, run the source policy once
 plus only the technology lanes your change touches, as listed in
 [Set up](#set-up).
 
+A temporary branch ends with its merge. Once the pull request is merged and
+its merge commit is on `nightly`, delete that branch on the remote and in the
+local clone in the same session; do not leave a merged branch for a later
+cleanup. Delete only the branch that pull request closed, and only after the
+merge is confirmed on `nightly` — a branch with unmerged commits, an
+unmerged or closed-without-merge pull request, and a branch you did not
+create all stay.
+
 ## Platform permissions
 
 Request an OS privacy permission only when the current user action needs that
@@ -323,5 +331,7 @@ never replace an asset in place.
 - No sensitive values or raw runtime output are included.
 - New commits use the current `gh` account; published history contains no Agent
   Author, Committer, attribution trailer, or bypassed hook.
+- The temporary branch is deleted on the remote and in the local clone once its
+  merge commit is on `nightly`.
 
 LicoUp uses the `AGPL-3.0-or-later` license.
