@@ -231,8 +231,9 @@ and capability-dependent. Do not reduce all Agents to text-in/text-out.
 A native Agent's reply reaches the Conversation as the Agent produced it.
 Continuity derives its interpretation from that reply; it never makes the reply
 conform to a LicoUp schema, format or output contract, and never treats natural
-language as invalid, empty or an abstention for lacking one. An undisclosed
-format requirement is a defect, not a hidden contract.
+language as invalid, empty or an abstention for lacking one. A requirement the
+Agent's reply must satisfy before its content can be understood is a defect:
+understanding is derived from what the Agent said, never demanded of its shape.
 
 Only one writer may mutate a given native session at a time. Foreground dialog
 must remain responsive while independent professional work executes. Parallel
