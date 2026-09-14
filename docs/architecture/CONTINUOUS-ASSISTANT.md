@@ -45,7 +45,7 @@ the meanings in [CONTEXT.md](../../CONTEXT.md).
 | Matter | A revisable association of conversation material about one subject or undertaking | Conversation continuity state |
 | Commitment / Goal | An outstanding, bounded result accepted from the User's expressed intent; Goal is its durable tracking record | Conversation continuity state |
 | Agreement | A sourced, scoped decision or constraint, with effective and superseding revisions | Conversation continuity state |
-| Interpretation proposal | The host-assembled reading of what a User and an Agent meant | Cognition derives it from their own words; Conversation validates and commits |
+| Interpretation proposal | What the host reads out of what the User and the Agent actually said | Cognition works it out; Conversation checks and commits it |
 | Context assembly | An ephemeral, authorized selection of original material, agreements and work references for one invocation | Context composition boundary |
 | Work context | A private, versioned binding of a Matter and Membership to a native execution session | Existing runtime-binding owner |
 | Follow-up | A durable reason to reconsider an unresolved Goal | Conversation host, using existing dispatch |
@@ -113,14 +113,14 @@ a non-coding delivery can require days of follow-up. The Assistant may propose
 an initial definition of done, but consequential ambiguity needs resolution.
 It never silently relaxes a User-defined acceptance condition.
 
-An interpretation proposal records the reading of an exchange: source Event/Part
-references, the observed Conversation revision and designation epoch, Matter
-candidates, relevant agreement revisions, proposed changes, capability needs,
-and uncertainty reasons. It preserves the original input. Confidence reported by
-a model is not a calibrated permission or completion signal. Unknown fields,
-stale versions and unauthorized references cannot be committed. The proposal is
-derived from what the User and the Agent actually said; the Agent's reply is
-never required to carry it, or to take any particular shape.
+An interpretation proposal records what the host read out of an exchange: which
+source Event and Parts, the Conversation revision and designation epoch it
+observed, Matter candidates, relevant agreement revisions, proposed changes,
+capability needs, and reasons it is unsure. It keeps the original input. A
+model's own confidence is not a permission and not a completion signal. Unknown
+fields, stale versions and unauthorized references are refused. The host works
+the proposal out from what the User and the Agent actually said; it never asks
+the Agent's reply to carry it or to fit a shape.
 
 The proposal is committed through the Conversation authority with compare-and-
 set checks. Reads and interpretation are side-effect-free. A semantic proposal
@@ -230,12 +230,10 @@ Skills, environment, model and reasoning settings remain available under their
 existing owners. Product continuity is universal; fidelity levels are truthful
 and capability-dependent. Do not reduce all Agents to text-in/text-out.
 
-A native Agent's reply reaches the Conversation as the Agent produced it.
-Continuity derives its interpretation from that reply; it never makes the reply
-conform to a LicoUp schema, format or output contract, and never treats natural
-language as invalid, empty or an abstention for lacking one. A requirement the
-Agent's reply must satisfy before its content can be understood is a defect:
-understanding is derived from what the Agent said, never demanded of its shape.
+LicoUp shows an Agent's reply as the Agent produced it. Continuity works out
+what the reply means from the reply itself. It never asks the reply to fit a
+format, and never calls plain language invalid, empty or an abstention. If a
+reply has to fit a shape before we can understand it, that is a defect.
 
 Only one writer may mutate a given native session at a time. Foreground dialog
 must remain responsive while independent professional work executes. Parallel
@@ -444,11 +442,10 @@ projections are generated from that embed. Temporary ports return typed
 `unsupported_capability` with `effectClass=none`. This section does not claim
 enabled automation, native capability, or release evidence.
 
-No reply-shape contract belongs to this set. Every type here describes
-host-owned state that LicoUp validates and commits; none of them describes what
-an Agent must send, and an Agent's reply is relayed as the Agent produced it.
-A generated type that constrains the Agent's own reply text is a defect, not a
-contract.
+No reply-shape contract belongs here. These types describe host state that
+LicoUp checks and commits. None of them says what an Agent must send. An
+Agent's reply is shown as the Agent produced it. A generated type that shapes
+the Agent's own reply text is a defect.
 
 | Public generated types | Private ports / leaves |
 |:---|:---|

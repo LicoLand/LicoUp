@@ -37,10 +37,10 @@ const forbiddenKeys = [
 // The relay boundary is stated once per level. Keep every statement present so
 // removing the rule fails the source gate instead of passing review silently.
 const requiredStatements = [
-  ["PRODUCT.md", "never requires a reply format"],
-  ["PRODUCT.zh-CN.md", "从不要求回复格式"],
-  ["CONTRIBUTING.md", "never make an agent's reply conform to a"],
-  ["CONTRIBUTING.zh-CN.md", "绝不要求 agent 的回复符合"],
+  ["PRODUCT.md", "never asks the agent for a format"],
+  ["PRODUCT.zh-CN.md", "绝不要求格式"],
+  ["CONTRIBUTING.md", "never ask an agent to answer in a format"],
+  ["CONTRIBUTING.zh-CN.md", "绝不要求 agent 按 licoup 定义的格式回答"],
   [
     "docs/architecture/AGENT-ADAPTERS-ARCHITECTURE.md",
     "no imposed reply format",
@@ -52,7 +52,7 @@ const requiredStatements = [
   ["docs/architecture/CONTINUOUS-ASSISTANT.md", "as the agent produced it"],
   [
     "docs/architecture/CONTINUOUS-ASSISTANT.zh-CN.md",
-    "按它原本产出的样子进入 conversation",
+    "只按 agent 原本产出的样子显示它的回复",
   ],
 ];
 

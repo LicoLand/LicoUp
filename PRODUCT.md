@@ -98,9 +98,9 @@ The long-term model uses one visible Conversation for people and Agents:
 - a User can start, continue, search, organize, and preserve conversations;
 - a local or remote Agent participates through an explicitly admitted
   interface and never becomes an implicit authority;
-- an Agent's own conversation reaches LicoUp as the Agent produced it; LicoUp
-  never requires a reply format, and a natural-language reply is never invalid,
-  empty, or an abstention for lacking one;
+- LicoUp shows the Agent's own reply, as the Agent said it. It never asks the
+  Agent for a format, and a reply is never invalid or empty just because it has
+  none;
 - a human or Agent participant receives only the history and context granted
   by the conversation membership policy;
 - every external disclosure or effect remains visible, bounded, and
