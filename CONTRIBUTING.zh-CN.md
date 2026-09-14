@@ -90,11 +90,11 @@ npm run client:install:macos -- --launch-installed --verify-stable
 无需构建、安装或启动客户端。用户明确要求跳过安装时遵从，并报告剩余验证。本地安装
 不代表授权签名、公证、源码晋升、公开发布或生产环境变更。
 
-真实 Agent 对话测试消耗真实 token，因此使用足够可用的最便宜模型，而不是最强的模型。
-各 Agent 的权威归属是
-[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml)，
-修改验证测试模型只改这里。当前 Codex 的推荐是 `gpt-5.6-luna` + `max` 推理档。其他
-Agent 沿用同一文件中各自记录的选型。
+真实 Agent 对话测试要花真 token，所以用够用的最便宜模型，不要用最强的。每个 Agent 的
+选型只有一个文件：
+[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml)。
+要改测试模型只改这里。Codex 现在用 `gpt-5.6-luna` + `max` 档，其他 Agent 各自保留自己的
+条目。
 
 ## Agent 指导
 
@@ -112,9 +112,9 @@ SKILL.md 只做通往按需参考文档或现有工具的最小路由。打包 S
 子任务至少允许 10 分钟观察窗口，大型任务 30 分钟，按宿主工具限制分段等待并提供进度。
 窗口不是终止期限；等待返回不证明完成，也不构成取消授权。
 
-传递 Agent 原生对话。绝不要求 Agent 的回复符合 LicoUp 定义的 schema、格式或输出契约，
-也绝不把自然语言回复视为无效、空回复或弃权。连续性读取 Agent 实际说了什么，不约束
-Agent 可以怎么说。
+只传递 Agent 自己的对话。绝不要求 Agent 按 LicoUp 定义的格式回答，也绝不校验它有没有
+遵循某种格式。自然语言的回复，不会因为没有格式就被判成无效、空回复或弃权。连续性只读
+Agent 实际说了什么。
 
 ## 系统权限
 
@@ -197,10 +197,9 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
 `release`。
 
-临时分支随其合并在同一次会话内结束。Pull Request 合并且其 merge commit 已进入
-`nightly` 后，立即删除该分支的远程与本地副本，不把已合并分支留待以后清理。只删除该
-Pull Request 关闭的那一个分支，且只在确认合并已进入 `nightly` 之后删除——仍有未合并
-提交的分支、未合并或关闭但未合并的 Pull Request、以及不是自己创建的分支都保留。
+临时分支只活到合并为止。Pull Request 合并且 merge commit 进入 `nightly` 后，立刻删掉它的
+远程分支和本地分支，就在同一次会话里做。只删那一个分支，并且只在确认合并已进入 `nightly`
+之后删。还有未合并提交的分支、关闭但未合并的 Pull Request、以及不是自己创建的分支，都留着。
 
 项目必须完成 100 次独立发布后，才能把任何构建提升到 `1.0.0` 线。每一个 1.0
 之前的发布都保留自己的不可变版本、候选证据和制品收据；被跳过或被替换的候选不
@@ -225,10 +224,8 @@ Pull Request 关闭的那一个分支，且只在确认合并已进入 `nightly`
 来源及新构建号或版本；严禁原地替换资产。
 
 - 改动只有一个清晰范围。
-- 绝不要求 Agent 对话回复符合 LicoUp 定义的格式，也绝不把自然语言回复视为无效、
-  空回复或弃权。
-- 真实 Agent 对话测试使用足够可用的最便宜模型，并记录在验证模型权威中，而不是在
-  测试里硬编码。
+- 没有要求 Agent 的回复符合 LicoUp 的格式，也没有把纯自然语言的回复判成无效、空回复或弃权。
+- 真实 Agent 对话测试用的是够用的最便宜模型，取自验证模型权威，而不是硬编码在测试里。
 - 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。
 - 完成迁移时，旧路径和旧名称已经删除。
 - 新增或修改的测试只使用虚构并脱敏的数据。
