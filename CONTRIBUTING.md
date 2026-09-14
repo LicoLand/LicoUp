@@ -107,12 +107,11 @@ Honor an explicit request to skip installation and report the remaining
 verification. Local installation does not authorize signing, notarization,
 source promotion, public publication, or production changes.
 
-A live Agent conversation test spends real tokens, so it uses the cheapest
-adequate model rather than the strongest available one. The per-Agent authority
-is [`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml);
-change a verification test model there and nowhere else. The current Codex
-recommendation is `gpt-5.6-luna` at `max` reasoning effort. Other Agents follow
-their own recorded choice in the same file.
+A live Agent conversation test spends real tokens, so use the cheapest model
+that can do the job, not the strongest. The per-Agent choice has one file:
+[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml).
+Change a test model there and nowhere else. Codex currently uses
+`gpt-5.6-luna` at `max` effort. Other Agents keep their own entry in that file.
 
 ## Agent guidance
 
@@ -137,10 +136,10 @@ window for ordinary delegated work and 30 minutes for large work, split into
 host-supported waits with progress updates. These windows are not deadlines;
 a wait returning does not prove completion or permit cancellation.
 
-Relay the Agent's own conversation. Never make an Agent's reply conform to a
-LicoUp-defined schema, format, or output contract, and never treat a natural
-reply as invalid, empty, or an abstention for lacking one. Continuity reads
-what the Agent actually said; it does not constrain what the Agent may say.
+Relay the Agent's own conversation. Never ask an Agent to answer in a format
+LicoUp defines, and never check whether it followed one. A reply is not
+invalid, empty or an abstention just because it is plain language. Continuity
+reads what the Agent actually said.
 
 ## Agent-assisted contribution
 
@@ -177,13 +176,12 @@ the smallest relevant checks. Before handoff, run the source policy once
 plus only the technology lanes your change touches, as listed in
 [Set up](#set-up).
 
-A temporary branch ends with its merge. Once the pull request is merged and
-its merge commit is on `nightly`, delete that branch on the remote and in the
-local clone in the same session; do not leave a merged branch for a later
-cleanup. Delete only the branch that pull request closed, and only after the
-merge is confirmed on `nightly` — a branch with unmerged commits, an
-unmerged or closed-without-merge pull request, and a branch you did not
-create all stay.
+A temporary branch ends with its merge. When the pull request is merged and its
+merge commit is on `nightly`, delete that branch on the remote and in the local
+clone, in the same session. Delete only the branch that pull request closed,
+and only after the merge is confirmed. Keep any branch with unmerged commits,
+any pull request that closed without merging, and any branch you did not
+create.
 
 ## Platform permissions
 
@@ -318,11 +316,10 @@ corrective-release plan with a new verified source and a new build or version;
 never replace an asset in place.
 
 - The change has one clear scope.
-- An Agent conversation reply is never made to conform to a LicoUp-defined
-  format, and a natural-language reply is never treated as invalid, empty, or
-  an abstention for lacking one.
-- A live Agent conversation test uses the cheapest adequate model, recorded in
-  the verification model authority rather than hardcoded in the test.
+- No Agent reply was made to fit a LicoUp format, and no plain reply was called
+  invalid, empty or an abstention for having none.
+- A live Agent conversation test used the cheapest model that can do the job,
+  taken from the verification model authority instead of hardcoded.
 - Native CLI or generated contract changes keep the Flutter and Rust sides
   consistent in the same change.
 - Old paths and old names are removed when a migration is complete.
