@@ -435,6 +435,56 @@ pub(in crate::domain::collaboration_plugin) fn open_directory_path_no_follow(
     Ok(directory)
 }
 
+/// Opens one existing directory without following a final reparse point.
+///
+/// Windows has no `openat` chain, so the bound object is established by
+/// validating every existing ancestor lexically and then opening the leaf with
+/// `FILE_FLAG_OPEN_REPARSE_POINT`, which returns a handle to the reparse point
+/// itself rather than its target. A redirected leaf is rejected by the
+/// attribute check on the opened handle.
+#[cfg(not(unix))]
+pub(in crate::domain::collaboration_plugin) fn open_directory_path_no_follow(
+    path: &Path,
+) -> Result<fs::File> {
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    ensure!(
+        !absolute
+            .components()
+            .any(|component| matches!(component, Component::CurDir | Component::ParentDir)),
+        "collaboration_plugin_destination_path_invalid"
+    );
+    crate::platform::file_security::validate_no_symlink_ancestors(&absolute)?;
+    let metadata = fs::symlink_metadata(&absolute)
+        .map_err(|_| anyhow!("collaboration_plugin_destination_parent_invalid"))?;
+    ensure!(
+        metadata.is_dir(),
+        "collaboration_plugin_destination_parent_invalid"
+    );
+    let directory = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&absolute)
+        .map_err(|_| anyhow!("collaboration_plugin_destination_parent_invalid"))?;
+    let opened = directory
+        .metadata()
+        .map_err(|_| anyhow!("collaboration_plugin_destination_parent_changed"))?;
+    ensure!(
+        opened.is_dir() && opened.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0,
+        "collaboration_plugin_destination_parent_changed"
+    );
+    Ok(directory)
+}
+
 #[cfg(unix)]
 fn open_canonical_directory_no_follow(path: &Path) -> Result<fs::File> {
     let mut current = open_directory(Path::new("/"))?;

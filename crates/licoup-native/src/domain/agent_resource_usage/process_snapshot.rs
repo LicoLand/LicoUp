@@ -274,7 +274,8 @@ fn parse_tasklist_line(line: &str) -> Option<(String, i64, u64)> {
     }
     let pid = fields.get(1)?.trim().parse::<i64>().ok()?;
     // "Mem Usage" column, e.g. "123,456 K" (US locale) or "123456 K".
-    let mem_text = fields.get(4).unwrap_or(&String::new());
+    let empty = String::new();
+    let mem_text = fields.get(4).unwrap_or(&empty);
     let normalized = mem_text.replace(',', "");
     let kb = normalized
         .trim()

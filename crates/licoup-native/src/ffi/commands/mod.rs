@@ -3099,6 +3099,17 @@ fn build_command_table() -> CommandTable {
         help: "",
     });
     table.register_command(CommandSpec {
+        source_module: "mobile.rs",
+        handler_name: "handle_mobile_relay",
+        path: &["mobile", "relay", "e2ee", "secret-store-self-test"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: mobile::handle_mobile_relay,
+        help: "",
+    });
+    table.register_command(CommandSpec {
         source_module: "opencode_serve.rs",
         handler_name: "handle_opencode_serve",
         path: &["opencode-serve", "ensure"],
