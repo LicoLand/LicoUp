@@ -23,6 +23,10 @@
   LicoUp-defined schema, format, or output contract, and never treat a natural
   reply as invalid, empty, or an abstention for lacking one. Continuity reads
   what the Agent actually said; it does not constrain what the Agent may say.
+- A temporary branch ends with its merge. Once a pull request is merged and its
+  merge commit is on `nightly`, delete that branch on the remote and locally in
+  the same session. Delete only the branch that pull request closed, and only
+  after the merge is confirmed; unmerged work and other authors' branches stay.
 
 ## Task routes
 
