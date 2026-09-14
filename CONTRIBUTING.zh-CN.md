@@ -90,6 +90,12 @@ npm run client:install:macos -- --launch-installed --verify-stable
 无需构建、安装或启动客户端。用户明确要求跳过安装时遵从，并报告剩余验证。本地安装
 不代表授权签名、公证、源码晋升、公开发布或生产环境变更。
 
+真实 Agent 对话测试要花真 token，所以用够用的最便宜模型，不要用最强的。每个 Agent 的
+选型只有一个文件：
+[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml)。
+要改测试模型只改这里。Codex 现在用 `gpt-5.6-luna` + `max` 档，其他 Agent 各自保留自己的
+条目。
+
 ## Agent 指导
 
 AGENTS.md 只保留稳定边界与任务路由。共享开发 Skill 在 `lico-dev` 维护，本仓库只内置
@@ -105,6 +111,10 @@ SKILL.md 只做通往按需参考文档或现有工具的最小路由。打包 S
 规划和验证规模应匹配改动。仅派发有价值且独立的工作，明确归属，禁止快速模式。普通
 子任务至少允许 10 分钟观察窗口，大型任务 30 分钟，按宿主工具限制分段等待并提供进度。
 窗口不是终止期限；等待返回不证明完成，也不构成取消授权。
+
+只传递 Agent 自己的对话。绝不要求 Agent 按 LicoUp 定义的格式回答，也绝不校验它有没有
+遵循某种格式。自然语言的回复，不会因为没有格式就被判成无效、空回复或弃权。连续性只读
+Agent 实际说了什么。
 
 ## 系统权限
 
@@ -187,6 +197,10 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
 `release`。
 
+临时分支只活到合并为止。Pull Request 合并且 merge commit 进入 `nightly` 后，立刻删掉它的
+远程分支和本地分支，就在同一次会话里做。只删那一个分支，并且只在确认合并已进入 `nightly`
+之后删。还有未合并提交的分支、关闭但未合并的 Pull Request、以及不是自己创建的分支，都留着。
+
 项目必须完成 100 次独立发布后，才能把任何构建提升到 `1.0.0` 线。每一个 1.0
 之前的发布都保留自己的不可变版本、候选证据和制品收据；被跳过或被替换的候选不
 计入发布次数。
@@ -210,6 +224,8 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 来源及新构建号或版本；严禁原地替换资产。
 
 - 改动只有一个清晰范围。
+- 没有要求 Agent 的回复符合 LicoUp 的格式，也没有把纯自然语言的回复判成无效、空回复或弃权。
+- 真实 Agent 对话测试用的是够用的最便宜模型，取自验证模型权威，而不是硬编码在测试里。
 - 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。
 - 完成迁移时，旧路径和旧名称已经删除。
 - 新增或修改的测试只使用虚构并脱敏的数据。
@@ -217,5 +233,6 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 - 不包含敏感值或原始运行输出。
 - 提交 Author 与 Committer 和当前 `gh` 账号一致，且没有第二署名、署名 trailer、
   Agent 身份或被绕过的 hook。
+- merge commit 进入 `nightly` 后，临时分支的远程与本地副本均已删除。
 
 LicoUp 使用 `AGPL-3.0-or-later` 许可证。

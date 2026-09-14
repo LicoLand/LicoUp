@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { parityModelForAgent } from "./agent-ids.mjs";
+import { parityEffortForAgent, parityModelForAgent } from "./agent-ids.mjs";
 import { sidecarArgs, verificationTurnCount } from "./constants.mjs";
 import { AcceptanceError, digest, requireFact, stableJson } from "./errors.mjs";
 import { nativeReadback, runSidecar } from "./native/acp-turn.mjs";
@@ -60,8 +60,7 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
     const forcedModel = parityModelForAgent(context.config.id);
     const forcedCodexModel = context.config.id === "codex" ? forcedModel : "";
     const forcedCodexEffort = context.config.id === "codex"
-      ? (process.env.LICO_CODEX_PARITY_REASONING_EFFORT
-        || (forcedCodexModel.toLowerCase().includes("spark") ? "low" : ""))
+      ? parityEffortForAgent("codex", forcedCodexModel)
       : "";
 
     requestCount += 1;
