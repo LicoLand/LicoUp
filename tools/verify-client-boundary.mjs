@@ -283,7 +283,7 @@ async function scanPublicFiles() {
         addFailure(reasonCode, relativePath, match[0]);
       }
     }
-    if (extension === ".md" && entryName !== "AGENTS.md") {
+    if (extension === ".md") {
       for (const { pattern, reasonCode } of forbiddenPublicDocumentContent) {
         pattern.lastIndex = 0;
         const match = pattern.exec(source);
