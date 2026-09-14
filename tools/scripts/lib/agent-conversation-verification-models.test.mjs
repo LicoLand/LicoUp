@@ -4,6 +4,7 @@ import {
   VERIFICATION_MODELS_SCHEMA,
   loadVerificationModels,
   parseVerificationModelsToml,
+  verificationEffortForAgent,
   verificationModelForAgent,
   verificationModelsMap,
 } from "./agent-conversation-verification-models.mjs";
@@ -28,7 +29,7 @@ test("loadVerificationModels loads the repo config once", () => {
   const second = loadVerificationModels();
   assert.equal(first, second);
   assert.equal(first.schemaVersion, VERIFICATION_MODELS_SCHEMA);
-  assert.equal(verificationModelForAgent("codex"), "gpt-5.3-codex-spark");
+  assert.equal(verificationModelForAgent("codex"), "gpt-5.6-luna");
   assert.equal(verificationModelForAgent("cursor"), "composer-2.5");
   assert.equal(
     verificationModelForAgent("antigravity"),
@@ -36,4 +37,12 @@ test("loadVerificationModels loads the repo config once", () => {
   );
   assert.equal(verificationModelForAgent("missing-agent"), "");
   assert.equal(typeof verificationModelsMap().cursor, "string");
+});
+
+test("verification effort is paired with the recorded verification model", () => {
+  assert.equal(verificationEffortForAgent("codex", "gpt-5.6-luna"), "max");
+  assert.equal(verificationEffortForAgent("codex", "gpt-5.3-codex-spark"), "low");
+  assert.equal(verificationEffortForAgent("codex", ""), "");
+  assert.equal(verificationEffortForAgent("cursor", "composer-2.5"), "");
+  assert.equal(verificationEffortForAgent("", "gpt-5.6-luna"), "");
 });

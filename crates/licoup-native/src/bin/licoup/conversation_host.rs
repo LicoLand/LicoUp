@@ -21,6 +21,7 @@ use std::{
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
     thread,
     time::{Duration, Instant},
@@ -32,6 +33,7 @@ use super::stdio_rpc::{
 
 const CONNECT_ATTEMPTS: usize = 80;
 const CONNECT_RETRY: Duration = Duration::from_millis(25);
+const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(25);
 const STALE_HOST_WAIT: Duration = Duration::from_secs(2);
 const OWNER_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(300);
@@ -227,7 +229,31 @@ fn host_is_current() -> bool {
 }
 
 fn endpoint_accepts_connections() -> bool {
-    licoup_native::platform::conversation_host_transport::connect().is_ok()
+    try_connect(licoup_native::platform::conversation_host_transport::connect).is_some()
+}
+
+/// A local-socket connect can block in the OS while the listener is starting
+/// or being taken over. Keep the caller bounded even when it holds ownership.
+/// A timeout means that this attempt has not answered; callers may retry.
+fn try_connect(connector: fn() -> io::Result<Stream>) -> Option<Stream> {
+    run_with_timeout(connector, CONNECT_ATTEMPT_TIMEOUT)
+}
+
+fn run_with_timeout<T, F>(operation: F, timeout: Duration) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> io::Result<T> + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let _ = sender.send(operation());
+    });
+
+    match receiver.recv_timeout(timeout) {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(_))
+        | Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => None,
+    }
 }
 
 /// Whether any host is still answering, asked repeatedly until `window` runs
@@ -253,7 +279,8 @@ fn wait_for_current_or_released_endpoint() -> Option<Stream> {
     let deadline = Instant::now() + STALE_HOST_WAIT;
     while Instant::now() < deadline {
         if host_is_current()
-            && let Ok(stream) = licoup_native::platform::conversation_host_transport::connect()
+            && let Some(stream) =
+                try_connect(licoup_native::platform::conversation_host_transport::connect)
         {
             return Some(stream);
         }
@@ -267,8 +294,8 @@ fn wait_for_current_or_released_endpoint() -> Option<Stream> {
 
 pub(super) fn connect_for_cli(require_running: bool) -> Result<Stream> {
     if require_running {
-        return licoup_native::platform::conversation_host_transport::connect_existing()
-            .map_err(|_| anyhow!("persistent_conversation_transport_required"));
+        return try_connect(licoup_native::platform::conversation_host_transport::connect_existing)
+            .ok_or_else(|| anyhow!("persistent_conversation_transport_required"));
     }
     connect_or_start()
 }
@@ -279,7 +306,9 @@ fn connect_or_start() -> Result<Stream> {
         // host process it names is still alive. A record that is merely out of
         // date must not cost the stale wait against a reachable host, so try
         // the endpoint first and let it decide.
-        if let Ok(stream) = licoup_native::platform::conversation_host_transport::connect() {
+        if let Some(stream) =
+            try_connect(licoup_native::platform::conversation_host_transport::connect)
+        {
             return Ok(stream);
         }
     } else if endpoint_accepts_connections() {
@@ -295,7 +324,9 @@ fn connect_or_start() -> Result<Stream> {
     spawn_host()?;
     for _ in 0..CONNECT_ATTEMPTS {
         if host_is_current() {
-            if let Ok(stream) = licoup_native::platform::conversation_host_transport::connect() {
+            if let Some(stream) =
+                try_connect(licoup_native::platform::conversation_host_transport::connect)
+            {
                 return Ok(stream);
             }
         }
@@ -855,6 +886,38 @@ mod tests {
         licoup_native::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(&root);
         assert!(!answered, "a fresh root has no host to answer");
+    }
+
+    #[test]
+    fn a_slow_connect_is_treated_as_no_answer() {
+        let started = Instant::now();
+        let answer = run_with_timeout(
+            || {
+                thread::sleep(Duration::from_secs(1));
+                Ok::<_, io::Error>(())
+            },
+            Duration::from_millis(10),
+        );
+        assert!(answer.is_none());
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "a connect attempt must not hold its caller until the worker returns"
+        );
+    }
+
+    #[test]
+    fn a_fast_connect_answer_is_returned() {
+        assert_eq!(
+            run_with_timeout(|| Ok::<_, io::Error>(42_u8), Duration::from_secs(1)),
+            Some(42)
+        );
+        assert!(
+            run_with_timeout(
+                || Err::<u8, _>(io::Error::other("connection refused")),
+                Duration::from_secs(1),
+            )
+            .is_none()
+        );
     }
 
     #[test]

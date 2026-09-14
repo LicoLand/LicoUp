@@ -88,6 +88,7 @@
     "client:verify:acp-reference-agent:self-test": "node tools/acp-reference-agent/verify.mjs",
     "client:verify:agent-conversation-parity": "node tests/contract/client/agent-conversation-parity-reducer.test.mjs && node tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs --check && node tests/product-e2e/cli/agent-conversations/support/parity-facade.mjs --self-test",
     "client:verify:agent-adapter-standard": "node tools/scripts/client-agent-adapter-standard.mjs",
+    "client:verify:agent-native-output": "node tools/scripts/client-agent-native-output.mjs",
     "client:verify:agent-conversations": "node tools/scripts/client-agent-conversation-verify.mjs",
     "client:verify:agent-conversations:release-ready": "node tests/product-e2e/cli/agent-conversations/support/reducer-facade.mjs --check --require-ready",
     "client:opencode:add-gateway": "node tools/scripts/opencode-add-licoup-gateway.mjs",

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { parityModelForAgent } from "../parity/agent-ids.mjs";
+import { parityEffortForAgent, parityModelForAgent } from "../parity/agent-ids.mjs";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../../..");
 const timeoutMs = Number(process.env.LICO_CODEX_PARITY_TIMEOUT_MS || 180_000);
@@ -461,10 +461,9 @@ try {
   const arcPrompt = `Reply with exactly ${arcCanary} and no other text.`;
 
   const model = parityModelForAgent("codex");
-  // Spark rejects turn/start when reasoning.effort is omitted or invalid.
-  // Prefer an explicit harness effort; fall back to a Spark-safe default.
-  const reasoningEffort = process.env.LICO_CODEX_PARITY_REASONING_EFFORT
-    || (String(model).toLowerCase().includes("spark") ? "low" : "");
+  // Some Codex models reject turn/start when reasoning.effort is omitted or
+  // invalid, so the paired effort comes from the model authority.
+  const reasoningEffort = parityEffortForAgent("codex", model);
 
   stage = "native-entry";
   nativeClient = new AppServerClient(wrapper.wrapperPath, wrapper.environment);
