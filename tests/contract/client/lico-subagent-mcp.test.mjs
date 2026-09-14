@@ -20,6 +20,9 @@ const providerRuntime = read(
 );
 const agentHubCatalog = read("crates/licoup-native/src/domain/agent_hub/catalog.rs");
 const agentHubVersion = read("crates/licoup-native/src/domain/agent_hub/version_check.rs");
+const cliSurface = read("crates/licoup-native/src/ffi/commands/subagents.rs");
+const commandTable = read("crates/licoup-native/src/ffi/commands/mod.rs");
+const applicationPorts = read("crates/licoup-native/src/domain/application_port.rs");
 const schema = JSON.parse(read("schemas/subagent_mcp/subagent_mcp.schema.json"));
 
 const TOOLS = [
@@ -52,6 +55,66 @@ test("independent MCP freezes its protocol, identity, and five public operations
   assert.equal(schema.properties.tools.minItems, TOOLS.length);
   assert.equal(schema.properties.tools.maxItems, TOOLS.length);
   assert.deepEqual(schema.properties.tools.prefixItems.map((item) => item.const), TOOLS);
+});
+
+test("delegated work is reached through the shared facade and nothing else", () => {
+  // One door. The CLI surface decodes its own wire shape and hands the command
+  // to the shared facade; a domain owner reached from here would be a second
+  // path, and the MCP would stop sharing the CLI's semantics.
+  const implementation = cliSurface.slice(0, cliSurface.indexOf("mod tests"));
+  assert.match(implementation, /application_port::execute_as/u);
+  assert.doesNotMatch(
+    implementation,
+    /production_application|subagents::local/u,
+    "the CLI surface must not reach a domain owner directly",
+  );
+  // The ports behind the facade are the only place that names the owner, and
+  // both delegated families have a real implementation there — a family that
+  // only ever answers "unsupported" would be a door that leads nowhere.
+  assert.match(applicationPorts, /impl ActorPort for/u);
+  assert.match(applicationPorts, /impl SubagentPort for/u);
+  assert.match(applicationPorts, /impl AssistantPort for/u);
+  assert.match(applicationPorts, /production_application\(\)/u);
+  assert.doesNotMatch(applicationPorts, /UnsupportedFamily|application_family_unsupported/u);
+});
+
+test("CLI and MCP meet at one argv envelope for the same tool call", () => {
+  // The MCP crate deliberately shares no type with `licoup-native`, so the seam
+  // the two interfaces meet at is the JSON the MCP puts on the CLI argv and the
+  // CLI decodes. If one side renamed a field, the two interfaces would quietly
+  // stop asking for the same thing.
+  const mcpEnvelope = remoteApplication.slice(
+    remoteApplication.indexOf("let request = json!"),
+    remoteApplication.indexOf("// A slow inventory"),
+  );
+  const cliEnvelope = cliSurface.slice(
+    cliSurface.indexOf("struct Invocation"),
+    cliSurface.indexOf("impl CallerScope"),
+  );
+  for (const field of ["name", "arguments", "caller"]) {
+    assert.ok(mcpEnvelope.includes(`"${field}"`), `the MCP envelope names ${field}`);
+    assert.ok(cliEnvelope.includes(field), `the CLI decodes ${field}`);
+  }
+  for (const field of [
+    "provider_id",
+    "conversation_id",
+    "membership_id",
+    "parent_dispatch_id",
+  ]) {
+    assert.ok(cliEnvelope.includes(field), `the CLI decodes ${field}`);
+  }
+  assert.match(cliEnvelope, /rename_all = "camelCase"/u);
+  assert.match(remoteApplication, /"providerId":context\.caller\.provider_id/u);
+  assert.match(remoteApplication, /"conversationId":context\.caller\.conversation_id/u);
+  assert.match(remoteApplication, /"membershipId":context\.caller\.membership_id/u);
+  assert.match(remoteApplication, /"parentDispatchId":context\.caller\.parent_dispatch_id/u);
+  // Both sides address the operation by the same tool name, and the MCP reaches
+  // the CLI through the one route the facade serves.
+  assert.match(remoteApplication, /"subagents"\.into\(\).*"execute"\.into\(\)/su);
+  assert.match(
+    commandTable,
+    /path: &\["subagents", "execute"\][\s\S]*?handler: subagents::handle_subagents_execute/u,
+  );
 });
 
 test("independent engine owns inbound framing, initialization, calls, and cancellation", () => {
