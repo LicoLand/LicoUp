@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 176;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 177;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2155,6 +2155,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "mobile relay commands result-secure",
             "mobile relay commands result-replay-proof",
             "mobile relay e2ee secret-store-cleanup",
+            "mobile relay e2ee secret-store-self-test",
         ],
         Options,
     );
