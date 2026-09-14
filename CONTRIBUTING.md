@@ -130,6 +130,11 @@ window for ordinary delegated work and 30 minutes for large work, split into
 host-supported waits with progress updates. These windows are not deadlines;
 a wait returning does not prove completion or permit cancellation.
 
+Relay the Agent's own conversation. Never make an Agent's reply conform to a
+LicoUp-defined schema, format, or output contract, and never treat a natural
+reply as invalid, empty, or an abstention for lacking one. Continuity reads
+what the Agent actually said; it does not constrain what the Agent may say.
+
 ## Agent-assisted contribution
 
 An Agent may assist your work, but you remain the author of every commit. If

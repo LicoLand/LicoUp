@@ -95,6 +95,7 @@ Regardless of whether an agent speaks standard ACP, CLI PTY, or proprietary Code
 2. **No Heuristic Completion Guessing**: Drivers never guess completion (e.g. 100ms silence); L1 parsers arbitrate completion solely via explicit EOF or terminal transitions.
 3. **Isolated Evolution for Proprietary Protocols**: Protocol changes in Codex or OpenCode remain isolated inside their respective `adapters/<agent>/` directory and never pollute upper domain layers.
 4. **User Terminal Environment Equivalence**: A CLI subagent launched by LicoUp must observe exactly the same environment as when the user starts the same CLI from their own terminal login shell — same proxy variables, same PATH, same login state, same working setup. No global shell/launchd mutation is used to achieve this; the equivalence itself is the invariant, never an injected subset.
+5. **No Imposed Reply Format**: A native Agent's conversational reply is relayed as the Agent produced it. LicoUp sends no reply schema, response format, or output contract that constrains the Agent's visible text, and a natural-language reply is never invalid, empty, or an abstention for lacking one. Host semantics are derived from what the Agent said, never required of what it must say.
 
 ---
 
