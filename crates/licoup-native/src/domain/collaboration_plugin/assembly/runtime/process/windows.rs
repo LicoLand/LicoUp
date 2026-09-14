@@ -1,14 +1,14 @@
 use anyhow::{Result, anyhow, ensure};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, FILETIME, GetLastError, HANDLE,
+    CloseHandle, ERROR_INVALID_PARAMETER, FILETIME, GetLastError, HANDLE, STILL_ACTIVE,
 };
 use windows_sys::Win32::System::Threading::{
     GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    QueryFullProcessImageNameW, STILL_ACTIVE,
+    QueryFullProcessImageNameW,
 };
 
 use super::ProcessLiveness;
@@ -42,7 +42,7 @@ pub(in crate::domain::collaboration_plugin::assembly) fn liveness(pid: u32) -> P
     };
     if result == 0 {
         ProcessLiveness::Unavailable
-    } else if exit_code == STILL_ACTIVE {
+    } else if exit_code == STILL_ACTIVE as u32 {
         ProcessLiveness::Alive
     } else {
         ProcessLiveness::Dead
