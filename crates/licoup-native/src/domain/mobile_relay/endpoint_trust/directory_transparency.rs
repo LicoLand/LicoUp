@@ -5,7 +5,7 @@ mod clock;
 mod config;
 mod ensure;
 mod freshness;
-#[cfg(test)]
+#[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
 mod test_support;
 mod verifier;
 

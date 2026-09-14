@@ -5,7 +5,8 @@
 //! clear. Secrets never land on disk; only the live socket carries them.
 
 #[cfg(unix)]
-use crate::domain::llm_api_key_vault::{GatewayCredentialHandoff, GatewayCredentialSlot};
+use crate::domain::llm_api_key_vault::GatewayCredentialHandoff;
+use crate::domain::llm_api_key_vault::GatewayCredentialSlot;
 #[cfg(unix)]
 use crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault;
 use anyhow::{Result, anyhow, ensure};
@@ -85,7 +86,7 @@ pub fn serve_credentials_control(
 #[cfg(not(unix))]
 pub fn serve_credentials_control(
     _socket_path: PathBuf,
-    _credentials: Arc<()>,
+    _credentials: Arc<GatewayCredentialSlot>,
     _stop: Arc<AtomicBool>,
 ) -> Result<()> {
     Err(anyhow!("llm_gateway_credentials_control_unsupported"))
