@@ -28,7 +28,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { sanitizeError } from "../../../tools/scripts/lib/sanitize-error.mjs";
+import { sanitizeError } from "../../tools/scripts/lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const progressPath = path.join(repoRoot, "build", "test-reports", "windows-native-smoke-progress.jsonl");
@@ -181,7 +181,7 @@ async function main() {
   }
 
   await recordProgress("licoup-build", "start");
-  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/licoup-native/Cargo.toml", "--bin", "licoup-cli"], { timeoutMs: 240000 });
+  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/licoup-native/Cargo.toml", "--features", "secure-mesh-acceptance-mock-kt", "--bin", "licoup-cli"], { timeoutMs: 240000 });
   await recordProgress("licoup-build", "ok");
 
   const licoClientExe = path.join(repoRoot, "build", "crates", "licoup-native", "target", "debug", "licoup-cli.exe");

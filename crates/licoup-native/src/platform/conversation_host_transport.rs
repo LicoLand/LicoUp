@@ -32,10 +32,13 @@ fn metadata_identity(metadata: &fs::Metadata) -> String {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt as _;
+        // `file_index` is not available on stable Windows; the creation time
+        // changes whenever an installer replaces the binary at the same path,
+        // which is the generation change this identity must observe.
         format!(
             "{}:{}:{}",
-            metadata.file_index().unwrap_or(0),
-            metadata.len(),
+            metadata.creation_time(),
+            metadata.file_size(),
             metadata.last_write_time()
         )
     }
