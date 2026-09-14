@@ -104,6 +104,11 @@ pub enum AssistantCommand {
         workflow: Value,
         #[serde(default)]
         bindings: Value,
+        /// Candidate binding filters the admission pass ranks against. The
+        /// workflow owner reads them, so a command that dropped them would run
+        /// a different admission than the one the caller asked for.
+        #[serde(default)]
+        filters: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input: Option<Value>,
         idempotency_key: String,
