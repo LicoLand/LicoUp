@@ -196,7 +196,7 @@ fn parent_gui_pid() -> Result<u32> {
 
 #[cfg(windows)]
 fn parent_gui_pid() -> Result<u32> {
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
@@ -204,7 +204,7 @@ fn parent_gui_pid() -> Result<u32> {
     use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot == -1 {
+    if snapshot == INVALID_HANDLE_VALUE {
         bail!("client update gui process is not resolvable");
     }
     let self_pid = unsafe { GetCurrentProcessId() };

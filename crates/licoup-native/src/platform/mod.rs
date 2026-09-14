@@ -4,6 +4,7 @@ pub(crate) mod agent_workspace;
 pub(crate) mod antigravity_driver;
 pub(crate) mod badtower_station;
 // Linux keeps the fail-closed adapter surface without a native record backend.
+pub(crate) mod ansi_stripper;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 mod claude_code_driver;
