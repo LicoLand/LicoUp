@@ -1,7 +1,7 @@
 use super::claim::local_pairwise_prekey_bundle_from_config;
 use super::clock::current_secure_mesh_kt_gate_epoch_seconds;
 use super::config::validate_canonical_sha256_hex;
-#[cfg(test)]
+#[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
 use super::test_support::provision_mobile_relay_test_key_transparency;
 use super::verifier::{authorize_mls_directory_response, authorize_pairwise_directory_response};
 use crate::core::secure_mesh_directory::{AuthorizedDirectoryLeaf, DirectoryAuthorizationPurpose};
@@ -12,7 +12,7 @@ use time::OffsetDateTime;
 pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_key_transparency(
     config: &mut Value,
 ) -> Result<()> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
     provision_mobile_relay_test_key_transparency(config)?;
 
     let bundle = local_pairwise_prekey_bundle_from_config(config)?;

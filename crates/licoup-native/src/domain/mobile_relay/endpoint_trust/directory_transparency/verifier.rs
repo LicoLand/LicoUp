@@ -1,7 +1,7 @@
 use super::authority::open_mobile_relay_directory_authority;
 use super::clock::epoch_seconds;
 use super::config::configured_directory_scope_commitment;
-#[cfg(test)]
+#[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
 use super::test_support::{
     refresh_mobile_relay_test_directory_response, uses_local_acceptance_mock,
 };
@@ -35,9 +35,9 @@ fn prepare_directory_response(
         "endpointId",
     )?;
     let authority = open_mobile_relay_directory_authority(config, &local_endpoint_id)?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
     let mut authority = authority;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
     let response_value = if uses_local_acceptance_mock(config) {
         refresh_mobile_relay_test_directory_response(
             response_value,
@@ -51,7 +51,7 @@ fn prepare_directory_response(
     };
     let response: UntrustedDirectoryResponse = serde_json::from_value(response_value)
         .map_err(|_| anyhow!("mobile relay key transparency response is invalid"))?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
     if uses_local_acceptance_mock(config) {
         authority.observe_response_gossip_for_test(&response, now_epoch_seconds)?;
     }

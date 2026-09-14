@@ -24,7 +24,7 @@ impl SecureMeshDirectoryAuthority {
         })
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "secure-mesh-acceptance-mock-kt"))]
     pub(crate) fn observe_response_gossip_for_test(
         &mut self,
         response: &UntrustedDirectoryResponse,
