@@ -90,6 +90,12 @@ npm run client:install:macos -- --launch-installed --verify-stable
 无需构建、安装或启动客户端。用户明确要求跳过安装时遵从，并报告剩余验证。本地安装
 不代表授权签名、公证、源码晋升、公开发布或生产环境变更。
 
+真实 Agent 对话测试消耗真实 token，因此使用足够可用的最便宜模型，而不是最强的模型。
+各 Agent 的权威归属是
+[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml)，
+修改验证测试模型只改这里。当前 Codex 的推荐是 `gpt-5.6-luna` + `max` 推理档。其他
+Agent 沿用同一文件中各自记录的选型。
+
 ## Agent 指导
 
 AGENTS.md 只保留稳定边界与任务路由。共享开发 Skill 在 `lico-dev` 维护，本仓库只内置
@@ -214,6 +220,10 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 来源及新构建号或版本；严禁原地替换资产。
 
 - 改动只有一个清晰范围。
+- 绝不要求 Agent 对话回复符合 LicoUp 定义的格式，也绝不把自然语言回复视为无效、
+  空回复或弃权。
+- 真实 Agent 对话测试使用足够可用的最便宜模型，并记录在验证模型权威中，而不是在
+  测试里硬编码。
 - 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。
 - 完成迁移时，旧路径和旧名称已经删除。
 - 新增或修改的测试只使用虚构并脱敏的数据。

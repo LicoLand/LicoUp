@@ -18,6 +18,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:local-data-egress-boundary",
     "client:verify:agent-conversation-parity",
     "client:verify:agent-adapter-standard",
+    "client:verify:agent-native-output",
     "client:verify:agent-conversations:product-e2e:self-test",
     "client:verify:agent-usage",
     "client:contracts:test",

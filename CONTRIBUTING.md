@@ -107,6 +107,13 @@ Honor an explicit request to skip installation and report the remaining
 verification. Local installation does not authorize signing, notarization,
 source promotion, public publication, or production changes.
 
+A live Agent conversation test spends real tokens, so it uses the cheapest
+adequate model rather than the strongest available one. The per-Agent authority
+is [`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml);
+change a verification test model there and nowhere else. The current Codex
+recommendation is `gpt-5.6-luna` at `max` reasoning effort. Other Agents follow
+their own recorded choice in the same file.
+
 ## Agent guidance
 
 Keep AGENTS.md to stable boundaries and task links. Shared development Skills
@@ -303,6 +310,11 @@ corrective-release plan with a new verified source and a new build or version;
 never replace an asset in place.
 
 - The change has one clear scope.
+- An Agent conversation reply is never made to conform to a LicoUp-defined
+  format, and a natural-language reply is never treated as invalid, empty, or
+  an abstention for lacking one.
+- A live Agent conversation test uses the cheapest adequate model, recorded in
+  the verification model authority rather than hardcoded in the test.
 - Native CLI or generated contract changes keep the Flutter and Rust sides
   consistent in the same change.
 - Old paths and old names are removed when a migration is complete.

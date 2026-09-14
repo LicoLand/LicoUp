@@ -48,7 +48,7 @@ import {
   conditionalChecksFromMatrix,
 } from "../parity/evidence.mjs";
 import { AcceptanceError, digest, requireFact } from "../parity/errors.mjs";
-import { parityModelForAgent } from "../parity/agent-ids.mjs";
+import { parityEffortForAgent, parityModelForAgent } from "../parity/agent-ids.mjs";
 import {
   appServerFinalMessage,
   withAppServer,
@@ -109,7 +109,7 @@ function parseArgs(argv) {
 async function proveCodexInterruptSteer(context) {
   const canary = `STEER_${randomUUID().replaceAll("-", "").slice(0, 10)}`;
   const model = parityModelForAgent("codex");
-  const effort = model.toLowerCase().includes("spark") ? "low" : "";
+  const effort = parityEffortForAgent("codex", model);
   const longPrompt =
     "Begin a long numbered list from 500 down to 1. Keep writing until interrupted. Do not call tools or request permissions.";
   const steerPrompt =
