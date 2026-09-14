@@ -68,6 +68,9 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         ("e2ee", "secret-store-cleanup") => {
             crate::domain::mobile_relay::e2ee_secret_store_cleanup(&params)?
         }
+        ("e2ee", "secret-store-self-test") => {
+            crate::domain::mobile_relay::e2ee_secret_store_self_test(&params)?
+        }
         _ => {
             return Err(super::handler_error("command_failed", "use_cli_help").into());
         }

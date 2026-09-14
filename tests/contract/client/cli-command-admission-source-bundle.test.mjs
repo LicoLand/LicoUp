@@ -96,13 +96,6 @@ const retiredPublicCompatibilityResidueDefinitions = [
     symbols: [],
     strings: ["e2ee status"],
   },
-  {
-    owner: `${commandRoot}/mobile.rs`,
-    path: "mobile relay e2ee secret-store-self-test",
-    action: ["e2ee", "secret-store-self-test"],
-    symbols: [],
-    strings: ["e2ee secret-store-self-test", "secret-store-self-test"],
-  },
   ...[
     "configure-authority",
     "publication-request",
