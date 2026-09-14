@@ -13,7 +13,7 @@ use super::assistant::{
     WorkflowDiagnosticCode as Code, WorkflowDiagnosticExpected as Expected,
     WorkflowDiagnosticRecovery as Recovery, WorkflowDiagnosticStage as Stage,
 };
-use super::graph::{CompiledWorkflow, compile_workflow};
+use super::graph::{CompiledWorkflow, compile_workflow, valid_instruction};
 use super::{
     BindingKind, GraphStateKind, MAX_ACTIVE_EFFECTS, MAX_BINDING_SLOTS, MAX_GRAPH_STATES,
     MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS, MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS,
@@ -1158,7 +1158,7 @@ fn collect_state_and_transition_diagnostics(
                 Expected::NonEmptyText,
             );
         }
-        if !state.instruction.is_empty() && !valid_text(&state.instruction, 16 * 1024) {
+        if !state.instruction.is_empty() && !valid_instruction(&state.instruction) {
             semantic_error(
                 diagnostics,
                 Code::WorkflowStateInstructionInvalid,

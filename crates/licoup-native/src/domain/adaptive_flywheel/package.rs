@@ -548,6 +548,54 @@ mod tests {
     }
 
     #[test]
+    fn multiline_instructions_survive_import_and_revision_reload() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        let mut workflow: serde_json::Value =
+            serde_json::from_slice(SYNTHETIC_FIXTURE_WORKFLOW).unwrap();
+        let instruction = "Read the plan.\n\t- 修改 fixture。\r\n- Run tests.";
+        workflow["states"][1]["instruction"] = instruction.into();
+        let source = serde_json::to_vec(&workflow).unwrap();
+        let bytes = zip_package_files(&[("workflow.json", &source)]).unwrap();
+        let prepared = importer.prepare_bytes(&bytes).unwrap();
+        let committed = importer
+            .commit(&prepared.preparation_id, &prepared.revision_digest)
+            .unwrap();
+        assert_eq!(committed.workflow.states[1].instruction, instruction);
+        importer
+            .verified_revision_content(&prepared.revision_digest, &prepared.semantics_digest)
+            .unwrap();
+        remove_root(root);
+    }
+
+    #[test]
+    fn instruction_validation_preserves_resource_and_control_character_limits() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        for instruction in [
+            "Read\0plan".to_owned(),
+            "Read\u{1b}[31mplan".to_owned(),
+            "Read\u{7f}plan".to_owned(),
+            "x".repeat(16 * 1024 + 1),
+            " padded ".to_owned(),
+        ] {
+            let mut workflow: serde_json::Value =
+                serde_json::from_slice(SYNTHETIC_FIXTURE_WORKFLOW).unwrap();
+            workflow["states"][1]["instruction"] = instruction.into();
+            let source = serde_json::to_vec(&workflow).unwrap();
+            let bytes = zip_package_files(&[("workflow.json", &source)]).unwrap();
+            let error = importer.prepare_bytes(&bytes).unwrap_err();
+            let failure = error.downcast_ref::<WorkflowValidationFailure>().unwrap();
+            assert!(failure.diagnostics.iter().any(|diagnostic| diagnostic.code
+                == WorkflowDiagnosticCode::WorkflowStateInstructionInvalid));
+            assert!(
+                super::super::compile_workflow(serde_json::from_value(workflow).unwrap()).is_err()
+            );
+        }
+        remove_root(root);
+    }
+
+    #[test]
     fn synthetic_package_round_trips_and_commit_is_idempotent() {
         let root = root();
         let importer = StrategyPackageImporter::open(&root).unwrap();
