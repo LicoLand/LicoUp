@@ -1,5 +1,10 @@
 # LicoUp Agent Guide
 
+This file is published. It carries only publishable boundaries and task routes.
+Local paths, machine or account detail, long-term plans, and local-only rules do
+not belong here; the ignore rules for `docs/plans`, `docs/reports`, `cache`, and
+`build` keep that material out of the repository.
+
 ## Working boundaries
 
 - Complete the requested scope with the smallest independently verifiable
