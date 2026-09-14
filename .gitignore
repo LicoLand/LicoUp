@@ -117,8 +117,9 @@ test-results/
 /tools/scripts/lib/better-plan-evidence-ledger.mjs
 /tools/scripts/lib/better-plan-evidence-ledger/
 
-# Agent entrypoints are retired; agent guidance lives in lico-dev skills.
-AGENTS.md
+# AGENTS.md is the tracked Agent guide: stable boundaries and task routes.
+# Shared development Skills stay in lico-dev. The other agent entrypoints
+# remain retired.
 AGENT.md
 CLAUDE.md
 
