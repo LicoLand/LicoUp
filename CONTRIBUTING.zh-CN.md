@@ -197,6 +197,11 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 一份已接受快照再通过 merge commit 从 `nightly` 晋升到 `stable`，最后晋升到
 `release`。
 
+临时分支随其合并在同一次会话内结束。Pull Request 合并且其 merge commit 已进入
+`nightly` 后，立即删除该分支的远程与本地副本，不把已合并分支留待以后清理。只删除该
+Pull Request 关闭的那一个分支，且只在确认合并已进入 `nightly` 之后删除——仍有未合并
+提交的分支、未合并或关闭但未合并的 Pull Request、以及不是自己创建的分支都保留。
+
 项目必须完成 100 次独立发布后，才能把任何构建提升到 `1.0.0` 线。每一个 1.0
 之前的发布都保留自己的不可变版本、候选证据和制品收据；被跳过或被替换的候选不
 计入发布次数。
@@ -231,5 +236,6 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 - 不包含敏感值或原始运行输出。
 - 提交 Author 与 Committer 和当前 `gh` 账号一致，且没有第二署名、署名 trailer、
   Agent 身份或被绕过的 hook。
+- merge commit 进入 `nightly` 后，临时分支的远程与本地副本均已删除。
 
 LicoUp 使用 `AGPL-3.0-or-later` 许可证。
