@@ -26,6 +26,11 @@ under `scripts/`. Import prepares and validates the archive, then commits one
 immutable revision. A committed revision does not depend on the original ZIP
 or its original filesystem path.
 
+State instructions support multiline text, including line feeds, carriage
+returns, and tabs, within the existing 16 KiB UTF-8 limit. Other control
+characters and leading or trailing whitespace remain invalid. Labels stay
+single-line.
+
 The engine does not auto-register a package or reserve a strategy identity.
 Neutral slot identifiers such as `entry` and `worker-a` are valid. Actual Agent
 bindings belong to the user's configuration and the active Membership Profiles.

@@ -17,10 +17,15 @@ use crate::result::CommandOutcome;
 
 /// Decide whether a structurally valid claim is true.
 ///
-/// Implementations own the real check: the local owner membership must exist
-/// and be active, and an agent membership must be active in the conversation and
-/// owned by that provider. The facade runs this once per command, so no family
-/// port has to repeat it.
+/// Implementations own the real check the process can make about *this caller*:
+/// the in-process owner is the process itself, and a provider claim must be one
+/// the local mesh admits. The facade runs this once per command, before any
+/// family port.
+///
+/// Whether a caller is active in a conversation, and whether it owns the
+/// membership it acts as, is a durable question. The domain owner answers it
+/// against the conversation store before any effect — the facade cannot, and a
+/// port that repeated it would only add a second answer that could disagree.
 pub trait ActorPort: Send + Sync {
     fn verify(&self, claim: &ActorClaim) -> Result<(), ApplicationFailure>;
 }
@@ -53,30 +58,19 @@ pub trait ConversationPort: Send + Sync {
     ) -> Result<CommandOutcome, ApplicationFailure>;
 }
 
-/// Tell the designated Assistant that work it started has settled.
-///
-/// Kept separate from the family ports because it is not a response to a
-/// request: it fires when durable work reaches a state, and it must never fail
-/// the work that triggered it.
-pub trait NotificationPort: Send + Sync {
-    fn work_settled(
-        &self,
-        conversation_id: &str,
-        membership_id: &str,
-        notice: &serde_json::Value,
-    ) -> Result<(), ApplicationFailure>;
-}
-
 /// The complete backend behind the facade.
+///
+/// There is deliberately no notification port. Completion follow-up is not a
+/// request either interface makes: the durable host drives it from the runtime
+/// settlement it observes, inside the domain owner that already holds the
+/// conversation state. A port here would have no production caller and would
+/// only put a second path next to the one the host already takes.
 #[derive(Clone)]
 pub struct ApplicationPorts {
     pub actors: std::sync::Arc<dyn ActorPort>,
     pub assistant: std::sync::Arc<dyn AssistantPort>,
     pub subagent: std::sync::Arc<dyn SubagentPort>,
     pub conversation: std::sync::Arc<dyn ConversationPort>,
-    /// Optional: a deployment that never runs the workflow graph has nothing to
-    /// notify, and the facade treats that as no work to report — not a failure.
-    pub notification: Option<std::sync::Arc<dyn NotificationPort>>,
 }
 
 impl ApplicationPorts {
@@ -91,12 +85,6 @@ impl ApplicationPorts {
             assistant,
             subagent,
             conversation,
-            notification: None,
         }
-    }
-
-    pub fn with_notification(mut self, notification: std::sync::Arc<dyn NotificationPort>) -> Self {
-        self.notification = Some(notification);
-        self
     }
 }
