@@ -29,7 +29,5 @@ pub use command::{
 };
 pub use facade::ApplicationFacade;
 pub use failure::{ApplicationFailure, EffectCertainty, FailureNormalization, RecoveryAction};
-pub use ports::{
-    ActorPort, ApplicationPorts, AssistantPort, ConversationPort, NotificationPort, SubagentPort,
-};
+pub use ports::{ActorPort, ApplicationPorts, AssistantPort, ConversationPort, SubagentPort};
 pub use result::{CommandOutcome, CommandResolution, OperationReference, OperationState};
