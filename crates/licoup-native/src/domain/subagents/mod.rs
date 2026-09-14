@@ -47,7 +47,6 @@ pub struct SubagentCallContext<'a, C> {
 }
 
 mod callback;
-pub(crate) mod local;
 mod production;
 
 pub use callback::{CALLBACK_CAUSATION_ID, subagent_callback_plan};

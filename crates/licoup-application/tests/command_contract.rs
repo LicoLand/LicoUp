@@ -12,7 +12,7 @@ use licoup_application::{
     EffectCertainty, ExportRequest, Operation, OperationReference, OperationState, RecoveryAction,
     SearchRequest, SubagentCommand, TaskType,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,7 @@ fn every_command_family_round_trips_through_json_unchanged() {
             membership_id: "membership:assistant".into(),
             workflow: json!({"steps": []}),
             bindings: json!([{"valueId": "membership:worker"}]),
+            filters: json!({"requiredAuthority": "delegate"}),
             input: None,
             idempotency_key: "idem-1".into(),
             decision: Some(CallbackDecision::Advance {
@@ -211,6 +212,7 @@ fn malformed_commands_are_refused_before_any_port_runs() {
                 membership_id: "membership:assistant".into(),
                 workflow: json!("not an object"),
                 bindings: json!([]),
+                filters: Value::Null,
                 input: None,
                 idempotency_key: "idem".into(),
                 decision: None,
@@ -223,6 +225,7 @@ fn malformed_commands_are_refused_before_any_port_runs() {
                 membership_id: "membership:assistant".into(),
                 workflow: json!({}),
                 bindings: json!([]),
+                filters: Value::Null,
                 input: None,
                 idempotency_key: "idem".into(),
                 decision: Some(CallbackDecision::Return {
@@ -628,6 +631,54 @@ fn a_local_admin_claim_is_not_conversation_scoped() {
         ports.calls(),
         vec!["verify".to_owned(), "conversation".to_owned()]
     );
+}
+
+#[test]
+fn a_caller_scope_that_names_no_conversation_is_not_bound_to_one() {
+    // An inventory and a readiness probe are not made in a conversation, so the
+    // caller scope that reaches them carries none. The claim is still a
+    // membership claim: it names the provider the work is done as, which is what
+    // the native caller authority has to admit.
+    let (facade, ports) = facade(false);
+    let claim = ActorClaim::Membership {
+        provider_id: "codex".into(),
+        conversation_id: None,
+        membership_id: None,
+        parent_dispatch_id: None,
+    };
+    assert_eq!(claim.conversation_id(), None);
+    assert_eq!(claim.membership_id(), None);
+    assert!(!claim.is_local_admin());
+
+    let command = ApplicationCommand::Subagent(SubagentCommand::List);
+    assert!(facade.execute(&claim, &command).is_ok());
+    assert_eq!(
+        ports.calls(),
+        vec!["verify".to_owned(), "subagent".to_owned()]
+    );
+}
+
+#[test]
+fn a_caller_scope_bound_elsewhere_still_binds_before_verification() {
+    // A claim that names no conversation is admitted here and refused by the
+    // domain owner — the only place that can see whether such a caller has a
+    // binding. A claim that does name one still binds first, as before.
+    let (facade, ports) = facade(false);
+    let claim = ActorClaim::Membership {
+        provider_id: "codex".into(),
+        conversation_id: Some("conversation:one".into()),
+        membership_id: Some("membership:codex".into()),
+        parent_dispatch_id: None,
+    };
+    let command = ApplicationCommand::Conversation(ConversationCommand::Get {
+        conversation_id: "conversation:two".into(),
+    });
+
+    let failure = facade
+        .execute(&claim, &command)
+        .expect_err("a bound claim may not leave its conversation");
+    assert_eq!(failure.code, "actor_conversation_mismatch");
+    assert!(ports.calls().is_empty());
 }
 
 #[test]
