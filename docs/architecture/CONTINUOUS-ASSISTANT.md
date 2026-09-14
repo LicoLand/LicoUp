@@ -45,7 +45,7 @@ the meanings in [CONTEXT.md](../../CONTEXT.md).
 | Matter | A revisable association of conversation material about one subject or undertaking | Conversation continuity state |
 | Commitment / Goal | An outstanding, bounded result accepted from the User's expressed intent; Goal is its durable tracking record | Conversation continuity state |
 | Agreement | A sourced, scoped decision or constraint, with effective and superseding revisions | Conversation continuity state |
-| Interpretation proposal | An Agent's structured understanding of intent, associations and next steps | Cognition produces; Conversation validates and commits |
+| Interpretation proposal | The host-assembled reading of what a User and an Agent meant | Cognition derives it from their own words; Conversation validates and commits |
 | Context assembly | An ephemeral, authorized selection of original material, agreements and work references for one invocation | Context composition boundary |
 | Work context | A private, versioned binding of a Matter and Membership to a native execution session | Existing runtime-binding owner |
 | Follow-up | A durable reason to reconsider an unresolved Goal | Conversation host, using existing dispatch |
@@ -113,12 +113,14 @@ a non-coding delivery can require days of follow-up. The Assistant may propose
 an initial definition of done, but consequential ambiguity needs resolution.
 It never silently relaxes a User-defined acceptance condition.
 
-An interpretation proposal includes source Event/Part references, the observed
-Conversation revision and designation epoch, Matter candidates, relevant
-agreement revisions, proposed changes, capability needs, and uncertainty
-reasons. It preserves the original input. Confidence reported by a model is
-not a calibrated permission or completion signal. Unknown structured fields,
-stale versions and unauthorized references cannot be committed.
+An interpretation proposal records the reading of an exchange: source Event/Part
+references, the observed Conversation revision and designation epoch, Matter
+candidates, relevant agreement revisions, proposed changes, capability needs,
+and uncertainty reasons. It preserves the original input. Confidence reported by
+a model is not a calibrated permission or completion signal. Unknown fields,
+stale versions and unauthorized references cannot be committed. The proposal is
+derived from what the User and the Agent actually said; the Agent's reply is
+never required to carry it, or to take any particular shape.
 
 The proposal is committed through the Conversation authority with compare-and-
 set checks. Reads and interpretation are side-effect-free. A semantic proposal
@@ -441,6 +443,12 @@ The closed field set lives in
 projections are generated from that embed. Temporary ports return typed
 `unsupported_capability` with `effectClass=none`. This section does not claim
 enabled automation, native capability, or release evidence.
+
+No reply-shape contract belongs to this set. Every type here describes
+host-owned state that LicoUp validates and commits; none of them describes what
+an Agent must send, and an Agent's reply is relayed as the Agent produced it.
+A generated type that constrains the Agent's own reply text is a defect, not a
+contract.
 
 | Public generated types | Private ports / leaves |
 |:---|:---|
