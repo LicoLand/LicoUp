@@ -240,7 +240,10 @@ fn compile_workflow_inner(
         validate_identifier(&state.id, "workflow_state_id")?;
         validate_text(&state.label, 128, "workflow_state_label")?;
         if !state.instruction.is_empty() {
-            validate_text(&state.instruction, 16 * 1024, "workflow_state_instruction")?;
+            ensure!(
+                valid_instruction(&state.instruction),
+                "workflow_state_instruction_invalid"
+            );
         }
         ensure!(
             state_indexes.insert(state.id.clone(), index).is_none(),
@@ -1038,6 +1041,15 @@ fn is_identifier(value: &str) -> bool {
                 || character.is_ascii_digit()
                 || matches!(character, '-' | '_' | '.')
         })
+}
+
+pub(super) fn valid_instruction(value: &str) -> bool {
+    value == value.trim()
+        && !value.is_empty()
+        && value.len() <= 16 * 1024
+        && !value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
 }
 
 fn validate_text(value: &str, max: usize, label: &str) -> Result<()> {
