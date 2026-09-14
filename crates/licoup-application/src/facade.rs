@@ -58,19 +58,4 @@ impl ApplicationFacade {
             }
         }
     }
-
-    /// Report that work settled, without disturbing it.
-    ///
-    /// A notice is not a request: the caller's work already reached its state,
-    /// so a failure to announce it must not be reported as the work failing.
-    pub fn notify_settled(
-        &self,
-        conversation_id: &str,
-        membership_id: &str,
-        notice: &serde_json::Value,
-    ) {
-        if let Some(port) = self.ports.notification.as_deref() {
-            let _ = port.work_settled(conversation_id, membership_id, notice);
-        }
-    }
 }
