@@ -178,6 +178,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/ffi/android_ffi.rs", "Android ABI boundary"],
     ["crates/licoup-native/src/ffi/ios_ffi.rs", "iOS ABI boundary"],
     ["crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs", "atomic package filesystem ownership"],
+    ["crates/licoup-native/src/domain/collaboration_plugin/package/secure_file.rs", "Windows file identity FFI"],
     ["crates/licoup-native/src/domain/collaboration_plugin/workflow/commit.rs", "atomic workflow filesystem ownership"],
     ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs", "immutable runtime file flags"],
     ["crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs", "Unix child process identity"],
