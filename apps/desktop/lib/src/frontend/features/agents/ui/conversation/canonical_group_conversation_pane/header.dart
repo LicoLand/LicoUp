@@ -152,16 +152,11 @@ final class _CanonicalGroupRosterToggleButton extends StatelessWidget {
       size: LicoIconButtonSize.large,
       shape: LicoIconButtonShape.circle,
       tone: LicoIconButtonTone.ghost,
-      icon: AnimatedSwitcher(
+      icon: AnimatedRotation(
+        turns: rosterVisible ? 0 : 0.5,
         duration: context.motion(LicoMotion.short),
-        switchInCurve: LicoMotion.standard,
-        switchOutCurve: LicoMotion.standard,
-        child: Icon(
-          rosterVisible
-              ? Icons.keyboard_arrow_up_rounded
-              : Icons.keyboard_arrow_down_rounded,
-          key: ValueKey<bool>(rosterVisible),
-        ),
+        curve: LicoMotion.standard,
+        child: const Icon(Icons.keyboard_arrow_up_rounded),
       ),
     );
   }
