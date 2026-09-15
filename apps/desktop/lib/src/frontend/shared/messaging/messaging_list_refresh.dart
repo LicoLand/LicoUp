@@ -1,8 +1,8 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Short catalogs still accept a pull, and releasing overscroll hands control
 /// back to Flutter's ballistic spring.
@@ -82,25 +82,29 @@ class _MessagingListRefreshState extends State<MessagingListRefresh> {
     final colors = context.licoColors;
     return NotificationListener<ScrollNotification>(
       onNotification: _handleScroll,
-      child: Stack(
-        fit: StackFit.expand,
+      child: Column(
         children: [
-          widget.child,
-          Positioned(
-            top: 8,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Center(
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _pullProgress,
-                  builder: (context, progress, _) => AnimatedSwitcher(
-                    duration: context.motion(LicoMotion.micro),
-                    child: !widget.refreshing && progress == 0
-                        ? const SizedBox.shrink()
-                        : Opacity(
+          if (widget.refreshing) const _MessagingListRefreshPlaceholder(),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                widget.child,
+                Positioned(
+                  top: 8,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _pullProgress,
+                        builder: (context, progress, _) {
+                          if (widget.refreshing || progress == 0) {
+                            return const SizedBox.shrink();
+                          }
+                          return Opacity(
                             key: const Key('messaging-list-refresh-feedback'),
-                            opacity: widget.refreshing ? 1 : progress,
+                            opacity: progress,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 color: colors.surface,
@@ -114,11 +118,7 @@ class _MessagingListRefreshState extends State<MessagingListRefresh> {
                                     key: const Key(
                                       'messaging-list-refresh-indicator',
                                     ),
-                                    value: widget.refreshing
-                                        ? context.allowsAmbientMotion
-                                              ? null
-                                              : 1
-                                        : progress,
+                                    value: progress,
                                     semanticsLabel: MaterialLocalizations.of(
                                       context,
                                     ).refreshIndicatorSemanticLabel,
@@ -128,13 +128,48 @@ class _MessagingListRefreshState extends State<MessagingListRefresh> {
                                 ),
                               ),
                             ),
-                          ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// In-flow slot above the catalog. Overlaying the first row would cover the
+/// selected conversation while refresh is in flight.
+class _MessagingListRefreshPlaceholder extends StatelessWidget {
+  const _MessagingListRefreshPlaceholder();
+
+  static const _extent = 24.0;
+  static const _slotHeight = 40.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return SizedBox(
+      height: _slotHeight,
+      child: Center(
+        child: SizedBox.square(
+          dimension: _extent,
+          child: LicoLoadingIndicator(
+            key: const Key('messaging-list-refresh-indicator'),
+            size: _extent,
+            strokeWidth: 2,
+            color: colors.primary,
+            value: context.allowsAmbientMotion ? null : 1,
+            semanticsLabel: MaterialLocalizations.of(
+              context,
+            ).refreshIndicatorSemanticLabel,
+          ),
+        ),
       ),
     );
   }

@@ -104,10 +104,7 @@ final class _SearchIntents implements IntentSink<SearchIntent> {
         projection.open(localeCode: localeCode, trace: trace);
         for (final target in _controller.scannedTargets) {
           if (!target.isConversationAgent) continue;
-          final sessions = _controller.conversationSessionsByAgent[target.id];
-          if (sessions == null || sessions.isEmpty) {
-            unawaited(_controller.refreshConversationSessions(target.id));
-          }
+          unawaited(_controller.ensureAgentBrowseCatalog(target.target));
         }
       case UpdateSearchQuery(:final query):
         projection.updateQuery(query, trace: trace);
