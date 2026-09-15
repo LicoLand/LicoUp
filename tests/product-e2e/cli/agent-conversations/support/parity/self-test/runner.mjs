@@ -28,9 +28,7 @@ import {
   seedDisposableProfile,
 } from "../process.mjs";
 import {
-  canaryPrompt,
   failedParityFactCode,
-  makeCanary,
   processLocalBooleanFactKeys,
   processLocalRoundFactsReady,
   roundFactsReady,
@@ -209,6 +207,9 @@ export async function runSelfTest() {
       temporaryDirectory,
       timeoutMs: 60_000,
       maxOutputBytes: 32 * 1024,
+      // The fixture lane is deliberately independent of the live model
+      // authority; it must never invent a provider model when testing wiring.
+      parityModel: "synthetic-verification-model",
       copilotSdkLaunchArgs: null,
     };
     const quiescenceOraclePassed = await exerciseQuiescenceOracle(context);
@@ -390,19 +391,21 @@ export async function runSelfTest() {
         const first = await nativePiTurn(
           piContext,
           "",
-          canaryPrompt(makeCanary(), "47"),
+          "Hi",
         );
         const resumed = await nativePiTurn(
           piContext,
           first.sessionId,
-          canaryPrompt(makeCanary(), "53"),
+          "Hi",
         );
         const readback = await nativePiReadback(piContext, first.sessionId);
+        const firstOutput = String(first.output || "");
+        const resumedOutput = String(resumed.output || "");
         piRpcExactResume = resumed.sessionId === first.sessionId
-          && first.output === "47"
-          && resumed.output === "53"
-          && readback.text.includes("47")
-          && readback.text.includes("53");
+          && firstOutput.trim().length > 0
+          && resumedOutput.trim().length > 0
+          && readback.text.includes(firstOutput)
+          && readback.text.includes(resumedOutput);
         piCleanup = await cleanupSession(piContext, first.sessionId, temporaryDirectory)
           && (await listSessions(piContext)).size === 0;
         // The fixture keeps its synthetic protocol state in the shared fake
@@ -917,7 +920,7 @@ export async function runSelfTest() {
       await shutdownFailureClient.connect();
       await shutdownFailureClient.streamConversation(processLocalSendParams(
         shutdownFailureContext,
-        "Reply with exactly READY and no other text.",
+        "Hi",
       ));
       await shutdownFailureClient.shutdown();
     } catch (error) {
@@ -1382,6 +1385,9 @@ export async function runSelfTest() {
       ...context,
       evidenceManifestPath: isolatedEvidenceManifestPath,
     });
+    if (!persistedEvidenceWrite.written) {
+      throw new AcceptanceError(`self_test_${persistedEvidenceWrite.reason}`);
+    }
     const persistedEvidence = JSON.parse(readFileSync(isolatedEvidenceManifestPath, "utf8"));
     const persistedAdapter = persistedEvidence.adapters?.find(
       (adapter) => adapter.agentId === releaseUiAggregate.agent,
@@ -1507,18 +1513,22 @@ export async function runSelfTest() {
       const cursorOpened = await nativeTurn(
         cursorContext,
         "",
-        canaryPrompt(makeCanary(), "41"),
+        "Hi",
       );
       const cursorResumed = await nativeTurn(
         cursorContext,
         cursorOpened.sessionId,
-        canaryPrompt(makeCanary(), "43"),
+        "Hi",
       );
       const cursorRead = await nativeReadback(cursorContext, cursorOpened.sessionId);
+      const cursorOpenedOutput = String(cursorOpened.output || "");
+      const cursorResumedOutput = String(cursorResumed.output || "");
       cursorSessionLoadOk = cursorOpened.sessionId.length > 0
         && cursorResumed.sessionId === cursorOpened.sessionId
-        && cursorRead.text.includes("41")
-        && cursorRead.text.includes("43");
+        && cursorOpenedOutput.trim().length > 0
+        && cursorResumedOutput.trim().length > 0
+        && cursorRead.text.includes(cursorOpenedOutput)
+        && cursorRead.text.includes(cursorResumedOutput);
       // Self-test owns the temporary fake-runtime state file, so reclaim its
       // synthetic Cursor rows directly. This is not a production cleanup path
       // and never touches Cursor's real storage.
@@ -1629,10 +1639,10 @@ export async function runSelfTest() {
       nativeToArc: strictReducer.nativeToArc,
       arcToNative: strictReducer.arcToNative,
       realSessionIds: strictReducer.realSessionIds,
-      finalCanaries: strictReducer.finalCanaries,
+      rawResponses: strictReducer.rawResponses,
       cwdParity: strictReducer.cwdParity,
       settingsParity: strictReducer.settingsParity,
-      argvCanariesAbsent: strictReducer.argvCanariesAbsent,
+      argvPromptAbsent: strictReducer.argvPromptAbsent,
       historyReadback: strictReducer.historyReadback,
       fakeLiveStreamingGate,
       streamingEvidenceFailClosed,

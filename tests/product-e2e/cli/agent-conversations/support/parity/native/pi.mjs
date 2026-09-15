@@ -15,7 +15,7 @@ export function sessionSettings(result, cwd) {
   return {
     cwd,
     model: optionValue(["model"]) ?? result?.models?.currentModelId ?? null,
-    reasoningEffort: optionValue(["reasoning_effort", "variant"]) ?? null,
+    reasoningEffort: optionValue(["reasoning_effort", "variant", "thinking"]) ?? null,
     mode: optionValue(["mode"]) ?? result?.modes?.currentModeId ?? null,
     runtimeAgent: optionValue(["agent"]) ?? null,
     allowAll: optionValue(["allow_all"]),
