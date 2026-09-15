@@ -1184,19 +1184,22 @@ mixin AgentConversationSessionController
           return;
         }
       }
-      // Cached sessions often lack a project cwd, and recorded paths may have
-      // been moved or deleted. Refresh native history only after the Agent
-      // executable is bound; a failed rebind must keep the cached list instead
-      // of walking the host store.
-      final hasUsableWorkingDirectory =
-          (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
-            (session) => isUsableLocalConversationWorkingDirectory(
-              session.workingDirectory,
-            ),
-          );
+      // A catalog without a project cwd is still a valid cached catalog.
+      // Refresh a recorded project that moved or disappeared, after binding
+      // the executable; a failed rebind must preserve the cached list.
+      final cachedSessions =
+          conversationSessionsByAgent[normalizedAgentId] ?? const [];
+      final hasUsableWorkingDirectory = cachedSessions.any(
+        (session) =>
+            isUsableLocalConversationWorkingDirectory(session.workingDirectory),
+      );
       if (runtimeBound &&
           !hasUsableWorkingDirectory &&
-          !conversationSessionsByAgent.containsKey(normalizedAgentId)) {
+          cachedSessions.any(
+            (session) => isBoundableConversationWorkingDirectory(
+              session.workingDirectory,
+            ),
+          )) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {

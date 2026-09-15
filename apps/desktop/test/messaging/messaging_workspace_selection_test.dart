@@ -383,6 +383,8 @@ void main() {
     final conversationRow = find.byKey(
       const Key('agents-sidebar-conversation-session:codex'),
     );
+    await tester.tap(find.byKey(const Key('agents-sidebar-earlier-toggle')));
+    await tester.pump();
     expect(conversationRow, findsOneWidget);
     expect(find.text('Historical group Agent detail'), findsOneWidget);
     expect(find.text('其它对话'), findsNothing);
