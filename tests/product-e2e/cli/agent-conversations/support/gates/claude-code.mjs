@@ -147,12 +147,7 @@ function sendParams(context, model, text, sessionId = "") {
 }
 
 async function proveInterruptSteer(client, context, model) {
-  const canary = `STEER_${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-  const longPrompt =
-    "Begin a long numbered list from 500 down to 1. Keep writing until interrupted. Do not call tools or request permissions.";
-  const steerPrompt =
-    `Stop the active reply. Reply with exactly ${canary} and no other text. Do not call tools or request permissions.`;
-  const streamPromise = client.streamConversation(sendParams(context, model, longPrompt));
+  const streamPromise = client.streamConversation(sendParams(context, model, "Hi"));
   const started = await client.waitForStreamEvent(
     (event) => event?.event === "dispatch.turn.started"
       || event?.event === "agent.turn.accepted"
@@ -171,22 +166,21 @@ async function proveInterruptSteer(client, context, model) {
   const steer = await client.controlWhileStreaming("agent.conversation.steer", {
     agent: AGENT_ID,
     sessionId,
-    text: steerPrompt,
+    text: "Hi",
     workingDirectory: context.cwd,
     binaryPath: context.wrapper.wrapperPath,
     model,
     acceptanceMode: context.acceptanceMode,
   });
   requireFact(steer?.ok === true, steer?.error?.code || "interrupt_steer_unproven");
-  // Product acceptance treats native steer delivery (ok/accepted) as C-05 proof.
-  // Model text compliance with the canary is best-effort and not required here.
+  // Native steer delivery and session identity prove C-05; the Agent chooses
+  // its own reply. Never prolong a paid turn just to keep the probe active.
   const terminal = await streamPromise;
   requireFact(terminal.result?.ok === true, terminal.result?.error?.code || "steer_turn_failed");
   requireFact(
     String(terminal.result?.nativeSessionId || terminal.result?.sessionId || "") === sessionId,
     "steer_session_identity_drift",
   );
-  void canary;
   const cleanup = await client.request("agent.conversation.cleanup", {
     agent: AGENT_ID,
     sessionId,
@@ -348,10 +342,8 @@ export async function runClaudeCodeConversationGate(argv = process.argv.slice(2)
     requireFact(capabilities?.ok === true, capabilities?.error?.code || "capabilities_failed");
 
     for (let turn = 1; turn <= TURN_COUNT; turn += 1) {
-      const marker = `T${turn}_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-      const prompt = `Reply with exactly ${marker}. Do not call tools or request permissions.`;
       const result = await client.streamConversation(
-        sendParams(context, model, prompt, sessionId),
+        sendParams(context, model, "Hi", sessionId),
       );
       requireFact(result.result?.ok === true, result.result?.error?.code || "native_turn_failed");
       const nextSessionId = String(

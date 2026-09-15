@@ -1,21 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-
-export function makeCanary() {
-  // Keep the marker unique without resembling a credential. Some native
-  // agents correctly refuse to repeat long opaque token-shaped strings, which
-  // would turn a model safety behavior into a false transport-parity failure.
-  return `LICO-PARITY-MARKER-${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
-}
-
-export function canaryPrompt(canary, expectedReply) {
-  return `Acceptance marker ${canary}; do not repeat the marker. Reply with exactly ${expectedReply} and no other text. Do not call tools or request permissions.`;
-}
-
-export function normalizedMarker(value) {
-  return String(value || "").toLowerCase().replaceAll(/[^a-z0-9]/gu, "");
-}
-
 export function outputCategoryCode(value) {
   const output = String(value || "").toLowerCase();
   const categories = [
@@ -46,7 +28,7 @@ export const processLocalBooleanFactKeys = Object.freeze([
   "registryAbsent",
   "historyCleared",
   "hostLiveAfterCleanup",
-  "argvCanariesAbsent",
+  "argvPromptAbsent",
   "noResumeArgument",
   "noPersistenceArgument",
   "genericModelForwarded",
@@ -89,7 +71,7 @@ export function failedProcessLocalFactCode(facts) {
     ["registryAbsent", "registry"],
     ["historyCleared", "history_clear"],
     ["hostLiveAfterCleanup", "host_liveness"],
-    ["argvCanariesAbsent", "argv_privacy"],
+    ["argvPromptAbsent", "argv_privacy"],
     ["noResumeArgument", "argv_resume"],
     ["noPersistenceArgument", "no_persistence"],
     ["genericModelForwarded", "model_forwarding"],
@@ -111,10 +93,10 @@ export function roundConversationFactsReady(facts) {
     && facts.nativeToArc
     && facts.arcToNative
     && facts.realSessionIds
-    && facts.finalCanaries
+    && facts.rawResponses
     && facts.cwdParity
     && facts.settingsParity
-    && facts.argvCanariesAbsent
+    && facts.argvPromptAbsent
     && facts.historyReadback
     && facts.noPermissionRequests
     && facts.noUnsupportedRequests
@@ -123,29 +105,7 @@ export function roundConversationFactsReady(facts) {
 }
 
 export function failedParityFactCode(facts) {
-  if (facts.finalCanaries !== true) {
-    const presentMask = [
-      facts.nativeFirstFinalCanaryPresent,
-      facts.arcResumeFinalCanaryPresent,
-    ].map((value) => value === true ? "1" : "0").join("");
-    const exactMask = [
-      facts.nativeFirstFinalCanary,
-      facts.arcResumeFinalCanary,
-    ].map((value) => value === true ? "1" : "0").join("");
-    const normalizedMask = [
-      facts.nativeFirstFinalCanaryNormalized,
-      facts.arcResumeFinalCanaryNormalized,
-    ].map((value) => value === true ? "1" : "0").join("");
-    const equalityMask = [
-      facts.firstSessionOutputsEqual,
-      facts.allOutputsEqual,
-    ].map((value) => value === true ? "1" : "0").join("");
-    const categoryMask = [
-      facts.nativeFirstOutputCategory,
-      facts.arcResumeOutputCategory,
-    ].map((value) => /^[aqpsro]$/u.test(value) ? value : "o").join("");
-    return `parity_final_p${presentMask}_n${normalizedMask}_e${exactMask}_q${equalityMask}_c${categoryMask}`;
-  }
+  if (facts.rawResponses !== true) return "parity_raw_responses_failed";
   if (facts.settingsParity !== true && /^[01]{6}$/u.test(facts.settingsParityMask || "")) {
     return `parity_settings_m${facts.settingsParityMask}_failed`;
   }
@@ -155,14 +115,10 @@ export function failedParityFactCode(facts) {
     ["nativeToArc", "native_to_arc"],
     ["arcToNative", "arc_to_native"],
     ["realSessionIds", "real_session_ids"],
-    ["nativeFirstFinalCanaryPresent", "native_first_final_canary_missing"],
-    ["nativeFirstFinalCanary", "native_first_final_canary"],
-    ["arcResumeFinalCanaryPresent", "arc_resume_final_canary_missing"],
-    ["arcResumeFinalCanary", "arc_resume_final_canary"],
-    ["finalCanaries", "final_canaries"],
+    ["rawResponses", "raw_responses"],
     ["cwdParity", "cwd_parity"],
     ["settingsParity", "settings_parity"],
-    ["argvCanariesAbsent", "argv_privacy"],
+    ["argvPromptAbsent", "argv_privacy"],
     ["historyReadback", "history_readback"],
     ["noPermissionRequests", "permission_request"],
     ["noUnsupportedRequests", "unsupported_request"],

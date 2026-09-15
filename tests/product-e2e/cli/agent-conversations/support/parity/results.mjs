@@ -85,10 +85,10 @@ export function aggregateProcessLocalResult(
     nativeToArc: false,
     arcToNative: false,
     realSessionIds: every("exactSessionId"),
-    finalCanaries: every("processLocalContinuation"),
+    rawResponses: every("processLocalContinuation"),
     cwdParity: true,
     settingsParity: every("genericModelForwarded"),
-    argvCanariesAbsent: every("argvCanariesAbsent"),
+    argvPromptAbsent: every("argvPromptAbsent"),
     historyReadback: every("historyReadback"),
     quiescenceOraclePassed: selfTestEvidence?.quiescenceOraclePassed === true,
     publicStreamChunkOracleEvidenceComplete:
@@ -99,7 +99,7 @@ export function aggregateProcessLocalResult(
     boundedOutput: every("boundedOutput"),
     cleanupVerified: every("cleanupVerified"),
     cleanupPassed: every("cleanupVerified"),
-    privacyPassed: every("argvCanariesAbsent")
+    privacyPassed: every("argvPromptAbsent")
       && every("noResumeArgument")
       && every("noPersistenceArgument")
       && every("noPromptHistory")
@@ -176,10 +176,10 @@ export function aggregateResult(agentId, strict, packaged, rounds, selfTestEvide
     nativeToArc: every("nativeToArc"),
     arcToNative: every("arcToNative"),
     realSessionIds: every("realSessionIds"),
-    finalCanaries: every("finalCanaries"),
+    rawResponses: every("rawResponses"),
     cwdParity: every("cwdParity"),
     settingsParity: every("settingsParity"),
-    argvCanariesAbsent: every("argvCanariesAbsent"),
+    argvPromptAbsent: every("argvPromptAbsent"),
     historyReadback: every("historyReadback"),
     quiescenceOraclePassed,
     publicStreamChunkOracleEvidenceComplete,
@@ -189,7 +189,7 @@ export function aggregateResult(agentId, strict, packaged, rounds, selfTestEvide
     boundedOutput: every("boundedOutput") && selfTestEvidence.boundedOutputFailClosed,
     cleanupVerified: rounds.length === expectedRounds && rounds.every((round) => round.cleanupVerified),
     cleanupPassed: rounds.length === expectedRounds && rounds.every((round) => round.cleanupVerified),
-    privacyPassed: every("argvCanariesAbsent") && every("boundedOutput"),
+    privacyPassed: every("argvPromptAbsent") && every("boundedOutput"),
     streamingEvidenceComplete,
     streamingProven,
     structuredProven: every("structuredSeen"),
@@ -232,10 +232,10 @@ export function blockedResult(agentId, strict, packaged, code, selfTestEvidence)
     nativeToArc: false,
     arcToNative: false,
     realSessionIds: false,
-    finalCanaries: false,
+    rawResponses: false,
     cwdParity: false,
     settingsParity: false,
-    argvCanariesAbsent: false,
+    argvPromptAbsent: false,
     historyReadback: false,
     quiescenceOraclePassed: selfTestEvidence?.quiescenceOraclePassed === true,
     publicStreamChunkOracleEvidenceComplete,
