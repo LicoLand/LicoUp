@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { parityModelForAgent } from "../agent-ids.mjs";
 import { requireFact } from "../errors.mjs";
@@ -137,28 +136,20 @@ export async function nativeCursorCliReadback(context, sessionId) {
       text,
       settings: { cwd: context.cwd, model: parityModelForAgent(context.config.id) || null },
       boundedOutput: true,
+      readbackAvailable: true,
     };
   }
-  const marker = randomUUID();
-  const run = await runBoundedProcess(
-    context.wrapper.wrapperPath,
-    turnArgs(context, sessionId, `Reply with exactly READBACK-${marker}`),
-    {
-      cwd: context.cwd,
-      environment: context.wrapper.environment,
-      timeoutMs: context.timeoutMs,
-      maxOutputBytes: context.maxOutputBytes,
-    },
-  );
-  requireFact(run.statusCode === 0, "native_turn_not_completed");
-  const fallback = {
-    cwd: context.cwd,
-    model: parityModelForAgent(context.config.id) || null,
-  };
-  const summary = extractStreamSummary(run.stdout, fallback);
   return {
-    text: summary.output,
-    settings: summary.settings,
-    boundedOutput: run.stdoutBytes <= context.maxOutputBytes && run.stderrBytes <= context.maxOutputBytes,
+    text: "",
+    settings: {
+      cwd: null,
+      model: null,
+      reasoningEffort: null,
+      mode: null,
+      runtimeAgent: null,
+      allowAll: null,
+    },
+    boundedOutput: true,
+    readbackAvailable: false,
   };
 }

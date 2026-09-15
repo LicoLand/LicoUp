@@ -10,6 +10,9 @@ ignored.
 - Complete the requested scope with the smallest independently verifiable
   change. Preserve others' edits and remove superseded implementation and
   documentation together; keep migration checks temporary.
+- Report doubts about completion as soon as they are discovered, with the
+  specific missing behavior or evidence. Do not submit or merge doubtful work
+  as completed, or describe unverified behavior as proven by passing checks.
 - After all writers finish, run the affected [formatters](CONTRIBUTING.md#format-before-final-verification)
   once before the final regression. Review their diff before starting checks.
 - Keep validation within the [available local environment](CONTRIBUTING.md#verification-scope).
