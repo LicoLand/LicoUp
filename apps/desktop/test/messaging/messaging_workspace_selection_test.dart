@@ -26,7 +26,7 @@ import '../support/fake_conversation_transport.dart';
 
 void main() {
   testWidgets(
-    'tapping a messaging contact lands on its new-conversation home',
+    'tapping a messaging contact opens its conversation list and new-conversation home',
     (tester) async {
       final fixture = await ProductionClientShellFixture.create(
         profileId: LayoutProfileId.parse('dashboard'),
@@ -106,22 +106,29 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump();
+      for (var attempt = 0; attempt < 20; attempt += 1) {
+        if (!controller.isLoadingConversations) break;
+        await tester.pump(const Duration(milliseconds: 20));
+      }
 
       expect(controller.selectedConversationAgentId, agentId);
       expect(controller.selectedConversationSession, isNull);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
+      expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
+      expect(
+        find.byKey(const Key('messaging-create-conversation')),
+        findsOneWidget,
+      );
 
       expect(
         find.byKey(const Key('conversation-empty-content')),
         findsOneWidget,
       );
 
-      // Restore a concrete selection through the existing application intent;
-      // the new-conversation home is now occupied by the particle sphere.
+      await tester.pump();
       controller.selectConversationSession(session.id);
       await tester.pump();
 
@@ -529,6 +536,12 @@ final class _GroupNavigationController extends ClientController {
     int? messageLimit,
     ConversationSessionProgressCallback? onProgress,
   }) async {
+    if (sessionId.isEmpty) {
+      return ConversationSessionPage(
+        sessions: conversationSessionsByAgent[agentId] ?? const [],
+        hasMore: false,
+      );
+    }
     expect(
       sessionId,
       isNotEmpty,

@@ -39,9 +39,12 @@ final class DesktopSettingsApp extends StatelessWidget {
           Expanded(
             child: KeyedSubtree(
               key: const Key('desktop-settings-main'),
-              child: data.content.buildDestination(
-                context,
-                ClientSection.settings,
+              child: Material(
+                type: MaterialType.transparency,
+                child: data.content.buildDestination(
+                  context,
+                  ClientSection.settings,
+                ),
               ),
             ),
           ),

@@ -7,8 +7,8 @@ test as one clear client feature, module, or flow.
 
 ## Set up
 
-You need Node.js 22 or 24 for the source policy. Install Flutter, Rust, Java,
-and Android tooling only when the affected technology lane requires them.
+You need Node.js 22 or 24 for the source policy. Use the available Flutter,
+Rust, Java, and Android tooling for affected checks within the scope below.
 
 ```bash
 npm ci
@@ -91,10 +91,53 @@ again before verification. CI and regression lanes remain check-only: they
 report formatting omissions rather than silently changing the source being
 verified. Formatting does not stage files or create a commit.
 
+### Verification scope
+
+Test the affected behavior using the environments already available locally.
+The developer organizes additional devices and cross-platform testing. Do not
+require a device matrix, a minimum hardware tier, or a missing host, simulator,
+SDK, or device to complete local development and delivery. Record unavailable
+checks as not run, with their limits; they do not fail or block local delivery
+and do not establish support for an untested platform.
+
+Reuse existing checks and run shared work once. Do not add approval gates,
+verification frameworks, repeated regressions, or device provisioning merely
+to satisfy a plan or report. Add a check only when it directly verifies the
+requested behavior or prevents a concrete regression. This scope does not
+change separately authorized production and release requirements.
+
+### UI acceptance
+
+Describe UI acceptance as actions and visible results: refresh the conversation
+list, switch navigation repeatedly, scroll long lists in both directions, type
+and click during streaming output, and open, close, and return from dialogs.
+The flow must stay correct, preserve expected state, and respond without
+visible stalls, broken controls, crashes, or duplicate actions. Exercise these
+interactions together in a short hands-on monkey test in the available local
+environment; do not invent fixed operation counts or a device matrix.
+
+Maintain [the UI interaction model](docs/functionality/UI-INTERACTIONS.md)
+independently of controllers, renderers, and backend code. Its visible states,
+clickable actions, and expected destinations define the test oracle. A separate
+adapter locates controls, performs gestures, and observes visible results; a
+refactor updates that adapter without rewriting the expected user behavior.
+Enumerate the declared transitions, including reselect, return, and dismissal,
+and combine edge coverage with seeded random walks over currently visible,
+enabled controls. Keep the current page, list, and overlay context between
+actions. Retain the seed and action sequence for replay, and report visible
+controls missing from the model instead of calling partial coverage complete.
+
+Measure response time and frame performance on those same transitions. Report
+the user action beside its timing and frame results, and keep virtual-clock
+widget checks distinct from real-engine performance runs. Do not replace these
+measurements with a backend trace project or add arbitrary scorecards and
+approval gates. Focused state and lifecycle tests support this model.
+
 ## Local client verification
 
 After a client fix or behavior change, including a bundled Agent prompt or
-Skill change, build macOS once and verify that exact installed output:
+Skill change, build macOS once and verify that exact installed output when
+the local macOS build and installation environment is available:
 
 ```bash
 npm run client:build -- --platform macos
