@@ -1184,17 +1184,22 @@ mixin AgentConversationSessionController
           return;
         }
       }
-      // Cached sessions often lack a project cwd, and recorded paths may have
-      // been moved or deleted. Refresh native history only after the Agent
-      // executable is bound; a failed rebind must keep the cached list instead
-      // of walking the host store.
-      final hasUsableWorkingDirectory =
-          (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
-            (session) => isUsableLocalConversationWorkingDirectory(
+      // A catalog without a project cwd is still a valid cached catalog.
+      // Refresh a recorded project that moved or disappeared, after binding
+      // the executable; a failed rebind must preserve the cached list.
+      final cachedSessions =
+          conversationSessionsByAgent[normalizedAgentId] ?? const [];
+      final hasUsableWorkingDirectory = cachedSessions.any(
+        (session) =>
+            isUsableLocalConversationWorkingDirectory(session.workingDirectory),
+      );
+      if (runtimeBound &&
+          !hasUsableWorkingDirectory &&
+          cachedSessions.any(
+            (session) => isBoundableConversationWorkingDirectory(
               session.workingDirectory,
             ),
-          );
-      if (runtimeBound && !hasUsableWorkingDirectory) {
+          )) {
         await loadConversationSessions(normalizedAgentId);
         if (agentWorkspaceDisposed ||
             selectedConversationAgentId != normalizedAgentId) {
@@ -1238,8 +1243,7 @@ mixin AgentConversationSessionController
         selectedConversationAgentId != normalizedAgentId) {
       return;
     }
-    if ((conversationSessionsByAgent[normalizedAgentId] ?? const [])
-        .isNotEmpty) {
+    if (conversationSessionsByAgent.containsKey(normalizedAgentId)) {
       conversationAttentionContextChanged();
       agentWorkspaceRecordCurrentAgentView();
       return;
@@ -1386,6 +1390,71 @@ mixin AgentConversationSessionController
   Future<void> refreshConversationSessions(String agentId) async {
     await refreshConversationCatalogInternal(agentId.trim(), foreground: true);
     conversationAttentionContextChanged(immediateActive: false);
+  }
+
+  /// Loads the Agent's 1:1 browse catalog even while a Canonical group is
+  /// selected. Group-bound sessions stay in [groupNativeSessions]; this write
+  /// only fills [conversationSessionsByAgent]. Already-loaded catalogs are
+  /// left in place so returning to the contact list does not re-scan.
+  Future<void> ensureAgentBrowseCatalog(String agentId) async {
+    final normalized = agentId.trim();
+    if (normalized.isEmpty ||
+        agentWorkspaceMobileRuntime ||
+        agentWorkspaceDisposed ||
+        conversationSessionsByAgent.containsKey(normalized) ||
+        !conversationBackgroundRefreshTargets.add(normalized)) {
+      return;
+    }
+    try {
+      final page = await readConversationSessionPage(
+        normalized,
+        offset: 0,
+        pageSize: conversationRecentCatalogPageSize,
+      );
+      if (agentWorkspaceDisposed) {
+        return;
+      }
+      final existing = conversationSessionsByAgent[normalized];
+      if (existing != null && existing.length >= page.sessions.length) {
+        if (!conversationSessionsHasMoreByAgent.containsKey(normalized)) {
+          conversationSessionsHasMoreByAgent = {
+            ...conversationSessionsHasMoreByAgent,
+            normalized: page.hasMore,
+          };
+        }
+        return;
+      }
+      conversationCommitCatalog(
+        normalized,
+        page,
+        replaceAll: true,
+        updateStatus: false,
+      );
+    } catch (_) {
+      // Contact-list warm is silent. Opening the Agent can retry a failed
+      // first page through the ordinary selected-history path.
+    } finally {
+      conversationBackgroundRefreshTargets.remove(normalized);
+    }
+  }
+
+  Future<void> ensureConversationAgentBrowseCatalogs() {
+    final pending = <Future<void>>[];
+    final seen = <String>{};
+    for (final target in scannedTargets) {
+      if (!target.isConversationAgent) {
+        continue;
+      }
+      final agentId = target.target.trim();
+      if (agentId.isEmpty || !seen.add(agentId)) {
+        continue;
+      }
+      pending.add(ensureAgentBrowseCatalog(agentId));
+    }
+    if (pending.isEmpty) {
+      return Future<void>.value();
+    }
+    return Future.wait(pending);
   }
 
   /// Maps a display session id to the stable native session id the native

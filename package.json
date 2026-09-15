@@ -219,6 +219,7 @@
     "client:gate:rust": "node tools/scripts/client-gate.mjs run rust",
     "client:gate:android": "node tools/scripts/client-gate.mjs run android",
     "client:gate:dependencies": "node tools/scripts/client-gate.mjs run dependencies",
-    "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy"
+    "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy",
+    "client:test:ui": "node tools/scripts/client-ui-state-machine.mjs"
   }
 }
