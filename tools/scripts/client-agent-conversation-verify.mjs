@@ -144,7 +144,7 @@ export function classifyAdapter(
     agentId: driver.agentId,
     driverId: driver.driverId,
     laneFamily: driver.capabilityMatrix?.laneFamily || "unknown",
-    validationModel: validationModels[driver.agentId] || "agent-default",
+    validationModel: validationModels[driver.agentId] || null,
     staticStatus,
     liveStatus,
     releaseStatus: readinessReady && (!releaseUiRequested || productAgentPassed)

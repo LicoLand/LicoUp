@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptiv
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/contracts/adaptive_flywheel_models.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/generated/strategy.g.dart'
     show
@@ -199,6 +200,7 @@ void main() {
       persistentStdioRpcEnabled: false,
     );
     final clientController = ClientController(
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       agentService: agentService,
       conversationNativePort: runner,
     );
@@ -327,6 +329,7 @@ void main() {
         persistentStdioRpcEnabled: false,
       );
       final clientController = ClientController(
+        memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
         agentService: agentService,
         conversationNativePort: runner,
       );
@@ -419,6 +422,7 @@ void main() {
       persistentStdioRpcEnabled: false,
     );
     final clientController = ClientController(
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       agentService: agentService,
       conversationNativePort: runner,
     );
@@ -487,6 +491,7 @@ void main() {
         persistentStdioRpcEnabled: false,
       );
       final clientController = ClientController(
+        memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
         agentService: agentService,
         conversationNativePort: runner,
       );
@@ -609,6 +614,7 @@ void main() {
       persistentStdioRpcEnabled: false,
     );
     final clientController = ClientController(
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       agentService: agentService,
       conversationNativePort: runner,
     );
