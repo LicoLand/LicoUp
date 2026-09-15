@@ -9,6 +9,7 @@
 | Conversation | [Conversation domain](CONVERSATION-DOMAIN.md) | Canonical history, Membership and turn authority |
 | Native Agents | [Agent adapters](AGENT-ADAPTERS-ARCHITECTURE.md) | Native transport, parsing and capabilities |
 | Workflows | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.md) | Graph execution authority |
+| Workflow evolution | [Workflow control and compiler](ASSISTANT-WORKFLOW-CONTROL.md) | Target compiler, node activation and local/peer intervention |
 | Current evidence | [STATUS.md](../STATUS.md) | Implemented and verified capability |
 
 **Status: accepted target design, 2026-09-07; child-conversation amendment

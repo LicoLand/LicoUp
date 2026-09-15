@@ -9,6 +9,7 @@
 | Conversation | [Conversation 领域](CONVERSATION-DOMAIN.zh-CN.md) | 历史、Membership 与回合权威 |
 | 原生 Agent | [适配器架构](AGENT-ADAPTERS-ARCHITECTURE.zh-CN.md) | 原生传输、解析与能力 |
 | 工作流 | [Adaptive Flywheel](../functionality/ADAPTIVE-FLYWHEEL.zh-CN.md) | Graph 执行权威 |
+| 工作流演进 | [工作流控制与编译器](ASSISTANT-WORKFLOW-CONTROL.zh-CN.md) | 编译器、节点激活与本地/Peer 干预目标 |
 | 当前证据 | [STATUS.zh-CN.md](../STATUS.zh-CN.md) | 实现、验证和支持事实 |
 
 **状态：已采纳的目标设计，2026-09-07；子群聊修订 2026-09-08；源码采用机制 2026-09-09。** 本文约束目标设计。当前实现事实见 [`STATUS.zh-CN.md`](../STATUS.zh-CN.md)。本文不是兼容性、真实模型资格或发布证据。既有回合、Graph、安全与发布契约继续由各自领域拥有。2026-09-08 修订取代先前“单一可见 Conversation”展示：获准的长程工作使用一个规范子 Conversation 加上主时间线卡片。
