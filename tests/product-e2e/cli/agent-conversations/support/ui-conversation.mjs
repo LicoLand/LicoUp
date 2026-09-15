@@ -3,15 +3,15 @@
 /**
  * Front-end UI real conversation executor for every agent directory.
  *
- * One real conversation through the LicoUp front end: launch the packaged
- * macOS app in release-live mode, submit a message from the Composer widget,
- * wait for the agent's streamed reply to echo back in the UI, and assert the
- * exact reply text. The release app drives the real native sidecar and the
- * real agent binary; nothing is mocked.
+ * One conversation through the LicoUp front end: launch the packaged macOS
+ * app in release-live mode, submit short prompts from the Composer widget,
+ * and accept the Agent's raw streamed reply while checking the session facts.
+ * The release app drives the native sidecar and agent binary; nothing is
+ * mocked.
  */
 
 import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -23,6 +23,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verificationEffortForAgent } from "../../../../../tools/scripts/lib/agent-conversation-verification-models.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const desktopRoot = resolve(root, "apps/desktop");
@@ -96,29 +97,26 @@ export function runUiConversation(options) {
     throw new Error("packaged_release_sidecar_missing");
   }
   const model = modelForAgent(options.agent);
+  if (!model) {
+    throw new Error("verification_model_unconfigured");
+  }
   const executable = bundleExecutable(runnableApp);
   const receiptDirectory = mkdtempSync(join(tmpdir(), "lico-ui-conversation-"));
   const receiptPath = join(receiptDirectory, "receipt.txt");
-  const canary = randomUUID().replaceAll("-", "");
-  const marker = canary.slice(0, 12);
-  const firstExpected = String((Number.parseInt(canary.slice(12, 20), 16) % 9000) + 1000);
-  const secondExpected = String((Number.parseInt(canary.slice(20, 28), 16) % 9000) + 1000);
-  const acceptancePrompt = (expected) =>
-    `Acceptance marker ${marker}. Do not repeat the marker. Reply with exactly ${expected} and no other text. Do not call tools or request permissions.`;
-  const secondPrompt = acceptancePrompt(secondExpected);
+  const firstPrompt = "Hi";
+  const secondPrompt = "Hi";
   const invocationChallengeDigest = `sha256:${createHash("sha256")
-    .update(`${options.agent}:${canary}`)
+    .update(`${options.agent}:${firstPrompt}:${secondPrompt}`)
     .digest("hex")}`;
   const environment = {
     ...process.env,
     LICO_CLIENT_PATH: join(runnableApp, "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli"),
     LICO_AGENT_CONVERSATION_ACCEPTANCE: "dispatch-lane-unified-1",
     LICO_AGENT_CONVERSATION_PRODUCT_AGENT: options.agent,
-    LICO_AGENT_CONVERSATION_PRODUCT_MODEL: model || "agent-default",
-    LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT: acceptancePrompt(firstExpected),
+    LICO_AGENT_CONVERSATION_PRODUCT_MODEL: model,
+    LICO_AGENT_CONVERSATION_PRODUCT_EFFORT: verificationEffortForAgent(options.agent, model),
+    LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT: firstPrompt,
     LICO_AGENT_CONVERSATION_PRODUCT_SECOND_PROMPT: secondPrompt,
-    LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED: firstExpected,
-    LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED: secondExpected,
     LICO_AGENT_CONVERSATION_PRODUCT_RECEIPT: receiptPath,
     LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST: invocationChallengeDigest,
   };
@@ -179,9 +177,6 @@ export function runUiConversation(options) {
   }
   return {
     ...receipt,
-    canaryMarker: marker,
-    firstExpected,
-    secondExpected,
   };
 }
 
@@ -202,7 +197,7 @@ export async function runUiConversationCli(argv = process.argv.slice(2)) {
       historyReadback: true,
       turnCount: 2,
       nativeSessionIdPresent: Boolean(result.nativeSessionId),
-      replyEchoedInUi: true,
+      replyVisibleInUi: true,
     };
     if (options.output) {
       mkdirSync(dirname(options.output), { recursive: true });

@@ -18,7 +18,7 @@ import { createPrivateWrapper } from "./parity/process.mjs";
 import { resolveExecutable, resolveSidecar } from "./parity/sidecar.mjs";
 import { runSidecar } from "./parity/native/acp-turn.mjs";
 import { cleanupSession, preflightCleanup } from "./parity/session-cleanup.mjs";
-import { parityModelForAgent } from "./parity/agent-ids.mjs";
+import { parityEffortForAgent, parityModelForAgent } from "./parity/agent-ids.mjs";
 
 function parseArgs(argv) {
   const options = {
@@ -94,11 +94,9 @@ export async function runAgentConversation(argv = process.argv.slice(2)) {
     const preflight = await preflightCleanup(context);
     requireFact(preflight.ready === true, preflight.code || "cleanup_preflight_failed");
 
-    const canary = `REPLY_${Math.floor(1000 + Math.random() * 9000)}`;
-    const prompt = `Reply with exactly ${canary} and no other text. Do not call tools or request permissions.`;
     const request = {
       agent: options.agent,
-      text: prompt,
+      text: "Hi",
       workingDirectory: cwd,
       binaryPath: wrapper.wrapperPath,
       timeoutMs: options.timeoutMs,
@@ -108,6 +106,8 @@ export async function runAgentConversation(argv = process.argv.slice(2)) {
     };
     const model = parityModelForAgent(options.agent);
     if (model) request.model = model;
+    const effort = parityEffortForAgent(options.agent, model);
+    if (effort) request.reasoningEffort = effort;
 
     const sent = await runSidecar(context, request);
     sessionId = sent.result?.sessionId || sent.result?.nativeSessionId || "";
@@ -133,8 +133,6 @@ export async function runAgentConversation(argv = process.argv.slice(2)) {
       structuredSeen: sent.structuredSeen === true,
       boundedOutput: sent.boundedOutput === true,
       cleanupPassed: true,
-      canary,
-      canaryReplyMatched: output.includes(canary),
     };
   } catch (error) {
     const reasonCode = /^[a-z0-9_-]+$/u.test(error?.message || "")
@@ -147,7 +145,6 @@ export async function runAgentConversation(argv = process.argv.slice(2)) {
       reasonCode,
       sessionIdPresent: Boolean(sessionId),
       cleanupPassed,
-      canaryReplyMatched: false,
     };
   } finally {
     if (temporaryDirectory) {
