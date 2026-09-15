@@ -730,13 +730,15 @@ NativeConversationCatalogProjection _readNativeCatalog(
   final groupSessions = groupId.isNotEmpty
       ? controller.groupNativeSessions.sessionsByAgent
       : const <String, List<AgentConversationSession>>{};
+  // 1:1 browse catalogs stay visible on the contact list even while a group
+  // remains the selected Canonical conversation. Group drill-in still reads
+  // [groupSessionsByAgent] separately and must not consume this map.
   final catalogs = <NativeConversationAgentCatalogProjection>[
-    if (groupId.isEmpty)
-      for (final entry in controller.conversationSessionsByAgent.entries)
-        NativeConversationAgentCatalogProjection(
-          agentId: entry.key,
-          sessions: entry.value,
-        ),
+    for (final entry in controller.conversationSessionsByAgent.entries)
+      NativeConversationAgentCatalogProjection(
+        agentId: entry.key,
+        sessions: entry.value,
+      ),
   ];
   final runningSessionIds = <String>{
     for (final sessions
