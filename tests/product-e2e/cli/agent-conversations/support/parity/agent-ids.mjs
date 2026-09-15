@@ -16,19 +16,17 @@ export function normalizeAgentId(value) {
   return aliases[normalized] || normalized;
 }
 
-/** Verification / parity model for an agent. Env override, else TOML config. */
+/** Live verification uses the maintained low-cost model, never a shell override. */
 export function parityModelForAgent(agentId) {
-  const environmentKey = `LICO_${agentId.toUpperCase().replaceAll("-", "_")}_PARITY_MODEL`;
-  if (process.env[environmentKey]) return process.env[environmentKey];
-  return verificationModelForAgent(agentId);
+  const model = verificationModelForAgent(agentId);
+  if (!model) throw new Error("verification_model_unconfigured");
+  return model;
 }
 
 /**
- * Verification / parity reasoning effort paired with `model`. Env override,
- * else the pairing recorded next to the model authority.
+ * Verification / parity reasoning effort paired with the configured model.
+ * Inherited environment variables cannot silently raise the verification cost.
  */
 export function parityEffortForAgent(agentId, model) {
-  const environmentKey = `LICO_${agentId.toUpperCase().replaceAll("-", "_")}_PARITY_REASONING_EFFORT`;
-  if (process.env[environmentKey]) return process.env[environmentKey];
   return verificationEffortForAgent(agentId, model);
 }
