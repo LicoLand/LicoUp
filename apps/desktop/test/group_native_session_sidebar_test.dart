@@ -5,6 +5,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -116,9 +117,6 @@ void main() {
       expect(contacts.sessionsByAgent['codex'], hasLength(2));
       expect(contacts.showConversationList, isTrue);
       expect(contacts.conversationListTargets, hasLength(1));
-      // The associated fixture sessions belong to the collapsed Earlier group.
-      await tester.tap(find.byKey(const Key('agents-sidebar-earlier-toggle')));
-      await tester.pump();
       expect(find.text('Synthetic old'), findsOneWidget);
       expect(find.text('Synthetic new'), findsOneWidget);
       expect(find.text('Synthetic unrelated'), findsNothing);
@@ -160,7 +158,7 @@ class _SidebarController extends ClientController {
   _SidebarController({
     required super.agentService,
     required super.conversationNativePort,
-  });
+  }) : super(memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink());
   final readIds = <String>[];
   @override
   Future<ConversationSessionPage> readConversationSessionPage(
@@ -185,8 +183,8 @@ class _SidebarController extends ClientController {
           agentId: agentId,
           title: 'Synthetic $sessionId',
           nativeSessionId: sessionId,
-          createdAt: '2026-09-13T00:00:00Z',
-          updatedAt: '2026-09-13T00:00:00Z',
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
           messages: const [],
         ),
       ],

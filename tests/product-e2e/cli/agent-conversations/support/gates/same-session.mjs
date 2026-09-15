@@ -356,8 +356,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
 
     logStep("turns_start");
     for (let turn = 1; turn <= TURN_COUNT; turn += 1) {
-      const marker = `T${turn}_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-      const prompt = `Reply with exactly ${marker}`;
+      const prompt = "Hi";
       logStep(`turn_${turn}_start`);
       let result;
       if (gate.turnViaSidecar === true || config.turnViaSidecar === true) {
