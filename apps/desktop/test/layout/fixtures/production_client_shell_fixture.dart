@@ -8,6 +8,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
@@ -91,6 +92,7 @@ final class ProductionClientShellFixture {
     );
     final controller = ClientController(
       portableData: portableData,
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       conversationNativePort: conversationNativePort,
       agentService: agentService,
       conversationService: _FixtureConversationService(
