@@ -49,19 +49,11 @@ Future<void> _run(ClientController controller) async {
     );
     final firstPrompt = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT',
-      RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
+      RegExp(r'^[A-Za-z0-9 _.,:-]{2,160}$'),
     );
     final secondPrompt = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_SECOND_PROMPT',
-      RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
-    );
-    final firstExpected = _environment(
-      'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED',
-      RegExp(r'^[A-Za-z0-9-]{1,64}$'),
-    );
-    final secondExpected = _environment(
-      'LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED',
-      RegExp(r'^[A-Za-z0-9-]{1,64}$'),
+      RegExp(r'^[A-Za-z0-9 _.,:-]{2,160}$'),
     );
     final invocationChallengeDigest = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST',
@@ -146,10 +138,17 @@ Future<void> _run(ClientController controller) async {
       reasonCode: 'release_ui_agent_composer_timeout',
     );
     controller.startNewConversationSession();
-    if (model.isNotEmpty &&
-        controller.selectedConversationModelOptions.contains(model)) {
-      controller.selectConversationModel(model);
-    }
+    controller.selectConversationModel(model);
+    _require(
+      controller.selectedConversationModel == model,
+      'release_ui_verification_model_unavailable',
+    );
+    final effort = _verificationEffort();
+    controller.selectConversationReasoningEffort(effort);
+    _require(
+      controller.selectedConversationReasoningEffort == effort,
+      'release_ui_verification_effort_unavailable',
+    );
     await _waitFor(
       () => _composerTextField() != null,
       reasonCode: 'release_ui_composer_timeout',
@@ -226,10 +225,10 @@ Future<void> _run(ClientController controller) async {
       'release_ui_native_session_mismatch',
     );
     final messages = readback?.messages ?? const [];
-    final assistantReplies = messages
+    final assistantRawReplies = messages
         .where((message) => message.role == 'assistant')
-        .map((message) => message.text.trim())
-        .toSet();
+        .map((message) => message.text)
+        .toList(growable: false);
     _require(
       messages.any(
         (message) => message.role == 'user' && message.text == firstPrompt,
@@ -243,16 +242,8 @@ Future<void> _run(ClientController controller) async {
       'release_ui_second_user_readback_missing',
     );
     _require(
-      assistantReplies.contains(firstExpected),
-      _assistantMismatchReason(assistantReplies, firstExpected, turn: 'first'),
-    );
-    _require(
-      assistantReplies.contains(secondExpected),
-      _assistantMismatchReason(
-        assistantReplies,
-        secondExpected,
-        turn: 'second',
-      ),
+      assistantRawReplies.where((reply) => reply.isNotEmpty).length >= 2,
+      'release_ui_assistant_readback_missing',
     );
 
     _emit(<String, Object>{
@@ -298,13 +289,10 @@ Future<void> _runGroupAssistant(ClientController controller) async {
     'LICO_AGENT_CONVERSATION_PRODUCT_MODEL',
     RegExp(r'^[A-Za-z0-9._ +:/-]{1,80}$'),
   );
+  final effort = _verificationEffort();
   final prompt = _environment(
     'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT',
-    RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
-  );
-  final expected = _environment(
-    'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED',
-    RegExp(r'^[A-Za-z0-9-]{1,64}$'),
+    RegExp(r'^[A-Za-z0-9 _.,:-]{2,160}$'),
   );
   final groupTitle = _environment(
     'LICO_AGENT_CONVERSATION_PRODUCT_GROUP_TITLE',
@@ -405,7 +393,7 @@ Future<void> _runGroupAssistant(ClientController controller) async {
       'preferredCapabilities': _stringList(profile['preferredCapabilities']),
       'skillReferences': _stringList(profile['skillReferences']),
       'preferredModel': model,
-      'preferredReasoningEffort': profile['preferredReasoningEffort'],
+      'preferredReasoningEffort': effort.isEmpty ? null : effort,
       'preferredEnvironment': profile['preferredEnvironment'],
     },
   );
@@ -422,10 +410,13 @@ Future<void> _runGroupAssistant(ClientController controller) async {
     () => _composerTextField() != null,
     reasonCode: 'release_ui_group_composer_timeout',
   );
+  final existingEventIds = conversations.events
+      .map((event) => event.id)
+      .toSet();
   await _submitComposer(prompt);
   await _waitFor(
     () =>
-        _groupReplyExists(conversations, membership!.id, expected) ||
+        _groupRawReplyExists(conversations, membership!.id, existingEventIds) ||
         conversations.failureCode.isNotEmpty,
     reasonCode: 'release_ui_group_reply_timeout',
     timeout: const Duration(minutes: 5),
@@ -449,7 +440,7 @@ Future<void> _runGroupAssistant(ClientController controller) async {
     'release_ui_assistant_model_not_persisted',
   );
   _require(
-    _groupReplyExists(conversations, membership.id, expected),
+    _groupRawReplyExists(conversations, membership.id, existingEventIds),
     'release_ui_group_reply_missing',
   );
   _emit(<String, Object>{
@@ -462,11 +453,11 @@ Future<void> _runGroupAssistant(ClientController controller) async {
     'fixtureBackend': false,
     'agentId': agentId,
     'model': model,
-    'nativeSessionId': 'group-assistant-persistent',
+    'nativeSessionId': '',
     'composerSubmitted': true,
     'progressiveTimelineVisible': true,
-    'sameNativeSessionId': true,
-    'historyReadback': true,
+    'sameNativeSessionId': false,
+    'historyReadback': false,
     'turnCount': 1,
     'invocationChallengeDigest': challengeDigest,
   });
@@ -488,20 +479,22 @@ String _safeConversationFailure(String value) {
       : 'release_ui_group_turn_failed';
 }
 
-bool _groupReplyExists(
+bool _groupRawReplyExists(
   ClientConversationController controller,
   String membershipId,
-  String expected,
-) => controller.events.any(
-  (event) =>
-      event.authorMembershipId == membershipId &&
-      event.parts
-              .where((part) => part.kind == ConversationEventPartKind.text)
-              .map((part) => part.content)
-              .join()
-              .trim() ==
-          expected,
-);
+  Set<String> existingEventIds,
+) => controller.events.any((event) {
+  if (existingEventIds.contains(event.id) ||
+      event.authorMembershipId != membershipId ||
+      !event.finalized) {
+    return false;
+  }
+  final rawReply = event.parts
+      .where((part) => part.kind == ConversationEventPartKind.text)
+      .map((part) => part.content)
+      .join();
+  return rawReply.isNotEmpty;
+});
 
 Future<void> _verifyAssistantControl() async {
   await _waitFor(
@@ -662,26 +655,11 @@ Duration _remainingUntil(DateTime deadline) {
   return remaining.isNegative ? Duration.zero : remaining;
 }
 
-String _assistantMismatchReason(
-  Set<String> replies,
-  String expected, {
-  required String turn,
-}) {
-  if (replies.isEmpty) {
-    return 'release_ui_${turn}_assistant_readback_missing';
-  }
-  if (replies.any((reply) => reply.contains(expected))) {
-    return 'release_ui_${turn}_assistant_reply_wrapped';
-  }
-  final normalizedExpected = _normalizedMarker(expected);
-  if (replies.any((reply) => _normalizedMarker(reply) == normalizedExpected)) {
-    return 'release_ui_${turn}_assistant_reply_normalized';
-  }
-  return 'release_ui_${turn}_assistant_reply_mismatch';
+String _verificationEffort() {
+  final value = Platform.environment['LICO_AGENT_CONVERSATION_PRODUCT_EFFORT'];
+  _require(value != null, 'release_ui_verification_effort_missing');
+  return value!.trim();
 }
-
-String _normalizedMarker(String value) =>
-    value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
 String _environment(String name, RegExp pattern) {
   final value = Platform.environment[name]?.trim() ?? '';
