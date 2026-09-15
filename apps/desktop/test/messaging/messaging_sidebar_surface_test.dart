@@ -186,17 +186,17 @@ void main() {
             .borderRadius,
         BorderRadius.circular(999),
       );
-      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
+      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
 
       await tester.tap(rosterToggleFinder);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsNothing);
-      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+      expect(find.byTooltip('Expand sidebar'), findsOneWidget);
 
       await tester.tap(rosterToggleFinder);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsOneWidget);
-      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
+      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
 
       // Member names live in tooltips only — the capsule shows bare avatars.
       expect(find.text('Codex'), findsNothing);

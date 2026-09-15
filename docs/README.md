@@ -45,6 +45,8 @@ authority.
 - [Adaptive Flywheel strategies](functionality/ADAPTIVE-FLYWHEEL.md) ·
   [Adaptive Flywheel 策略](functionality/ADAPTIVE-FLYWHEEL.zh-CN.md)
 - [Design system](functionality/DESIGN-SYSTEM.md)
+- [UI interaction state machine](functionality/UI-INTERACTIONS.md) ·
+  [用户界面交互状态机](functionality/UI-INTERACTIONS.zh-CN.md)
 - [Current retiring endpoint-protection Preview file handoff](functionality/ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
 
 ## Protocols and artifact formats

@@ -116,6 +116,9 @@ void main() {
       expect(contacts.sessionsByAgent['codex'], hasLength(2));
       expect(contacts.showConversationList, isTrue);
       expect(contacts.conversationListTargets, hasLength(1));
+      // The associated fixture sessions belong to the collapsed Earlier group.
+      await tester.tap(find.byKey(const Key('agents-sidebar-earlier-toggle')));
+      await tester.pump();
       expect(find.text('Synthetic old'), findsOneWidget);
       expect(find.text('Synthetic new'), findsOneWidget);
       expect(find.text('Synthetic unrelated'), findsNothing);
