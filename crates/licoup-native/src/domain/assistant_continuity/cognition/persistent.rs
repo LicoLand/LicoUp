@@ -6,8 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use licoup_conversation::continuity::{
     ContinuityContextManifest, ContinuityFailure, ContinuityParentContextGrant,
     ContinuityParentGrantBasis, ContinuitySourceOwnerKind, ContinuitySourceRef,
-    ContinuitySourceValidity, PROPOSAL_RESPONSE_CONTRACT, admit_utf8_span,
-    find_admitted_parent_grant, source_is_revoked_now,
+    ContinuitySourceValidity, admit_utf8_span, find_admitted_parent_grant, source_is_revoked_now,
 };
 use licoup_conversation::{
     Conversation, ConversationStore, ImageAttachmentReference, MembershipStatus, PrincipalKind,
@@ -185,7 +184,6 @@ pub(crate) fn compose_admitted_turn_params(
             assembly,
             orientation,
             request.include_licoup_guide,
-            request.continuity_kind == "user-posted",
             native_role
                 .as_ref()
                 .map(|role| role.instructions.as_str())
@@ -550,15 +548,11 @@ pub(crate) fn compose_continuity_guidance(
     assembly: &super::types::AssemblySnapshot,
     orientation: &ContinuityContextManifest,
     include_licoup_guide: bool,
-    include_response_contract: bool,
     native_role_instructions: Option<&str>,
 ) -> String {
     let mut guidance = String::new();
     if include_licoup_guide {
         guidance.push_str(LICOUP_GUIDE_SKILL_SOURCE);
-    }
-    if include_response_contract {
-        push_block(&mut guidance, PROPOSAL_RESPONSE_CONTRACT);
     }
     if !orientation.selection_reason_codes.is_empty() {
         let mut reasons = String::from("Selection reasons:");
