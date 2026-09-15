@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { parityModelForAgent } from "../agent-ids.mjs";
+import { parityEffortForAgent, parityModelForAgent } from "../agent-ids.mjs";
 import { AcpClient } from "../clients/acp-client.mjs";
 import { acceptanceMode, sidecarArgs } from "../constants.mjs";
 import { AcceptanceError, requireFact, safeErrorCode } from "../errors.mjs";
 import { nativeAppServerReadback, nativeAppServerTurn } from "./app-server.mjs";
 import { nativeCursorCliReadback, nativeCursorCliTurn } from "./cursor-cli.mjs";
 import { nativePiReadback, nativePiTurn, notificationTexts, sessionSettings } from "./pi.mjs";
+import { applyAcpVerificationSettings } from "./acp-settings.mjs";
 import { runBoundedProcess } from "../process.mjs";
 
 function validPublicStreamIdentifier(value) {
@@ -81,14 +82,12 @@ export async function nativeTurn(context, requestedSessionId, prompt) {
       "native_session_identity_mismatch",
     );
     context.observedSessions?.add(sessionId);
-    const forcedModel = parityModelForAgent(context.config.id);
-    if (forcedModel) {
-      await client.request("session/set_config_option", {
-        sessionId,
-        configId: "model",
-        value: forcedModel,
-      });
-    }
+    const forcedModel = context.parityModel || parityModelForAgent(context.config.id);
+    const selectedSettings = await applyAcpVerificationSettings(client, sessionId, sessionResult, {
+      model: forcedModel,
+      effort: parityEffortForAgent(context.config.id, forcedModel),
+      cwd: context.cwd,
+    });
     const historyNotifications = client.notifications.slice(historyStart);
     const promptStart = client.notifications.length;
     const promptHardDeadline = performance.now() + context.timeoutMs;
@@ -111,7 +110,7 @@ export async function nativeTurn(context, requestedSessionId, prompt) {
       sessionId,
       output: final.text.trim(),
       historyNotifications,
-      settings: sessionSettings(sessionResult, context.cwd),
+      settings: sessionSettings(selectedSettings, context.cwd),
       protocolVersion: initializeResult.protocolVersion,
       permissionRequests: client.permissionRequests,
       unsupportedRequests: client.unsupportedRequests,
@@ -138,14 +137,15 @@ export async function nativeReadback(context, sessionId) {
       return {
         text: "",
         settings: {
-          cwd: context.cwd,
-          model: parityModelForAgent(context.config.id) || null,
+          cwd: null,
+          model: null,
           reasoningEffort: null,
           mode: null,
           runtimeAgent: null,
           allowAll: null,
         },
         boundedOutput: true,
+        readbackAvailable: false,
       };
     }
     return nativeCursorCliReadback(context, sessionId);

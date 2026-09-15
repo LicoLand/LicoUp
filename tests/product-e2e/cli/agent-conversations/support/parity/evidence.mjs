@@ -121,7 +121,7 @@ export function coreChecksFromAggregate(aggregate) {
         && aggregate.hostShutdownPassed === true
       : aggregate.openNew === true && aggregate.exactResume === true),
     "P-04": passOrFail(
-      aggregate.finalCanaries === true
+      aggregate.rawResponses === true
         && (processLocal
           ? aggregate.processLocalFactsEvidenceComplete === true
             && aggregate.processLocalFactsPassed === true

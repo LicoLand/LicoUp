@@ -160,6 +160,7 @@ class ClientController extends AgentConversationController
     Duration llmGatewayRecoveryRetryDelay = const Duration(milliseconds: 500),
     LlmGatewayDiagnosticSink? llmGatewayDiagnosticSink,
     ApplicationDiagnosticSink? applicationDiagnosticSink,
+    ClientMemoryDiagnosticSink? memoryDiagnosticSink,
     ClientConversationNativePort? conversationNativePort,
     Duration? pendingNoticePollInterval,
   }) : portableData = portableData ?? PortableDataRoot(),
@@ -301,8 +302,11 @@ class ClientController extends AgentConversationController
       catalogConvergenceGateway: catalogConvergenceGateway,
     );
     messagingNotificationCenter = MessagingNotificationCenter();
+    _memoryDiagnosticLog = ClientMemoryDiagnosticLog(
+      portableData: this.portableData,
+    );
     clientMemoryDiagnosticJournal = ClientMemoryDiagnosticJournal(
-      sink: ClientMemoryDiagnosticLog(portableData: this.portableData),
+      sink: memoryDiagnosticSink ?? _memoryDiagnosticLog,
     );
     clientConversationController = ClientConversationController(
       native:
@@ -364,6 +368,7 @@ class ClientController extends AgentConversationController
   @override
   late final ClientConversationController clientConversationController;
   late final ClientMemoryDiagnosticJournal clientMemoryDiagnosticJournal;
+  late final ClientMemoryDiagnosticLog _memoryDiagnosticLog;
   bool _clientConversationControllerReady = false;
 
   @override
@@ -503,7 +508,10 @@ class ClientController extends AgentConversationController
     llmVaultAuthorization.dispose();
     _components.dispose();
     super.dispose();
-    await _disposeRuntimeServices();
+    await Future.wait<void>([
+      _disposeRuntimeServices(),
+      _memoryDiagnosticLog.flush(),
+    ]);
   }
 
   @override
