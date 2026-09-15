@@ -9,6 +9,7 @@ import 'package:licoup/src/contracts/agent_conversation_context_projection.dart'
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 
 const int conversationSessionPageSize = 10;
+const int conversationRecentCatalogPageSize = 20;
 const int conversationSessionLoadMoreIncrement = 10;
 const List<int> conversationInitialProgressiveMilestones = [3, 10];
 const String conversationCatalogRefreshKey = '__lico_catalog_refresh__';
@@ -117,23 +118,35 @@ mixin AgentConversationSessionStateController
     // Live retention can reintroduce an empty cwd; recover again from the
     // native page so the composer bind path stays aligned with catalog facts.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
+    final catalogWasMissing = !conversationSessionsByAgent.containsKey(agentId);
+    final hasMoreWasMissing = !conversationSessionsHasMoreByAgent.containsKey(
+      agentId,
+    );
     final sessionsChanged = !conversationSessionListsEquivalent(previous, next);
     final hasMoreChanged =
         (conversationSessionsHasMoreByAgent[agentId] ?? false) != page.hasMore;
-    if (sessionsChanged) {
+    if (sessionsChanged || catalogWasMissing) {
       conversationSessionsByAgent = {
         ...conversationSessionsByAgent,
         agentId: next,
       };
     }
-    if (hasMoreChanged) {
+    if (hasMoreChanged || hasMoreWasMissing) {
       conversationSessionsHasMoreByAgent = {
         ...conversationSessionsHasMoreByAgent,
         agentId: page.hasMore,
       };
     }
+    final catalogChanged =
+        sessionsChanged ||
+        hasMoreChanged ||
+        catalogWasMissing ||
+        hasMoreWasMissing;
 
-    if (selectedConversationAgentId == agentId) {
+    // A selected group owns the visible session. Browse-catalog warm must not
+    // steal that selection when the same Agent is also the group assistant.
+    if (selectedConversationAgentId == agentId &&
+        groupNativeSessions.conversationId.isEmpty) {
       conversationReconcileSelectedSession(agentId, next, previous: previous);
       if (clearLiveProjectionFromProviderReadback) {
         conversationClearLiveProjectionWhenReadBack(
@@ -145,8 +158,10 @@ mixin AgentConversationSessionStateController
         previousSelected,
         selectedConversationSession,
       );
-      if (notifyChanges && (sessionsChanged || hasMoreChanged)) {
+      if (notifyChanges && catalogChanged) {
         if (hasMoreChanged ||
+            catalogWasMissing ||
+            hasMoreWasMissing ||
             _conversationCatalogStructureChanged(previous, next)) {
           agentWorkspaceNotifyConversationStructureChanged(
             activeChanged: activeChanged,
@@ -170,10 +185,10 @@ mixin AgentConversationSessionStateController
         );
         statusCaption = 'Agent chat';
       }
-    } else if (notifyChanges && (sessionsChanged || hasMoreChanged)) {
+    } else if (notifyChanges && catalogChanged) {
       agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
     }
-    return sessionsChanged;
+    return sessionsChanged || catalogWasMissing;
   }
 
   @override

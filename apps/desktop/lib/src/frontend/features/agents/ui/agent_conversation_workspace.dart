@@ -87,6 +87,7 @@ class _AgentConversationWorkspaceState
   String _conversationListGroupId = '';
   bool _showAgentDetailInsideGroupList = false;
   String? _observedConversationSelection;
+  String _warmedBrowseCatalogSignature = '';
   final List<({String agentId, String groupId})> _conversationListHistory = [];
 
   ({String agentId, String groupId}) get _conversationListLocation =>
@@ -241,6 +242,31 @@ class _AgentConversationWorkspaceState
       );
       widget.agents.intents.send(SelectAgent(previous.agentId));
     }
+  }
+
+  void _scheduleAgentBrowseCatalogWarm(AgentsProjection agents) {
+    final ids = [
+      for (final target in agents.targetDetails)
+        if (target.isConversationAgent) target.target.trim(),
+    ]..sort();
+    final signature = ids.join(',');
+    if (signature.isEmpty || signature == _warmedBrowseCatalogSignature) {
+      return;
+    }
+    _warmedBrowseCatalogSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final agentId in ids) {
+        widget.conversation.intents.send(
+          RefreshConversationCatalog(agentId: agentId),
+        );
+      }
+    });
+  }
+
+  void _openAgentConversationHome(String agentId) {
+    _showAgentConversationList(agentId);
+    widget.agents.intents.send(StartAgentConversation(agentId));
   }
 
   void _showWelcomePage() {
@@ -464,6 +490,7 @@ class _AgentConversationWorkspaceState
     MobileRelayProjection relay,
   ) {
     _syncConversationListWithSelection(agents, root, native, canonical);
+    _scheduleAgentBrowseCatalogWarm(agents);
     final presentation = layoutAgentsPresentationOf(context);
     final selectedTarget = _selectedTarget(agents);
     final selectedSession = _selectedSession(native);
@@ -760,17 +787,7 @@ class _AgentConversationWorkspaceState
         onNewGroupConversation: createGroup,
         activityFor: activityFor,
         runningFor: runningFor,
-        onSelectAgent: (agentId) {
-          setState(() {
-            _showWelcome = false;
-            _showAgentDetailInsideGroupList = false;
-          });
-          if (agentId == agents.selectedAgentId) {
-            widget.conversation.intents.send(const StartConversationSession());
-          } else {
-            widget.agents.intents.send(StartAgentConversation(agentId));
-          }
-        },
+        onSelectAgent: _openAgentConversationHome,
         onNewConversation: () =>
             widget.conversation.intents.send(const StartConversationSession()),
         onSearch: widget.onSearch,
