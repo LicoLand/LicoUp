@@ -226,7 +226,7 @@ final class AssistantToggleButton extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 2, right: 6),
+              padding: const EdgeInsets.only(left: 16, right: 8),
               child: _AssistantParticipationToggle(
                 key: const Key('canonical-group-assistant-toggle'),
                 enabled: enabled,
