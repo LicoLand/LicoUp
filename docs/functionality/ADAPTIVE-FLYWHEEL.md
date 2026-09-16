@@ -10,6 +10,11 @@ The engine infers no topology from a strategy name and ships no built-in
 executable Graph. The bundled LicoUp guide explains how to use its existing
 operations.
 
+The accepted [workflow control and compiler design](../architecture/ASSISTANT-WORKFLOW-CONTROL.md)
+owns the planned compiler separation, queued Assistant/Peer intervention, node
+activation and graceful lifecycle. Those changes are not implemented by this
+document; the following sections describe the current Graph contract.
+
 ## Strategy sources
 
 The catalog starts empty. A strategy becomes available only after the user

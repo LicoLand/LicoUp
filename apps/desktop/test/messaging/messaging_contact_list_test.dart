@@ -86,6 +86,82 @@ void main() {
   });
 
   testWidgets(
+    'in-flight refresh occupies space above the first conversation and then disappears',
+    (tester) async {
+      await _pumpContacts(
+        tester,
+        sessionsByAgent: const {},
+        loading: true,
+        onSearch: () {},
+        groupConversations: const [
+          ClientConversationSummary(
+            id: 'conversation:group',
+            title: 'Local room',
+            archived: false,
+            pinned: true,
+            group: true,
+            revision: 1,
+            updatedAtUnixMs: 20,
+            membershipCount: 12,
+            eventCount: 0,
+          ),
+        ],
+        selectedGroupConversationId: 'conversation:group',
+      );
+
+      final indicator = find.byKey(
+        const Key('messaging-list-refresh-indicator'),
+      );
+      final search = find.byKey(const Key('messaging-sidebar-search'));
+      final lightRow = find.byKey(
+        const Key('messaging-sidebar-traffic-light-row'),
+      );
+      final groupRow = find.byKey(
+        const ValueKey<String>(
+          'messaging-group-conversation-conversation:group',
+        ),
+      );
+      expect(indicator, findsOneWidget);
+      expect(find.descendant(of: lightRow, matching: indicator), findsNothing);
+      expect(
+        tester.getBottomLeft(search).dy,
+        lessThanOrEqualTo(tester.getTopLeft(indicator).dy),
+      );
+      expect(
+        tester.getBottomLeft(indicator).dy,
+        lessThanOrEqualTo(tester.getTopLeft(groupRow).dy),
+      );
+      expect(
+        tester.getRect(indicator).overlaps(tester.getRect(groupRow)),
+        isFalse,
+      );
+
+      await _pumpContacts(
+        tester,
+        sessionsByAgent: const {},
+        loading: false,
+        onSearch: () {},
+        groupConversations: const [
+          ClientConversationSummary(
+            id: 'conversation:group',
+            title: 'Local room',
+            archived: false,
+            pinned: true,
+            group: true,
+            revision: 1,
+            updatedAtUnixMs: 20,
+            membershipCount: 12,
+            eventCount: 0,
+          ),
+        ],
+        selectedGroupConversationId: 'conversation:group',
+      );
+      expect(indicator, findsNothing);
+      expect(groupRow, findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'contact list shows host-local agents and hides Hub-absent installs',
     (tester) async {
       final workingDirectory = ['', 'srv', 'project'].join('/');
@@ -381,7 +457,17 @@ void main() {
     await _pumpContacts(
       tester,
       targets: [codex, claude],
-      sessionsByAgent: const {},
+      sessionsByAgent: {
+        codex.id: [
+          _session(
+            'session-codex',
+            codex.target,
+            'Already loaded',
+            updatedAgo: const Duration(minutes: 2),
+          ),
+        ],
+        claude.id: const [],
+      },
       onPrefetchSessions: prefetched.add,
     );
     expect(prefetched, [claude.id]);
@@ -1194,6 +1280,7 @@ Future<void> _pumpContacts(
   VoidCallback? onNewConversation,
   VoidCallback? onSearch,
   VoidCallback? onRefresh,
+  bool loading = false,
   VoidCallback? onNewGroupConversation,
   bool showConversationList = false,
   List<TargetCandidate> conversationListTargets = const [],
@@ -1240,6 +1327,7 @@ Future<void> _pumpContacts(
                   onNewConversation: onNewConversation ?? () {},
                   onSearch: onSearch,
                   onRefresh: onRefresh,
+                  loading: loading,
                   onNewGroupConversation: onNewGroupConversation,
                   groupConversations: groupConversations,
                   selectedGroupConversationId: selectedGroupConversationId,

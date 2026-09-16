@@ -33,8 +33,8 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// and Codex Desktop) stay one contact with the group representative's brand
 /// icon. Rows carry the latest conversation's preview and relative activity
 /// time, sort pinned contacts first then by most recent activity, and tapping
-/// a contact lands on that agent's new-conversation home (old conversations
-/// stay reachable through the recent list and the switcher).
+/// a contact opens that agent's conversation list on the left and its
+/// new-conversation home on the right.
 class MessagingContactList extends StatefulWidget {
   const MessagingContactList({
     super.key,
@@ -78,8 +78,7 @@ class MessagingContactList extends StatefulWidget {
   final String selectedAgentId;
   final AgentConversationTabActivity Function(String agentId) activityFor;
 
-  /// Activates an agent, landing on its new-conversation home. Old
-  /// conversations stay reachable through the recent list and the switcher.
+  /// Opens the agent's secondary conversation list and new-conversation home.
   final ValueChanged<String> onSelectAgent;
   final VoidCallback onNewConversation;
   final VoidCallback? onSearch;
@@ -101,9 +100,8 @@ class MessagingContactList extends StatefulWidget {
   final void Function(String agentId, String sessionId)? onSelectSession;
   final VoidCallback? onBack;
 
-  /// Kicks a first-page session load for one agent. Invoked once on first
-  /// build for every conversation agent without loaded sessions, mirroring
-  /// the search palette prefetch.
+  /// Kicks a first-page session load for one agent that does not yet have a
+  /// catalog entry in [sessionsByAgent]. An empty list counts as loaded.
   final ValueChanged<String>? onPrefetchSessions;
   final bool Function(String targetId)? isPinned;
   final ValueChanged<String>? onTogglePinned;
@@ -158,15 +156,16 @@ class _MessagingContactListState extends State<MessagingContactList> {
       if (!target.isConversationAgent) {
         continue;
       }
+      final hasCatalog =
+          widget.sessionsByAgent.containsKey(target.id) ||
+          widget.sessionsByAgent.containsKey(target.target);
+      if (hasCatalog) {
+        continue;
+      }
       if (!_prefetchedTargetIds.add(target.id)) {
         continue;
       }
-      final loaded =
-          widget.sessionsByAgent[target.id] ??
-          widget.sessionsByAgent[target.target];
-      if (loaded == null || loaded.isEmpty) {
-        prefetch(target.id);
-      }
+      prefetch(target.id);
     }
   }
 

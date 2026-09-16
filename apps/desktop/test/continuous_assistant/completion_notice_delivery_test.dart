@@ -10,6 +10,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -47,6 +48,7 @@ void main() {
         final controller = ClientController(
           agentService: FakeAgentService(),
           conversationNativePort: runner,
+          memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
           pendingNoticePollInterval: const Duration(hours: 1),
         );
         addTearDown(controller.close);

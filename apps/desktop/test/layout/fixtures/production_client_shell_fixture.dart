@@ -7,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/conversation_native_port.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
@@ -45,6 +47,10 @@ final class ProductionClientShellFixture {
   final String appearancePresetId;
   final Directory _temporaryDataRoot;
   LayoutStatePort? _layoutStateStore;
+  Future<void> Function()? _closeComposition;
+
+  /// Let the caller drain platform/stream cleanup using WidgetTester.runAsync.
+  Future<void> closeComposition() async => _closeComposition?.call();
 
   LayoutStatePort get layoutStateStore =>
       _layoutStateStore ??
@@ -56,6 +62,7 @@ final class ProductionClientShellFixture {
     required ClientSection destination,
     required Size size,
     required Brightness brightness,
+    ClientConversationNativePort? conversationNativePort,
   }) async {
     final layoutCatalog = createBuiltInLayoutCatalog();
     // The production baseline renders the out-of-box preference: the
@@ -85,6 +92,8 @@ final class ProductionClientShellFixture {
     );
     final controller = ClientController(
       portableData: portableData,
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
+      conversationNativePort: conversationNativePort,
       agentService: agentService,
       conversationService: _FixtureConversationService(
         native: agentService.conversationNativePort,
@@ -136,6 +145,9 @@ final class ProductionClientShellFixture {
     }
 
     await controller.layoutManager.initialize();
+    if (conversationNativePort != null) {
+      await controller.clientConversationController.initialize();
+    }
     return ProductionClientShellFixture._(
       controller: controller,
       surface: surface,
@@ -156,6 +168,7 @@ final class ProductionClientShellFixture {
   Widget buildApp({
     required Key semanticsKey,
     required Key repaintBoundaryKey,
+    bool disableAnimations = true,
   }) {
     final theme =
         buildLicoTheme(
@@ -189,7 +202,7 @@ final class ProductionClientShellFixture {
           platformBrightness: brightness,
           padding: safePadding,
           viewPadding: safePadding,
-          disableAnimations: true,
+          disableAnimations: disableAnimations,
         ),
         child: Semantics(
           key: semanticsKey,
@@ -201,6 +214,7 @@ final class ProductionClientShellFixture {
               controller,
               onComposed: (composition) {
                 _layoutStateStore = composition.renderer.layoutStateStore;
+                _closeComposition = composition.dispose;
               },
             ),
           ),
