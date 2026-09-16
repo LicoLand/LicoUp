@@ -68,6 +68,36 @@ final class GroupStrategyPickerCapsule extends StatelessWidget {
   }
 }
 
+/// Gear-cluster mark for the Adaptive Flywheel capsule: a large gear meshing
+/// with a smaller one at the lower right — the bundled icon fonts carry no
+/// multi-gear glyph, so two gear glyphs compose one.
+final class _GearClusterIcon extends StatelessWidget {
+  const _GearClusterIcon({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 14,
+    height: 14,
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: 0,
+          top: 0,
+          child: Icon(Icons.settings_outlined, size: 9.5, color: color),
+        ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Icon(Icons.settings_outlined, size: 6.5, color: color),
+        ),
+      ],
+    ),
+  );
+}
+
 final class _GroupStrategyPickerTrigger extends StatelessWidget {
   const _GroupStrategyPickerTrigger({required this.onTap});
 
@@ -95,15 +125,11 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
           child: SizedBox(
             height: 32,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.only(left: 12, right: 20),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.auto_awesome_outlined,
-                    size: 14,
-                    color: colors.textMuted,
-                  ),
+                  _GearClusterIcon(color: colors.textMuted),
                   const SizedBox(width: 7),
                   Flexible(
                     child: Text(
