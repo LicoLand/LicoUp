@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -190,63 +191,137 @@ void main() {
     }
   });
 
-  testWidgets('lens refracts near the rim and leaves the interior unchanged', (
-    tester,
-  ) async {
-    await tester.runAsync(() async {
-      final program = await FragmentProgram.fromAsset(GlassLens.asset);
-      final sourceRecorder = PictureRecorder();
-      Canvas(sourceRecorder).drawRect(
-        const Rect.fromLTWH(0, 0, 128, 128),
-        Paint()
-          ..shader = const LinearGradient(
-            colors: [Color(0xFF000000), Color(0xFFFF0000)],
-          ).createShader(const Rect.fromLTWH(0, 0, 128, 128)),
-      );
-      final sourcePicture = sourceRecorder.endRecording();
-      final source = await sourcePicture.toImage(128, 128);
-      final shader = program.fragmentShader()
-        ..setFloat(0, 128)
-        ..setFloat(1, 128)
-        ..setFloat(2, 16)
-        ..setFloat(3, 4)
-        ..setFloat(4, 0)
-        ..setImageSampler(0, source);
-      final recorder = PictureRecorder();
-      Canvas(
-        recorder,
-      ).drawRect(const Rect.fromLTWH(0, 0, 128, 128), Paint()..shader = shader);
-      final picture = recorder.endRecording();
-      final output = await picture.toImage(128, 128);
-      final original = (await source.toByteData())!;
-      final refracted = (await output.toByteData())!;
-      int red(ByteData data, int x) => data.getUint8((64 * 128 + x) * 4);
-      expect(red(refracted, 80), closeTo(red(original, 80), 1));
-      expect(red(refracted, 120), greaterThan(red(original, 120) + 2));
-      output.dispose();
-      picture.dispose();
-      shader.dispose();
-      source.dispose();
-      sourcePicture.dispose();
+  for (final size in [const Size(128, 128), const Size(192, 32)]) {
+    testWidgets('lens preserves the face of a $size slab', (tester) async {
+      await tester.runAsync(() async {
+        final width = size.width.toInt();
+        final height = size.height.toInt();
+        final rect = Offset.zero & size;
+        final program = await FragmentProgram.fromAsset(GlassLens.asset);
+        final sourceRecorder = PictureRecorder();
+        final sourceCanvas = Canvas(sourceRecorder);
+        sourceCanvas.drawRect(
+          rect,
+          Paint()
+            ..shader = const LinearGradient(
+              colors: [Color(0xFF000000), Color(0xFFFF0000)],
+            ).createShader(rect),
+        );
+        sourceCanvas.drawRect(
+          rect,
+          Paint()
+            ..blendMode = BlendMode.plus
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF000000), Color(0xFF00FF00)],
+            ).createShader(rect),
+        );
+        final sourcePicture = sourceRecorder.endRecording();
+        final source = await sourcePicture.toImage(width, height);
+        final shader = program.fragmentShader()
+          ..setFloat(0, size.width)
+          ..setFloat(1, size.height)
+          ..setFloat(2, 16)
+          ..setFloat(3, 4)
+          ..setFloat(4, 0)
+          ..setImageSampler(0, source);
+        final recorder = PictureRecorder();
+        Canvas(recorder).drawRect(rect, Paint()..shader = shader);
+        final picture = recorder.endRecording();
+        final output = await picture.toImage(width, height);
+        final original = (await source.toByteData())!;
+        final refracted = (await output.toByteData())!;
+        int red(ByteData data, int x, int y) =>
+            data.getUint8((y * width + x) * 4);
+        int green(ByteData data, int x, int y) =>
+            data.getUint8((y * width + x) * 4 + 1);
+        // On a short capsule, even a point outside the exact center must be
+        // unaffected. The old displacement-dependent band covered this face.
+        final faceX = width ~/ 2;
+        final faceY = height ~/ 2 - 3;
+        expect(
+          red(refracted, faceX, faceY),
+          closeTo(red(original, faceX, faceY), 1),
+        );
+        expect(
+          green(refracted, faceX, faceY),
+          closeTo(green(original, faceX, faceY), 1),
+        );
+        expect(
+          red(refracted, width - 2, height ~/ 2),
+          lessThan(red(original, width - 2, height ~/ 2)),
+        );
+        // Flat top edges of a wide capsule refract vertically, not radially
+        // toward its center; the rim is the only part that magnifies content.
+        expect(
+          green(refracted, faceX, 1),
+          greaterThan(green(original, faceX, 1)),
+        );
+        output.dispose();
+        picture.dispose();
+        shader.dispose();
+        source.dispose();
+        sourcePicture.dispose();
+      });
     });
-  });
+  }
 
-  test('specular rim painter is a conic highlight, not a uniform color', () {
-    const painter = GlassSpecularRimPainter(
-      borderRadius: BorderRadius.all(Radius.circular(16)),
-      rimHi: Color(0xA8FFFFFF),
-      rimLo: Color(0x24FFFFFF),
-      lightAngle: LicoGlass.restLightAngle,
-      enclose: true,
+  test('edge light stays broad and continuous on long capsules', () async {
+    const width = 320;
+    const height = 40;
+    Future<ByteData> render(double angle) async {
+      final painter = GlassSpecularRimPainter(
+        borderRadius: BorderRadius.circular(20),
+        rimWidth: 0.75,
+        rimHi: const Color(0x62FFFFFF),
+        rimLo: const Color(0x14FFFFFF),
+        lightAngle: angle,
+      );
+      final recorder = PictureRecorder();
+      painter.paint(Canvas(recorder), const Size(320, 40));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(width, height);
+      final data = (await image.toByteData())!;
+      image.dispose();
+      picture.dispose();
+      return data;
+    }
+
+    int alpha(ByteData data, int x, int y) =>
+        data.getUint8((y * width + x) * 4 + 3);
+    final resting = await render(LicoGlass.restLightAngle);
+    // The long, level edge has a gentle monotonic falloff, not a local peak.
+    // Check actual coverage, including the default below-one-pixel light ring.
+    for (var x = 22; x < width - 22; x++) {
+      final previous = alpha(resting, x - 1, 0);
+      final next = alpha(resting, x, 0);
+      expect(next, lessThanOrEqualTo(previous + 1));
+      expect((next - previous).abs(), lessThanOrEqualTo(1));
+      expect(next, greaterThan(0));
+    }
+    expect(
+      alpha(resting, 24, 0),
+      greaterThan(alpha(resting, width - 24, 0) + 30),
     );
-    expect(painter.enclose, isTrue);
-    expect(painter.rimHi, isNot(equals(painter.rimLo)));
-    expect(painter.rimHi.a, greaterThan(painter.rimLo.a));
-    expect(painter.lightAngle, LicoGlass.restLightAngle);
+    expect(alpha(resting, width ~/ 2, height ~/ 2), 0);
 
-    final recorder = PictureRecorder();
-    painter.paint(Canvas(recorder), const Size(32, 32));
-    recorder.endRecording().dispose();
+    final right = await render(0);
+    final left = await render(math.pi);
+    expect(
+      alpha(right, width - 1, height ~/ 2),
+      greaterThan(alpha(right, 0, height ~/ 2)),
+    );
+    expect(
+      alpha(left, 0, height ~/ 2),
+      greaterThan(alpha(left, width - 1, height ~/ 2)),
+    );
+
+    final negative = await render(-math.pi / 2);
+    final wrapped = await render(3 * math.pi / 2);
+    for (var i = 3; i < negative.lengthInBytes; i += 4) {
+      expect(negative.getUint8(i), closeTo(wrapped.getUint8(i), 1));
+    }
   });
 
   testWidgets(

@@ -40,7 +40,7 @@ abstract final class GlassLens {
   static GlassLensFilter? createFilter({
     required Size size,
     required double radius,
-    double displace = 8,
+    double displace = 4,
     double chroma = 0,
   }) {
     final program = _program;
