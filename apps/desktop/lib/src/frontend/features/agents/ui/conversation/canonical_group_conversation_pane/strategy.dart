@@ -283,18 +283,23 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
     final spectrum = context.licoColors.isDark
         ? [
             widget.baseColor,
-            const Color(0xFFC4A0FF),
-            const Color(0xFFF5A46E),
-            const Color(0xFFF3D889),
+            const Color(0xFF8A3FFC),
+            const Color(0xFFC27DFF),
+            const Color(0xFFFB923C),
+            const Color(0xFFFCD34D),
+            const Color(0xFFFEF3C7),
             widget.baseColor,
           ]
         : [
             widget.baseColor,
-            const Color(0xFF8050AD),
-            const Color(0xFFA75B30),
-            const Color(0xFF92701D),
+            const Color(0xFF7C3AED),
+            const Color(0xFF9333EA),
+            const Color(0xFFEA580C),
+            const Color(0xFFD97706),
+            const Color(0xFFB45309),
             widget.baseColor,
           ];
+    const spectrumStops = [0.0, 0.24, 0.40, 0.56, 0.70, 0.78, 1.0];
     return AnimatedBuilder(
       animation: _light,
       child: widget.child,
@@ -306,6 +311,7 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
             begin: Alignment(center * 2 - 1 - 1.8, 0),
             end: Alignment(center * 2 - 1 + 1.8, 0),
             colors: spectrum,
+            stops: spectrumStops,
           ).createShader(rect);
         },
         child: child,
