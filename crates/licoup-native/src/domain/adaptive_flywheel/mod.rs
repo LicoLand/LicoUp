@@ -7,46 +7,22 @@
 mod assistant;
 #[cfg(test)]
 mod conformance;
-mod definition;
-mod graph;
 mod package;
-mod reducer;
 mod service;
 mod store;
-mod workflow_diagnostics;
+mod strategy_types;
 
 pub use assistant::{
-    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightDiagnostic,
-    PreflightFailure, PreflightReceipt, WorkflowDiagnosticActualKind, WorkflowDiagnosticCode,
-    WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightFailure, PreflightReceipt,
     preflight_assistant_graph,
 };
-pub use definition::{
-    ActorSlot, BindingCandidate, BindingKind, BindingValue, CallbackDecisionKind, FailureClass,
-    FallbackReceipt, GraphState, GraphStateKind, GuardExpression, PendingCallback, RetryPolicy,
-    RuntimeKind, RuntimeRequirement, SessionPolicy, SlotFallbackPolicy, StrategyAuthorization,
-    StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyError,
-    StrategyErrorCode, StrategyProjection, StrategyRunStatus, Transition, TransitionEvent,
-    TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata, WorksetTemplate,
-};
-pub use graph::{CompiledWorkflow, compile_persisted_workflow, compile_workflow};
 pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};
-pub use reducer::{
-    CommandKind, CommandStatus, ReducerEvent, ReducerOutput, RunCommand, RunSnapshot, reduce,
-};
 pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
 pub use store::StrategyStore;
-pub(crate) use workflow_diagnostics::{
-    WorkflowValidationFailure, compile_workflow_source, compile_workflow_value,
-    validate_workflow_value,
+pub use strategy_types::{
+    BindingCandidate, BindingValue, StrategyAuthorization, StrategyDefinition,
+    StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,
+    StrategyProjection,
 };
 
-pub const WORKFLOW_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.workflow.v1";
 pub const STRATEGY_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.state.v1";
-pub const MAX_ACTIVE_EFFECTS: usize = 8;
-pub const MAX_GRAPH_STATES: usize = 512;
-pub const MAX_GRAPH_TRANSITIONS: usize = 2_048;
-pub const MAX_BINDING_SLOTS: usize = 64;
-pub const MAX_RUNTIME_REQUIREMENTS: usize = 16;
-pub const MAX_WORKSET_ITEMS: usize = 256;
-pub const MAX_RETRY_ATTEMPTS: u8 = 8;

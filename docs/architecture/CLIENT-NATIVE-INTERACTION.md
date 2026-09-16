@@ -34,3 +34,20 @@ The implementation authorities for the Bridging Contract Layer are:
 - **Canonical Conversation Service**: `apps/desktop/lib/src/backend/features/conversations/services/client_conversation_service.dart`
 - **Native Frame Router**: `crates/licoup-native/src/bin/licoup/stdio_rpc/`
 - **Mobile FFI Bridges**: `crates/licoup-native/src/ffi/` (`android_ffi.rs`, `ios_ffi.rs`)
+
+## Refactor requirements for control and causal observation
+
+Control priority must extend through transport, frame decoding, preparation and
+store admission. Reuse the existing cancellation channel. A priority queue alone
+does not prove responsiveness when a large frame, synchronous parser or long
+transaction blocks it; measure the actual path under those loads.
+
+Correlate the original user action through IPC, admission, queued permit, Agent first
+event, persistence, projection, Dart preparation and the actual displayed frame.
+Separate waiting from computation and retain causal links across asynchronous work
+and multiple predecessors. Use bounded, optionally sampled telemetry. Business
+receipts, effect identity and original history remain durable regardless of telemetry
+sampling. These measurements do not create another event or execution authority.
+
+These are accepted migration requirements. Existing trace hooks or a passing parser
+test alone do not establish end-to-end control latency or frame performance.

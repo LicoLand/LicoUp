@@ -8,6 +8,17 @@ import {
 
 export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
+      id: "rust.core.workflow",
+      kind: "rust-core",
+      summary: "Pure workflow parsing, analysis, compilation, and transition machine",
+      inputs: ["crates/licoup-workflow/**"],
+      command: command(
+        "cargo",
+        ["test", "--manifest-path", "crates/licoup-workflow/Cargo.toml"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.mcp-server",
       kind: "rust-core",
       summary: "Independent MCP protocol, caller admission, and public CLI process adapter",

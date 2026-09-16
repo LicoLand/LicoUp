@@ -16,7 +16,6 @@ const store = read("crates/licoup-conversation/src/store/mod.rs");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
 const assistant = read("crates/licoup-native/src/domain/adaptive_flywheel/assistant.rs");
 const flywheelService = read("crates/licoup-native/src/domain/adaptive_flywheel/service.rs");
-const strategyStore = read("crates/licoup-native/src/domain/adaptive_flywheel/store.rs");
 const usage = read("crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs");
 const policy = read("crates/licoup-native/src/platform/client_state/policy.rs");
 const subagents = read("crates/licoup-native/src/domain/subagents/mod.rs");
@@ -102,18 +101,9 @@ test("candidate ranking is deterministic and keeps unknown optional facts visibl
   assert.match(profile, /Hard constraints/u);
 });
 
-test("preflight returns every hard failure before any actor/script effect", () => {
-  assert.match(assistant, /precedes durable admission or an effect permit/u);
-  assert.match(assistant, /graph_preflight_rejected/u);
-  assert.match(assistant, /graph_identity_rejected/u);
-  assert.match(assistant, /graph_membership_rejected/u);
-  assert.match(assistant, /graph_binding_incomplete/u);
-  assert.match(assistant, /graph_model_rejected/u);
-  assert.match(assistant, /graph_readiness_rejected/u);
-  assert.match(assistant, /graph_environment_unavailable/u);
-  assert.match(assistant, /assistant-temporary/u);
-  assert.match(assistant, /pub struct PreflightDiagnostic/u);
-  assert.match(assistant, /pub diagnostics: Vec<PreflightDiagnostic>/u);
+test("preflight diagnostic stages match the public bridge contract", () => {
+  // Admission, stale-route rejection and effect idempotency are exercised by
+  // the native service tests; Rust declarations are not their behavior oracle.
   assert.deepEqual(strategyContract.diagnosticStages, [
     "workflow/parse",
     "workflow/compile",
@@ -121,15 +111,6 @@ test("preflight returns every hard failure before any actor/script effect", () =
     "assistant-workflow/preflight",
     "assistant-workflow/revalidate",
   ]);
-  assert.match(flywheelService, /assistant_graph_preflight_rejects_before_any_actor_effect/u);
-  assert.match(flywheelService, /assistant_graph_start_preflights_and_replays_without_duplicate_effects/u);
-  assert.match(flywheelService, /assistant_route_revision_change_rejects_before_admission_or_effect/u);
-  // Admission revalidates the exact bindings immediately before durable
-  // register/bind/grant, so stale or ineligible facts cannot become permission.
-  assert.match(flywheelService, /revalidate_assistant_admission/u);
-  assert.match(flywheelService, /run_id_by_idempotency_key/u);
-  assert.match(strategyStore, /fn run_id_by_idempotency_key/u);
-  assert.match(strategyStore, /assistant-temporary%/u);
 });
 
 test("receipts freeze exact bindings and allowlisted sources without private data", () => {
