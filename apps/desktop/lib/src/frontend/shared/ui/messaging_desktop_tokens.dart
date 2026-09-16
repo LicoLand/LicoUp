@@ -66,13 +66,6 @@ abstract final class MessagingDesktopMetrics {
   /// Glyph size inside a [conversationAvatarExtent] identity circle.
   static const double conversationAvatarMarkExtent = 22;
 
-  /// Assistant control inside the composer field capsule: circular extent and
-  /// its mark size (smaller than the avatar family; it lives inside the
-  /// field's text row). The extent slightly exceeds the single-line text row
-  /// so the control keeps equal frame insets on top, bottom, and left.
-  static const double conversationComposerAssistantExtent = 32;
-  static const double conversationComposerAssistantMarkExtent = 16;
-
   /// Empty bands between the group roster and the floating header/composer.
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
@@ -132,13 +125,13 @@ abstract final class MessagingDesktopMetrics {
   static const double conversationHeaderCapsuleCornerRadius = 22;
 
   /// Inner horizontal padding inside the header capsule.
-  static const double conversationHeaderCapsulePadH = 12;
+  static const double conversationHeaderCapsulePadH = 20;
 
   /// Inner vertical padding inside the header capsule.
   static const double conversationHeaderCapsulePadV = 8;
 
-  /// Square extent of trailing header capsule icon buttons.
-  static const double conversationHeaderCapsuleButtonExtent = 36;
+  /// Diameter of the single conversation overflow control.
+  static const double conversationHeaderMenuExtent = 44;
 
   /// Gap between trailing header capsule buttons.
   static const double conversationHeaderCapsuleButtonGap = 8;
@@ -160,7 +153,7 @@ abstract final class MessagingDesktopMetrics {
   /// Vertical inset of the floating composer capsule from the bottom edge.
   static const double conversationComposerCapsuleInsetV = 10;
 
-  /// Corner radius of the floating composer capsule (matches header capsule).
+  /// Fixed corner radius of the two-row floating composer.
   static const double conversationComposerCapsuleCornerRadius =
       conversationHeaderCapsuleCornerRadius;
 
@@ -169,9 +162,8 @@ abstract final class MessagingDesktopMetrics {
   /// Kept low so the glass reads clear （清透） rather than frosted.
   static const double conversationOverlayGlassBlurSigma = 12;
 
-  /// Approximate height reserved under the floating composer so the
-  /// transcript clears it (padding + field + send row).
-  static const double conversationComposerOverlayExtent = 78;
+  /// Initial clearance until the floating composer reports its laid-out height.
+  static const double conversationComposerOverlayExtent = 144;
 
   /// Extra transcript clearance when context capsules (workspace, model, …)
   /// sit above the floating composer.

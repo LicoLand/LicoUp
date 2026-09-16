@@ -9,18 +9,15 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_p
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_switcher.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_menu.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Messaging conversation header: adaptive-width identity capsule on the
-/// left, spaced capsule icon buttons on the right — not a full-width top bar.
+/// left and a single overflow menu on the right.
 class MessagingConversationHeader extends StatelessWidget {
   const MessagingConversationHeader({
     super.key,
@@ -85,14 +82,15 @@ class MessagingConversationHeader extends StatelessWidget {
     final sessions = switcherSessions;
 
     final identity = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         MessagingAgentAvatar(
           target: target,
           size: MessagingDesktopMetrics.conversationAvatarExtent,
           iconSize: MessagingDesktopMetrics.conversationAvatarMarkExtent,
         ),
-        const SizedBox(width: 10),
-        Expanded(
+        const SizedBox(width: 14),
+        Flexible(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,11 +132,8 @@ class MessagingConversationHeader extends StatelessWidget {
             Expanded(child: identity),
             ..._trailingActions(
               context: context,
-              colors: colors,
               strings: strings,
               sessions: sessions,
-              mobileClient: mobileClient,
-              capsuleButtons: false,
             ),
           ],
         ),
@@ -149,6 +144,7 @@ class MessagingConversationHeader extends StatelessWidget {
     // full semicircles at any content height.
     final radius = BorderRadius.circular(999);
     final identityCapsule = MessagingConversationOverlayGlass(
+      key: const Key('messaging-conversation-identity-capsule'),
       borderRadius: radius,
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -166,179 +162,92 @@ class MessagingConversationHeader extends StatelessWidget {
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetV,
       ),
-      // Match trailing button height (and thus end-cap radius) to the
-      // identity capsule — both are full stadiums.
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: identityCapsule),
-            SizedBox(
-              width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              heightFactor: 1,
+              child: identityCapsule,
             ),
-            ..._trailingActions(
-              context: context,
-              colors: colors,
-              strings: strings,
-              sessions: sessions,
-              mobileClient: mobileClient,
-              capsuleButtons: true,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(
+            width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+          ),
+          MessagingConversationMenu(
+            triggerKey: const Key('messaging-conversation-menu-button'),
+            panelKey: const Key('messaging-conversation-menu-panel'),
+            childrenBuilder: (close) => [
+              MenuItemButton(
+                key: const Key('messaging-details-toggle'),
+                leadingIcon: const Icon(Icons.info_outline_rounded),
+                onPressed: () {
+                  close();
+                  unawaited(
+                    showDialog<void>(
+                      context: context,
+                      builder: (dialogContext) => Dialog(
+                        child: SizedBox(
+                          width: 340,
+                          height: MediaQuery.sizeOf(dialogContext).height * 0.7,
+                          child: MessagingDetailsPanel(
+                            state: detailsState,
+                            actions: detailsActions,
+                            opencodeServeState: opencodeServeState,
+                            onClose: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: Text(strings.details),
+              ),
+              if (sessions != null &&
+                  onSwitchConversation != null &&
+                  onSwitchNewConversation != null) ...[
+                const Divider(height: 1),
+                MessagingConversationSwitcherContent(
+                  sessions: sessions,
+                  selectedSessionId: switcherSelectedSessionId,
+                  runningFor: switcherRunningFor,
+                  onSelectConversation: (id) {
+                    close();
+                    onSwitchConversation!(id);
+                  },
+                  onNewConversation: () {
+                    close();
+                    onSwitchNewConversation!();
+                  },
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
 
   List<Widget> _trailingActions({
     required BuildContext context,
-    required LicoThemeColors colors,
     required LicoStrings strings,
     required List<AgentConversationSession>? sessions,
-    required bool mobileClient,
-    required bool capsuleButtons,
-  }) {
-    final gap = SizedBox(
-      width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
-    );
-    final actions = <Widget>[];
-
+  }) => [
     if (sessions != null &&
         onSwitchConversation != null &&
-        onSwitchNewConversation != null) {
-      final switcher = MessagingConversationSwitcher(
+        onSwitchNewConversation != null)
+      MessagingConversationSwitcher(
         sessions: sessions,
         selectedSessionId: switcherSelectedSessionId,
         onSelectConversation: onSwitchConversation!,
         onNewConversation: onSwitchNewConversation!,
         runningFor: switcherRunningFor,
-        useBottomSheet: mobileClient,
-      );
-      actions.add(
-        capsuleButtons ? _HeaderCapsuleButton(child: switcher) : switcher,
-      );
-    }
-
-    final detailsTrigger = _DetailsTrigger(
-      strings: strings,
-      colors: colors,
-      capsuleButtons: capsuleButtons,
-      mobileClient: mobileClient,
-      onOpenSheet: () => _openDetailsSheet(context),
-      detailsState: detailsState,
-      detailsActions: detailsActions,
-      opencodeServeState: opencodeServeState,
-    );
-    actions.add(
-      capsuleButtons
-          ? _HeaderCapsuleButton(child: detailsTrigger)
-          : detailsTrigger,
-    );
-
-    if (actions.isEmpty) {
-      return const [];
-    }
-    final spaced = <Widget>[actions.first];
-    for (var i = 1; i < actions.length; i++) {
-      spaced
-        ..add(gap)
-        ..add(actions[i]);
-    }
-    return spaced;
-  }
-}
-
-class _DetailsTrigger extends StatelessWidget {
-  const _DetailsTrigger({
-    required this.strings,
-    required this.colors,
-    required this.capsuleButtons,
-    required this.mobileClient,
-    required this.onOpenSheet,
-    required this.detailsState,
-    required this.detailsActions,
-    this.opencodeServeState,
-  });
-
-  final LicoStrings strings;
-  final LicoThemeColors colors;
-  final bool capsuleButtons;
-  final bool mobileClient;
-  final VoidCallback onOpenSheet;
-  final AgentConversationPaneState detailsState;
-  final AgentConversationPaneActions detailsActions;
-  final AgentConversationServeState? opencodeServeState;
-
-  Widget _buildButton({required bool open, VoidCallback? onTap}) {
-    return Tooltip(
-      message: strings.details,
-      waitDuration: LicoMotion.tooltipWait,
-      child: InkWell(
-        key: const Key('messaging-details-toggle'),
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        hoverColor: colors.isDark
-            ? Colors.white.withAlpha(10)
-            : Colors.black.withAlpha(12),
-        child: SizedBox.square(
-          dimension: capsuleButtons
-              ? MessagingDesktopMetrics.conversationHeaderCapsuleButtonExtent
-              : 32,
-          child: Icon(
-            Icons.info_outline_rounded,
-            size: 19,
-            color: open ? colors.accent : colors.textMuted,
-          ),
-        ),
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (mobileClient) {
-      return _buildButton(open: false, onTap: onOpenSheet);
-    }
-
-    final menuRadius = BorderRadius.circular(
-      AppleControlMetrics.menuCornerRadius,
-    );
-    return MessagingHoverPopover(
-      popoverKey: const Key('messaging-details-popover-panel'),
-      width: 340,
-      maxHeight: 480,
-      borderRadius: menuRadius,
-      cardBuilder: (context, close) {
-        return MessagingDetailsPanel(
-          state: detailsState,
-          actions: detailsActions,
-          opencodeServeState: opencodeServeState,
-          forPopover: true,
-        );
-      },
-      triggerBuilder:
-          (context, {required open, required toggle, required close}) {
-            return _buildButton(open: open, onTap: toggle);
-          },
-    );
-  }
-}
-
-/// Circular glass control whose diameter matches the identity capsule height.
-class _HeaderCapsuleButton extends StatelessWidget {
-  const _HeaderCapsuleButton({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(999);
-    return AspectRatio(
-      aspectRatio: 1,
-      child: MessagingConversationOverlayGlass(
-        borderRadius: radius,
-        child: Center(child: child),
-      ),
-    );
-  }
+    IconButton(
+      key: const Key('messaging-details-toggle'),
+      tooltip: strings.details,
+      onPressed: () => _openDetailsSheet(context),
+      icon: const Icon(Icons.info_outline_rounded, size: 19),
+    ),
+  ];
 }

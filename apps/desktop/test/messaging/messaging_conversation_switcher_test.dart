@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
@@ -6,6 +7,53 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  testWidgets('long titles and histories fit a narrow desktop menu', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final sessions = List.generate(
+      24,
+      (index) => _session(
+        'session-$index',
+        'A long conversation title $index with additional context',
+        Duration(minutes: index + 1),
+      ),
+    );
+    var selected = '';
+    await _pumpSwitcher(
+      tester,
+      sessions: sessions,
+      onSelectConversation: (id) => selected = id,
+    );
+    expect(tester.takeException(), isNull);
+    final identity = tester.getRect(
+      find.byKey(const Key('messaging-conversation-identity-capsule')),
+    );
+    final trigger = tester.getRect(
+      find.byKey(const Key('messaging-conversation-menu-button')),
+    );
+    expect(identity.right, lessThan(trigger.left));
+    await tester.tap(
+      find.byKey(const Key('messaging-conversation-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    final panel = tester.getRect(
+      find.byKey(const Key('messaging-conversation-menu-panel')),
+    );
+    expect(panel.left, greaterThanOrEqualTo(0));
+    expect(panel.right, lessThanOrEqualTo(360));
+    final last = find.byKey(const Key('messaging-switcher-session-23'));
+    await tester.ensureVisible(last);
+    await tester.pumpAndSettle();
+    await tester.tap(last);
+    await tester.pumpAndSettle();
+    expect(selected, 'session-23');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('switcher lists only the current agent conversations in recency '
       'order', (tester) async {
     await _pumpSwitcher(
@@ -17,7 +65,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -53,7 +101,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -81,7 +129,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -113,7 +161,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -124,7 +172,7 @@ void main() {
     );
   });
 
-  testWidgets('header renders switcher and details toggles together', (
+  testWidgets('header shows one overflow trigger with compact identity', (
     tester,
   ) async {
     await _pumpSwitcher(
@@ -135,10 +183,15 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('messaging-details-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('messaging-details-toggle')), findsNothing);
+    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
+    final identity = find.byKey(
+      const Key('messaging-conversation-identity-capsule'),
+    );
+    expect(tester.getSize(identity).width, lessThan(400));
   });
 
   testWidgets('selected switcher row renders solid accent with dark text', (
@@ -153,7 +206,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -264,16 +317,16 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
     final trigger = tester.getRect(
-      find.byKey(const Key('messaging-conversation-switcher-button')),
+      find.byKey(const Key('messaging-conversation-menu-button')),
     );
     final panel = tester.getRect(
-      find.byKey(const Key('messaging-conversation-switcher-panel')),
+      find.byKey(const Key('messaging-conversation-menu-panel')),
     );
 
     expect(panel.width, closeTo(320, 0.5));
@@ -283,7 +336,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('details panel anchors under its own trailing trigger', (
+  testWidgets('overflow dismisses with Escape and returns keyboard focus', (
     tester,
   ) async {
     await _pumpSwitcher(
@@ -292,46 +345,50 @@ void main() {
         _session('session-new', 'Fresh session', const Duration(minutes: 5)),
       ],
     );
-
-    await tester.tap(find.byKey(const Key('messaging-details-toggle')));
+    final trigger = find.byKey(const Key('messaging-conversation-menu-button'));
+    final button = tester.widget<IconButton>(trigger);
+    button.focusNode!.requestFocus();
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-
-    final trigger = tester.getRect(
-      find.byKey(const Key('messaging-details-toggle')),
-    );
-    final panel = tester.getRect(
-      find.byKey(const Key('messaging-details-popover-panel')),
-    );
-
-    expect(panel.right, closeTo(trigger.right, 0.5));
-    expect(panel.top, closeTo(trigger.bottom + 6, 0.5));
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('details toggle opens hover card with session metadata', (
-    tester,
-  ) async {
-    await _pumpSwitcher(
-      tester,
-      sessions: [
-        _session('session-new', 'Fresh session', const Duration(minutes: 5)),
-      ],
-    );
-
-    expect(find.byKey(const Key('messaging-details-popover')), findsNothing);
-    await tester.tap(find.byKey(const Key('messaging-details-toggle')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('messaging-details-popover-panel')),
+      find.byKey(const Key('messaging-conversation-menu-panel')),
       findsOneWidget,
     );
-    expect(find.text('Details'), findsOneWidget);
-    expect(find.text('RUNTIME'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('messaging-conversation-menu-panel')),
+      findsNothing,
+    );
+    expect(button.focusNode!.hasFocus, isTrue);
   });
+
+  testWidgets(
+    'overflow details opens the existing runtime and session controls',
+    (tester) async {
+      await _pumpSwitcher(
+        tester,
+        sessions: [
+          _session('session-new', 'Fresh session', const Duration(minutes: 5)),
+        ],
+      );
+
+      expect(find.byKey(const Key('messaging-details-popover')), findsNothing);
+      await tester.tap(
+        find.byKey(const Key('messaging-conversation-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('messaging-details-toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byKey(const Key('messaging-details-panel')), findsOneWidget);
+      expect(find.text('Details'), findsOneWidget);
+      expect(find.text('RUNTIME'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 AgentConversationSession _session(

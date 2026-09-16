@@ -61,9 +61,15 @@ void main() {
       final dispatch = runner.requests.lastWhere(
         (request) => request['action'] == 'conversation.dispatch.after-post',
       );
-      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
+      expect(dispatch.keys.toSet(), {
+        'action',
+        'conversationId',
+        'eventId',
+        'suppressAssistant',
+      });
       expect(dispatch['conversationId'], 'conversation:group');
       expect(dispatch['eventId'], 'event:existing');
+      expect(dispatch['suppressAssistant'], isFalse);
       expect(controller.failureCode, isEmpty);
     },
   );
@@ -86,9 +92,39 @@ void main() {
       final dispatch = runner.requests.lastWhere(
         (request) => request['action'] == 'conversation.dispatch.after-post',
       );
-      expect(dispatch.keys.toSet(), {'action', 'conversationId', 'eventId'});
+      expect(dispatch.keys.toSet(), {
+        'action',
+        'conversationId',
+        'eventId',
+        'suppressAssistant',
+      });
+      expect(dispatch['suppressAssistant'], isFalse);
     },
   );
+
+  test('passes Assistant suppression only to native dispatch', () async {
+    final runner = _ConversationRunner();
+    final controller = ClientConversationController(native: runner);
+
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(
+      await controller.postMessage(
+        'hello @Claude Code',
+        suppressAssistant: true,
+      ),
+      isTrue,
+    );
+    final post = runner.requests.lastWhere(
+      (request) => request['action'] == 'conversation.message.post',
+    );
+    expect(post.containsKey('suppressAssistant'), isFalse);
+    final dispatch = runner.requests.lastWhere(
+      (request) => request['action'] == 'conversation.dispatch.after-post',
+    );
+    expect(dispatch['suppressAssistant'], isTrue);
+  });
 
   test(
     'creates a group from one person and one Agent in one native action',

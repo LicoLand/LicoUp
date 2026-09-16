@@ -17,8 +17,7 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_gr
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/support.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
-import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
+import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
@@ -72,7 +71,9 @@ class CanonicalGroupConversationPane extends StatefulWidget {
 
 class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
-  bool _rosterVisible = true;
+  bool _rosterVisible = false;
+  double _composerExtent =
+      MessagingDesktopMetrics.conversationComposerOverlayExtent;
   final _messageScrollController = ReadingPositionScrollController();
   final Map<String, bool> _assistantActiveByConversation = <String, bool>{};
   AgentConversationSession? _cachedSession;
@@ -134,12 +135,6 @@ class _CanonicalGroupConversationPaneState
     setState(() {
       _assistantActiveByConversation[conversation.id] = nextActive;
     });
-    if (nextActive) return;
-    final assistantId = conversation.assistantMembership?.id.trim() ?? '';
-    if (assistantId.isEmpty) return;
-    widget.conversation.intents.send(
-      InterruptConversationTurn(conversation.id, assistantId),
-    );
   }
 
   String _mentionLabel(ClientConversationMembership membership) {
@@ -170,80 +165,31 @@ class _CanonicalGroupConversationPaneState
       ),
   };
 
-  String _assistantIdentityLabel(
-    ClientConversation conversation,
-    List<TargetCandidate> targets,
-  ) {
-    final membership = conversation.assistantMembership;
-    if (membership == null) return '';
-    final target = _assistantTarget(conversation, targets);
-    final displayName = membership.principal.displayName.trim();
-    final agentId = membership.principal.agentId.trim();
-    final agentLabel = displayName.isNotEmpty
-        ? displayName
-        : target != null
-        ? agentConversationTargetDisplayName(target)
-        : agentId.isNotEmpty
-        ? agentId
-        : membership.id;
-    return composeOrchestrationAssignmentCapsuleLabel(
-      agentLabel: agentLabel,
-      modelName: widget.canonical.assistantModel,
-      reasoningEffort: widget.canonical.assistantReasoningEffort,
-      effortLabel: formatComposerReasoningEffortLabel,
-      modelDisplayName: target == null
-          ? null
-          : (name) => agentOrchestrationModelDisplayName(target, name),
-    );
-  }
-
-  ({GroupAssistantStatusLight light, String label}) _assistantStatus(
-    LicoStrings strings,
-    ClientConversation conversation,
-    List<TargetCandidate> targets,
-  ) {
+  GroupAssistantStatusLight _assistantStatus(ClientConversation conversation) {
     if (conversation.assistantMembership == null) {
-      return (
-        light: GroupAssistantStatusLight.unconfigured,
-        label: strings.assistantNeedsConfigurationStatus,
-      );
+      return GroupAssistantStatusLight.unconfigured;
     }
     if (!_assistantActive(conversation)) {
-      return (
-        light: GroupAssistantStatusLight.paused,
-        label: strings.assistantPausedStatus,
-      );
+      return GroupAssistantStatusLight.paused;
     }
-    final identity = _assistantIdentityLabel(conversation, targets);
     if ((widget.canonical.notice?.reasonCode ?? '').isNotEmpty) {
-      return (light: GroupAssistantStatusLight.failure, label: identity);
+      return GroupAssistantStatusLight.failure;
     }
     if (widget.turns.memberships.any(
       (turn) => turn.phase == PersistentTurnPhase.waiting,
     )) {
-      return (light: GroupAssistantStatusLight.waiting, label: identity);
-    }
-    final coordinating = widget.turns.memberships
-        .where((turn) => turn.participantRole.trim() != 'assistant')
-        .map((turn) => turn.participantAgentId.trim())
-        .where((agentId) => agentId.isNotEmpty)
-        .toSet();
-    if (coordinating.isNotEmpty) {
-      return (
-        light: GroupAssistantStatusLight.working,
-        label: strings.assistantCoordinatingStatus(coordinating.length),
-      );
+      return GroupAssistantStatusLight.waiting;
     }
     if (widget.canonical.dispatchPending ||
         widget.turns.memberships.any(
-          (turn) => turn.phase == PersistentTurnPhase.running,
+          (turn) =>
+              (turn.participantRole.trim() != 'assistant' &&
+                  turn.participantAgentId.trim().isNotEmpty) ||
+              turn.phase == PersistentTurnPhase.running,
         )) {
-      return (
-        light: GroupAssistantStatusLight.working,
-        label: strings.assistantWorkingAloneStatus,
-      );
+      return GroupAssistantStatusLight.working;
     }
-    return (light: GroupAssistantStatusLight.ready, label: identity);
+    return GroupAssistantStatusLight.ready;
   }
 
   List<AgentConversationMessage> get _timelineMessages {
@@ -317,6 +263,16 @@ class _CanonicalGroupConversationPaneState
         initialRevision: revision ?? '',
       );
     }
+    if (!mounted) return;
+    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
+  }
+
+  Future<void> _openAssistantConfiguration() async {
+    await showAssistantConfigurationDialog(
+      context,
+      conversation: widget.conversation,
+      agents: widget.agents,
+    );
     if (!mounted) return;
     widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
   }
@@ -408,9 +364,8 @@ class _CanonicalGroupConversationPaneState
           for (final membership in conversation.activeAgentMemberships)
             membership.id,
         ],
-        dispatchCanonical:
-            conversation.assistantMembership != null &&
-            _assistantActive(conversation),
+        dispatchCanonical: true,
+        suppressAssistant: !_assistantActive(conversation),
       ),
     );
     return true;
@@ -510,7 +465,7 @@ class _CanonicalGroupConversationPaneState
       canonical.canonicalEvents,
       strings,
     );
-    final assistantStatus = _assistantStatus(strings, conversation, allTargets);
+    final assistantStatus = _assistantStatus(conversation);
     final assistantTarget = _assistantTarget(conversation, allTargets);
     final paneTarget = participantTargets.isNotEmpty
         ? participantTargets.first
@@ -577,8 +532,6 @@ class _CanonicalGroupConversationPaneState
       participantRuntimeProfiles: _runtimeProfiles,
       assistantActive: _assistantActive(conversation),
       composerFlywheel: GroupStrategyPickerCapsule(
-        label: assistantStatus.label,
-        statusLight: assistantStatus.light,
         selectedRevision: conversation.strategyRevision.trim().isEmpty
             ? null
             : conversation.strategyRevision.trim(),
@@ -587,12 +540,12 @@ class _CanonicalGroupConversationPaneState
       composerFieldLeading: AssistantToggleButton(
         active: _assistantActive(conversation),
         configured: conversation.assistantMembership != null,
-        assistantTarget: assistantTarget,
-        onTap: conversation.assistantMembership == null
-            ? () => unawaited(
-                _openAdaptiveFlywheel(conversation.strategyRevision),
-              )
-            : () => _toggleAssistant(conversation),
+        label: conversation.assistantMembership == null
+            ? strings.assistantNeedsConfigurationStatus
+            : _mentionLabel(conversation.assistantMembership!),
+        status: assistantStatus,
+        onTap: () => _toggleAssistant(conversation),
+        onEdit: () => unawaited(_openAssistantConfiguration()),
       ),
       composerLeading: CanonicalGroupAssistantActions(
         onPickAttachments:
@@ -657,6 +610,11 @@ class _CanonicalGroupConversationPaneState
       ),
       framed: false,
       messageScrollController: _messageScrollController,
+      onComposerExtentChanged: (extent) {
+        if (mounted && _composerExtent != extent) {
+          setState(() => _composerExtent = extent);
+        }
+      },
     );
 
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
@@ -670,7 +628,7 @@ class _CanonicalGroupConversationPaneState
                   MessagingDesktopMetrics.conversationHeaderOverlayExtent +
                   MessagingDesktopMetrics.groupRosterHeaderGap;
               final bottomInset =
-                  MessagingDesktopMetrics.conversationComposerOverlayExtent +
+                  _composerExtent +
                   MessagingDesktopMetrics.groupRosterComposerGap;
               final visibleExtent =
                   constraints.maxHeight - topInset - bottomInset;

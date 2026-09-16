@@ -283,6 +283,48 @@ boundaries and avoids per-frame descendant rebuilds or backdrop reads.
 
 ## Conversation loading and hierarchy
 
+Desktop messaging places a content-sized identity capsule at the upper left and
+one circular ellipsis menu at the upper right. Long titles truncate within the
+available width. The direct-conversation menu retains history, new-conversation
+and details access; the group menu retains the member-list toggle. Menus support
+keyboard activation, Escape dismissal and focus return to the trigger. The
+identity capsule has generous horizontal padding. The group member list starts
+collapsed and opens from the ellipsis menu.
+
+The desktop messaging composer is a rounded rectangle even for a single line.
+Its text area sits above an action row with attachment and group controls on the
+left and send/cancel on the right. Typing, wrapping and clearing change the input
+height without morphing the container into a pill. Existing draft, attachment,
+mention, model, assistant and cancellation ownership stays with its current
+feature. Transcript clearance, the latest-message action and the member list
+follow the actual composer height. A layout with an external composer clips only
+the measured internal composer, preserving the controls above it. Mobile and
+console layout geometry retain their respective owners.
+
+The group action row uses a bare plus glyph, a separated Assistant name, and a
+pencil control. The name toggles future Assistant participation; the pencil
+opens the existing Assistant editor in its own centered dialog. An active name
+has a restrained highlight moving from left to right. Reduced motion renders
+a static active treatment. Inactive names remain readable. The capsule above
+the composer opens Adaptive Flywheel configuration only. Configuration and
+message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
+
+桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
+长标题在可用宽度内省略。单聊菜单保留历史、新建与详情入口，群聊菜单保留成员
+名单显隐，默认收起；菜单支持键盘操作、Escape 关闭和焦点返回。身份胶囊采用
+更宽的左右内边距。桌面消息输入框始终采用
+圆角矩形，上方编辑文字，下方左侧放附件与群组控件、右侧放发送或取消。输入、
+换行与清空只改变高度，不再切换成胶囊。草稿、附件、提及、模型、助手和取消的
+原有功能属主不变。正文留白、回到最新消息按钮和名单随输入区实际高度避让；
+外置输入框布局只裁掉实测的内部输入区，保留其上方控件。移动端与控制台的布局
+几何仍由各自属主维护。
+
+群聊操作行使用不带圆形底的加号，与 Assistant 名称之间保留间距，名称后放独立
+铅笔按钮。点击名称切换后续助手参与，点击铅笔在界面中央打开独立助手编辑框。
+激活名称以从左向右的柔和流光表示状态；减弱动态时使用静态激活样式，关闭时
+文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
+由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
+
 The product-owned **Local** group is the highest-priority cold-start data
 target. After native state admission, load the canonical group catalog and
 Local's latest 20 events before target-cache hydration, Agent discovery,
@@ -448,6 +490,62 @@ Other systems combine Flutter's accessibility signal with the persisted
 **Reduce motion / 减少动态效果** setting. A manual preference cannot turn off a
 system request for reduced motion. Theme transitions, shared motion and activity
 indicators consume the effective environment preference.
+
+## Visual reference and style review
+
+The [glass reference board](../assets/design/glass.html) is the accepted material
+and conversation composition reference. Its [dark](../assets/design/glass-dark.png)
+and [light](../assets/design/glass-light.png) images are actual macOS Impeller
+renders of shared Flutter components with synthetic content. The board is a
+component composition, not a screenshot of a live conversation or a promise
+that every layout has the illustrated background. The viewer also offers the
+current production group header and composer in the same scene for comparison.
+
+Before changing component styles, produce a matching review board from real
+components in both themes. Show the current and proposed treatment at the same
+scale, including corners, long edges, focus and surrounding content. Review the
+images before applying the treatment throughout the conversation. Keep the
+accepted images in the project; replace them only when the new visual direction
+is accepted. A reference board complements behavior tests and actual conversation
+review; it does not replace them.
+
+The [capture fixture](../../apps/desktop/integration_test/glass_visual_reference_test.dart)
+reproduces this composition without loading user state or contacting an Agent.
+Capture proposed images into an ignored output directory; the command runs a
+separate synthetic app on the available macOS renderer:
+
+```sh
+mkdir -p build/visual-reference
+cat > build/visual-reference/capture.xcconfig <<'CONFIG'
+PRODUCT_BUNDLE_IDENTIFIER = land.lico.licoup.visual-reference
+CONFIG
+XCODE_XCCONFIG_FILE="$PWD/build/visual-reference/capture.xcconfig" \
+  npm run client:test -- integration_test/glass_visual_reference_test.dart \
+  -d macos --enable-impeller \
+  --dart-define=GLASS_REVIEW_OUTPUT="$PWD/build/visual-reference"
+```
+
+The same run also captures the current production group header and message
+composer in the synthetic scene as `conversation-dark.png` and
+`conversation-light.png`, beside the reference composition in `dark.png` and
+`light.png`. Compare these to the accepted project images before replacing them.
+
+### 视觉参考与样式审阅
+
+[玻璃展示板](../assets/design/glass.html)是已认可的材质与对话构图参考。
+[深色](../assets/design/glass-dark.png)和[浅色](../assets/design/glass-light.png)
+图片来自共享 Flutter 组件的 macOS Impeller 真实渲染，内容均为合成数据。
+展示板展示组件组合，不是实时对话截图，也不要求所有布局使用图中的背景。
+查看器也提供相同场景中的当前生产群组顶部栏和输入框，便于对照。
+
+以后修改组件样式时，先用真实组件制作深浅两套展示图，以相同比例比较现状与
+候选版本，包含圆角、长边、焦点及周围内容。先审阅图片，再将样式应用到整个
+对话界面。已认可的图片长期保留在项目内；只有新的视觉方向获认可后才替换。
+展示图补充行为测试和实际对话验收，不能代替它们。上面的捕获入口使用独立的
+合成应用，不加载用户状态、不联系 Agent；候选图片写入忽略目录。
+同一次运行还在相同场景中捕获当前生产群组顶部栏与消息输入框，输出
+`conversation-dark.png` 与 `conversation-light.png`；参考构图输出为 `dark.png`
+与 `light.png`。替换项目前先与已认可图片对照。
 
 ## Verification
 

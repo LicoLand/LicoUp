@@ -1012,8 +1012,12 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         break;
       case OpenConversationExecutionView() || CloseConversationExecutionView():
         break;
-      case PostConversationMessage(:final content, :final dispatchCanonical):
-        unawaited(_post(content, dispatchCanonical, intent));
+      case PostConversationMessage(
+        :final content,
+        :final dispatchCanonical,
+        :final suppressAssistant,
+      ):
+        unawaited(_post(content, dispatchCanonical, suppressAssistant, intent));
       case UpdateConversationDraft(:final draft):
         controller.updateDraft(draft);
       case AddConversationAttachment():
@@ -1141,6 +1145,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
   Future<void> _post(
     String content,
     bool dispatchCanonical,
+    bool suppressAssistant,
     ConversationIntent intent,
   ) async {
     final attachments = fixture.composerAttachments;
@@ -1162,6 +1167,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     final posted = await fixture.controller.postMessage(
       content,
       dispatch: dispatchCanonical,
+      suppressAssistant: suppressAssistant,
       attachments: attachments,
     );
     if (posted) fixture.onClearComposerImages?.call();

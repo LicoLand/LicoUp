@@ -132,6 +132,10 @@ void main() {
       expect(controller.draft, '@Reviewer ');
       await tester.enterText(find.byType(TextField), '');
       await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('canonical-group-roster-agent-claude-code')),
       );
@@ -227,6 +231,10 @@ void main() {
       expect(controller.draft, '@Reviewer ');
       await tester.enterText(find.byType(TextField), '');
       await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
       );
@@ -343,75 +351,74 @@ void main() {
     },
   );
 
+  testWidgets('assistant name stays separate from the Flywheel entry', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final runner = _AssistantSurfaceRunner();
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [
+            _target('codex', 'Codex'),
+            _target('claude-code', 'Claude Code'),
+          ],
+          onCopyText: (_) async {},
+          framed: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+    expect(picker, findsOneWidget);
+    // The expected label is derived from the mutable backend fixture. The
+    // regression must never encode a real Agent + Model pairing.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
+      ),
+      findsOneWidget,
+    );
+    final colors = tester.element(picker).licoColors;
+    expect(
+      _nameColor(tester, 'ready'),
+      colors.text,
+      reason: 'the active name uses the readable text color',
+    );
+
+    // The capsule shows no strategy list on hover or tap; with no flywheel
+    // editor wired the tap is inert and no panel exists.
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('canonical-group-strategy-picker-panel')),
+      findsNothing,
+    );
+    expect(find.text('Adaptive Flywheel'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
+      ),
+      findsOneWidget,
+    );
+    controller.dispose();
+  });
+
   testWidgets(
-    'capsule shows the composed assistant identity and the popover still opens',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(900, 640);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-
-      final runner = _AssistantSurfaceRunner();
-      final controller = ClientConversationController(native: runner);
-      addTearDown(controller.dispose);
-      await controller.initialize();
-      await controller.selectConversation('conversation:group');
-
-      await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPaneFixture(
-            controller: controller,
-            targets: [
-              _target('codex', 'Codex'),
-              _target('claude-code', 'Claude Code'),
-            ],
-            onCopyText: (_) async {},
-            framed: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
-      expect(picker, findsOneWidget);
-      // The expected label is derived from the mutable backend fixture. The
-      // regression must never encode a real Agent + Model pairing.
-      expect(
-        find.descendant(
-          of: picker,
-          matching: find.text(runner.assistantIdentityLabel),
-        ),
-        findsOneWidget,
-      );
-      final colors = tester.element(picker).licoColors;
-      expect(
-        _dotColor(tester, 'ready'),
-        colors.success,
-        reason: 'the ready light is the theme success color',
-      );
-
-      // The capsule shows no strategy list on hover or tap; with no flywheel
-      // editor wired the tap is inert and no panel exists.
-      await tester.tap(picker);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('canonical-group-strategy-picker-panel')),
-        findsNothing,
-      );
-      expect(find.text('Automatic adaptation'), findsNothing);
-      expect(
-        find.descendant(
-          of: picker,
-          matching: find.text(runner.assistantIdentityLabel),
-        ),
-        findsOneWidget,
-      );
-      controller.dispose();
-    },
-  );
-
-  testWidgets(
-    'capsule reloads the current backend Assistant Profile after editing',
+    'Flywheel return refreshes profile without changing the assistant name',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -445,8 +452,8 @@ void main() {
       final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(
         find.descendant(
-          of: picker,
-          matching: find.text(runner.assistantIdentityLabel),
+          of: find.byKey(const Key('canonical-group-assistant-control')),
+          matching: find.text(runner.assistantDisplayName),
         ),
         findsOneWidget,
       );
@@ -456,8 +463,8 @@ void main() {
 
       expect(
         find.descendant(
-          of: picker,
-          matching: find.text(runner.assistantIdentityLabel),
+          of: find.byKey(const Key('canonical-group-assistant-control')),
+          matching: find.text(runner.assistantDisplayName),
         ),
         findsOneWidget,
       );
@@ -465,7 +472,7 @@ void main() {
     },
   );
 
-  testWidgets('unconfigured and paused fixtures render gray lights', (
+  testWidgets('unconfigured and paused fixtures render muted names', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -498,12 +505,12 @@ void main() {
     final colors = tester.element(picker).licoColors;
     expect(
       find.descendant(
-        of: picker,
+        of: find.byKey(const Key('canonical-group-assistant-control')),
         matching: find.text('Configure your Assistant'),
       ),
       findsOneWidget,
     );
-    expect(_dotColor(tester, 'unconfigured'), colors.textMuted);
+    expect(_nameColor(tester, 'unconfigured'), colors.textMuted);
 
     // Paused: configured assistant, toggle tapped off.
     final runner = _AssistantSurfaceRunner();
@@ -528,79 +535,74 @@ void main() {
 
     expect(
       find.descendant(
-        of: picker,
-        matching: find.text('Your Assistant is paused'),
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
       ),
       findsOneWidget,
     );
-    expect(_dotColor(tester, 'paused'), colors.textMuted);
+    expect(_nameColor(tester, 'paused'), colors.textMuted);
     unconfiguredController.dispose();
     controller.dispose();
   });
 
-  testWidgets('working fixture pulses green with the working-alone label', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
+  testWidgets(
+    'working fixture keeps the assistant name and readable active text',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
 
-    final runner = _AssistantSurfaceRunner()
-      ..postTurns = [
-        {
-          'turnHandle': 'dispatch:live',
-          'conversationId': 'conversation:group',
-          'membershipId': 'membership:codex',
-          'agent': 'codex',
-        },
-      ]
-      ..dispatchPending = true;
-    final controller = ClientConversationController(native: runner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPaneFixture(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
+      final runner = _AssistantSurfaceRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'membershipId': 'membership:codex',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'work alone');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
-    await tester.pump();
-    await tester.pump();
+      await tester.enterText(find.byType(TextField), 'work alone');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    final picker = find.byKey(const Key('canonical-group-strategy-picker'));
-    final colors = tester.element(picker).licoColors;
-    expect(
-      find.descendant(
-        of: picker,
-        matching: find.text('Your Assistant is working independently'),
-      ),
-      findsOneWidget,
-    );
-    expect(_dotColor(tester, 'working'), colors.success);
-    // The working light pulses: the dot sits under a live Opacity animation.
-    final dot = find.byKey(
-      const Key('canonical-group-assistant-status-working'),
-    );
-    expect(
-      find.ancestor(of: dot, matching: find.byType(Opacity)),
-      findsWidgets,
-    );
-    controller.dispose();
-  });
+      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+      final colors = tester.element(picker).licoColors;
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('canonical-group-assistant-control')),
+          matching: find.text(runner.assistantDisplayName),
+        ),
+        findsOneWidget,
+      );
+      expect(_nameColor(tester, 'working'), colors.text);
+      controller.dispose();
+    },
+  );
 
   testWidgets(
-    'coordinating fixture keeps the working light and counts subagents',
+    'coordinating fixture keeps the assistant name and working state',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -658,11 +660,10 @@ void main() {
         'dispatch:assistant',
         'dispatch:member',
       ]);
-      final picker = find.byKey(const Key('canonical-group-strategy-picker'));
       expect(
         find.descendant(
-          of: picker,
-          matching: find.text('Your Assistant is coordinating 1 Subagent'),
+          of: find.byKey(const Key('canonical-group-assistant-control')),
+          matching: find.text(runner.assistantDisplayName),
         ),
         findsOneWidget,
       );
@@ -674,7 +675,7 @@ void main() {
     },
   );
 
-  testWidgets('waiting fixture keeps the identity label behind a blue light', (
+  testWidgets('waiting fixture keeps the identity label with waiting accent', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -719,12 +720,12 @@ void main() {
     final colors = tester.element(picker).licoColors;
     expect(
       find.descendant(
-        of: picker,
-        matching: find.text(runner.assistantIdentityLabel),
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
       ),
       findsOneWidget,
     );
-    expect(_dotColor(tester, 'waiting'), colors.accent);
+    expect(_nameColor(tester, 'waiting'), colors.accent);
     controller.dispose();
   });
 
@@ -767,12 +768,12 @@ void main() {
     final colors = tester.element(picker).licoColors;
     expect(
       find.descendant(
-        of: picker,
-        matching: find.text(runner.assistantIdentityLabel),
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
       ),
       findsOneWidget,
     );
-    expect(_dotColor(tester, 'failure'), colors.error);
+    expect(_nameColor(tester, 'failure'), colors.error);
     expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
     expect(
       find.textContaining('Codex model usage limit reached'),
@@ -1014,12 +1015,11 @@ void main() {
       find.byKey(const Key('canonical-group-conversation-pane')),
       findsOneWidget,
     );
-    // The carried-over profile drives the identity label again.
-    final picker = find.byKey(const Key('canonical-group-strategy-picker'));
+    // Rotating the thread preserves the assistant display name.
     expect(
       find.descendant(
-        of: picker,
-        matching: find.text(runner.assistantIdentityLabel),
+        of: find.byKey(const Key('canonical-group-assistant-control')),
+        matching: find.text(runner.assistantDisplayName),
       ),
       findsOneWidget,
     );
@@ -1437,12 +1437,10 @@ List<AgentConversationMessage> _flowMessagesWithImages(WidgetTester tester) {
   ];
 }
 
-Color? _dotColor(WidgetTester tester, String state) {
+Color? _nameColor(WidgetTester tester, String state) {
   final dot = find.byKey(Key('canonical-group-assistant-status-$state'));
   expect(dot, findsOneWidget);
-  final container = tester.widget<Container>(dot);
-  final decoration = container.decoration;
-  return decoration is BoxDecoration ? decoration.color : null;
+  return tester.widget<Text>(dot).style?.color;
 }
 
 Widget _groupApp(Widget child) {
@@ -1545,23 +1543,6 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
       agentId: 'claude-code',
     ),
   ];
-
-  String get assistantIdentityLabel {
-    final membership = _memberships.firstWhere(
-      (item) => item['id'] == assistantMembershipId,
-    );
-    final principal = Map<String, dynamic>.from(membership['principal'] as Map);
-    final profile = _profiles[assistantMembershipId] ?? const {};
-    final effort = (profile['preferredReasoningEffort'] ?? '').toString();
-    final formattedEffort = effort.isEmpty
-        ? ''
-        : '${effort[0].toUpperCase()}${effort.substring(1)}';
-    return [
-      (principal['displayName'] ?? '').toString(),
-      (profile['preferredModel'] ?? '').toString(),
-      formattedEffort,
-    ].where((segment) => segment.isNotEmpty).join(' · ');
-  }
 
   String get assistantAgentId {
     final membership = _memberships.firstWhere(

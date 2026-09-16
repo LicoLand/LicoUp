@@ -159,37 +159,6 @@ final class _AgentsIntents implements IntentSink<AgentsIntent> {
           trace,
           reasonCode: 'adaptive_flywheel_bindings_save_failed',
         );
-      case SaveAdaptiveFlywheelConfiguration(
-        :final assignments,
-        :final updateAssistant,
-        :final assistantAgentId,
-        :final assistantModelId,
-        :final assistantReasoningEffort,
-      ):
-        _run(
-          () async {
-            if (updateAssistant) {
-              final updated = await _updateAssistantProfile(
-                agentId: assistantAgentId,
-                modelId: assistantModelId,
-                reasoningEffort: assistantReasoningEffort,
-                trace: trace,
-                emitCompletion: false,
-              );
-              if (!updated) return;
-            }
-            final saved = await _saveActorBindings(
-              assignments,
-              trace: trace,
-              emitCompletion: false,
-            );
-            if (saved) {
-              effects.add(AdaptiveFlywheelConfigurationSaved(trace: trace));
-            }
-          },
-          trace,
-          reasonCode: 'adaptive_flywheel_configuration_save_failed',
-        );
       case RefreshAdaptiveFlywheelModelCatalogs(:final agentIds):
         _run(
           () => _controller.refreshAgentModelCatalogs(

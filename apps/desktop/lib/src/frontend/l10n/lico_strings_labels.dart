@@ -561,6 +561,7 @@ extension LicoStringsLabels on LicoStrings {
   String openAgentConversations(String agent) =>
       isChinese ? '打开 $agent 的对话' : 'Open $agent conversations';
   String get automaticAdaptation => isChinese ? '自动适配' : 'Automatic adaptation';
+  String get adaptiveFlywheel => 'Adaptive Flywheel';
   String get noAuthorizedStrategies =>
       isChinese ? '没有已授权的策略' : 'No authorized strategies';
   String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';

@@ -202,8 +202,15 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         :final conversationId,
         :final content,
         :final dispatchCanonical,
+        :final suppressAssistant,
       ):
-        _post(conversationId, content, dispatchCanonical, trace);
+        _post(
+          conversationId,
+          content,
+          dispatchCanonical,
+          suppressAssistant,
+          trace,
+        );
       case UpdateConversationDraft(:final conversationId, :final draft):
         _controller.conversationPresentationSignals.replaceComposerDraft(
           conversationId,
@@ -621,6 +628,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     String conversationId,
     String content,
     bool dispatchCanonical,
+    bool suppressAssistant,
     TraceContext? trace,
   ) {
     final attachments = _controller.conversationPresentationSignals
@@ -632,6 +640,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         () => _controller.clientConversationController.postMessage(
           content,
           dispatch: dispatchCanonical,
+          suppressAssistant: suppressAssistant,
           attachments: attachments,
         ),
         trace,
