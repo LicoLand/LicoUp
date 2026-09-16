@@ -59,7 +59,9 @@ void main() {
         // The active Assistant name deliberately keeps animating. Capture a
         // deterministic phase instead of waiting for its loop to settle.
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(
+          Duration(milliseconds: productionChrome ? 1800 : 300),
+        );
         final boundary =
             key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
         final img = await boundary.toImage(pixelRatio: 2);
