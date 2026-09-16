@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
@@ -195,6 +196,7 @@ final class AssistantToggleButton extends StatelessWidget {
                       child: RepaintBoundary(
                         child: _AssistantNameLight(
                           active: enabled,
+                          baseColor: textColor,
                           child: Text(
                             label,
                             key: Key(
@@ -221,7 +223,7 @@ final class AssistantToggleButton extends StatelessWidget {
           key: const Key('canonical-group-assistant-edit'),
           tooltip: strings.configureAssistantTooltip,
           onPressed: onEdit,
-          icon: const Icon(Icons.edit_outlined, size: 16),
+          icon: const Icon(CupertinoIcons.pencil, size: 13),
         ),
       ],
     );
@@ -229,8 +231,13 @@ final class AssistantToggleButton extends StatelessWidget {
 }
 
 final class _AssistantNameLight extends StatefulWidget {
-  const _AssistantNameLight({required this.active, required this.child});
+  const _AssistantNameLight({
+    required this.active,
+    required this.baseColor,
+    required this.child,
+  });
   final bool active;
+  final Color baseColor;
   final Widget child;
   @override
   State<_AssistantNameLight> createState() => _AssistantNameLightState();
@@ -273,17 +280,32 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
     if (!widget.active || MediaQuery.disableAnimationsOf(context)) {
       return widget.child;
     }
+    final spectrum = context.licoColors.isDark
+        ? [
+            widget.baseColor,
+            const Color(0xFFC4A0FF),
+            const Color(0xFFF5A46E),
+            const Color(0xFFF3D889),
+            widget.baseColor,
+          ]
+        : [
+            widget.baseColor,
+            const Color(0xFF8050AD),
+            const Color(0xFFA75B30),
+            const Color(0xFF92701D),
+            widget.baseColor,
+          ];
     return AnimatedBuilder(
       animation: _light,
       child: widget.child,
       builder: (context, child) => ShaderMask(
-        blendMode: BlendMode.modulate,
+        blendMode: BlendMode.srcIn,
         shaderCallback: (rect) {
-          final center = -0.6 + _light.value * 2.2;
+          final center = -1.0 + _light.value * 3.0;
           return LinearGradient(
-            begin: Alignment(center * 2 - 1 - 0.6, 0),
-            end: Alignment(center * 2 - 1 + 0.6, 0),
-            colors: const [Color(0xffbfc5cf), Colors.white, Color(0xffbfc5cf)],
+            begin: Alignment(center * 2 - 1 - 1.8, 0),
+            end: Alignment(center * 2 - 1 + 1.8, 0),
+            colors: spectrum,
           ).createShader(rect);
         },
         child: child,

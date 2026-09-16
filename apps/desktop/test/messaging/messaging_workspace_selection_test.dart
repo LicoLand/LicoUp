@@ -254,6 +254,12 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.byKey(const Key('canonical-group-roster')), findsNothing);
+    await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('canonical-group-roster-toggle')));
+    await tester.pumpAndSettle();
+
     final agentAvatar = find.byKey(
       const Key('canonical-group-roster-agent-codex'),
     );
