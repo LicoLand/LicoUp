@@ -113,15 +113,20 @@ void main() {
         const Key('canonical-group-roster-toggle'),
       );
       final rosterToggleCapsuleFinder = find.byKey(
-        const Key('canonical-group-roster-toggle-capsule'),
+        const Key('canonical-group-menu-button'),
       );
       expect(paneFinder, findsOneWidget);
       expect(headerFinder, findsOneWidget);
       expect(composerFinder, findsOneWidget);
       expect(composerFieldFinder, findsOneWidget);
+      expect(rosterFinder, findsNothing);
+      await tester.tap(rosterToggleCapsuleFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(rosterToggleFinder);
+      await tester.pumpAndSettle();
       expect(rosterFinder, findsOneWidget);
       expect(surfaceFinder, findsOneWidget);
-      expect(rosterToggleFinder, findsOneWidget);
+      expect(rosterToggleFinder, findsNothing);
       expect(rosterToggleCapsuleFinder, findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -145,13 +150,12 @@ void main() {
       expect(toggleCapsuleRect.width, closeTo(toggleCapsuleRect.height, 0.1));
       expect(
         toggleCapsuleRect.height,
-        closeTo(identityCapsuleRect.height, 0.1),
+        closeTo(MessagingDesktopMetrics.conversationHeaderMenuExtent, 0.1),
       );
-      // Slim capsule: narrower than the header toggle while sharing its
-      // right axis.
-      expect(surfaceRect.width, lessThan(toggleCapsuleRect.width));
+      // The roster and compact overflow control share their right axis.
+      expect(surfaceRect.width, MessagingDesktopMetrics.groupRosterExtent);
       expect(surfaceRect.right, closeTo(toggleCapsuleRect.right, 0.1));
-      expect(surfaceRect.center.dy, closeTo(paneRect.center.dy, 8));
+      expect(surfaceRect.center.dy, lessThan(paneRect.center.dy));
       expect(surfaceRect.top, greaterThan(headerRect.bottom));
       expect(surfaceRect.bottom, lessThan(composerFieldRect.top));
 
@@ -178,25 +182,31 @@ void main() {
         MessagingDesktopMetrics.groupRosterScrollbarThickness,
       );
       expect(surfaceRect.width, MessagingDesktopMetrics.groupRosterExtent);
-      expect(
-        tester
-            .widget<MessagingConversationOverlayGlass>(
-              rosterToggleCapsuleFinder,
-            )
-            .borderRadius,
-        BorderRadius.circular(999),
-      );
-      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
-
+      expect(identityCapsuleRect.width, lessThan(headerRect.width - 100));
+      await tester.tap(rosterToggleCapsuleFinder);
+      await tester.pumpAndSettle();
+      expect(find.text('Collapse sidebar'), findsOneWidget);
       await tester.tap(rosterToggleFinder);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsNothing);
-      expect(find.byTooltip('Expand sidebar'), findsOneWidget);
 
+      await tester.tap(rosterToggleCapsuleFinder);
+      await tester.pumpAndSettle();
+      expect(find.text('Expand sidebar'), findsOneWidget);
       await tester.tap(rosterToggleFinder);
       await tester.pumpAndSettle();
       expect(surfaceFinder, findsOneWidget);
-      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
+      await tester.enterText(
+        find.byType(TextField),
+        'first\nsecond\nthird\nfourth',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(surfaceFinder).bottom,
+        lessThan(tester.getRect(composerFieldFinder).top),
+      );
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
 
       // Member names live in tooltips only — the capsule shows bare avatars.
       expect(find.text('Codex'), findsNothing);

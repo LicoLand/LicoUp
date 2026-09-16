@@ -35,25 +35,6 @@ final class SaveAdaptiveFlywheelActorBindings extends AgentsIntent {
   final List<AdaptiveFlywheelAssignmentIntent> assignments;
 }
 
-final class SaveAdaptiveFlywheelConfiguration extends AgentsIntent {
-  SaveAdaptiveFlywheelConfiguration({
-    required Iterable<AdaptiveFlywheelAssignmentIntent> assignments,
-    required this.updateAssistant,
-    this.assistantAgentId = '',
-    this.assistantModelId = '',
-    this.assistantReasoningEffort = '',
-    super.trace,
-  }) : assignments = List<AdaptiveFlywheelAssignmentIntent>.unmodifiable(
-         assignments,
-       );
-
-  final List<AdaptiveFlywheelAssignmentIntent> assignments;
-  final bool updateAssistant;
-  final String assistantAgentId;
-  final String assistantModelId;
-  final String assistantReasoningEffort;
-}
-
 final class AdaptiveFlywheelAssignmentIntent {
   const AdaptiveFlywheelAssignmentIntent({
     required this.slotId,

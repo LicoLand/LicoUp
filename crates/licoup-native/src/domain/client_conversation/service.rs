@@ -598,7 +598,12 @@ impl ConversationService {
             "conversation.dispatch.after-post" => {
                 let conversation_id = required_string(object, "conversationId")?;
                 let event_id = required_string(object, "eventId")?;
-                self.dispatch_posted_message(conversation_id, event_id)
+                let suppress_assistant = object
+                    .get("suppressAssistant")
+                    .map(|value| value.as_bool().ok_or_else(|| anyhow!("invalid_request")))
+                    .transpose()?
+                    .unwrap_or(false);
+                self.dispatch_posted_message(conversation_id, event_id, suppress_assistant)
             }
             "conversation.event.part.append" => {
                 let part: NewEventPart = serde_json::from_value(
@@ -1079,18 +1084,36 @@ impl ConversationService {
     /// Event text, registration happens before this response, a non-empty
     /// turn list means an attachable turn, and the error field is reserved
     /// for a start, resume, or dispatch call that actually failed.
-    fn dispatch_posted_message(&self, conversation_id: &str, event_id: &str) -> Result<Value> {
+    fn dispatch_posted_message(
+        &self,
+        conversation_id: &str,
+        event_id: &str,
+        suppress_assistant: bool,
+    ) -> Result<Value> {
         let Some(sender) = self.host.native_turn_sender.as_ref() else {
             return Err(anyhow!(super::PERSISTENT_TRANSPORT_REQUIRED));
         };
         let content = self.store.posted_event_text(conversation_id, event_id)?;
-        let mention_ids = self.resolve_mentions(conversation_id, &content)?;
+        let conversation = self.store.get(conversation_id)?;
+        let assistant_membership_id = conversation.assistant_membership_id.as_deref();
+        let mut mention_ids = self.resolve_mentions(conversation_id, &content)?;
+        // This is one-message addressing intent, not a membership change or a
+        // strategy toggle. The durable Event is already stored above this door.
+        let suppressed_assistant_mention = suppress_assistant
+            && assistant_membership_id.is_some_and(|assistant_id| {
+                mention_ids
+                    .iter()
+                    .any(|membership_id| membership_id == assistant_id)
+            });
+        if suppress_assistant {
+            mention_ids
+                .retain(|membership_id| Some(membership_id.as_str()) != assistant_membership_id);
+        }
         // Routing only steers into a turn that can still receive work. The
         // host's raw view may still list a turn the store has closed, and
         // steering into one of those would drop the message silently.
         let active = self.routable_turns(conversation_id)?;
-        let assistant_ids = if mention_ids.is_empty() {
-            let conversation = self.store.get(conversation_id)?;
+        let assistant_ids = if mention_ids.is_empty() && !suppress_assistant {
             conversation
                 .assistant_membership_id
                 .as_deref()
@@ -1181,38 +1204,45 @@ impl ConversationService {
                     merge_live_turn(&mut live_turns, live);
                 }
             }
-            // The projection offers exactly what routing accepted, so a closed
-            // handle is never handed back to a client as an attachable turn.
-            for turn in &active {
-                merge_live_turn(&mut live_turns, turn.to_json());
-            }
-        } else if active.len() == 1 {
-            for turn in &active {
-                match self.steer_active_turn(turn, &content) {
-                    SteerDisposition::Accepted => {}
-                    SteerDisposition::QueueAtBoundary => {
-                        boundary_queue_ids.push(turn.membership_id.clone());
-                    }
-                    SteerDisposition::Unknown => {
-                        dispatch_error.get_or_insert_with(dispatch_steer_error);
-                    }
-                }
-                merge_live_turn(&mut live_turns, turn.to_json());
-            }
-        } else if !active.is_empty() {
-            for turn in &active {
-                merge_live_turn(&mut live_turns, turn.to_json());
-            }
-            dispatch_error = Some(json!({
-                "code": "conversation_address_ambiguous",
-                "stage": "conversation/address",
-            }));
-        }
-        let strategy_address = if addressed.is_empty() && active.is_empty() {
-            self.address_strategy(conversation_id, &content, event_id)?
         } else {
-            StrategyAddress::default()
-        };
+            let fallback_active = active
+                .iter()
+                .filter(|turn| {
+                    !suppress_assistant
+                        || Some(turn.membership_id.as_str()) != assistant_membership_id
+                })
+                .collect::<Vec<_>>();
+            if !suppressed_assistant_mention && fallback_active.len() == 1 {
+                for turn in fallback_active {
+                    match self.steer_active_turn(turn, &content) {
+                        SteerDisposition::Accepted => {}
+                        SteerDisposition::QueueAtBoundary => {
+                            boundary_queue_ids.push(turn.membership_id.clone());
+                        }
+                        SteerDisposition::Unknown => {
+                            dispatch_error.get_or_insert_with(dispatch_steer_error);
+                        }
+                    }
+                    merge_live_turn(&mut live_turns, turn.to_json());
+                }
+            } else if !active.is_empty() && fallback_active.len() > 1 {
+                dispatch_error = Some(json!({
+                    "code": "conversation_address_ambiguous",
+                    "stage": "conversation/address",
+                }));
+            }
+        }
+        // Active turns remain attachable even when one is deliberately ignored
+        // for this message's targeting decision.
+        for turn in &active {
+            merge_live_turn(&mut live_turns, turn.to_json());
+        }
+        let strategy_address =
+            if addressed.is_empty() && active.is_empty() && !suppressed_assistant_mention {
+                self.address_strategy(conversation_id, &content, event_id)?
+            } else {
+                StrategyAddress::default()
+            };
         if let Some(entry_turn) = strategy_address.entry_turn {
             merge_live_turn(&mut live_turns, entry_turn);
         }
@@ -2086,7 +2116,9 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
         "conversation.message.delete" => {
             &["action", "conversationId", "eventId", "ownerMembershipId"]
         }
-        "conversation.dispatch.after-post" => &["action", "conversationId", "eventId"],
+        "conversation.dispatch.after-post" => {
+            &["action", "conversationId", "eventId", "suppressAssistant"]
+        }
         "conversation.event.part.append" => &["action", "eventId", "part"],
         "conversation.event.finalize" => &["action", "eventId"],
         "conversation.membership.add" => &[
@@ -2373,6 +2405,14 @@ mod tests {
     /// Persist one human message, then dispatch it by identity alone. The
     /// dispatch request carries no content and no client-computed mentions.
     fn persist_then_dispatch(service: &ConversationService, request: Value) -> Value {
+        persist_then_dispatch_with_assistant(service, request, false)
+    }
+
+    fn persist_then_dispatch_with_assistant(
+        service: &ConversationService,
+        request: Value,
+        suppress_assistant: bool,
+    ) -> Value {
         let persisted = service
             .execute(request.clone())
             .expect("persist posted message");
@@ -2382,13 +2422,15 @@ mod tests {
             .cloned()
             .expect("persisted event id");
         let conversation_id = request["conversationId"].clone();
-        service
-            .execute(json!({
-                "action": "conversation.dispatch.after-post",
-                "conversationId": conversation_id,
-                "eventId": event_id,
-            }))
-            .expect("dispatch after post")
+        let mut dispatch = json!({
+            "action": "conversation.dispatch.after-post",
+            "conversationId": conversation_id,
+            "eventId": event_id,
+        });
+        if suppress_assistant {
+            dispatch["suppressAssistant"] = Value::Bool(true);
+        }
+        service.execute(dispatch).expect("dispatch after post")
     }
 
     #[test]
@@ -3222,7 +3264,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_after_post_admits_only_conversation_and_event_identity() {
+    fn dispatch_after_post_admits_only_identity_and_assistant_suppression() {
         let service = ConversationService::from_store(
             crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
         )
@@ -3241,6 +3283,7 @@ mod tests {
         for extra in [
             json!({"content": "@One hello"}),
             json!({"mentionedMembershipIds": [agent_id]}),
+            json!({"suppressAssistant": "true"}),
         ] {
             let mut request = json!({
                 "action": "conversation.dispatch.after-post",
@@ -4758,6 +4801,196 @@ mod tests {
         assert_eq!(calls[0]["streamEvents"], true);
         assert_eq!(calls[0]["model"], "model-a");
         assert_eq!(calls[0]["reasoningEffort"], "high");
+    }
+
+    #[test]
+    fn suppressed_assistant_is_excluded_while_an_explicit_other_agent_still_starts() {
+        let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_calls = Arc::clone(&calls);
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            move |params| {
+                captured_calls.lock().unwrap().push(params.clone());
+                Ok(accepted_receipt(params))
+            },
+        );
+        let (conversation_id, owner_id, assistant_id) = group_fixture(&service);
+        let other_id = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "principal": {
+                    "id": "agent:two",
+                    "kind": "agent",
+                    "displayName": "Two",
+                    "agentId": "two",
+                },
+                "access": "member",
+            }))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": revision,
+                "membershipId": assistant_id,
+            }))
+            .unwrap();
+
+        let plain = persist_then_dispatch_with_assistant(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "plain group note",
+            }),
+            true,
+        );
+        assert!(plain["directTurns"].as_array().unwrap().is_empty());
+        assert!(calls.lock().unwrap().is_empty());
+        assert!(
+            service
+                .store()
+                .page_events(&conversation_id, None, 20)
+                .unwrap()
+                .events
+                .iter()
+                .flat_map(|event| event.parts.iter())
+                .any(|part| {
+                    part.kind == super::super::EventPartKind::Text
+                        && part.content == "plain group note"
+                })
+        );
+
+        let mentioned = persist_then_dispatch_with_assistant(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "@One @Two review this",
+            }),
+            true,
+        );
+        assert_eq!(mentioned["directTurns"].as_array().unwrap().len(), 1);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["membershipId"], other_id);
+    }
+
+    #[test]
+    fn suppressed_plain_follow_up_steers_only_the_other_active_turn() {
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(|_| panic!("active turns must be steered, not restarted"))
+        .with_steer_turn(move |params| {
+            captured_steers.lock().unwrap().push(params.clone());
+            Ok(json!({"ok": true, "status": "accepted"}))
+        });
+        let (conversation_id, owner_id, assistant_id) = group_fixture(&service);
+        let other_id = service
+            .execute(json!({
+                "action": "conversation.membership.add",
+                "conversationId": conversation_id,
+                "principal": {"id": "agent:two", "kind": "agent", "displayName": "Two", "agentId": "two"},
+                "access": "member",
+            }))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let turns = vec![
+            json!({"turnHandle": "turn:assistant", "conversationId": conversation_id, "membershipId": assistant_id, "agent": "one"}),
+            json!({"turnHandle": "turn:other", "conversationId": conversation_id, "membershipId": other_id, "agent": "two"}),
+        ];
+        let service = service.with_active_turns(move |_| json!({"turns": turns}));
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": revision,
+                "membershipId": assistant_id,
+            }))
+            .unwrap();
+
+        let result = persist_then_dispatch_with_assistant(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "continue",
+            }),
+            true,
+        );
+        let steers = steers.lock().unwrap();
+        assert_eq!(steers.len(), 1);
+        assert_eq!(steers[0]["turnHandle"], "turn:other");
+        let handles = result["turns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|turn| turn["turnHandle"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(handles.contains(&"turn:assistant"));
+        assert!(handles.contains(&"turn:other"));
+    }
+
+    #[test]
+    fn suppressed_assistant_only_active_turn_stays_attachable_without_steering() {
+        let steers = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_steers = Arc::clone(&steers);
+        let service = ConversationService::from_store(
+            crate::domain::client_conversation::ConversationStore::open_in_memory().unwrap(),
+        )
+        .with_native_turn_sender(|_| panic!("the active Assistant must not restart"))
+        .with_steer_turn(move |params| {
+            captured_steers.lock().unwrap().push(params.clone());
+            Ok(json!({"ok": true, "status": "accepted"}))
+        });
+        let (conversation_id, owner_id, assistant_id) = group_fixture(&service);
+        let turns = vec![json!({
+            "turnHandle": "turn:assistant",
+            "conversationId": conversation_id,
+            "membershipId": assistant_id,
+            "agent": "one",
+        })];
+        let service = service.with_active_turns(move |_| json!({"turns": turns}));
+        let revision = service.store().get(&conversation_id).unwrap().revision;
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": revision,
+                "membershipId": assistant_id,
+            }))
+            .unwrap();
+
+        let result = persist_then_dispatch_with_assistant(
+            &service,
+            json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "plain group note",
+            }),
+            true,
+        );
+        assert!(steers.lock().unwrap().is_empty());
+        assert_eq!(result["turns"].as_array().unwrap().len(), 1);
+        assert_eq!(result["turns"][0]["turnHandle"], "turn:assistant");
     }
 
     #[test]

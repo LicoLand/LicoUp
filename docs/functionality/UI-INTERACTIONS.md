@@ -16,6 +16,8 @@ A selected navigation button alone does not prove success. The expected page
 content must be visible. For example, returning from a group to the parent list
 changes the left list while keeping the group on the right. Leaving for Settings
 and returning preserves the group, list, and member-panel context.
+Opening a group starts with its member panel collapsed; the ellipsis menu
+provides the explicit expand action.
 
 ## Run locally
 
@@ -44,7 +46,7 @@ flow. A recorded action sequence can also be replayed without the preceding
 coverage walk:
 
 ```bash
-npm run client:test:ui -- --machine dashboard.conversation-journey --replay list.back,group.open,roster.toggle,roster.toggle,roster.toggle
+npm run client:test:ui -- --machine dashboard.conversation-journey --replay list.back,group.open,group.menu,roster.toggle,group.menu,roster.toggle
 ```
 
 Each flow starts once. The driver first visits every declared transition using

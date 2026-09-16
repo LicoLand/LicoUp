@@ -18,6 +18,7 @@ import 'package:licoup/src/contracts/generated/strategy.g.dart'
         StrategyWorkflowDiagnosticStage,
         strategyWorkflowMaxDiagnostics;
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -403,6 +404,12 @@ void main() {
       expect((saved['candidates'] as List).first['model'], modelId);
       expect(saved['candidates'], hasLength(2));
       expect(runner.bindings['entry:0']?['model'], modelId);
+      expect(
+        runner.conversationRequests.where(
+          (request) => request['action'] == 'conversation.profile.update',
+        ),
+        isEmpty,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -477,7 +484,7 @@ void main() {
   });
 
   testWidgets(
-    'Assistant is the top three-column card and saves Profile independently of workflows',
+    'Flywheel and Assistant use separate dialogs and Assistant saves its profile',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
@@ -519,33 +526,57 @@ void main() {
           theme: buildLicoTheme(platformBrightness: Brightness.dark),
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showAdaptiveFlywheelDialog(
-                  context,
-                  agents: bindings.agents,
-                  conversation: bindings.conversation,
-                ),
-                child: const Text('open'),
+              builder: (context) => Column(
+                children: [
+                  TextButton(
+                    onPressed: () => showAdaptiveFlywheelDialog(
+                      context,
+                      agents: bindings.agents,
+                      conversation: bindings.conversation,
+                    ),
+                    child: const Text('open flywheel'),
+                  ),
+                  TextButton(
+                    onPressed: () => showAssistantConfigurationDialog(
+                      context,
+                      agents: bindings.agents,
+                      conversation: bindings.conversation,
+                    ),
+                    child: const Text('open assistant'),
+                  ),
+                ],
               ),
             ),
           ),
         ),
       );
 
-      await tester.tap(find.text('open'));
+      await tester.tap(find.text('open flywheel'));
       await tester.pumpAndSettle();
 
-      final card = find.byKey(const Key('adaptive-flywheel-assistant-card'));
-      final agent = find.byKey(
-        const Key('adaptive-flywheel-assistant-agent-card'),
+      expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsOneWidget);
+      expect(
+        find.byKey(const Key('assistant-configuration-dialog')),
+        findsNothing,
       );
-      final model = find.byKey(
-        const Key('adaptive-flywheel-assistant-model-card'),
+      expect(
+        find.byKey(const Key('assistant-configuration-agent-card')),
+        findsNothing,
       );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('open assistant'));
+      await tester.pumpAndSettle();
+
+      final dialog = find.byKey(const Key('assistant-configuration-dialog'));
+      final agent = find.byKey(const Key('assistant-configuration-agent-card'));
+      final model = find.byKey(const Key('assistant-configuration-model-card'));
       final effort = find.byKey(
-        const Key('adaptive-flywheel-assistant-settings-card'),
+        const Key('assistant-configuration-settings-card'),
       );
-      expect(card, findsOneWidget);
+      expect(dialog, findsOneWidget);
+      expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsNothing);
       expect(agent, findsOneWidget);
       expect(model, findsOneWidget);
       expect(effort, findsOneWidget);
@@ -557,21 +588,10 @@ void main() {
         tester.getTopLeft(model).dx,
         lessThan(tester.getTopLeft(effort).dx),
       );
-      expect(
-        tester.getTopLeft(card).dy,
-        lessThan(
-          tester
-              .getTopLeft(
-                find.byKey(const Key('adaptive-flywheel-import-package')),
-              )
-              .dy,
-        ),
-      );
-
       await tester.tap(
-        find.byKey(const Key('adaptive-flywheel-assistant-effort-codex-high')),
+        find.byKey(const Key('assistant-configuration-effort-codex-high')),
       );
-      await tester.tap(find.byKey(const Key('main-agent-save')));
+      await tester.tap(find.byKey(const Key('assistant-configuration-save')));
       await tester.pumpAndSettle();
 
       final update = runner.conversationRequests.lastWhere(
@@ -580,7 +600,10 @@ void main() {
       final intent = Map<String, dynamic>.from(update['intent'] as Map);
       expect(intent['preferredModel'], 'gpt-5');
       expect(intent['preferredReasoningEffort'], 'high');
-      expect(find.byKey(const Key('adaptive-flywheel-dialog')), findsNothing);
+      expect(
+        find.byKey(const Key('assistant-configuration-dialog')),
+        findsNothing,
+      );
       await tester.runAsync(() async {
         await bindings.close();
         await clientController.close();

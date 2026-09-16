@@ -168,6 +168,10 @@
     "native.open": {
       "label": "点击普通对话条目",
       "gesture": "tap"
+    },
+    "group.menu": {
+      "label": "打开或关闭群聊右上角更多菜单",
+      "gesture": "tap"
     }
   },
   "machines": [
@@ -2457,6 +2461,46 @@
           "view": {
             "destination": "usage"
           }
+        },
+        {
+          "id": "group-group-1.menu",
+          "label": "群聊 / 群内列表 / 成员展开 / 更多菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "group-menu"
+          }
+        },
+        {
+          "id": "group-catalog-1.menu",
+          "label": "群聊 / 对话总列表 / 成员展开 / 更多菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "group-menu"
+          }
+        },
+        {
+          "id": "group-group-0.menu",
+          "label": "群聊 / 群内列表 / 成员收起 / 更多菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "group-menu"
+          }
+        },
+        {
+          "id": "group-catalog-0.menu",
+          "label": "群聊 / 对话总列表 / 成员收起 / 更多菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "group-menu"
+          }
         }
       ],
       "transitions": [
@@ -2782,7 +2826,7 @@
           "id": "chat.native-catalog.group.open",
           "from_state": "native-catalog",
           "action": "group.open",
-          "to_state": "group-group-1"
+          "to_state": "group-group-0"
         },
         {
           "id": "chat.native-catalog.native.open",
@@ -3067,10 +3111,10 @@
           "to_state": "group-catalog-1"
         },
         {
-          "id": "chat.group-group-1.roster.toggle",
+          "id": "chat.group-group-1.group.menu",
           "from_state": "group-group-1",
-          "action": "roster.toggle",
-          "to_state": "group-group-0"
+          "action": "group.menu",
+          "to_state": "group-group-1.menu"
         },
         {
           "id": "chat.group-group-1.conversation.scroll-up",
@@ -3397,10 +3441,10 @@
           "to_state": "native-agent"
         },
         {
-          "id": "chat.group-catalog-1.roster.toggle",
+          "id": "chat.group-catalog-1.group.menu",
           "from_state": "group-catalog-1",
-          "action": "roster.toggle",
-          "to_state": "group-catalog-0"
+          "action": "group.menu",
+          "to_state": "group-catalog-1.menu"
         },
         {
           "id": "chat.group-catalog-1.conversation.scroll-up",
@@ -3721,10 +3765,10 @@
           "to_state": "group-catalog-0"
         },
         {
-          "id": "chat.group-group-0.roster.toggle",
+          "id": "chat.group-group-0.group.menu",
           "from_state": "group-group-0",
-          "action": "roster.toggle",
-          "to_state": "group-group-1"
+          "action": "group.menu",
+          "to_state": "group-group-0.menu"
         },
         {
           "id": "chat.group-group-0.conversation.scroll-up",
@@ -4051,10 +4095,10 @@
           "to_state": "native-agent"
         },
         {
-          "id": "chat.group-catalog-0.roster.toggle",
+          "id": "chat.group-catalog-0.group.menu",
           "from_state": "group-catalog-0",
-          "action": "roster.toggle",
-          "to_state": "group-catalog-1"
+          "action": "group.menu",
+          "to_state": "group-catalog-0.menu"
         },
         {
           "id": "chat.group-catalog-0.conversation.scroll-up",
@@ -4351,10 +4395,10 @@
           "to_state": "group-catalog-1"
         },
         {
-          "id": "chat.group-group-1.group-actions.roster.toggle",
+          "id": "chat.group-group-1.group-actions.group.menu",
           "from_state": "group-group-1.group-actions",
-          "action": "roster.toggle",
-          "to_state": "group-group-0"
+          "action": "group.menu",
+          "to_state": "group-group-1.menu"
         },
         {
           "id": "chat.group-group-1.group-actions.conversation.scroll-up",
@@ -4417,10 +4461,10 @@
           "to_state": "native-agent"
         },
         {
-          "id": "chat.group-catalog-1.group-actions.roster.toggle",
+          "id": "chat.group-catalog-1.group-actions.group.menu",
           "from_state": "group-catalog-1.group-actions",
-          "action": "roster.toggle",
-          "to_state": "group-catalog-0"
+          "action": "group.menu",
+          "to_state": "group-catalog-1.menu"
         },
         {
           "id": "chat.group-catalog-1.group-actions.conversation.scroll-up",
@@ -4477,10 +4521,10 @@
           "to_state": "group-catalog-0"
         },
         {
-          "id": "chat.group-group-0.group-actions.roster.toggle",
+          "id": "chat.group-group-0.group-actions.group.menu",
           "from_state": "group-group-0.group-actions",
-          "action": "roster.toggle",
-          "to_state": "group-group-1"
+          "action": "group.menu",
+          "to_state": "group-group-0.menu"
         },
         {
           "id": "chat.group-group-0.group-actions.conversation.scroll-up",
@@ -4543,10 +4587,10 @@
           "to_state": "native-agent"
         },
         {
-          "id": "chat.group-catalog-0.group-actions.roster.toggle",
+          "id": "chat.group-catalog-0.group-actions.group.menu",
           "from_state": "group-catalog-0.group-actions",
-          "action": "roster.toggle",
-          "to_state": "group-catalog-1"
+          "action": "group.menu",
+          "to_state": "group-catalog-0.menu"
         },
         {
           "id": "chat.group-catalog-0.group-actions.conversation.scroll-up",
@@ -4577,6 +4621,78 @@
           "from_state": "group-catalog-0.group-actions",
           "action": "nav.features",
           "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.menu.roster.toggle",
+          "from_state": "group-group-1.menu",
+          "action": "roster.toggle",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-1.menu.menu.dismiss",
+          "from_state": "group-group-1.menu",
+          "action": "menu.dismiss",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.menu.group.menu",
+          "from_state": "group-group-1.menu",
+          "action": "group.menu",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-catalog-1.menu.roster.toggle",
+          "from_state": "group-catalog-1.menu",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-1.menu.menu.dismiss",
+          "from_state": "group-catalog-1.menu",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.menu.group.menu",
+          "from_state": "group-catalog-1.menu",
+          "action": "group.menu",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-group-0.menu.roster.toggle",
+          "from_state": "group-group-0.menu",
+          "action": "roster.toggle",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-0.menu.menu.dismiss",
+          "from_state": "group-group-0.menu",
+          "action": "menu.dismiss",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.menu.group.menu",
+          "from_state": "group-group-0.menu",
+          "action": "group.menu",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-catalog-0.menu.roster.toggle",
+          "from_state": "group-catalog-0.menu",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-0.menu.menu.dismiss",
+          "from_state": "group-catalog-0.menu",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.menu.group.menu",
+          "from_state": "group-catalog-0.menu",
+          "action": "group.menu",
+          "to_state": "group-catalog-0"
         }
       ]
     }

@@ -22,10 +22,6 @@ final class AdaptiveFlywheelSaveCompleted extends AgentsEffect {
   const AdaptiveFlywheelSaveCompleted({super.trace});
 }
 
-final class AdaptiveFlywheelConfigurationSaved extends AgentsEffect {
-  const AdaptiveFlywheelConfigurationSaved({super.trace});
-}
-
 final class AdaptiveFlywheelActionRejected extends AgentsEffect {
   const AdaptiveFlywheelActionRejected(this.reasonCode, {super.trace});
 
