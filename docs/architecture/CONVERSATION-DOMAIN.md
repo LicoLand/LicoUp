@@ -395,6 +395,15 @@ flowchart TB
 
 ---
 
+The group roster is a projection of active Agent Memberships. `principal.agentId`
+identifies the adapter and matches `TargetCandidate.target`; a candidate record's
+`id` is not a Membership identity. A missing discovery result keeps the member
+visible as unavailable. Retired `kimi` and `kimi-desktop` adapters are hidden
+from the current roster without removing Memberships or historical Events;
+`kimi-code` remains distinct. An empty roster does not block reading the timeline
+or editing a message. Roster clicks and mention completion use the Membership's
+display name, falling back to its agent ID, matching native addressing aliases.
+
 ## 7. Human / Agent Dedicated Profile Abstraction
 
 In the Conversation architecture, **every participant—whether Human or Agent—must and does have a dedicated Profile data encapsulation**.
