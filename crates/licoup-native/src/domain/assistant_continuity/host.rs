@@ -328,7 +328,6 @@ impl ContinuityHost {
             &prepared.assembly,
             &prepared.manifest,
             false,
-            true,
             None,
         ))
     }
