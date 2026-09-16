@@ -1817,6 +1817,8 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/lico_agent_driver.rs",
         "crates/licoup-native/src/platform/lico_agent_driver/**",
         "crates/licoup-native/src/platform/llm_api_key_vault.rs",
+        "crates/licoup-native/src/platform/llm_api_key_vault/**",
+        "crates/licoup-native/src/platform/ansi_stripper.rs",
         "crates/licoup-native/src/platform/llm_gateway_autostart.rs",
         "crates/licoup-native/src/platform/llm_gateway_client_auth.rs",
         "crates/licoup-native/src/platform/llm_gateway_credentials_control.rs",

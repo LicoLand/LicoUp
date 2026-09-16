@@ -169,6 +169,7 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 |:---|:---|
 | `apps/desktop/` | Flutter desktop and mobile client (Tier 1 and parts of Tier 2) |
 | `crates/licoup-native/` | Rust client core, commands, and platform bridges (Tier 3 and Tier 4) |
+| `crates/licoup-workflow/` | Pure workflow definition, diagnostics, compiler indexes and transition machine |
 | `crates/licoup-conversation/` | Canonical Conversation domain crate (workspace member; extraction in progress) |
 | `crates/licoup-agent-runtime/` | Agent Runtime and adapter crate (workspace member; extraction in progress) |
 | `crates/licoup-platform-bridges/` | Native platform ABI and handle management (Tier 4) |
@@ -338,16 +339,26 @@ src/
 ```
 
 **Key decisions:**
-- **No state management framework needed** — production Application owners publish
-  synchronous Dart signals, feature producers expose `ProjectionSource<T>`, and Flutter
-  renders narrow semantic slices with `ProjectionBuilder`. Flutter owns only widget-local
-  controls and affordances.
+- **Presentation migration target** — Riverpod owns presentation dependencies, derived
+  state and observer lifetimes. `presentation_contract` stays pure Dart without Riverpod;
+  `presentation_runtime` uses Dart Riverpod and owns source consistency, preparation and
+  capacity; `presentation_flutter` supplies thin Consumer/Region adapters. Business views
+  receive ordinary narrow Inputs/Actions. Existing signals, `ProjectionSource<T>` and
+  `ProjectionBuilder` describe the current implementation until each consumer migrates.
 - **Keep stdio JSON-RPC** — CLI process independence is a core product feature (host survives
   GUI crash). Add **codegen** from a shared schema to enforce type safety.
-- **God Controller decomposition** — Replace with thin event sender + per-domain projection
-  stream consumers. Not 24 mixins, not Riverpod providers — just streams.
+- **Controller decomposition** — Use typed actions and domain Sources through the
+  presentation boundary. Changing theme or layout must not recreate business reads or
+  execution. Provider disposal releases observation; Rust retains durable execution.
 - **No business logic in Flutter** — Send button disabled? Read that from projected
   `TurnState`. Never infer, never fabricate.
+
+A Source consistency group remains atomic through asynchronous preparation and final
+installation. Install X/Y from the same admitted group version, never X2/Y1. Wait only
+for that small group; permission revocation invalidates protected presentation immediately
+and cannot wait for a replacement frame. Control latency and causal measurements follow
+[the native interaction boundary](CLIENT-NATIVE-INTERACTION.md). These are migration
+requirements, not claims that the current frontend already implements them.
 
 #### Rust Crates (Target Decomposition)
 
@@ -357,6 +368,7 @@ crates/
 │   ├── src/bin/                # licoup-cli, lico-gateway, lico-agent, etc.
 │   └── src/ffi/                # Mobile platform FFI (Android/iOS)
 ├── licoup-conversation/        # L3: Conversation domain (state machine, events, projections)
+├── licoup-workflow/            # Pure workflow compiler and transition machine
 ├── licoup-agent-runtime/       # L4+L5: Agent adapters + settlement arbiter
 ├── licoup-endpoint-core/       # Endpoint identity, key derivation, crypto
 ├── licoup-protocol-bindings/   # L2: Wire protocol types + frame codec

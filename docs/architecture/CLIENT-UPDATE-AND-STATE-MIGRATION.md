@@ -97,6 +97,17 @@ to convert the rest of the data. Target-client reads, interrupted conversion,
 historical round trips and execution exclusion of preserved records need actual
 synthetic-fixture evidence during implementation.
 
+### Downgrade, edits and later upgrade
+
+A conversion scenario includes a newer version, downgrade, real edits/deletions and
+execution by the older client, then another upgrade. Preserved extensions cannot
+overwrite newer facts, resurrect deletions or replay historical effects. Restore them
+only after reconciling their original identities and revisions with the current stores.
+An old process that does not understand a new lock protocol is not fenced by that lock;
+obtain exclusive access through its actual lifecycle and root ownership. Protocol and
+key state follow the pinned SDK's recovery contract, independently of ordinary database
+rollback. This scenario remains a requirement for the independent CLI.
+
 ## Client update selection
 
 The native artifact embeds its product version, release track, and immutable
@@ -166,6 +177,22 @@ verified capable build or a newer signed build and retrying. It denies an older
 binary after high-water advances. Supporting explicit downgrade requires the
 independent CLI to convert the stores and establish target-compatible admission
 state before the older client opens them; that integration remains to be built.
+
+### Workflow store conversion
+
+The current source advances the Adaptive Flywheel store from SQLite schema 2 to
+3 and its admission frontier from 1 to 2. The existing migration owner materializes
+historical implicit entry slots and effect routes once. Conversion and the schema
+marker commit in one SQLite transaction. Earlier stores reach schema 2 through
+their existing step before this conversion; completed frontier-1 ledgers and
+markers advance through the registered next step.
+
+The conversion preserves revision and semantics identities, run snapshots,
+command attempts, leases and grants. Immutable package bytes keep their original
+digests; package verification validates that identity before applying historical
+format interpretation. Ordinary compilation accepts canonical definitions and
+does not rewrite them. This forward conversion does not implement the independent
+CLI or its downgrade contract.
 
 ## Publication
 
