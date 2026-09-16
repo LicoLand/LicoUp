@@ -394,6 +394,13 @@ flowchart TB
 
 ---
 
+群组名单是 active Agent Membership 的展示投影。`principal.agentId` 表示适配器，
+只与 `TargetCandidate.target` 关联；候选记录的 `id` 不是 Membership 身份。
+发现结果暂时缺失时，成员仍以不可用状态保留。已退休的 `kimi`、`kimi-desktop`
+从当前名单隐藏，但不删除 Membership 或历史 Event；`kimi-code` 保持独立。
+空名单不阻断历史阅读和消息编辑。点击名单与 mention 补全均使用 Membership
+显示名，空名回退到 agent ID，与 native 寻址接受的别名保持一致。
+
 ## 7. Human / Agent 专属 Profile 抽象与全链路流向
 
 在 Conversation 体系中，**无论是人类（Human）还是智能体（Agent），都必须且必然拥有一份专属的 Profile 数据封装抽象**。

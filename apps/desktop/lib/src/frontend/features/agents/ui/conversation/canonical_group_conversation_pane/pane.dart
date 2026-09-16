@@ -142,6 +142,13 @@ class _CanonicalGroupConversationPaneState
     );
   }
 
+  String _mentionLabel(ClientConversationMembership membership) {
+    final displayName = membership.principal.displayName.trim();
+    return displayName.isEmpty
+        ? membership.principal.agentId.trim()
+        : displayName;
+  }
+
   TargetCandidate? _assistantTarget(
     ClientConversation conversation,
     List<TargetCandidate> targets,
@@ -150,7 +157,7 @@ class _CanonicalGroupConversationPaneState
         conversation.assistantMembership?.principal.agentId.trim() ?? '';
     if (agentId.isEmpty) return null;
     for (final target in targets) {
-      if (target.target == agentId || target.id == agentId) return target;
+      if (target.target == agentId) return target;
     }
     return null;
   }
@@ -432,9 +439,9 @@ class _CanonicalGroupConversationPaneState
         ),
       );
     }
-    final label = membership?.principal.displayName.trim().isNotEmpty == true
-        ? membership!.principal.displayName.trim()
-        : agentConversationTargetDisplayName(target);
+    final label = membership == null
+        ? agentConversationTargetDisplayName(target)
+        : _mentionLabel(membership);
     final separator =
         widget.composer.draft.isEmpty ||
             RegExp(r'\\s$').hasMatch(widget.composer.draft)
@@ -492,11 +499,6 @@ class _CanonicalGroupConversationPaneState
       conversation,
       allTargets,
     );
-    if (participantTargets.isEmpty) {
-      return CanonicalGroupLoadingOrEmpty(
-        loading: canonical.phase == PresentationPhase.loading,
-      );
-    }
     final ordered = resolveCanonicalGroupOrderedParticipantTargets(
       conversation,
       [...participantTargets, ...allTargets],
@@ -510,8 +512,31 @@ class _CanonicalGroupConversationPaneState
     );
     final assistantStatus = _assistantStatus(strings, conversation, allTargets);
     final assistantTarget = _assistantTarget(conversation, allTargets);
+    final paneTarget = participantTargets.isNotEmpty
+        ? participantTargets.first
+        : assistantTarget ??
+              TargetCandidate(
+                target: conversation.id,
+                label: conversation.title.trim().isEmpty
+                    ? strings.groupConversation
+                    : conversation.title.trim(),
+                kind: 'group',
+                status: TargetCandidateStatus.unavailable,
+                configured: false,
+                confidence: 0,
+                adapterStatus: 'runtime-unavailable',
+              );
+    final mentionLabels = <String, String>{};
+    for (final membership in conversation.activeAgentMemberships) {
+      final target = canonicalGroupParticipantTarget(
+        participantTargets,
+        membership.principal.agentId,
+      );
+      if (target == null) continue;
+      mentionLabels[target.target] = _mentionLabel(membership);
+    }
     final state = AgentConversationPaneState(
-      target: participantTargets.first,
+      target: paneTarget,
       session: session,
       liveMessages: _timelineMessages,
       recentSessions: const [],
@@ -544,19 +569,7 @@ class _CanonicalGroupConversationPaneState
       reasoningEffortOptions: const [],
       selectedReasoningEffort: '',
       participantTargets: participantTargets,
-      composerMentionLabels: {
-        for (final membership in conversation.activeAgentMemberships)
-          membership.principal.agentId:
-              membership.principal.displayName.trim().isEmpty
-              ? agentConversationTargetDisplayName(
-                  participantTargets.firstWhere(
-                    (target) =>
-                        target.target == membership.principal.agentId ||
-                        target.id == membership.principal.agentId,
-                  ),
-                )
-              : membership.principal.displayName.trim(),
-      },
+      composerMentionLabels: mentionLabels,
       participantConversationIds: {
         for (final membership in conversation.activeAgentMemberships)
           membership.principal.agentId: conversation.id,
@@ -662,7 +675,8 @@ class _CanonicalGroupConversationPaneState
               final visibleExtent =
                   constraints.maxHeight - topInset - bottomInset;
               if (visibleExtent <
-                  MessagingDesktopMetrics.groupRosterMinimumVisibleExtent) {
+                      MessagingDesktopMetrics.groupRosterMinimumVisibleExtent ||
+                  rosterTargets.isEmpty) {
                 return pane;
               }
               return Stack(
@@ -696,7 +710,7 @@ class _CanonicalGroupConversationPaneState
                                 widget.onOpenAgentConversations == null
                                 ? null
                                 : (target) => widget.onOpenAgentConversations!(
-                                    target.id,
+                                    target.target,
                                   ),
                             onBoundaryOverscroll: _continueConversationScroll,
                           ),
@@ -712,7 +726,7 @@ class _CanonicalGroupConversationPaneState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: pane),
-              if (_rosterVisible)
+              if (_rosterVisible && rosterTargets.isNotEmpty)
                 CanonicalGroupRoster(
                   conversation: conversation,
                   targets: rosterTargets,
@@ -722,7 +736,8 @@ class _CanonicalGroupConversationPaneState
                   onOpenAgentConversations:
                       widget.onOpenAgentConversations == null
                       ? null
-                      : (target) => widget.onOpenAgentConversations!(target.id),
+                      : (target) =>
+                            widget.onOpenAgentConversations!(target.target),
                   onBoundaryOverscroll: _continueConversationScroll,
                 ),
             ],
