@@ -50,13 +50,27 @@ void main() {
       await tester.pump(const Duration(milliseconds: 32));
       expect(refreshes, 1);
       expect(
-        tester
-            .widget<LicoLoadingIndicator>(
-              find.byKey(const Key('messaging-list-refresh-indicator')),
-            )
-            .value,
-        isNull,
+        find.byKey(const Key('messaging-list-refresh-indicator')),
+        findsOneWidget,
       );
+      if (count > 0) {
+        expect(
+          tester
+              .getRect(
+                find.byKey(const Key('messaging-list-refresh-indicator')),
+              )
+              .overlaps(tester.getRect(find.text('Conversation 0'))),
+          isFalse,
+        );
+        expect(
+          tester
+              .getBottomLeft(
+                find.byKey(const Key('messaging-list-refresh-indicator')),
+              )
+              .dy,
+          lessThanOrEqualTo(tester.getTopLeft(find.text('Conversation 0')).dy),
+        );
+      }
 
       for (var frame = 0; frame < 80; frame += 1) {
         await tester.pump(const Duration(milliseconds: 16));
@@ -192,6 +206,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'an in-flight refresh occupies space above the first catalog row',
+    (tester) async {
+      final loading = ValueNotifier(true);
+      addTearDown(loading.dispose);
+      await _pumpList(tester, count: 1, loading: loading, onRefresh: () {});
+      final indicator = find.byKey(
+        const Key('messaging-list-refresh-indicator'),
+      );
+      final firstRow = find.text('Conversation 0');
+      expect(indicator, findsOneWidget);
+      expect(firstRow, findsOneWidget);
+      expect(
+        tester.getRect(indicator).overlaps(tester.getRect(firstRow)),
+        isFalse,
+      );
+      expect(
+        tester.getBottomLeft(indicator).dy,
+        lessThanOrEqualTo(tester.getTopLeft(firstRow).dy),
+      );
+
+      loading.value = false;
+      await tester.pumpAndSettle();
+      expect(indicator, findsNothing);
+      expect(firstRow, findsOneWidget);
+    },
+  );
 }
 
 ScrollPosition _position(WidgetTester tester) =>

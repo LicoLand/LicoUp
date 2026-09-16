@@ -7,8 +7,8 @@ test as one clear client feature, module, or flow.
 
 ## Set up
 
-You need Node.js 22 or 24 for the source policy. Install Flutter, Rust, Java,
-and Android tooling only when the affected technology lane requires them.
+You need Node.js 22 or 24 for the source policy. Use the available Flutter,
+Rust, Java, and Android tooling for affected checks within the scope below.
 
 ```bash
 npm ci
@@ -91,10 +91,53 @@ again before verification. CI and regression lanes remain check-only: they
 report formatting omissions rather than silently changing the source being
 verified. Formatting does not stage files or create a commit.
 
+### Verification scope
+
+Test the affected behavior using the environments already available locally.
+The developer organizes additional devices and cross-platform testing. Do not
+require a device matrix, a minimum hardware tier, or a missing host, simulator,
+SDK, or device to complete local development and delivery. Record unavailable
+checks as not run, with their limits; they do not fail or block local delivery
+and do not establish support for an untested platform.
+
+Reuse existing checks and run shared work once. Do not add approval gates,
+verification frameworks, repeated regressions, or device provisioning merely
+to satisfy a plan or report. Add a check only when it directly verifies the
+requested behavior or prevents a concrete regression. This scope does not
+change separately authorized production and release requirements.
+
+### UI acceptance
+
+Describe UI acceptance as actions and visible results: refresh the conversation
+list, switch navigation repeatedly, scroll long lists in both directions, type
+and click during streaming output, and open, close, and return from dialogs.
+The flow must stay correct, preserve expected state, and respond without
+visible stalls, broken controls, crashes, or duplicate actions. Exercise these
+interactions together in a short hands-on monkey test in the available local
+environment; do not invent fixed operation counts or a device matrix.
+
+Maintain [the UI interaction model](docs/functionality/UI-INTERACTIONS.md)
+independently of controllers, renderers, and backend code. Its visible states,
+clickable actions, and expected destinations define the test oracle. A separate
+adapter locates controls, performs gestures, and observes visible results; a
+refactor updates that adapter without rewriting the expected user behavior.
+Enumerate the declared transitions, including reselect, return, and dismissal,
+and combine edge coverage with seeded random walks over currently visible,
+enabled controls. Keep the current page, list, and overlay context between
+actions. Retain the seed and action sequence for replay, and report visible
+controls missing from the model instead of calling partial coverage complete.
+
+Measure response time and frame performance on those same transitions. Report
+the user action beside its timing and frame results, and keep virtual-clock
+widget checks distinct from real-engine performance runs. Do not replace these
+measurements with a backend trace project or add arbitrary scorecards and
+approval gates. Focused state and lifecycle tests support this model.
+
 ## Local client verification
 
 After a client fix or behavior change, including a bundled Agent prompt or
-Skill change, build macOS once and verify that exact installed output:
+Skill change, build macOS once and verify that exact installed output when
+the local macOS build and installation environment is available:
 
 ```bash
 npm run client:build -- --platform macos
@@ -107,11 +150,27 @@ Honor an explicit request to skip installation and report the remaining
 verification. Local installation does not authorize signing, notarization,
 source promotion, public publication, or production changes.
 
-A live Agent conversation test spends real tokens, so use the cheapest model
-that can do the job, not the strongest. The per-Agent choice has one file:
+A live response or transport check spends real tokens, so use the cheapest
+adequate model. The per-Agent choice has one file:
 [`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml).
-Change a test model there and nowhere else. Codex currently uses
-`gpt-5.6-luna` at `max` effort. Other Agents keep their own entry in that file.
+Change a test model there and nowhere else; inherited environment variables
+must not select a more expensive model or effort. Use the lowest supported
+reasoning effort for a response check. Send `Hi` once and accept the Agent's
+own reply; a specific word, number, marker, or output format is not required.
+Use another short turn only when exact session continuation is being tested.
+Never request counting, repetition, long lists, or endless output to keep a
+paid turn active. Test prolonged streams, waiting, and cancellation races with
+a controlled local fixture. A live control check may use a short greeting; if
+it finishes before the control action, that action is unverified, not a reason
+to generate longer output, repeat paid probes, or upgrade the model. Keep a
+connectivity check scoped to its purpose.
+The local fixture proves stream, cancellation, and event-order behavior only;
+it does not prove long-task capability. End-to-end long-task acceptance uses a
+real Issue within the authorized scope. The executing Agent chooses a capable,
+cost-conscious model using available discovery and evaluation, and adjusts it
+from actual performance without repeated approval for model choice. The
+response-check model file does not govern Issue work. Reuse existing evaluation
+results and avoid probes that add no task value.
 
 ## Agent guidance
 
@@ -318,8 +377,9 @@ never replace an asset in place.
 - The change has one clear scope.
 - No Agent reply was made to fit a LicoUp format, and no plain reply was called
   invalid, empty or an abstention for having none.
-- A live Agent conversation test used the cheapest model that can do the job,
-  taken from the verification model authority instead of hardcoded.
+- A live response or transport check used the cheapest adequate model from
+  the verification model authority. Real Issue work follows the executing
+  Agent's task-based model selection.
 - Native CLI or generated contract changes keep the Flutter and Rust sides
   consistent in the same change.
 - Old paths and old names are removed when a migration is complete.

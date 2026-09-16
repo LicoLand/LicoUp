@@ -189,8 +189,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
   /// viewport's reading zone while the user scrolls.
   void _updateSpySelection() {
     // While a sidebar jump is animating, section geometry lags the scroll
-    // offset by a frame; the tapped entry owns the selection until the jump
-    // settles and reconciles once with fresh geometry.
+    // offset by a frame. The tapped entry keeps ownership of the selection;
+    // manual scrolling resumes the spy after the jump.
     if (_jumpInFlight) {
       return;
     }
@@ -220,13 +220,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   bool _handleScrollEnd() {
     _persistScrollOffset();
+    final jumpRevision = _jumpRevision;
+    final wasJumping = _jumpInFlight;
     // Scroll notifications fire before the layout pass that repositions the
     // sections, so every mid-scroll spy measurement reads one-frame-stale
     // geometry. A single fast fling leaves no later frame to catch up —
     // reconcile once against the settled geometry so the sidebar selection
     // always lands on the section the user actually stopped at.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (mounted && !wasJumping && jumpRevision == _jumpRevision) {
         _updateSpySelection();
       }
     });
@@ -261,10 +263,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
       await _travelToSection(id, revision);
     } finally {
       if (revision == _jumpRevision) {
+        // Keep the clicked section selected. At the bottom several sections
+        // share one viewport; a scroll-spy reconciliation would overwrite the
+        // user's target and swallow the next click on that same stored index.
+        // A later manual scroll resumes the spy through _handleScroll.
         _jumpInFlight = false;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _updateSpySelection();
-        });
       }
     }
   }
@@ -328,7 +331,17 @@ class _SettingsPanelState extends State<SettingsPanel> {
     if (id == _selectedSectionId.value) {
       return;
     }
-    _scrollTo(id);
+    // A synchronous layout notification must finish before scrolling can
+    // publish its resulting offset. Coalesce rapid selections onto the latest
+    // visible target; older scheduled jumps must not undo a later click.
+    _selectedSectionId.value = id;
+    _jumpInFlight = true;
+    final revision = ++_jumpRevision;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && revision == _jumpRevision) {
+        unawaited(_jumpToSection(id));
+      }
+    });
   }
 
   @override

@@ -1,6 +1,11 @@
 # Client update and state migration
 
-[Documentation index](../README.md) · [简体中文](CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md)
+| Related document | Path | Authority |
+| --- | --- | --- |
+| Normative version | This document | Client update and data migration contracts |
+| Localization | [简体中文](CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md) | Chinese projection |
+| Documentation index | [Index](../README.md) | Navigation |
+| Workflow control | [Assistant workflow control and compiler](ASSISTANT-WORKFLOW-CONTROL.md) | Target maintenance, node drainage and execution ownership |
 
 LicoUp has one application identity, installed name, and data root. `nightly`
 and `stable` are release tracks of that identity, not side-by-side apps or
@@ -9,12 +14,13 @@ values.
 
 ## Independent migration CLI
 
-Data migration is an independently distributed capability. Its CLI belongs in
-a separate Node.js repository with its own version, downloadable artifacts, and
-release workflow. Users can install, run, upgrade, and uninstall it regardless
-of the installed client version, including when the client cannot start or is
-not installed. Uninstalling the tool preserves application data and recovery
-records.
+Data migration is an independently maintained and distributed Node.js CLI.
+Its planned source location is `tools/data-migration/`, with its own package,
+version, downloadable artifacts and release workflow. An additional repository
+is not required for that independence. Users can install, run, upgrade, and
+uninstall it regardless of the installed client version, including when the
+client cannot start or is not installed. Uninstalling the tool preserves
+application data and recovery records.
 
 The tool must support conversion from any published data version to the current
 version, and from a newer version to any published older target. Historical
@@ -41,6 +47,55 @@ These are design requirements for the independent tool; it has not yet been
 implemented. The following sections describe the current client's updater and
 admission implementation. Their forward-update restrictions do not define the
 independent CLI's supported source or target versions.
+
+### Integration with the workflow refactor
+
+The tool is part of the planned workflow/compiler and host refactor. The existing
+`client-update-manifest.mjs` produces update metadata; it is not a data converter.
+Provide inspect, conversion planning, conversion and resume operations in the
+independent CLI. Probe actual stores and select versioned data contracts without
+requiring a running client or executable Graph.
+
+The CLI coordinates conversion; shared format probes/codecs stay with the
+existing native migration owner and are reused by startup admission and a
+focused tool-shipped helper. Refactor that owner into modules without duplicating
+its readers or creating a second migration authority. The helper uses the
+planned Rust 1.95.0 baseline and retains native custody and authorization.
+
+Before reading a live root for conversion, use the owning host's Proxy/control
+path to request maintenance and drain affected work. Acquire exclusive root
+ownership only after the actual safe handoff. The current short-lived startup
+`admission.lock` does not prove that all runtime writers have stopped. The
+planned common root-access protocol must cover the host, CLI and helper; a
+background migration cannot steal ownership from an active invocation or kill
+it on a timer. No installed client is needed when there is no active owner.
+
+Conversion records durable per-domain progress and verifies target postconditions
+before changing admission metadata. Recovery reconciles committed steps instead
+of repeating them. There is no claim of one atomic transaction across every
+database, file and operating-system credential store.
+
+Versioned contracts include workflow definitions, runs, queued commands and
+deliveries, subscriptions/cursors, node control states, successor handoffs,
+unresolved effects, usage facts and endpoint-state references. Keep historical
+readers, writers, conversion steps and their meaningful fixtures permanently;
+they are supported tool capabilities, not superseded client implementation.
+
+When an older target cannot safely express a record, preserve the complete
+record and relationships in a recovery extension outside that client's discovery
+and execution paths. Report that the older client cannot operate that state;
+provide an inert target projection only when it is truthful. Never map an unknown
+effect to retryable, pending or completed just to fit the old schema. Restore
+the preserved semantics when a capable version is selected later. Unknown-effect
+reconciliation and data-format conversion are separate operations.
+
+Keep every published target available for conversion. Block an affected step
+only when a consistent source, safe isolation/preservation of real external
+effects, or protected custody cannot be established. An unsupported old format
+alone is handled through preservation, not silent data loss or permanent refusal
+to convert the rest of the data. Target-client reads, interrupted conversion,
+historical round trips and execution exclusion of preserved records need actual
+synthetic-fixture evidence during implementation.
 
 ## Client update selection
 

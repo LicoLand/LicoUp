@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -25,6 +25,7 @@ import {
   productContinuityBindingDigest,
 } from "./lib/agent-conversation-release-binding.mjs";
 import {
+  verificationEffortForAgent,
   verificationModelForAgent,
   verificationModelsMap,
 } from "./lib/agent-conversation-verification-models.mjs";
@@ -126,6 +127,7 @@ function decodeLiveReceipt(encodedOutput, expectedAgent = defaultAgent, expected
     fail(reasonCode);
   }
   const expectedModel = validationModels[expectedAgent];
+  if (!expectedModel) fail("verification_model_unconfigured");
   const valid = receipt.schemaVersion === "lico-agent-conversation-release-ui-live-v1"
     && receipt.status === "passed"
     && receipt.reasonCode === undefined
@@ -138,7 +140,7 @@ function decodeLiveReceipt(encodedOutput, expectedAgent = defaultAgent, expected
     && typeof receipt.model === "string"
     && receipt.model.length > 0
     && receipt.model.length <= 128
-    && (!expectedModel || receipt.model === expectedModel)
+    && receipt.model === expectedModel
     && typeof receipt.nativeSessionId === "string"
     && receipt.nativeSessionId.length > 0
     && receipt.nativeSessionId.length <= 512
@@ -232,8 +234,7 @@ function selfTest() {
     && !runnerSource.includes([
       "LICO_AGENT_CONVERSATION_PRODUCT",
       "STEER_PROMPT",
-    ].join("_"))
-    && runnerSource.includes("const secondPrompt = acceptancePrompt(secondExpected);");
+    ].join("_"));
   const sourceBound = runnerSource.includes('"client:build"')
     && runnerSource.includes('"--agent-conversation-release-live"')
     && liveSource.includes("ClientController()")
@@ -244,12 +245,10 @@ function selfTest() {
     && liveSource.includes("liveConversationMessagesByScope")
     && liveSource.includes("conversationLiveScopeKeysForAgent")
     && liveSource.includes("exact native-session readback")
-    && liveSource.includes("assistantReplies.contains(firstExpected)")
-    && liveSource.includes("assistantReplies.contains(secondExpected)")
     && liveSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_GROUP_ASSISTANT")
     && liveSource.includes("_verifyAssistantControl(")
     && liveSource.includes("updateMembershipProfileIntent(")
-    && liveSource.includes("_groupReplyExists(")
+    && liveSource.includes("_groupRawReplyExists(")
     && mainSource.includes("runAgentConversationReleaseLive")
     && packageSource.includes("agentConversationReleaseLive")
     && packageSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE=true")
@@ -257,8 +256,6 @@ function selfTest() {
     && fixtureSource.includes("AcceptanceConversationService")
     && runnerSource.includes('LICO_CLIENT_PATH: join(appBundle, "Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli")')
     && runnerSource.includes('LICO_AGENT_CONVERSATION_ACCEPTANCE: "dispatch-lane-unified-1"')
-    && runnerSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED")
-    && runnerSource.includes("LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED")
     && runnerSource.includes("delete runtimeEnvironment.CARGO_TARGET_DIR")
     && runnerSource.includes("releaseUiPassed: false")
     && oneConversationTwoMessagesBound;
@@ -401,13 +398,10 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
   const receiptPath = join(receiptDirectory, "receipt.txt");
   const sessionPath = join(receiptDirectory, "session.json");
   const isolatedRuntimeRoot = join(receiptDirectory, "runtime-state");
-  const canary = randomUUID().replaceAll("-", "");
-  const marker = canary.slice(0, 12);
-  const firstExpected = String((Number.parseInt(canary.slice(12, 20), 16) % 9000) + 1000);
-  const secondExpected = String((Number.parseInt(canary.slice(20, 28), 16) % 9000) + 1000);
-  const acceptancePrompt = (expected) =>
-    `Acceptance marker ${marker}. Do not repeat the marker. Reply with exactly ${expected} and no other text. Do not call tools or request permissions.`;
-  const secondPrompt = acceptancePrompt(secondExpected);
+  const model = validationModels[agentId];
+  if (!model) fail("verification_model_unconfigured");
+  const firstPrompt = "Hi";
+  const secondPrompt = "Hi";
   try {
     const runtimeEnvironment = {
       ...process.env,
@@ -425,11 +419,10 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
       env: {
         ...runtimeEnvironment,
         LICO_AGENT_CONVERSATION_PRODUCT_AGENT: agentId,
-        LICO_AGENT_CONVERSATION_PRODUCT_MODEL: validationModels[agentId] || "agent-default",
-        LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT: acceptancePrompt(firstExpected),
+        LICO_AGENT_CONVERSATION_PRODUCT_MODEL: model,
+        LICO_AGENT_CONVERSATION_PRODUCT_EFFORT: verificationEffortForAgent(agentId, model),
+        LICO_AGENT_CONVERSATION_PRODUCT_FIRST_PROMPT: firstPrompt,
         LICO_AGENT_CONVERSATION_PRODUCT_SECOND_PROMPT: secondPrompt,
-        LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED: firstExpected,
-        LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED: secondExpected,
         LICO_AGENT_CONVERSATION_PRODUCT_RECEIPT: receiptPath,
         LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST: invocationChallengeDigest,
       },

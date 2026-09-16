@@ -1,0 +1,4584 @@
+{
+  "title": "LicoUp 用户界面交互状态机",
+  "version": 1,
+  "authority": "用户可见状态与操作预期；不从生产导航代码生成，不包含 Dart 类名、controller、RPC 或 Widget key。",
+  "scope": "两种布局的导航、菜单、功能窗口、设置目录；dashboard 群聊、返回、搜索输入/结果、取消弹窗、刷新、滚动及跨页面连续操作。穷举已声明转换并随机游走；报告遗漏，不声称已覆盖所有业务操作。",
+  "principles": [
+    "状态由实际可见内容判定；按钮存在或 controller 值变化不能单独证明跳转成功。",
+    "操作模型与 Flutter 定位适配分离；内部重构只改适配，用户行为变化才改此模型。",
+    "同一转换记录动作到目标可见的时间及其帧耗时；普通 widget 测试不冒充真机性能。",
+    "只测本机已有环境，其他设备由开发者安排。",
+    "随机选择当前可见可用的动作，保留状态上下文及种子/完整序列以便重放。",
+    "已声明转换通过与整个产品覆盖完整分开报告；发现未映射按钮时显式列出遗漏。"
+  ],
+  "actions": {
+    "nav.chats": {
+      "label": "点击对话",
+      "gesture": "tap"
+    },
+    "nav.settings": {
+      "label": "点击设置",
+      "gesture": "tap"
+    },
+    "nav.features": {
+      "label": "点击功能",
+      "gesture": "tap"
+    },
+    "feature.agent-center": {
+      "label": "点击功能列表中的智能体中心",
+      "gesture": "tap"
+    },
+    "feature.model-gateway": {
+      "label": "点击功能列表中的模型网关",
+      "gesture": "tap"
+    },
+    "feature.device-pairing": {
+      "label": "点击功能列表中的移动配对",
+      "gesture": "tap"
+    },
+    "feature.usage": {
+      "label": "点击功能列表中的统计面板",
+      "gesture": "tap"
+    },
+    "settings.general": {
+      "label": "点击设置目录中的通用",
+      "gesture": "tap"
+    },
+    "settings.appearance": {
+      "label": "点击设置目录中的外观",
+      "gesture": "tap"
+    },
+    "settings.updates": {
+      "label": "点击设置目录中的更新",
+      "gesture": "tap"
+    },
+    "settings.startup": {
+      "label": "点击设置目录中的启动",
+      "gesture": "tap"
+    },
+    "settings.storage": {
+      "label": "点击设置目录中的存储",
+      "gesture": "tap"
+    },
+    "settings.diagnostics": {
+      "label": "点击设置目录中的诊断",
+      "gesture": "tap"
+    },
+    "settings.archived-conversations": {
+      "label": "点击设置目录中的已归档对话",
+      "gesture": "tap"
+    },
+    "nav.open-menu": {
+      "label": "点击导航菜单按钮",
+      "gesture": "tap"
+    },
+    "nav.dismiss-menu": {
+      "label": "点击菜单外部关闭导航菜单",
+      "gesture": "dismiss"
+    },
+    "nav.device-pairing": {
+      "label": "点击移动配对",
+      "gesture": "tap"
+    },
+    "window.close.agent-center": {
+      "label": "点击智能体中心窗口的关闭按钮",
+      "gesture": "tap"
+    },
+    "dock.agent-center": {
+      "label": "点击 Dock 中的智能体中心",
+      "gesture": "tap"
+    },
+    "window.close.model-gateway": {
+      "label": "点击模型网关窗口的关闭按钮",
+      "gesture": "tap"
+    },
+    "dock.model-gateway": {
+      "label": "点击 Dock 中的模型网关",
+      "gesture": "tap"
+    },
+    "window.close.device-pairing": {
+      "label": "点击移动配对窗口的关闭按钮",
+      "gesture": "tap"
+    },
+    "dock.device-pairing": {
+      "label": "点击 Dock 中的移动配对",
+      "gesture": "tap"
+    },
+    "window.close.usage": {
+      "label": "点击统计面板窗口的关闭按钮",
+      "gesture": "tap"
+    },
+    "dock.usage": {
+      "label": "点击 Dock 中的统计面板",
+      "gesture": "tap"
+    },
+    "search.open": {
+      "label": "点击搜索框",
+      "gesture": "tap"
+    },
+    "search.dismiss": {
+      "label": "点击搜索弹窗外部",
+      "gesture": "dismiss"
+    },
+    "group.open": {
+      "label": "点击群聊"
+    },
+    "list.back": {
+      "label": "返回上一级对话列表"
+    },
+    "create.open": {
+      "label": "点击新建菜单"
+    },
+    "create.group": {
+      "label": "新建群聊"
+    },
+    "dialog.cancel": {
+      "label": "取消对话框"
+    },
+    "menu.dismiss": {
+      "label": "点击空白关闭菜单"
+    },
+    "roster.toggle": {
+      "label": "展开或收起群成员"
+    },
+    "group.actions": {
+      "label": "打开或关闭群聊操作"
+    },
+    "group.clear": {
+      "label": "清空历史确认"
+    },
+    "list.refresh": {
+      "label": "下拉刷新对话列表"
+    },
+    "conversation.scroll-up": {
+      "label": "向上翻阅群聊消息"
+    },
+    "conversation.scroll-down": {
+      "label": "向下翻阅群聊消息"
+    },
+    "search.type-settings": {
+      "label": "在搜索框输入 Settings"
+    },
+    "search.clear": {
+      "label": "清空搜索内容"
+    },
+    "search.select-settings": {
+      "label": "点击搜索结果中的设置"
+    },
+    "native.open": {
+      "label": "点击普通对话条目",
+      "gesture": "tap"
+    }
+  },
+  "machines": [
+    {
+      "id": "dashboard.navigation",
+      "label": "仪表盘：主导航和功能列表",
+      "presentation": "dashboard-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "agent-center",
+          "label": "智能体中心"
+        },
+        {
+          "id": "model-gateway",
+          "label": "模型网关"
+        },
+        {
+          "id": "device-pairing",
+          "label": "移动配对"
+        },
+        {
+          "id": "usage",
+          "label": "统计面板"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dashboard.navigation.chats.nav.chats",
+          "from_state": "chats",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.chats.nav.settings",
+          "from_state": "chats",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.chats.nav.features",
+          "from_state": "chats",
+          "action": "nav.features",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.nav.chats",
+          "from_state": "agent-center",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.nav.settings",
+          "from_state": "agent-center",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.nav.features",
+          "from_state": "agent-center",
+          "action": "nav.features",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.feature.agent-center",
+          "from_state": "agent-center",
+          "action": "feature.agent-center",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.feature.model-gateway",
+          "from_state": "agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "model-gateway"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.feature.device-pairing",
+          "from_state": "agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.navigation.agent-center.feature.usage",
+          "from_state": "agent-center",
+          "action": "feature.usage",
+          "to_state": "usage"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.nav.chats",
+          "from_state": "model-gateway",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.nav.settings",
+          "from_state": "model-gateway",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.nav.features",
+          "from_state": "model-gateway",
+          "action": "nav.features",
+          "to_state": "model-gateway"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.feature.agent-center",
+          "from_state": "model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.feature.model-gateway",
+          "from_state": "model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "model-gateway"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.feature.device-pairing",
+          "from_state": "model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.navigation.model-gateway.feature.usage",
+          "from_state": "model-gateway",
+          "action": "feature.usage",
+          "to_state": "usage"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.nav.chats",
+          "from_state": "device-pairing",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.nav.settings",
+          "from_state": "device-pairing",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.nav.features",
+          "from_state": "device-pairing",
+          "action": "nav.features",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.feature.agent-center",
+          "from_state": "device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.feature.model-gateway",
+          "from_state": "device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "model-gateway"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.feature.device-pairing",
+          "from_state": "device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.navigation.device-pairing.feature.usage",
+          "from_state": "device-pairing",
+          "action": "feature.usage",
+          "to_state": "usage"
+        },
+        {
+          "id": "dashboard.navigation.usage.nav.chats",
+          "from_state": "usage",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.usage.nav.settings",
+          "from_state": "usage",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.usage.nav.features",
+          "from_state": "usage",
+          "action": "nav.features",
+          "to_state": "usage"
+        },
+        {
+          "id": "dashboard.navigation.usage.feature.agent-center",
+          "from_state": "usage",
+          "action": "feature.agent-center",
+          "to_state": "agent-center"
+        },
+        {
+          "id": "dashboard.navigation.usage.feature.model-gateway",
+          "from_state": "usage",
+          "action": "feature.model-gateway",
+          "to_state": "model-gateway"
+        },
+        {
+          "id": "dashboard.navigation.usage.feature.device-pairing",
+          "from_state": "usage",
+          "action": "feature.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.navigation.usage.feature.usage",
+          "from_state": "usage",
+          "action": "feature.usage",
+          "to_state": "usage"
+        },
+        {
+          "id": "dashboard.navigation.settings.nav.chats",
+          "from_state": "settings",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.navigation.settings.nav.settings",
+          "from_state": "settings",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.navigation.settings.nav.features",
+          "from_state": "settings",
+          "action": "nav.features",
+          "to_state": "agent-center"
+        }
+      ]
+    },
+    {
+      "id": "dashboard.settings",
+      "label": "设置：点击目录到对应内容",
+      "presentation": "dashboard-wide",
+      "initial": "general",
+      "setup": [
+        "nav.settings",
+        "settings.general"
+      ],
+      "states": [
+        {
+          "id": "general",
+          "label": "通用"
+        },
+        {
+          "id": "appearance",
+          "label": "外观"
+        },
+        {
+          "id": "updates",
+          "label": "更新"
+        },
+        {
+          "id": "startup",
+          "label": "启动"
+        },
+        {
+          "id": "storage",
+          "label": "存储"
+        },
+        {
+          "id": "diagnostics",
+          "label": "诊断"
+        },
+        {
+          "id": "archived-conversations",
+          "label": "已归档对话"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dashboard.settings.general.settings.general",
+          "from_state": "general",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.general.settings.appearance",
+          "from_state": "general",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.general.settings.updates",
+          "from_state": "general",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.general.settings.startup",
+          "from_state": "general",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.general.settings.storage",
+          "from_state": "general",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.general.settings.diagnostics",
+          "from_state": "general",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.general.settings.archived-conversations",
+          "from_state": "general",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.general",
+          "from_state": "appearance",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.appearance",
+          "from_state": "appearance",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.updates",
+          "from_state": "appearance",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.startup",
+          "from_state": "appearance",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.storage",
+          "from_state": "appearance",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.diagnostics",
+          "from_state": "appearance",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.appearance.settings.archived-conversations",
+          "from_state": "appearance",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.general",
+          "from_state": "updates",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.appearance",
+          "from_state": "updates",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.updates",
+          "from_state": "updates",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.startup",
+          "from_state": "updates",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.storage",
+          "from_state": "updates",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.diagnostics",
+          "from_state": "updates",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.updates.settings.archived-conversations",
+          "from_state": "updates",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.general",
+          "from_state": "startup",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.appearance",
+          "from_state": "startup",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.updates",
+          "from_state": "startup",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.startup",
+          "from_state": "startup",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.storage",
+          "from_state": "startup",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.diagnostics",
+          "from_state": "startup",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.startup.settings.archived-conversations",
+          "from_state": "startup",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.general",
+          "from_state": "storage",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.appearance",
+          "from_state": "storage",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.updates",
+          "from_state": "storage",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.startup",
+          "from_state": "storage",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.storage",
+          "from_state": "storage",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.diagnostics",
+          "from_state": "storage",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.storage.settings.archived-conversations",
+          "from_state": "storage",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.general",
+          "from_state": "diagnostics",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.appearance",
+          "from_state": "diagnostics",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.updates",
+          "from_state": "diagnostics",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.startup",
+          "from_state": "diagnostics",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.storage",
+          "from_state": "diagnostics",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.diagnostics",
+          "from_state": "diagnostics",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.diagnostics.settings.archived-conversations",
+          "from_state": "diagnostics",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.general",
+          "from_state": "archived-conversations",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.appearance",
+          "from_state": "archived-conversations",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.updates",
+          "from_state": "archived-conversations",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.startup",
+          "from_state": "archived-conversations",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.storage",
+          "from_state": "archived-conversations",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.diagnostics",
+          "from_state": "archived-conversations",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "dashboard.settings.archived-conversations.settings.archived-conversations",
+          "from_state": "archived-conversations",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        }
+      ]
+    },
+    {
+      "id": "desktop.settings",
+      "label": "设置：点击目录到对应内容",
+      "presentation": "desktop-wide",
+      "initial": "general",
+      "setup": [
+        "nav.settings",
+        "settings.general"
+      ],
+      "states": [
+        {
+          "id": "general",
+          "label": "通用"
+        },
+        {
+          "id": "appearance",
+          "label": "外观"
+        },
+        {
+          "id": "updates",
+          "label": "更新"
+        },
+        {
+          "id": "startup",
+          "label": "启动"
+        },
+        {
+          "id": "storage",
+          "label": "存储"
+        },
+        {
+          "id": "diagnostics",
+          "label": "诊断"
+        },
+        {
+          "id": "archived-conversations",
+          "label": "已归档对话"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.settings.general.settings.general",
+          "from_state": "general",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.general.settings.appearance",
+          "from_state": "general",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.general.settings.updates",
+          "from_state": "general",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.general.settings.startup",
+          "from_state": "general",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.general.settings.storage",
+          "from_state": "general",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.general.settings.diagnostics",
+          "from_state": "general",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.general.settings.archived-conversations",
+          "from_state": "general",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.general",
+          "from_state": "appearance",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.appearance",
+          "from_state": "appearance",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.updates",
+          "from_state": "appearance",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.startup",
+          "from_state": "appearance",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.storage",
+          "from_state": "appearance",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.diagnostics",
+          "from_state": "appearance",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.appearance.settings.archived-conversations",
+          "from_state": "appearance",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.updates.settings.general",
+          "from_state": "updates",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.updates.settings.appearance",
+          "from_state": "updates",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.updates.settings.updates",
+          "from_state": "updates",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.updates.settings.startup",
+          "from_state": "updates",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.updates.settings.storage",
+          "from_state": "updates",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.updates.settings.diagnostics",
+          "from_state": "updates",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.updates.settings.archived-conversations",
+          "from_state": "updates",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.startup.settings.general",
+          "from_state": "startup",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.startup.settings.appearance",
+          "from_state": "startup",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.startup.settings.updates",
+          "from_state": "startup",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.startup.settings.startup",
+          "from_state": "startup",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.startup.settings.storage",
+          "from_state": "startup",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.startup.settings.diagnostics",
+          "from_state": "startup",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.startup.settings.archived-conversations",
+          "from_state": "startup",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.storage.settings.general",
+          "from_state": "storage",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.storage.settings.appearance",
+          "from_state": "storage",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.storage.settings.updates",
+          "from_state": "storage",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.storage.settings.startup",
+          "from_state": "storage",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.storage.settings.storage",
+          "from_state": "storage",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.storage.settings.diagnostics",
+          "from_state": "storage",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.storage.settings.archived-conversations",
+          "from_state": "storage",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.general",
+          "from_state": "diagnostics",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.appearance",
+          "from_state": "diagnostics",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.updates",
+          "from_state": "diagnostics",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.startup",
+          "from_state": "diagnostics",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.storage",
+          "from_state": "diagnostics",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.diagnostics",
+          "from_state": "diagnostics",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.diagnostics.settings.archived-conversations",
+          "from_state": "diagnostics",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.general",
+          "from_state": "archived-conversations",
+          "action": "settings.general",
+          "to_state": "general"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.appearance",
+          "from_state": "archived-conversations",
+          "action": "settings.appearance",
+          "to_state": "appearance"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.updates",
+          "from_state": "archived-conversations",
+          "action": "settings.updates",
+          "to_state": "updates"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.startup",
+          "from_state": "archived-conversations",
+          "action": "settings.startup",
+          "to_state": "startup"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.storage",
+          "from_state": "archived-conversations",
+          "action": "settings.storage",
+          "to_state": "storage"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.diagnostics",
+          "from_state": "archived-conversations",
+          "action": "settings.diagnostics",
+          "to_state": "diagnostics"
+        },
+        {
+          "id": "desktop.settings.archived-conversations.settings.archived-conversations",
+          "from_state": "archived-conversations",
+          "action": "settings.archived-conversations",
+          "to_state": "archived-conversations"
+        }
+      ]
+    },
+    {
+      "id": "dashboard.compact.navigation",
+      "label": "移动布局：导航及菜单",
+      "presentation": "dashboard-compact",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "device-pairing",
+          "label": "移动配对"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        },
+        {
+          "id": "chats.menu",
+          "label": "对话：导航菜单已打开"
+        },
+        {
+          "id": "device-pairing.menu",
+          "label": "移动配对：导航菜单已打开"
+        },
+        {
+          "id": "settings.menu",
+          "label": "设置：导航菜单已打开"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dashboard.compact.navigation.chats.nav.open-menu",
+          "from_state": "chats",
+          "action": "nav.open-menu",
+          "to_state": "chats.menu"
+        },
+        {
+          "id": "dashboard.compact.navigation.chats.menu.nav.dismiss-menu",
+          "from_state": "chats.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.compact.navigation.chats.menu.nav.chats",
+          "from_state": "chats.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.compact.navigation.chats.menu.nav.device-pairing",
+          "from_state": "chats.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.compact.navigation.chats.menu.nav.settings",
+          "from_state": "chats.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.compact.navigation.device-pairing.nav.open-menu",
+          "from_state": "device-pairing",
+          "action": "nav.open-menu",
+          "to_state": "device-pairing.menu"
+        },
+        {
+          "id": "dashboard.compact.navigation.device-pairing.menu.nav.dismiss-menu",
+          "from_state": "device-pairing.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.compact.navigation.device-pairing.menu.nav.chats",
+          "from_state": "device-pairing.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.compact.navigation.device-pairing.menu.nav.device-pairing",
+          "from_state": "device-pairing.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.compact.navigation.device-pairing.menu.nav.settings",
+          "from_state": "device-pairing.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.compact.navigation.settings.nav.open-menu",
+          "from_state": "settings",
+          "action": "nav.open-menu",
+          "to_state": "settings.menu"
+        },
+        {
+          "id": "dashboard.compact.navigation.settings.menu.nav.dismiss-menu",
+          "from_state": "settings.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.compact.navigation.settings.menu.nav.chats",
+          "from_state": "settings.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.compact.navigation.settings.menu.nav.device-pairing",
+          "from_state": "settings.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.compact.navigation.settings.menu.nav.settings",
+          "from_state": "settings.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        }
+      ]
+    },
+    {
+      "id": "dashboard.medium.navigation",
+      "label": "移动布局：导航及菜单",
+      "presentation": "dashboard-medium",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "device-pairing",
+          "label": "移动配对"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dashboard.medium.navigation.chats.nav.chats",
+          "from_state": "chats",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.medium.navigation.chats.nav.device-pairing",
+          "from_state": "chats",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.medium.navigation.chats.nav.settings",
+          "from_state": "chats",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.medium.navigation.device-pairing.nav.chats",
+          "from_state": "device-pairing",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.medium.navigation.device-pairing.nav.device-pairing",
+          "from_state": "device-pairing",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.medium.navigation.device-pairing.nav.settings",
+          "from_state": "device-pairing",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "dashboard.medium.navigation.settings.nav.chats",
+          "from_state": "settings",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "dashboard.medium.navigation.settings.nav.device-pairing",
+          "from_state": "settings",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "dashboard.medium.navigation.settings.nav.settings",
+          "from_state": "settings",
+          "action": "nav.settings",
+          "to_state": "settings"
+        }
+      ]
+    },
+    {
+      "id": "desktop.compact.navigation",
+      "label": "移动布局：导航及菜单",
+      "presentation": "desktop-compact",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "device-pairing",
+          "label": "移动配对"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        },
+        {
+          "id": "chats.menu",
+          "label": "对话：导航菜单已打开"
+        },
+        {
+          "id": "device-pairing.menu",
+          "label": "移动配对：导航菜单已打开"
+        },
+        {
+          "id": "settings.menu",
+          "label": "设置：导航菜单已打开"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.compact.navigation.chats.nav.open-menu",
+          "from_state": "chats",
+          "action": "nav.open-menu",
+          "to_state": "chats.menu"
+        },
+        {
+          "id": "desktop.compact.navigation.chats.menu.nav.dismiss-menu",
+          "from_state": "chats.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.compact.navigation.chats.menu.nav.chats",
+          "from_state": "chats.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.compact.navigation.chats.menu.nav.device-pairing",
+          "from_state": "chats.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.compact.navigation.chats.menu.nav.settings",
+          "from_state": "chats.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.compact.navigation.device-pairing.nav.open-menu",
+          "from_state": "device-pairing",
+          "action": "nav.open-menu",
+          "to_state": "device-pairing.menu"
+        },
+        {
+          "id": "desktop.compact.navigation.device-pairing.menu.nav.dismiss-menu",
+          "from_state": "device-pairing.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.compact.navigation.device-pairing.menu.nav.chats",
+          "from_state": "device-pairing.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.compact.navigation.device-pairing.menu.nav.device-pairing",
+          "from_state": "device-pairing.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.compact.navigation.device-pairing.menu.nav.settings",
+          "from_state": "device-pairing.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.compact.navigation.settings.nav.open-menu",
+          "from_state": "settings",
+          "action": "nav.open-menu",
+          "to_state": "settings.menu"
+        },
+        {
+          "id": "desktop.compact.navigation.settings.menu.nav.dismiss-menu",
+          "from_state": "settings.menu",
+          "action": "nav.dismiss-menu",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.compact.navigation.settings.menu.nav.chats",
+          "from_state": "settings.menu",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.compact.navigation.settings.menu.nav.device-pairing",
+          "from_state": "settings.menu",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.compact.navigation.settings.menu.nav.settings",
+          "from_state": "settings.menu",
+          "action": "nav.settings",
+          "to_state": "settings"
+        }
+      ]
+    },
+    {
+      "id": "desktop.medium.navigation",
+      "label": "移动布局：导航及菜单",
+      "presentation": "desktop-medium",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "device-pairing",
+          "label": "移动配对"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.medium.navigation.chats.nav.chats",
+          "from_state": "chats",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.medium.navigation.chats.nav.device-pairing",
+          "from_state": "chats",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.medium.navigation.chats.nav.settings",
+          "from_state": "chats",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.medium.navigation.device-pairing.nav.chats",
+          "from_state": "device-pairing",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.medium.navigation.device-pairing.nav.device-pairing",
+          "from_state": "device-pairing",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.medium.navigation.device-pairing.nav.settings",
+          "from_state": "device-pairing",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.medium.navigation.settings.nav.chats",
+          "from_state": "settings",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.medium.navigation.settings.nav.device-pairing",
+          "from_state": "settings",
+          "action": "nav.device-pairing",
+          "to_state": "device-pairing"
+        },
+        {
+          "id": "desktop.medium.navigation.settings.nav.settings",
+          "from_state": "settings",
+          "action": "nav.settings",
+          "to_state": "settings"
+        }
+      ]
+    },
+    {
+      "id": "desktop.navigation",
+      "label": "桌面布局：对话与设置",
+      "presentation": "desktop-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "settings",
+          "label": "设置"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.navigation.chats.nav.chats",
+          "from_state": "chats",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.navigation.chats.nav.settings",
+          "from_state": "chats",
+          "action": "nav.settings",
+          "to_state": "settings"
+        },
+        {
+          "id": "desktop.navigation.settings.nav.chats",
+          "from_state": "settings",
+          "action": "nav.chats",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.navigation.settings.nav.settings",
+          "from_state": "settings",
+          "action": "nav.settings",
+          "to_state": "settings"
+        }
+      ]
+    },
+    {
+      "id": "desktop.window.agent-center",
+      "label": "桌面窗口：智能体中心",
+      "presentation": "desktop-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话，窗口未打开"
+        },
+        {
+          "id": "menu",
+          "label": "功能菜单"
+        },
+        {
+          "id": "window",
+          "label": "智能体中心窗口"
+        },
+        {
+          "id": "window-menu",
+          "label": "智能体中心窗口上打开功能菜单"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.window.agent-center.chats.nav.features",
+          "from_state": "chats",
+          "action": "nav.features",
+          "to_state": "menu"
+        },
+        {
+          "id": "desktop.window.agent-center.menu.nav.features",
+          "from_state": "menu",
+          "action": "nav.features",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.agent-center.menu.feature.agent-center",
+          "from_state": "menu",
+          "action": "feature.agent-center",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.agent-center.window.window.close.agent-center",
+          "from_state": "window",
+          "action": "window.close.agent-center",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.agent-center.window.dock.agent-center",
+          "from_state": "window",
+          "action": "dock.agent-center",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.agent-center.window.nav.features",
+          "from_state": "window",
+          "action": "nav.features",
+          "to_state": "window-menu"
+        },
+        {
+          "id": "desktop.window.agent-center.window-menu.nav.features",
+          "from_state": "window-menu",
+          "action": "nav.features",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.agent-center.window-menu.feature.agent-center",
+          "from_state": "window-menu",
+          "action": "feature.agent-center",
+          "to_state": "window"
+        }
+      ]
+    },
+    {
+      "id": "desktop.window.model-gateway",
+      "label": "桌面窗口：模型网关",
+      "presentation": "desktop-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话，窗口未打开"
+        },
+        {
+          "id": "menu",
+          "label": "功能菜单"
+        },
+        {
+          "id": "window",
+          "label": "模型网关窗口"
+        },
+        {
+          "id": "window-menu",
+          "label": "模型网关窗口上打开功能菜单"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.window.model-gateway.chats.nav.features",
+          "from_state": "chats",
+          "action": "nav.features",
+          "to_state": "menu"
+        },
+        {
+          "id": "desktop.window.model-gateway.menu.nav.features",
+          "from_state": "menu",
+          "action": "nav.features",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.model-gateway.menu.feature.model-gateway",
+          "from_state": "menu",
+          "action": "feature.model-gateway",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.model-gateway.window.window.close.model-gateway",
+          "from_state": "window",
+          "action": "window.close.model-gateway",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.model-gateway.window.dock.model-gateway",
+          "from_state": "window",
+          "action": "dock.model-gateway",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.model-gateway.window.nav.features",
+          "from_state": "window",
+          "action": "nav.features",
+          "to_state": "window-menu"
+        },
+        {
+          "id": "desktop.window.model-gateway.window-menu.nav.features",
+          "from_state": "window-menu",
+          "action": "nav.features",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.model-gateway.window-menu.feature.model-gateway",
+          "from_state": "window-menu",
+          "action": "feature.model-gateway",
+          "to_state": "window"
+        }
+      ]
+    },
+    {
+      "id": "desktop.window.device-pairing",
+      "label": "桌面窗口：移动配对",
+      "presentation": "desktop-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话，窗口未打开"
+        },
+        {
+          "id": "menu",
+          "label": "功能菜单"
+        },
+        {
+          "id": "window",
+          "label": "移动配对窗口"
+        },
+        {
+          "id": "window-menu",
+          "label": "移动配对窗口上打开功能菜单"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.window.device-pairing.chats.nav.features",
+          "from_state": "chats",
+          "action": "nav.features",
+          "to_state": "menu"
+        },
+        {
+          "id": "desktop.window.device-pairing.menu.nav.features",
+          "from_state": "menu",
+          "action": "nav.features",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.device-pairing.menu.feature.device-pairing",
+          "from_state": "menu",
+          "action": "feature.device-pairing",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.device-pairing.window.window.close.device-pairing",
+          "from_state": "window",
+          "action": "window.close.device-pairing",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.device-pairing.window.dock.device-pairing",
+          "from_state": "window",
+          "action": "dock.device-pairing",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.device-pairing.window.nav.features",
+          "from_state": "window",
+          "action": "nav.features",
+          "to_state": "window-menu"
+        },
+        {
+          "id": "desktop.window.device-pairing.window-menu.nav.features",
+          "from_state": "window-menu",
+          "action": "nav.features",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.device-pairing.window-menu.feature.device-pairing",
+          "from_state": "window-menu",
+          "action": "feature.device-pairing",
+          "to_state": "window"
+        }
+      ]
+    },
+    {
+      "id": "desktop.window.usage",
+      "label": "桌面窗口：统计面板",
+      "presentation": "desktop-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话，窗口未打开"
+        },
+        {
+          "id": "menu",
+          "label": "功能菜单"
+        },
+        {
+          "id": "window",
+          "label": "统计面板窗口"
+        },
+        {
+          "id": "window-menu",
+          "label": "统计面板窗口上打开功能菜单"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.window.usage.chats.nav.features",
+          "from_state": "chats",
+          "action": "nav.features",
+          "to_state": "menu"
+        },
+        {
+          "id": "desktop.window.usage.menu.nav.features",
+          "from_state": "menu",
+          "action": "nav.features",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.usage.menu.feature.usage",
+          "from_state": "menu",
+          "action": "feature.usage",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.usage.window.window.close.usage",
+          "from_state": "window",
+          "action": "window.close.usage",
+          "to_state": "chats"
+        },
+        {
+          "id": "desktop.window.usage.window.dock.usage",
+          "from_state": "window",
+          "action": "dock.usage",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.usage.window.nav.features",
+          "from_state": "window",
+          "action": "nav.features",
+          "to_state": "window-menu"
+        },
+        {
+          "id": "desktop.window.usage.window-menu.nav.features",
+          "from_state": "window-menu",
+          "action": "nav.features",
+          "to_state": "window"
+        },
+        {
+          "id": "desktop.window.usage.window-menu.feature.usage",
+          "from_state": "window-menu",
+          "action": "feature.usage",
+          "to_state": "window"
+        }
+      ]
+    },
+    {
+      "id": "dashboard.search",
+      "label": "对话：搜索弹窗",
+      "presentation": "dashboard-wide",
+      "initial": "chats",
+      "setup": [],
+      "states": [
+        {
+          "id": "chats",
+          "label": "对话"
+        },
+        {
+          "id": "search",
+          "label": "搜索弹窗"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dashboard.search.chats.search.open",
+          "from_state": "chats",
+          "action": "search.open",
+          "to_state": "search"
+        },
+        {
+          "id": "dashboard.search.search.search.dismiss",
+          "from_state": "search",
+          "action": "search.dismiss",
+          "to_state": "chats"
+        }
+      ]
+    },
+    {
+      "id": "dashboard.conversation-journey",
+      "label": "普通对话、群聊、返回、搜索与导航的连续随机操作",
+      "presentation": "dashboard-wide",
+      "scenario": "populated-conversations",
+      "initial": "native-agent",
+      "setup": [],
+      "states": [
+        {
+          "id": "native-agent",
+          "label": "普通对话 / 历史列表",
+          "view": {
+            "page": "native",
+            "list": "agent",
+            "roster": false
+          }
+        },
+        {
+          "id": "native-agent.search",
+          "label": "普通对话 / 历史列表 / 搜索框",
+          "view": {
+            "page": "native",
+            "list": "agent",
+            "roster": false,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "native-agent.create",
+          "label": "普通对话 / 历史列表 / 新建菜单",
+          "view": {
+            "page": "native",
+            "list": "agent",
+            "roster": false,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "native-agent.new-group",
+          "label": "普通对话 / 历史列表 / 新建群聊对话框",
+          "view": {
+            "page": "native",
+            "list": "agent",
+            "roster": false,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "native-agent.search-query",
+          "label": "普通对话 / 历史列表 / 搜索设置",
+          "view": {
+            "page": "native",
+            "list": "agent",
+            "roster": false,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "native-agent.destination.settings",
+          "label": "设置 / 保留普通对话 / 历史列表",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "native-agent.destination.agent-center",
+          "label": "智能体中心 / 保留普通对话 / 历史列表",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "native-agent.destination.model-gateway",
+          "label": "模型网关 / 保留普通对话 / 历史列表",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "native-agent.destination.device-pairing",
+          "label": "设备配对 / 保留普通对话 / 历史列表",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "native-agent.destination.usage",
+          "label": "用量统计 / 保留普通对话 / 历史列表",
+          "view": {
+            "destination": "usage"
+          }
+        },
+        {
+          "id": "native-catalog",
+          "label": "普通对话 / 对话总列表",
+          "view": {
+            "page": "native",
+            "list": "catalog",
+            "roster": false
+          }
+        },
+        {
+          "id": "native-catalog.search",
+          "label": "普通对话 / 对话总列表 / 搜索框",
+          "view": {
+            "page": "native",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "native-catalog.create",
+          "label": "普通对话 / 对话总列表 / 新建菜单",
+          "view": {
+            "page": "native",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "native-catalog.new-group",
+          "label": "普通对话 / 对话总列表 / 新建群聊对话框",
+          "view": {
+            "page": "native",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "native-catalog.search-query",
+          "label": "普通对话 / 对话总列表 / 搜索设置",
+          "view": {
+            "page": "native",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "native-catalog.destination.settings",
+          "label": "设置 / 保留普通对话 / 对话总列表",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "native-catalog.destination.agent-center",
+          "label": "智能体中心 / 保留普通对话 / 对话总列表",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "native-catalog.destination.model-gateway",
+          "label": "模型网关 / 保留普通对话 / 对话总列表",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "native-catalog.destination.device-pairing",
+          "label": "设备配对 / 保留普通对话 / 对话总列表",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "native-catalog.destination.usage",
+          "label": "用量统计 / 保留普通对话 / 对话总列表",
+          "view": {
+            "destination": "usage"
+          }
+        },
+        {
+          "id": "group-group-1",
+          "label": "群聊 / 群内列表 / 成员展开",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true
+          }
+        },
+        {
+          "id": "group-group-1.search",
+          "label": "群聊 / 群内列表 / 成员展开 / 搜索框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "group-group-1.create",
+          "label": "群聊 / 群内列表 / 成员展开 / 新建菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "group-group-1.new-group",
+          "label": "群聊 / 群内列表 / 成员展开 / 新建群聊对话框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "group-group-1.group-actions",
+          "label": "群聊 / 群内列表 / 成员展开 / 群聊操作菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "group-actions"
+          }
+        },
+        {
+          "id": "group-group-1.clear-confirm",
+          "label": "群聊 / 群内列表 / 成员展开 / 清空历史确认框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "clear-confirm"
+          }
+        },
+        {
+          "id": "group-group-1.search-query",
+          "label": "群聊 / 群内列表 / 成员展开 / 搜索设置",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": true,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "group-group-1.destination.settings",
+          "label": "设置 / 保留群聊 / 群内列表 / 成员展开",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "group-group-1.destination.agent-center",
+          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员展开",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "group-group-1.destination.model-gateway",
+          "label": "模型网关 / 保留群聊 / 群内列表 / 成员展开",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "group-group-1.destination.device-pairing",
+          "label": "设备配对 / 保留群聊 / 群内列表 / 成员展开",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "group-group-1.destination.usage",
+          "label": "用量统计 / 保留群聊 / 群内列表 / 成员展开",
+          "view": {
+            "destination": "usage"
+          }
+        },
+        {
+          "id": "group-catalog-1",
+          "label": "群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true
+          }
+        },
+        {
+          "id": "group-catalog-1.search",
+          "label": "群聊 / 对话总列表 / 成员展开 / 搜索框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "group-catalog-1.create",
+          "label": "群聊 / 对话总列表 / 成员展开 / 新建菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "group-catalog-1.new-group",
+          "label": "群聊 / 对话总列表 / 成员展开 / 新建群聊对话框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "group-catalog-1.group-actions",
+          "label": "群聊 / 对话总列表 / 成员展开 / 群聊操作菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "group-actions"
+          }
+        },
+        {
+          "id": "group-catalog-1.clear-confirm",
+          "label": "群聊 / 对话总列表 / 成员展开 / 清空历史确认框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "clear-confirm"
+          }
+        },
+        {
+          "id": "group-catalog-1.search-query",
+          "label": "群聊 / 对话总列表 / 成员展开 / 搜索设置",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": true,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "group-catalog-1.destination.settings",
+          "label": "设置 / 保留群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "group-catalog-1.destination.agent-center",
+          "label": "智能体中心 / 保留群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "group-catalog-1.destination.model-gateway",
+          "label": "模型网关 / 保留群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "group-catalog-1.destination.device-pairing",
+          "label": "设备配对 / 保留群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "group-catalog-1.destination.usage",
+          "label": "用量统计 / 保留群聊 / 对话总列表 / 成员展开",
+          "view": {
+            "destination": "usage"
+          }
+        },
+        {
+          "id": "group-group-0",
+          "label": "群聊 / 群内列表 / 成员收起",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false
+          }
+        },
+        {
+          "id": "group-group-0.search",
+          "label": "群聊 / 群内列表 / 成员收起 / 搜索框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "group-group-0.create",
+          "label": "群聊 / 群内列表 / 成员收起 / 新建菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "group-group-0.new-group",
+          "label": "群聊 / 群内列表 / 成员收起 / 新建群聊对话框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "group-group-0.group-actions",
+          "label": "群聊 / 群内列表 / 成员收起 / 群聊操作菜单",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "group-actions"
+          }
+        },
+        {
+          "id": "group-group-0.clear-confirm",
+          "label": "群聊 / 群内列表 / 成员收起 / 清空历史确认框",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "clear-confirm"
+          }
+        },
+        {
+          "id": "group-group-0.search-query",
+          "label": "群聊 / 群内列表 / 成员收起 / 搜索设置",
+          "view": {
+            "page": "group",
+            "list": "group",
+            "roster": false,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "group-group-0.destination.settings",
+          "label": "设置 / 保留群聊 / 群内列表 / 成员收起",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "group-group-0.destination.agent-center",
+          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员收起",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "group-group-0.destination.model-gateway",
+          "label": "模型网关 / 保留群聊 / 群内列表 / 成员收起",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "group-group-0.destination.device-pairing",
+          "label": "设备配对 / 保留群聊 / 群内列表 / 成员收起",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "group-group-0.destination.usage",
+          "label": "用量统计 / 保留群聊 / 群内列表 / 成员收起",
+          "view": {
+            "destination": "usage"
+          }
+        },
+        {
+          "id": "group-catalog-0",
+          "label": "群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false
+          }
+        },
+        {
+          "id": "group-catalog-0.search",
+          "label": "群聊 / 对话总列表 / 成员收起 / 搜索框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "search"
+          }
+        },
+        {
+          "id": "group-catalog-0.create",
+          "label": "群聊 / 对话总列表 / 成员收起 / 新建菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "create"
+          }
+        },
+        {
+          "id": "group-catalog-0.new-group",
+          "label": "群聊 / 对话总列表 / 成员收起 / 新建群聊对话框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "new-group"
+          }
+        },
+        {
+          "id": "group-catalog-0.group-actions",
+          "label": "群聊 / 对话总列表 / 成员收起 / 群聊操作菜单",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "group-actions"
+          }
+        },
+        {
+          "id": "group-catalog-0.clear-confirm",
+          "label": "群聊 / 对话总列表 / 成员收起 / 清空历史确认框",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "clear-confirm"
+          }
+        },
+        {
+          "id": "group-catalog-0.search-query",
+          "label": "群聊 / 对话总列表 / 成员收起 / 搜索设置",
+          "view": {
+            "page": "group",
+            "list": "catalog",
+            "roster": false,
+            "overlay": "search",
+            "query": "Settings"
+          }
+        },
+        {
+          "id": "group-catalog-0.destination.settings",
+          "label": "设置 / 保留群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "destination": "settings"
+          }
+        },
+        {
+          "id": "group-catalog-0.destination.agent-center",
+          "label": "智能体中心 / 保留群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "destination": "agent-center"
+          }
+        },
+        {
+          "id": "group-catalog-0.destination.model-gateway",
+          "label": "模型网关 / 保留群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "destination": "model-gateway"
+          }
+        },
+        {
+          "id": "group-catalog-0.destination.device-pairing",
+          "label": "设备配对 / 保留群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "destination": "device-pairing"
+          }
+        },
+        {
+          "id": "group-catalog-0.destination.usage",
+          "label": "用量统计 / 保留群聊 / 对话总列表 / 成员收起",
+          "view": {
+            "destination": "usage"
+          }
+        }
+      ],
+      "transitions": [
+        {
+          "id": "chat.native-agent.search.open",
+          "from_state": "native-agent",
+          "action": "search.open",
+          "to_state": "native-agent.search"
+        },
+        {
+          "id": "chat.native-agent.search.search.dismiss",
+          "from_state": "native-agent.search",
+          "action": "search.dismiss",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.create.open",
+          "from_state": "native-agent",
+          "action": "create.open",
+          "to_state": "native-agent.create"
+        },
+        {
+          "id": "chat.native-agent.create.menu.dismiss",
+          "from_state": "native-agent.create",
+          "action": "menu.dismiss",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.create.create.group",
+          "from_state": "native-agent.create",
+          "action": "create.group",
+          "to_state": "native-agent.new-group"
+        },
+        {
+          "id": "chat.native-agent.new-group.dialog.cancel",
+          "from_state": "native-agent.new-group",
+          "action": "dialog.cancel",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.list.refresh",
+          "from_state": "native-agent",
+          "action": "list.refresh",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.list.back",
+          "from_state": "native-agent",
+          "action": "list.back",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-agent.search.search.type-settings",
+          "from_state": "native-agent.search",
+          "action": "search.type-settings",
+          "to_state": "native-agent.search-query"
+        },
+        {
+          "id": "chat.native-agent.search-query.search.clear",
+          "from_state": "native-agent.search-query",
+          "action": "search.clear",
+          "to_state": "native-agent.search"
+        },
+        {
+          "id": "chat.native-agent.search-query.search.dismiss",
+          "from_state": "native-agent.search-query",
+          "action": "search.dismiss",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.search-query.search.select-settings",
+          "from_state": "native-agent.search-query",
+          "action": "search.select-settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.nav.chats",
+          "from_state": "native-agent",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.nav.settings",
+          "from_state": "native-agent",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.nav.features",
+          "from_state": "native-agent",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.settings.nav.chats",
+          "from_state": "native-agent.destination.settings",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.destination.settings.nav.settings",
+          "from_state": "native-agent.destination.settings",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.destination.settings.nav.features",
+          "from_state": "native-agent.destination.settings",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.nav.chats",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.nav.settings",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.nav.features",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.feature.agent-center",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.feature.model-gateway",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "native-agent.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.feature.device-pairing",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "native-agent.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-agent.destination.agent-center.feature.usage",
+          "from_state": "native-agent.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "native-agent.destination.usage"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.nav.chats",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.nav.settings",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.nav.features",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.feature.agent-center",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.feature.model-gateway",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "native-agent.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.feature.device-pairing",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "native-agent.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-agent.destination.model-gateway.feature.usage",
+          "from_state": "native-agent.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "native-agent.destination.usage"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.nav.chats",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.nav.settings",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.nav.features",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.feature.agent-center",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.feature.model-gateway",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "native-agent.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.feature.device-pairing",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "native-agent.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-agent.destination.device-pairing.feature.usage",
+          "from_state": "native-agent.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "native-agent.destination.usage"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.nav.chats",
+          "from_state": "native-agent.destination.usage",
+          "action": "nav.chats",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.nav.settings",
+          "from_state": "native-agent.destination.usage",
+          "action": "nav.settings",
+          "to_state": "native-agent.destination.settings"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.nav.features",
+          "from_state": "native-agent.destination.usage",
+          "action": "nav.features",
+          "to_state": "native-agent.destination.usage"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.feature.agent-center",
+          "from_state": "native-agent.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "native-agent.destination.agent-center"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.feature.model-gateway",
+          "from_state": "native-agent.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "native-agent.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.feature.device-pairing",
+          "from_state": "native-agent.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "native-agent.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-agent.destination.usage.feature.usage",
+          "from_state": "native-agent.destination.usage",
+          "action": "feature.usage",
+          "to_state": "native-agent.destination.usage"
+        },
+        {
+          "id": "chat.native-catalog.search.open",
+          "from_state": "native-catalog",
+          "action": "search.open",
+          "to_state": "native-catalog.search"
+        },
+        {
+          "id": "chat.native-catalog.search.search.dismiss",
+          "from_state": "native-catalog.search",
+          "action": "search.dismiss",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.create.open",
+          "from_state": "native-catalog",
+          "action": "create.open",
+          "to_state": "native-catalog.create"
+        },
+        {
+          "id": "chat.native-catalog.create.menu.dismiss",
+          "from_state": "native-catalog.create",
+          "action": "menu.dismiss",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.create.create.group",
+          "from_state": "native-catalog.create",
+          "action": "create.group",
+          "to_state": "native-catalog.new-group"
+        },
+        {
+          "id": "chat.native-catalog.new-group.dialog.cancel",
+          "from_state": "native-catalog.new-group",
+          "action": "dialog.cancel",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.list.refresh",
+          "from_state": "native-catalog",
+          "action": "list.refresh",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.group.open",
+          "from_state": "native-catalog",
+          "action": "group.open",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.native-catalog.native.open",
+          "from_state": "native-catalog",
+          "action": "native.open",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.native-catalog.search.search.type-settings",
+          "from_state": "native-catalog.search",
+          "action": "search.type-settings",
+          "to_state": "native-catalog.search-query"
+        },
+        {
+          "id": "chat.native-catalog.search-query.search.clear",
+          "from_state": "native-catalog.search-query",
+          "action": "search.clear",
+          "to_state": "native-catalog.search"
+        },
+        {
+          "id": "chat.native-catalog.search-query.search.dismiss",
+          "from_state": "native-catalog.search-query",
+          "action": "search.dismiss",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.search-query.search.select-settings",
+          "from_state": "native-catalog.search-query",
+          "action": "search.select-settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.nav.chats",
+          "from_state": "native-catalog",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.nav.settings",
+          "from_state": "native-catalog",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.nav.features",
+          "from_state": "native-catalog",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.settings.nav.chats",
+          "from_state": "native-catalog.destination.settings",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.destination.settings.nav.settings",
+          "from_state": "native-catalog.destination.settings",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.destination.settings.nav.features",
+          "from_state": "native-catalog.destination.settings",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.nav.chats",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.nav.settings",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.nav.features",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.feature.agent-center",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.feature.model-gateway",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "native-catalog.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.feature.device-pairing",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "native-catalog.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-catalog.destination.agent-center.feature.usage",
+          "from_state": "native-catalog.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "native-catalog.destination.usage"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.nav.chats",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.nav.settings",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.nav.features",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.feature.agent-center",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.feature.model-gateway",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "native-catalog.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.feature.device-pairing",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "native-catalog.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-catalog.destination.model-gateway.feature.usage",
+          "from_state": "native-catalog.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "native-catalog.destination.usage"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.nav.chats",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.nav.settings",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.nav.features",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.feature.agent-center",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.feature.model-gateway",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "native-catalog.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.feature.device-pairing",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "native-catalog.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-catalog.destination.device-pairing.feature.usage",
+          "from_state": "native-catalog.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "native-catalog.destination.usage"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.nav.chats",
+          "from_state": "native-catalog.destination.usage",
+          "action": "nav.chats",
+          "to_state": "native-catalog"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.nav.settings",
+          "from_state": "native-catalog.destination.usage",
+          "action": "nav.settings",
+          "to_state": "native-catalog.destination.settings"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.nav.features",
+          "from_state": "native-catalog.destination.usage",
+          "action": "nav.features",
+          "to_state": "native-catalog.destination.usage"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.feature.agent-center",
+          "from_state": "native-catalog.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "native-catalog.destination.agent-center"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.feature.model-gateway",
+          "from_state": "native-catalog.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "native-catalog.destination.model-gateway"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.feature.device-pairing",
+          "from_state": "native-catalog.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "native-catalog.destination.device-pairing"
+        },
+        {
+          "id": "chat.native-catalog.destination.usage.feature.usage",
+          "from_state": "native-catalog.destination.usage",
+          "action": "feature.usage",
+          "to_state": "native-catalog.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.search.open",
+          "from_state": "group-group-1",
+          "action": "search.open",
+          "to_state": "group-group-1.search"
+        },
+        {
+          "id": "chat.group-group-1.search.search.dismiss",
+          "from_state": "group-group-1.search",
+          "action": "search.dismiss",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.create.open",
+          "from_state": "group-group-1",
+          "action": "create.open",
+          "to_state": "group-group-1.create"
+        },
+        {
+          "id": "chat.group-group-1.create.menu.dismiss",
+          "from_state": "group-group-1.create",
+          "action": "menu.dismiss",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.create.create.group",
+          "from_state": "group-group-1.create",
+          "action": "create.group",
+          "to_state": "group-group-1.new-group"
+        },
+        {
+          "id": "chat.group-group-1.new-group.dialog.cancel",
+          "from_state": "group-group-1.new-group",
+          "action": "dialog.cancel",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.list.refresh",
+          "from_state": "group-group-1",
+          "action": "list.refresh",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.list.back",
+          "from_state": "group-group-1",
+          "action": "list.back",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-group-1.roster.toggle",
+          "from_state": "group-group-1",
+          "action": "roster.toggle",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-1.conversation.scroll-up",
+          "from_state": "group-group-1",
+          "action": "conversation.scroll-up",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.conversation.scroll-down",
+          "from_state": "group-group-1",
+          "action": "conversation.scroll-down",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group.actions",
+          "from_state": "group-group-1",
+          "action": "group.actions",
+          "to_state": "group-group-1.group-actions"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.group.actions",
+          "from_state": "group-group-1.group-actions",
+          "action": "group.actions",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.menu.dismiss",
+          "from_state": "group-group-1.group-actions",
+          "action": "menu.dismiss",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.group.clear",
+          "from_state": "group-group-1.group-actions",
+          "action": "group.clear",
+          "to_state": "group-group-1.clear-confirm"
+        },
+        {
+          "id": "chat.group-group-1.clear-confirm.dialog.cancel",
+          "from_state": "group-group-1.clear-confirm",
+          "action": "dialog.cancel",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.search.search.type-settings",
+          "from_state": "group-group-1.search",
+          "action": "search.type-settings",
+          "to_state": "group-group-1.search-query"
+        },
+        {
+          "id": "chat.group-group-1.search-query.search.clear",
+          "from_state": "group-group-1.search-query",
+          "action": "search.clear",
+          "to_state": "group-group-1.search"
+        },
+        {
+          "id": "chat.group-group-1.search-query.search.dismiss",
+          "from_state": "group-group-1.search-query",
+          "action": "search.dismiss",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.search-query.search.select-settings",
+          "from_state": "group-group-1.search-query",
+          "action": "search.select-settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.nav.chats",
+          "from_state": "group-group-1",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.nav.settings",
+          "from_state": "group-group-1",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.nav.features",
+          "from_state": "group-group-1",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.settings.nav.chats",
+          "from_state": "group-group-1.destination.settings",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.destination.settings.nav.settings",
+          "from_state": "group-group-1.destination.settings",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.destination.settings.nav.features",
+          "from_state": "group-group-1.destination.settings",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.nav.chats",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.nav.settings",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.nav.features",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.feature.agent-center",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.feature.model-gateway",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.feature.device-pairing",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-1.destination.agent-center.feature.usage",
+          "from_state": "group-group-1.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "group-group-1.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.nav.chats",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.nav.settings",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.nav.features",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.feature.agent-center",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.feature.model-gateway",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.feature.device-pairing",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-1.destination.model-gateway.feature.usage",
+          "from_state": "group-group-1.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "group-group-1.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.nav.chats",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.nav.settings",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.nav.features",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.feature.agent-center",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.feature.model-gateway",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.feature.device-pairing",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-1.destination.device-pairing.feature.usage",
+          "from_state": "group-group-1.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "group-group-1.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.nav.chats",
+          "from_state": "group-group-1.destination.usage",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.nav.settings",
+          "from_state": "group-group-1.destination.usage",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.nav.features",
+          "from_state": "group-group-1.destination.usage",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.feature.agent-center",
+          "from_state": "group-group-1.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.feature.model-gateway",
+          "from_state": "group-group-1.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.feature.device-pairing",
+          "from_state": "group-group-1.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-1.destination.usage.feature.usage",
+          "from_state": "group-group-1.destination.usage",
+          "action": "feature.usage",
+          "to_state": "group-group-1.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-1.search.open",
+          "from_state": "group-catalog-1",
+          "action": "search.open",
+          "to_state": "group-catalog-1.search"
+        },
+        {
+          "id": "chat.group-catalog-1.search.search.dismiss",
+          "from_state": "group-catalog-1.search",
+          "action": "search.dismiss",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.create.open",
+          "from_state": "group-catalog-1",
+          "action": "create.open",
+          "to_state": "group-catalog-1.create"
+        },
+        {
+          "id": "chat.group-catalog-1.create.menu.dismiss",
+          "from_state": "group-catalog-1.create",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.create.create.group",
+          "from_state": "group-catalog-1.create",
+          "action": "create.group",
+          "to_state": "group-catalog-1.new-group"
+        },
+        {
+          "id": "chat.group-catalog-1.new-group.dialog.cancel",
+          "from_state": "group-catalog-1.new-group",
+          "action": "dialog.cancel",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.list.refresh",
+          "from_state": "group-catalog-1",
+          "action": "list.refresh",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group.open",
+          "from_state": "group-catalog-1",
+          "action": "group.open",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-catalog-1.native.open",
+          "from_state": "group-catalog-1",
+          "action": "native.open",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.group-catalog-1.roster.toggle",
+          "from_state": "group-catalog-1",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-1.conversation.scroll-up",
+          "from_state": "group-catalog-1",
+          "action": "conversation.scroll-up",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.conversation.scroll-down",
+          "from_state": "group-catalog-1",
+          "action": "conversation.scroll-down",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group.actions",
+          "from_state": "group-catalog-1",
+          "action": "group.actions",
+          "to_state": "group-catalog-1.group-actions"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.group.actions",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "group.actions",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.menu.dismiss",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.group.clear",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "group.clear",
+          "to_state": "group-catalog-1.clear-confirm"
+        },
+        {
+          "id": "chat.group-catalog-1.clear-confirm.dialog.cancel",
+          "from_state": "group-catalog-1.clear-confirm",
+          "action": "dialog.cancel",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.search.search.type-settings",
+          "from_state": "group-catalog-1.search",
+          "action": "search.type-settings",
+          "to_state": "group-catalog-1.search-query"
+        },
+        {
+          "id": "chat.group-catalog-1.search-query.search.clear",
+          "from_state": "group-catalog-1.search-query",
+          "action": "search.clear",
+          "to_state": "group-catalog-1.search"
+        },
+        {
+          "id": "chat.group-catalog-1.search-query.search.dismiss",
+          "from_state": "group-catalog-1.search-query",
+          "action": "search.dismiss",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.search-query.search.select-settings",
+          "from_state": "group-catalog-1.search-query",
+          "action": "search.select-settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.nav.chats",
+          "from_state": "group-catalog-1",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.nav.settings",
+          "from_state": "group-catalog-1",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.nav.features",
+          "from_state": "group-catalog-1",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.settings.nav.chats",
+          "from_state": "group-catalog-1.destination.settings",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.settings.nav.settings",
+          "from_state": "group-catalog-1.destination.settings",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.settings.nav.features",
+          "from_state": "group-catalog-1.destination.settings",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.nav.chats",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.nav.settings",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.nav.features",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.feature.agent-center",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.feature.model-gateway",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.feature.device-pairing",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.agent-center.feature.usage",
+          "from_state": "group-catalog-1.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "group-catalog-1.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.nav.chats",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.nav.settings",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.nav.features",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.feature.agent-center",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.feature.model-gateway",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.feature.device-pairing",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.model-gateway.feature.usage",
+          "from_state": "group-catalog-1.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "group-catalog-1.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.nav.chats",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.nav.settings",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.nav.features",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.feature.agent-center",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.feature.model-gateway",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.feature.device-pairing",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.device-pairing.feature.usage",
+          "from_state": "group-catalog-1.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "group-catalog-1.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.nav.chats",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.nav.settings",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.nav.features",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.feature.agent-center",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.feature.model-gateway",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-1.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.feature.device-pairing",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-1.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-1.destination.usage.feature.usage",
+          "from_state": "group-catalog-1.destination.usage",
+          "action": "feature.usage",
+          "to_state": "group-catalog-1.destination.usage"
+        },
+        {
+          "id": "chat.group-group-0.search.open",
+          "from_state": "group-group-0",
+          "action": "search.open",
+          "to_state": "group-group-0.search"
+        },
+        {
+          "id": "chat.group-group-0.search.search.dismiss",
+          "from_state": "group-group-0.search",
+          "action": "search.dismiss",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.create.open",
+          "from_state": "group-group-0",
+          "action": "create.open",
+          "to_state": "group-group-0.create"
+        },
+        {
+          "id": "chat.group-group-0.create.menu.dismiss",
+          "from_state": "group-group-0.create",
+          "action": "menu.dismiss",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.create.create.group",
+          "from_state": "group-group-0.create",
+          "action": "create.group",
+          "to_state": "group-group-0.new-group"
+        },
+        {
+          "id": "chat.group-group-0.new-group.dialog.cancel",
+          "from_state": "group-group-0.new-group",
+          "action": "dialog.cancel",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.list.refresh",
+          "from_state": "group-group-0",
+          "action": "list.refresh",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.list.back",
+          "from_state": "group-group-0",
+          "action": "list.back",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-group-0.roster.toggle",
+          "from_state": "group-group-0",
+          "action": "roster.toggle",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-0.conversation.scroll-up",
+          "from_state": "group-group-0",
+          "action": "conversation.scroll-up",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.conversation.scroll-down",
+          "from_state": "group-group-0",
+          "action": "conversation.scroll-down",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group.actions",
+          "from_state": "group-group-0",
+          "action": "group.actions",
+          "to_state": "group-group-0.group-actions"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.group.actions",
+          "from_state": "group-group-0.group-actions",
+          "action": "group.actions",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.menu.dismiss",
+          "from_state": "group-group-0.group-actions",
+          "action": "menu.dismiss",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.group.clear",
+          "from_state": "group-group-0.group-actions",
+          "action": "group.clear",
+          "to_state": "group-group-0.clear-confirm"
+        },
+        {
+          "id": "chat.group-group-0.clear-confirm.dialog.cancel",
+          "from_state": "group-group-0.clear-confirm",
+          "action": "dialog.cancel",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.search.search.type-settings",
+          "from_state": "group-group-0.search",
+          "action": "search.type-settings",
+          "to_state": "group-group-0.search-query"
+        },
+        {
+          "id": "chat.group-group-0.search-query.search.clear",
+          "from_state": "group-group-0.search-query",
+          "action": "search.clear",
+          "to_state": "group-group-0.search"
+        },
+        {
+          "id": "chat.group-group-0.search-query.search.dismiss",
+          "from_state": "group-group-0.search-query",
+          "action": "search.dismiss",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.search-query.search.select-settings",
+          "from_state": "group-group-0.search-query",
+          "action": "search.select-settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.nav.chats",
+          "from_state": "group-group-0",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.nav.settings",
+          "from_state": "group-group-0",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.nav.features",
+          "from_state": "group-group-0",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.settings.nav.chats",
+          "from_state": "group-group-0.destination.settings",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.destination.settings.nav.settings",
+          "from_state": "group-group-0.destination.settings",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.destination.settings.nav.features",
+          "from_state": "group-group-0.destination.settings",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.nav.chats",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.nav.settings",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.nav.features",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.feature.agent-center",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.feature.model-gateway",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.feature.device-pairing",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-0.destination.agent-center.feature.usage",
+          "from_state": "group-group-0.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "group-group-0.destination.usage"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.nav.chats",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.nav.settings",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.nav.features",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.feature.agent-center",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.feature.model-gateway",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.feature.device-pairing",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-0.destination.model-gateway.feature.usage",
+          "from_state": "group-group-0.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "group-group-0.destination.usage"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.nav.chats",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.nav.settings",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.nav.features",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.feature.agent-center",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.feature.model-gateway",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.feature.device-pairing",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-0.destination.device-pairing.feature.usage",
+          "from_state": "group-group-0.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "group-group-0.destination.usage"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.nav.chats",
+          "from_state": "group-group-0.destination.usage",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.nav.settings",
+          "from_state": "group-group-0.destination.usage",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.nav.features",
+          "from_state": "group-group-0.destination.usage",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.usage"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.feature.agent-center",
+          "from_state": "group-group-0.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.feature.model-gateway",
+          "from_state": "group-group-0.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "group-group-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.feature.device-pairing",
+          "from_state": "group-group-0.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "group-group-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-group-0.destination.usage.feature.usage",
+          "from_state": "group-group-0.destination.usage",
+          "action": "feature.usage",
+          "to_state": "group-group-0.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-0.search.open",
+          "from_state": "group-catalog-0",
+          "action": "search.open",
+          "to_state": "group-catalog-0.search"
+        },
+        {
+          "id": "chat.group-catalog-0.search.search.dismiss",
+          "from_state": "group-catalog-0.search",
+          "action": "search.dismiss",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.create.open",
+          "from_state": "group-catalog-0",
+          "action": "create.open",
+          "to_state": "group-catalog-0.create"
+        },
+        {
+          "id": "chat.group-catalog-0.create.menu.dismiss",
+          "from_state": "group-catalog-0.create",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.create.create.group",
+          "from_state": "group-catalog-0.create",
+          "action": "create.group",
+          "to_state": "group-catalog-0.new-group"
+        },
+        {
+          "id": "chat.group-catalog-0.new-group.dialog.cancel",
+          "from_state": "group-catalog-0.new-group",
+          "action": "dialog.cancel",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.list.refresh",
+          "from_state": "group-catalog-0",
+          "action": "list.refresh",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group.open",
+          "from_state": "group-catalog-0",
+          "action": "group.open",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-catalog-0.native.open",
+          "from_state": "group-catalog-0",
+          "action": "native.open",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.group-catalog-0.roster.toggle",
+          "from_state": "group-catalog-0",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-0.conversation.scroll-up",
+          "from_state": "group-catalog-0",
+          "action": "conversation.scroll-up",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.conversation.scroll-down",
+          "from_state": "group-catalog-0",
+          "action": "conversation.scroll-down",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group.actions",
+          "from_state": "group-catalog-0",
+          "action": "group.actions",
+          "to_state": "group-catalog-0.group-actions"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.group.actions",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "group.actions",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.menu.dismiss",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "menu.dismiss",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.group.clear",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "group.clear",
+          "to_state": "group-catalog-0.clear-confirm"
+        },
+        {
+          "id": "chat.group-catalog-0.clear-confirm.dialog.cancel",
+          "from_state": "group-catalog-0.clear-confirm",
+          "action": "dialog.cancel",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.search.search.type-settings",
+          "from_state": "group-catalog-0.search",
+          "action": "search.type-settings",
+          "to_state": "group-catalog-0.search-query"
+        },
+        {
+          "id": "chat.group-catalog-0.search-query.search.clear",
+          "from_state": "group-catalog-0.search-query",
+          "action": "search.clear",
+          "to_state": "group-catalog-0.search"
+        },
+        {
+          "id": "chat.group-catalog-0.search-query.search.dismiss",
+          "from_state": "group-catalog-0.search-query",
+          "action": "search.dismiss",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.search-query.search.select-settings",
+          "from_state": "group-catalog-0.search-query",
+          "action": "search.select-settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.nav.chats",
+          "from_state": "group-catalog-0",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.nav.settings",
+          "from_state": "group-catalog-0",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.nav.features",
+          "from_state": "group-catalog-0",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.settings.nav.chats",
+          "from_state": "group-catalog-0.destination.settings",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.settings.nav.settings",
+          "from_state": "group-catalog-0.destination.settings",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.settings.nav.features",
+          "from_state": "group-catalog-0.destination.settings",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.nav.chats",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.nav.settings",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.nav.features",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.feature.agent-center",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.feature.model-gateway",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.feature.device-pairing",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.agent-center.feature.usage",
+          "from_state": "group-catalog-0.destination.agent-center",
+          "action": "feature.usage",
+          "to_state": "group-catalog-0.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.nav.chats",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.nav.settings",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.nav.features",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.feature.agent-center",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.feature.model-gateway",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.feature.device-pairing",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.model-gateway.feature.usage",
+          "from_state": "group-catalog-0.destination.model-gateway",
+          "action": "feature.usage",
+          "to_state": "group-catalog-0.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.nav.chats",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.nav.settings",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.nav.features",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.feature.agent-center",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.feature.model-gateway",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.feature.device-pairing",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.device-pairing.feature.usage",
+          "from_state": "group-catalog-0.destination.device-pairing",
+          "action": "feature.usage",
+          "to_state": "group-catalog-0.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.nav.chats",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.nav.settings",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.nav.features",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.usage"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.feature.agent-center",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "feature.agent-center",
+          "to_state": "group-catalog-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.feature.model-gateway",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "feature.model-gateway",
+          "to_state": "group-catalog-0.destination.model-gateway"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.feature.device-pairing",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "feature.device-pairing",
+          "to_state": "group-catalog-0.destination.device-pairing"
+        },
+        {
+          "id": "chat.group-catalog-0.destination.usage.feature.usage",
+          "from_state": "group-catalog-0.destination.usage",
+          "action": "feature.usage",
+          "to_state": "group-catalog-0.destination.usage"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.search.open",
+          "from_state": "group-group-1.group-actions",
+          "action": "search.open",
+          "to_state": "group-group-1.search"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.create.open",
+          "from_state": "group-group-1.group-actions",
+          "action": "create.open",
+          "to_state": "group-group-1.create"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.list.refresh",
+          "from_state": "group-group-1.group-actions",
+          "action": "list.refresh",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.list.back",
+          "from_state": "group-group-1.group-actions",
+          "action": "list.back",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.roster.toggle",
+          "from_state": "group-group-1.group-actions",
+          "action": "roster.toggle",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.conversation.scroll-up",
+          "from_state": "group-group-1.group-actions",
+          "action": "conversation.scroll-up",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.conversation.scroll-down",
+          "from_state": "group-group-1.group-actions",
+          "action": "conversation.scroll-down",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.nav.chats",
+          "from_state": "group-group-1.group-actions",
+          "action": "nav.chats",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.nav.settings",
+          "from_state": "group-group-1.group-actions",
+          "action": "nav.settings",
+          "to_state": "group-group-1.destination.settings"
+        },
+        {
+          "id": "chat.group-group-1.group-actions.nav.features",
+          "from_state": "group-group-1.group-actions",
+          "action": "nav.features",
+          "to_state": "group-group-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.search.open",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "search.open",
+          "to_state": "group-catalog-1.search"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.create.open",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "create.open",
+          "to_state": "group-catalog-1.create"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.list.refresh",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "list.refresh",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.group.open",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "group.open",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.native.open",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "native.open",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.roster.toggle",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.conversation.scroll-up",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "conversation.scroll-up",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.conversation.scroll-down",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "conversation.scroll-down",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.nav.chats",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "nav.chats",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.nav.settings",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "nav.settings",
+          "to_state": "group-catalog-1.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-1.group-actions.nav.features",
+          "from_state": "group-catalog-1.group-actions",
+          "action": "nav.features",
+          "to_state": "group-catalog-1.destination.agent-center"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.search.open",
+          "from_state": "group-group-0.group-actions",
+          "action": "search.open",
+          "to_state": "group-group-0.search"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.create.open",
+          "from_state": "group-group-0.group-actions",
+          "action": "create.open",
+          "to_state": "group-group-0.create"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.list.refresh",
+          "from_state": "group-group-0.group-actions",
+          "action": "list.refresh",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.list.back",
+          "from_state": "group-group-0.group-actions",
+          "action": "list.back",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.roster.toggle",
+          "from_state": "group-group-0.group-actions",
+          "action": "roster.toggle",
+          "to_state": "group-group-1"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.conversation.scroll-up",
+          "from_state": "group-group-0.group-actions",
+          "action": "conversation.scroll-up",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.conversation.scroll-down",
+          "from_state": "group-group-0.group-actions",
+          "action": "conversation.scroll-down",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.nav.chats",
+          "from_state": "group-group-0.group-actions",
+          "action": "nav.chats",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.nav.settings",
+          "from_state": "group-group-0.group-actions",
+          "action": "nav.settings",
+          "to_state": "group-group-0.destination.settings"
+        },
+        {
+          "id": "chat.group-group-0.group-actions.nav.features",
+          "from_state": "group-group-0.group-actions",
+          "action": "nav.features",
+          "to_state": "group-group-0.destination.agent-center"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.search.open",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "search.open",
+          "to_state": "group-catalog-0.search"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.create.open",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "create.open",
+          "to_state": "group-catalog-0.create"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.list.refresh",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "list.refresh",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.group.open",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "group.open",
+          "to_state": "group-group-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.native.open",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "native.open",
+          "to_state": "native-agent"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.roster.toggle",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "roster.toggle",
+          "to_state": "group-catalog-1"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.conversation.scroll-up",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "conversation.scroll-up",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.conversation.scroll-down",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "conversation.scroll-down",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.nav.chats",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "nav.chats",
+          "to_state": "group-catalog-0"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.nav.settings",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "nav.settings",
+          "to_state": "group-catalog-0.destination.settings"
+        },
+        {
+          "id": "chat.group-catalog-0.group-actions.nav.features",
+          "from_state": "group-catalog-0.group-actions",
+          "action": "nav.features",
+          "to_state": "group-catalog-0.destination.agent-center"
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,7 @@ authority.
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
 - [Continuous Assistant target architecture](architecture/CONTINUOUS-ASSISTANT.md) · [持续 Assistant 目标架构](architecture/CONTINUOUS-ASSISTANT.zh-CN.md)
+- [Assistant workflow control and compiler](architecture/ASSISTANT-WORKFLOW-CONTROL.md) · [Assistant 工作流控制与编译器](architecture/ASSISTANT-WORKFLOW-CONTROL.zh-CN.md)
 - [Conversation vertical contract — Reactive State Binding](architecture/CONVERSATION-VERTICAL-CONTRACT.md)
 - [Client-native interaction boundary](architecture/CLIENT-NATIVE-INTERACTION.md)
 - [Native CLI](architecture/NATIVE-CLI.md) · [原生 CLI](architecture/NATIVE-CLI.zh-CN.md)
@@ -45,6 +46,8 @@ authority.
 - [Adaptive Flywheel strategies](functionality/ADAPTIVE-FLYWHEEL.md) ·
   [Adaptive Flywheel 策略](functionality/ADAPTIVE-FLYWHEEL.zh-CN.md)
 - [Design system](functionality/DESIGN-SYSTEM.md)
+- [UI interaction state machine](functionality/UI-INTERACTIONS.md) ·
+  [用户界面交互状态机](functionality/UI-INTERACTIONS.zh-CN.md)
 - [Current retiring endpoint-protection Preview file handoff](functionality/ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
 
 ## Protocols and artifact formats
