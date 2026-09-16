@@ -92,6 +92,7 @@ final class PostConversationMessage extends ConversationIntent {
     required this.content,
     required Iterable<String> addressedMembershipIds,
     this.dispatchCanonical = true,
+    this.suppressAssistant = false,
     super.trace,
   }) : addressedMembershipIds = List<String>.unmodifiable(
          addressedMembershipIds,
@@ -101,6 +102,10 @@ final class PostConversationMessage extends ConversationIntent {
   final String content;
   final List<String> addressedMembershipIds;
   final bool dispatchCanonical;
+
+  /// Excludes the designated Assistant from this message's native addressing.
+  /// The Event still persists and independently bound Flywheel routing remains.
+  final bool suppressAssistant;
 }
 
 final class UpdateConversationDraft extends ConversationIntent {

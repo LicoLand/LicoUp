@@ -257,8 +257,9 @@ not user-selectable fields. Agent pickers contain only detected targets with a
 usable conversation driver; unsupported or merely known targets are omitted.
 Session-policy implementation details are not shown as role labels.
 
-Opening the editor hydrates selected workflow-role and Assistant model catalogs
-through one target batch. Rust reuses bounded discovery workers, one shared
+The workflow editor hydrates its selected workflow-role model catalogs through
+one target batch. The separate Assistant editor prepares its own selected Agent
+catalog through the same discovery owner. Rust reuses bounded discovery workers, one shared
 process/environment snapshot, and one discovery-cache commit; the client does
 not start a scanner or async runtime per role.
 
@@ -267,13 +268,26 @@ not start a scanner or async runtime per role.
 Only a group Conversation shows the strategy capsule. A one-to-one
 Conversation does not.
 
-The capsule above the composer defaults to **Automatic adaptation**. This is
-the Assistant's default mode, not a built-in strategy. Selecting an
-authorized revision shows the strategy name and places an `@` capsule for the
-entry-slot candidate in front of the input. Selection admits every bound Agent
-as a group Membership. It does not start a run.
+The **Adaptive Flywheel** capsule above the composer opens only the workflow
+editor. Selecting an authorized revision admits every bound Agent as a group
+Membership; it does not start a run or edit the Assistant profile.
 
-While Assistant mode is active, a user send always addresses the designated
+The Assistant name in the composer toggles its inclusion in later sends. The
+adjacent pencil opens a centered Assistant configuration dialog with the
+existing Agent, model and reasoning-effort fields. Saving that profile is
+independent of saving workflow bindings. Turning the name off does not cancel
+a turn already running; the explicit cancel control retains that responsibility.
+
+When the Assistant is off, native routing excludes its designated Membership
+from direct message dispatch and steering while other mentioned members remain
+eligible. Messages still enter the shared group history. This is a dispatch
+choice, not a history-visibility restriction. The toggle retains its existing
+conversation-pane lifetime; reopening the pane restores its configured default.
+The independent Flywheel still uses its bound actors and master-notice lifecycle;
+this toggle does not disable a workflow or suppress its completion notices.
+
+When the Assistant is on, existing native addressing applies: explicit mentions
+select their members; a message without mentions addresses the designated
 Assistant through the same Membership-scoped native lane as a one-to-one
 conversation. The Assistant may answer directly or use a workflow; that choice
 does not replace the dialogue lane. Native steer, resume, cancellation, event,
@@ -284,7 +298,7 @@ The first send is still a Conversation Event. Native addressing starts
 own a send process). Later sends stay Events: an in-flight Membership
 PersistentTurn is steered; a Waiting run is resumed — except a callback wait,
 which only the master agent's explicit `advance` / `return` / `terminate`
-decision settles. Clearing the capsule exits
+decision settles. Clearing the bound strategy revision exits
 strategy mode and does not cancel a run that is already executing.
 
 An `@mention` only selects Memberships. It uses the same PersistentTurn stream

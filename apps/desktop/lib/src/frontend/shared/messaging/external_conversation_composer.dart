@@ -79,12 +79,7 @@ final class _ExternalConversationComposerClipState
 
     boundary.visitChildElements(visit);
     if (composerHeight == null) return;
-    final extent = composerHeight!
-        .clamp(
-          MessagingDesktopMetrics.conversationComposerOverlayExtent,
-          MessagingDesktopMetrics.conversationComposerOverlayExtent * 3,
-        )
-        .toDouble();
+    final extent = composerHeight!;
     if (extent != _hiddenExtent) {
       setState(() => _hiddenExtent = extent);
     }

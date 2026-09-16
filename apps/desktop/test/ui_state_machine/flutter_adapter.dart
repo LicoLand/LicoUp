@@ -77,6 +77,7 @@ final class FlutterInteractionAdapter {
       'list.back': 'messaging-conversation-list-back',
       'create.open': 'messaging-create-conversation',
       'roster.toggle': 'canonical-group-roster-toggle',
+      'group.menu': 'canonical-group-menu-button',
       'group.actions': 'canonical-group-assistant-actions-trigger',
       'group.clear': 'canonical-group-action-clear-history',
     };
@@ -261,8 +262,8 @@ final class FlutterInteractionAdapter {
           .first;
       final before = messagePositions(flow);
       final boundary = action.endsWith('up')
-          ? 'Canonical message 1\n'
-          : 'Canonical message 65\n';
+          ? 'Canonical message 1'
+          : 'Canonical message 65';
       await tester.timedDrag(
         flow,
         Offset(0, action.endsWith('up') ? 350 : -350),
@@ -277,7 +278,7 @@ final class FlutterInteractionAdapter {
       );
       expect(before, isNotEmpty, reason: 'Scroll starts with visible messages');
       expect(
-        moved || before.keys.any((text) => text.startsWith(boundary)),
+        moved || before.containsKey(boundary),
         isTrue,
         reason: 'Messages must move, or already be at the requested end',
       );
@@ -321,6 +322,7 @@ final class FlutterInteractionAdapter {
         'create': 'messaging-create-conversation-menu',
         'new-group': 'canonical-group-create-dialog',
         'group-actions': 'canonical-group-assistant-actions-menu',
+        'group-menu': 'canonical-group-menu-panel',
         'clear-confirm': 'canonical-group-clear-history-confirm',
       };
       if (overlay != null) {

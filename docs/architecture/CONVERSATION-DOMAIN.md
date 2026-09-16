@@ -515,6 +515,13 @@ To eliminate phantom UI locks and state drift, the architecture mandates **stric
 
 ### ① User Message Two-Phase Dispatch Flow
 
+`conversation.dispatch.after-post` also accepts an optional boolean
+`suppressAssistant` (default `false`). It excludes the designated Assistant
+from direct targeting and steering for that message. Rust still derives mentions
+from the committed Event, persists shared history and returns existing attachable
+turns. The [Assistant control](../functionality/ADAPTIVE-FLYWHEEL.md#group-conversation-start)
+owns the UI choice; independently bound Flywheel execution is unchanged.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -535,7 +542,7 @@ sequenceDiagram
     Bridge-->>UI: 6. Confirmation received
     Note over UI: Release Draft:<br/>• _draft = ''<br/>• Refresh local list
 
-    UI->>Bridge: 7. Downlink action: conversation.dispatch.after-post { conversationId, eventId }
+    UI->>Bridge: 7. Downlink action: conversation.dispatch.after-post { conversationId, eventId, suppressAssistant? }
     Bridge->>Dispatch: 8. Pass committed (conversationId, eventId)
     Dispatch->>Domain: 9. Read text from DB, parse @mention / bound Flywheel Graph
     Dispatch->>Dispatch: 10. Register Dispatch(accepted) + unfinalized Agent Event slot
