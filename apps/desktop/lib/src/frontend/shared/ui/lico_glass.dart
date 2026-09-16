@@ -39,7 +39,7 @@ const ColorFilter _glassLuminosity = ColorFilter.matrix(<double>[
 ]);
 
 /// Control-layer Liquid Glass: shadows, optional lensed blur, luminosity
-/// fill, then a 1 px conic specular rim in the foreground. Content-layer
+/// fill, then a thin, softly lit rim in the foreground. Content-layer
 /// cards must not use this widget.
 class LicoGlass extends StatefulWidget {
   const LicoGlass({
@@ -77,8 +77,8 @@ class LicoGlass extends StatefulWidget {
   final Color? focusColor;
   final double focusWidth;
 
-  /// Resting light: CSS 145° from north, as Flutter sweep radians (east, clockwise).
-  static const restLightAngle = 55 * math.pi / 180;
+  /// Resting light comes from above-left (east is zero, clockwise is positive).
+  static const restLightAngle = -135 * math.pi / 180;
 
   @override
   State<LicoGlass> createState() => _LicoGlassState();
@@ -202,7 +202,6 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
         (widget.size == LicoGlassSize.large
             ? MessagingDesktopMetrics.conversationOverlayGlassBlurSigma
             : 8.0);
-    final encloseRim = widget.size == LicoGlassSize.small;
 
     final useBackdrop =
         widget.readBackdrop && blur > 0 && fill.a < 0.98 && !reduceTransparency;
@@ -220,8 +219,8 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
           GlassLens.isSupported) {
         final parameters = (
           radius: _uniformRadius(widget.borderRadius, size),
-          displace: widget.size == LicoGlassSize.large ? 12.0 : 8.0,
-          chroma: widget.chroma ? 0.08 : 0.0,
+          displace: widget.size == LicoGlassSize.large ? 6.0 : 4.0,
+          chroma: widget.chroma ? 0.04 : 0.0,
         );
         if (_lens == null || _lensParameters != parameters) {
           _lens?.dispose();
@@ -272,7 +271,6 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
                     : LicoGlass.restLightAngle,
                 rimHi: MessagingDesktopMetrics.glassEdgeRimHi(isDark: isDark),
                 rimLo: MessagingDesktopMetrics.glassEdgeRimLo(isDark: isDark),
-                enclose: encloseRim,
               )
             : null,
         child: child,
@@ -354,8 +352,8 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
   }
 }
 
-/// Foreground specular rim. One dominant lit arc and a whisper on the far
-/// edge — a uniform alpha ring reads as a drawn outline, not glass.
+/// Foreground edge light fades broadly toward the far side. Its brightness
+/// varies continuously along straight edges and corners without a bright pole.
 class GlassEdgeLight extends StatelessWidget {
   const GlassEdgeLight({
     super.key,
@@ -387,7 +385,6 @@ class GlassEdgeLight extends StatelessWidget {
         lightAngle: lightAngle,
         rimHi: rimHi ?? MessagingDesktopMetrics.glassEdgeRimHi(isDark: isDark),
         rimLo: rimLo ?? MessagingDesktopMetrics.glassEdgeRimLo(isDark: isDark),
-        enclose: false,
       ),
       child: child,
     );
@@ -401,7 +398,6 @@ class GlassSpecularRimPainter extends CustomPainter {
     required this.rimLo,
     required this.lightAngle,
     this.rimWidth = 1,
-    this.enclose = false,
   });
 
   final BorderRadius borderRadius;
@@ -410,11 +406,6 @@ class GlassSpecularRimPainter extends CustomPainter {
   final double lightAngle;
   final double rimWidth;
 
-  /// When true, the light/shadow ring travels the full silhouette and never
-  /// drops to transparent — buttons stay enclosed. Overlay glass keeps the
-  /// open highlight (lit arc + far whisper).
-  final bool enclose;
-
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty || rimWidth <= 0) return;
@@ -422,42 +413,20 @@ class GlassSpecularRimPainter extends CustomPainter {
     final outer = borderRadius.toRRect(rect).scaleRadii();
     final inner = outer.deflate(rimWidth);
     if (inner.width <= 0 || inner.height <= 0) return;
-    final far = rimLo.withValues(alpha: rimLo.a * 0.65);
-    final shader =
-        (enclose
-                ? SweepGradient(
-                    startAngle: lightAngle,
-                    endAngle: lightAngle + math.pi * 2,
-                    colors: [rimHi, rimLo, far, rimLo, rimHi],
-                    stops: const [0, 0.22, 0.5, 0.78, 1],
-                  )
-                : SweepGradient(
-                    startAngle: lightAngle,
-                    endAngle: lightAngle + math.pi * 2,
-                    colors: [
-                      rimHi,
-                      rimLo,
-                      Colors.transparent,
-                      Colors.transparent,
-                      far,
-                      Colors.transparent,
-                      Colors.transparent,
-                      rimLo,
-                      rimHi,
-                    ],
-                    stops: const [
-                      0,
-                      36 / 360,
-                      88 / 360,
-                      152 / 360,
-                      180 / 360,
-                      208 / 360,
-                      286 / 360,
-                      330 / 360,
-                      1,
-                    ],
-                  ))
-            .createShader(rect);
+    // Project the entire slab onto the light direction. A broad ramp avoids
+    // the concentrated bright pole a conic gradient creates on long edges.
+    final dx = math.cos(lightAngle);
+    final dy = math.sin(lightAngle);
+    final extent = dx.abs() * size.width + dy.abs() * size.height;
+    final direction = Alignment(
+      dx * extent / size.width,
+      dy * extent / size.height,
+    );
+    final shader = LinearGradient(
+      begin: -direction,
+      end: direction,
+      colors: [rimLo, rimHi],
+    ).createShader(rect);
     canvas.drawDRRect(
       outer,
       inner,
@@ -474,6 +443,5 @@ class GlassSpecularRimPainter extends CustomPainter {
       oldDelegate.rimHi != rimHi ||
       oldDelegate.rimLo != rimLo ||
       oldDelegate.lightAngle != lightAngle ||
-      oldDelegate.rimWidth != rimWidth ||
-      oldDelegate.enclose != enclose;
+      oldDelegate.rimWidth != rimWidth;
 }

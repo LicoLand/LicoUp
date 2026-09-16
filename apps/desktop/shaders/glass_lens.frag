@@ -16,14 +16,13 @@ float roundedBoxSdf(vec2 p, vec2 b, float r) {
 }
 
 vec2 roundedBoxNormal(vec2 p, vec2 b, float r) {
-  float e = 1.0;
-  float dx = roundedBoxSdf(p + vec2(e, 0.0), b, r) -
-      roundedBoxSdf(p - vec2(e, 0.0), b, r);
-  float dy = roundedBoxSdf(p + vec2(0.0, e), b, r) -
-      roundedBoxSdf(p - vec2(0.0, e), b, r);
-  vec2 n = vec2(dx, dy);
-  float len = length(n);
-  return len > 0.0001 ? n / len : vec2(0.0);
+  vec2 q = abs(p) - b + vec2(r);
+  vec2 corner = max(q, 0.0);
+  float len = length(corner);
+  if (len > 0.0001) {
+    return sign(p) * corner / len;
+  }
+  return q.x > q.y ? vec2(sign(p.x), 0.0) : vec2(0.0, sign(p.y));
 }
 
 vec2 sampleUv(vec2 frag, vec2 offset) {
@@ -42,10 +41,13 @@ void main() {
   vec2 halfSize = max(center, vec2(0.5));
   float dist = roundedBoxSdf(p, halfSize, radius);
   vec2 normal = roundedBoxNormal(p, halfSize, radius);
-  // Stronger at the rim, weaker toward the face — long capsules bend on
-  // the flat sides instead of smearing toward the center.
-  float rim = smoothstep(-max(u_displace * 6.0, 1.0), 0.0, dist);
-  vec2 offset = normal * u_displace * rim;
+  // Keep the optical body at the perimeter, even on a short search field.
+  // Displacement strength must not enlarge the affected band across the face.
+  float band = max(1.0, min(min(u_size.x, u_size.y) * 0.25, 12.0));
+  float rim = smoothstep(-band, 0.0, dist);
+  rim *= rim;
+  // A convex slab magnifies the backdrop by sampling toward its interior.
+  vec2 offset = -normal * u_displace * rim;
 
   if (u_chroma <= 0.0001) {
     frag_color = texture(u_texture, sampleUv(frag, offset));
