@@ -13,6 +13,7 @@ import 'src/frontend/environment/environment_projection_adapter.dart';
 import 'src/frontend/l10n/lico_strings.dart';
 import 'src/frontend/appearance/appearance_preset_config.dart';
 import 'src/frontend/appearance/appearance_projection_adapter.dart';
+import 'src/frontend/shared/ui/glass_lens.dart';
 import 'src/frontend/shared/ui/theme.dart';
 import 'src/frontend/shared/ui/lico_motion_scope.dart';
 import 'src/frontend/shell/client_shell.dart';
@@ -61,6 +62,7 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
     _composition = widget.compositionFactory?.call() ?? ClientAppComposition();
     _composition.attachFlutterObservation(WidgetsBinding.instance);
     WidgetsBinding.instance.addObserver(this);
+    unawaited(GlassLens.ensureLoaded());
     _composition.updateConversationAttention(
       lifecycleState:
           WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,

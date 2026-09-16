@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -648,16 +649,10 @@ void main() {
 
     final button = find.byKey(const Key('agents-sidebar-add-target'));
     expect(button, findsOneWidget);
-    final circle = tester.widget<AnimatedContainer>(
-      find
-          .descendant(of: button, matching: find.byType(AnimatedContainer))
-          .first,
+    expect(
+      find.descendant(of: button, matching: find.byType(LicoGlass)),
+      findsOneWidget,
     );
-    final decoration = circle.decoration! as BoxDecoration;
-    // The unified icon-button primitive expresses shape through borderRadius
-    // so the same recipe can also nest concentrically inside a rounded field.
-    expect(decoration.borderRadius, isNotNull);
-    expect(decoration.border!.top.width, 1);
     expect(
       tester.getSize(button),
       Size(LicoIconButtonSize.large.extent, LicoIconButtonSize.large.extent),

@@ -98,10 +98,38 @@ instances cannot appear in a feature. Agent, Plugin, Skill, archive and
 continuous-assistant surfaces each own their specialization. Changes to a
 feature's local treatment cannot silently alter other feature types.
 
-`ContinuousStrokePainter` draws one inset rounded rectangle path, including
-all four edges and corner arcs. Search capsules, glass controls and structural
-rims share it. A capsule outline must not be assembled from separate line and
-arc widgets or painted twice by a Material border and an overlay rim.
+`ContinuousStrokePainter` and `ContinuousRoundedBorder` fill one ring between
+the outer and inner rounded rects, including all four edges and corner arcs.
+Content-layer cards, inputs, chips and themed outlines share that draw. Input
+focus transitions retain this border owner; floating labels remove only the
+intersecting ring, following the same left-to-right and right-to-left gap
+geometry as Material inputs. A
+content outline must not be assembled from separate line and arc widgets,
+painted as a stroked round rect or circle, or painted twice by a Material
+border and an overlay rim.
+
+Control-layer glass is a different owner. `LicoGlass` paints unclipped
+shadows, then one clip around optional lens displacement, blur, luminosity
+and fill, then the child, then a 1 px conic specular rim in the foreground.
+The clip does not wrap the rim. Overlay glass uses a sweep-gradient catch of
+light (lit arc plus a far-edge whisper). Small glass controls (outlined
+buttons, search) keep that light/shadow treatment but enclose the full
+silhouette so the ring never drops out. Neither is a uniform-alpha hairline.
+Opaque glass controls skip backdrop reads so an empty background is not
+refracted into a grey pill. Nested glass on glass is forbidden: ghost header
+icons already inside overlay glass do not receive a second glass surface.
+Search capsules and outlined circular buttons use this glass owner; they do
+not use `ContinuousRoundedBorder` as their material edge. Focus remains a 2 px
+interaction ring, not a material rim. Focus, warning and high-contrast outlines
+paint above the fill so opaque controls cannot hide interaction feedback.
+Interaction and accessibility changes update this chrome without replacing the
+content subtree, preserving editing focus, selection and local widget state.
+Base surfaces paint their structural ring in the foreground without adding
+implicit content padding; feature-owned insets remain unchanged.
+Each lensed slab owns and reuses its shader, releasing it on replacement or
+unmount; only the immutable fragment program is shared. Displacement increases
+toward the rim and fades toward the interior. Unsupported renderers retain the
+blur and specular rim without shader displacement.
 The sidebar, conversation header and composer must also avoid a second outline
 from an enclosing surface. Visual review includes the straight-to-curve joins,
 all four sidebar corners and the navigation divider. The composer's attachment
@@ -121,7 +149,8 @@ Nested rounded controls use `inner radius = outer radius − gap`, bounded at
 zero. Layout profile metrics own window, sidebar and conversation capsule
 geometry. Theme files cannot override these dimensions. Opaque glass controls
 do not perform backdrop blur; translucent conversation overlays retain their
-explicit glass treatment. Rims use uniform alpha around the entire shape.
+explicit glass treatment. Content-layer rims use uniform alpha around the
+entire shape. Glass rims do not.
 
 ## Navigation and feature pages
 

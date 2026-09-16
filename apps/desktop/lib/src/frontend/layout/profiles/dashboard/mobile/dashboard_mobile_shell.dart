@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_components.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 Widget buildDashboardMobileCompactShell(
   BuildContext context,
@@ -203,55 +204,59 @@ final class _DashboardCompactHeader extends StatelessWidget {
       key: const Key('dashboard-mobile-compact-header'),
       height: extent,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          border: Border(bottom: BorderSide(color: colors.line, width: 1)),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: targetExtent,
-              height: targetExtent,
-              child: IconButton(
-                key: const Key('dashboard-mobile-menu-button'),
-                tooltip: menuLabel,
-                onPressed: onPressed,
-                icon: AnimatedRotation(
-                  turns: open ? 0.125 : 0,
-                  duration:
-                      MediaQuery.maybeOf(context)?.disableAnimations == true
-                      ? Duration.zero
-                      : const Duration(milliseconds: 120),
-                  child: Icon(open ? Icons.close : Icons.grid_view_rounded),
+        decoration: BoxDecoration(color: colors.surface),
+        child: CustomPaint(
+          foregroundPainter: ContinuousEdgeHairlinePainter(
+            color: colors.line,
+            edge: AxisDirection.down,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: targetExtent,
+                height: targetExtent,
+                child: IconButton(
+                  key: const Key('dashboard-mobile-menu-button'),
+                  tooltip: menuLabel,
+                  onPressed: onPressed,
+                  icon: AnimatedRotation(
+                    turns: open ? 0.125 : 0,
+                    duration:
+                        MediaQuery.maybeOf(context)?.disableAnimations == true
+                        ? Duration.zero
+                        : const Duration(milliseconds: 120),
+                    child: Icon(open ? Icons.close : Icons.grid_view_rounded),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: MediaQuery.withClampedTextScaling(
-                maxScaleFactor:
-                    DashboardMobileMetrics.compactHeaderTextScaleCeiling,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      activeLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontSize:
-                            DashboardMobileMetrics.compactHeaderTitleFontSize,
-                        fontWeight: FontWeight.w700,
-                        height: DashboardMobileMetrics.compactHeaderTitleHeight,
+              const SizedBox(width: 4),
+              Expanded(
+                child: MediaQuery.withClampedTextScaling(
+                  maxScaleFactor:
+                      DashboardMobileMetrics.compactHeaderTextScaleCeiling,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        activeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontSize:
+                              DashboardMobileMetrics.compactHeaderTitleFontSize,
+                          fontWeight: FontWeight.w700,
+                          height:
+                              DashboardMobileMetrics.compactHeaderTitleHeight,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-          ],
+              const SizedBox(width: 10),
+            ],
+          ),
         ),
       ),
     );
@@ -432,42 +437,48 @@ final class _DashboardMediumNavigationRail extends StatelessWidget {
       key: const Key('dashboard-mobile-medium-rail'),
       width: DashboardMobileMetrics.mediumRailExtent,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          border: Border(right: BorderSide(color: colors.line, width: 1)),
-        ),
-        child: Semantics(
-          container: true,
-          label: 'Dashboard · ${strings.features}',
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.separated(
-                  key: const Key('dashboard-mobile-medium-navigation'),
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  itemCount: data.availableDestinations.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 3),
-                  itemBuilder: (context, index) {
-                    final destination = data.availableDestinations[index];
-                    return FocusTraversalOrder(
-                      order: NumericFocusOrder(index.toDouble()),
-                      child: data.components.navigationItem(
-                        context,
-                        key: ValueKey(
-                          'dashboard-mobile-medium-navigation-${destination.name}',
+        decoration: BoxDecoration(color: colors.surface),
+        child: CustomPaint(
+          foregroundPainter: ContinuousEdgeHairlinePainter(
+            color: colors.line,
+            edge: AxisDirection.right,
+          ),
+          child: Semantics(
+            container: true,
+            label: 'Dashboard · ${strings.features}',
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.separated(
+                    key: const Key('dashboard-mobile-medium-navigation'),
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    itemCount: data.availableDestinations.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 3),
+                    itemBuilder: (context, index) {
+                      final destination = data.availableDestinations[index];
+                      return FocusTraversalOrder(
+                        order: NumericFocusOrder(index.toDouble()),
+                        child: data.components.navigationItem(
+                          context,
+                          key: ValueKey(
+                            'dashboard-mobile-medium-navigation-${destination.name}',
+                          ),
+                          icon: Icon(
+                            dashboardMobileDestinationIcon(destination),
+                          ),
+                          label: data.destinationLabel(destination),
+                          selected: destination == data.activeDestination,
+                          onPressed: () =>
+                              data.onSelectDestination(destination),
                         ),
-                        icon: Icon(dashboardMobileDestinationIcon(destination)),
-                        label: data.destinationLabel(destination),
-                        selected: destination == data.activeDestination,
-                        onPressed: () => data.onSelectDestination(destination),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 5),
-            ],
+                const SizedBox(height: 5),
+              ],
+            ),
           ),
         ),
       ),

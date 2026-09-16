@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -65,9 +66,9 @@ class _MobileScanQrOption extends StatelessWidget {
         borderRadius: BorderRadius.circular(LicoRadius.floating),
         onTap: onTap,
         child: Container(
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             borderRadius: BorderRadius.circular(LicoRadius.floating),
-            border: Border.all(color: colors.primary.withAlpha(170)),
+            stroke: colors.primary.withAlpha(170),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(

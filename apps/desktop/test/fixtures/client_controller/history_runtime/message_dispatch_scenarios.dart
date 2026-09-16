@@ -24,7 +24,7 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
         portableData: PortableDataRoot(dataDirectoryOverride: directory),
         agentService: service,
       );
-      addTearDown(controller.dispose);
+      addTearDown(controller.close);
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');

@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 const LayoutComponentKit dashboardMobileComponents =
     DashboardMobileComponentKit();
@@ -150,7 +151,7 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
     VoidCallback? onPressed,
   }) {
     final colors = context.layoutPalette;
-    final shape = RoundedRectangleBorder(
+    final shape = ContinuousRoundedBorder(
       borderRadius: BorderRadius.circular(DashboardMobileMetrics.controlRadius),
       side: BorderSide(color: colors.line, width: 1),
     );
@@ -186,12 +187,12 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
       container: true,
       label: semanticLabel,
       child: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.background,
           borderRadius: BorderRadius.circular(
             DashboardMobileMetrics.controlRadius,
           ),
-          border: Border.all(color: colors.line, width: 1),
+          stroke: colors.line,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
@@ -213,7 +214,7 @@ final class DashboardMobileComponentKit implements LayoutComponentKit {
       color: colors.surface,
       elevation: 12,
       shadowColor: Colors.black.withAlpha(72),
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(
           DashboardMobileMetrics.compactRadius,
         ),

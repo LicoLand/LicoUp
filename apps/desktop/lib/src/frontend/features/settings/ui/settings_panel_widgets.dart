@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -146,10 +147,10 @@ class SettingsDayNightToggleRow extends StatelessWidget {
       width: _appearanceToggleWidth,
       child: DecoratedBox(
         key: const Key('appearance-day-night-toggle'),
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.surfaceLow,
           borderRadius: BorderRadius.circular(LicoRadius.chip),
-          border: Border.all(color: colors.line),
+          stroke: colors.line,
         ),
         child: Row(
           children: [

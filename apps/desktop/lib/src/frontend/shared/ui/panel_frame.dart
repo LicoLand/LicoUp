@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -13,15 +14,13 @@ class PanelFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surface,
-        border: Border.all(
-          color: elevated
-              ? colors.primary.withAlpha(30)
-              : colors.line.withAlpha(80),
-        ),
+        stroke: elevated
+            ? colors.primary.withAlpha(30)
+            : colors.line.withAlpha(80),
         borderRadius: BorderRadius.circular(LicoRadius.floating),
-        boxShadow: elevated
+        shadows: elevated
             ? [
                 BoxShadow(
                   color: colors.primary.withAlpha(6),

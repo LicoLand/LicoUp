@@ -16,6 +16,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -725,10 +726,10 @@ final class _AdaptiveFlywheelAssistantCard extends StatelessWidget {
                   width: 30,
                   height: 30,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                  decoration: continuousHairlineDecoration(
                     color: colors.accentSurface,
-                    border: Border.all(color: colors.accentBorder),
+                    borderRadius: BorderRadius.circular(15),
+                    stroke: colors.accentBorder,
                   ),
                   child: AssistantSparklesIcon(color: colors.accent, size: 16),
                 ),
@@ -800,7 +801,7 @@ ButtonStyle _toolbarButtonStyle(LicoThemeColors colors) {
     visualDensity: VisualDensity.compact,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     side: BorderSide(color: colors.line),
-    shape: RoundedRectangleBorder(
+    shape: ContinuousRoundedBorder(
       borderRadius: BorderRadius.circular(
         kAdaptiveFlywheelToolbarControlRadius,
       ),
@@ -829,10 +830,10 @@ final class _AdaptiveFlywheelWorkflowCardState
     final enabled = widget.inspection != null;
     final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: radius,
-        border: Border.all(color: colors.line),
+        stroke: colors.line,
       ),
       child: ClipRRect(
         borderRadius: radius,

@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_list.dart
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_search.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -233,13 +234,13 @@ final class _HistorySessionPanelState extends State<HistorySessionPanel> {
       },
     );
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: widget.framed ? Border.all(color: colors.line) : null,
-        borderRadius: widget.framed
-            ? BorderRadius.circular(LicoRadius.chip)
-            : null,
-      ),
+      decoration: widget.framed
+          ? continuousHairlineDecoration(
+              color: colors.surface,
+              stroke: colors.line,
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
+            )
+          : BoxDecoration(color: colors.surface),
       child: content,
     );
   }

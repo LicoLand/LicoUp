@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/features/settings/ui/settings_section_projec
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -294,9 +295,9 @@ final class _LayoutProfileOption extends StatelessWidget {
                 ? Duration.zero
                 : const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: selected ? colors.surface : colors.surfaceLow,
-              border: Border.all(color: borderColor, width: 1),
+              stroke: borderColor,
               borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             clipBehavior: Clip.antiAlias,

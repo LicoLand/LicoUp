@@ -72,7 +72,7 @@ void main() {
             matching: find.byType(AnimatedContainer),
           ),
         );
-        final fill = (bubble.decoration! as BoxDecoration).color!;
+        final fill = (bubble.decoration! as ShapeDecoration).color!;
         expect(fill.a, dashboard ? 1 : lessThan(1));
       }
       if (dashboard) {

@@ -4,7 +4,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
@@ -94,11 +94,10 @@ final class DashboardDesktopAgentsPresentation
             isDark: colors.isDark,
           ),
         ),
-        child: ClipRRect(
+        child: GlassEdgeLight(
           borderRadius: BorderRadius.circular(radius),
-          child: GlassEdgeLight(
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(radius),
-            sheenExtent: 32,
             child: child,
           ),
         ),

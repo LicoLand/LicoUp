@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 final class DesktopDesktopPreviewMetadata {
   const DesktopDesktopPreviewMetadata({
@@ -38,9 +39,9 @@ final class DesktopDesktopPreview extends StatelessWidget {
         aspectRatio: 16 / 10,
         child: DecoratedBox(
           key: const ValueKey<String>('desktop-desktop-preview'),
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: colors.background,
-            border: Border.all(color: colors.line),
+            stroke: colors.line,
             borderRadius: BorderRadius.circular(
               desktopDesktopTokens.cardRadius,
             ),
@@ -61,10 +62,10 @@ final class DesktopDesktopPreview extends StatelessWidget {
                     key: const ValueKey<String>(
                       'desktop-desktop-preview-main-canvas',
                     ),
-                    decoration: BoxDecoration(
+                    decoration: continuousHairlineDecoration(
                       color: colors.surfaceSunken,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: colors.line.withAlpha(90)),
+                      stroke: colors.line.withAlpha(90),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
@@ -140,10 +141,10 @@ final class DesktopDesktopPreview extends StatelessWidget {
                                     'desktop-preview-composer',
                                   ),
                                   height: 17,
-                                  decoration: BoxDecoration(
+                                  decoration: continuousHairlineDecoration(
                                     color: colors.surface,
                                     borderRadius: BorderRadius.circular(5),
-                                    border: Border.all(color: colors.line),
+                                    stroke: colors.line,
                                   ),
                                 ),
                               ],
@@ -164,13 +165,11 @@ final class DesktopDesktopPreview extends StatelessWidget {
                       ),
                       width: 128,
                       height: 18,
-                      decoration: BoxDecoration(
+                      decoration: continuousHairlineDecoration(
                         color: desktopDesktopSurfaceBlack,
                         borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: DesktopDesktopOnBlack.line,
-                          width: 0.5,
-                        ),
+                        stroke: DesktopDesktopOnBlack.line,
+                        strokeWidth: 0.5,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
