@@ -94,9 +94,9 @@ class _Scene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final ink = dark ? const Color(0xFFF4F4F6) : const Color(0xFF21242A);
+    final ink = dark ? const Color(0xFFF4F4F6) : const Color(0xFF472413);
     return ColoredBox(
-      color: dark ? const Color(0xFF17191E) : const Color(0xFFF3F4F7),
+      color: dark ? const Color(0xFF17191E) : const Color(0xFFF4E3DC),
       child: Padding(
         padding: const EdgeInsets.all(36),
         child: DefaultTextStyle(
@@ -185,10 +185,10 @@ class _Scene extends StatelessWidget {
                                     Color(0xFF212B40),
                                   ]
                                 : const [
-                                    Color(0xFFBECEDC),
-                                    Color(0xFFE6CFBD),
-                                    Color(0xFFA9C9CA),
-                                    Color(0xFFB7BDD4),
+                                    Color(0xFFDAEEF6),
+                                    Color(0xFFF9DCD4),
+                                    Color(0xFFFEE9C6),
+                                    Color(0xFFE8D2C5),
                                   ],
                           ),
                         ),
@@ -279,7 +279,7 @@ class _Scene extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: dark
                                     ? const Color(0xFF282D38)
-                                    : const Color(0xFFF6F5F2),
+                                    : const Color(0xFFFCF3EA),
                                 borderRadius: BorderRadius.circular(18),
                               ),
                               child: const Text(
