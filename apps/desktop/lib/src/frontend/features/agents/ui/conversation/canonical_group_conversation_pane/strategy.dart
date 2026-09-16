@@ -1,10 +1,12 @@
-import 'package:flutter/cupertino.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -124,7 +126,9 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
   }
 }
 
-/// Assistant identity toggles dispatch; the separate pencil edits configuration.
+/// Assistant identity in one glass capsule: the name opens the editor, and
+/// the small trailing toggle pauses or resumes future dispatch. An active
+/// capsule carries the sunset light on its rim.
 final class AssistantToggleButton extends StatelessWidget {
   const AssistantToggleButton({
     super.key,
@@ -164,50 +168,54 @@ final class AssistantToggleButton extends StatelessWidget {
       GroupAssistantStatusLight.unconfigured => colors.textMuted,
       _ => colors.text,
     };
-    final tooltip = !configured
-        ? strings.configureAssistantTooltip
-        : enabled
-        ? strings.assistantActiveTooltip
-        : strings.assistantPausedTooltip;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(
-          child: Tooltip(
-            message: '$statusLabel · $tooltip',
-            child: Semantics(
-              button: true,
-              enabled: configured,
-              toggled: enabled,
-              label: label,
-              value: statusLabel,
-              hint: tooltip,
-              child: InkWell(
-                key: const Key('canonical-group-assistant-toggle'),
-                onTap: configured ? onTap : null,
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  key: const Key('canonical-group-assistant-control'),
-                  height: 32,
-                  child: Center(
-                    widthFactor: 1,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 160),
-                      child: RepaintBoundary(
-                        child: _AssistantNameLight(
-                          active: enabled,
-                          baseColor: textColor,
-                          child: Text(
-                            label,
-                            key: Key(
-                              'canonical-group-assistant-status-${status.name}',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: textColor,
+    const radius = kComposerCapsuleBorderRadius;
+    return _AssistantCapsuleSunsetRim(
+      active: enabled,
+      borderRadius: radius,
+      child: AppleGlassSurface(
+        borderRadius: radius,
+        fillAlpha: colors.isDark ? 22 : 10,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Semantics(
+                button: true,
+                label: label,
+                hint: strings.configureAssistantTooltip,
+                child: Tooltip(
+                  message: strings.configureAssistantTooltip,
+                  child: InkWell(
+                    key: const Key('canonical-group-assistant-control'),
+                    onTap: onEdit,
+                    borderRadius: radius,
+                    mouseCursor: SystemMouseCursors.click,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: SizedBox(
+                        height: 32,
+                        child: Center(
+                          widthFactor: 1,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 160),
+                            child: RepaintBoundary(
+                              child: _AssistantNameLight(
+                                active: enabled,
+                                baseColor: textColor,
+                                child: Text(
+                                  label,
+                                  key: Key(
+                                    'canonical-group-assistant-status-${status.name}',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -217,15 +225,271 @@ final class AssistantToggleButton extends StatelessWidget {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.only(left: 2, right: 6),
+              child: _AssistantParticipationToggle(
+                key: const Key('canonical-group-assistant-toggle'),
+                enabled: enabled,
+                interactive: configured,
+                label: label,
+                statusLabel: statusLabel,
+                tooltip: enabled
+                    ? strings.assistantActiveTooltip
+                    : strings.assistantPausedTooltip,
+                onTap: configured ? onTap : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 紫气东来 · 浮光铄金: a violet aura trailing into a molten-gold core, shared
+/// by the active assistant name and its capsule rim.
+List<Color> _assistantSunsetSpectrum(Color baseColor, {required bool isDark}) =>
+    isDark
+    ? [
+        baseColor,
+        const Color(0xFF8A3FFC),
+        const Color(0xFFC27DFF),
+        const Color(0xFFFB923C),
+        const Color(0xFFFBBF24),
+        const Color(0xFFFCD34D),
+        baseColor,
+      ]
+    : [
+        baseColor,
+        const Color(0xFF7C3AED),
+        const Color(0xFF9333EA),
+        const Color(0xFFEA580C),
+        const Color(0xFFD97706),
+        const Color(0xFFB45309),
+        baseColor,
+      ];
+
+const _assistantSunsetStops = [0.0, 0.24, 0.40, 0.56, 0.70, 0.78, 1.0];
+
+/// Closed chroma loop of the sunset spectrum for the capsule rim sweep.
+List<Color> _assistantSunsetLoop({required bool isDark}) {
+  final chroma = _assistantSunsetSpectrum(
+    const Color(0x00000000),
+    isDark: isDark,
+  ).sublist(1, 6);
+  return [...chroma, chroma.first];
+}
+
+/// Sunset rim for the assistant capsule: a purple-and-gold light travels the
+/// silhouette while the assistant participates. Paused or unconfigured
+/// capsules rest as plain glass; reduced motion keeps a static rim.
+final class _AssistantCapsuleSunsetRim extends StatefulWidget {
+  const _AssistantCapsuleSunsetRim({
+    required this.active,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final bool active;
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  State<_AssistantCapsuleSunsetRim> createState() =>
+      _AssistantCapsuleSunsetRimState();
+}
+
+final class _AssistantCapsuleSunsetRimState
+    extends State<_AssistantCapsuleSunsetRim>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _light = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 4),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_AssistantCapsuleSunsetRim oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.active && context.allowsAmbientMotion) {
+      if (!_light.isAnimating) _light.repeat();
+    } else {
+      _light.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _light.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return widget.child;
+    final animate = context.allowsAmbientMotion;
+    return CustomPaint(
+      key: const Key('canonical-group-assistant-sunset-rim'),
+      foregroundPainter: _AssistantSunsetRimPainter(
+        progress: _light,
+        animate: animate,
+        borderRadius: widget.borderRadius,
+        colors: _assistantSunsetLoop(isDark: context.licoColors.isDark),
+      ),
+      child: widget.child,
+    );
+  }
+}
+
+final class _AssistantSunsetRimPainter extends CustomPainter {
+  const _AssistantSunsetRimPainter({
+    required this.progress,
+    required this.animate,
+    required this.borderRadius,
+    required this.colors,
+  }) : super(repaint: animate ? progress : null);
+
+  final Animation<double> progress;
+  final bool animate;
+  final BorderRadius borderRadius;
+  final List<Color> colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    const width = 1.2;
+    final rect = Offset.zero & size;
+    final path = Path()
+      ..addRRect(continuousStrokeRRect(size, borderRadius, width));
+    final rotation = GradientRotation(
+      (animate ? progress.value : 0.5) * math.pi * 2,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4)
+        ..shader = SweepGradient(
+          colors: [
+            for (final color in colors) color.withValues(alpha: color.a * 0.45),
+          ],
+          transform: rotation,
+        ).createShader(rect),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..shader = SweepGradient(
+          colors: colors,
+          transform: rotation,
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AssistantSunsetRimPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.animate != animate ||
+      oldDelegate.borderRadius != borderRadius ||
+      oldDelegate.colors != colors;
+}
+
+/// Small trailing switch for Assistant participation: a purple track while
+/// on, a muted track while off. The name and pencil own editing; this owns
+/// dispatch.
+final class _AssistantParticipationToggle extends StatelessWidget {
+  const _AssistantParticipationToggle({
+    super.key,
+    required this.enabled,
+    required this.interactive,
+    required this.label,
+    required this.statusLabel,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final bool enabled;
+  final bool interactive;
+  final String label;
+  final String statusLabel;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final track = enabled
+        ? (colors.isDark ? const Color(0xFF8A3FFC) : const Color(0xFF7C3AED))
+        : colors.textMuted.withAlpha(colors.isDark ? 64 : 48);
+    final duration = context.motion(LicoMotion.micro);
+    return Semantics(
+      button: true,
+      enabled: interactive,
+      toggled: enabled,
+      label: label,
+      value: statusLabel,
+      hint: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Center(
+              child: AnimatedContainer(
+                duration: duration,
+                curve: LicoMotion.standard,
+                width: 26,
+                height: 16,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: track.withValues(
+                    alpha: interactive ? track.a : track.a * 0.5,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: AnimatedAlign(
+                  duration: duration,
+                  curve: LicoMotion.standard,
+                  alignment: enabled
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: const SizedBox(width: 12, height: 12),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-        LicoIconButton(
-          key: const Key('canonical-group-assistant-edit'),
-          tooltip: strings.configureAssistantTooltip,
-          onPressed: onEdit,
-          icon: const Icon(CupertinoIcons.pencil, size: 13),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -280,26 +544,10 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
     if (!widget.active || MediaQuery.disableAnimationsOf(context)) {
       return widget.child;
     }
-    final spectrum = context.licoColors.isDark
-        ? [
-            widget.baseColor,
-            const Color(0xFF8A3FFC),
-            const Color(0xFFC27DFF),
-            const Color(0xFFFB923C),
-            const Color(0xFFFCD34D),
-            const Color(0xFFFEF3C7),
-            widget.baseColor,
-          ]
-        : [
-            widget.baseColor,
-            const Color(0xFF7C3AED),
-            const Color(0xFF9333EA),
-            const Color(0xFFEA580C),
-            const Color(0xFFD97706),
-            const Color(0xFFB45309),
-            widget.baseColor,
-          ];
-    const spectrumStops = [0.0, 0.24, 0.40, 0.56, 0.70, 0.78, 1.0];
+    final spectrum = _assistantSunsetSpectrum(
+      widget.baseColor,
+      isDark: context.licoColors.isDark,
+    );
     return AnimatedBuilder(
       animation: _light,
       child: widget.child,
@@ -311,7 +559,7 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
             begin: Alignment(center * 2 - 1 - 1.8, 0),
             end: Alignment(center * 2 - 1 + 1.8, 0),
             colors: spectrum,
-            stops: spectrumStops,
+            stops: _assistantSunsetStops,
           ).createShader(rect);
         },
         child: child,

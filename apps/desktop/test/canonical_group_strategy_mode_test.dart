@@ -368,7 +368,7 @@ void main() {
   );
 
   testWidgets(
-    'Assistant name and separate editor sit inside the composer toolbar',
+    'Assistant capsule sits inside the composer toolbar and its name opens the editor',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1000, 700);
@@ -403,7 +403,7 @@ void main() {
       );
       await tester.pump();
       expect(
-        find.byKey(const Key('canonical-group-assistant-edit')),
+        find.byKey(const Key('canonical-group-assistant-toggle')),
         findsOneWidget,
       );
       expect(
@@ -419,19 +419,21 @@ void main() {
       final toolbar = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-toolbar')),
       );
-      final edit = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-edit')),
+      final toggle = tester.getRect(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
       );
       final plus = tester.getRect(
         find.byKey(const Key('canonical-group-assistant-actions')),
       );
       expect(assistant.height, 32);
       expect(assistant.left, greaterThanOrEqualTo(plus.right + 12));
-      expect(edit.left, greaterThanOrEqualTo(assistant.right));
+      expect(toggle.left, greaterThanOrEqualTo(assistant.right));
       expect(toolbar.contains(assistant.center), isTrue);
-      expect(toolbar.contains(edit.center), isTrue);
+      expect(toolbar.contains(toggle.center), isTrue);
       expect(field.contains(assistant.center), isTrue);
-      await tester.tap(find.byKey(const Key('canonical-group-assistant-edit')));
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-control')),
+      );
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('assistant-configuration-dialog')),
