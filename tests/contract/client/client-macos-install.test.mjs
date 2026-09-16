@@ -142,6 +142,9 @@ function recordingPorts({
     quitRunning: (appPath) => {
       calls.quit.push(appPath);
     },
+    stopConversationHosts: () => {
+      calls.stopHosts = (calls.stopHosts || 0) + 1;
+    },
     mkdir: (directory) => {
       calls.mkdir.push(directory);
       mkdirSync(directory, { recursive: true });
@@ -217,6 +220,7 @@ test("existing current-bound runnable installs byte-for-byte without invoking a 
     "macos-install-validate-binding",
     "macos-install-stage-payload",
     "macos-install-quit-running",
+    "macos-install-stop-conversation-host",
     "macos-install-unregister",
     "macos-install-replace-destination",
     "macos-install-register",
@@ -230,6 +234,7 @@ test("existing current-bound runnable installs byte-for-byte without invoking a 
   assert.equal(calls.copy[1].source, path.join(runnableRoot, "package-metadata", "licoup"));
   assert.deepEqual(readdirSync(installDir).sort(), [APP_NAME, "package-metadata"]);
   assert.deepEqual(calls.register, [installedAppPath]);
+  assert.equal(calls.stopHosts, 1);
   assert.deepEqual(calls.launch, []);
   assert.equal(treeDigest(installedAppPath), treeDigest(runnableAppPath));
   const manifestRelative = path.join("package-metadata", "licoup", "packaging-modules.json");
