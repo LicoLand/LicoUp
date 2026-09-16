@@ -12,17 +12,18 @@ use crate::platform::strategy_runtime::{
 };
 
 use super::assistant::sha256_hex;
-use super::reducer::{effect_input_for, fallback_reason};
 use super::{
-    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingValue, PreflightDiagnostic,
-    PreflightFailure, WorkflowDiagnosticCode, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
+    ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingCandidate, BindingValue,
+    PreflightFailure, StrategyDefinition, StrategyPackageImporter, StrategyStore,
     preflight_assistant_graph,
 };
-use super::{
-    BindingCandidate, BindingKind, CallbackDecisionKind, CommandKind, CommandStatus,
-    CompiledWorkflow, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
-    RunSnapshot, StrategyPackageImporter, StrategyRunStatus, StrategyStore, TransitionEvent,
-    WorkflowValidationFailure, compile_persisted_workflow, compile_workflow_value,
+use licoup_workflow::machine::{effect_input_for, fallback_reason};
+use licoup_workflow::{
+    BindingKind, CallbackDecisionKind, CommandKind, CommandStatus, CompiledWorkflow, FailureClass,
+    GraphState, GraphStateKind, PendingCallback, PreflightDiagnostic, ReducerEvent, RunCommand,
+    RunSnapshot, StrategyRunStatus, TransitionEvent, WorkflowDiagnosticCode,
+    WorkflowDiagnosticRecovery, WorkflowDiagnosticStage, WorkflowValidationFailure,
+    compile_workflow, compile_workflow_value,
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -719,7 +720,7 @@ impl StrategyService {
                 && snapshot.input == input,
             "strategy_idempotency_conflict"
         );
-        let submitted = compile_workflow_value(workflow)?.definition;
+        let submitted = compile_workflow_value(workflow)?.into_definition();
         let stored = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
@@ -984,7 +985,7 @@ impl StrategyService {
                 (command.input.clone(), command.resume_session_id.clone())
             }
             None => {
-                let workflow = compile_persisted_workflow(definition.workflow.clone())?;
+                let workflow = compile_workflow(definition.workflow.clone())?;
                 let Some(state) = entry_state_for_start(&workflow, &slot.id) else {
                     return Ok(None);
                 };
@@ -1268,8 +1269,8 @@ impl StrategyService {
                 continue;
             }
             let mut commands = Vec::new();
-            let capacity =
-                super::MAX_ACTIVE_EFFECTS.min(MAX_DRIVE_EFFECTS_PER_CALL.saturating_sub(executed));
+            let capacity = licoup_workflow::MAX_ACTIVE_EFFECTS
+                .min(MAX_DRIVE_EFFECTS_PER_CALL.saturating_sub(executed));
             for index in 0..capacity {
                 let claimant = format!(
                     "scheduler-{}-{index}",
@@ -1454,7 +1455,7 @@ impl StrategyService {
             let definition = self
                 .store
                 .definition_by_revision(&snapshot.definition_digest)?;
-            let workflow = compile_persisted_workflow(definition.workflow.clone())?;
+            let workflow = compile_workflow(definition.workflow.clone())?;
             let candidate = snapshot.commands.values().find(|command| {
                 matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
                     && ((command.status == CommandStatus::Retryable
@@ -1474,7 +1475,7 @@ impl StrategyService {
     fn execute_command(
         &self,
         run_id: &str,
-        command: &super::RunCommand,
+        command: &RunCommand,
         claimant: &str,
         registration: Option<EntryTurnRegistration>,
     ) -> Result<(Value, bool)> {
@@ -1615,7 +1616,7 @@ impl StrategyService {
         let definition = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
-        let workflow = compile_persisted_workflow(definition.workflow.clone())?;
+        let workflow = compile_workflow(definition.workflow.clone())?;
         let Some(reason) = fallback_reason(&workflow, &snapshot, &current) else {
             return Ok(false);
         };
@@ -1658,9 +1659,9 @@ impl StrategyService {
     fn execute_actor_into_group(
         &self,
         run_id: &str,
-        command: &super::RunCommand,
+        command: &RunCommand,
         authorization_digest: &str,
-        binding: &super::BindingValue,
+        binding: &BindingValue,
         permit: &mut StrategyEffectPermit,
         cwd: Option<&str>,
         conversation_id: Option<&str>,
@@ -1749,7 +1750,7 @@ impl StrategyService {
                     .collect()
             })
             .unwrap_or_default();
-        let newly_parked: Vec<&super::PendingCallback> = after
+        let newly_parked: Vec<&PendingCallback> = after
             .pending_callbacks
             .iter()
             .filter(|pending| !known.contains(&(pending.state_id.as_str(), pending.state_visit)))
@@ -1904,7 +1905,7 @@ impl StrategyService {
     fn project_membership_event(
         &self,
         run_id: &str,
-        command: &super::RunCommand,
+        command: &RunCommand,
         output: &Value,
     ) -> Result<()> {
         if !matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem) {
@@ -2043,7 +2044,7 @@ fn entry_state_for_start<'a>(
     workflow: &'a CompiledWorkflow,
     slot_id: &str,
 ) -> Option<&'a GraphState> {
-    let initial = workflow.state(&workflow.definition.initial)?;
+    let initial = workflow.state(&workflow.definition().initial)?;
     if initial.binding.as_deref() == Some(slot_id)
         && matches!(
             initial.kind,
@@ -2058,7 +2059,7 @@ fn entry_state_for_start<'a>(
             .next()?;
         // A callback-mode edge parks the run before the entry state exists;
         // its turn opens when the master decision arrives, not at start.
-        if target.mode == super::TransitionMode::Callback {
+        if target.mode == licoup_workflow::TransitionMode::Callback {
             return None;
         }
         let state = workflow.state(&target.to)?;
@@ -2115,7 +2116,7 @@ fn group_actor_params(
     conversation_id: &str,
     membership_id: &str,
     agent_id: &str,
-    binding: &super::BindingValue,
+    binding: &BindingValue,
     input: &Value,
     run_id: &str,
     resume_session_id: Option<&str>,
@@ -2276,10 +2277,10 @@ fn looks_like_wrapped_prompt(raw: &str) -> bool {
 }
 
 fn binding_for<'a>(
-    definition: &'a super::StrategyDefinition,
+    definition: &'a StrategyDefinition,
     slot: &str,
     ordinal: u8,
-) -> Result<&'a super::BindingValue> {
+) -> Result<&'a BindingValue> {
     definition
         .bindings
         .iter()
@@ -3024,7 +3025,7 @@ mod tests {
 
     #[test]
     fn persisted_fallback_recovery_is_resumable_and_idempotent() {
-        use crate::domain::adaptive_flywheel::{
+        use licoup_workflow::{
             ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
             TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
         };
@@ -3034,7 +3035,7 @@ mod tests {
         let mut slot = ActorSlot::required_actor("worker", "Worker");
         slot.fallback.after_transient_attempts = 1;
         let workflow = WorkflowDefinition {
-            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            schema: licoup_workflow::WORKFLOW_SCHEMA_VERSION.into(),
             metadata: WorkflowMetadata {
                 id: "fallback-recovery".into(),
                 name: "Fallback recovery".into(),
@@ -3286,15 +3287,15 @@ mod tests {
 
     use crate::domain::client_conversation::{MembershipAccess, Principal, PrincipalKind};
 
-    fn entry_workflow() -> crate::domain::adaptive_flywheel::WorkflowDefinition {
-        use crate::domain::adaptive_flywheel::{
+    fn entry_workflow() -> licoup_workflow::WorkflowDefinition {
+        use licoup_workflow::{
             ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
             TransitionMode, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
         };
         let mut slot = ActorSlot::required_actor("entry", "Entry");
         slot.entry = true;
         WorkflowDefinition {
-            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            schema: licoup_workflow::WORKFLOW_SCHEMA_VERSION.into(),
             metadata: WorkflowMetadata {
                 id: "entry-greeter".into(),
                 name: "Entry greeter".into(),
@@ -4364,11 +4365,11 @@ mod tests {
         assert_eq!(abandoned.lock().unwrap().len(), 1);
     }
 
-    fn callback_entry_workflow() -> crate::domain::adaptive_flywheel::WorkflowDefinition {
+    fn callback_entry_workflow() -> licoup_workflow::WorkflowDefinition {
         let mut workflow = entry_workflow();
         workflow.metadata.id = "entry-review".into();
         workflow.metadata.name = "Entry review".into();
-        workflow.transitions[0].mode = crate::domain::adaptive_flywheel::TransitionMode::Callback;
+        workflow.transitions[0].mode = licoup_workflow::TransitionMode::Callback;
         workflow
     }
 

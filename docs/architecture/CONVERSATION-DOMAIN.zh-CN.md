@@ -394,6 +394,13 @@ flowchart TB
 
 ---
 
+群组名单是 active Agent Membership 的展示投影。`principal.agentId` 表示适配器，
+只与 `TargetCandidate.target` 关联；候选记录的 `id` 不是 Membership 身份。
+发现结果暂时缺失时，成员仍以不可用状态保留。已退休的 `kimi`、`kimi-desktop`
+从当前名单隐藏，但不删除 Membership 或历史 Event；`kimi-code` 保持独立。
+空名单不阻断历史阅读和消息编辑。点击名单与 mention 补全均使用 Membership
+显示名，空名回退到 agent ID，与 native 寻址接受的别名保持一致。
+
 ## 7. Human / Agent 专属 Profile 抽象与全链路流向
 
 在 Conversation 体系中，**无论是人类（Human）还是智能体（Agent），都必须且必然拥有一份专属的 Profile 数据封装抽象**。
@@ -740,3 +747,14 @@ host 重启或 registry 淘汰后仍可读取。若保留的非终态 dispatch �
 assistant 消息，也不是第二套生命周期权威。思考或工具记录不算首段回复正文。
 真实回复文字或终态结束等待。视觉与搜索交互由
 [设计系统](../functionality/DESIGN-SYSTEM.md#conversation-loading-and-hierarchy) 定义。
+
+## Peer 消息身份边界
+
+已接受的端点会话目标区分原始消息身份、作者、代表主体、来源端点、转发者和本地顺序。
+传输收讫、端点收讫、应用接纳、已读及约定验收不能互换。编辑/删除引用因果来源及修订，
+同步和恢复不得复活删除内容，也不能使转发者取得原作者权限。
+
+通信历史可合并，不代表执行权限、预算准入和撤权可最终一致；它们仍由既有属主裁决。
+[工作流控制](ASSISTANT-WORKFLOW-CONTROL.zh-CN.md) 拥有效果接纳，
+[安全边界](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) 拥有撤权后的结果结算。
+端点集成须验证这些区分，本地消息可用不能代替其证明。

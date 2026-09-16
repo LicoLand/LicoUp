@@ -25,6 +25,236 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'support/canonical_group/canonical_group_binding_fixture.dart';
 
 void main() {
+  for (final retired in [false, true]) {
+    testWidgets(
+      'group history remains readable without visible Agent seats (retired: $retired)',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(1000, 760);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        final runner = _AssistantSurfaceRunner()..assistantMembershipId = '';
+        runner._memberships.removeWhere(
+          (item) => item['id'] != 'membership:owner',
+        );
+        if (retired) {
+          runner._memberships.add(
+            _membership(
+              id: 'membership:retired',
+              principalId: 'agent:kimi-desktop',
+              kind: 'agent',
+              label: 'Kimi',
+              agentId: 'kimi-desktop',
+            ),
+          );
+        }
+        runner.historyEvents.add({
+          'id': 'event:history',
+          'conversationId': 'conversation:group',
+          'sequence': 1,
+          'authorMembershipId': 'membership:owner',
+          'kind': 'message',
+          'createdAtUnixMs': 1,
+          'finalized': true,
+          'parts': [
+            {
+              'id': 'part:history',
+              'eventId': 'event:history',
+              'ordinal': 0,
+              'kind': 'text',
+              'content': 'Saved group history',
+              'createdAtUnixMs': 1,
+            },
+          ],
+        });
+        final controller = ClientConversationController(native: runner);
+        addTearDown(controller.dispose);
+        await controller.initialize();
+        await controller.selectConversation('conversation:group');
+        await tester.pumpWidget(
+          _groupApp(
+            CanonicalGroupConversationPaneFixture(
+              controller: controller,
+              targets: const [],
+              onCopyText: (_) async {},
+              framed: false,
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        final pane = tester.widget<AgentConversationActivePane>(
+          find.byType(AgentConversationActivePane),
+        );
+        expect(pane.state.session!.messages.single.text, 'Saved group history');
+        expect(find.textContaining('Saved group history'), findsWidgets);
+        expect(find.byKey(const Key('canonical-group-roster')), findsNothing);
+        expect(find.byType(TextField), findsOneWidget);
+        controller.dispose();
+      },
+    );
+  }
+
+  testWidgets(
+    'custom Membership alias is used by completion and roster mention',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 760);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final runner = _AssistantSurfaceRunner();
+      final member = runner._memberships.firstWhere(
+        (item) => item['id'] == 'membership:claude',
+      );
+      (member['principal'] as Map)['displayName'] = 'Reviewer';
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('claude-code', 'Claude Code')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(find.byType(TextField), '@Rev');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-mention-claude-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(controller.draft, '@Reviewer ');
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(
+        find.byKey(const Key('canonical-group-roster-agent-claude-code')),
+      );
+      await tester.pump();
+      expect(controller.draft, '@Reviewer ');
+      final membership = controller.selectedConversation!.activeAgentMemberships
+          .firstWhere((item) => item.principal.agentId == 'claude-code');
+      expect(controller.draft.trim(), '@${membership.principal.displayName}');
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.membership.add',
+        ),
+        isEmpty,
+      );
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'candidate record id cannot revive or mention a retired adapter Membership',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 760);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final opened = <String>[];
+      final runner = _AssistantSurfaceRunner();
+      runner._memberships.insert(
+        0,
+        _membership(
+          id: 'membership:retired',
+          principalId: 'agent:kimi',
+          kind: 'agent',
+          label: 'Retired Kimi',
+          agentId: 'kimi',
+        ),
+      );
+      final member = runner._memberships.firstWhere(
+        (item) => item['id'] == 'membership:claude',
+      );
+      (member['principal'] as Map)['agentId'] = 'kimi-code';
+      (member['principal'] as Map)['displayName'] = 'Reviewer';
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [
+              TargetCandidate(
+                id: 'kimi',
+                target: 'kimi-code',
+                label: 'Kimi Code',
+                kind: 'cli',
+                status: 'detected',
+                configured: true,
+                confidence: 1,
+                manual: true,
+                adapterStatus: 'implemented',
+                binaryPath: '/fixture/agent',
+              ),
+            ],
+            onCopyText: (_) async {},
+            framed: false,
+            onOpenAgentConversations: opened.add,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final state = tester
+          .widget<AgentConversationActivePane>(
+            find.byType(AgentConversationActivePane),
+          )
+          .state;
+      expect(
+        state.participantTargets.map((target) => target.target),
+        isNot(contains('kimi')),
+      );
+      expect(state.composerMentionLabels.containsKey('kimi'), isFalse);
+      expect(
+        find.byKey(const Key('canonical-group-roster-agent-kimi')),
+        findsNothing,
+      );
+      await tester.enterText(find.byType(TextField), '@Rev');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-mention-kimi-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(controller.draft, '@Reviewer ');
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(
+        find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(controller.draft, '@Reviewer ');
+      final membership = controller.selectedConversation!.activeAgentMemberships
+          .firstWhere((item) => item.principal.agentId == 'kimi-code');
+      expect(controller.draft.trim(), '@${membership.principal.displayName}');
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.membership.add',
+        ),
+        isEmpty,
+      );
+      await tester.tap(
+        find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(
+        find.byKey(const Key('canonical-group-roster-agent-kimi-code')),
+      );
+      await tester.pump();
+      expect(opened, ['kimi-code']);
+      await tester.pump(const Duration(milliseconds: 350));
+      controller.dispose();
+    },
+  );
+
   testWidgets(
     'canonical dispatch projects a stable waiting reply before first text',
     (tester) async {
@@ -1273,6 +1503,7 @@ TargetCandidate _target(String id, String label) => TargetCandidate(
 /// assistant.set enforces the current conversation revision.
 final class _AssistantSurfaceRunner implements ClientConversationNativePort {
   final List<Map<String, dynamic>> requests = [];
+  final List<Map<String, dynamic>> historyEvents = [];
   int revision = 2;
   String assistantMembershipId = 'membership:codex';
   bool dispatchPending = false;
@@ -1517,9 +1748,9 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
           'memberships': _memberships,
         },
         'conversation.events.page' => {
-          'events': <Map<String, dynamic>>[],
+          'events': historyEvents,
           'nextCursor': null,
-          'totalCount': 0,
+          'totalCount': historyEvents.length,
         },
         'conversation.message.post' => {
           'event': <String, dynamic>{

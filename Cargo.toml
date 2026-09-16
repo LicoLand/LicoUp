@@ -8,6 +8,7 @@ members = [
     "crates/licoup-agent-adapters",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
+    "crates/licoup-workflow",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
     "crates/licoup-native",
@@ -18,6 +19,7 @@ resolver = "3"
 [workspace.package]
 version = "0.3.0"
 edition = "2024"
+rust-version = "1.95.0"
 repository = "https://github.com/LicoLand/LicoUp.git"
 license = "AGPL-3.0-or-later"
 
