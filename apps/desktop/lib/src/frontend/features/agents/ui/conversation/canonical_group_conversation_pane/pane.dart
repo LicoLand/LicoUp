@@ -144,6 +144,22 @@ class _CanonicalGroupConversationPaneState
         : displayName;
   }
 
+  /// Capsule label for the assistant identity: canonical product names first
+  /// ("Codex", "Kimi Code"), otherwise each word capitalized.
+  String _assistantCapsuleLabel(ClientConversationMembership membership) {
+    final raw = _mentionLabel(membership);
+    final known = agentProductDisplayName(raw);
+    if (known != null) return known;
+    final words = raw
+        .split(RegExp(r'[\s\-_]+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return raw;
+    return words
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+
   TargetCandidate? _assistantTarget(
     ClientConversation conversation,
     List<TargetCandidate> targets,
@@ -542,7 +558,7 @@ class _CanonicalGroupConversationPaneState
         configured: conversation.assistantMembership != null,
         label: conversation.assistantMembership == null
             ? strings.assistantNeedsConfigurationStatus
-            : _mentionLabel(conversation.assistantMembership!),
+            : _assistantCapsuleLabel(conversation.assistantMembership!),
         status: assistantStatus,
         onTap: () => _toggleAssistant(conversation),
         onEdit: () => unawaited(_openAssistantConfiguration()),

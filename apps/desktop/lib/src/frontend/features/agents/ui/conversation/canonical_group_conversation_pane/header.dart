@@ -65,7 +65,7 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
                 ),
               ),
               if (conversation.pinned) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: 12),
                 Icon(Icons.push_pin_rounded, size: 13, color: colors.textMuted),
               ],
             ],
