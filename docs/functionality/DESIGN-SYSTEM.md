@@ -301,12 +301,13 @@ follow the actual composer height. A layout with an external composer clips only
 the measured internal composer, preserving the controls above it. Mobile and
 console layout geometry retain their respective owners.
 
-The group action row uses a bare plus glyph, a separated Assistant name, and a
-pencil control with a fine 13px glyph. The name toggles future Assistant participation; the pencil
-opens the existing Assistant editor in its own centered dialog. An active name
-has a purple-and-gold sunset highlight moving from left to right — a molten
-gold core leading, a violet aura trailing. Reduced motion renders
-a static active treatment. Inactive names remain readable. The capsule above
+The group action row uses a bare plus glyph and clusters the Assistant identity
+in one glass capsule: the name opens the Assistant
+editor in a centered dialog, and a small purple toggle at the trailing edge
+pauses or resumes future Assistant participation. An active capsule carries the
+purple-and-gold sunset light on its rim and across the name; paused or
+unconfigured capsules rest as plain glass. Reduced motion keeps a static rim.
+Inactive names remain readable. The capsule above
 the composer opens Adaptive Flywheel configuration only. Configuration and
 message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
 
@@ -320,10 +321,10 @@ message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#grou
 外置输入框布局只裁掉实测的内部输入区，保留其上方控件。移动端与控制台的布局
 几何仍由各自属主维护。
 
-群聊操作行使用不带圆形底的加号，与 Assistant 名称之间保留间距，名称后放独立
-13px 细铅笔按钮。点击名称切换后续助手参与，点击铅笔在界面中央打开独立助手编辑框。
-激活名称以从左向右的紫金晚霞流光表示状态——熔金亮芯在前、紫色霞光相随；减弱动态时使用静态激活样式，关闭时
-文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
+群聊操作行使用不带圆形底的加号，并把助手身份收进一个玻璃胶囊：点击名称
+打开独立的助手编辑框；尾部一枚紫色小开关控制后续助手参与。激活时
+胶囊边框与名称同披紫金晚霞流光，暂停或未配置时回到素玻璃；减弱动态时保留静态边框，
+关闭时文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
 由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
 
 The product-owned **Local** group is the highest-priority cold-start data
