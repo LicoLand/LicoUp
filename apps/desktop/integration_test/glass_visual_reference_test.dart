@@ -18,6 +18,8 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 
 /// Reproducible component board for Design System visual review.
 /// Uses synthetic content only; GLASS_REVIEW_OUTPUT exports candidate PNGs.
+void _noop() {}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('capture accepted glass reference composition', (tester) async {
@@ -286,9 +288,24 @@ class _Scene extends StatelessWidget {
                             ),
                             const Spacer(),
                             if (productionChrome) ...[
-                              GroupStrategyPickerCapsule(
-                                selectedRevision: null,
-                                onOpen: (_) {},
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  AssistantToggleButton(
+                                    active: true,
+                                    configured: true,
+                                    label: 'Kimi Code',
+                                    status: GroupAssistantStatusLight.ready,
+                                    onTap: () {},
+                                    onEdit: () {},
+                                  ),
+                                  GroupStrategyPickerCapsule(
+                                    selectedRevision: null,
+                                    onOpen: (_) {},
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                             ],
@@ -313,13 +330,12 @@ class _Scene extends StatelessWidget {
                                   onNewConversation: () {},
                                   onClearHistory: () {},
                                 ),
-                                fieldLeading: AssistantToggleButton(
-                                  active: true,
-                                  configured: true,
-                                  label: 'Kimi Code',
-                                  status: GroupAssistantStatusLight.ready,
-                                  onTap: () {},
-                                  onEdit: () {},
+                                fieldTrailing: const AssistantModelReadout(
+                                  visible: true,
+                                  modelLabel: 'GPT-6 Astra',
+                                  effortLabel: 'Extra High',
+                                  tooltip: 'Configure Assistant',
+                                  onTap: _noop,
                                 ),
                               )
                             else

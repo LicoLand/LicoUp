@@ -301,14 +301,19 @@ follow the actual composer height. A layout with an external composer clips only
 the measured internal composer, preserving the controls above it. Mobile and
 console layout geometry retain their respective owners.
 
-The group action row uses a bare plus glyph and clusters the Assistant identity
-in one glass capsule: the name opens the Assistant
+The group action row uses a bare plus glyph, and the capsule row above the
+composer leads with the Assistant identity capsule followed by the Adaptive
+Flywheel capsule — both glass, the same height. The Assistant name opens its
 editor in a centered dialog, and a small purple toggle at the trailing edge
 pauses or resumes future Assistant participation. An active capsule carries the
 purple-and-gold sunset light on its rim and across the name; paused or
 unconfigured capsules rest as plain glass. Reduced motion keeps a static rim.
-Inactive names remain readable. The capsule above
-the composer opens Adaptive Flywheel configuration only. Configuration and
+Inactive names remain readable. Before the send action, a quiet readout shows
+the active Assistant's selected model in the readable text color with its
+reasoning effort muted behind it; it opens the same editor, hides the effort
+half when no effort is configured, and disappears entirely while the Assistant
+is paused or unconfigured. The Adaptive Flywheel capsule opens its
+configuration only. Configuration and
 message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
 
 桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
@@ -321,10 +326,13 @@ message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#grou
 外置输入框布局只裁掉实测的内部输入区，保留其上方控件。移动端与控制台的布局
 几何仍由各自属主维护。
 
-群聊操作行使用不带圆形底的加号，并把助手身份收进一个玻璃胶囊：点击名称
-打开独立的助手编辑框；尾部一枚紫色小开关控制后续助手参与。激活时
-胶囊边框与名称同披紫金晚霞流光，暂停或未配置时回到素玻璃；减弱动态时保留静态边框，
-关闭时文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
+群聊操作行使用不带圆形底的加号；输入框上方胶囊行先放助手身份胶囊、再放
+Adaptive Flywheel 胶囊，两者同为玻璃材质、同高。点击助手名称打开独立的助手编辑框；
+尾部一枚紫色小开关控制后续助手参与。激活时助手胶囊边框与名称同披紫金晚霞流光，
+暂停或未配置时回到素玻璃；减弱动态时保留静态边框，关闭时文字仍清晰可读。发送按钮
+前方有一处安静的模型展示器：以正文色显示激活助手已选的模型名称，思考强度以弱化色
+跟在其后，点击同样打开助手编辑框；未配置思考强度时不显示后半段，助手暂停或未配置
+时整体消失。Adaptive Flywheel 胶囊仅打开其配置；配置和发送语义
 由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
 
 The product-owned **Local** group is the highest-priority cold-start data

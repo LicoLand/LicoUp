@@ -368,7 +368,7 @@ void main() {
   );
 
   testWidgets(
-    'Assistant capsule sits inside the composer toolbar and its name opens the editor',
+    'Assistant capsule leads the capsule row and its name opens the editor',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1000, 700);
@@ -413,24 +413,22 @@ void main() {
       final assistant = tester.getRect(
         find.byKey(const Key('canonical-group-assistant-control')),
       );
+      final picker = tester.getRect(
+        find.byKey(const Key('canonical-group-strategy-picker')),
+      );
       final field = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
       );
-      final toolbar = tester.getRect(
-        find.byKey(const Key('agent-conversation-composer-toolbar')),
-      );
-      final toggle = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-toggle')),
-      );
-      final plus = tester.getRect(
-        find.byKey(const Key('canonical-group-assistant-actions')),
-      );
       expect(assistant.height, 32);
-      expect(assistant.left, greaterThanOrEqualTo(plus.right + 12));
-      expect(toggle.left, greaterThanOrEqualTo(assistant.right));
-      expect(toolbar.contains(assistant.center), isTrue);
-      expect(toolbar.contains(toggle.center), isTrue);
-      expect(field.contains(assistant.center), isTrue);
+      expect(picker.height, 32);
+      expect(assistant.center.dy, closeTo(picker.center.dy, 0.5));
+      expect(picker.left, greaterThanOrEqualTo(assistant.right));
+      expect(assistant.bottom, lessThanOrEqualTo(field.top));
+      // Without a selected model the readout stays hidden.
+      expect(
+        find.byKey(const Key('canonical-group-assistant-model-readout')),
+        findsNothing,
+      );
       await tester.tap(
         find.byKey(const Key('canonical-group-assistant-control')),
       );
