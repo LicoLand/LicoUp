@@ -8,6 +8,17 @@ import {
   sourceFiles,
 } from "./support.mjs";
 
+test("workflow changes select the pure crate and its native integration", async () => {
+  const sources = await sourceFiles("crates/licoup-workflow/src", ".rs");
+  assert.ok(sources.length > 0);
+  for (const source of sources) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
+      "rust.core.workflow",
+      "rust.domain.adaptive-flywheel",
+    ]);
+  }
+});
+
 test("Rust catalog commands are independently filtered", () => {
   for (const module of CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.kind.startsWith("rust-"))) {
@@ -156,6 +167,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "--",
     "domain::client_conversation::",
     "store::execution::tests::",
+    "store::native_sessions::tests::",
   ]);
   const rpc = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.bin.licoup.rpc");

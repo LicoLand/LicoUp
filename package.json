@@ -72,7 +72,7 @@
     "client:analyze": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter analyze",
     "client:test": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter test",
     "client:test:flutter:pinned": "node tools/scripts/client-flutter-pinned-test.mjs",
-    "client:native:test": "node tools/scripts/cargo-client.mjs test --manifest-path crates/licoup-native/Cargo.toml",
+    "client:native:test": "node tools/scripts/cargo-client.mjs test -p licoup-native -p licoup-workflow",
     "client:native:smoke": "node tests/smoke/native-client-smoke.mjs",
     "client:native:smoke:runtime-data": "node tests/smoke/native-client-smoke.mjs --runtime-data",
     "client:native:smoke:policy:self-test": "node tests/smoke/native-client-smoke-policy-self-test.mjs",
