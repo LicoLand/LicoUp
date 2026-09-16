@@ -24,6 +24,8 @@ String agentConversationTargetDisplayName(TargetCandidate target) {
 
 /// Short product labels for narrow, local-only identity surfaces. Full names
 /// remain the accessible/hover label; unknown products keep their full label.
+/// `kimi-code` keeps the full human-readable name "Kimi Code" so it is not
+/// confused with retired Kimi Desktop.
 String agentConversationTargetCompactDisplayName(TargetCandidate target) {
   return switch (agentConversationProductId(target.target)) {
     'antigravity' => 'Antigravity',
@@ -33,7 +35,7 @@ String agentConversationTargetCompactDisplayName(TargetCandidate target) {
     'cursor' => 'Cursor',
     'hermes' || 'hermes-agent' => 'Hermes',
     'kilo' || 'kilo-code' => 'Kilo',
-    'kimi-code' => 'Kimi',
+    'kimi-code' => 'Kimi Code',
     'grok' || 'xai-grok' => 'Grok',
     'command-code' || 'cmdc' => 'Command Code',
     'lico' || 'lico-agent' => 'Lico',

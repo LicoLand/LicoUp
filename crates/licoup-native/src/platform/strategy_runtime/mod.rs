@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use crate::domain::adaptive_flywheel::{CommandKind, RunCommand, RuntimeKind};
+use licoup_workflow::{CommandKind, RunCommand, RuntimeKind};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

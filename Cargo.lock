@@ -2116,6 +2116,7 @@ dependencies = [
  "licoup-endpoint-core",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
+ "licoup-workflow",
  "log",
  "mime_guess",
  "nix",
@@ -2165,6 +2166,16 @@ dependencies = [
 [[package]]
 name = "licoup-protocol-bindings"
 version = "0.3.0"
+
+[[package]]
+name = "licoup-workflow"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "linux-raw-sys"
