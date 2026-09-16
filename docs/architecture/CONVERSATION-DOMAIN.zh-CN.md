@@ -514,6 +514,12 @@ stateDiagram-v2
 
 用户发消息采用「**第一阶段：落盘定稿；第二阶段：调度准入**」的双重保障机制，确保用户输入绝不丢失：
 
+`conversation.dispatch.after-post` 还接收可选布尔值 `suppressAssistant`（默认
+`false`），为该消息排除指定 Assistant 的直接派发和 steer。Rust 仍从已提交 Event
+解析 mention、保留共享历史并返回已有可附着 turn。
+[Assistant 控件](../functionality/ADAPTIVE-FLYWHEEL.md#group-conversation-start)
+负责此界面选择；独立绑定的 Flywheel 执行保持原有语义。
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -534,7 +540,7 @@ sequenceDiagram
     Bridge-->>UI: 6. 前端收到落库确认
     Note over UI: 前端释放草稿：<br/>• _draft = ''<br/>• 刷新本地事件列表
 
-    UI->>Bridge: 7. 下行行为事件：conversation.dispatch.after-post { conversationId, eventId }
+    UI->>Bridge: 7. 下行行为事件：conversation.dispatch.after-post { conversationId, eventId, suppressAssistant? }
     Bridge->>Dispatch: 8. 传入已持久化的 (conversationId, eventId)
     Dispatch->>Domain: 9. 从库中读取文本，解析 @mention / 绑定的 Flywheel Graph
     Dispatch->>Dispatch: 10. 登记 Dispatch(accepted) + 未定稿 Agent Event 槽位

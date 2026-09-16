@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
@@ -342,10 +343,10 @@ class _MetricPill extends StatelessWidget {
     final colors = context.licoColors;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: colors.line.withAlpha(150)),
+        stroke: colors.line.withAlpha(150),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,7 +384,7 @@ class _WidgetCard extends StatelessWidget {
     final colors = context.licoColors;
     return Material(
       color: colors.surface,
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(LicoRadius.chip),
         side: BorderSide(color: colors.line.withAlpha(150)),
       ),

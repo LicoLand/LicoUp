@@ -7,17 +7,12 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_session_ordering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// In-chat conversation switcher for the messaging header: a quiet icon
-/// button that reveals the current agent's conversations on hover (desktop)
-/// or in a modal bottom sheet on mobile. Reads like the history switcher of a
-/// chat client, not a settings dialog.
+/// Mobile conversation switcher. Desktop shares the content in its overflow menu.
 class MessagingConversationSwitcher extends StatefulWidget {
   const MessagingConversationSwitcher({
     super.key,
@@ -26,7 +21,6 @@ class MessagingConversationSwitcher extends StatefulWidget {
     required this.onSelectConversation,
     required this.onNewConversation,
     this.runningFor,
-    this.useBottomSheet = false,
   });
 
   final List<AgentConversationSession> sessions;
@@ -36,10 +30,6 @@ class MessagingConversationSwitcher extends StatefulWidget {
 
   /// Marks a conversation row as currently running (active turn).
   final bool Function(AgentConversationSession session)? runningFor;
-
-  /// Mobile surfaces open the switcher as a bottom sheet instead of the
-  /// hover card.
-  final bool useBottomSheet;
 
   @override
   State<MessagingConversationSwitcher> createState() =>
@@ -80,44 +70,10 @@ class _MessagingConversationSwitcherState
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    if (widget.useBottomSheet) {
-      return _SwitcherButton(
-        key: const Key('messaging-conversation-switcher-button'),
-        tooltip: strings.conversations,
-        onPressed: _openSheet,
-      );
-    }
-    final menuRadius = BorderRadius.circular(
-      AppleControlMetrics.menuCornerRadius,
-    );
-    return MessagingHoverPopover(
-      popoverKey: const Key('messaging-conversation-switcher-panel'),
-      width: 320,
-      maxHeight: 420,
-      borderRadius: menuRadius,
-      cardBuilder: (context, close) {
-        return MessagingConversationSwitcherContent(
-          sessions: widget.sessions,
-          selectedSessionId: widget.selectedSessionId,
-          onSelectConversation: (sessionId) {
-            close();
-            widget.onSelectConversation(sessionId);
-          },
-          onNewConversation: () {
-            close();
-            widget.onNewConversation();
-          },
-          runningFor: widget.runningFor,
-        );
-      },
-      triggerBuilder:
-          (context, {required open, required toggle, required close}) {
-            return _SwitcherButton(
-              key: const Key('messaging-conversation-switcher-button'),
-              tooltip: strings.conversations,
-              onPressed: toggle,
-            );
-          },
+    return _SwitcherButton(
+      key: const Key('messaging-conversation-switcher-button'),
+      tooltip: strings.conversations,
+      onPressed: _openSheet,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -33,10 +34,10 @@ class ConversationVirtualMachineDestinationChip extends StatelessWidget {
           key: const Key('conversation-virtual-machine-destination'),
           constraints: const BoxConstraints(maxWidth: 220),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: colors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(LicoRadius.chip),
-            border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
+            stroke: colors.primary.withValues(alpha: 0.3),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

@@ -237,7 +237,7 @@ void main() {
       final card = tester.widget<AnimatedContainer>(
         find.byKey(const Key('secure-mesh-capability-card')),
       );
-      final decoration = card.decoration! as BoxDecoration;
+      final decoration = card.decoration! as ShapeDecoration;
       final themeColors = buildLicoTheme().extension<LicoThemeColors>()!;
       // Neutral charcoal, deliberately not the brand-tinted surface: this card
       // is ordinary content, not a brand-owned one.

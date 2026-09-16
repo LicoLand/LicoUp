@@ -9,10 +9,61 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtim
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  testWidgets(
+    'floating toolbar fits below real text layout at larger text scales',
+    (tester) async {
+      for (final scale in [1.0, 1.5]) {
+        await tester.pumpWidget(
+          _ComposerTestApp(
+            child: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: SizedBox(
+                width: 360,
+                child: RuntimeMessageComposer(
+                  targetLabel: 'Fixture Agent',
+                  initialDraft: '',
+                  busy: false,
+                  enabled: true,
+                  modelOptions: const [],
+                  selectedModel: '',
+                  reasoningEffortOptions: const [],
+                  selectedReasoningEffort: '',
+                  onModelChanged: (_) {},
+                  onReasoningEffortChanged: (_) {},
+                  onDraftChanged: (_) {},
+                  onSend: (_) async => true,
+                  floatingMatteCapsule: true,
+                  onAttach: () {},
+                  fieldLeading: const SizedBox.square(
+                    dimension: 32,
+                    child: Icon(Icons.auto_awesome_outlined),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        for (final text in ['', 'first\nsecond\nthird\nfourth']) {
+          await tester.enterText(find.byType(TextField), text);
+          await tester.pumpAndSettle();
+          final field = tester.getRect(
+            find.byKey(const Key('agent-conversation-composer-field')),
+          );
+          final toolbar = tester.getRect(
+            find.byKey(const Key('agent-conversation-composer-toolbar')),
+          );
+          final input = tester.getRect(find.byType(TextField));
+          expect(input.bottom, lessThan(toolbar.top));
+          expect(toolbar.bottom, closeTo(field.bottom - 12, 0.5));
+          expect(tester.takeException(), isNull);
+        }
+      }
+    },
+  );
+
   testWidgets('image paste consumes the native text paste action', (
     tester,
   ) async {
@@ -618,7 +669,7 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
-  testWidgets('floating matte composer shows external attach capsule', (
+  testWidgets('floating composer keeps attachments in its bottom toolbar', (
     tester,
   ) async {
     var attachTapped = false;
@@ -914,7 +965,7 @@ void main() {
   });
 
   testWidgets(
-    'floating capsule morphs into a rounded rectangle on wrap and keeps the leading control at the interior top-left',
+    'floating composer keeps its rectangle and bottom controls as text wraps',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(700, 400);
@@ -957,7 +1008,7 @@ void main() {
       );
       await tester.pump();
 
-      // One line: full stadium capsule.
+      // The empty composer already uses the final rounded rectangle.
       expect(
         fieldRadius(tester),
         BorderRadius.circular(
@@ -970,13 +1021,9 @@ void main() {
       final fieldSingle = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
       );
-      expect(
-        leadingSingle.top,
-        closeTo(fieldSingle.top + LicoRadius.composerInset, 0.5),
-      );
+      expect(leadingSingle.bottom, closeTo(fieldSingle.bottom - 12, 0.5));
 
-      // Wrapping draft: the capsule grows upward as a rounded rectangle while
-      // the leading control stays pinned to the interior top-left.
+      // Wrapping grows the editing area above the stable bottom action row.
       await tester.enterText(
         find.byType(TextField),
         'lico up composer wrap check ' * 12,
@@ -984,7 +1031,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         fieldRadius(tester),
-        BorderRadius.circular(LicoRadius.composerField),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
       );
       final leadingMulti = tester.getRect(
         find.byKey(const Key('test-field-leading')),
@@ -993,21 +1042,17 @@ void main() {
         find.byKey(const Key('agent-conversation-composer-field')),
       );
       expect(fieldMulti.height, greaterThan(fieldSingle.height));
-      expect(
-        leadingMulti.top,
-        closeTo(fieldMulti.top + LicoRadius.composerInset, 0.5),
-      );
-      expect(
-        leadingMulti.bottom,
-        lessThan(fieldMulti.bottom - LicoRadius.composerInset),
-      );
+      expect(leadingMulti.bottom, closeTo(fieldMulti.bottom - 12, 0.5));
+      expect(leadingMulti.bottom, lessThan(fieldMulti.bottom));
 
-      // An explicit newline morphs too, and clearing restores the stadium.
+      // Explicit newlines and clearing retain the same corner geometry.
       await tester.enterText(find.byType(TextField), 'first\nsecond');
       await tester.pumpAndSettle();
       expect(
         fieldRadius(tester),
-        BorderRadius.circular(LicoRadius.composerField),
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+        ),
       );
       await tester.enterText(find.byType(TextField), '');
       await tester.pumpAndSettle();

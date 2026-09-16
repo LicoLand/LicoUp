@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 const LayoutComponentKit dashboardDesktopComponentKit =
     DashboardDesktopComponentKit();
@@ -110,9 +111,10 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
     final colors = context.layoutPalette;
     return DecoratedBox(
       key: key,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: emphasized ? colors.surfaceRaised : colors.surface,
-        border: Border.all(color: colors.line.withAlpha(90)),
+        borderRadius: BorderRadius.zero,
+        stroke: colors.line.withAlpha(90),
       ),
       child: child,
     );
@@ -135,7 +137,7 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
       key: key,
       color: colors.surfaceLow,
       elevation: tokens.elevation,
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(tokens.cardRadius),
         side: BorderSide(color: colors.line.withAlpha(110)),
       ),
@@ -174,9 +176,9 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
           horizontal: tokens.spacingUnit * 1.25,
           vertical: tokens.spacingUnit * 0.5,
         ),
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.background,
-          border: Border.all(color: colors.line.withAlpha(110)),
+          stroke: colors.line.withAlpha(110),
           borderRadius: BorderRadius.circular(tokens.cardRadius),
         ),
         child: child,
@@ -198,7 +200,7 @@ final class DashboardDesktopComponentKit implements LayoutComponentKit {
       child: Material(
         color: colors.surface,
         elevation: tokens.elevation,
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(tokens.cardRadius + 2),
           side: BorderSide(color: colors.line.withAlpha(130)),
         ),
