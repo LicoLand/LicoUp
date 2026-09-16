@@ -21,6 +21,21 @@ fn targets_add_persists_manual_entry_and_scan_uses_it() {
     let state_root = dir.join("client-state");
     let config_path = dir.join("openclaw-runtime.json");
     let history_root = dir.join("openclaw-history");
+    let scan_params = json!({
+        "stateRoot": display_path(state_root.clone()),
+        "syntheticDiscoveryIsolation": true,
+        "runningProcessNames": []
+    });
+
+    let absent = scan_targets_with_params(&scan_params).unwrap();
+    let openclaw = absent["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["target"] == "openclaw")
+        .unwrap();
+    assert_eq!(openclaw["manual"], false);
+    assert_eq!(openclaw["status"], "not-detected");
 
     let added = add_target(&json!({
         "target": "openclaw",
@@ -44,10 +59,7 @@ fn targets_add_persists_manual_entry_and_scan_uses_it() {
         display_path(history_root.clone())
     );
 
-    let scan = scan_targets_with_params(&json!({
-        "stateRoot": display_path(state_root.clone())
-    }))
-    .unwrap();
+    let scan = scan_targets_with_params(&scan_params).unwrap();
     let openclaw = scan["candidates"]
         .as_array()
         .unwrap()
@@ -65,7 +77,9 @@ fn targets_add_persists_manual_entry_and_scan_uses_it() {
 
     let inspected = inspect_target_with_params(&json!({
         "target": "openclaw",
-        "stateRoot": display_path(state_root.clone())
+        "stateRoot": display_path(state_root.clone()),
+        "syntheticDiscoveryIsolation": true,
+        "runningProcessNames": []
     }))
     .unwrap();
     assert_eq!(inspected["target"]["manual"], true);

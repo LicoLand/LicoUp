@@ -11,7 +11,7 @@
 | Agent 后端 | [Agent 适配器](AGENT-ADAPTERS-ARCHITECTURE.md) | 真实原生能力与原始对话 |
 | 当前证据 | [Status](../STATUS.md) | 已实现、已验证的行为 |
 
-**状态：2026-09-16 接受的目标设计；尚待实施。** 本文拥有目标控制与编译器架构，不表示当前二进制已有这些接口。现有 Graph 合同保持当前事实，直到相应实现与文档完整迁移。
+**状态：2026-09-16 编译器提取已落入源码；运行时控制设计已接受、尚待实施。** `licoup-workflow` 已拥有现有定义、诊断、编译索引和纯状态转换机；native 包导入、Assistant 预检和执行接入该 crate。下文的队列、Node Facade、后继交接、计划缓存及新激活语义仍为目标，不表示分发二进制已有这些变更。
 
 ## 1. 设计意图
 
@@ -50,13 +50,28 @@ flowchart LR
 
 `licoup-workflow` 是一个完整承接现有编译器/reducer 的实际核心 crate，旧实现及调用/测试一起迁移。`licoup-application` 保留仅序列化依赖的轻量请求/结果/ports 契约。具体存储和执行留在 native；策略消费内核，不拥有内核。
 
-`RunSnapshot`、`ReducerEvent`、`RunCommand` 是 machine 的状态/事件/效果 ABI，不是另一份编译 IR。将现有 `workflow_diagnostics.rs` 和 `graph.rs` 的重叠校验合为一个产生诊断的语义分析入口。`compile_persisted_workflow` 中的历史改写迁入导入/数据转换边界，普通运行期编译不能改写已存定义。
+`RunSnapshot`、`ReducerEvent`、`RunCommand` 是 machine 的状态/事件/效果 ABI，不是另一份编译 IR。原 `workflow_diagnostics.rs` 和 `graph.rs` 的重叠校验已合为一个产生诊断的语义分析入口。源码、JSON value 和 typed definition 共用分析；typed 入口不再序列化后重复解码。lowering 只接受已分析定义，编译后的定义只读。历史转换属于导入/数据转换边界，普通运行期编译不能改写已存定义。
 
 native plan provider 按已有 revision/semantics 身份维护有界、进程内共享不可变计划缓存，活跃引用也计内存。缺少计划时在写事务外准备，提交时检查 run 仍绑定该不可变 revision。不每事件重编译，不持久化第二执行格式；复杂候选增量分析等实际编辑延迟证明需要再引入。
 
 静态合法不等于运行授权。编译可以证明绑定或操作形状有效，不能证明用户权限仍在、Agent 当前可用或预算仍足够。优化必须保留可见命令、事件来源、join 和效果顺序；不得把推测模型调用、重复效果、丢弃干预或重排取消当作编译优化。
 
 候选修订可独立编译，最终经 Proxy 按预期当前版本准入。活跃 run 固定不可变计划；定义变化通过后继 revision/run 和原 Graph store 中的原子意图交接承接，已开始效果留在原 run。普通 steer 不重编译整图；不同效果的新修订不能继承旧整图授权。
+
+### 因果输入、交接与执行版本
+
+编译器保留数据依赖和控制边。visit 接纳时绑定前驱结果身份与共享资源版本，调用不得
+静默读取更新的全局 context。共享写入使用显式合并、CAS 或资源约束，局部解决冲突，
+不恢复整图批次屏障。结果引用不授予内容读取权。
+
+successor 接纳与命令认领/启动检查共用原 store 的原子边界，核对 owner、revision、
+visit/generation 和执行状态，阻止旧 owner 扫描后抢领或凭缓存 permit 在交接提交后
+启动效果。仅转移明确的未开始意图；在途效果仍属原 run，新 run 可在当前读取授权下
+显式引用其认证结果。旧 visit 不得满足新 join，也不得重放旧效果。
+
+定义身份不能标识 lowering、join 和 reducer 的执行语义。checkpoint 恢复必须绑定
+执行语义及兼容规则，采用兼容解释器、受测迁移或保留原 owner/version 到安全边界。
+不另建第二份权威 compiled 格式。纯编译器迁出后，这些运行期要求仍待实施。
 
 ## 3. 运行期控制结构
 
@@ -167,13 +182,21 @@ Assistant 可以给单节点、所有运行节点、指定 adapter 节点或角�
 
 完成一经持久接收立即应用。A→C 加独立 B 的图中，C 可以在 B 仍运行时启动；只有明确 join 等待其必要分支和 visit。队列发布确认、节点准入、效果完成分别记录；[RabbitMQ 的确认说明](https://www.rabbitmq.com/docs/confirms) 也区分发布者与消费者各自的确认范围。增加队列并不使任意外部效果自动获得 exactly-once 保证。
 
+一次性选择器冻结接收者；Graph scope 暂停/取消还须在权威接纳边界阻止作用域内新就绪
+节点和未来激活。控制已接纳、新工作已阻止、OS 进程实际暂停是不同事实；不支持暂停
+须如实报告，认证的迟到结果仍结算原效果。撤权和执行隔离沿[安全边界](SECURITY-AND-DATA-BOUNDARY.zh-CN.md)。
+
+Accepted/started 回执必须在对应持久事务提交后发出。store 明确承受进程丢失还是还
+承受断电，并绑定 writer、WAL、synchronous 与 checkpoint 配置。配置和杀进程测试
+不能证明断电恢复，也不代表跨 store 原子性。控制响应沿[原生交互边界](CLIENT-NATIVE-INTERACTION.md)。
+
 ## 5. 宿主、迁移工具与 Peer 边界
 
 独立本地宿主在 GUI 退出后继续拥有执行。重连 GUI 读取原事实，不重放业务命令补界面。运行宿主保留匹配的只读代码及资源，更新候选独立暂存；不兼容时等待受控交接，不覆盖活跃资源或争抢所有权。
 
 独立 Node.js 迁移 CLI 依[现有迁移合同](CLIENT-UPDATE-AND-STATE-MIGRATION.md) 纳入本次改造。它需要一致源数据：通过同一控制路径请求维护/排空，等到真实安全所有权释放后取得数据根锁，再转换各 store。没有安装客户端时也可运行，需要的原生 helper 随工具提供且遵守授权。历史双向转换 codec 是永久维护资产；未决命令、订阅、来源游标、未知效果和后继交接进入对应数据合同。
 
-计划中的共同 Rust 基线为 **1.95.0**。编译器、native 宿主、协议 SDK 接入及迁移工具自带的 native helper 都应在该准确版本和实际目标平台解析/编译。本文不修改当前 toolchain，也不声称编译已通过。
+workspace 已固定 **Rust 1.95.0**，包含成员 MSRV 声明及对应 CI action 修订。编译器、native 宿主、协议 SDK 接入及迁移工具自带 helper 共用此基线。源码固定不能证明未来 SDK/helper 或全部目标平台已编译和运行。
 
 Peer 控制先通过真实保护端点，再进入本地 Proxy；本文不定义另一套对端消息协议。传输收据不等于 Proxy 准入、节点接纳或任务完成。信任和撤销在实际动作处生效；拥有成员身份不代表能控制所有节点。多用户支持须验证矛盾控制，不只演示两人能连上。
 

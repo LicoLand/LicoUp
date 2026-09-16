@@ -66,12 +66,19 @@ fn scan_target_with_manual_projection(
     params: &Value,
     projection: TargetScanProjection,
 ) -> Result<TargetCandidate> {
+    let isolate_automatic_sources = synthetic_discovery_isolation(params);
     if let Some(manual) = manual.filter(|item| item.location == "virtual-machine") {
         return Ok(scan_virtual_machine_target(def, manual));
     }
     let config_path = manual
         .and_then(|item| item.config_path.clone())
-        .or_else(|| default_config_path_with_params(def.id, params));
+        .or_else(|| {
+            if isolate_automatic_sources {
+                None
+            } else {
+                default_config_path_with_params(def.id, params)
+            }
+        });
     let manual_binary = manual.and_then(|item| item.binary_path.clone());
     let located_binary = manual_binary
         .filter(|path| {
@@ -88,10 +95,18 @@ fn scan_target_with_manual_projection(
             file_name.starts_with("cursor-agent") || cursor_binary_supports_acp(path, params)
         })
         .map(|path| (path, "manual"))
-        .or_else(|| find_target_binary_with_source(def, params));
+        .or_else(|| {
+            if isolate_automatic_sources {
+                None
+            } else {
+                find_target_binary_with_source(def, params)
+            }
+        });
     let binary_path = located_binary.as_ref().map(|(path, _)| path.clone());
     let binary_source = located_binary.as_ref().map(|(_, source)| *source);
-    let detection_path = default_detection_path_with_params(def.id, params);
+    let detection_path = (!isolate_automatic_sources)
+        .then(|| default_detection_path_with_params(def.id, params))
+        .flatten();
     let history_roots = manual
         .map(|item| item.history_roots.clone())
         .unwrap_or_default();
@@ -255,6 +270,16 @@ fn scan_target_with_manual_projection(
         ),
         model_catalog,
     })
+}
+
+#[cfg(test)]
+fn synthetic_discovery_isolation(params: &Value) -> bool {
+    param_bool(params, "syntheticDiscoveryIsolation") == Some(true)
+}
+
+#[cfg(not(test))]
+fn synthetic_discovery_isolation(_params: &Value) -> bool {
+    false
 }
 
 fn scan_virtual_machine_target(def: &TargetDef, manual: &ManualTarget) -> TargetCandidate {
