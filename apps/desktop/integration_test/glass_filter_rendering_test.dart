@@ -83,7 +83,7 @@ void main() {
         final refracted = await render(lens!.filter);
         int red(ByteData data, int x) => data.getUint8((64 * 128 + x) * 4);
         expect(red(refracted, 80), closeTo(red(original, 80), 1));
-        expect(red(refracted, 120), greaterThan(red(original, 120) + 2));
+        expect(red(refracted, 124), lessThan(red(original, 124) - 2));
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());

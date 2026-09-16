@@ -110,11 +110,14 @@ border and an overlay rim.
 
 Control-layer glass is a different owner. `LicoGlass` paints unclipped
 shadows, then one clip around optional lens displacement, blur, luminosity
-and fill, then the child, then a 1 px conic specular rim in the foreground.
-The clip does not wrap the rim. Overlay glass uses a sweep-gradient catch of
-light (lit arc plus a far-edge whisper). Small glass controls (outlined
-buttons, search) keep that light/shadow treatment but enclose the full
-silhouette so the ring never drops out. Neither is a uniform-alpha hairline.
+and fill, then the child, then a 0.75 px specular rim in the foreground.
+The clip does not wrap the rim. Both overlay glass and small controls use one
+low-contrast, broad linear light field projected across the actual surface
+width and height, from above-left at rest. Brightness changes gradually along
+straight edges and corner arcs, with a weak edge on the far side. Pointer
+motion changes the light direction without a concentrated angular highlight,
+bright point, closed bright outline or second bevel. The [Apple-Style material reference](https://github.com/Tsdsj/Apple-Style/tree/d0feb3f1819bd992ef78ee4ac667095f21b26a5c/skills/Apple-Style-Liquid-Glass)
+informs this restrained edge treatment.
 Opaque glass controls skip backdrop reads so an empty background is not
 refracted into a grey pill. Nested glass on glass is forbidden: ghost header
 icons already inside overlay glass do not receive a second glass surface.
@@ -127,8 +130,11 @@ content subtree, preserving editing focus, selection and local widget state.
 Base surfaces paint their structural ring in the foreground without adding
 implicit content padding; feature-owned insets remain unchanged.
 Each lensed slab owns and reuses its shader, releasing it on replacement or
-unmount; only the immutable fragment program is shared. Displacement increases
-toward the rim and fades toward the interior. Unsupported renderers retain the
+unmount; only the immutable fragment program is shared. The lens samples inward
+along the rounded silhouette normal, calculated directly without repeated
+distance-field probes. Displacement increases toward the rim within a band
+limited to one quarter of the shorter side and at most 12 px, leaving the face
+undistorted even on short controls. Unsupported renderers retain the
 blur and specular rim without shader displacement.
 The sidebar, conversation header and composer must also avoid a second outline
 from an enclosing surface. Visual review includes the straight-to-curve joins,

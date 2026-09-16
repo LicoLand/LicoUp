@@ -409,28 +409,28 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Specular rim for control-layer glass. Painted as a conic highlight in
+  /// Directional rim for control-layer glass. Painted as a broad light ramp in
   /// [chromeForegroundColor], never brand/primary. Lit and far-edge alphas
   /// differ so the silhouette reads as a catch of light, not a drawn outline.
-  static const double glassEdgeRimWidth = 1;
+  static const double glassEdgeRimWidth = 0.75;
 
-  /// Lit-side specular alpha on a dark canvas (≈ 0.26).
-  static const int glassEdgeRimHiAlphaDark = 66;
+  /// Lit-side specular alpha on a dark canvas (≈ 0.16).
+  static const int glassEdgeRimHiAlphaDark = 42;
 
-  /// Lit-side specular alpha on a light canvas (≈ 0.58).
-  static const int glassEdgeRimHiAlphaLight = 148;
+  /// Lit-side specular alpha on a light canvas (≈ 0.38).
+  static const int glassEdgeRimHiAlphaLight = 98;
 
-  /// Shadow-side specular alpha on a dark canvas (≈ 0.05).
-  static const int glassEdgeRimLoAlphaDark = 13;
+  /// Shadow-side specular alpha on a dark canvas (≈ 0.03).
+  static const int glassEdgeRimLoAlphaDark = 8;
 
-  /// Shadow-side specular alpha on a light canvas (≈ 0.14).
-  static const int glassEdgeRimLoAlphaLight = 36;
+  /// Shadow-side specular alpha on a light canvas (≈ 0.08).
+  static const int glassEdgeRimLoAlphaLight = 20;
 
   /// Bright catch of light on the lit side of the silhouette.
   static Color glassEdgeRimHi({required bool isDark}) => chromeForegroundColor
       .withAlpha(isDark ? glassEdgeRimHiAlphaDark : glassEdgeRimHiAlphaLight);
 
-  /// Whisper on the far edge. Two matched poles would read as a drawn outline.
+  /// Soft edge definition on the side facing away from the light.
   static Color glassEdgeRimLo({required bool isDark}) => chromeForegroundColor
       .withAlpha(isDark ? glassEdgeRimLoAlphaDark : glassEdgeRimLoAlphaLight);
 
