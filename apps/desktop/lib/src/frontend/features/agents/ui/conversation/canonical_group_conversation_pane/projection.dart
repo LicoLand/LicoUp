@@ -16,6 +16,9 @@ String _iso(int unixMs) => unixMs <= 0
         isUtc: true,
       ).toIso8601String();
 
+/// Membership identity survives discovery and runtime availability changes.
+/// Only the retired Kimi Desktop adapter is omitted from the roster; its
+/// durable Membership and Events remain untouched.
 List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
   ClientConversation conversation,
   List<TargetCandidate> targets,
@@ -23,15 +26,10 @@ List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
   final resolved = <TargetCandidate>[];
   for (final membership in conversation.activeAgentMemberships) {
     final agentId = membership.principal.agentId.trim();
-    TargetCandidate? target;
-    for (final candidate in targets) {
-      if (candidate.target == agentId || candidate.id == agentId) {
-        target = candidate;
-        break;
-      }
-    }
+    if (agentId.isEmpty || _retiredAdapter(agentId)) continue;
+    final candidate = _matchingTarget(targets, agentId);
     resolved.add(
-      target ??
+      candidate ??
           TargetCandidate(
             target: agentId,
             label: membership.principal.displayName.trim().isEmpty
@@ -55,41 +53,47 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
   List<String> orderedAgentIds,
 ) {
   if (orderedAgentIds.isEmpty) return const [];
-  final targetByAgentId = {
-    for (final target in targets) target.target: target,
-    for (final target in targets) target.id: target,
-  };
-  final membershipByAgentId = {
-    for (final membership in conversation.activeAgentMemberships)
-      membership.principal.agentId: membership,
-  };
+  final candidates = [
+    ...targets,
+    ...resolveCanonicalGroupParticipantTargets(conversation, targets),
+  ];
+  final byAdapter = <String, TargetCandidate>{};
+  for (final target in candidates) {
+    byAdapter.putIfAbsent(target.target, () => target);
+  }
   final resolved = <TargetCandidate>[];
+  final seen = <String>{};
   for (final agentId in orderedAgentIds) {
-    final target = targetByAgentId[agentId];
-    if (target != null) {
-      resolved.add(target);
-    } else {
-      final membership = membershipByAgentId[agentId];
-      if (membership != null) {
-        resolved.add(
-          TargetCandidate(
-            target: agentId,
-            label: membership.principal.displayName.trim().isEmpty
-                ? agentId
-                : membership.principal.displayName.trim(),
-            kind: 'conversation-member',
-            status: TargetCandidateStatus.synthesizedMembership,
-            configured: false,
-            confidence: 1,
-            adapterStatus: 'runtime-unavailable',
-            scanSource: 'canonical-conversation',
-          ),
-        );
-      }
+    final id = agentId.trim();
+    final target = byAdapter[id];
+    if (target == null ||
+        _retiredAdapter(target.target) ||
+        !seen.add(target.target)) {
+      continue;
     }
+    resolved.add(target);
   }
   return List<TargetCandidate>.unmodifiable(resolved);
 }
+
+TargetCandidate? canonicalGroupParticipantTarget(
+  List<TargetCandidate> targets,
+  String agentId,
+) {
+  final target = _matchingTarget(targets, agentId.trim());
+  return target == null || _retiredAdapter(target.target) ? null : target;
+}
+
+TargetCandidate? _matchingTarget(List<TargetCandidate> targets, String id) {
+  if (id.isEmpty) return null;
+  for (final target in targets) {
+    if (target.target == id) return target;
+  }
+  return null;
+}
+
+bool _retiredAdapter(String id) =>
+    const {'kimi', 'kimi-desktop'}.contains(id.trim().toLowerCase());
 
 ClientConversationMembership? canonicalGroupAgentMembership(
   ClientConversation conversation,
@@ -97,7 +101,7 @@ ClientConversationMembership? canonicalGroupAgentMembership(
 ) {
   for (final membership in conversation.activeAgentMemberships) {
     final agentId = membership.principal.agentId;
-    if (agentId == target.target || agentId == target.id) return membership;
+    if (agentId == target.target) return membership;
   }
   return null;
 }

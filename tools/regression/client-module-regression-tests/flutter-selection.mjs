@@ -56,6 +56,9 @@ test("native usage projection and rich hover use existing usage modules", () => 
 
 test("changed Flutter feature paths select only their bounded feature module", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/canonical_group_roster_visibility_test.dart",
+  ])), ["flutter.feature.agent-conversations"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/contracts/mcp_adapter.dart",
   ])), ["architecture.client-boundaries", "flutter.feature.mcp-transfer"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

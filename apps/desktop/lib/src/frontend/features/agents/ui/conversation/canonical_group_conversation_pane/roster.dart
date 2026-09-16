@@ -105,9 +105,7 @@ class CanonicalGroupRoster extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final target = targets[index];
-              final membership =
-                  membershipsByAgentId[target.target] ??
-                  membershipsByAgentId[target.id];
+              final membership = membershipsByAgentId[target.target];
               final membershipLabel =
                   membership?.principal.displayName.trim() ?? '';
               final fullLabel = membershipLabel.isEmpty
@@ -117,7 +115,7 @@ class CanonicalGroupRoster extends StatelessWidget {
                 target,
               );
               final quotaSnapshot = _renderableQuotaSnapshot(
-                quotaSnapshots[target.target] ?? quotaSnapshots[target.id],
+                quotaSnapshots[target.target],
               );
               final member = Tooltip(
                 message: fullLabel,
