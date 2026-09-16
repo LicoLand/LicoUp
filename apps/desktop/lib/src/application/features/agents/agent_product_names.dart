@@ -21,6 +21,8 @@ String? agentProductDisplayName(String value) {
     'deepseek-harness' || 'dsh' => 'DeepSeek Harness',
     'hermes' || 'hermes-agent' => 'Hermes Agent',
     'kilo' || 'kilo-code' => 'Kilo Code',
+    // Human-readable name is "Kimi Code". Do not shorten to "Kimi"; that
+    // label belonged to retired Kimi Desktop (`kimi` / `kimi-desktop`).
     'kimi-code' => 'Kimi Code',
     'grok' || 'xai-grok' => 'Grok',
     'command-code' || 'cmdc' => 'Command Code',
