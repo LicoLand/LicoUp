@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -292,10 +293,10 @@ class _PathInput extends StatelessWidget {
       textField: controller != null && !readOnly,
       child: Container(
         height: 38,
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(LicoRadius.chip),
-          border: Border.all(color: borderColor),
+          stroke: borderColor,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

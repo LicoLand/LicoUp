@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -90,7 +91,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
         backgroundColor: WidgetStatePropertyAll(colors.surfaceLow),
         elevation: const WidgetStatePropertyAll(6),
         shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
+          ContinuousRoundedBorder(
             borderRadius: BorderRadius.circular(LicoRadius.floating),
             side: BorderSide(color: colors.line),
           ),
@@ -182,10 +183,10 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
           child: Container(
             key: const Key('conversation-parity-readiness'),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: color.withValues(alpha: 0.42)),
+              stroke: color.withValues(alpha: 0.42),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

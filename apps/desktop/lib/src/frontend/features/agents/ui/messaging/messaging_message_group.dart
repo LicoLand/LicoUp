@@ -20,6 +20,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubbl
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -621,10 +622,12 @@ class _MessagingUserAvatar extends StatelessWidget {
         width: MessagingDesktopMetrics.conversationAvatarExtent,
         height: MessagingDesktopMetrics.conversationAvatarExtent,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
+        decoration: continuousHairlineDecoration(
           color: colors.surfaceLow,
-          border: Border.all(color: colors.line.withAlpha(90), width: 1),
+          borderRadius: BorderRadius.circular(
+            MessagingDesktopMetrics.conversationAvatarExtent / 2,
+          ),
+          stroke: colors.line.withAlpha(90),
         ),
         child: Icon(
           Icons.person_outline_rounded,
@@ -656,14 +659,11 @@ class _MessagingAgentBadge extends StatelessWidget {
     return Container(
       key: const Key('messaging-agent-badge'),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         // Neutral chip — brand/primary wash reads as olive 泛黄 on dark glass.
         color: colors.surfaceLow.withAlpha(colors.isDark ? 180 : 220),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: colors.line.withAlpha(colors.isDark ? 90 : 110),
-          width: MessagingDesktopMetrics.hairline,
-        ),
+        stroke: colors.line.withAlpha(colors.isDark ? 90 : 110),
       ),
       child: Text(
         role,

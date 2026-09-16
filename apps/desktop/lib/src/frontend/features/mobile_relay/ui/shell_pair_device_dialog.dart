@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
@@ -151,12 +152,10 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                                   ),
                               IgnorePointer(
                                 child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: colors.primaryStrong,
-                                      width: 2,
-                                    ),
+                                  decoration: continuousHairlineDecoration(
                                     borderRadius: BorderRadius.circular(14),
+                                    stroke: colors.primaryStrong,
+                                    strokeWidth: 2,
                                   ),
                                 ),
                               ),
@@ -207,9 +206,9 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
                       child: DecoratedBox(
-                        decoration: BoxDecoration(
+                        decoration: continuousHairlineDecoration(
                           color: colors.surfaceLow,
-                          border: Border.all(color: colors.line),
+                          stroke: colors.line,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Row(

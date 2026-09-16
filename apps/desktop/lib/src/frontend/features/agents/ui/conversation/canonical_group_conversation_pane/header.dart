@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_menu.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
@@ -30,6 +31,7 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         ? strings.groupConversation
         : conversation.title.trim();
     final identity = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           key: const Key('canonical-group-header-avatar'),
@@ -45,9 +47,10 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
             size: MessagingDesktopMetrics.conversationAvatarMarkExtent,
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
+        const SizedBox(width: 14),
+        Flexible(
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
                 child: Text(
@@ -95,12 +98,14 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetH,
         MessagingDesktopMetrics.conversationHeaderCapsuleInsetV,
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              heightFactor: 1,
               child: MessagingConversationOverlayGlass(
+                key: const Key('canonical-group-identity-capsule'),
                 borderRadius: capsuleRadius,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -113,19 +118,30 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(
-              width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
-            ),
-            AspectRatio(
-              aspectRatio: 1,
-              child: MessagingConversationOverlayGlass(
-                key: const Key('canonical-group-roster-toggle-capsule'),
-                borderRadius: capsuleRadius,
-                child: Center(child: rosterToggle),
+          ),
+          const SizedBox(
+            width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+          ),
+          MessagingConversationMenu(
+            triggerKey: const Key('canonical-group-menu-button'),
+            panelKey: const Key('canonical-group-menu-panel'),
+            childrenBuilder: (close) => [
+              MenuItemButton(
+                key: const Key('canonical-group-roster-toggle'),
+                leadingIcon: const Icon(Icons.groups_2_outlined),
+                onPressed: () {
+                  close();
+                  onToggleRoster();
+                },
+                child: Text(
+                  rosterVisible
+                      ? strings.collapseAgentsSidebar
+                      : strings.expandAgentsSidebar,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

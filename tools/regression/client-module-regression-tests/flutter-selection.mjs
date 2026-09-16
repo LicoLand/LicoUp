@@ -55,6 +55,15 @@ test("native usage projection and rich hover use existing usage modules", () => 
 });
 
 test("changed Flutter feature paths select only their bounded feature module", () => {
+  for (const changedPath of [
+    "apps/desktop/shaders/glass_lens.frag",
+    "apps/desktop/test/continuous_stroke_test.dart",
+    "apps/desktop/test/lico_glass_test.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), [
+      "flutter.layer.shell",
+    ]);
+  }
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/test/canonical_group_roster_visibility_test.dart",
   ])), ["flutter.feature.agent-conversations"]);

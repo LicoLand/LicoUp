@@ -18,6 +18,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_parti
 import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_notice.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/reading_position_scroll_controller.dart';
@@ -949,8 +950,8 @@ class _ConversationArtifactsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.line.withAlpha(80)),
+      decoration: continuousHairlineDecoration(
+        stroke: colors.line.withAlpha(80),
         borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Padding(
@@ -992,8 +993,8 @@ class _ConversationDiagnosticsPanel extends StatelessWidget {
     final colors = context.licoColors;
     final semantic = session.semantic;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.line.withAlpha(80)),
+      decoration: continuousHairlineDecoration(
+        stroke: colors.line.withAlpha(80),
         borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Column(

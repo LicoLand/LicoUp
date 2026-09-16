@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_swipe_pin_action.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
@@ -136,7 +137,7 @@ final class _MobileListTile extends StatelessWidget {
       onTogglePinned: onTogglePinned,
       child: Material(
         color: pinned ? colors.brandSurface.withAlpha(120) : Colors.transparent,
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(LicoRadius.chip),
           side: pinned
               ? BorderSide(color: colors.primary.withAlpha(150))

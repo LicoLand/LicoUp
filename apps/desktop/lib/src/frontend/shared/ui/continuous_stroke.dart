@@ -1,15 +1,92 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Normalize oversize stadium radii before insetting the centerline. Insetting
-/// an unnormalized radius makes short capsule ends diverge from straight sides.
+/// Normalize oversize stadium radii before insetting. Insetting an
+/// unnormalized radius makes short capsule ends diverge from straight sides.
 RRect continuousStrokeRRect(
   Size size,
   BorderRadius borderRadius,
   double width,
 ) => borderRadius.toRRect(Offset.zero & size).scaleRadii().deflate(width / 2);
 
-/// One path owns all four sides and corner arcs. The stroke is inset so clips
-/// never shave off a half stroke at the capsule's straight/curved joins.
+RRect continuousStrokeOuterRRect(Rect rect, BorderRadius borderRadius) =>
+    borderRadius.toRRect(rect).scaleRadii();
+
+/// Filled ring for a content-layer structural hairline. Glass chrome does not
+/// use this draw; its edge is a specular highlight owned by the glass surface.
+void paintContinuousStroke(
+  Canvas canvas,
+  Rect rect, {
+  required BorderRadius borderRadius,
+  required BorderSide side,
+  Rect? gap,
+}) {
+  if (rect.isEmpty ||
+      side.style == BorderStyle.none ||
+      side.width <= 0 ||
+      side.color.a == 0) {
+    return;
+  }
+  final borderRect = continuousStrokeOuterRRect(rect, borderRadius);
+  final outer = borderRect.inflate(side.strokeOutset);
+  final inner = borderRect.deflate(side.strokeInset);
+  final paint = Paint()
+    ..isAntiAlias = true
+    ..style = PaintingStyle.fill
+    ..color = side.color;
+  if (inner.width <= 0 || inner.height <= 0) {
+    canvas.drawRRect(outer, paint);
+    return;
+  }
+  if (gap == null || gap.isEmpty) {
+    canvas.drawDRRect(outer, inner, paint);
+    return;
+  }
+  canvas.drawPath(
+    Path.combine(
+      PathOperation.difference,
+      Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRRect(outer)
+        ..addRRect(inner),
+      Path()..addRect(gap),
+    ),
+    paint,
+  );
+}
+
+void paintContinuousHairlineStrip(Canvas canvas, Rect strip, Color color) {
+  if (strip.isEmpty || color.a == 0) return;
+  canvas.drawRect(
+    strip,
+    Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..color = color,
+  );
+}
+
+/// Shared [ShapeDecoration] for a fill plus one structural hairline rim.
+ShapeDecoration continuousHairlineDecoration({
+  Color? color,
+  Gradient? gradient,
+  required BorderRadiusGeometry borderRadius,
+  Color? stroke,
+  double strokeWidth = 1,
+  List<BoxShadow>? shadows,
+}) {
+  final side = stroke == null || strokeWidth <= 0
+      ? BorderSide.none
+      : BorderSide(color: stroke, width: strokeWidth);
+  return ShapeDecoration(
+    color: color,
+    gradient: gradient,
+    shadows: shadows,
+    shape: ContinuousRoundedBorder(borderRadius: borderRadius, side: side),
+  );
+}
+
+/// Closed hairline rasterizer for content-layer outlines.
 class ContinuousStrokePainter extends CustomPainter {
   const ContinuousStrokePainter({
     required this.borderRadius,
@@ -23,15 +100,11 @@ class ContinuousStrokePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.isEmpty || width <= 0 || color.a == 0) return;
-    canvas.drawRRect(
-      continuousStrokeRRect(size, borderRadius, width),
-      Paint()
-        ..isAntiAlias = true
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = width
-        ..strokeJoin = StrokeJoin.round
-        ..color = color,
+    paintContinuousStroke(
+      canvas,
+      Offset.zero & size,
+      borderRadius: borderRadius,
+      side: BorderSide(color: color, width: width),
     );
   }
 
@@ -42,8 +115,260 @@ class ContinuousStrokePainter extends CustomPainter {
       width != oldDelegate.width;
 }
 
-/// Color-only control chrome. Concrete search, capsule and glass components
-/// specialize this base while retaining ownership of their interaction logic.
+/// One-sided 1 px separator as a filled strip, matching rim straight segments.
+class ContinuousEdgeHairlinePainter extends CustomPainter {
+  const ContinuousEdgeHairlinePainter({
+    required this.color,
+    required this.edge,
+    this.width = 1,
+  });
+
+  final Color color;
+  final AxisDirection edge;
+  final double width;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty || width <= 0) return;
+    final strip = switch (edge) {
+      AxisDirection.up => Rect.fromLTWH(0, 0, size.width, width),
+      AxisDirection.down => Rect.fromLTWH(
+        0,
+        size.height - width,
+        size.width,
+        width,
+      ),
+      AxisDirection.left => Rect.fromLTWH(0, 0, width, size.height),
+      AxisDirection.right => Rect.fromLTWH(
+        size.width - width,
+        0,
+        width,
+        size.height,
+      ),
+    };
+    paintContinuousHairlineStrip(canvas, strip, color);
+  }
+
+  @override
+  bool shouldRepaint(ContinuousEdgeHairlinePainter oldDelegate) =>
+      color != oldDelegate.color ||
+      edge != oldDelegate.edge ||
+      width != oldDelegate.width;
+}
+
+/// Material shape that paints through [paintContinuousStroke].
+class ContinuousRoundedBorder extends OutlinedBorder {
+  const ContinuousRoundedBorder({
+    super.side,
+    this.borderRadius = BorderRadius.zero,
+  });
+
+  final BorderRadiusGeometry borderRadius;
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.strokeInset);
+
+  @override
+  ContinuousRoundedBorder scale(double t) {
+    return ContinuousRoundedBorder(
+      side: side.scale(t),
+      borderRadius: borderRadius * t,
+    );
+  }
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
+    if (a is ContinuousRoundedBorder) {
+      return ContinuousRoundedBorder(
+        side: BorderSide.lerp(a.side, side, t),
+        borderRadius: BorderRadiusGeometry.lerp(
+          a.borderRadius,
+          borderRadius,
+          t,
+        )!,
+      );
+    }
+    return super.lerpFrom(a, t);
+  }
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) {
+    if (b is ContinuousRoundedBorder) {
+      return ContinuousRoundedBorder(
+        side: BorderSide.lerp(side, b.side, t),
+        borderRadius: BorderRadiusGeometry.lerp(
+          borderRadius,
+          b.borderRadius,
+          t,
+        )!,
+      );
+    }
+    return super.lerpTo(b, t);
+  }
+
+  @override
+  ContinuousRoundedBorder copyWith({
+    BorderSide? side,
+    BorderRadiusGeometry? borderRadius,
+  }) {
+    return ContinuousRoundedBorder(
+      side: side ?? this.side,
+      borderRadius: borderRadius ?? this.borderRadius,
+    );
+  }
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) {
+    return Path()..addRRect(
+      continuousStrokeOuterRRect(
+        rect,
+        borderRadius.resolve(textDirection),
+      ).deflate(side.strokeInset),
+    );
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
+    return Path()..addRRect(
+      continuousStrokeOuterRRect(rect, borderRadius.resolve(textDirection)),
+    );
+  }
+
+  @override
+  void paintInterior(
+    Canvas canvas,
+    Rect rect,
+    Paint paint, {
+    TextDirection? textDirection,
+  }) {
+    final outer = continuousStrokeOuterRRect(
+      rect,
+      borderRadius.resolve(textDirection),
+    );
+    if (side.style == BorderStyle.solid && side.width > 0 && side.color.a > 0) {
+      final inner = outer.deflate(side.strokeInset);
+      if (inner.width > 0 && inner.height > 0) {
+        canvas.drawRRect(inner, paint);
+        return;
+      }
+    }
+    canvas.drawRRect(outer, paint);
+  }
+
+  @override
+  bool get preferPaintInterior => true;
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    paintContinuousStroke(
+      canvas,
+      rect,
+      borderRadius: borderRadius.resolve(textDirection),
+      side: side,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is ContinuousRoundedBorder &&
+        other.side == side &&
+        other.borderRadius == borderRadius;
+  }
+
+  @override
+  int get hashCode => Object.hash(side, borderRadius);
+
+  @override
+  String toString() {
+    return '${objectRuntimeType(this, 'ContinuousRoundedBorder')}'
+        '($side, $borderRadius)';
+  }
+}
+
+/// Input outline that keeps the floating-label gap but uses the hairline ring.
+class ContinuousOutlineInputBorder extends OutlineInputBorder {
+  const ContinuousOutlineInputBorder({
+    super.borderSide = const BorderSide(),
+    super.borderRadius = const BorderRadius.all(Radius.circular(4)),
+    super.gapPadding = 4.0,
+  });
+
+  @override
+  ContinuousOutlineInputBorder copyWith({
+    BorderSide? borderSide,
+    BorderRadius? borderRadius,
+    double? gapPadding,
+  }) {
+    return ContinuousOutlineInputBorder(
+      borderSide: borderSide ?? this.borderSide,
+      borderRadius: borderRadius ?? this.borderRadius,
+      gapPadding: gapPadding ?? this.gapPadding,
+    );
+  }
+
+  @override
+  ContinuousOutlineInputBorder scale(double t) {
+    return ContinuousOutlineInputBorder(
+      borderSide: borderSide.scale(t),
+      borderRadius: borderRadius * t,
+      gapPadding: gapPadding * t,
+    );
+  }
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
+    if (a is ContinuousOutlineInputBorder) {
+      return ContinuousOutlineInputBorder(
+        borderSide: BorderSide.lerp(a.borderSide, borderSide, t),
+        borderRadius: BorderRadius.lerp(a.borderRadius, borderRadius, t)!,
+        gapPadding: a.gapPadding + (gapPadding - a.gapPadding) * t,
+      );
+    }
+    return super.lerpFrom(a, t);
+  }
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) {
+    if (b is ContinuousOutlineInputBorder) return b.lerpFrom(this, t);
+    return super.lerpTo(b, t);
+  }
+
+  @override
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    double? gapStart,
+    double gapExtent = 0.0,
+    double gapPercentage = 0.0,
+    TextDirection? textDirection,
+  }) {
+    Rect? gap;
+    if (gapStart != null && gapExtent > 0 && gapPercentage > 0) {
+      final extent = (gapExtent + gapPadding * 2) * gapPercentage;
+      final start = switch (textDirection ?? TextDirection.ltr) {
+        TextDirection.rtl => gapStart + gapPadding - extent,
+        TextDirection.ltr => gapStart - gapPadding,
+      };
+      gap = Rect.fromLTWH(
+        rect.left + start.clamp(0.0, rect.width),
+        rect.top - borderSide.width,
+        extent,
+        borderSide.width * 2,
+      );
+    }
+    paintContinuousStroke(
+      canvas,
+      rect,
+      borderRadius: borderRadius,
+      side: borderSide,
+      gap: gap,
+    );
+  }
+}
+
+/// Color-only control chrome. Concrete capsule components specialize this
+/// base while retaining ownership of their interaction logic. Control-layer
+/// glass does not use this hairline surface.
 abstract class BaseControlSurface extends StatelessWidget {
   const BaseControlSurface({
     super.key,
@@ -64,16 +389,14 @@ abstract class BaseControlSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = CustomPaint(
-      foregroundPainter: ContinuousStrokePainter(
+    final content = DecoratedBox(
+      decoration: continuousHairlineDecoration(
+        color: fill,
         borderRadius: borderRadius,
-        color: stroke,
-        width: strokeWidth,
+        stroke: stroke,
+        strokeWidth: strokeWidth,
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: fill, borderRadius: borderRadius),
-        child: Material(type: MaterialType.transparency, child: child),
-      ),
+      child: Material(type: MaterialType.transparency, child: child),
     );
     return clipBehavior == Clip.none
         ? content

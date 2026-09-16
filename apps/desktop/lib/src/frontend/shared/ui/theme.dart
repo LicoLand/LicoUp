@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_buttons.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
@@ -119,10 +120,10 @@ ThemeData buildLicoTheme({
     ),
     tooltipTheme: TooltipThemeData(
       textStyle: textTheme.bodySmall?.copyWith(color: colors.text),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceRaised,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: colors.line, width: 1),
+        stroke: colors.line,
       ),
       waitDuration: LicoMotion.tooltipWait,
     ),
@@ -139,7 +140,7 @@ ThemeData buildLicoTheme({
       color: colors.surface,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(LicoRadius.card),
         side: BorderSide(color: colors.line),
       ),
@@ -193,7 +194,7 @@ ThemeData buildLicoTheme({
       selectedColor: colors.selectedSurface,
       side: BorderSide(color: colors.line, width: 1),
       labelStyle: textTheme.labelMedium?.copyWith(color: colors.textSecondary),
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(LicoRadius.chip),
       ),
     ),
@@ -246,7 +247,7 @@ ThemeData buildLicoTheme({
 }
 
 OutlineInputBorder _inputBorder(Color color, {double width = 1}) {
-  return OutlineInputBorder(
+  return ContinuousOutlineInputBorder(
     borderRadius: BorderRadius.circular(LicoRadius.chip),
     borderSide: BorderSide(color: color, width: width),
   );

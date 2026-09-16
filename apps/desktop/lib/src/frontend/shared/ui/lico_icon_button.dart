@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
@@ -52,8 +54,8 @@ enum LicoIconButtonTone {
   /// correct default inside a toolbar.
   ghost,
 
-  /// A hairline rim with no fill. For standalone controls that need to read
-  /// as a control before hover.
+  /// A specular glass rim with no fill. For standalone controls that need to
+  /// read as a control before hover. Never nest inside another glass surface.
   outlined,
 
   /// A neutral raised fill. For controls on a busy or image background.
@@ -170,31 +172,12 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
                     }
                   : null,
               onTapCancel: () => setState(() => _pressed = false),
-              child: AnimatedContainer(
-                duration: context.motion(LicoMotion.micro),
-                curve: LicoMotion.standard,
-                width: widget.size.extent,
-                height: widget.size.extent,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: borderRadius,
-                  color: _fill(colors, enabled: enabled, active: active),
-                  border: _border(colors, enabled: enabled, active: active),
-                  // A brand-tone control emits light. This is what makes the
-                  // single most important action in a view read as energetic
-                  // rather than merely coloured.
-                  boxShadow: widget.tone == LicoIconButtonTone.brand && enabled
-                      ? [
-                          BoxShadow(
-                            color: colors.brandGlow,
-                            blurRadius: active ? 18 : 12,
-                            spreadRadius: active ? 1 : 0,
-                          ),
-                        ]
-                      : widget.selected
-                      ? [BoxShadow(color: colors.accentGlow, blurRadius: 10)]
-                      : null,
-                ),
+              child: _surface(
+                context,
+                colors: colors,
+                enabled: enabled,
+                active: active,
+                borderRadius: borderRadius,
                 child: Stack(
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
@@ -247,6 +230,63 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
     );
   }
 
+  Widget _surface(
+    BuildContext context, {
+    required LicoThemeColors colors,
+    required bool enabled,
+    required bool active,
+    required BorderRadius borderRadius,
+    required Widget child,
+  }) {
+    final useGlass =
+        widget.tone == LicoIconButtonTone.outlined ||
+        widget.tone == LicoIconButtonTone.filled;
+    if (useGlass) {
+      return SizedBox(
+        width: widget.size.extent,
+        height: widget.size.extent,
+        child: LicoGlass(
+          borderRadius: borderRadius,
+          fill: _fill(colors, enabled: enabled, active: active),
+          size: LicoGlassSize.small,
+          readBackdrop: false,
+          drawRim: true,
+          trackLight: enabled,
+          gelPress: enabled,
+          pressed: _pressed && enabled,
+          child: child,
+        ),
+      );
+    }
+    return AnimatedContainer(
+      duration: context.motion(LicoMotion.micro),
+      curve: LicoMotion.standard,
+      width: widget.size.extent,
+      height: widget.size.extent,
+      alignment: Alignment.center,
+      decoration: continuousHairlineDecoration(
+        borderRadius: borderRadius,
+        color: _fill(colors, enabled: enabled, active: active),
+        stroke: _borderColor(colors, enabled: enabled, active: active),
+        // A brand-tone control emits light. This is what makes the
+        // single most important action in a view read as energetic
+        // rather than merely coloured.
+        shadows: widget.tone == LicoIconButtonTone.brand && enabled
+            ? [
+                BoxShadow(
+                  color: colors.brandGlow,
+                  blurRadius: active ? 18 : 12,
+                  spreadRadius: active ? 1 : 0,
+                ),
+              ]
+            : widget.selected
+            ? [BoxShadow(color: colors.accentGlow, blurRadius: 10)]
+            : null,
+      ),
+      child: child,
+    );
+  }
+
   Widget _themedIcon(BuildContext context, Icon icon) => Icon(
     context.appearanceVisuals.iconFor(icon.icon!),
     size: icon.size,
@@ -289,7 +329,7 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
     };
   }
 
-  Border? _border(
+  Color? _borderColor(
     LicoThemeColors colors, {
     required bool enabled,
     required bool active,
@@ -297,15 +337,9 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
     return switch (widget.tone) {
       // A brand fill can fall below 3:1 against a light surface, so its rim
       // is mandatory rather than decorative.
-      LicoIconButtonTone.brand =>
-        enabled
-            ? Border.all(color: colors.brandBorder, width: 1)
-            : Border.all(color: colors.line, width: 1),
-      LicoIconButtonTone.outlined => Border.all(
-        color: active ? colors.lineStrong : colors.line,
-        width: 1,
-      ),
-      LicoIconButtonTone.filled => Border.all(color: colors.line, width: 1),
+      LicoIconButtonTone.brand => enabled ? colors.brandBorder : colors.line,
+      LicoIconButtonTone.outlined => active ? colors.lineStrong : colors.line,
+      LicoIconButtonTone.filled => colors.line,
       LicoIconButtonTone.ghost => null,
     };
   }

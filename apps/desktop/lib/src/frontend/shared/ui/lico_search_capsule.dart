@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -36,7 +35,7 @@ final class LicoSearchCapsuleColors {
   final Color text;
 }
 
-/// Pill search chrome: magnifying glass, hint, hairline rim, quiet fill.
+/// Pill search chrome: magnifying glass, hint, quiet fill, specular rim.
 ///
 /// Tap-to-open surfaces ([LicoSearchCapsule]) and in-pane fields
 /// ([LicoSearchField]) share this decoration so every search control reads
@@ -66,10 +65,14 @@ final class LicoSearchChrome extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: _SearchControlSurface(
-        fill: resolved.fill,
-        stroke: resolved.border,
+      child: LicoGlass(
         borderRadius: radius,
+        fill: resolved.fill,
+        size: LicoGlassSize.small,
+        readBackdrop: false,
+        drawRim: resolved.border.a > 0,
+        trackLight: true,
+        gelPress: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: LicoContentSpacing.item,
@@ -221,13 +224,4 @@ final class LicoSearchField extends StatelessWidget {
       ),
     );
   }
-}
-
-final class _SearchControlSurface extends BaseControlSurface {
-  const _SearchControlSurface({
-    required super.fill,
-    required super.stroke,
-    required super.borderRadius,
-    required super.child,
-  }) : super(strokeWidth: AppleControlMetrics.hairline);
 }

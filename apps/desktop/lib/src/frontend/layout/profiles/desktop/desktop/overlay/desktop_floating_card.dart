@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// The generic floating card chrome for Desktop feature apps: a pure black
@@ -46,16 +47,14 @@ final class DesktopFloatingCard extends StatelessWidget {
               DesktopDesktopMetrics.floatingCardRadius,
             ),
             child: Container(
-              decoration: BoxDecoration(
+              decoration: continuousHairlineDecoration(
                 color: desktopDesktopSurfaceBlack,
                 borderRadius: BorderRadius.circular(
                   DesktopDesktopMetrics.floatingCardRadius,
                 ),
-                border: Border.all(
-                  color: DesktopDesktopOnBlack.line,
-                  width: 0.5,
-                ),
-                boxShadow: const [
+                stroke: DesktopDesktopOnBlack.line,
+                strokeWidth: 0.5,
+                shadows: const [
                   BoxShadow(
                     color: Color(0x73000000),
                     blurRadius: 30,

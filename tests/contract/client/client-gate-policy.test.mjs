@@ -54,6 +54,10 @@ test("changed paths select only their independent technology lanes", () => {
     ["flutter"],
   );
   assert.deepEqual(
+    selectedOptionalLanes(["apps/desktop/shaders/glass_lens.frag"]),
+    ["flutter"],
+  );
+  assert.deepEqual(
     selectedOptionalLanes(["crates/licoup-native/src/lib.rs"]),
     ["rust"],
   );

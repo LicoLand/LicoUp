@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -18,12 +19,13 @@ final class AgentUsageSegmentedTrack extends StatelessWidget {
     final colors = context.licoColors;
     return Container(
       height: 32,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.isDark
             ? Colors.white.withAlpha(8)
             : Colors.black.withAlpha(10),
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: colors.line.withAlpha(70), width: 0.5),
+        stroke: colors.line.withAlpha(70),
+        strokeWidth: 0.5,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

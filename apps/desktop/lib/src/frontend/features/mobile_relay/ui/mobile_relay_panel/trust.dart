@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
@@ -34,10 +35,10 @@ class MobileRelayTrustVerificationCard extends StatelessWidget {
       key: const Key('secure-mesh-trust-verification-card'),
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: statusColor),
+        stroke: statusColor,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

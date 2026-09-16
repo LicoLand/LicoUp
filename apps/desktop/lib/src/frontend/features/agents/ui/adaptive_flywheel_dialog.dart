@@ -1,4 +1,3 @@
-import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
@@ -15,7 +14,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
-import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -25,7 +24,6 @@ import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
-import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
 /// Shared height for the strategy selector and the import button.
 const double kAdaptiveFlywheelToolbarControlHeight = 36;
@@ -48,20 +46,11 @@ Future<void> showAdaptiveFlywheelDialog(
     builder: (context) => ProjectionBuilder<AgentsProjection, AgentsProjection>(
       source: agents.projection,
       select: (projection) => projection,
-      builder: (context, agentsProjection) =>
-          ProjectionBuilder<
-            CanonicalConversationProjection,
-            CanonicalConversationProjection
-          >(
-            source: conversation.canonicalEvents,
-            select: (projection) => projection,
-            builder: (context, canonical) => _AdaptiveFlywheelDialog(
-              agents: agents,
-              agentsProjection: agentsProjection,
-              canonical: canonical,
-              initialRevision: initialRevision,
-            ),
-          ),
+      builder: (context, agentsProjection) => _AdaptiveFlywheelDialog(
+        agents: agents,
+        agentsProjection: agentsProjection,
+        initialRevision: initialRevision,
+      ),
     ),
   );
 }
@@ -70,13 +59,11 @@ final class _AdaptiveFlywheelDialog extends StatefulWidget {
   const _AdaptiveFlywheelDialog({
     required this.agents,
     required this.agentsProjection,
-    required this.canonical,
     required this.initialRevision,
   });
 
   final AgentsBinding agents;
   final AgentsProjection agentsProjection;
-  final CanonicalConversationProjection canonical;
   final String initialRevision;
 
   @override
@@ -87,14 +74,10 @@ final class _AdaptiveFlywheelDialog extends StatefulWidget {
 final class _AdaptiveFlywheelDialogState
     extends State<_AdaptiveFlywheelDialog> {
   final Map<String, List<DailyConversationAgentAssignment>> _assignments = {};
-  DailyConversationAgentAssignment _assistantDraft =
-      const DailyConversationAgentAssignment();
   String _loadedRevision = '';
   String _validationError = '';
   String _refreshedCatalogKey = '';
   bool _draftDirty = false;
-  bool _assistantDirty = false;
-  bool _assistantSaving = false;
   bool _savePending = false;
 
   bool get _zh => Localizations.localeOf(context).languageCode == 'zh';
@@ -120,19 +103,14 @@ final class _AdaptiveFlywheelDialogState
   @override
   void didUpdateWidget(_AdaptiveFlywheelDialog oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.agentsProjection.adaptiveFlywheel != _adaptive ||
-        oldWidget.canonical != widget.canonical) {
+    if (oldWidget.agentsProjection.adaptiveFlywheel != _adaptive) {
       _synchronizeFromProjection();
     }
   }
 
   void _synchronizeFromProjection({bool force = false}) {
     _syncDraft(force: force);
-    _syncAssistant(force: force);
     _refreshSelectedModelCatalogs();
-    if (_assistantSaving && !_adaptive.assistant.saving) {
-      _assistantSaving = false;
-    }
   }
 
   void _syncDraft({bool force = false}) {
@@ -151,22 +129,6 @@ final class _AdaptiveFlywheelDialogState
     _loadedRevision = revision;
     _draftDirty = false;
     _validationError = '';
-  }
-
-  void _syncAssistant({bool force = false}) {
-    final assistant = _adaptive.assistant;
-    if (!assistant.available) {
-      if (force || !_assistantDirty) {
-        _assistantDraft = const DailyConversationAgentAssignment();
-      }
-      return;
-    }
-    if (!force && _assistantDirty) return;
-    _assistantDraft = _assistantAssignmentDefaults(
-      assistant.agentId,
-      preferredModel: assistant.modelId,
-      preferredReasoningEffort: assistant.reasoningEffort,
-    );
   }
 
   List<DailyConversationAgentAssignment> _assignmentFor(
@@ -205,35 +167,6 @@ final class _AdaptiveFlywheelDialogState
     return null;
   }
 
-  DailyConversationAgentAssignment _assistantAssignmentDefaults(
-    String agentId, {
-    String preferredModel = '',
-    String preferredReasoningEffort = '',
-  }) {
-    final target = _targetById(_targets, agentId);
-    if (target == null) {
-      return DailyConversationAgentAssignment(
-        agentId: agentId,
-        modelName: preferredModel,
-        reasoningEffort: preferredReasoningEffort,
-      );
-    }
-    final models = agentOrchestrationCommanderModels(target);
-    final persistedModel = preferredModel.trim();
-    final model = persistedModel.isNotEmpty
-        ? persistedModel
-        : (models.isEmpty ? '' : models.first);
-    final persistedEffort = preferredReasoningEffort.trim();
-    final effort = persistedEffort.isNotEmpty
-        ? persistedEffort
-        : agentOrchestrationDefaultReasoningEffortForModel(target, model);
-    return DailyConversationAgentAssignment(
-      agentId: agentId,
-      modelName: model,
-      reasoningEffort: effort,
-    );
-  }
-
   void _refreshSelectedModelCatalogs() {
     final targetIds = <String>{};
     final inspection = _adaptive.inspection;
@@ -243,8 +176,6 @@ final class _AdaptiveFlywheelDialogState
         if (id.isNotEmpty) targetIds.add(id);
       }
     }
-    final assistantId = _assistantDraft.agentId.trim();
-    if (assistantId.isNotEmpty) targetIds.add(assistantId);
     final ids = targetIds.toList()..sort();
     final catalogKey = ids.join('\u0000');
     if (catalogKey == _refreshedCatalogKey) return;
@@ -295,25 +226,11 @@ final class _AdaptiveFlywheelDialogState
 
   void _save() {
     final inspection = _adaptive.inspection;
-    final hasAssistant =
-        widget.canonical.conversation?.group == true &&
-        _adaptive.assistant.available;
-    if (!hasAssistant && inspection == null) return;
-    if (hasAssistant && _assistantDraft.agentId.trim().isEmpty) {
-      setState(() {
-        _validationError = _copy(
-          '请为 Assistant 选择一个可调用 Agent。',
-          'Choose one callable Agent for the Assistant.',
-        );
-      });
-      return;
-    }
-    final missing = inspection == null
-        ? const <AdaptiveFlywheelSlotProjection>[]
-        : inspection.slots
-              .where((slot) => slot.kind == 'actor' && slot.required)
-              .where((slot) => _assignments[slot.id]?.isNotEmpty != true)
-              .toList(growable: false);
+    if (inspection == null) return;
+    final missing = inspection.slots
+        .where((slot) => slot.kind == 'actor' && slot.required)
+        .where((slot) => _assignments[slot.id]?.isNotEmpty != true)
+        .toList(growable: false);
     if (missing.isNotEmpty) {
       setState(() {
         _validationError = _copy(
@@ -324,16 +241,15 @@ final class _AdaptiveFlywheelDialogState
       return;
     }
     setState(() {
-      _assistantSaving = hasAssistant;
       _savePending = true;
       _validationError = '';
     });
     widget.agents.intents.send(
-      SaveAdaptiveFlywheelConfiguration(
+      SaveAdaptiveFlywheelActorBindings(
         assignments: [
-          for (final slot
-              in inspection?.slots.where((slot) => slot.kind == 'actor') ??
-                  const <AdaptiveFlywheelSlotProjection>[])
+          for (final slot in inspection.slots.where(
+            (slot) => slot.kind == 'actor',
+          ))
             for (
               var index = 0;
               index < (_assignments[slot.id]?.length ?? 0);
@@ -347,10 +263,6 @@ final class _AdaptiveFlywheelDialogState
                 reasoningEffort: _assignments[slot.id]![index].reasoningEffort,
               ),
         ],
-        updateAssistant: hasAssistant,
-        assistantAgentId: _assistantDraft.agentId,
-        assistantModelId: _assistantDraft.modelName,
-        assistantReasoningEffort: _assistantDraft.reasoningEffort,
       ),
     );
   }
@@ -358,14 +270,12 @@ final class _AdaptiveFlywheelDialogState
   void _handleEffect(AgentsEffect effect) {
     if (!mounted || !_savePending) return;
     switch (effect) {
-      case AdaptiveFlywheelSaveCompleted() ||
-          AdaptiveFlywheelConfigurationSaved():
+      case AdaptiveFlywheelSaveCompleted():
         _savePending = false;
         Navigator.of(context).pop();
       case AdaptiveFlywheelActionRejected(:final reasonCode):
         setState(() {
           _savePending = false;
-          _assistantSaving = false;
           _validationError = reasonCode;
         });
       case AgentSelectionRejected() || AgentWorkingDirectorySelectionRejected():
@@ -387,9 +297,6 @@ final class _AdaptiveFlywheelDialogState
     final actorSlots = inspection?.slots
         .where((slot) => slot.kind == 'actor')
         .toList(growable: false);
-    final showAssistantCard =
-        widget.canonical.conversation?.group == true &&
-        _adaptive.assistant.available;
     return EffectListener<AgentsEffect>(
       source: widget.agents.effects,
       onEffect: _handleEffect,
@@ -432,28 +339,6 @@ final class _AdaptiveFlywheelDialogState
                   key: const Key('main-agent-settings'),
                   padding: const EdgeInsets.all(16),
                   children: [
-                    if (showAssistantCard) ...[
-                      _AdaptiveFlywheelAssistantCard(
-                        targets: _targets,
-                        draft: _assistantDraft,
-                        loading:
-                            _adaptive.assistant.loading || _assistantSaving,
-                        onDraftChanged: (draft) {
-                          setState(() {
-                            _validationError = '';
-                            _assistantDirty = true;
-                            _assistantDraft = _assistantAssignmentDefaults(
-                              draft.agentId,
-                              preferredModel: draft.modelName,
-                              preferredReasoningEffort: draft.reasoningEffort,
-                            );
-                          });
-                        },
-                        isRefreshingAgentCatalog: _isRefreshingModelCatalog,
-                        onAgentCatalogRequested: _requestModelCatalog,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -547,20 +432,10 @@ final class _AdaptiveFlywheelDialogState
                     const SizedBox(width: 8),
                     FilledButton(
                       key: const Key('main-agent-save'),
-                      onPressed:
-                          _adaptive.busy ||
-                              _adaptive.assistant.loading ||
-                              _assistantSaving ||
-                              (!showAssistantCard &&
-                                  _adaptive.inspection == null)
+                      onPressed: _adaptive.busy || _adaptive.inspection == null
                           ? null
                           : _save,
-                      child: _assistantSaving
-                          ? const SizedBox.square(
-                              dimension: 14,
-                              child: LicoLoadingIndicator(strokeWidth: 2),
-                            )
-                          : Text(strings.save),
+                      child: Text(strings.save),
                     ),
                   ],
                 ),
@@ -688,106 +563,6 @@ final class _AdaptiveFlywheelDialogState
   }
 }
 
-final class _AdaptiveFlywheelAssistantCard extends StatelessWidget {
-  const _AdaptiveFlywheelAssistantCard({
-    required this.targets,
-    required this.draft,
-    required this.loading,
-    required this.onDraftChanged,
-    required this.isRefreshingAgentCatalog,
-    required this.onAgentCatalogRequested,
-  });
-
-  final List<TargetCandidate> targets;
-  final DailyConversationAgentAssignment draft;
-  final bool loading;
-  final ValueChanged<DailyConversationAgentAssignment> onDraftChanged;
-  final bool Function(String agentId) isRefreshingAgentCatalog;
-  final ValueChanged<String> onAgentCatalogRequested;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
-    return AppleGlassSurface(
-      key: const Key('adaptive-flywheel-assistant-card'),
-      borderRadius: radius,
-      fillAlpha: colors.isDark ? 18 : 8,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colors.accentSurface,
-                    border: Border.all(color: colors.accentBorder),
-                  ),
-                  child: AssistantSparklesIcon(color: colors.accent, size: 16),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        strings.assistantProfileTitle,
-                        style: TextStyle(
-                          color: colors.text,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        strings.isChinese
-                            ? '独立于工作流的长期调度者配置'
-                            : 'Long-term coordinator, independent of workflows',
-                        style: TextStyle(color: colors.textMuted, fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (loading) ...[
-              const SizedBox(height: 10),
-              const LinearProgressIndicator(minHeight: 2),
-            ],
-            const SizedBox(height: 12),
-            AgentRuntimeAssignmentCascadeCards(
-              keyPrefix: 'adaptive-flywheel-assistant',
-              showFast: false,
-              borderRadius: BorderRadius.circular(
-                AppleControlMetrics.menuCornerRadius,
-              ),
-              maxHeight: 190,
-              agentCardWidth: 188,
-              modelCardWidth: 288,
-              settingsCardWidth: 184,
-              revealSelectionOnOpen: true,
-              targets: targets,
-              draft: draft,
-              selectedAgentIds: draft.agentId.trim().isEmpty
-                  ? const {}
-                  : {draft.agentId.trim()},
-              onDraftChanged: onDraftChanged,
-              isRefreshingAgentCatalog: isRefreshingAgentCatalog,
-              onAgentCatalogRequested: onAgentCatalogRequested,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 ButtonStyle _toolbarButtonStyle(LicoThemeColors colors) {
   return OutlinedButton.styleFrom(
     foregroundColor: colors.text,
@@ -800,7 +575,7 @@ ButtonStyle _toolbarButtonStyle(LicoThemeColors colors) {
     visualDensity: VisualDensity.compact,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     side: BorderSide(color: colors.line),
-    shape: RoundedRectangleBorder(
+    shape: ContinuousRoundedBorder(
       borderRadius: BorderRadius.circular(
         kAdaptiveFlywheelToolbarControlRadius,
       ),
@@ -829,10 +604,10 @@ final class _AdaptiveFlywheelWorkflowCardState
     final enabled = widget.inspection != null;
     final radius = BorderRadius.circular(kAdaptiveFlywheelToolbarControlRadius);
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: radius,
-        border: Border.all(color: colors.line),
+        stroke: colors.line,
       ),
       child: ClipRRect(
         borderRadius: radius,

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LicoUp · Glass reference / 玻璃视觉参考</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111318; color: #eef0f4; }
+  * { box-sizing: border-box; }
+  body { max-width: 1080px; margin: 0 auto; padding: 32px 24px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -.5px; margin: 0 0 7px; }
+  p { color: #acb3bf; font-size: 13px; line-height: 1.6; margin: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; }
+  fieldset { border: 1px solid #363b45; border-radius: 20px; padding: 8px 14px; margin: 0; display: flex; gap: 16px; }
+  legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  label { font-size: 13px; cursor: pointer; }
+  input { accent-color: #e7f22e; }
+  img { display: block; width: 100%; height: auto; border-radius: 16px; }
+  footer { margin-top: 18px; }
+  a { color: inherit; text-underline-offset: 3px; }
+</style>
+<header>
+  <div><h1>LicoUp · Glass reference</h1><p>玻璃视觉参考 · Accepted material and conversation composition</p></div>
+  <div class="controls">
+  <fieldset><legend>Composition / 构图</legend>
+    <label><input type="radio" name="composition" value="glass" checked> Reference / 参考</label>
+    <label><input type="radio" name="composition" value="conversation"> Conversation / 对话</label>
+  </fieldset>
+  <fieldset><legend>Appearance / 外观</legend>
+    <label><input type="radio" name="theme" value="dark" checked> Dark / 深色</label>
+    <label><input type="radio" name="theme" value="light"> Light / 浅色</label>
+  </fieldset>
+  </div>
+</header>
+<img id="reference" src="glass-dark.png" width="2000" height="1320" alt="Dark glass reference: left identity capsule, right ellipsis action, and rounded rectangular composer">
+<footer><p>Real Flutter components · macOS Impeller · Synthetic content<br>
+真实组件渲染 · 合成内容 · <a href="../../functionality/DESIGN-SYSTEM.md#visual-reference-and-style-review">Review and capture guidance / 审阅与捕获规范</a></p></footer>
+<script>
+  const reference = document.getElementById('reference');
+  document.querySelectorAll('input[type="radio"]').forEach(input => {
+    input.addEventListener('change', () => {
+      const theme = document.querySelector('input[name="theme"]:checked').value;
+      const composition = document.querySelector('input[name="composition"]:checked').value;
+      reference.src = `${composition}-${theme}.png`;
+      reference.alt = `${theme === 'dark' ? 'Dark' : 'Light'} ${composition === 'glass' ? 'accepted reference' : 'production conversation components'}: left identity capsule, right ellipsis action, and rounded rectangular composer`;
+    });
+  });
+</script>
+</html>

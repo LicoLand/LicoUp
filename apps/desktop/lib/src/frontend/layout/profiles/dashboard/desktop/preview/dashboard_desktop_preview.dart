@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/tokens/dashboard_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 final class DashboardDesktopPreviewMetadata {
   const DashboardDesktopPreviewMetadata({
@@ -42,9 +43,9 @@ final class DashboardDesktopPreview extends StatelessWidget {
         aspectRatio: 16 / 10,
         child: DecoratedBox(
           key: const ValueKey<String>('dashboard-desktop-preview'),
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: colors.background,
-            border: Border.all(color: colors.line),
+            stroke: colors.line,
             borderRadius: BorderRadius.circular(
               dashboardDesktopTokens.cardRadius,
             ),
@@ -92,10 +93,11 @@ final class _PreviewListColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     key: const ValueKey<String>('dashboard-preview-list-column'),
-    decoration: BoxDecoration(
+    decoration: continuousHairlineDecoration(
       color: colors.isDark ? colors.surface : colors.surfaceLow,
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: colors.line.withAlpha(120), width: 0.5),
+      stroke: colors.line.withAlpha(120),
+      strokeWidth: 0.5,
     ),
     child: LayoutBuilder(
       builder: (context, constraints) {
@@ -128,9 +130,10 @@ final class _PreviewListColumn extends StatelessWidget {
                 key: const ValueKey<String>('dashboard-preview-search'),
                 height: unit * 1.2,
                 margin: EdgeInsets.only(bottom: unit),
-                decoration: BoxDecoration(
+                decoration: continuousHairlineDecoration(
                   color: colors.surfaceLow,
-                  border: Border.all(color: colors.line, width: 0.5),
+                  stroke: colors.line,
+                  strokeWidth: 0.5,
                   borderRadius: BorderRadius.circular(unit * 0.6),
                 ),
               ),

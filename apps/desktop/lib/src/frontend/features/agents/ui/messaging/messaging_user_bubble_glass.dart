@@ -3,9 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_material_scope.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// User message surface: profile-owned opaque material when requested, or
@@ -45,13 +46,10 @@ class MessagingUserBubbleGlass extends StatelessWidget {
       duration: context.motion(LicoMotion.micro),
       curve: LicoMotion.standard,
       padding: padding,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: fill,
         borderRadius: borderRadius,
-        border: Border.all(
-          color: hovered ? restingBorder.withAlpha(0) : restingBorder,
-          width: MessagingDesktopMetrics.hairline,
-        ),
+        stroke: hovered ? restingBorder.withAlpha(0) : restingBorder,
       ),
       child: child,
     );
