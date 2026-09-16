@@ -2,6 +2,7 @@
 name = "licoup-native"
 version = "0.3.0"
 edition = "2024"
+rust-version.workspace = true
 license.workspace = true
 publish = false
 
@@ -24,6 +25,7 @@ licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
+licoup-workflow = { path = "../licoup-workflow" }
 licoup-conversation = { path = "../licoup-conversation" }
 anyhow.workspace = true
 thiserror.workspace = true

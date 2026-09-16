@@ -2,6 +2,7 @@
 name = "licoup-platform-bridges"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish = false
 

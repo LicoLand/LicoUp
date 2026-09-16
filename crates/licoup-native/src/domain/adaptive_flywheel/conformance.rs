@@ -12,13 +12,14 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::reducer::fallback_reason;
-use super::{
+use super::StrategyStore;
+use licoup_workflow::machine::fallback_reason;
+use licoup_workflow::{
     ActorSlot, BindingKind, CallbackDecisionKind, CommandStatus, CompiledWorkflow, FailureClass,
     GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS, ReducerEvent, RetryPolicy,
-    RunCommand, RunSnapshot, RuntimeKind, RuntimeRequirement, StrategyRunStatus, StrategyStore,
-    Transition, TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition,
-    WorkflowLimits, WorkflowMetadata, WorksetTemplate, compile_workflow, reduce,
+    RunCommand, RunSnapshot, RuntimeKind, RuntimeRequirement, StrategyRunStatus, Transition,
+    TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition, WorkflowLimits,
+    WorkflowMetadata, WorksetTemplate, compile_workflow, reduce,
 };
 
 fn state(id: &str, kind: GraphStateKind) -> GraphState {
@@ -2416,7 +2417,7 @@ fn register_workset_run(
         .register_definition(
             &revision,
             &format!("{:064x}", revision_nonce + 50),
-            &workflow.definition,
+            workflow.definition(),
             1,
             1,
         )

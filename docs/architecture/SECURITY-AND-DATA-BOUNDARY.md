@@ -88,3 +88,17 @@ The client strictly adheres to these data boundaries:
 - **Encrypt-then-Send, Verify-then-Use**: Senders encrypt before network transmission; receivers authenticate and verify freshness/anti-replay before consumption.
 - **Zero-Trust Stations**: Compatible stations are outside the trusted boundary and outside LicoUp's history path. Private keys and approval policies stay entirely with endpoints.
 - **Safe Summaries**: Logs and reports retain only security summaries, never raw user content or secret keys.
+
+## 6. Collaboration authority and isolation
+
+For the accepted workflow refactor, IPC caller admission, Conversation Membership
+and operation grants remain separate from operating-system isolation. An untrusted
+plugin needs process, permission and resource isolation that matches its threat model;
+a checked caller or working directory alone is not a sandbox. Use the owning platform
+and component boundaries without granting broader access to support collaboration.
+
+Revocation prevents new control and disclosure. An authenticated result from an already
+known invocation can still settle that invocation under its original identity and
+restricted visibility. Recording the fact does not renew a grant, permit another effect,
+or authorize a successor to read its content. These requirements must be verified at
+the actual adapter and store boundaries; this section makes no new sandbox claim.

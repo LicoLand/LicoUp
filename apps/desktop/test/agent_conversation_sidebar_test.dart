@@ -70,7 +70,7 @@ void main() {
       agentConversationTargetCompactDisplayName(
         _target('kimi-code', 'Kimi Code'),
       ),
-      'Kimi',
+      'Kimi Code',
     );
     expect(
       agentConversationTargetCompactDisplayName(
