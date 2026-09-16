@@ -38,9 +38,6 @@ class MessagingAgentBubble extends StatelessWidget {
     final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
     var fill = MessagingDesktopMetrics.agentBubbleVeilFill(isDark: isDark);
     if (opaque) fill = colors.surface.withValues(alpha: 1);
-    if (hovered) {
-      fill = Color.alphaBlend(colors.hoverOverlay, fill);
-    }
     final restingBorder = MessagingDesktopMetrics.bubbleRestingBorder(
       colors.line,
       isDark: isDark,
