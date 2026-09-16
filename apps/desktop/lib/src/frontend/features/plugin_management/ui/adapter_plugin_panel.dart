@@ -7,6 +7,8 @@ import 'package:licoup/src/frontend/binding/effect_listener.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -657,6 +659,11 @@ final class _PluginEntryTile extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: colors.error,
                       side: BorderSide(color: colors.error.withAlpha(120)),
+                      shape: ContinuousRoundedBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppleControlMetrics.controlCornerRadius,
+                        ),
+                      ),
                     ),
                     icon: const Icon(Icons.delete_outline, size: 17),
                     label: Text(chinese ? '卸载' : 'Uninstall'),

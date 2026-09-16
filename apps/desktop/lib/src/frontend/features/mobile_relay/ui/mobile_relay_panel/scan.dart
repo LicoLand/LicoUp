@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -20,10 +21,10 @@ class MobileRelayScanPairingPrompt extends StatelessWidget {
       key: const Key('mobile-relay-scan-pairing-prompt'),
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: colors.line),
+        stroke: colors.line,
       ),
       child: Row(
         children: [

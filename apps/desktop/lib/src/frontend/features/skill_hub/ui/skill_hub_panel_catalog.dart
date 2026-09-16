@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_s
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_search.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_surface.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
@@ -76,14 +77,12 @@ final class _SkillCategoryChip extends StatelessWidget {
     child: AnimatedContainer(
       duration: context.motion(LicoMotion.short),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: isSelected ? colors.primary : colors.surfaceLow,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isSelected
-              ? colors.primary
-              : colors.line.withValues(alpha: 0.5),
-        ),
+        stroke: isSelected
+            ? colors.primary
+            : colors.line.withValues(alpha: 0.5),
       ),
       child: Text(
         label,

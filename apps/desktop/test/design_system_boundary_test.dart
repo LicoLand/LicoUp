@@ -277,6 +277,27 @@ void main() {
     );
   });
 
+  test('shared UI does not paint closed rims with Border.all', () {
+    final offenders = <String>[];
+    for (final file in _dartFiles(Directory('lib/src/frontend/shared/ui'))) {
+      final name = file.uri.pathSegments.last;
+      if (name == 'continuous_stroke.dart') {
+        continue;
+      }
+      if (file.readAsStringSync().contains('Border.all(')) {
+        offenders.add(name);
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'Closed 1 px rims use continuousHairlineDecoration / '
+          'ContinuousRoundedBorder, not Flutter BoxBorder.\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
   test('the composer send control is a circle', () {
     final source = File(
       'lib/src/frontend/features/agents/ui/agent_conversation_composer.dart',

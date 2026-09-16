@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 
@@ -102,49 +103,52 @@ class _MobileAgentHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.background,
-        border: Border(bottom: BorderSide(color: colors.line.withAlpha(120))),
+    return CustomPaint(
+      foregroundPainter: ContinuousEdgeHairlinePainter(
+        color: colors.line.withAlpha(120),
+        edge: AxisDirection.down,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: leadingTooltip,
-              onPressed: onLeading,
-              icon: Icon(leadingIcon),
-            ),
-            iconBuilder?.call(
-                  context,
-                  target,
-                  selected: true,
-                  size: 36,
-                  iconSize: 24,
-                ) ??
-                Icon(
-                  target.available
-                      ? Icons.smart_toy_outlined
-                      : Icons.extension_outlined,
-                  size: 24,
-                  color: target.available ? colors.text : colors.textMuted,
-                ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: colors.background),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: leadingTooltip,
+                onPressed: onLeading,
+                icon: Icon(leadingIcon),
+              ),
+              iconBuilder?.call(
+                    context,
+                    target,
+                    selected: true,
+                    size: 36,
+                    iconSize: 24,
+                  ) ??
+                  Icon(
+                    target.available
+                        ? Icons.smart_toy_outlined
+                        : Icons.extension_outlined,
+                    size: 24,
+                    color: target.available ? colors.text : colors.textMuted,
+                  ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-            ),
-            ?trailing,
-          ],
+              ?trailing,
+            ],
+          ),
         ),
       ),
     );
