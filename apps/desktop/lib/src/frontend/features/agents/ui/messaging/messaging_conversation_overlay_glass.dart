@@ -1,16 +1,13 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/shared/ui/glass_edge_light.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Shared clear-glass chrome for messaging conversation overlays: header
 /// identity capsule, header icon buttons, and the floating composer field.
-/// Fill / border / blur / shadow all come from [MessagingDesktopMetrics]
-/// conversation-overlay tokens — do not hardcode per widget. A static
-/// [GlassEdgeLight] paints a uniform specular rim around each capsule.
+/// Fill / blur / shadow come from [MessagingDesktopMetrics] overlay tokens.
+/// The rim is the glass owner's broad specular light field, not a uniform hairline.
 class MessagingConversationOverlayGlass extends StatelessWidget {
   const MessagingConversationOverlayGlass({
     super.key,
@@ -40,27 +37,15 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final sigma = MessagingDesktopMetrics.conversationOverlayGlassBlurSigma;
-    final border = focused
-        ? colors.accent
-        : MessagingDesktopMetrics.glassEdgeRimColor(isDark: colors.isDark);
     final isDark = colors.isDark;
     final washFill = MessagingDesktopMetrics.conversationOverlayGlassFill(
       isDark: isDark,
-    );
-    final decoration = BoxDecoration(
-      color: readabilityVeil ? null : washFill,
-      borderRadius: borderRadius,
-      boxShadow: MessagingDesktopMetrics.conversationOverlayGlassShadows(
-        isDark: isDark,
-      ),
     );
     final content = readabilityVeil
         ? Stack(
             fit: StackFit.passthrough,
             children: [
               Positioned.fill(child: ColoredBox(color: washFill)),
-              // Black mask above the wash so the capsule reads as veiled glass.
               Positioned.fill(
                 child: DecoratedBox(
                   key: const Key(
@@ -80,18 +65,21 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
             ],
           )
         : child;
-    return ClipRRect(
+    return LicoGlass(
       borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: GlassEdgeLight(
-          borderRadius: borderRadius,
-          sheenExtent: 20,
-          rimWidth: drawRim ? MessagingDesktopMetrics.hairline : 0,
-          rimColor: border,
-          child: DecoratedBox(decoration: decoration, child: content),
-        ),
+      fill: readabilityVeil ? Colors.transparent : washFill,
+      shadows: MessagingDesktopMetrics.conversationOverlayGlassShadows(
+        isDark: isDark,
       ),
+      size: LicoGlassSize.large,
+      readBackdrop: true,
+      blurSigma: MessagingDesktopMetrics.conversationOverlayGlassBlurSigma,
+      drawRim: drawRim,
+      trackLight: true,
+      gelPress: false,
+      focused: focused,
+      focusColor: focused ? colors.accent : null,
+      child: content,
     );
   }
 }

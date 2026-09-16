@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
@@ -77,10 +78,10 @@ class SkillCategoryIconBadge extends StatelessWidget {
     final child = Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
+        stroke: color.withValues(alpha: 0.28),
       ),
       alignment: Alignment.center,
       child: SvgPicture.asset(
@@ -179,19 +180,17 @@ Future<void> showSkillIconPicker({
                       onTap: () => setState(() => selectedIconId = iconId),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 160),
-                        decoration: BoxDecoration(
+                        decoration: continuousHairlineDecoration(
                           color: selected
                               ? previewColor.withValues(alpha: 0.14)
                               : colors.surfaceLow,
                           borderRadius: BorderRadius.circular(
                             LicoRadius.floating,
                           ),
-                          border: Border.all(
-                            color: selected
-                                ? previewColor
-                                : colors.line.withValues(alpha: 0.5),
-                            width: selected ? 1.5 : 1,
-                          ),
+                          stroke: selected
+                              ? previewColor
+                              : colors.line.withValues(alpha: 0.5),
+                          strokeWidth: selected ? 1.5 : 1,
                         ),
                         child: Center(
                           child: SvgPicture.asset(
@@ -255,14 +254,12 @@ class _SkillColorDot extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         width: 22,
         height: 22,
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? colors.text : colors.line.withValues(alpha: 0.4),
-            width: selected ? 2.2 : 1,
-          ),
-          boxShadow: selected
+          borderRadius: BorderRadius.circular(11),
+          stroke: selected ? colors.text : colors.line.withValues(alpha: 0.4),
+          strokeWidth: selected ? 2.2 : 1,
+          shadows: selected
               ? [
                   BoxShadow(
                     color: color.withValues(alpha: 0.35),

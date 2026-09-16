@@ -16,7 +16,6 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_parti
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -83,7 +82,7 @@ void main() {
         find.byKey(const Key('canonical-group-strategy-picker-panel')),
         findsNothing,
       );
-      expect(find.text('Automatic adaptation'), findsNothing);
+      expect(find.text('Adaptive Flywheel'), findsOneWidget);
       expect(find.text('Authorized Graph'), findsNothing);
 
       await tester.tap(picker);
@@ -294,7 +293,7 @@ void main() {
   );
 
   testWidgets(
-    'Assistant sparkles control pauses only future dispatch and resumes on the next tap',
+    'Assistant name suppresses only its future dispatch while mentions remain enabled',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -323,23 +322,14 @@ void main() {
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pump();
-      expect(find.text('Your Assistant is paused'), findsOneWidget);
-
-      await tester.enterText(find.byType(TextField), 'save without dispatch');
-      await tester.tap(
-        find.byKey(const Key('agent-conversation-composer-send')),
-      );
-      await tester.pumpAndSettle();
       expect(
-        runner.requests.where(
-          (request) => request['action'] == 'conversation.dispatch.after-post',
-        ),
-        isEmpty,
+        find.byKey(const Key('canonical-group-assistant-status-paused')),
+        findsOneWidget,
       );
+      expectAssistantIdentityLabel('Codex');
 
-      await tester.tap(toggle);
+      await tester.enterText(find.byType(TextField), '@Claude Code continue');
       await tester.pump();
-      await tester.enterText(find.byType(TextField), 'dispatch again');
       await tester.tap(
         find.byKey(const Key('agent-conversation-composer-send')),
       );
@@ -349,13 +339,36 @@ void main() {
           (request) => request['action'] == 'conversation.dispatch.after-post',
         ),
         hasLength(1),
+        reason:
+            'Paused assistant still routes an explicit mention through native dispatch',
       );
+      final pausedDispatch = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.dispatch.after-post',
+      );
+      expect(pausedDispatch['suppressAssistant'], isTrue);
+
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'dispatch again');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      final dispatches = runner.requests
+          .where(
+            (request) =>
+                request['action'] == 'conversation.dispatch.after-post',
+          )
+          .toList();
+      expect(dispatches, hasLength(2));
+      expect(dispatches.last['suppressAssistant'], isFalse);
       controller.dispose();
     },
   );
 
   testWidgets(
-    'Assistant control sits inside the composer field capsule at its interior left',
+    'Assistant name and separate editor sit inside the composer toolbar',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1000, 700);
@@ -391,7 +404,7 @@ void main() {
       await tester.pump();
       expect(
         find.byKey(const Key('canonical-group-assistant-edit')),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.byKey(const Key('canonical-group-assistant-editor')),
@@ -403,15 +416,32 @@ void main() {
       final field = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
       );
-      expect(
-        assistant.height,
-        MessagingDesktopMetrics.conversationComposerAssistantExtent,
+      final toolbar = tester.getRect(
+        find.byKey(const Key('agent-conversation-composer-toolbar')),
       );
-      // Inside the field capsule, at its interior left edge.
-      expect(assistant.left, greaterThan(field.left));
-      expect(assistant.left, lessThan(field.left + 24));
-      expect(assistant.top, greaterThan(field.top));
-      expect(assistant.bottom, lessThan(field.bottom));
+      final edit = tester.getRect(
+        find.byKey(const Key('canonical-group-assistant-edit')),
+      );
+      final plus = tester.getRect(
+        find.byKey(const Key('canonical-group-assistant-actions')),
+      );
+      expect(assistant.height, 32);
+      expect(assistant.left, greaterThanOrEqualTo(plus.right + 12));
+      expect(edit.left, greaterThanOrEqualTo(assistant.right));
+      expect(toolbar.contains(assistant.center), isTrue);
+      expect(toolbar.contains(edit.center), isTrue);
+      expect(field.contains(assistant.center), isTrue);
+      await tester.tap(find.byKey(const Key('canonical-group-assistant-edit')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('assistant-configuration-dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('canonical-group-assistant-status-paused')),
+        findsNothing,
+      );
+
       controller.dispose();
     },
   );
@@ -1247,6 +1277,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 40));
 
+    await tester.tap(find.byKey(const Key('canonical-group-assistant-toggle')));
+    await tester.pump();
+    expect(persistent.cancelCount, 0);
     expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
     await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
     await tester.pump();
@@ -1416,13 +1449,11 @@ Widget _groupApp(Widget child) {
   );
 }
 
-/// The readiness capsule shows the assistant identity label in place of the
-/// retired ready string: the assistant Membership's display name when no
-/// strategy runtime profile or persistent Profile carries model/effort detail.
+/// The composer keeps the assistant Membership display name while status changes.
 void expectAssistantIdentityLabel(String label) {
   expect(
     find.descendant(
-      of: find.byKey(const Key('canonical-group-strategy-picker')),
+      of: find.byKey(const Key('canonical-group-assistant-control')),
       matching: find.text(label),
     ),
     findsOneWidget,

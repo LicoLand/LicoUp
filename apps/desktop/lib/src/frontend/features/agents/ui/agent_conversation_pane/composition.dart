@@ -31,6 +31,7 @@ class AgentConversationActivePane extends StatefulWidget {
     required this.header,
     this.framed = true,
     this.messageScrollController,
+    this.onComposerExtentChanged,
   });
 
   final AgentConversationPaneState state;
@@ -38,6 +39,7 @@ class AgentConversationActivePane extends StatefulWidget {
   final Widget header;
   final bool framed;
   final ScrollController? messageScrollController;
+  final ValueChanged<double>? onComposerExtentChanged;
 
   @override
   State<AgentConversationActivePane> createState() =>
@@ -57,6 +59,25 @@ class _AgentConversationActivePaneState
   bool _motionVisible = false;
   bool _motionAssembled = false;
   bool _pendingDraftRollover = false;
+
+  final GlobalKey _composerDockKey = GlobalKey();
+  double? _composerDockExtent;
+  bool _composerMeasurePending = false;
+
+  void _measureComposerDock() {
+    if (_composerMeasurePending) return;
+    _composerMeasurePending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _composerMeasurePending = false;
+      if (!mounted) return;
+      final box = _composerDockKey.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) return;
+      final extent = box.size.height;
+      if (_composerDockExtent == extent) return;
+      setState(() => _composerDockExtent = extent);
+      widget.onComposerExtentChanged?.call(extent);
+    });
+  }
 
   bool _empty(AgentConversationPaneState value) =>
       !value.loading &&
@@ -260,10 +281,12 @@ class _AgentConversationActivePaneState
         ? MessagingDesktopMetrics.conversationHeaderOverlayExtent
         : 0.0;
     final composerOverlayInset = !mobileClient && messagingFlow
-        ? MessagingDesktopMetrics.conversationComposerOverlayExtent +
-              (showComposerCapsuleRow
-                  ? MessagingDesktopMetrics.conversationComposerCapsuleRowExtent
-                  : 0)
+        ? _composerDockExtent ??
+              (MessagingDesktopMetrics.conversationComposerOverlayExtent +
+                  (showComposerCapsuleRow
+                      ? MessagingDesktopMetrics
+                            .conversationComposerCapsuleRowExtent
+                      : 0))
         : 0.0;
     final messageSurface =
         _empty(state) &&
@@ -364,33 +387,43 @@ class _AgentConversationActivePaneState
     }
     // Messaging: header and composer overlay the full-height transcript.
     // Execution feedback belongs to the composer border in every layout.
-    final bottomDock = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ?sendUnavailable,
-        ?sendFailure,
-        ?permissionRetry,
-        if (showComposerCapsuleRow)
-          ComposerCapsuleRow(
-            workingDirectory: state.showWorkingDirectory
-                ? state.workingDirectory
-                : null,
-            workingDirectorySelectable: state.workingDirectorySelectable,
-            onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
-            modelOptions: state.modelOptions,
-            selectedModel: state.selectedModel,
-            defaultModel: state.defaultModel,
-            modelSelectionEnabled: state.composerEnabled,
-            onModelChanged: actions.onModelChanged,
-            reasoningEffortOptions: state.reasoningEffortOptions,
-            selectedReasoningEffort: state.selectedReasoningEffort,
-            defaultReasoningEffort: state.defaultReasoningEffort,
-            onReasoningEffortChanged: actions.onReasoningEffortChanged,
-            licoProfileCapsule: licoProfileCapsule,
-            flywheel: state.composerFlywheel,
-          ),
-        composer,
-      ],
+    if (messagingFlow) _measureComposerDock();
+    final bottomDock = NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        _measureComposerDock();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(
+        key: _composerDockKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ?sendUnavailable,
+            ?sendFailure,
+            ?permissionRetry,
+            if (showComposerCapsuleRow)
+              ComposerCapsuleRow(
+                workingDirectory: state.showWorkingDirectory
+                    ? state.workingDirectory
+                    : null,
+                workingDirectorySelectable: state.workingDirectorySelectable,
+                onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
+                modelOptions: state.modelOptions,
+                selectedModel: state.selectedModel,
+                defaultModel: state.defaultModel,
+                modelSelectionEnabled: state.composerEnabled,
+                onModelChanged: actions.onModelChanged,
+                reasoningEffortOptions: state.reasoningEffortOptions,
+                selectedReasoningEffort: state.selectedReasoningEffort,
+                defaultReasoningEffort: state.defaultReasoningEffort,
+                onReasoningEffortChanged: actions.onReasoningEffortChanged,
+                licoProfileCapsule: licoProfileCapsule,
+                flywheel: state.composerFlywheel,
+              ),
+            composer,
+          ],
+        ),
+      ),
     );
     final content = Column(
       children: [

@@ -66,13 +66,6 @@ abstract final class MessagingDesktopMetrics {
   /// Glyph size inside a [conversationAvatarExtent] identity circle.
   static const double conversationAvatarMarkExtent = 22;
 
-  /// Assistant control inside the composer field capsule: circular extent and
-  /// its mark size (smaller than the avatar family; it lives inside the
-  /// field's text row). The extent slightly exceeds the single-line text row
-  /// so the control keeps equal frame insets on top, bottom, and left.
-  static const double conversationComposerAssistantExtent = 32;
-  static const double conversationComposerAssistantMarkExtent = 16;
-
   /// Empty bands between the group roster and the floating header/composer.
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
@@ -132,13 +125,13 @@ abstract final class MessagingDesktopMetrics {
   static const double conversationHeaderCapsuleCornerRadius = 22;
 
   /// Inner horizontal padding inside the header capsule.
-  static const double conversationHeaderCapsulePadH = 12;
+  static const double conversationHeaderCapsulePadH = 20;
 
   /// Inner vertical padding inside the header capsule.
   static const double conversationHeaderCapsulePadV = 8;
 
-  /// Square extent of trailing header capsule icon buttons.
-  static const double conversationHeaderCapsuleButtonExtent = 36;
+  /// Diameter of the single conversation overflow control.
+  static const double conversationHeaderMenuExtent = 44;
 
   /// Gap between trailing header capsule buttons.
   static const double conversationHeaderCapsuleButtonGap = 8;
@@ -160,7 +153,7 @@ abstract final class MessagingDesktopMetrics {
   /// Vertical inset of the floating composer capsule from the bottom edge.
   static const double conversationComposerCapsuleInsetV = 10;
 
-  /// Corner radius of the floating composer capsule (matches header capsule).
+  /// Fixed corner radius of the two-row floating composer.
   static const double conversationComposerCapsuleCornerRadius =
       conversationHeaderCapsuleCornerRadius;
 
@@ -169,9 +162,8 @@ abstract final class MessagingDesktopMetrics {
   /// Kept low so the glass reads clear （清透） rather than frosted.
   static const double conversationOverlayGlassBlurSigma = 12;
 
-  /// Approximate height reserved under the floating composer so the
-  /// transcript clears it (padding + field + send row).
-  static const double conversationComposerOverlayExtent = 78;
+  /// Initial clearance until the floating composer reports its laid-out height.
+  static const double conversationComposerOverlayExtent = 144;
 
   /// Extra transcript clearance when context capsules (workspace, model, …)
   /// sit above the floating composer.
@@ -409,50 +401,30 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Specular edge light for clear-glass surfaces: one uniform rim around
-  /// the full frame, plus a soft sheen band decaying downward from the top.
-  /// The light is [chromeForegroundColor] — the same preset-independent
-  /// light the shell chrome already uses — never brand/primary, so the rim
-  /// reads as reflected light instead of a colored outline. Painted by
-  /// `GlassEdgeLight`; shells must use these tokens, not hardcoded alphas.
-  static const double glassEdgeRimWidth = 1;
+  /// Directional rim for control-layer glass. Painted as a broad light ramp in
+  /// [chromeForegroundColor], never brand/primary. Lit and far-edge alphas
+  /// differ so the silhouette reads as a catch of light, not a drawn outline.
+  static const double glassEdgeRimWidth = 0.75;
 
-  /// Rim alpha on every edge (dark canvas). Same value all the way around
-  /// so the frame does not fade from top to bottom.
-  static const int glassEdgeRimAlphaDark = 110;
+  /// Lit-side specular alpha on a dark canvas (≈ 0.16).
+  static const int glassEdgeRimHiAlphaDark = 42;
 
-  /// Rim alpha on every edge (light canvas).
-  static const int glassEdgeRimAlphaLight = 185;
+  /// Lit-side specular alpha on a light canvas (≈ 0.38).
+  static const int glassEdgeRimHiAlphaLight = 98;
 
-  /// Top sheen band alpha (dark canvas) — a faint glint; brighter bands read
-  /// as a painted highlight instead of reflected light.
-  static const int glassEdgeSheenAlphaDark = 10;
+  /// Shadow-side specular alpha on a dark canvas (≈ 0.03).
+  static const int glassEdgeRimLoAlphaDark = 8;
 
-  /// Top sheen band alpha (light canvas).
-  static const int glassEdgeSheenAlphaLight = 16;
+  /// Shadow-side specular alpha on a light canvas (≈ 0.08).
+  static const int glassEdgeRimLoAlphaLight = 20;
 
-  /// Height of the top sheen band on structural cards (main card, floating
-  /// list card). Small capsules pass a tighter extent.
-  static const double glassEdgeSheenExtent = 56;
+  /// Bright catch of light on the lit side of the silhouette.
+  static Color glassEdgeRimHi({required bool isDark}) => chromeForegroundColor
+      .withAlpha(isDark ? glassEdgeRimHiAlphaDark : glassEdgeRimHiAlphaLight);
 
-  /// Uniform rim color for the full glass frame.
-  static Color glassEdgeRimColor({required bool isDark}) =>
-      chromeForegroundColor.withAlpha(
-        isDark ? glassEdgeRimAlphaDark : glassEdgeRimAlphaLight,
-      );
-
-  /// Sheen gradient for the top band: the rim hue fading to nothing.
-  static Gradient glassEdgeSheenGradient({required bool isDark}) =>
-      LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          chromeForegroundColor.withAlpha(
-            isDark ? glassEdgeSheenAlphaDark : glassEdgeSheenAlphaLight,
-          ),
-          chromeForegroundColor.withAlpha(0),
-        ],
-      );
+  /// Soft edge definition on the side facing away from the light.
+  static Color glassEdgeRimLo({required bool isDark}) => chromeForegroundColor
+      .withAlpha(isDark ? glassEdgeRimLoAlphaDark : glassEdgeRimLoAlphaLight);
 
   /// Window inset of the unified content region on every edge. Narrow (4) by
   /// design: destinations sit nearly flush with the window frame so the

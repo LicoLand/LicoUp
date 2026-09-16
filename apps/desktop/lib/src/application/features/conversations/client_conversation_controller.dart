@@ -861,6 +861,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   Future<bool> postMessage(
     String text, {
     bool dispatch = true,
+    bool suppressAssistant = false,
     List<ConversationAttachment> attachments = const [],
   }) async {
     final conversation = _selectedConversation;
@@ -909,6 +910,7 @@ final class ClientConversationController extends ApplicationStateOwner {
             'action': 'conversation.dispatch.after-post',
             'conversationId': conversation.id,
             'eventId': eventId,
+            'suppressAssistant': suppressAssistant,
           });
           _liveTurns = _postedLiveTurns(dispatched);
           _dispatchPending = _liveTurns.isNotEmpty;

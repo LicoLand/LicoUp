@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widge
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
@@ -419,10 +420,11 @@ class _WorkflowMetric extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minWidth: 122),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: colors.line.withAlpha(80), width: 0.5),
+        stroke: colors.line.withAlpha(80),
+        strokeWidth: 0.5,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -498,10 +500,11 @@ class _WorkflowRunCard extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow.withAlpha(colors.isDark ? 90 : 120),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.line.withAlpha(80), width: 0.5),
+        stroke: colors.line.withAlpha(80),
+        strokeWidth: 0.5,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -661,10 +664,11 @@ class _WorkflowFactRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: colors.line.withAlpha(65), width: 0.5),
+        stroke: colors.line.withAlpha(65),
+        strokeWidth: 0.5,
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -59,8 +60,9 @@ void main() {
       final decorated = tester.widget<DecoratedBox>(
         find.byType(DecoratedBox).first,
       );
-      final decoration = decorated.decoration as BoxDecoration;
-      expect(decoration.border?.top.width, lessThan(1.1));
+      final decoration = decorated.decoration as ShapeDecoration;
+      final shape = decoration.shape as ContinuousRoundedBorder;
+      expect(shape.side.width, lessThan(1.1));
     },
   );
 }

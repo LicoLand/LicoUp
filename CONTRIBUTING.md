@@ -108,6 +108,9 @@ change separately authorized production and release requirements.
 
 ### UI acceptance
 
+For component style changes, first produce the real-component review images
+defined by the [Design System visual reference](docs/functionality/DESIGN-SYSTEM.md#visual-reference-and-style-review).
+
 Describe UI acceptance as actions and visible results: refresh the conversation
 list, switch navigation repeatedly, scroll long lists in both directions, type
 and click during streaming output, and open, close, and return from dialogs.

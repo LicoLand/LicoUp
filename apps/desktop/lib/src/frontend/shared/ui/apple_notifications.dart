@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Floating Apple-leaning snackbar / toast chrome for ephemeral notices.
@@ -83,7 +84,7 @@ class AppleGlassNoticeBanner extends StatelessWidget {
       AppleGlassNoticeTone.neutral => colors.textMuted,
     };
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         // A notice is a low wash of its own signal color over the neutral
         // surface, so the tone is legible without a second surface token.
         color: tone == AppleGlassNoticeTone.neutral
@@ -95,12 +96,10 @@ class AppleGlassNoticeBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(
           AppleControlMetrics.controlCornerRadius,
         ),
-        border: Border.all(
-          color: tone == AppleGlassNoticeTone.neutral
-              ? colors.line
-              : accent.withValues(alpha: 0.42),
-          width: AppleControlMetrics.hairline,
-        ),
+        stroke: tone == AppleGlassNoticeTone.neutral
+            ? colors.line
+            : accent.withValues(alpha: 0.42),
+        strokeWidth: AppleControlMetrics.hairline,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
