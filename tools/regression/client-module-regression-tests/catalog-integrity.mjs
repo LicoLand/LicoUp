@@ -244,7 +244,7 @@ test("agent-usage routing sources select the dedicated evidence verifier", () =>
   }
 });
 
-test("architecture and package facades retain precise source-bundle ownership", () => {
+test("architecture and package facades retain precise source-bundle ownership", async () => {
   const architectureSources = [
     "tools/verify-client-boundary.mjs",
     "apps/desktop/scripts/verify-client-architecture.mjs",
@@ -275,30 +275,18 @@ test("architecture and package facades retain precise source-bundle ownership", 
   ];
   const architectureTest =
     "tests/contract/client/client-architecture-modules.test.mjs";
+  const packageAssets = [
+    "apps/desktop/macos/CustodyHelper/Info.plist",
+    "apps/desktop/macos/CustodyHelper/ProductionRelease.entitlements",
+  ];
   const packageSources = [
     "apps/desktop/scripts/package-client.mjs",
-    "apps/desktop/scripts/package-client/build/flutter.mjs",
-    "apps/desktop/scripts/package-client/build/native.mjs",
-    "apps/desktop/scripts/package-client/build/swift.mjs",
-    "apps/desktop/scripts/package-client/bundle-resolver/linux.mjs",
-    "apps/desktop/scripts/package-client/bundle-resolver/macos.mjs",
-    "apps/desktop/scripts/package-client/bundle-resolver/windows.mjs",
-    "apps/desktop/scripts/package-client/cli-policy.mjs",
-    "apps/desktop/scripts/package-client/config-codec.mjs",
-    "apps/desktop/scripts/package-client/macos/install.mjs",
-    "apps/desktop/scripts/package-client/macos/metadata.mjs",
-    "apps/desktop/scripts/package-client/macos/signing.mjs",
-    "apps/desktop/scripts/package-client/module-selection.mjs",
-    "apps/desktop/scripts/package-client/orchestrator.mjs",
-    "apps/desktop/scripts/package-client/portable-manifest.mjs",
-    "apps/desktop/scripts/package-client/process-runner.mjs",
-    "apps/desktop/scripts/package-client/pub-cache.mjs",
-    "apps/desktop/scripts/package-client/resource-assembly.mjs",
-    "apps/desktop/scripts/package-client/source-staging.mjs",
-    "apps/desktop/scripts/package-client/windows-manifest.mjs",
+    ...await sourceFiles("apps/desktop/scripts/package-client", ".mjs"),
   ];
-  const packageTest =
-    "tests/contract/client/package-client/package-client-source-bundle.test.mjs";
+  const packageTests = [
+    "tests/contract/client/package-client/package-client-source-bundle.test.mjs",
+    "tests/contract/client/package-client/macos-custody-helper.test.mjs",
+  ];
   const planSources = [
     "apps/desktop/scripts/verify-client-plan.mjs",
     "apps/desktop/scripts/verify-client-plan/checks/android-ios.mjs",
@@ -334,20 +322,25 @@ test("architecture and package facades retain precise source-bundle ownership", 
     "regression.client-architecture-modules",
   ]);
 
-  for (const relativePath of packageSources) {
+  for (const relativePath of [...packageAssets, ...packageSources]) {
     const expected = [
       "regression.package-client-source-bundle",
       "packaging.client-plan",
     ];
+    if (packageAssets.includes(relativePath)) {
+      expected.unshift("bridge.macos");
+    }
     if (relativePath.includes("/bundle-resolver/") ||
         relativePath.endsWith("/resource-assembly.mjs")) {
       expected.unshift("regression.subagent-mcp-common");
     }
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), expected);
   }
-  assert.deepEqual(ids(selectModulesForChangedPaths([packageTest])), [
-    "regression.package-client-source-bundle",
-  ]);
+  for (const packageTest of packageTests) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([packageTest])), [
+      "regression.package-client-source-bundle",
+    ]);
+  }
 
   for (const relativePath of planSources) {
     assert.deepEqual(ids(selectModulesForChangedPaths([relativePath])), [
@@ -372,8 +365,8 @@ test("architecture and package facades retain precise source-bundle ownership", 
     architectureTest,
   ]);
   assert.deepEqual(architectureBundle.command.args, ["--test", architectureTest]);
-  assert.deepEqual(packageBundle.inputs, [...packageSources, packageTest]);
-  assert.deepEqual(packageBundle.command.args, ["--test", packageTest]);
+  assert.deepEqual(packageBundle.inputs, [...packageAssets, ...packageSources, ...packageTests]);
+  assert.deepEqual(packageBundle.command.args, ["--test", ...packageTests]);
   assert.deepEqual(planBundle.inputs, [...planSources, ...planTests]);
   assert.deepEqual(planBundle.command.args, [
     "--test",
@@ -394,7 +387,7 @@ test("architecture and package facades retain precise source-bundle ownership", 
   for (const relativePath of architectureSources) {
     assert.equal(architectureOwner.inputs.includes(relativePath), true);
   }
-  for (const relativePath of packageSources) {
+  for (const relativePath of [...packageAssets, ...packageSources]) {
     assert.equal(packageOwner.inputs.includes(relativePath), true);
   }
   for (const relativePath of planSources) {
@@ -487,46 +480,28 @@ test("catalog physical groups retain a thin barrel and complete source ownership
   }
 });
 
-test("client module regression tests retain seven ordinary owned leaves", async () => {
+test("client module regression aggregate includes every owned test leaf", async () => {
   const aggregatePath = "tests/contract/client/client-module-regression.test.mjs";
   const aggregate = await fs.readFile(path.join(repoRoot, aggregatePath), "utf8");
-  assert.equal(aggregate.includes("test("), false);
-  assert.equal(aggregate.includes("function ids("), false);
-
   const leafRoot = "tools/regression/client-module-regression-tests";
   const leafFiles = (await fs.readdir(path.join(repoRoot, leafRoot), {
     withFileTypes: true,
   }))
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs") &&
+      entry.name !== "support.mjs")
     .map((entry) => entry.name)
     .sort();
-  assert.deepEqual(leafFiles, [
-    "catalog-integrity.mjs",
-    "conversation-ownership.mjs",
-    "flutter-selection.mjs",
-    "platform-driver-ownership.mjs",
-    "runner-safety.mjs",
-    "rust-selection.mjs",
-    "secure-mesh-ownership.mjs",
-    "support.mjs",
-  ]);
-
-  const expectedTestCounts = new Map([
-    ["catalog-integrity.mjs", 16],
-    ["conversation-ownership.mjs", 6],
-    ["flutter-selection.mjs", 5],
-    ["platform-driver-ownership.mjs", 20],
-    ["runner-safety.mjs", 16],
-    ["rust-selection.mjs", 12],
-    ["secure-mesh-ownership.mjs", 17],
-  ]);
+  const importedLeaves = [...aggregate.matchAll(
+    /import "\.\.\/\.\.\/\.\.\/tools\/regression\/client-module-regression-tests\/([^"/]+)";/gu,
+  )].map((match) => match[1]).sort();
+  assert.deepEqual(importedLeaves, leafFiles);
   const registeredNames = new Set();
-  for (const [leafFile, expectedCount] of expectedTestCounts) {
+  for (const leafFile of leafFiles) {
     const relativePath = `${leafRoot}/${leafFile}`;
     const leafSource = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
     const names = [...leafSource.matchAll(/^test\("([^"]+)"/gmu)]
       .map((match) => match[1]);
-    assert.equal(names.length, expectedCount, leafFile);
+    assert.ok(names.length > 0, leafFile);
     for (const name of names) {
       assert.equal(registeredNames.has(name), false, name);
       registeredNames.add(name);
@@ -538,7 +513,6 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 92);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

@@ -8,6 +8,19 @@ import {
 
 export const FLUTTER_MODULES = Object.freeze([
   defineModule({
+    id: "flutter.feature.ui-state-machine",
+    kind: "flutter-feature",
+    summary: "UI interaction model and widget transition scenarios",
+    inputs: [
+      "apps/desktop/test/ui_state_machine/**",
+      "apps/desktop/integration_test/ui_state_machine_test.dart",
+      "apps/desktop/test_driver/ui_state_machine.dart",
+      "docs/functionality/UI-INTERACTIONS.json",
+      "tools/scripts/client-ui-state-machine.mjs",
+    ],
+    command: flutterTests(["test/ui_state_machine"]),
+  }),
+  defineModule({
     id: "flutter.contract.typed-error-chain",
     kind: "flutter-contract",
     summary: "Generated typed client errors, lossless stdio decoding, and localized recovery",
@@ -420,6 +433,9 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/agent_conversation_timeline_test.dart",
         "apps/desktop/test/agent_conversation_transport_error_test.dart",
         "apps/desktop/test/conversation_runtime_result_policy_test.dart",
+        "apps/desktop/test/conversation_browse_catalog_ensure_test.dart",
+        "apps/desktop/test/conversation_catalog_refresh_intent_test.dart",
+        "apps/desktop/test/conversation_selection_loading_test.dart",
         "apps/desktop/test/agent_conversation_search_index_test.dart",
         "apps/desktop/test/agent_conversation_search_palette_test.dart",
         "apps/desktop/test/destination_search_ranking_test.dart",
@@ -502,6 +518,9 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/agent_conversation_timeline_test.dart",
         "test/agent_conversation_transport_error_test.dart",
         "test/conversation_runtime_result_policy_test.dart",
+        "test/conversation_browse_catalog_ensure_test.dart",
+        "test/conversation_catalog_refresh_intent_test.dart",
+        "test/conversation_selection_loading_test.dart",
         "test/agent_conversation_search_index_test.dart",
         "test/agent_conversation_search_palette_test.dart",
         "test/destination_search_ranking_test.dart",
@@ -2121,6 +2140,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/test/messaging/conversation_material_profiles_test.dart",
         "apps/desktop/test/messaging/conversation_motion_surface_test.dart",
         "apps/desktop/test/loading_effect_test.dart",
+        "apps/desktop/lib/src/frontend/appearance/loading_effect_catalog.dart",
         "apps/desktop/test/messaging/conversation_motion/steel_ball_motion_test.dart",
         "apps/desktop/test/messaging/conversation_motion/conversation_particle_geometry_test.dart",
         "apps/desktop/test/messaging/conversation_motion/conversation_motion_widget_test.dart",

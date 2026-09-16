@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use super::{
+use crate::{
     CallbackDecisionKind, CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind,
     MAX_WORKSET_ITEMS, PendingCallback, SessionPolicy, StrategyRunStatus, TransitionEvent,
     TransitionMode,
@@ -233,7 +233,7 @@ pub struct ReducerOutput {
 /// with the state instruction when one exists. Registration and drive share
 /// this builder so a pre-registered entry turn sends exactly the prompt the
 /// emitted command would carry.
-pub(crate) fn effect_input_for(
+pub fn effect_input_for(
     workflow: &CompiledWorkflow,
     state_id: &str,
     input: Value,
@@ -1749,7 +1749,7 @@ fn ordinal_key(state_id: &str, visit: u64, slot_id: &str, item_id: Option<&str>)
     lineage_key(state_id, visit, Some(slot_id), item_id)
 }
 
-pub(crate) fn binding_session_key(slot_id: &str, ordinal: u8) -> String {
+pub fn binding_session_key(slot_id: &str, ordinal: u8) -> String {
     format!("{slot_id}\0{ordinal}")
 }
 
@@ -1762,7 +1762,7 @@ fn lineage_key(state_id: &str, visit: u64, slot_id: Option<&str>, item_id: Optio
     }
 }
 
-pub(crate) fn lineage_within_budget(
+pub fn lineage_within_budget(
     snapshot: &RunSnapshot,
     state_id: &str,
     visit: u64,
@@ -1843,7 +1843,7 @@ fn validate_failure_code(code: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn fallback_reason(
+pub fn fallback_reason(
     workflow: &CompiledWorkflow,
     snapshot: &RunSnapshot,
     command: &RunCommand,
@@ -1979,7 +1979,7 @@ const fn default_state_visit() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::adaptive_flywheel::{
+    use crate::{
         ActorSlot, GraphState, RetryPolicy, SessionPolicy, Transition, WorkflowDefinition,
         WorkflowLimits, WorkflowMetadata, WorksetTemplate, compile_workflow,
     };

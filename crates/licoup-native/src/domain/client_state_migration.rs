@@ -826,12 +826,7 @@ fn probe_authoritative_store(marker_root: &Path, domain_id: &str) -> Result<Auth
             Ok(AuthoritativeProbe { version, present })
         }
         "canonical-conversation" => probe_canonical_conversation(root),
-        "adaptive-flywheel" => probe_sqlite_meta(
-            &root.join("client-state/adaptive-flywheel/strategies.sqlite3"),
-            "strategy_meta",
-            "version",
-            "2",
-        ),
+        "adaptive-flywheel" => probe_adaptive_flywheel(root),
         "workspace-manifest" => probe_json_schema(
             &root.join(".licoup-workspace.json"),
             1,
@@ -1044,6 +1039,49 @@ fn probe_sqlite_meta(
     }
 }
 
+fn probe_adaptive_flywheel(root: &Path) -> Result<AuthoritativeProbe> {
+    let path = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+    if !regular_file_present(&path)? {
+        return Ok(AuthoritativeProbe {
+            version: 0,
+            present: false,
+        });
+    }
+    let connection = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .context("unsupported_state_shape")?;
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT value FROM strategy_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("unsupported_state_shape")?;
+    match value.as_deref() {
+        Some("3") => Ok(AuthoritativeProbe {
+            version: 2,
+            present: true,
+        }),
+        Some("2") => Ok(AuthoritativeProbe {
+            version: 1,
+            present: true,
+        }),
+        Some(value) if value.parse::<u32>().is_ok_and(|value| value < 2) => {
+            Ok(AuthoritativeProbe {
+                version: 0,
+                present: true,
+            })
+        }
+        Some(value) if value.parse::<u32>().is_ok_and(|value| value > 3) => {
+            bail!("state_newer_than_binary")
+        }
+        _ => bail!("unsupported_state_shape"),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum JsonSchemaPolicy {
     CurrentOnly,
@@ -1152,8 +1190,13 @@ fn apply_authoritative_store(
             if path.exists() {
                 // StrategyStore migrations execute in SQLite transactions; a
                 // failed process resumes from the authoritative meta value.
-                crate::domain::adaptive_flywheel::StrategyStore::open_for_migration(root)
-                    .context("migration_step_failed")?;
+                if edge.to_schema_version == 1 {
+                    crate::domain::adaptive_flywheel::StrategyStore::migrate_to_schema_2(root)
+                        .context("migration_step_failed")?;
+                } else {
+                    crate::domain::adaptive_flywheel::StrategyStore::open_for_migration(root)
+                        .context("migration_step_failed")?;
+                }
             }
         }
         "workspace-manifest" => migrate_json_schema(
@@ -1198,6 +1241,9 @@ fn apply_authoritative_store(
 }
 
 fn migration_handler_target(domain_id: &str, from_schema_version: u32) -> Option<u32> {
+    if domain_id == "adaptive-flywheel" && from_schema_version == 1 {
+        return Some(2);
+    }
     matches!(
         (domain_id, from_schema_version),
         (
@@ -1862,7 +1908,7 @@ mod tests {
                 "client-state/adaptive-flywheel/strategies.sqlite3",
                 "strategy_meta",
                 "version",
-                "2",
+                "3",
             ),
         ] {
             let path = root.join(relative);
@@ -1890,6 +1936,151 @@ mod tests {
                 .unwrap();
             assert_eq!(canary, "must-survive");
         }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn completed_frontier_one_advances_adaptive_flywheel_ledger_and_marker() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-adaptive-frontier-upgrade-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let database = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key,value) VALUES ('version','2');
+                 CREATE TABLE preservation_canary(value TEXT NOT NULL);
+                 INSERT INTO preservation_canary(value) VALUES ('must-survive');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let migration_root = root.join("client-state/migrations");
+        let marker_root = migration_root.join("domain-state");
+        crate::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+        write_json_atomic(
+            &marker_path(&marker_root, "adaptive-flywheel"),
+            &DomainMarker {
+                schema_version: DOMAIN_MARKER_SCHEMA.to_owned(),
+                domain_id: "adaptive-flywheel".to_owned(),
+                authoritative_schema_version: 1,
+            },
+        )
+        .unwrap();
+        write_json_atomic(
+            &migration_root.join("ledger.json"),
+            &Ledger {
+                schema_version: LEDGER_SCHEMA.to_owned(),
+                highest_admitted_product_version: running_product_version().unwrap().to_owned(),
+                frontier_id: "licoup-state-0.2.1".to_owned(),
+                domains: BTreeMap::from([(
+                    "adaptive-flywheel".to_owned(),
+                    LedgerDomain {
+                        schema_version: 1,
+                        completed_step_ids: vec!["adaptive-flywheel.absent-to-1".to_owned()],
+                    },
+                )]),
+            },
+        )
+        .unwrap();
+
+        let result = admit(&root).unwrap();
+        assert!(
+            result
+                .applied_domain_ids
+                .iter()
+                .any(|domain| domain == "adaptive-flywheel")
+        );
+        let connection = Connection::open(&database).unwrap();
+        let version: String = connection
+            .query_row(
+                "SELECT value FROM strategy_meta WHERE key='version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let canary: String = connection
+            .query_row("SELECT value FROM preservation_canary", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, "3");
+        assert_eq!(canary, "must-survive");
+
+        let marker = load_domain_marker(
+            &marker_root,
+            embedded_frontier()
+                .unwrap()
+                .domains
+                .iter()
+                .find(|domain| domain.domain_id == "adaptive-flywheel")
+                .unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(marker.authoritative_schema_version, 2);
+        let ledger: Ledger =
+            serde_json::from_slice(&fs::read(migration_root.join("ledger.json")).unwrap()).unwrap();
+        let adaptive = &ledger.domains["adaptive-flywheel"];
+        assert_eq!(adaptive.schema_version, 2);
+        assert_eq!(
+            adaptive.completed_step_ids,
+            vec![
+                "adaptive-flywheel.absent-to-1".to_owned(),
+                "adaptive-flywheel.workflow-routing-to-2".to_owned(),
+            ]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_one_adaptive_flywheel_store_advances_through_both_frontier_edges() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-adaptive-schema-one-upgrade-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let database = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key,value) VALUES ('version','1');
+                 CREATE TABLE preservation_canary(value TEXT NOT NULL);
+                 INSERT INTO preservation_canary(value) VALUES ('must-survive');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let result = admit(&root).unwrap();
+        assert!(
+            result
+                .applied_domain_ids
+                .iter()
+                .any(|domain| domain == "adaptive-flywheel")
+        );
+        let connection = Connection::open(&database).unwrap();
+        let (version, canary): (String, String) = connection
+            .query_row(
+                "SELECT m.value, c.value
+                   FROM strategy_meta m CROSS JOIN preservation_canary c
+                  WHERE m.key='version'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(version, "3");
+        assert_eq!(canary, "must-survive");
+        let ledger: Ledger = serde_json::from_slice(
+            &fs::read(root.join("client-state/migrations/ledger.json")).unwrap(),
+        )
+        .unwrap();
+        let adaptive = &ledger.domains["adaptive-flywheel"];
+        assert_eq!(adaptive.schema_version, 2);
+        assert_eq!(adaptive.completed_step_ids.len(), 2);
         let _ = fs::remove_dir_all(root);
     }
 
