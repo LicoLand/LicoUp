@@ -100,3 +100,12 @@ executable. The MCP adapter's narrower remote exposure is owned by its
 | Native executable and host startup | `crates/licoup-native/src/bin/licoup.rs` and `bin/licoup/conversation_host.rs` |
 | Local Subagents and MCP lifecycle commands | `crates/licoup-native/src/ffi/commands/subagents.rs` |
 | Local Subagents invocation and caller admission | `crates/licoup-native/src/domain/subagents/local.rs` |
+
+## Custom operation properties
+
+The accepted customization boundary extends the existing native catalog and tool
+contracts. Custom properties have a namespace, type, default and capability-version
+boundary. They cannot override the actor, authorization, idempotency identity or
+canonical state. Unknown or invalid tool input receives a typed admission error;
+ordinary Agent text remains original text, even when it resembles JSON. This is a
+constraint on future catalog extensions, not a new customization command.

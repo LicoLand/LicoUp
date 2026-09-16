@@ -62,7 +62,12 @@ mod tests {
     use std::fs;
     use std::process::Command;
     use std::sync::mpsc;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    enum CancelTurnProgress {
+        Bound,
+        Finished,
+    }
 
     #[test]
     fn copilot_launch_arguments_are_fixed_and_private_values_use_acp_stdin() {
@@ -192,17 +197,18 @@ mod tests {
             .unwrap();
         assert!(status.success());
 
-        let (bound_sender, bound_receiver) = mpsc::sync_channel(1);
+        let (progress_sender, progress_receiver) = mpsc::channel();
+        let bound_sender = progress_sender.clone();
         let run_dir = dir.clone();
         let run_executable = executable.clone();
         let run = std::thread::spawn(move || {
             crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
                 if event.get("event").and_then(Value::as_str) == Some("dispatch.turn.bound") {
-                    let _ = bound_sender.try_send(());
+                    let _ = bound_sender.send(CancelTurnProgress::Bound);
                 }
             }));
             let _sink = crate::platform::turn_event_emit::StreamSinkGuard;
-            execute(
+            let result = execute(
                 run_executable.to_string_lossy().as_ref(),
                 &json!({}),
                 "cancel-me",
@@ -211,14 +217,32 @@ mod tests {
                 10_000,
                 Some(1024 * 1024),
                 1024,
-            )
+            );
+            let _ = progress_sender.send(CancelTurnProgress::Finished);
+            result
         });
-        bound_receiver.recv_timeout(Duration::from_secs(3)).unwrap();
-        assert_eq!(
-            cancel("copilot-cancel-session"),
-            super::super::acp_driver_runtime::ControlDisposition::Accepted
-        );
+
+        let mut bound = false;
+        let mut cancellation = None;
+        while let Ok(progress) = progress_receiver.recv() {
+            match progress {
+                CancelTurnProgress::Bound if !bound => {
+                    bound = true;
+                    cancellation = Some(cancel("copilot-cancel-session"));
+                }
+                CancelTurnProgress::Bound => {}
+                CancelTurnProgress::Finished => break,
+            }
+        }
         let result = run.join().unwrap();
+        assert!(
+            bound,
+            "Copilot turn finished before its exact session bound"
+        );
+        assert_eq!(
+            cancellation,
+            Some(super::super::acp_driver_runtime::ControlDisposition::Accepted)
+        );
         assert!(!result.ok);
         assert_eq!(result.session_id, "copilot-cancel-session");
         assert_eq!(result.turn_status, "cancelled");

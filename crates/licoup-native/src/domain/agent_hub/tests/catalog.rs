@@ -436,6 +436,7 @@ fn catalog_live_lookup_resolves_every_member_in_one_pass() {
     let (_dir, params) = portable_params("catalog-live-batch");
     let mut batched_params = params.clone();
     batched_params["liveLookup"] = serde_json::json!(true);
+    batched_params["syntheticDiscoveryIsolation"] = serde_json::json!(true);
     batched_params["runningProcessNames"] = serde_json::json!(["codex"]);
     batched_params
         .as_object_mut()
@@ -458,10 +459,9 @@ fn catalog_live_lookup_resolves_every_member_in_one_pass() {
     assert_eq!(batched["scanGeneration"], 7);
     assert_eq!(batched["hostScope"], HOST_SCOPE);
 
-    // Proof the live branch ran: codex is the only injected running process, so
-    // its card reports present and an agent that is not running does not. A
-    // batch that skipped the inspection would report both absent, since the
-    // fixture supplies no facts of its own.
+    // Proof the real batched inspection branch ran: the fixture isolates every
+    // automatic host source, then supplies only the process snapshot. Codex is
+    // therefore present while an absent member stays absent on every host.
     let card = |id: &str| {
         batched_cards
             .iter()
