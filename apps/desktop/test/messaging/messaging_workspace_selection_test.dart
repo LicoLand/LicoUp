@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_message.dart';
 import 'package:licoup/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -25,7 +26,7 @@ import '../support/fake_conversation_transport.dart';
 
 void main() {
   testWidgets(
-    'tapping a messaging contact lands on its new-conversation home',
+    'tapping a messaging contact opens its conversation list and new-conversation home',
     (tester) async {
       final fixture = await ProductionClientShellFixture.create(
         profileId: LayoutProfileId.parse('dashboard'),
@@ -105,22 +106,29 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump();
+      for (var attempt = 0; attempt < 20; attempt += 1) {
+        if (!controller.isLoadingConversations) break;
+        await tester.pump(const Duration(milliseconds: 20));
+      }
 
       expect(controller.selectedConversationAgentId, agentId);
       expect(controller.selectedConversationSession, isNull);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
+      expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
+      expect(
+        find.byKey(const Key('messaging-create-conversation')),
+        findsOneWidget,
+      );
 
       expect(
         find.byKey(const Key('conversation-empty-content')),
         findsOneWidget,
       );
 
-      // Restore a concrete selection through the existing application intent;
-      // the new-conversation home is now occupied by the particle sphere.
+      await tester.pump();
       controller.selectConversationSession(session.id);
       await tester.pump();
 
@@ -196,6 +204,7 @@ void main() {
     final controller = ClientController(
       agentService: agentService,
       conversationNativePort: agentService,
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
@@ -515,7 +524,7 @@ final class _GroupNavigationController extends ClientController {
     required super.agentService,
     required super.conversationNativePort,
     super.llmGatewayMonitorInterval,
-  });
+  }) : super(memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink());
 
   @override
   Future<ConversationSessionPage> readConversationSessionPage(
@@ -527,6 +536,12 @@ final class _GroupNavigationController extends ClientController {
     int? messageLimit,
     ConversationSessionProgressCallback? onProgress,
   }) async {
+    if (sessionId.isEmpty) {
+      return ConversationSessionPage(
+        sessions: conversationSessionsByAgent[agentId] ?? const [],
+        hasMore: false,
+      );
+    }
     expect(
       sessionId,
       isNotEmpty,
@@ -544,7 +559,7 @@ final class _GroupNavigationController extends ClientController {
           title: agentId == 'codex'
               ? 'Agent detail'
               : 'Historical group Agent detail',
-          at: '2026-09-13T00:00:00Z',
+          at: DateTime.now().toUtc().toIso8601String(),
         ),
       ],
       hasMore: false,

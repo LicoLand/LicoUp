@@ -208,6 +208,9 @@ async function runFlutterTestWithSafeDiagnostics(prepared, cwd) {
   const passedCount = measuredMetric(metrics, "passedCount");
   const failedCount = measuredMetric(metrics, "failedCount");
   const skippedCount = measuredMetric(metrics, "skippedCount");
+  if (!failure && testCount === null) {
+    failure = new Error("flutter_test_result_incomplete");
+  }
   if (failure) {
     process.stderr.write(`${JSON.stringify({
       schemaVersion: "licoup.flutter-test-diagnostics.v1",
@@ -220,8 +223,8 @@ async function runFlutterTestWithSafeDiagnostics(prepared, cwd) {
     })}\n`);
     throw failure;
   }
-  process.stdout.write(`[client-toolchain-runner] Flutter tests passed: ${testCount ?? "unknown"} ` +
-    `executed, ${skippedCount ?? "unknown"} skipped.\n`);
+  process.stdout.write(`[client-toolchain-runner] Flutter tests passed: ${testCount} ` +
+    `executed, ${skippedCount} skipped.\n`);
 }
 
 export async function runPreparedCommand(prepared, cwd) {

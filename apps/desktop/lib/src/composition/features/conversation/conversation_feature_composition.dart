@@ -94,44 +94,35 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       case CloseConversationExecutionView(:final viewId):
         _projection.execution.dismiss(viewId, trace: trace);
       case RefreshConversationCatalog(:final agentId):
-        if (_controller.groupNativeSessions.conversationId.isNotEmpty) {
-          _run(
-            () async {
-              final groupId = _controller.groupNativeSessions.conversationId;
-              await _controller.clientConversationController.reloadSelected();
-              if (_controller.groupNativeSessions.conversationId == groupId) {
-                await _controller.refreshGroupConversationSessions();
-              }
-            },
-            trace,
-            stage: 'group-history-refresh',
-          );
-          break;
-        }
         final requestedAgentId = agentId.trim();
         if (requestedAgentId.isNotEmpty) {
           _run(
-            () => _controller.refreshConversationSessions(requestedAgentId),
+            () => _controller.ensureAgentBrowseCatalog(requestedAgentId),
             trace,
             stage: 'catalog-prefetch',
           );
           break;
         }
-        final selectedAgentId = _controller.selectedConversationAgentId.trim();
-        if (selectedAgentId.isNotEmpty &&
-            _controller
-                    .clientConversationController
-                    .selectedConversation
-                    ?.group !=
-                true) {
-          _run(
-            () => _controller.refreshConversationSessions(selectedAgentId),
-            trace,
-            stage: 'catalog-refresh',
-          );
-        }
         _run(
-          _controller.clientConversationController.refresh,
+          () async {
+            final groupId = _controller.groupNativeSessions.conversationId;
+            await _controller.clientConversationController.refresh();
+            if (groupId.isNotEmpty &&
+                _controller.groupNativeSessions.conversationId == groupId) {
+              await _controller.refreshGroupConversationSessions();
+              return;
+            }
+            final selectedAgentId = _controller.selectedConversationAgentId
+                .trim();
+            if (selectedAgentId.isNotEmpty &&
+                _controller
+                        .clientConversationController
+                        .selectedConversation
+                        ?.group !=
+                    true) {
+              await _controller.refreshConversationSessions(selectedAgentId);
+            }
+          },
           trace,
           stage: 'canonical-refresh',
         );
