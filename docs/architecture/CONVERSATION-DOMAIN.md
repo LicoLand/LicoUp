@@ -395,6 +395,15 @@ flowchart TB
 
 ---
 
+The group roster is a projection of active Agent Memberships. `principal.agentId`
+identifies the adapter and matches `TargetCandidate.target`; a candidate record's
+`id` is not a Membership identity. A missing discovery result keeps the member
+visible as unavailable. Retired `kimi` and `kimi-desktop` adapters are hidden
+from the current roster without removing Memberships or historical Events;
+`kimi-code` remains distinct. An empty roster does not block reading the timeline
+or editing a message. Roster clicks and mention completion use the Membership's
+display name, falling back to its agent ID, matching native addressing aliases.
+
 ## 7. Human / Agent Dedicated Profile Abstraction
 
 In the Conversation architecture, **every participant—whether Human or Agent—must and does have a dedicated Profile data encapsulation**.
@@ -785,3 +794,19 @@ persisted assistant message or a second lifecycle authority. Thinking and tool
 records do not satisfy the first-reply condition. Actual reply text or a real
 terminal outcome ends the wait. The visual and search behavior is owned by the
 [design system](../functionality/DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).
+
+## Peer message identity boundary
+
+The accepted peer-conversation target preserves original message identity, author,
+represented principal, source endpoint, forwarder and local ordering as distinct facts.
+Transport receipt, endpoint receipt, application admission, read status and agreed
+acceptance are not interchangeable. Edits and deletions reference their causal source
+and revision; synchronization and recovery cannot resurrect deleted content or give a
+forwarder the original author's authority.
+
+Mergeable communication history does not make execution permission, budget admission
+or revocation eventually consistent. These remain decisions of their existing owners.
+[Workflow control](ASSISTANT-WORKFLOW-CONTROL.md) owns effect admission and
+[the security boundary](SECURITY-AND-DATA-BOUNDARY.md) owns result settlement after
+revocation. Peer integration must verify these distinctions; local messaging alone is
+not proof of them.

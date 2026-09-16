@@ -7,9 +7,10 @@ JSON 状态机 Graph，外加每个 actor 槽的有序候选链。一次运行�
 分支的工作流，还是带回边的 Agent Loop，完全由 Graph 决定；引擎不会根据策略名称
 推断拓扑，也不附带内置的可执行 Graph。内置 LicoUp 指南说明如何使用现有操作。
 
-已接受的[工作流控制与编译器设计](../architecture/ASSISTANT-WORKFLOW-CONTROL.zh-CN.md)
-拥有计划中的编译分层、Assistant/Peer 队列干预、节点激活及优雅生命周期。本文不表示
-这些目标已实现；以下章节描述当前 Graph 合同。
+[工作流控制与编译器设计](../architecture/ASSISTANT-WORKFLOW-CONTROL.zh-CN.md)
+拥有编译分层、Assistant/Peer 队列干预、节点激活及优雅生命周期。现有定义、诊断、
+不可变编译索引和纯 reducer 已迁入 `licoup-workflow`；策略目录、包 I/O、绑定、授权
+和持久执行仍由 native 负责。队列干预及新生命周期仍为目标；以下章节描述当前 Graph 合同。
 
 ## 策略来源
 

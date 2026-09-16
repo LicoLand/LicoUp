@@ -11,10 +11,12 @@
 | Agent backend | [Agent adapters](AGENT-ADAPTERS-ARCHITECTURE.md) | Actual native capabilities and original conversation |
 | Current evidence | [Status](../STATUS.md) | Implemented and verified behavior |
 
-**Status: accepted target design, 2026-09-16; implementation pending.** This
-document owns the target control and compiler architecture. It does not claim
-that these interfaces exist in the current binary. Existing Graph contracts
-remain current until their complete implementation and documentation migration.
+**Status: compiler extraction implemented in source, 2026-09-16; runtime control
+design accepted and pending.** `licoup-workflow` now owns the existing definition,
+diagnostics, compiler indexes and pure transition machine. Native package import,
+Assistant preflight and execution use that crate. Queue, Node Facade, successor
+handoff, plan caching and new activation semantics below remain target behavior.
+This source status does not claim that a distributed binary contains the change.
 
 ## 1. Design intent
 
@@ -77,11 +79,13 @@ serialization-only dependency boundary. Native storage and execution remain
 outside the pure crate; strategy selection consumes it without owning it.
 
 `RunSnapshot`, `ReducerEvent` and `RunCommand` form the machine's state/event/effect
-ABI, not another compiler IR. Merge the overlapping checks in the current
-`workflow_diagnostics.rs` and `graph.rs` into one diagnostic-producing analysis
-path. Move the legacy rewrite reached through `compile_persisted_workflow` to
-the import/data-conversion boundary; ordinary runtime compilation must not
-rewrite a stored definition.
+ABI, not another compiler IR. The overlapping checks formerly owned by
+`workflow_diagnostics.rs` and `graph.rs` now use one diagnostic-producing analysis
+path. Source, JSON value and typed definition entry points share that analysis;
+the typed entry does not serialize and decode the definition again. Lowering
+accepts only an analyzed definition, and the compiled definition is read-only.
+Legacy conversion belongs to the import/data-conversion boundary; ordinary
+runtime compilation must not rewrite a stored definition.
 
 The native plan provider owns a bounded process-local cache of shared immutable
 plans keyed by existing revision/semantics identity. Active references count
@@ -104,6 +108,27 @@ an atomic intent handoff in the owning Graph store; already started effects
 remain with their original run. Ordinary steering does not require recompiling
 the Graph. A new revision does not inherit an old whole-Graph authorization for
 different effects.
+
+### Causal inputs, handoff and execution versions
+
+The compiler retains data dependencies as well as control edges. At visit admission,
+bind predecessor result identities and shared-resource versions; an invocation must
+not silently read a later global context. Shared writes use an explicit merge,
+compare-and-set or resource constraint. Resolve conflicts locally without a graph-wide
+batch barrier. A result reference grants no access to its content.
+
+Successor admission and command claim/start checks share the owning store's atomic
+boundary. Compare owner, revision, visit/generation and execution state so an old
+owner cannot claim after its scan or start from a cached permit after handoff commits.
+Transfer only declared unstarted intents. In-flight effects retain their original run;
+a successor may explicitly reference their authenticated results with current read
+authority. An old visit cannot satisfy a new join or cause replay of an old effect.
+
+Definition identity alone does not identify lowering, join or reducer semantics.
+Resuming a checkpoint must bind the execution semantics and its compatibility rules.
+Use a compatible interpreter, a tested migration, or retain the original owner/version
+until a safe boundary. Do not introduce a second authoritative compiled format. These
+runtime requirements remain pending after the pure compiler extraction.
 
 ## 3. The runtime control structure
 
@@ -292,6 +317,19 @@ collects per-node outcomes; one unavailable backend does not fabricate success
 or block unrelated Graphs. There is no fixed deadline that force-kills work.
 Observational and transport waits may expire without settling the domain task.
 
+A one-shot selector freezes its recipients. Graph-scope pause/cancel also establishes
+a scope admission barrier: newly ready nodes and future activations in that scope
+cannot start while it applies. Reporting that control was admitted or new work was
+blocked does not prove an operating-system process actually paused. Unsupported pause
+is reported as such, and authenticated late results still settle their original effect.
+Revocation and execution isolation follow the [security boundary](SECURITY-AND-DATA-BOUNDARY.md).
+
+Accepted and started receipts must follow the relevant durable transaction commit.
+The store must state whether its guarantee covers process loss or power loss and bind
+that statement to its writer, WAL, synchronous and checkpoint settings. Configuration
+and process-kill tests alone are not power-loss evidence; no cross-store atomicity is
+implied. Control responsiveness follows the [native interaction boundary](CLIENT-NATIVE-INTERACTION.md).
+
 An execution completion is applied immediately after durable receipt. In a
 Graph with A→C and independent B, C can start while B still runs. Only an
 explicit join waits for its required branches and visit. Queue publication
@@ -317,10 +355,10 @@ required authorized native helper. Historical bidirectional codecs remain
 maintained assets. Current pending commands, subscriptions, source cursors,
 unknown effects and successor handoffs are part of its data contracts.
 
-The planned shared Rust baseline is **1.95.0**. Compiler, native host, protocol
-SDK integration and any tool-shipped native helper must resolve on that exact
-toolchain and their actual target platforms. This target document does not
-change the currently pinned toolchain or claim compilation succeeded.
+The workspace now pins **Rust 1.95.0**, including member MSRV declarations and
+the matching CI action revision. Compiler, native host, protocol SDK integration
+and any tool-shipped native helper use that baseline. A source pin does not prove
+that a future SDK/helper or every target platform has compiled or run.
 
 Peer control uses the actual protected endpoint boundary before the local
 Proxy. No new peer-visible message protocol is defined here. A transport

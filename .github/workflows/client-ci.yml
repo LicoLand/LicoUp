@@ -114,7 +114,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
         with:
           components: clippy, rustfmt
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -144,7 +144,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: "3.44.2"
@@ -181,7 +181,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - uses: dtolnay/rust-toolchain@46817827a5bfabe028bf34e1cce71fd40e2ff697 # 1.95.0
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
