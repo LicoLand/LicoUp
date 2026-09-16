@@ -92,32 +92,35 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
           mouseCursor: enabled
               ? SystemMouseCursors.click
               : SystemMouseCursors.basic,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.auto_awesome_outlined,
-                  size: 14,
-                  color: colors.textMuted,
-                ),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
-                    strings.adaptiveFlywheel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.text.withAlpha(235),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.08,
-                      height: 1.15,
+          child: SizedBox(
+            height: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome_outlined,
+                    size: 14,
+                    color: colors.textMuted,
+                  ),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      strings.adaptiveFlywheel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.text.withAlpha(235),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.08,
+                        height: 1.15,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -485,6 +488,84 @@ final class _AssistantParticipationToggle extends StatelessWidget {
                     child: const SizedBox(width: 12, height: 12),
                   ),
                 ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quiet readout of the assistant's selected model and reasoning effort,
+/// placed before the send button: the model name in the readable text color,
+/// the effort muted behind it. Visible only while the assistant participates;
+/// tapping opens the assistant editor.
+final class AssistantModelReadout extends StatelessWidget {
+  const AssistantModelReadout({
+    super.key,
+    required this.visible,
+    required this.modelLabel,
+    required this.effortLabel,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final bool visible;
+  final String modelLabel;
+
+  /// Localized reasoning-effort label; empty hides the muted half.
+  final String effortLabel;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+    final colors = context.licoColors;
+    return Semantics(
+      button: true,
+      label: effortLabel.isEmpty ? modelLabel : '$modelLabel $effortLabel',
+      hint: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          key: const Key('canonical-group-assistant-model-readout'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          mouseCursor: SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      modelLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (effortLabel.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      effortLabel,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

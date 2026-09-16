@@ -272,10 +272,14 @@ The **Adaptive Flywheel** capsule above the composer opens only the workflow
 editor. Selecting an authorized revision admits every bound Agent as a group
 Membership; it does not start a run or edit the Assistant profile.
 
-The Assistant identity in the composer is one glass capsule: the name opens a
+The Assistant identity capsule leads the row above the composer, ahead of the
+Adaptive Flywheel capsule: the name opens a
 centered Assistant configuration dialog with the
 existing Agent, model and reasoning-effort fields, while the small purple
 toggle at the capsule's trailing edge switches its inclusion in later sends.
+Before the send action, a quiet readout shows the active Assistant's selected
+model and reasoning effort; it opens the same dialog and disappears while the
+Assistant is off.
 Saving that profile is
 independent of saving workflow bindings. Turning the toggle off does not cancel
 a turn already running; the explicit cancel control retains that responsibility.
