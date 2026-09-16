@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -81,15 +82,12 @@ class MessagingAgentAvatar extends StatelessWidget {
             child: showWell
                 ? DecoratedBox(
                     key: const Key('messaging-agent-avatar-well'),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                    decoration: continuousHairlineDecoration(
                       color: ConversationVisualTokens.circularIdentityWellFill(
                         colors,
                       ),
-                      border: Border.all(
-                        color: colors.line.withAlpha(90),
-                        width: 1,
-                      ),
+                      borderRadius: BorderRadius.circular(size / 2),
+                      stroke: colors.line.withAlpha(90),
                     ),
                     child: mark,
                   )

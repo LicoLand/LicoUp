@@ -593,14 +593,14 @@ void main() {
       expect(assistantBubble.hovered, isFalse);
       expect(subagentBubble.hovered, isFalse);
 
-      BoxDecoration bubbleDecoration(MessagingAgentBubble bubble) {
+      ShapeDecoration bubbleDecoration(MessagingAgentBubble bubble) {
         final animated = tester.widget<AnimatedContainer>(
           find.descendant(
             of: find.byWidget(bubble),
             matching: find.byType(AnimatedContainer),
           ),
         );
-        return animated.decoration! as BoxDecoration;
+        return animated.decoration! as ShapeDecoration;
       }
 
       final themeColors = Theme.of(
@@ -881,7 +881,7 @@ void main() {
         matching: find.byType(AnimatedContainer),
       ),
     );
-    final decoration = animated.decoration! as BoxDecoration;
+    final decoration = animated.decoration! as ShapeDecoration;
     expect(decoration.color, Colors.transparent);
     expect(decoration.gradient, isNull);
     expect(decoration.color, isNot(themeColors.brandSurface));

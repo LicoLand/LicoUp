@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_detail_tabs.
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_uninstall_dialog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
@@ -1043,13 +1044,11 @@ final class _HubLifecycleAction extends StatelessWidget {
         onTap: enabled ? onPressed : null,
         borderRadius: _hubChipBorderRadius,
         child: Ink(
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: background,
             borderRadius: _hubChipBorderRadius,
-            border: Border.all(
-              color: borderColor,
-              width: MessagingDesktopMetrics.hairline,
-            ),
+            stroke: borderColor,
+            strokeWidth: MessagingDesktopMetrics.hairline,
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 36, minWidth: 88),

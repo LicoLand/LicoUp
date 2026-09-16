@@ -91,6 +91,9 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
+  shaders:
+    - shaders/glass_lens.frag
+
   fonts:
     - family: Geist Sans
       fonts:

@@ -3,6 +3,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/qr.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -31,10 +32,10 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
       key: const Key('pairing-qr-workspace-card'),
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.card),
-        border: Border.all(color: colors.line.withAlpha(90)),
+        stroke: colors.line.withAlpha(90),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -142,10 +143,10 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: colors.surfaceLow,
               borderRadius: BorderRadius.circular(LicoRadius.chip),
-              border: Border.all(color: colors.line.withAlpha(80)),
+              stroke: colors.line.withAlpha(80),
             ),
             child: Row(
               children: [

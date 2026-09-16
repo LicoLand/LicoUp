@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -26,7 +27,7 @@ class TargetCard extends StatelessWidget {
     return Card(
       elevation: 0,
       color: colors.surface,
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(LicoRadius.card),
         side: BorderSide(color: colors.line),
       ),

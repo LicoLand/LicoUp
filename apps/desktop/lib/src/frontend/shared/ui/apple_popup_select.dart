@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// macOS system accent blue used for menu item hover / selection.
@@ -469,19 +470,17 @@ class _ApplePopupMenuOverlayState<T> extends State<_ApplePopupMenuOverlay<T>> {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
                     child: DecoratedBox(
-                      decoration: BoxDecoration(
+                      decoration: continuousHairlineDecoration(
                         color: widget.colors.isDark
                             ? const Color(0xE6282828)
                             : const Color(0xF2F5F5F5),
                         borderRadius: BorderRadius.circular(
                           AppleControlMetrics.menuCornerRadius,
                         ),
-                        border: Border.all(
-                          color: Colors.white.withAlpha(
-                            widget.colors.isDark ? 42 : 90,
-                          ),
-                          width: AppleControlMetrics.hairline,
+                        stroke: Colors.white.withAlpha(
+                          widget.colors.isDark ? 42 : 90,
                         ),
+                        strokeWidth: AppleControlMetrics.hairline,
                       ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 5),

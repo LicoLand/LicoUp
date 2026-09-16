@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.da
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
@@ -122,75 +123,78 @@ class SkillCardFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: colors.surfaceLow,
-        border: Border(top: BorderSide(color: colors.line.withAlpha(40))),
+    return CustomPaint(
+      foregroundPainter: ContinuousEdgeHairlinePainter(
+        color: colors.line.withAlpha(40),
+        edge: AxisDirection.up,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: skill.agents.length,
-              itemBuilder: (context, index) {
-                final agent = skill.agents[index];
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Tooltip(
-                    message: agent.label,
-                    child: Center(
-                      child: AgentBrandIcon(
-                        target: TargetCandidate(
-                          target: agent.id,
-                          label: agent.label,
-                          kind: 'cli',
-                          status: TargetCandidateStatus.detected,
-                          configured: true,
-                          confidence: 1,
-                          adapterStatus: 'implemented',
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: colors.surfaceLow),
+        child: Row(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: skill.agents.length,
+                itemBuilder: (context, index) {
+                  final agent = skill.agents[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Tooltip(
+                      message: agent.label,
+                      child: Center(
+                        child: AgentBrandIcon(
+                          target: TargetCandidate(
+                            target: agent.id,
+                            label: agent.label,
+                            kind: 'cli',
+                            status: TargetCandidateStatus.detected,
+                            configured: true,
+                            confidence: 1,
+                            adapterStatus: 'implemented',
+                          ),
+                          size: 20,
+                          iconSize: 14,
                         ),
-                        size: 20,
-                        iconSize: 14,
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
-          ),
-          if (skill.usageCount > 0) ...[
-            Tooltip(
-              key: const Key('skill-card-invocations'),
-              message: LicoStrings.of(
-                context,
-              ).skillInvocationsCount(skill.usageCount),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.bolt_rounded, size: 13, color: colors.textMuted),
-                  const SizedBox(width: 3),
-                  Text(
-                    formatAgentUsageNumber(skill.usageCount),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textMuted,
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
-            const SizedBox(width: 8),
+            if (skill.usageCount > 0) ...[
+              Tooltip(
+                key: const Key('skill-card-invocations'),
+                message: LicoStrings.of(
+                  context,
+                ).skillInvocationsCount(skill.usageCount),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt_rounded, size: 13, color: colors.textMuted),
+                    const SizedBox(width: 3),
+                    Text(
+                      formatAgentUsageNumber(skill.usageCount),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            if (skill.version.isNotEmpty && skill.version != 'local')
+              Text(
+                'v${skill.version}',
+                style: TextStyle(fontSize: 11, color: colors.textMuted),
+              ),
           ],
-          if (skill.version.isNotEmpty && skill.version != 'local')
-            Text(
-              'v${skill.version}',
-              style: TextStyle(fontSize: 11, color: colors.textMuted),
-            ),
-        ],
+        ),
       ),
     );
   }

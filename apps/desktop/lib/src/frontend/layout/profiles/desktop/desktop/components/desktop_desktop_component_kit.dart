@@ -6,6 +6,7 @@ import 'package:licoup/src/contracts/presentation/built_in_layout_spec.dart';
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 const LayoutComponentKit desktopDesktopComponentKit =
@@ -114,10 +115,10 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
     final tokens = context.layoutVisualTokens;
     return DecoratedBox(
       key: key,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: emphasized ? colors.surfaceRaised : colors.surface,
         borderRadius: BorderRadius.circular(tokens.cardRadius),
-        border: Border.all(color: colors.line.withAlpha(90)),
+        stroke: colors.line.withAlpha(90),
       ),
       child: child,
     );
@@ -140,7 +141,7 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
       key: key,
       color: colors.surfaceLow,
       elevation: tokens.elevation,
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(tokens.cardRadius),
         side: BorderSide(color: colors.line.withAlpha(110)),
       ),
@@ -179,9 +180,9 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
           horizontal: tokens.spacingUnit * 1.5,
           vertical: tokens.spacingUnit * 0.5,
         ),
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.background,
-          border: Border.all(color: colors.line.withAlpha(110)),
+          stroke: colors.line.withAlpha(110),
           borderRadius: BorderRadius.circular(tokens.cardRadius + 4),
         ),
         child: child,
@@ -203,7 +204,7 @@ final class DesktopDesktopComponentKit implements LayoutComponentKit {
       child: Material(
         color: colors.surface,
         elevation: tokens.elevation,
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(tokens.cardRadius + 4),
           side: BorderSide(color: colors.line.withAlpha(130)),
         ),

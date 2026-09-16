@@ -409,50 +409,30 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Specular edge light for clear-glass surfaces: one uniform rim around
-  /// the full frame, plus a soft sheen band decaying downward from the top.
-  /// The light is [chromeForegroundColor] — the same preset-independent
-  /// light the shell chrome already uses — never brand/primary, so the rim
-  /// reads as reflected light instead of a colored outline. Painted by
-  /// `GlassEdgeLight`; shells must use these tokens, not hardcoded alphas.
+  /// Specular rim for control-layer glass. Painted as a conic highlight in
+  /// [chromeForegroundColor], never brand/primary. Lit and far-edge alphas
+  /// differ so the silhouette reads as a catch of light, not a drawn outline.
   static const double glassEdgeRimWidth = 1;
 
-  /// Rim alpha on every edge (dark canvas). Same value all the way around
-  /// so the frame does not fade from top to bottom.
-  static const int glassEdgeRimAlphaDark = 110;
+  /// Lit-side specular alpha on a dark canvas (≈ 0.26).
+  static const int glassEdgeRimHiAlphaDark = 66;
 
-  /// Rim alpha on every edge (light canvas).
-  static const int glassEdgeRimAlphaLight = 185;
+  /// Lit-side specular alpha on a light canvas (≈ 0.58).
+  static const int glassEdgeRimHiAlphaLight = 148;
 
-  /// Top sheen band alpha (dark canvas) — a faint glint; brighter bands read
-  /// as a painted highlight instead of reflected light.
-  static const int glassEdgeSheenAlphaDark = 10;
+  /// Shadow-side specular alpha on a dark canvas (≈ 0.05).
+  static const int glassEdgeRimLoAlphaDark = 13;
 
-  /// Top sheen band alpha (light canvas).
-  static const int glassEdgeSheenAlphaLight = 16;
+  /// Shadow-side specular alpha on a light canvas (≈ 0.14).
+  static const int glassEdgeRimLoAlphaLight = 36;
 
-  /// Height of the top sheen band on structural cards (main card, floating
-  /// list card). Small capsules pass a tighter extent.
-  static const double glassEdgeSheenExtent = 56;
+  /// Bright catch of light on the lit side of the silhouette.
+  static Color glassEdgeRimHi({required bool isDark}) => chromeForegroundColor
+      .withAlpha(isDark ? glassEdgeRimHiAlphaDark : glassEdgeRimHiAlphaLight);
 
-  /// Uniform rim color for the full glass frame.
-  static Color glassEdgeRimColor({required bool isDark}) =>
-      chromeForegroundColor.withAlpha(
-        isDark ? glassEdgeRimAlphaDark : glassEdgeRimAlphaLight,
-      );
-
-  /// Sheen gradient for the top band: the rim hue fading to nothing.
-  static Gradient glassEdgeSheenGradient({required bool isDark}) =>
-      LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          chromeForegroundColor.withAlpha(
-            isDark ? glassEdgeSheenAlphaDark : glassEdgeSheenAlphaLight,
-          ),
-          chromeForegroundColor.withAlpha(0),
-        ],
-      );
+  /// Whisper on the far edge. Two matched poles would read as a drawn outline.
+  static Color glassEdgeRimLo({required bool isDark}) => chromeForegroundColor
+      .withAlpha(isDark ? glassEdgeRimLoAlphaDark : glassEdgeRimLoAlphaLight);
 
   /// Window inset of the unified content region on every edge. Narrow (4) by
   /// design: destinations sit nearly flush with the window frame so the

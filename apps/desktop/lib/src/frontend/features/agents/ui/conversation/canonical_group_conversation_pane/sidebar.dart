@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
@@ -28,9 +29,10 @@ class CanonicalGroupConversationSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.line)),
+    return CustomPaint(
+      painter: ContinuousEdgeHairlinePainter(
+        color: colors.line,
+        edge: AxisDirection.down,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

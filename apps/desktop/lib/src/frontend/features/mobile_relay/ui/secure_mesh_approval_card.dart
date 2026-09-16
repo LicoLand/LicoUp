@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
@@ -28,10 +29,10 @@ class SecureMeshApprovalCard extends StatelessWidget {
       key: const Key('secure-mesh-approval-card'),
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.card),
-        border: Border.all(color: colors.line.withAlpha(90)),
+        stroke: colors.line.withAlpha(90),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -76,9 +77,9 @@ class SecureMeshApprovalCard extends StatelessWidget {
             Container(
               key: Key('secure-mesh-approval-item-${item.id}'),
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
+              decoration: continuousHairlineDecoration(
                 borderRadius: BorderRadius.circular(LicoRadius.floating),
-                border: Border.all(color: colors.line.withAlpha(70)),
+                stroke: colors.line.withAlpha(70),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
