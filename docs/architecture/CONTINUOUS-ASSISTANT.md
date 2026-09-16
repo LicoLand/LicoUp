@@ -256,6 +256,13 @@ A Goal records source intent, versioned expected result, acceptance conditions,
 scope, responsible role, resource envelope, linked executions, evidence, next
 attention and closure disposition. A Goal is distinct from a turn or Graph run.
 
+Turn continuation, the Assistant's outcome judgment, agreed acceptance and external
+effect settlement are separate facts. The Assistant may end a turn while acceptance
+is unverified or an effect remains unresolved. Record those facts without inventing
+success or forcing another model call. Ordinary conversation needs no persistent Goal;
+none of these distinctions requires fields or a completion declaration in the Agent's
+natural reply. The following Goal lifecycle applies only to explicitly tracked work.
+
 Goal lifecycle: `active`, `waiting`, `verifying`, `achieved`, `cancelled`,
 `superseded`. `achieved`, `cancelled` and `superseded` are absorbing. Reopening
 creates a linked new Goal/versioned undertaking rather than erasing closure.
@@ -268,17 +275,16 @@ execution, a dispatchable next step, or a named wait with a recovery trigger and
 review policy. No Goal may remain merely 'in progress' with no responsible
 next action, wait or check. Paused Goals retain the reason and resumption route.
 
-Run completion, callback requests, new admitted evidence, User replies and due
-reviews trigger reconsideration. Events take priority; timers provide bounded
-fallback. Duplicate events coalesce. No model call is required merely to reject
-a duplicate, terminal, irrelevant or paused wake. A due time triggers review;
-it never fabricates success, failure, approval or an external event.
+Run completion, callbacks and new admitted evidence may wake a recorded external
+wait; User replies may request more work. Scheduled reviews require an already
+authorized trigger. Duplicate events coalesce. A due time, missing acceptance or an
+unfinished Goal does not itself authorize a model call or fabricate success, failure,
+approval or an external event. An ended turn may await evidence or User acceptance.
 
-The outer Goal loop asks what is still owed. The existing inner PersistentTurn
-or Adaptive Flywheel executes one bounded action. All work still passes through
-the existing dispatch, authority, resource and effect gates. A native Agent's
-own goal loop may implement part of that action; it does not become the User
-Goal's acceptance authority.
+The Assistant decides whether to continue. Goal tracking records what is owed and
+what remains unverified; it does not impose an outer model loop. PersistentTurn or
+Adaptive Flywheel executes admitted actions through the existing dispatch, authority,
+resource and effect gates. Native termination does not replace agreed acceptance.
 
 Closure requires current evidence for every required condition, the agreed
 acceptance method, and no unresolved operation that can invalidate the result.
@@ -339,11 +345,11 @@ policy revision. Keep these as evaluation provenance, not duplicate catalogs.
 Read current model prices, tools, Skills and readiness from their existing
 owners. Unknown or stale qualification cannot be promoted into verified ability.
 
-The evaluation owner stores immutable observations and their scope. Routing
-first applies hard admission constraints, then responsibility qualification and
-its explicit abstention/escalation policy, then the existing stable candidate
-ordering. This adds a measured eligibility input; it does not replace ADR 0004
-with an opaque weighted score or a second route catalog.
+The evaluation owner stores observations and their scope. Routing applies hard
+admission constraints and the existing candidate ordering; available comparative
+evidence can improve future defaults. Qualification is not a prerequisite for ordinary
+work, and simple tasks do not require multiple Agents, a Reviewer or an extra Judge.
+This does not replace ADR 0004 with another route catalog.
 
 Required evaluations include Matter association, delegated versus hypothetical
 intent, follow-through need, current agreements, evidence freshness, context
@@ -364,6 +370,12 @@ Shadow processing obeys the same data-disclosure rules as real work. It does not
 send private chats to a new provider or paid evaluator silently. Regression or
 changed candidate identity withdraws qualification; explicit User selections
 remain respected and unsupported automation stays visible rather than faked.
+
+Comparisons include failures, cancellations, work still in flight, rework and late
+charges. Account for changes in task difficulty before claiming improvement. When
+evidence is insufficient, retain the current default without purchasing experiments.
+Automatic adoption is reversible and affects only authorized future choices; it cannot
+change in-flight bindings, acceptance conditions, permissions or budgets.
 
 ## 11. Authority and user experience
 

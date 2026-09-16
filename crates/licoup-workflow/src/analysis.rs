@@ -8,13 +8,14 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::{Display, Formatter};
 
-use super::assistant::{
+use crate::compile::{CompiledWorkflow, compile_validated_workflow, valid_instruction};
+use crate::diagnostic::{
     PreflightDiagnostic, WorkflowDiagnosticActualKind as ActualKind,
     WorkflowDiagnosticCode as Code, WorkflowDiagnosticExpected as Expected,
     WorkflowDiagnosticRecovery as Recovery, WorkflowDiagnosticStage as Stage,
 };
-use super::graph::{CompiledWorkflow, compile_workflow, valid_instruction};
-use super::{
+use crate::syntax::{ParsedWorkflow, from_definition, parse, parse_value};
+use crate::{
     BindingKind, GraphStateKind, MAX_ACTIVE_EFFECTS, MAX_BINDING_SLOTS, MAX_GRAPH_STATES,
     MAX_GRAPH_TRANSITIONS, MAX_RETRY_ATTEMPTS, MAX_RUNTIME_REQUIREMENTS, MAX_WORKSET_ITEMS,
     TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition,
@@ -24,99 +25,103 @@ const MAX_DIAGNOSTICS: usize = 128;
 const MAX_RELATED_PATHS: usize = 8;
 
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowValidation {
+pub struct WorkflowValidation {
     pub definition: Option<WorkflowDefinition>,
     pub diagnostics: Vec<PreflightDiagnostic>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowValidationFailure {
+pub struct WorkflowValidationFailure {
     pub diagnostics: Vec<PreflightDiagnostic>,
+}
+
+/// A canonical definition that has passed the single semantic analysis pass.
+/// Lowering is the only consumer of this phase marker.
+#[derive(Clone, Debug)]
+pub struct AnalyzedWorkflow {
+    definition: WorkflowDefinition,
+    source: Option<Value>,
+}
+
+impl AnalyzedWorkflow {
+    pub(crate) fn into_definition(self) -> WorkflowDefinition {
+        self.definition
+    }
+
+    pub fn source(&self) -> Option<&Value> {
+        self.source.as_ref()
+    }
 }
 
 impl Display for WorkflowValidationFailure {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("workflow_invalid")
+        formatter.write_str(
+            self.diagnostics
+                .first()
+                .map_or("workflow_invalid", |diagnostic| diagnostic.code.wire()),
+        )
     }
 }
 
 impl std::error::Error for WorkflowValidationFailure {}
 
-pub(crate) fn compile_workflow_source(
+pub fn compile_workflow_source(
     source: &[u8],
 ) -> Result<CompiledWorkflow, WorkflowValidationFailure> {
-    let value: Value =
-        serde_json::from_slice(source).map_err(|error| WorkflowValidationFailure {
-            diagnostics: vec![syntax_diagnostic(error.line(), error.column())],
-        })?;
-    compile_workflow_value(&value)
+    Ok(compile_validated_workflow(analyze(parse(source)?)?))
 }
 
-pub(crate) fn compile_workflow_value(
+pub fn compile_workflow_value(
     value: &Value,
 ) -> Result<CompiledWorkflow, WorkflowValidationFailure> {
-    let validation = validate_workflow_value(value);
-    if !validation.diagnostics.is_empty() {
-        return Err(WorkflowValidationFailure {
-            diagnostics: validation.diagnostics,
-        });
-    }
-    let definition = validation
-        .definition
-        .ok_or_else(|| WorkflowValidationFailure {
-            diagnostics: vec![diagnostic(
-                Code::WorkflowShapeInvalid,
-                Stage::WorkflowParse,
-                Some(""),
-                Recovery::CorrectField,
-            )],
-        })?;
-    compile_workflow(definition).map_err(|_| WorkflowValidationFailure {
-        diagnostics: vec![diagnostic(
-            Code::WorkflowTopologyInvalid,
-            Stage::WorkflowCompile,
-            Some(""),
-            Recovery::CorrectTopology,
-        )],
-    })
+    Ok(compile_validated_workflow(analyze(parse_value(value)?)?))
 }
 
-pub(crate) fn validate_workflow_value(value: &Value) -> WorkflowValidation {
-    let mut diagnostics = Vec::new();
-    validate_raw_workflow(value, &mut diagnostics);
-    normalize(&mut diagnostics);
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.stage == Stage::WorkflowParse)
-    {
-        return WorkflowValidation {
-            definition: None,
-            diagnostics,
-        };
-    }
-    let definition: WorkflowDefinition = match serde_json::from_value(value.clone()) {
-        Ok(definition) => definition,
-        Err(_) => {
-            return WorkflowValidation {
-                definition: None,
-                diagnostics: vec![diagnostic(
-                    Code::WorkflowShapeInvalid,
-                    Stage::WorkflowParse,
-                    Some(""),
-                    Recovery::CorrectField,
-                )],
-            };
+pub fn validate_workflow_value(value: &Value) -> WorkflowValidation {
+    match parse_value(value) {
+        Ok(parsed) => {
+            let definition = parsed.definition.clone();
+            match analyze(parsed) {
+                Ok(_) => WorkflowValidation {
+                    definition: Some(definition),
+                    diagnostics: Vec::new(),
+                },
+                Err(failure) => WorkflowValidation {
+                    definition: Some(definition),
+                    diagnostics: failure.diagnostics,
+                },
+            }
         }
-    };
-    collect_semantic_diagnostics(&definition, &mut diagnostics);
-    normalize(&mut diagnostics);
-    WorkflowValidation {
-        definition: Some(definition),
-        diagnostics,
+        Err(failure) => WorkflowValidation {
+            definition: None,
+            diagnostics: failure.diagnostics,
+        },
     }
 }
 
-fn syntax_diagnostic(line: usize, column: usize) -> PreflightDiagnostic {
+pub fn analyze(parsed: ParsedWorkflow) -> Result<AnalyzedWorkflow, WorkflowValidationFailure> {
+    let mut diagnostics = parsed.diagnostics;
+    collect_semantic_diagnostics(&parsed.definition, &mut diagnostics);
+    normalize(&mut diagnostics);
+    if diagnostics.is_empty() {
+        Ok(AnalyzedWorkflow {
+            definition: parsed.definition,
+            source: parsed.source,
+        })
+    } else {
+        Err(WorkflowValidationFailure { diagnostics })
+    }
+}
+
+pub(crate) fn compile_workflow_definition(
+    definition: WorkflowDefinition,
+) -> Result<CompiledWorkflow, WorkflowValidationFailure> {
+    Ok(compile_validated_workflow(analyze(from_definition(
+        definition,
+    ))?))
+}
+
+pub(crate) fn syntax_diagnostic(line: usize, column: usize) -> PreflightDiagnostic {
     let mut result = diagnostic(
         Code::WorkflowSyntaxInvalid,
         Stage::WorkflowParse,
@@ -127,6 +132,22 @@ fn syntax_diagnostic(line: usize, column: usize) -> PreflightDiagnostic {
     result.column = u64::try_from(column).ok();
     result.recovery = None;
     result
+}
+
+pub(crate) fn shape_diagnostic() -> PreflightDiagnostic {
+    diagnostic(
+        Code::WorkflowShapeInvalid,
+        Stage::WorkflowParse,
+        Some(""),
+        Recovery::CorrectField,
+    )
+}
+
+pub(crate) fn parse_diagnostics(value: &Value) -> Vec<PreflightDiagnostic> {
+    let mut diagnostics = Vec::new();
+    validate_raw_workflow(value, &mut diagnostics);
+    normalize(&mut diagnostics);
+    diagnostics
 }
 
 fn diagnostic(
@@ -891,6 +912,11 @@ fn collect_semantic_diagnostics(
     let binding_counts = counts(definition.actor_slots.iter().map(|slot| slot.id.as_str()));
     let mut binding_slots = BTreeMap::new();
     let mut actor_entries = Vec::new();
+    let actor_count = definition
+        .actor_slots
+        .iter()
+        .filter(|slot| slot.kind == BindingKind::Actor)
+        .count();
     for (index, slot) in definition.actor_slots.iter().enumerate() {
         let path = format!("/actorSlots/{index}");
         if !is_identifier(&slot.id) {
@@ -949,7 +975,7 @@ fn collect_semantic_diagnostics(
             }
         }
     }
-    if actor_entries.len() > 1 {
+    if actor_count > 0 && actor_entries.len() != 1 {
         let mut value = diagnostic(
             Code::WorkflowEntrySlotInvalid,
             Stage::WorkflowCompile,
@@ -1532,9 +1558,6 @@ fn collect_routing_diagnostics(
                     && edges.iter().all(|index| {
                         definition.transitions[*index].event == TransitionEvent::Complete
                     })
-                    && edges
-                        .iter()
-                        .any(|index| definition.transitions[*index].guard.is_none())
             }
             GraphStateKind::Fork => {
                 edges.len() >= 2
@@ -1613,9 +1636,23 @@ fn collect_guard_group_diagnostics(
                     .skip(left_position + 1)
                     .any(|right| definition.transitions[*right].guard.as_ref() == left)
         });
+        let guard_paths = indexes
+            .iter()
+            .filter_map(|index| definition.transitions[*index].guard.as_ref())
+            .map(|guard| guard.path.as_str())
+            .collect::<BTreeSet<_>>();
+        let non_equality_partition = guarded > 1
+            && indexes.iter().any(|index| {
+                definition.transitions[*index]
+                    .guard
+                    .as_ref()
+                    .is_some_and(|guard| guard.equals.is_none())
+            });
         let ambiguous = fallbacks > 1
             || (guarded > 0 && fallbacks != 1)
             || (guarded == 0 && indexes.len() > 1)
+            || guard_paths.len() > 1
+            || non_equality_partition
             || duplicate_guard;
         if ambiguous {
             let mut value = diagnostic(
@@ -2249,6 +2286,40 @@ mod tests {
     #[test]
     fn valid_value_compiles_through_the_shared_entrypoint() {
         assert!(compile_workflow_value(&valid_workflow()).is_ok());
+    }
+
+    #[test]
+    fn source_value_and_typed_entries_share_one_ordered_diagnostic_path() {
+        let mut value = valid_workflow();
+        value["transitions"][0]["to"] = json!("missing-state");
+        let source = serde_json::to_vec(&value).unwrap();
+        let typed: WorkflowDefinition = serde_json::from_value(value.clone()).unwrap();
+
+        let from_source = compile_workflow_source(&source).unwrap_err().diagnostics;
+        let from_value = compile_workflow_value(&value).unwrap_err().diagnostics;
+        let from_typed = crate::compile_workflow(typed).unwrap_err().diagnostics;
+        assert_eq!(from_source, from_value);
+        assert_eq!(from_value, from_typed);
+        assert!(from_source.iter().any(|diagnostic| {
+            diagnostic.code == Code::WorkflowTransitionStateUnknown
+                && diagnostic.path.as_deref() == Some("/transitions/0/to")
+        }));
+    }
+
+    #[test]
+    fn source_and_typed_entries_execute_the_same_machine_trace() {
+        let value = valid_workflow();
+        let source = serde_json::to_vec(&value).unwrap();
+        let typed: WorkflowDefinition = serde_json::from_value(value).unwrap();
+        let source_plan = compile_workflow_source(&source).unwrap();
+        let typed_plan = crate::compile_workflow(typed).unwrap();
+        let snapshot = crate::RunSnapshot::empty("run", "revision", "semantics");
+        let event = crate::ReducerEvent::Start {
+            input: json!({"task": "synthetic"}),
+        };
+        let from_source = crate::reduce(&source_plan, &snapshot, event.clone()).unwrap();
+        let from_typed = crate::reduce(&typed_plan, &snapshot, event).unwrap();
+        assert_eq!(from_source, from_typed);
     }
 
     #[test]

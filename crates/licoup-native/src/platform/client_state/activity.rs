@@ -58,11 +58,11 @@ impl ActivityLog {
             .unwrap_or(policy::MAX_ACTIVITY_EVENTS)
             .min(policy::MAX_ACTIVITY_EVENTS);
         let mut events = VecDeque::<Value>::with_capacity(limit.min(256));
-        #[cfg_attr(not(test), allow(unused_variables))]
+        #[cfg(test)]
         let mut validated_lines = 0usize;
-        #[cfg_attr(not(test), allow(unused_variables))]
+        #[cfg(test)]
         let mut peak_retained = 0usize;
-        #[cfg_attr(not(test), allow(unused_variables))]
+        #[cfg(test)]
         let mut peak_line_buffer_bytes = 0usize;
         let Some(mut reader) =
             open_private_text_bounded(&self.path, policy::MAX_ACTIVITY_FILE_BYTES)?
@@ -81,7 +81,10 @@ impl ActivityLog {
             if read == 0 {
                 break;
             }
-            peak_line_buffer_bytes = peak_line_buffer_bytes.max(buffer.len());
+            #[cfg(test)]
+            {
+                peak_line_buffer_bytes = peak_line_buffer_bytes.max(buffer.len());
+            }
             let line = match buffer.strip_suffix('\n') {
                 Some(without_newline) => without_newline
                     .strip_suffix('\r')
@@ -95,14 +98,20 @@ impl ActivityLog {
                 line.len() <= policy::MAX_ACTIVITY_EVENT_BYTES,
                 "activity event exceeds its bounded size"
             );
-            validated_lines += 1;
+            #[cfg(test)]
+            {
+                validated_lines += 1;
+            }
             let event: Value = serde_json::from_str(line)?;
             if matches_activity_filter(&event, filter) && limit > 0 {
                 if events.len() == limit {
                     events.pop_front();
                 }
                 events.push_back(event);
-                peak_retained = peak_retained.max(events.len());
+                #[cfg(test)]
+                {
+                    peak_retained = peak_retained.max(events.len());
+                }
             }
         }
         validate_private_file_unchanged(&self.path, &opened)?;

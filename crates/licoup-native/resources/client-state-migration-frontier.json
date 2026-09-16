@@ -1,8 +1,8 @@
 {
   "schemaVersion": "v0.0.1:client-state-migration-frontier-1",
-  "frontierId": "licoup-state-0.2.1",
+  "frontierId": "licoup-state-0.2.2",
   "domains": [
-    { "domainId": "adaptive-flywheel", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "adaptive-flywheel.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
+    { "domainId": "adaptive-flywheel", "durability": "durable", "targetSchemaVersion": 2, "steps": [{ "stepId": "adaptive-flywheel.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }, { "stepId": "adaptive-flywheel.workflow-routing-to-2", "fromSchemaVersion": 1, "toSchemaVersion": 2 }] },
     { "domainId": "agent-tab-order", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "agent-tab-order.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
     { "domainId": "agent-tool-allowlist", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "agent-tool-allowlist.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
     { "domainId": "appearance-presentation", "durability": "durable", "targetSchemaVersion": 1, "steps": [{ "stepId": "appearance-presentation.absent-to-1", "fromSchemaVersion": 0, "toSchemaVersion": 1 }] },
