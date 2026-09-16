@@ -11,10 +11,10 @@ use zip::write::SimpleFileOptions;
 
 use crate::core::safe_archive::{ZipEntryInfo, ZipExtractionLimits, extract_zip_safe};
 
-use super::{
+use licoup_workflow::{
     CompiledWorkflow, PreflightDiagnostic, WorkflowDefinition, WorkflowDiagnosticCode,
     WorkflowDiagnosticExpected, WorkflowDiagnosticRecovery, WorkflowDiagnosticStage,
-    WorkflowValidationFailure, compile_workflow_source,
+    WorkflowValidationFailure, compile_workflow, compile_workflow_source,
 };
 
 const MAX_PACKAGE_BYTES: u64 = 8 * 1024 * 1024;
@@ -99,7 +99,7 @@ impl StrategyPackageImporter {
             fs::File::open(&workflow_path)?.read_to_end(&mut source)?;
             let compiled = compile_workflow_source(&source)?;
             validate_script_references(&compiled, &inventory)?;
-            let canonical = serde_json::to_vec(&compiled.definition)?;
+            let canonical = serde_json::to_vec(compiled.definition())?;
             crate::platform::file_security::atomic_write_private_text(
                 &workflow_path,
                 std::str::from_utf8(&canonical).map_err(|_| anyhow!("workflow_invalid"))?,
@@ -108,11 +108,11 @@ impl StrategyPackageImporter {
             let revision_digest = revision_digest(&content, &inventory, &semantics_digest)?;
             let prepared = PreparedPackage {
                 preparation_id: preparation_id.clone(),
-                definition_id: compiled.definition.metadata.id.clone(),
+                definition_id: compiled.definition().metadata.id.clone(),
                 revision_digest,
                 semantics_digest,
-                name: compiled.definition.metadata.name.clone(),
-                version: compiled.definition.metadata.version.clone(),
+                name: compiled.definition().metadata.name.clone(),
+                version: compiled.definition().metadata.version.clone(),
                 asset_count: inventory.len(),
                 prepared_at_unix_ms: now_ms(),
             };
@@ -182,12 +182,12 @@ impl StrategyPackageImporter {
         let workflow_bytes = read_bounded(&content.join("workflow.json"), MAX_WORKFLOW_BYTES)?;
         let compiled = compile_workflow_source(&workflow_bytes)?;
         ensure!(
-            sha256_hex(&serde_json::to_vec(&compiled.definition)?) == prepared.semantics_digest,
+            sha256_hex(&serde_json::to_vec(compiled.definition())?) == prepared.semantics_digest,
             "revision_conflict"
         );
         Ok(CommittedPackage {
             prepared,
-            workflow: compiled.definition,
+            workflow: compiled.into_definition(),
         })
     }
 
@@ -206,8 +206,9 @@ impl StrategyPackageImporter {
         let content = self.revision_content(digest)?;
         let inventory = persisted_inventory(&content)?;
         let workflow_bytes = read_bounded(&content.join("workflow.json"), MAX_WORKFLOW_BYTES)?;
-        let compiled = compile_workflow_source(&workflow_bytes)?;
-        let canonical = serde_json::to_vec(&compiled.definition)?;
+        let definition: WorkflowDefinition = serde_json::from_slice(&workflow_bytes)
+            .map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
+        let canonical = serde_json::to_vec(&definition)?;
         ensure!(
             workflow_bytes == canonical,
             "strategy_revision_content_drifted"
@@ -221,6 +222,9 @@ impl StrategyPackageImporter {
             revision_digest(&content, &inventory, &semantics_digest)? == digest,
             "strategy_revision_content_drifted"
         );
+        let definition =
+            super::store::normalize_legacy_workflow(definition.clone()).unwrap_or(definition);
+        compile_workflow(definition).map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
         Ok(content)
     }
 }
@@ -268,7 +272,7 @@ fn validate_script_references(
     inventory: &BTreeSet<String>,
 ) -> std::result::Result<(), WorkflowValidationFailure> {
     let mut diagnostics = Vec::new();
-    for (index, state) in workflow.definition.states.iter().enumerate() {
+    for (index, state) in workflow.definition().states.iter().enumerate() {
         if let Some(entry) = &state.entry
             && !inventory.contains(entry)
         {
@@ -589,7 +593,8 @@ mod tests {
             assert!(failure.diagnostics.iter().any(|diagnostic| diagnostic.code
                 == WorkflowDiagnosticCode::WorkflowStateInstructionInvalid));
             assert!(
-                super::super::compile_workflow(serde_json::from_value(workflow).unwrap()).is_err()
+                licoup_workflow::compile_workflow(serde_json::from_value(workflow).unwrap())
+                    .is_err()
             );
         }
         remove_root(root);
@@ -657,6 +662,45 @@ mod tests {
             importer
                 .verified_revision_content(&prepared.revision_digest, &prepared.semantics_digest)
                 .is_err()
+        );
+        remove_root(root);
+    }
+
+    #[test]
+    fn legacy_revision_verification_preserves_immutable_package_identity() {
+        let root = root();
+        let importer = StrategyPackageImporter::open(&root).unwrap();
+        let mut legacy: WorkflowDefinition =
+            serde_json::from_slice(SYNTHETIC_FIXTURE_WORKFLOW).unwrap();
+        legacy.actor_slots[0].entry = false;
+        legacy
+            .transitions
+            .retain(|transition| transition.event != licoup_workflow::TransitionEvent::Failure);
+        let workflow_bytes = serde_json::to_vec(&legacy).unwrap();
+        assert!(compile_workflow(legacy).is_err());
+
+        let staging = importer.root.join("revisions").join("legacy-staging");
+        let content = staging.join("content");
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("workflow.json"), &workflow_bytes).unwrap();
+        let inventory = BTreeSet::from(["workflow.json".to_owned()]);
+        let semantics = sha256_hex(&workflow_bytes);
+        let digest = revision_digest(&content, &inventory, &semantics).unwrap();
+        let revision = importer.root.join("revisions").join(&digest);
+        fs::rename(&staging, &revision).unwrap();
+        harden_read_only_tree(&revision).unwrap();
+
+        let verified = importer
+            .verified_revision_content(&digest, &semantics)
+            .unwrap();
+        assert_eq!(
+            fs::read(verified.join("workflow.json")).unwrap(),
+            workflow_bytes
+        );
+        assert_eq!(sha256_hex(&workflow_bytes), semantics);
+        assert_eq!(
+            revision_digest(&verified, &inventory, &semantics).unwrap(),
+            digest
         );
         remove_root(root);
     }

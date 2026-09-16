@@ -168,6 +168,7 @@ flowchart TB
 |:---|:---|
 | `apps/desktop/` | Flutter 桌面与移动客户端（第 1 层与部分第 2 层） |
 | `crates/licoup-native/` | Rust 客户端核心、命令与平台桥接（第 3 层与第 4 层） |
+| `crates/licoup-workflow/` | 纯工作流定义、诊断、编译索引和状态转换机 |
 | `crates/licoup-conversation/` | Canonical Conversation 领域 crate（已是 workspace 成员，抽取进行中） |
 | `crates/licoup-agent-runtime/` | Agent Runtime 与 adapter crate（已是 workspace 成员，抽取进行中） |
 | `crates/licoup-platform-bridges/` | 原生平台 ABI 与句柄管理（第 4 层） |
@@ -323,15 +324,22 @@ src/
 ```
 
 **关键决策：**
-- **无需状态管理框架**——生产 Application owner 发布同步 Dart signal，功能 producer
-  暴露 `ProjectionSource<T>`，Flutter 通过 `ProjectionBuilder` 渲染最窄语义切片。
-  Flutter 只拥有 widget 局部控件与临时交互状态。
+- **展示迁移目标**——Riverpod 拥有展示依赖、派生状态与观察生命周期。
+  `presentation_contract` 保持纯 Dart、不依赖 Riverpod；`presentation_runtime` 使用
+  Dart Riverpod 并负责源一致性、准备和容量；`presentation_flutter` 提供薄 Consumer/Region
+  适配。业务视图接收普通窄 Inputs/Actions。现有 signal、`ProjectionSource<T>` 与
+  `ProjectionBuilder` 仅描述各消费者迁移前的当前实现。
 - **保留 stdio JSON-RPC**——CLI 进程独立性是核心产品特性（宿主可在 GUI 崩溃后存活）。
   从共享 schema 增加 **codegen** 以强制类型安全。
-- **上帝控制器分解**——替换为薄事件发送器 + 按领域的投影流消费者。不是 24 个 mixin，
-  也不是 Riverpod providers——只是流。
+- **控制器拆分**——类型化动作和领域 Source 通过展示边界接入；换主题或布局不得
+  重建业务读取和执行。Provider 释放只结束观察，Rust 继续拥有持久执行。
 - **Flutter 无业务逻辑**——发送按钮禁用？从投影的 `TurnState` 读取。永不推断，
   永不伪造。
+
+Source 一致组的原子性必须贯穿异步准备和最终安装。X/Y 只能安装相同已接纳组版本，
+不能出现 X2/Y1；仅等待这个小组。撤权立即使受保护展示失效，不能等待替换帧。
+控制延迟和因果测量沿[原生交互边界](CLIENT-NATIVE-INTERACTION.md)。这些是迁移要求，
+不表示当前前端已实现。
 
 #### Rust Crate（目标分解）
 
@@ -341,6 +349,7 @@ crates/
 │   ├── src/bin/                # licoup-cli、lico-gateway、lico-agent 等
 │   └── src/ffi/                # 移动平台 FFI（Android/iOS）
 ├── licoup-conversation/        # L3: Conversation 领域（状态机、事件、投影）
+├── licoup-workflow/            # 纯工作流编译器与状态转换机
 ├── licoup-agent-runtime/       # L4+L5: 智能体适配器 + settlement 仲裁器
 ├── licoup-endpoint-core/       # 端点身份、密钥派生、加密
 ├── licoup-protocol-bindings/   # L2: 线协议类型 + 帧 codec

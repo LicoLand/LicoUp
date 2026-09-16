@@ -319,10 +319,12 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  assert.deepEqual(stdioTransport.command.args.slice(-5), [
+  assert.deepEqual(stdioTransport.command.args.slice(-7), [
     "test/stdio_rpc_method_policy_test.dart",
     "test/native_stdio_rpc_client_test.dart",
     "test/native_stdio_rpc_read_pool_test.dart",
+    "test/native_stdio_rpc_decoding_test.dart",
+    "test/conversation_execution_transport_test.dart",
     "test/native_conversation_port_test.dart",
     "test/stdio_rpc_operation_queue_test.dart",
   ]);
@@ -1172,11 +1174,11 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
 
 test("native CLI modules retain exact binary-scoped command filters", () => {
   const filters = new Map([
-    ["rust.bin.licoup", "tests::"],
-    ["rust.bin.licoup.rpc", "tests::rpc::"],
-    ["rust.bin.licoup.core-commands", "tests::core_commands::"],
-    ["rust.bin.licoup.skill-commands", "tests::skill_commands::"],
-    ["rust.bin.licoup.parsing", "tests::parsing::"],
+    ["rust.bin.licoup", ["tests::"]],
+    ["rust.bin.licoup.rpc", ["--", "tests::rpc::", "stdio_rpc::server::conversation::"]],
+    ["rust.bin.licoup.core-commands", ["tests::core_commands::"]],
+    ["rust.bin.licoup.skill-commands", ["tests::skill_commands::"]],
+    ["rust.bin.licoup.parsing", ["tests::parsing::"]],
   ]);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
@@ -1186,7 +1188,7 @@ test("native CLI modules retain exact binary-scoped command filters", () => {
       "licoup-native",
       "--bin",
       "licoup-cli",
-      filter,
+      ...filter,
     ]);
     if (id !== "rust.bin.licoup") {
       assert.equal(module.inputs.includes(
