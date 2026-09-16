@@ -402,12 +402,12 @@ abstract final class MessagingDesktopMetrics {
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
 
-  /// Solid window ground shared by shell regions — opaque grouped backgrounds
-  /// in the Stocks idiom: black content canvas in dark, system grouped gray in
-  /// light. No wallpaper bleed and no blur on this layer; translucency stays
-  /// on the control layer (capsules, composer, menus).
+  /// Solid window ground shared by shell regions — opaque grouped backgrounds:
+  /// black content canvas in dark, the ice-cream cream in light. No wallpaper
+  /// bleed and no blur on this layer; translucency stays on the control layer
+  /// (capsules, composer, menus).
   static Color surfaceGlassTint({required bool isDark}) =>
-      isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
+      isDark ? const Color(0xFF000000) : const Color(0xFFF4E3DC);
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).
