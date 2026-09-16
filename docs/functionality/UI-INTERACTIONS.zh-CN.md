@@ -12,6 +12,7 @@
 
 按钮选中不等于跳转成功，必须看到目标内容。例如：群聊返回上一级时，左侧恢复父列表，
 右侧仍保留群聊。群聊切到设置再返回时，保留群聊、列表和成员面板上下文。
+首次打开群聊时成员面板默认收起，通过右上角三点菜单显式展开。
 
 ## 本机运行
 
@@ -34,7 +35,7 @@ macOS 测试临时使用独立应用标识，可与已打开的个人数据应�
 `--machine` 选择单个流程。失败操作序列可以直接重放，跳过前面的覆盖遍历：
 
 ```bash
-npm run client:test:ui -- --machine dashboard.conversation-journey --replay list.back,group.open,roster.toggle,roster.toggle,roster.toggle
+npm run client:test:ui -- --machine dashboard.conversation-journey --replay list.back,group.open,group.menu,roster.toggle,group.menu,roster.toggle
 ```
 
 每个流程只启动一次。先沿最短点击路径走过每条已声明转换，再从当前状态继续随机游走。

@@ -187,7 +187,8 @@ Python 与 Node 运行时由后台自动检测和绑定，不提供用户选择�
 已检测到且具备可用 Conversation Driver 的目标；未适配或只是登记过的目标不会出现。
 会话策略等实现细节也不再作为角色标注展示。
 
-打开编辑器时，工作流角色与 Assistant 的已选 model 目录通过一次 target batch 加载。
+工作流编辑器通过一次 target batch 加载已选角色的 model 目录。独立 Assistant
+编辑器通过相同发现属主准备其已选 Agent 的 model 目录。
 Rust 复用既有有界发现 worker、同一份进程/环境快照和一次发现缓存提交；客户端不会为每个
 角色分别启动扫描器或异步 runtime。
 
@@ -195,19 +196,28 @@ Rust 复用既有有界发现 worker、同一份进程/环境快照和一次发�
 
 只有群聊显示策略胶囊；一对一 Conversation 不出现。
 
-输入框上方的胶囊默认是**自动适配**。它表示 Assistant 的默认模式，不是内置策略。
-选中已授权版本后显示策略名，并在输入框前放入
-入口槽当前候选的 `@` 胶囊。选策略会把所有已绑定 Agent（含 Fallback 列表）加入该群
-Membership，但不会启动 run。
+输入框上方的 **Adaptive Flywheel** 胶囊仅打开工作流编辑器。选中已授权版本
+会把所有已绑定 Agent（含 Fallback 列表）加入该群 Membership，不启动 run，也不
+修改 Assistant 档案。
 
-Assistant 模式开启时，每次用户发送都通过与原生一对一对话相同的 Membership 作用域通道
-寻址指定 Assistant。Assistant 可直接回复，也可使用工作流；这个选择不会替换对话通道。
+输入框中的 Assistant 名称控制它是否参与后续发送。旁边的铅笔在界面中央打开
+独立助手配置框，复用既有 Agent、模型和推理强度字段。助手档案与工作流绑定独立
+保存。关闭名称开关不取消已经运行的 turn；中断仍由显式取消按钮负责。
+
+Assistant 关闭时，原生路由从消息的直接派发与 steer 目标中排除其指定 Membership，
+其它被提及的成员仍可接收。消息继续进入共享群聊历史；这是分派选择，不是历史
+可见性限制。开关沿用既有对话面板生命周期，重新打开面板时恢复已配置的默认状态。
+独立 Flywheel 仍使用其绑定角色及主控通知生命周期；此开关不禁用工作流或屏蔽其完成通知。
+
+Assistant 开启时沿用既有原生寻址：明确的提及选择相应成员，无提及时才通过与原生
+一对一对话相同的 Membership 作用域通道寻址指定 Assistant。Assistant 可直接回复，
+也可使用工作流；这个选择不会替换对话通道。
 steer、resume、cancel、事件与安全边界行为仍准确遵循所选 adapter 的原生能力。
 
 第一条发送仍是 Conversation Event。原生寻址在持久 conversation sidecar 上启动
 `strategy.run.start`（Graph 不拥有发送进程）。之后的发送仍是 Event：若 Membership
 上有进行中的 PersistentTurn 则 steer；若 run 处于 Waiting 则 resume——但回调等待只能由
-主智能体显式的 `advance` / `return` / `terminate` 决策来结算。叉掉胶囊只退出
+主智能体显式的 `advance` / `return` / `terminate` 决策来结算。清除绑定的策略版本只退出
 策略模式，不取消已经在跑的 run。
 
 `@mention` 只负责选出 Membership，与策略、Assistant、Subagent 共用同一套

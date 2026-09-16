@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 Widget buildDashboardMobilePairingDestination(
   BuildContext context,
@@ -17,19 +18,18 @@ Widget buildDashboardMobilePairingDestination(
       key: const Key('dashboard-mobile-pairing-destination'),
       container: true,
       explicitChildNodes: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.background,
-          border: Border(
-            left: BorderSide(
-              color: colors.primaryStrong,
-              width: DashboardMobileMetrics.hairline * 2,
-            ),
-          ),
+      child: CustomPaint(
+        foregroundPainter: ContinuousEdgeHairlinePainter(
+          color: colors.primaryStrong,
+          edge: AxisDirection.left,
+          width: DashboardMobileMetrics.hairline * 2,
         ),
-        child: FocusTraversalGroup(
-          policy: ReadingOrderTraversalPolicy(),
-          child: data.content.buildDestination(context, data.destination),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: colors.background),
+          child: FocusTraversalGroup(
+            policy: ReadingOrderTraversalPolicy(),
+            child: data.content.buildDestination(context, data.destination),
+          ),
         ),
       ),
     ),

@@ -141,6 +141,7 @@ function isFlutterPath(file) {
     file.startsWith("apps/desktop/test/") ||
     file.startsWith("apps/desktop/integration_test/") ||
     file.startsWith("apps/desktop/assets/") ||
+    file.startsWith("apps/desktop/shaders/") ||
     file === "apps/desktop/analysis_options.yaml" ||
     file === "apps/desktop/pubspec.yaml" ||
     file === "apps/desktop/pubspec.lock"

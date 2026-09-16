@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,8 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -334,21 +337,28 @@ Finder sidebarText(String label) {
   );
 }
 
+Offset _tapPoint(WidgetTester tester, Finder finder) =>
+    tester.getTopLeft(finder) + const Offset(18, 12);
+
 bool _finderOnScreen(WidgetTester tester, Finder finder, Finder viewport) {
   if (finder.evaluate().isEmpty || viewport.evaluate().isEmpty) {
     return false;
   }
-  final item = tester.getRect(finder);
   final view = tester.getRect(viewport);
-  const headerInset = 96.0;
-  const composerInset = 88.0;
+  final header = tester.getRect(find.byType(CanonicalGroupConversationHeader));
+  final composer = tester.getRect(find.byType(RuntimeMessageComposer));
+  final capsules = find.byType(ComposerCapsuleRow);
+  final bottom = capsules.evaluate().isEmpty
+      ? composer.top
+      : math.min(composer.top, tester.getRect(capsules).top);
   final safe = Rect.fromLTRB(
     view.left,
-    view.top + headerInset,
-    view.right - 72,
-    view.bottom - composerInset,
+    math.max(view.top, header.bottom),
+    view.right,
+    math.min(view.bottom, bottom),
   );
-  return item.overlaps(safe);
+  // A partially visible card does not prove its command's tap point is exposed.
+  return safe.contains(_tapPoint(tester, finder));
 }
 
 Future<void> reveal(WidgetTester tester, Finder finder) async {
@@ -391,12 +401,22 @@ Future<void> revealCard(WidgetTester tester, String goalId) async {
 Future<void> expandCard(WidgetTester tester, String goalId) async {
   await revealCard(tester, goalId);
   await tapKey(tester, ContinuousAssistantKeys.expand(goalId));
+  expect(
+    find.byKey(ContinuousAssistantKeys.collapsed(goalId)),
+    findsNothing,
+    reason: 'The card must expand before its commands are exercised',
+  );
 }
 
 Future<void> tapKey(WidgetTester tester, Key key) async {
   final finder = find.byKey(key);
   await reveal(tester, finder);
-  final target = tester.getTopLeft(finder) + const Offset(18, 12);
+  expect(
+    _finderOnScreen(tester, finder, messageScrollable()),
+    isTrue,
+    reason: 'The command tap point must be clear of conversation overlays',
+  );
+  final target = _tapPoint(tester, finder);
   await tester.tapAt(target);
   await tester.pump();
 }

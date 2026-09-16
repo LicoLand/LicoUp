@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -265,10 +266,10 @@ class _ConversationImageFrameDecoration extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Container(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.card),
-        border: Border.all(color: colors.line.withAlpha(110)),
+        stroke: colors.line.withAlpha(110),
       ),
       clipBehavior: Clip.antiAlias,
       child: child,

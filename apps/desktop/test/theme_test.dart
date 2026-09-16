@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/appearance/appearance_projection_adapter.dart';
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -127,7 +128,7 @@ void main() {
       expect(extension?.accent, colors.accent);
 
       final cardTheme = theme.cardTheme;
-      expect(cardTheme.shape, isA<RoundedRectangleBorder>());
+      expect(cardTheme.shape, isA<ContinuousRoundedBorder>());
       expect(cardTheme.elevation, 0);
       expect(cardTheme.color, colors.surface);
 
@@ -732,23 +733,37 @@ void main() {
     expect(light.a, lessThan(1.0));
   });
 
-  test('glass edge rim is one alpha around the full frame', () {
-    final dark = MessagingDesktopMetrics.glassEdgeRimColor(isDark: true);
-    final light = MessagingDesktopMetrics.glassEdgeRimColor(isDark: false);
+  test('glass edge rim uses distinct lit and far-edge alphas', () {
+    final darkHi = MessagingDesktopMetrics.glassEdgeRimHi(isDark: true);
+    final darkLo = MessagingDesktopMetrics.glassEdgeRimLo(isDark: true);
+    final lightHi = MessagingDesktopMetrics.glassEdgeRimHi(isDark: false);
+    final lightLo = MessagingDesktopMetrics.glassEdgeRimLo(isDark: false);
     expect(
-      dark,
+      darkHi,
       MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
-        MessagingDesktopMetrics.glassEdgeRimAlphaDark,
+        MessagingDesktopMetrics.glassEdgeRimHiAlphaDark,
       ),
     );
     expect(
-      light,
+      darkLo,
       MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
-        MessagingDesktopMetrics.glassEdgeRimAlphaLight,
+        MessagingDesktopMetrics.glassEdgeRimLoAlphaDark,
       ),
     );
-    expect(dark.a, greaterThan(0.0));
-    expect(light.a, greaterThan(0.0));
+    expect(
+      lightHi,
+      MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
+        MessagingDesktopMetrics.glassEdgeRimHiAlphaLight,
+      ),
+    );
+    expect(
+      lightLo,
+      MessagingDesktopMetrics.chromeForegroundColor.withAlpha(
+        MessagingDesktopMetrics.glassEdgeRimLoAlphaLight,
+      ),
+    );
+    expect(darkHi.a, greaterThan(darkLo.a));
+    expect(lightHi.a, greaterThan(lightLo.a));
   });
 
   test('rgba token values resolve to a translucent color', () {

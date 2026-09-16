@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/appearance/appearance_visuals.dart';
 
-import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_elevation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
@@ -73,7 +73,7 @@ abstract class BaseSurface extends StatelessWidget {
     return AnimatedContainer(
       duration: context.motion(LicoMotion.micro),
       curve: LicoMotion.standard,
-      clipBehavior: clipBehavior == Clip.none ? Clip.none : clipBehavior,
+      clipBehavior: Clip.none,
       decoration: BoxDecoration(
         color: _fill(
           colors,
@@ -91,15 +91,32 @@ abstract class BaseSurface extends StatelessWidget {
       child: CustomPaint(
         foregroundPainter: ContinuousStrokePainter(
           borderRadius: borderRadius,
-          color: _border(colors)?.top.color ?? Colors.transparent,
+          color: _borderColor(colors) ?? Colors.transparent,
         ),
-        child: Material(
-          type: MaterialType.transparency,
-          child: padding == null
-              ? child
-              : Padding(padding: padding!, child: child),
+        child: _clipSurfaceChild(
+          borderRadius: borderRadius,
+          clipBehavior: clipBehavior,
+          child: Material(
+            type: MaterialType.transparency,
+            child: padding == null
+                ? child
+                : Padding(padding: padding!, child: child),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _clipSurfaceChild({
+    required BorderRadius borderRadius,
+    required Clip clipBehavior,
+    required Widget child,
+  }) {
+    if (clipBehavior == Clip.none) return child;
+    return ClipRRect(
+      borderRadius: borderRadius,
+      clipBehavior: clipBehavior,
+      child: child,
     );
   }
 
@@ -134,14 +151,14 @@ abstract class BaseSurface extends StatelessWidget {
     return base;
   }
 
-  Border? _border(LicoThemeColors colors) {
+  Color? _borderColor(LicoThemeColors colors) {
     if (tone == LicoSurfaceTone.brand) {
-      return Border.all(color: colors.brandBorder, width: 1);
+      return colors.brandBorder;
     }
     if (!bordered) {
       return null;
     }
-    final color = switch (tone) {
+    return switch (tone) {
       LicoSurfaceTone.accent => colors.accentBorder,
       LicoSurfaceTone.success => colors.success.withValues(alpha: 0.42),
       LicoSurfaceTone.warning => colors.warning.withValues(alpha: 0.42),
@@ -150,6 +167,5 @@ abstract class BaseSurface extends StatelessWidget {
       LicoSurfaceTone.sunken ||
       LicoSurfaceTone.brand => colors.line,
     };
-    return Border.all(color: color, width: 1);
   }
 }

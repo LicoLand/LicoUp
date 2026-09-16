@@ -1,14 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
-import 'package:licoup/src/frontend/shared/ui/assistant_sparkles_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -24,9 +22,8 @@ final class GroupStrategyProjection {
   final Map<String, AgentParticipantRuntimeProfile> runtimeProfiles;
 }
 
-/// Five-state assistant readiness projection for the group composer capsule's
-/// leading light. Every state derives from existing controller, profile, and
-/// turn-projection signals; nothing is fabricated for the visual.
+/// Assistant readiness projected into name color and accessible status.
+/// Every state derives from controller, profile, and turn signals.
 enum GroupAssistantStatusLight {
   /// No assistant Membership is designated on the group.
   unconfigured,
@@ -50,14 +47,10 @@ enum GroupAssistantStatusLight {
 final class GroupStrategyPickerCapsule extends StatelessWidget {
   const GroupStrategyPickerCapsule({
     super.key,
-    required this.label,
-    required this.statusLight,
     required this.selectedRevision,
     this.onOpen,
   });
 
-  final String label;
-  final GroupAssistantStatusLight statusLight;
   final String? selectedRevision;
 
   /// Opens the orchestration edit surface for [selectedRevision]. The capsule
@@ -68,22 +61,14 @@ final class GroupStrategyPickerCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final onOpen = this.onOpen;
     return _GroupStrategyPickerTrigger(
-      label: label,
-      statusLight: statusLight,
       onTap: onOpen == null ? null : () => onOpen(selectedRevision),
     );
   }
 }
 
 final class _GroupStrategyPickerTrigger extends StatelessWidget {
-  const _GroupStrategyPickerTrigger({
-    required this.label,
-    required this.statusLight,
-    required this.onTap,
-  });
+  const _GroupStrategyPickerTrigger({required this.onTap});
 
-  final String label;
-  final GroupAssistantStatusLight statusLight;
   final VoidCallback? onTap;
 
   @override
@@ -94,7 +79,7 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: strings.automaticAdaptation,
+      label: strings.adaptiveFlywheel,
       child: AppleGlassSurface(
         borderRadius: kComposerCapsuleBorderRadius,
         fillAlpha: colors.isDark ? 22 : 10,
@@ -110,11 +95,15 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                GroupAssistantStatusDot(state: statusLight),
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 14,
+                  color: colors.textMuted,
+                ),
                 const SizedBox(width: 7),
                 Flexible(
                   child: Text(
-                    label,
+                    strings.adaptiveFlywheel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -135,185 +124,198 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
   }
 }
 
-/// The capsule's leading readiness light. Colors come only from existing theme
-/// roles: success for ready/working, accent for waiting, error for failure,
-/// and textMuted for unconfigured/paused. Working pulses; every other state
-/// is static. The dot key encodes the state for focused tests:
-/// `canonical-group-assistant-status-<state>`.
-final class GroupAssistantStatusDot extends StatelessWidget {
-  const GroupAssistantStatusDot({super.key, required this.state});
-
-  final GroupAssistantStatusLight state;
-
-  static const double extent = 8;
-
-  Color _color(LicoThemeColors colors) => switch (state) {
-    GroupAssistantStatusLight.unconfigured ||
-    GroupAssistantStatusLight.paused => colors.textMuted,
-    GroupAssistantStatusLight.ready ||
-    GroupAssistantStatusLight.working => colors.success,
-    GroupAssistantStatusLight.waiting => colors.accent,
-    GroupAssistantStatusLight.failure => colors.error,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _color(context.licoColors);
-    final dot = Container(
-      key: Key('canonical-group-assistant-status-${state.name}'),
-      width: extent,
-      height: extent,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-    if (state != GroupAssistantStatusLight.working) return dot;
-    return _GroupAssistantStatusDotPulse(color: color, child: dot);
-  }
-}
-
-/// Gentle opacity pulse for the working light. Reduced-motion settings pin the
-/// dot at full opacity instead of animating.
-final class _GroupAssistantStatusDotPulse extends StatefulWidget {
-  const _GroupAssistantStatusDotPulse({
-    required this.color,
-    required this.child,
-  });
-
-  final Color color;
-  final Widget child;
-
-  @override
-  State<_GroupAssistantStatusDotPulse> createState() =>
-      _GroupAssistantStatusDotPulseState();
-}
-
-final class _GroupAssistantStatusDotPulseState
-    extends State<_GroupAssistantStatusDotPulse>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: LicoMotion.loopShort,
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncAnimation();
-  }
-
-  void _syncAnimation() {
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _controller
-        ..stop()
-        ..value = 1;
-      return;
-    }
-    if (!_controller.isAnimating) {
-      _controller.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final opacity = (0.45 + 0.55 * _controller.value).clamp(0.0, 1.0);
-        return Opacity(opacity: opacity, child: child);
-      },
-      child: widget.child,
-    );
-  }
-}
-
-/// Compact assistant control inside the group composer field's interior left.
-/// Unconfigured shows the default sparkles mark and tapping opens the
-/// configuration surface; configured shows the assistant agent's brand mark
-/// and tapping toggles the assistant between active and paused.
+/// Assistant identity toggles dispatch; the separate pencil edits configuration.
 final class AssistantToggleButton extends StatelessWidget {
   const AssistantToggleButton({
     super.key,
     required this.active,
     required this.configured,
+    required this.label,
+    required this.status,
     required this.onTap,
-    this.assistantTarget,
+    required this.onEdit,
   });
 
   final bool active;
   final bool configured;
+  final String label;
+  final GroupAssistantStatusLight status;
   final VoidCallback onTap;
-
-  /// The configured assistant's brand target; null while unconfigured.
-  final TargetCandidate? assistantTarget;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final enabled = active && configured;
+    final statusLabel = switch (status) {
+      GroupAssistantStatusLight.unconfigured =>
+        strings.assistantNeedsConfigurationStatus,
+      GroupAssistantStatusLight.paused => strings.assistantPausedStatus,
+      GroupAssistantStatusLight.ready => strings.active,
+      GroupAssistantStatusLight.working => strings.assistantWorkingAloneStatus,
+      GroupAssistantStatusLight.waiting => strings.waiting,
+      GroupAssistantStatusLight.failure => strings.lifecycleFailed,
+    };
+    final textColor = switch (status) {
+      GroupAssistantStatusLight.waiting => colors.accent,
+      GroupAssistantStatusLight.failure => colors.error,
+      GroupAssistantStatusLight.paused ||
+      GroupAssistantStatusLight.unconfigured => colors.textMuted,
+      _ => colors.text,
+    };
     final tooltip = !configured
         ? strings.configureAssistantTooltip
         : enabled
         ? strings.assistantActiveTooltip
         : strings.assistantPausedTooltip;
-    final target = assistantTarget;
-    return SizedBox.square(
-      key: const Key('canonical-group-assistant-control'),
-      dimension: MessagingDesktopMetrics.conversationComposerAssistantExtent,
-      child: Tooltip(
-        message: tooltip,
-        waitDuration: LicoMotion.tooltipWait,
-        child: Semantics(
-          button: true,
-          toggled: enabled,
-          label: tooltip,
-          child: Material(
-            color: enabled ? colors.accentSurface : Colors.transparent,
-            shape: const CircleBorder(),
-            child: InkWell(
-              key: const Key('canonical-group-assistant-toggle'),
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: Center(
-                child: !configured || target == null
-                    ? AssistantSparklesIcon(
-                        color: colors.textMuted,
-                        size: MessagingDesktopMetrics
-                            .conversationComposerAssistantMarkExtent,
-                      )
-                    : Opacity(
-                        opacity: enabled ? 1 : 0.45,
-                        child: AgentBrandIcon(
-                          target: target,
-                          size: MessagingDesktopMetrics
-                              .conversationComposerAssistantExtent,
-                          iconSize: MessagingDesktopMetrics
-                              .conversationComposerAssistantMarkExtent,
-                          detected: true,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Tooltip(
+            message: '$statusLabel · $tooltip',
+            child: Semantics(
+              button: true,
+              enabled: configured,
+              toggled: enabled,
+              label: label,
+              value: statusLabel,
+              hint: tooltip,
+              child: InkWell(
+                key: const Key('canonical-group-assistant-toggle'),
+                onTap: configured ? onTap : null,
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  key: const Key('canonical-group-assistant-control'),
+                  height: 32,
+                  child: Center(
+                    widthFactor: 1,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
+                      child: RepaintBoundary(
+                        child: _AssistantNameLight(
+                          active: enabled,
+                          baseColor: textColor,
+                          child: Text(
+                            label,
+                            key: Key(
+                              'canonical-group-assistant-status-${status.name}',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textColor,
+                            ),
+                          ),
                         ),
                       ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
         ),
+        LicoIconButton(
+          key: const Key('canonical-group-assistant-edit'),
+          tooltip: strings.configureAssistantTooltip,
+          onPressed: onEdit,
+          icon: const Icon(CupertinoIcons.pencil, size: 13),
+        ),
+      ],
+    );
+  }
+}
+
+final class _AssistantNameLight extends StatefulWidget {
+  const _AssistantNameLight({
+    required this.active,
+    required this.baseColor,
+    required this.child,
+  });
+  final bool active;
+  final Color baseColor;
+  final Widget child;
+  @override
+  State<_AssistantNameLight> createState() => _AssistantNameLightState();
+}
+
+final class _AssistantNameLightState extends State<_AssistantNameLight>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _light = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 4),
+  );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_AssistantNameLight oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.active && !MediaQuery.disableAnimationsOf(context)) {
+      if (!_light.isAnimating) _light.repeat();
+    } else {
+      _light.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _light.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active || MediaQuery.disableAnimationsOf(context)) {
+      return widget.child;
+    }
+    final spectrum = context.licoColors.isDark
+        ? [
+            widget.baseColor,
+            const Color(0xFFC4A0FF),
+            const Color(0xFFF5A46E),
+            const Color(0xFFF3D889),
+            widget.baseColor,
+          ]
+        : [
+            widget.baseColor,
+            const Color(0xFF8050AD),
+            const Color(0xFFA75B30),
+            const Color(0xFF92701D),
+            widget.baseColor,
+          ];
+    return AnimatedBuilder(
+      animation: _light,
+      child: widget.child,
+      builder: (context, child) => ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (rect) {
+          final center = -1.0 + _light.value * 3.0;
+          return LinearGradient(
+            begin: Alignment(center * 2 - 1 - 1.8, 0),
+            end: Alignment(center * 2 - 1 + 1.8, 0),
+            colors: spectrum,
+          ).createShader(rect);
+        },
+        child: child,
       ),
     );
   }
 }
 
 /// Detached floating action menu for the canonical group composer, anchored to
-/// a circular plus button immediately right of the assistant toggle. The menu
+/// a quiet plus icon before the assistant name. The menu
 /// is a plain transparent overlay child (no glass card) of circular
 /// overlay-glass action buttons stacked exactly above the trigger: attachments
 /// nearest the button, discard-pending-images above it while images are
@@ -346,7 +348,7 @@ final class CanonicalGroupAssistantActions extends StatefulWidget {
   /// Whether the discard circle is visible (images are currently staged).
   final bool showDiscardImages;
 
-  /// Shared circular extent, matching the assistant toggle's 40 px language.
+  /// Extent of the detached menu actions; the toolbar trigger uses its own recipe.
   static const double circleExtent = 40;
 
   @override
@@ -387,7 +389,6 @@ final class _CanonicalGroupAssistantActionsState
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return OverlayPortal(
       controller: _portalController,
@@ -458,31 +459,13 @@ final class _CanonicalGroupAssistantActionsState
         groupId: _tapRegionGroup,
         child: CompositedTransformTarget(
           link: _layerLink,
-          child: SizedBox.square(
+          child: SizedBox(
             key: const Key('canonical-group-assistant-actions'),
-            dimension: CanonicalGroupAssistantActions.circleExtent,
-            child: Tooltip(
-              message: strings.assistantActionsTooltip,
-              waitDuration: LicoMotion.tooltipWait,
-              child: Semantics(
-                button: true,
-                label: strings.assistantActionsTooltip,
-                child: MessagingConversationOverlayGlass(
-                  borderRadius: BorderRadius.circular(999),
-                  child: InkWell(
-                    key: const Key('canonical-group-assistant-actions-trigger'),
-                    customBorder: const CircleBorder(),
-                    onTap: _toggle,
-                    child: Center(
-                      child: Icon(
-                        _open ? Icons.close_rounded : Icons.add_rounded,
-                        size: 20,
-                        color: colors.textMuted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            child: LicoIconButton(
+              key: const Key('canonical-group-assistant-actions-trigger'),
+              tooltip: strings.assistantActionsTooltip,
+              onPressed: _toggle,
+              icon: Icon(_open ? Icons.close_rounded : Icons.add_rounded),
             ),
           ),
         ),

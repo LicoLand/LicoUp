@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_image_
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -236,15 +237,13 @@ class _DisclosureSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: Colors.white.withAlpha(colors.isDark ? 12 : 16),
         borderRadius: BorderRadius.circular(
           AppleControlMetrics.controlCornerRadius,
         ),
-        border: Border.all(
-          color: Colors.white.withAlpha(colors.isDark ? 36 : 56),
-          width: AppleControlMetrics.hairline,
-        ),
+        stroke: Colors.white.withAlpha(colors.isDark ? 36 : 56),
+        strokeWidth: AppleControlMetrics.hairline,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
