@@ -304,7 +304,8 @@ console layout geometry retain their respective owners.
 The group action row uses a bare plus glyph, a separated Assistant name, and a
 pencil control with a fine 13px glyph. The name toggles future Assistant participation; the pencil
 opens the existing Assistant editor in its own centered dialog. An active name
-has a soft purple, orange and gold highlight moving from left to right. Reduced motion renders
+has a purple-and-gold sunset highlight moving from left to right — a molten
+gold core leading, a violet aura trailing. Reduced motion renders
 a static active treatment. Inactive names remain readable. The capsule above
 the composer opens Adaptive Flywheel configuration only. Configuration and
 message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
@@ -321,7 +322,7 @@ message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#grou
 
 群聊操作行使用不带圆形底的加号，与 Assistant 名称之间保留间距，名称后放独立
 13px 细铅笔按钮。点击名称切换后续助手参与，点击铅笔在界面中央打开独立助手编辑框。
-激活名称以从左向右的紫、橙、金柔和渐变流光表示状态；减弱动态时使用静态激活样式，关闭时
+激活名称以从左向右的紫金晚霞流光表示状态——熔金亮芯在前、紫色霞光相随；减弱动态时使用静态激活样式，关闭时
 文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
 由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
 
