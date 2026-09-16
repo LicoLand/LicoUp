@@ -86,7 +86,8 @@ void main() {
         matching: find.byType(CustomPaint),
       ),
     );
-    final painter = glowPaint.painter! as MessagingBubbleEdgeGlowPainter;
+    final painter =
+        glowPaint.foregroundPainter! as MessagingBubbleEdgeGlowPainter;
     expect(painter.strokeWidth, MessagingDesktopMetrics.bubbleEdgeRimWidth);
     final rimGradient = painter.rimGradient as LinearGradient;
     // The default bubble light is white; agent brand hues resolve per target.
@@ -145,7 +146,8 @@ void main() {
         matching: find.byType(CustomPaint),
       ),
     );
-    final litPainter = litPaint.painter! as MessagingBubbleEdgeGlowPainter;
+    final litPainter =
+        litPaint.foregroundPainter! as MessagingBubbleEdgeGlowPainter;
     expect(litPainter.opacity, 1);
     final litAnimated = tester.widget<AnimatedContainer>(
       find.descendant(

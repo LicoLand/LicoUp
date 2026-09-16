@@ -114,7 +114,7 @@ class MessagingBubbleEdgeGlow extends StatelessWidget {
       curve: LicoMotion.standard,
       child: child,
       builder: (context, opacity, child) => CustomPaint(
-        painter: MessagingBubbleEdgeGlowPainter(
+        foregroundPainter: MessagingBubbleEdgeGlowPainter(
           borderRadius: borderRadius,
           rimGradient: glow.rimGradient,
           strokeWidth: MessagingDesktopMetrics.bubbleEdgeRimWidth,
@@ -127,7 +127,9 @@ class MessagingBubbleEdgeGlow extends StatelessWidget {
 }
 
 /// Paints the hover rim light: one thin, bright, crisp line on the bubble's
-/// silhouette. Nothing blurs outward — the light is the border itself.
+/// silhouette. Nothing blurs outward — the light is the border itself. The
+/// rim is a **foreground** pass: painted beneath the translucent bubble, the
+/// bubble's own BackdropFilter smeared it inward as the fog users reported.
 class MessagingBubbleEdgeGlowPainter extends CustomPainter {
   const MessagingBubbleEdgeGlowPainter({
     required this.borderRadius,
