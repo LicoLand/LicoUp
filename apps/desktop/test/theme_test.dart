@@ -722,15 +722,13 @@ void main() {
     expect(result.errors.join('; '), contains('accent'));
   });
 
-  test('window veil is a clear see-through mask, not frosted transparent', () {
+  test('window ground is an opaque grouped background, not a veil', () {
     final dark = MessagingDesktopMetrics.surfaceGlassTint(isDark: true);
     final light = MessagingDesktopMetrics.surfaceGlassTint(isDark: false);
-    expect(dark, const Color.fromARGB(225, 0, 0, 0));
-    expect(light, const Color.fromARGB(217, 255, 255, 255));
-    expect(dark.a, greaterThan(0.0));
-    expect(dark.a, lessThan(1.0));
-    expect(light.a, greaterThan(0.0));
-    expect(light.a, lessThan(1.0));
+    expect(dark, const Color(0xFF000000));
+    expect(light, const Color(0xFFF2F2F7));
+    expect(dark.a, 1.0);
+    expect(light.a, 1.0);
   });
 
   test('glass edge rim uses distinct lit and far-edge alphas', () {

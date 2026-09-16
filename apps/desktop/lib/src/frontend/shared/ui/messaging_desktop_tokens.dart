@@ -441,24 +441,12 @@ abstract final class MessagingDesktopMetrics {
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
 
-  /// Dark preset window veil — a clear black mask. High enough that chat
-  /// text stays readable, low enough that the desktop still shows through
-  /// faintly. Must stay below 255: an opaque fill hides the wallpaper.
-  static const int chromeTintDarkAlpha = 225;
-
-  /// Light preset window veil — a clear white mask with the same see-through
-  /// job as [chromeTintDarkAlpha]. Not a frosted material.
-  static const int lightSurfaceGlassAlpha = 217;
-
-  /// Clear (non-blurred) window veil shared by shell regions. Dark paints
-  /// black; light paints white. Wallpaper shows through sharply — do not
-  /// restore NSVisualEffectView or BackdropFilter on this layer.
-  static Color surfaceGlassTint({required bool isDark}) => Color.fromARGB(
-    isDark ? chromeTintDarkAlpha : lightSurfaceGlassAlpha,
-    isDark ? 0 : 255,
-    isDark ? 0 : 255,
-    isDark ? 0 : 255,
-  );
+  /// Solid window ground shared by shell regions — opaque grouped backgrounds
+  /// in the Stocks idiom: black content canvas in dark, system grouped gray in
+  /// light. No wallpaper bleed and no blur on this layer; translucency stays
+  /// on the control layer (capsules, composer, menus).
+  static Color surfaceGlassTint({required bool isDark}) =>
+      isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).

@@ -104,10 +104,12 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
                 key: const Key('canonical-group-identity-capsule'),
                 borderRadius: capsuleRadius,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal:
+                  padding: const EdgeInsets.only(
+                    left: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+                    right:
                         MessagingDesktopMetrics.conversationHeaderCapsulePadH,
-                    vertical:
+                    top: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+                    bottom:
                         MessagingDesktopMetrics.conversationHeaderCapsulePadV,
                   ),
                   child: identity,
