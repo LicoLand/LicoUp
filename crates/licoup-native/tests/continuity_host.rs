@@ -2967,10 +2967,10 @@ fn production_after_post_forwards_attachments_profile_and_addressing() {
     assert_eq!(starts[0]["reasoningEffort"], "high");
     assert_eq!(starts[0]["attachments"].as_array().unwrap().len(), 1);
     assert_eq!(starts[0]["attachments"][0]["name"], "synthetic.png");
+    let guidance = delivered_guidance(&starts[0]);
     assert!(
-        starts[0]["developerInstructions"]
-            .as_str()
-            .is_some_and(|text| text.contains("speechAct") && text.contains("requestedReads"))
+        !guidance.contains(PROPOSAL_RESPONSE_CONTRACT),
+        "forwarded instructions must not ask the Agent for a reply format"
     );
 }
 
@@ -3052,7 +3052,7 @@ fn production_mention_only_does_not_start_extra_assistant_turn() {
 }
 
 #[test]
-fn production_ingress_guidance_delivers_contract_and_authorized_source_contents() {
+fn production_ingress_guidance_delivers_authorized_source_contents() {
     let complete_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let start_calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let service = bind_effect_free_runtime(
@@ -3123,8 +3123,8 @@ fn production_ingress_guidance_delivers_contract_and_authorized_source_contents(
     assert_eq!(starts.len(), 1);
     let guidance = delivered_guidance(&starts[0]);
     assert!(
-        guidance.contains(PROPOSAL_RESPONSE_CONTRACT),
-        "delivered guidance must include the schema-derived contract"
+        !guidance.contains(PROPOSAL_RESPONSE_CONTRACT),
+        "delivered guidance must not ask the Agent for a reply format"
     );
     let example: Value = serde_json::from_str(PROPOSAL_RESPONSE_DELEGATION_EXAMPLE)
         .expect("generated delegation example must be JSON");
@@ -3133,12 +3133,8 @@ fn production_ingress_guidance_delivers_contract_and_authorized_source_contents(
         example["taskChildAdmission"]["followThroughKind"],
         "durable"
     );
-    assert!(guidance.contains("Durable delegation with taskChildAdmission"));
-    assert!(guidance.contains("Conditional requestedReads"));
-    assert!(guidance.contains("followThroughKind"));
-    assert!(guidance.contains("sourceRevision"));
-    assert!(guidance.contains("\"validity\""));
-    assert!(guidance.contains("host restamps"));
+    assert!(!guidance.contains("Durable delegation with taskChildAdmission"));
+    assert!(!guidance.contains("host restamps"));
     assert!(guidance.contains("source-ref {"));
     let authorized = authorized_source_refs_from_guidance(&guidance);
     assert!(
@@ -3438,9 +3434,9 @@ fn production_settlement_uses_delivered_contract_and_current_source_identities()
         .clone();
     assert_eq!(starts.len(), 1);
     let guidance = delivered_guidance(&starts[0]);
-    assert!(guidance.contains(PROPOSAL_RESPONSE_CONTRACT));
-    assert!(guidance.contains("requestedReads"));
-    assert!(guidance.contains("followThroughKind"));
+    assert!(!guidance.contains(PROPOSAL_RESPONSE_CONTRACT));
+    assert!(!guidance.contains("requestedReads"));
+    assert!(!guidance.contains("followThroughKind"));
     let current = authorized_source_refs_from_guidance(&guidance)
         .into_iter()
         .find(|source| source.opaque_id == posted)

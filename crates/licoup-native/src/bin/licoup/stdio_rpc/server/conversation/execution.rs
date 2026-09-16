@@ -528,11 +528,14 @@ mod tests {
     }
 
     #[test]
-    fn execution_local_view_keeps_full_text_while_public_attach_keeps_its_projection() {
+    fn execution_local_and_public_views_keep_the_agents_own_prose() {
         let runtime = runtime();
         let turn = runtime.begin_with(&json!({"agent":"synthetic","text":"prompt","continuityKind":CONTINUITY_KIND_USER_POSTED}),PersistentTurnAdmission::Host).unwrap();
         let emitted = PersistentConversationRuntime::record_event(&turn,json!({"event":"agent.message.chunk","payload":{"text":"synthetic unpublished full raw text"}})).unwrap();
-        assert_eq!(emitted["payload"]["text"], "");
+        assert_eq!(
+            emitted["payload"]["text"],
+            "synthetic unpublished full raw text"
+        );
         finish(&turn);
         let local = Arc::new(Mutex::new(Vec::new()));
         spawn_execution(
@@ -553,7 +556,7 @@ mod tests {
         let public = Arc::new(Mutex::new(Vec::new()));
         replay_turn(&public, "public", "workflow", &turn, 0).unwrap();
         assert!(
-            !String::from_utf8(public.lock().unwrap().clone())
+            String::from_utf8(public.lock().unwrap().clone())
                 .unwrap()
                 .contains("synthetic unpublished full raw text")
         );
