@@ -3,15 +3,22 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 fn temp_root(label: &str) -> PathBuf {
+    // The clock can repeat between rapid calls; the process-local sequence
+    // keeps parallel tests on disjoint roots.
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    std::env::temp_dir().join(format!("lico-agent-usage-{label}-{nonce}"))
+    std::env::temp_dir().join(format!(
+        "lico-agent-usage-{label}-{nonce}-{}",
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 fn epoch(value: &str) -> f64 {
