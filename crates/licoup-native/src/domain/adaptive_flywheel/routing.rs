@@ -621,7 +621,8 @@ pub struct FairDispatchQueue {
     control_bytes: usize,
     data_bytes: usize,
     next_cursor: u64,
-    /// Historical replay log (bounded by last committed cursor retention).
+    /// Historical replay log. Retention and truncation belong to the durable
+    /// wiring (T07.4d); this in-memory leaf retains the full log.
     durable_log: Vec<QueuedItem>,
     /// Quantum: number of control items dispatched before checking data queue.
     control_quantum: usize,
