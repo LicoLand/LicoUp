@@ -1,10 +1,9 @@
 import { withRootLock } from "./lock.mjs";
-import { openJournal, markStepRunning, markStepCommitted, finishJournal } from "./journal.mjs";
+import { openJournal, markStepRunning, markStepPending, markStepCommitted, finishJournal } from "./journal.mjs";
 import { getCodec } from "./codecs/index.mjs";
 import { writeDomainMarker, writeLedger } from "./convert.mjs";
 import { probeAllDomains } from "./probe.mjs";
 import { listPreservations } from "./preservation.mjs";
-import { DOMAIN_DEFINITIONS } from "./catalog.mjs";
 
 export function resume(dataRoot) {
   return withRootLock(dataRoot, () => {
@@ -17,12 +16,16 @@ export function resume(dataRoot) {
     }
 
     const resumedSteps = [];
+    const pendingAuthorizationDomains = [];
     const domainVersions = {};
 
-    // Baseline observed state
+    // Baseline observed state (effective authoritative version, as in plan)
     const currentProbes = probeAllDomains(dataRoot);
     for (const [dId, probe] of Object.entries(currentProbes)) {
-      domainVersions[dId] = probe.storeVersion;
+      if (probe.error) {
+        throw new Error(`unsupported_state_shape: probe failed for ${dId}: ${probe.error}`);
+      }
+      domainVersions[dId] = probe.effectiveVersion !== undefined ? probe.effectiveVersion : probe.storeVersion;
     }
 
     for (const [domainId, entry] of Object.entries(journal.domains)) {
@@ -49,10 +52,21 @@ export function resume(dataRoot) {
       markStepRunning(dataRoot, domainId, entry.stepId);
       const currentVer = domainVersions[domainId] !== undefined ? domainVersions[domainId] : 0;
       let stepResult;
-      if (currentVer < targetVer) {
-        stepResult = codec.forward(dataRoot, currentVer, targetVer);
-      } else if (currentVer > targetVer) {
-        stepResult = codec.reverse(dataRoot, currentVer, targetVer);
+      try {
+        if (currentVer < targetVer) {
+          stepResult = codec.forward(dataRoot, currentVer, targetVer);
+        } else if (currentVer > targetVer) {
+          stepResult = codec.reverse(dataRoot, currentVer, targetVer);
+        }
+      } catch (err) {
+        if (err && err.code === "migration_authorization_required") {
+          markStepPending(dataRoot, domainId, "migration_authorization_required");
+          if (!pendingAuthorizationDomains.includes(domainId)) {
+            pendingAuthorizationDomains.push(domainId);
+          }
+          continue;
+        }
+        throw err;
       }
 
       codec.verifyPostcondition(dataRoot, targetVer);
@@ -83,6 +97,7 @@ export function resume(dataRoot) {
       status: "success",
       targetVersion: journal.targetVersion,
       resumedSteps,
+      pendingAuthorizationDomains,
       preservations: listPreservations(dataRoot),
     };
   });

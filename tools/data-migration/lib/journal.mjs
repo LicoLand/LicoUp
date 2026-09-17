@@ -1,5 +1,4 @@
 import path from "node:path";
-import fs from "node:fs";
 import {
   ensureDirectorySync,
   writeJsonAtomicSync,
@@ -54,6 +53,18 @@ export function markStepRunning(dataRoot, domainId, stepId) {
     journal.domains[domainId] = { stepId, status: "running" };
   } else {
     journal.domains[domainId].status = "running";
+  }
+  journal.updatedAt = new Date().toISOString();
+  writeJsonAtomicSync(file, journal);
+}
+
+export function markStepPending(dataRoot, domainId, reason) {
+  const file = journalPath(dataRoot);
+  const journal = readJsonSync(file);
+  if (!journal) return;
+  if (journal.domains[domainId]) {
+    journal.domains[domainId].status = "pending";
+    journal.domains[domainId].pendingReason = reason;
   }
   journal.updatedAt = new Date().toISOString();
   writeJsonAtomicSync(file, journal);

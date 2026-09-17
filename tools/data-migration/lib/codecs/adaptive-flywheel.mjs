@@ -1,9 +1,6 @@
 import path from "node:path";
-import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
-  writeJsonAtomicSync,
-  readJsonSync,
   ensureDirectorySync,
   isRegularFileSync,
   removeFileSync,
@@ -50,10 +47,18 @@ export function probe(dataRoot) {
     if (ver === "2") {
       return { version: 1, present: true, strategyMetaVersion: "2" };
     }
-    if (ver !== null && Number(ver) < 2) {
-      return { version: 0, present: true, strategyMetaVersion: ver };
+    if (ver !== null && /^\d+$/.test(ver)) {
+      const numeric = Number(ver);
+      if (numeric < 2) {
+        return { version: 0, present: true, strategyMetaVersion: ver };
+      }
+      if (numeric > 3) {
+        throw new Error(`state_newer_than_binary in ${DOMAIN_ID}`);
+      }
     }
-    return { version: 0, present: true };
+    // A database without a readable strategy version is unsupported shape,
+    // not a legacy store (mirrors probe_adaptive_flywheel on the native side).
+    throw new Error(`unsupported_state_shape in ${DOMAIN_ID}`);
   }
 
   if (isRegularFileSync(tomlPath)) {
@@ -171,10 +176,8 @@ export function reverse(dataRoot, fromVer, toVer) {
           try { db.close(); } catch {}
         }
       }
-      // Write legacy toml placeholder if needed
-      fs.writeFileSync(getLegacyTomlPath(dataRoot), "# adaptive-flywheel legacy\n", "utf8");
       removeFileSync(dbPath);
-      return { converted: true, details: "downgraded adaptive flywheel to v0 legacy" };
+      return { converted: true, details: "downgraded adaptive flywheel to v0 (store absent; definitions preserved)" };
     }
     return { converted: true, details: "database absent" };
   }

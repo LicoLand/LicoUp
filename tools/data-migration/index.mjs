@@ -22,4 +22,9 @@ export {
 } from "./lib/preservation.mjs";
 export { openJournal, journalPath } from "./lib/journal.mjs";
 export { withRootLock, RootLock } from "./lib/lock.mjs";
+export {
+  HELPER_PROTOCOL_VERSION,
+  isHelperBinaryAvailable,
+  callHelper,
+} from "./lib/helper-protocol.mjs";
 export { buildPackageArtifact, PACKAGE_MANIFEST_SCHEMA } from "./lib/package-manifest.mjs";
