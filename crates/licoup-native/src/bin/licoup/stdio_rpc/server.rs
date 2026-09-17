@@ -187,12 +187,18 @@ where
                         portable_data_dir,
                     )?;
                 }
-                StdioRpcMethod::Shutdown => {
+                StdioRpcMethod::Shutdown { params } => {
+                    let stop_host = params.get("host").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if stop_host {
+                        if let Some(runtime) = conversation_runtime.as_ref() {
+                            runtime.request_host_stop();
+                        }
+                    }
                     write_stdio_rpc_success_shared(
                         &writer,
                         &request.id,
                         &request.workflow_id,
-                        json!({"status": "shutdown"}),
+                        json!({"status": "shutdown", "host_stop_requested": stop_host}),
                     )?;
                     // Shutdown closes the RPC session, not the Agent turns it has
                     // already accepted. Acknowledge first so the client can leave.
