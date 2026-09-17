@@ -9,7 +9,8 @@ use licoup_conversation::continuity::{
     ContinuityParentContextGrant, ContinuityParentGrantStatus, ContinuityReadPort,
     ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
     ContinuityTaskChildAdmission, ContinuityUtf8ByteSpan, ContinuityVerificationKind,
-    ContinuityVisibilityScope, INGRESS_USER_POSTED_DESIGNATION, PENDING_OBLIGATION_PAGE_SIZE,
+    ContinuityVisibilityScope, ContinuityWake, FollowUpPort, INGRESS_USER_POSTED_DESIGNATION,
+    PENDING_OBLIGATION_PAGE_SIZE,
     TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, UnavailableContextComposition, accept_completion,
     ack_completion_notices, append_criterion_evidence, apply_goal_control,
     commit_user_posted_proposal, consume_logical_wake, derived_live_count,
@@ -3139,3 +3140,91 @@ fn stale_revision_or_from_state_rejects_without_mutation() {
     );
     assert!(relation_after.completion_transition.is_none());
 }
+
+#[test]
+fn follow_up_wake_coalesces_and_is_idempotent() {
+    let mut harness = Harness::new("wake-coalesce");
+    let proposal = harness.proposal("request:wake", "goal:wake-test", "matter:wake-test", false);
+    harness.store.commit(&proposal).unwrap();
+    harness.refresh();
+
+    // Consume any initial wake from the goal creation
+    let _ = consume_logical_wake(&harness.store, "wake:goal:wake-test:1");
+
+    // 1. Invalid wake is rejected by admission
+    let invalid_wake = ContinuityWake {
+        logical_wake_id: "".into(),
+        goal_id: "goal:wake-test".into(),
+        cause_refs: vec![],
+        due_at: None,
+        review_policy: "standard".into(),
+        goal_revision: 1,
+        epoch: 1,
+        host_generation: 1,
+        claim: None,
+        settlement: None,
+    };
+    assert_eq!(
+        harness.store.enqueue_wake(&invalid_wake).unwrap_err().code,
+        ContinuityFailureCode::InvalidRequest
+    );
+
+    // 2. Enqueue first valid wake
+    let ref1 = source_ref(&harness.event_id, 1);
+    let wake1 = ContinuityWake {
+        logical_wake_id: "wake:custom:1".into(),
+        goal_id: "goal:wake-test".into(),
+        cause_refs: vec![ref1.clone()],
+        due_at: Some(20_000),
+        review_policy: "standard".into(),
+        goal_revision: 1,
+        epoch: 1,
+        host_generation: 1,
+        claim: None,
+        settlement: None,
+    };
+    let receipt1 = harness.store.enqueue_wake(&wake1).unwrap();
+    assert_eq!(receipt1.conversation_id, harness.conversation_id);
+    assert_eq!(
+        read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
+        1
+    );
+
+    // 3. Duplicate notification with identical logical_wake_id does not create a second delivery
+    let receipt_dup = harness.store.enqueue_wake(&wake1).unwrap();
+    assert_eq!(receipt_dup.conversation_id, harness.conversation_id);
+    assert_eq!(
+        read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
+        1
+    );
+
+    // 4. Enqueue a second wake for the same goal with a different cause_ref:
+    // It coalesces into the existing wake and merges cause_refs without losing original events
+    let ref2 = source_ref("event:another:2", 2);
+    let wake2 = ContinuityWake {
+        logical_wake_id: "wake:custom:2".into(),
+        goal_id: "goal:wake-test".into(),
+        cause_refs: vec![ref2.clone()],
+        due_at: Some(10_000), // earlier due_at
+        review_policy: "standard".into(),
+        goal_revision: 1,
+        epoch: 1,
+        host_generation: 1,
+        claim: None,
+        settlement: None,
+    };
+    harness.store.enqueue_wake(&wake2).unwrap();
+    // Outbox count is still 1 (coalesced into existing wake)
+    assert_eq!(
+        read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
+        1
+    );
+
+    // 5. Consuming the coalesced wake succeeds and marks it handed off
+    assert!(consume_logical_wake(&harness.store, "wake:custom:1").unwrap());
+    assert_eq!(
+        read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
+        0
+    );
+}
+
