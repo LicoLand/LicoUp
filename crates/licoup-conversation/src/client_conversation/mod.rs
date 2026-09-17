@@ -592,8 +592,10 @@ pub struct WaitSourceRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_membership_id: Option<String>,
     pub state: String,
-    pub created_at_unix_ms: i64,
-    pub updated_at_unix_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at_unix_ms: Option<i64>,
     pub is_terminal: bool,
 }
 

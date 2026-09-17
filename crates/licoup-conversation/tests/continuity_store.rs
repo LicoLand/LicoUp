@@ -10,16 +10,15 @@ use licoup_conversation::continuity::{
     ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
     ContinuityTaskChildAdmission, ContinuityUtf8ByteSpan, ContinuityVerificationKind,
     ContinuityVisibilityScope, ContinuityWake, FollowUpPort, INGRESS_USER_POSTED_DESIGNATION,
-    PENDING_OBLIGATION_PAGE_SIZE,
-    TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, UnavailableContextComposition, accept_completion,
-    ack_completion_notices, append_criterion_evidence, apply_goal_control,
-    commit_user_posted_proposal, consume_logical_wake, derived_live_count,
-    ingress_execution_recorded, list_all_parent_grants, list_completion_notification_ids,
-    list_due_goals, list_pending_completion_notices, parse_continuity_value, put_agreement,
-    put_derived, put_effect, put_grant, read_agreements, read_goal, read_pending_outbox,
-    read_relation_for_child, record_settlement_applied, record_settlement_pending, replay_effect,
-    resolve_completion_notice, revoke_source, schedule_goal_due, set_continuity_interrupt,
-    settlement_applied,
+    PENDING_OBLIGATION_PAGE_SIZE, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN,
+    UnavailableContextComposition, accept_completion, ack_completion_notices,
+    append_criterion_evidence, apply_goal_control, commit_user_posted_proposal,
+    consume_logical_wake, derived_live_count, ingress_execution_recorded, list_all_parent_grants,
+    list_completion_notification_ids, list_due_goals, list_pending_completion_notices,
+    parse_continuity_value, put_agreement, put_derived, put_effect, put_grant, read_agreements,
+    read_goal, read_pending_outbox, read_pending_wakes, read_relation_for_child,
+    record_settlement_applied, record_settlement_pending, replay_effect, resolve_completion_notice,
+    revoke_source, schedule_goal_due, set_continuity_interrupt, settlement_applied,
 };
 use licoup_conversation::{
     ConversationStore, DispatchState, EventKind, EventPartKind, MembershipAccess, NewEventPart,
@@ -3142,7 +3141,7 @@ fn stale_revision_or_from_state_rejects_without_mutation() {
 }
 
 #[test]
-fn follow_up_wake_coalesces_and_is_idempotent() {
+fn follow_up_wake_dedup_preserves_distinct_events() {
     let mut harness = Harness::new("wake-coalesce");
     let proposal = harness.proposal("request:wake", "goal:wake-test", "matter:wake-test", false);
     harness.store.commit(&proposal).unwrap();
@@ -3198,8 +3197,10 @@ fn follow_up_wake_coalesces_and_is_idempotent() {
         1
     );
 
-    // 4. Enqueue a second wake for the same goal with a different cause_ref:
-    // It coalesces into the existing wake and merges cause_refs without losing original events
+    // 4. A second wake for the same goal with a different cause_ref is an
+    // original event: it is preserved as its own pending wake, never merged
+    // away at enqueue. Coalescing into one logical advancement happens at
+    // consumption (host drain), not by dropping events from the outbox.
     let ref2 = source_ref("event:another:2", 2);
     let wake2 = ContinuityWake {
         logical_wake_id: "wake:custom:2".into(),
@@ -3214,17 +3215,31 @@ fn follow_up_wake_coalesces_and_is_idempotent() {
         settlement: None,
     };
     harness.store.enqueue_wake(&wake2).unwrap();
-    // Outbox count is still 1 (coalesced into existing wake)
     assert_eq!(
         read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
-        1
+        2
     );
 
-    // 5. Consuming the coalesced wake succeeds and marks it handed off
+    // Both original wakes survive with their own identities and cause_refs.
+    let pending = read_pending_wakes(&harness.store, &harness.conversation_id).unwrap();
+    let pending1 = pending
+        .iter()
+        .find(|wake| wake.logical_wake_id == "wake:custom:1")
+        .expect("first wake preserved");
+    assert_eq!(pending1.cause_refs, vec![ref1]);
+    assert_eq!(pending1.due_at, Some(20_000));
+    let pending2 = pending
+        .iter()
+        .find(|wake| wake.logical_wake_id == "wake:custom:2")
+        .expect("second wake preserved");
+    assert_eq!(pending2.cause_refs, vec![ref2]);
+    assert_eq!(pending2.due_at, Some(10_000));
+
+    // 5. Consuming each wake succeeds and marks it handed off
     assert!(consume_logical_wake(&harness.store, "wake:custom:1").unwrap());
+    assert!(consume_logical_wake(&harness.store, "wake:custom:2").unwrap());
     assert_eq!(
         read_pending_outbox(&harness.store, &harness.conversation_id).unwrap(),
         0
     );
 }
-
