@@ -409,8 +409,9 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
     }
 }
 
-/// Cooperative drain adapter: supports Submit, Pause (via drain to safe boundary), Stop, Observe.
-/// Truthfully exposes that in-flight pause and steer are not supported without killing processes.
+/// Cooperative drain adapter: supports Submit, safe-boundary Steer, Pause
+/// (via drain to safe boundary), Stop, and Observe. It truthfully exposes
+/// that in-flight pause and steer are not supported without killing processes.
 pub struct CooperativeDrainAdapter {
     identity: String,
     capabilities: BTreeSet<NodeCapability>,
@@ -421,6 +422,7 @@ impl CooperativeDrainAdapter {
     pub fn new(identity: impl Into<String>) -> Self {
         let mut caps = BTreeSet::new();
         caps.insert(NodeCapability::Submit);
+        caps.insert(NodeCapability::Steer);
         caps.insert(NodeCapability::Pause);
         caps.insert(NodeCapability::Resume);
         caps.insert(NodeCapability::Stop);
@@ -488,6 +490,9 @@ impl NodeCapabilityAdapter for CooperativeDrainAdapter {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !map.contains_key(invocation_id) {
             return Err(AdapterError::InvocationNotFound(invocation_id.to_string()));
+        }
+        if !self.capabilities.contains(&NodeCapability::Steer) {
+            return Ok(SteerOutcome::Unsupported);
         }
         Ok(SteerOutcome::SafeBoundaryFollowUp {
             follow_up_instruction: instruction.to_string(),
@@ -673,6 +678,11 @@ mod tests {
     #[test]
     fn test_cooperative_drain_adapter_truthful_reporting() {
         let adapter = CooperativeDrainAdapter::new("coop-drain");
+        assert!(
+            adapter
+                .declared_capabilities()
+                .contains(&NodeCapability::Steer)
+        );
         assert!(!adapter.supports_inflight_steer());
         assert!(!adapter.supports_inflight_pause());
         assert!(adapter.supports_cooperative_cancel());
