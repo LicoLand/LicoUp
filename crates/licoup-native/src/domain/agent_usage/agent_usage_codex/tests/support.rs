@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::constants::CACHE_DATABASE_PREFIX;
@@ -31,14 +32,18 @@ pub(super) fn install_v12_fixture_schema(connection: &rusqlite::Connection) {
 }
 
 pub(super) fn temp_dir(name: &str) -> PathBuf {
+    // The system clock can repeat between two rapid calls on the same thread
+    // pair; the process-local sequence keeps parallel tests on disjoint roots.
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     let dir = std::env::temp_dir().join(format!(
-        "lico-codex-usage-{name}-{}-{}-{}",
+        "lico-codex-usage-{name}-{}-{}-{}-{}",
         std::process::id(),
         now.as_secs(),
-        now.subsec_nanos()
+        now.subsec_nanos(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir_all(&dir).unwrap();
     dir
