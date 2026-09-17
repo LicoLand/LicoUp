@@ -5,7 +5,6 @@ import {
   readJsonSync,
   isRegularFileSync,
 } from "../fs-atomic.mjs";
-import { savePreservation, loadPreservation, clearPreservation } from "../preservation.mjs";
 
 const DOMAIN_ID = "appearance-presentation";
 
@@ -38,11 +37,6 @@ export function forward(dataRoot, fromVer, toVer) {
     }
     const doc = readJsonSync(storePath) || {};
     doc.schemaVersion = 1;
-    const preserved = loadPreservation(dataRoot, DOMAIN_ID);
-    if (preserved && preserved.preservedData) {
-      Object.assign(doc, preserved.preservedData);
-      clearPreservation(dataRoot, DOMAIN_ID);
-    }
     writeJsonAtomicSync(storePath, doc);
     return { converted: true, details: "upgraded appearance-preferences to schemaVersion 1" };
   }

@@ -43,9 +43,6 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     const tabFile = path.join(stateDir, "agent-tab-order.json");
     writeJsonAtomicSync(tabFile, ["agent-alpha", "agent-beta"]);
 
-    const wsFile = path.join(root, ".licoup-workspace.json");
-    writeJsonAtomicSync(wsFile, { name: "test-workspace" });
-
     const settingsFile = path.join(stateDir, "settings.json");
     writeJsonAtomicSync(settingsFile, { notifications: true });
 
@@ -55,13 +52,16 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     assert.equal(forwardResult.targetVersion, "0.3.0");
     assert.ok(forwardResult.convertedSteps.length > 0);
 
+    // Credential custody is never fabricated by the tool; it is reported as
+    // pending authorization like the native admission boundary does.
+    assert.ok(forwardResult.pendingAuthorizationDomains.includes("gateway-credential-custody"));
+    const gatewayMarker = path.join(stateDir, "migrations", "domain-state", "gateway-credential-custody.json");
+    assert.equal(fs.existsSync(gatewayMarker), false);
+
     // Verify v0.3.0 disk postconditions
     const updatedTab = readJsonSync(tabFile);
     assert.equal(updatedTab.schemaVersion, 1);
     assert.deepEqual(updatedTab.order, ["agent-alpha", "agent-beta"]);
-
-    const updatedWs = readJsonSync(wsFile);
-    assert.equal(updatedWs.schemaVersion, 1);
 
     const updatedSettings = readJsonSync(settingsFile);
     assert.equal(updatedSettings.schemaVersion, "v0.0.1:schema:definition-1");
@@ -83,6 +83,10 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     updatedTab.customDisplayMetadata = { color: "#ff8800", pinned: true };
     writeJsonAtomicSync(tabFile, updatedTab);
 
+    // A current-client workspace manifest (CurrentOnly domain: no legacy form)
+    const wsFile = path.join(root, ".licoup-workspace.json");
+    writeJsonAtomicSync(wsFile, { schemaVersion: 1, name: "test-workspace" });
+
     // 4. Downgrade to v0.1.0
     const reverseResult = convert(root, "v0.1.0");
     assert.equal(reverseResult.status, "success");
@@ -92,8 +96,12 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     const downgradedTab = readJsonSync(tabFile);
     assert.deepEqual(downgradedTab, ["agent-alpha", "agent-beta"]);
 
-    const downgradedWs = readJsonSync(wsFile);
-    assert.equal(downgradedWs.schemaVersion, undefined);
+    // CurrentOnly domains have no legacy on-disk form: the document is
+    // removed and its content preserved in the recovery extension
+    assert.equal(fs.existsSync(wsFile), false);
+    const preservedWs = loadPreservation(root, "workspace-manifest");
+    assert.ok(preservedWs, "Workspace manifest preservation record must exist");
+    assert.deepEqual(preservedWs.preservedData, { name: "test-workspace" });
 
     const downgradedSettings = readJsonSync(settingsFile);
     assert.equal(downgradedSettings.schemaVersion, undefined);
@@ -128,6 +136,12 @@ test("full bidirectional conversion with preservation and round-trip restore", (
       color: "#ff8800",
       pinned: true,
     });
+
+    // Workspace manifest restored from the preservation extension
+    const roundTripWs = readJsonSync(wsFile);
+    assert.equal(roundTripWs.schemaVersion, 1);
+    assert.equal(roundTripWs.name, "test-workspace");
+    assert.equal(loadPreservation(root, "workspace-manifest"), null);
 
     // Preservation record cleared after successful restore
     assert.equal(loadPreservation(root, "agent-tab-order"), null);

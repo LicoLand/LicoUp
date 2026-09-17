@@ -4,14 +4,15 @@ import { plan as computePlan } from "./plan.mjs";
 import { getCodec } from "./codecs/index.mjs";
 import {
   initJournal,
+  openJournal,
   markStepRunning,
+  markStepPending,
   markStepCommitted,
   finishJournal,
 } from "./journal.mjs";
 import {
   writeJsonAtomicSync,
   ensureDirectorySync,
-  readJsonSync,
 } from "./fs-atomic.mjs";
 import {
   DOMAIN_DEFINITIONS,
@@ -19,7 +20,7 @@ import {
   LEDGER_SCHEMA,
 } from "./catalog.mjs";
 import { listPreservations } from "./preservation.mjs";
-import { getLedgerPath, getMarkerPath } from "./probe.mjs";
+import { getLedgerPath, getMarkerPath, probeAllDomains } from "./probe.mjs";
 
 export function writeDomainMarker(dataRoot, domainId, authoritativeSchemaVersion) {
   const markerPath = getMarkerPath(dataRoot, domainId);
@@ -35,7 +36,6 @@ export function writeLedger(dataRoot, targetVersion, frontierId, domainVersions)
   const ledgerPath = getLedgerPath(dataRoot);
   ensureDirectorySync(path.dirname(ledgerPath));
 
-  const existingLedger = readJsonSync(ledgerPath) || {};
   const domains = {};
 
   for (const def of DOMAIN_DEFINITIONS) {
@@ -69,6 +69,13 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
   const { dryRun = false } = options;
 
   return withRootLock(dataRoot, () => {
+    const pendingJournal = openJournal(dataRoot);
+    if (!dryRun && pendingJournal && pendingJournal.status === "in_progress") {
+      throw new Error(
+        "migration_interrupted: an earlier conversion did not complete; run 'licoup-migrate resume' for this data root"
+      );
+    }
+
     const migrationPlan = computePlan(dataRoot, targetProfileOrVersion);
 
     if (dryRun) {
@@ -85,14 +92,10 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
 
     if (migrationPlan.isNoOp) {
       // Reconcile ledger metadata to target version if needed
+      const baseline = probeAllDomains(dataRoot);
       const currentVersions = {};
-      for (const def of DOMAIN_DEFINITIONS) {
-        const codec = getCodec(def.domainId);
-        try {
-          currentVersions[def.domainId] = codec.probe(dataRoot).version;
-        } catch {
-          currentVersions[def.domainId] = 0;
-        }
+      for (const [domainId, probe] of Object.entries(baseline)) {
+        currentVersions[domainId] = probe.effectiveVersion !== undefined ? probe.effectiveVersion : probe.storeVersion;
       }
       writeLedger(
         dataRoot,
@@ -107,6 +110,7 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
         direction: "noop",
         convertedSteps: [],
         skippedDomains: migrationPlan.skipped.map((s) => s.domainId),
+        pendingAuthorizationDomains: [],
         preservations: listPreservations(dataRoot),
       };
     }
@@ -115,16 +119,13 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
     initJournal(dataRoot, migrationPlan);
 
     const executedSteps = [];
+    const pendingAuthorizationDomains = [];
     const domainVersions = {};
 
     // Populate baseline domain versions from probe
-    for (const def of DOMAIN_DEFINITIONS) {
-      const codec = getCodec(def.domainId);
-      try {
-        domainVersions[def.domainId] = codec.probe(dataRoot).version;
-      } catch {
-        domainVersions[def.domainId] = 0;
-      }
+    const baseline = probeAllDomains(dataRoot);
+    for (const [domainId, probe] of Object.entries(baseline)) {
+      domainVersions[domainId] = probe.effectiveVersion !== undefined ? probe.effectiveVersion : probe.storeVersion;
     }
 
     // Execute planned steps
@@ -134,10 +135,24 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
 
       const codec = getCodec(domainId);
       let stepResult;
-      if (direction === "forward") {
-        stepResult = codec.forward(dataRoot, fromVersion, toVersion);
-      } else {
-        stepResult = codec.reverse(dataRoot, fromVersion, toVersion);
+      try {
+        if (direction === "forward") {
+          stepResult = codec.forward(dataRoot, fromVersion, toVersion);
+        } else {
+          stepResult = codec.reverse(dataRoot, fromVersion, toVersion);
+        }
+      } catch (err) {
+        if (err && err.code === "migration_authorization_required") {
+          // Protected domains (platform credential custody) keep their
+          // current marker/store untouched and are reported like the native
+          // admission boundary reports pending_authorization_domain_ids.
+          markStepPending(dataRoot, domainId, "migration_authorization_required");
+          if (!pendingAuthorizationDomains.includes(domainId)) {
+            pendingAuthorizationDomains.push(domainId);
+          }
+          continue;
+        }
+        throw err;
       }
 
       // Verify postcondition on actual storage
@@ -176,6 +191,7 @@ export function convert(dataRoot, targetProfileOrVersion = "latest", options = {
       direction: migrationPlan.direction,
       convertedSteps: executedSteps,
       skippedDomains: migrationPlan.skipped.map((s) => s.domainId),
+      pendingAuthorizationDomains,
       preservations: listPreservations(dataRoot),
     };
   });

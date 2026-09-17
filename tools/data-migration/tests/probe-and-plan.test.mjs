@@ -80,3 +80,16 @@ test("plan computes reverse steps from current root to legacy v0.1.0", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("plan refuses to convert stores the probe rejects as unsupported", () => {
+  const root = createTempRoot();
+  try {
+    // An unversioned workspace manifest is unsupported shape (CurrentOnly),
+    // never a legacy v0 document to be stamped.
+    writeJsonAtomicSync(path.join(root, ".licoup-workspace.json"), { name: "corrupt" });
+    assert.throws(() => plan(root, "v0.3.0"), /unsupported_state_shape/);
+    assert.throws(() => plan(root, "v0.1.0"), /unsupported_state_shape/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

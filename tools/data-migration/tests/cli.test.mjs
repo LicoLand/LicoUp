@@ -52,6 +52,7 @@ test("cli plan and convert execute migration via command line", () => {
     assert.equal(convertRes.status, 0);
     const convertParsed = JSON.parse(convertRes.stdout);
     assert.equal(convertParsed.status, "success");
+    assert.ok(convertParsed.pendingAuthorizationDomains.includes("gateway-credential-custody"));
 
     const inspectRes = runCli(["inspect", "--data-root", root]);
     assert.equal(inspectRes.status, 0);
