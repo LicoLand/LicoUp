@@ -163,23 +163,45 @@ pub(crate) fn restamp_proposal(
 }
 
 /// Admitted ordinary-continuity settlement. A typed envelope still unwraps
-/// its proposal. Any other nonempty terminal text is a host abstain; bare
-/// proposal JSON is not Goal acceptance.
+/// its proposal. Any other nonempty terminal text is an ordinary completed
+/// proposal, not an abstain. Bare proposal JSON or natural prose preserves
+/// original boundaries and effect without dropping continuity.
 pub(crate) fn proposal_from_assistant_turn_response(
     assembly: &AssemblySnapshot,
     output: &str,
 ) -> Result<ContinuityInterpretationProposal, ContinuityFailure> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(abstain_proposal(assembly));
+    }
     match published_terminal_envelope(output) {
-        Some((_, proposal)) => match serde_json::from_str(&proposal) {
-            Ok(proposal) => restamp_proposal(assembly, proposal),
-            Err(_) => Ok(abstain_proposal(assembly)),
-        },
-        None => Ok(abstain_proposal(assembly)),
+        Some((_, proposal_str)) => {
+            match serde_json::from_str::<ContinuityInterpretationProposal>(&proposal_str) {
+                Ok(proposal) => {
+                    if proposal
+                        .commitment_proposals
+                        .iter()
+                        .any(|c| c.expected_result == "abstain")
+                        && proposal
+                            .uncertainty_reasons
+                            .iter()
+                            .any(|r| r == "untyped-assistant-reply")
+                    {
+                        Ok(ordinary_assistant_proposal(assembly))
+                    } else {
+                        restamp_proposal(assembly, proposal)
+                    }
+                }
+                Err(_) => Ok(ordinary_assistant_proposal(assembly)),
+            }
+        }
+        None => Ok(ordinary_assistant_proposal(assembly)),
     }
 }
 
-/// Parse a structured Agent result. An executed turn with no typed proposal
-/// abstains; it is not treated as transport-unavailable.
+/// Parse a structured Agent result. An executed turn with nonempty text or
+/// ordinary prose produces an ordinary completed proposal, not an abstain.
+/// Empty output abstains.
 pub(crate) fn proposal_from_turn_output(
     assembly: &AssemblySnapshot,
     output: &str,
@@ -191,17 +213,23 @@ pub(crate) fn proposal_from_turn_output(
     let parsed = serde_json::from_str::<Value>(trimmed)
         .ok()
         .or_else(|| extract_embedded_json(trimmed));
-    let Some(value) = parsed else {
-        return Ok(abstain_proposal(assembly));
-    };
-    let candidate = value
-        .get("interpretationProposal")
-        .cloned()
-        .unwrap_or(value);
-    match serde_json::from_value::<ContinuityInterpretationProposal>(candidate) {
-        Ok(proposal) => restamp_proposal(assembly, proposal),
-        Err(_) => Ok(abstain_proposal(assembly)),
+    if let Some(value) = parsed {
+        let candidate = value
+            .get("interpretationProposal")
+            .cloned()
+            .unwrap_or(value);
+        if let Ok(proposal) = serde_json::from_value::<ContinuityInterpretationProposal>(candidate)
+        {
+            if !proposal
+                .uncertainty_reasons
+                .iter()
+                .any(|r| r == "untyped-assistant-reply")
+            {
+                return restamp_proposal(assembly, proposal);
+            }
+        }
     }
+    Ok(ordinary_assistant_proposal(assembly))
 }
 
 fn extract_embedded_json(output: &str) -> Option<Value> {
@@ -469,6 +497,67 @@ fn read_request_proposal(
     }
 }
 
+pub(crate) fn ordinary_assistant_proposal(
+    assembly: &AssemblySnapshot,
+) -> ContinuityInterpretationProposal {
+    let (matter_id, subject) = if let Some(id) = assembly
+        .records
+        .iter()
+        .find(|r| r.is_current_input)
+        .and_then(|r| r.matter_id.clone())
+        .or_else(|| assembly.records.iter().find_map(|r| r.matter_id.clone()))
+    {
+        (id, ContinuityMatterSubject::Existing)
+    } else {
+        ("matter:ordinary".into(), ContinuityMatterSubject::Unresolved)
+    };
+    let source_ref = assembly
+        .input_refs
+        .first()
+        .cloned()
+        .or_else(|| assembly.records.first().map(|r| r.source.clone()))
+        .unwrap_or_else(|| fallback_source_ref(&assembly.invocation_id));
+    let association = ContinuityMatterAssociation {
+        matter_id: matter_id.clone(),
+        source_ref,
+        association_revision: 1,
+        proposed_by: assembly.request.recipient_membership_id.clone(),
+        reason_code: "assistant-reply".into(),
+        supersedes: None,
+    };
+    let commitment = ContinuityCommitmentProposal {
+        matter_id: Some(matter_id),
+        subject,
+        expected_result: "reply".into(),
+        criteria: Vec::new(),
+        create_goal: false,
+    };
+    ContinuityInterpretationProposal {
+        envelope: envelope_from(assembly),
+        matter_associations: vec![association],
+        speech_act: ContinuitySpeechAct::Exploration,
+        commitment_proposals: vec![commitment],
+        agreement_proposals: Vec::new(),
+        capability_needs: Vec::new(),
+        uncertainty_reasons: Vec::new(),
+        requested_reads: Vec::new(),
+        task_child_admission: None,
+    }
+}
+
+fn fallback_source_ref(id: &str) -> ContinuitySourceRef {
+    ContinuitySourceRef {
+        owner_kind: licoup_conversation::continuity::ContinuitySourceOwnerKind::Event,
+        opaque_id: id.to_owned(),
+        part_id: None,
+        span: None,
+        source_revision: 1,
+        digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
+        visibility_scope: licoup_conversation::continuity::ContinuityVisibilityScope::Conversation,
+        validity: licoup_conversation::continuity::ContinuitySourceValidity::Current,
+    }
+}
+
 fn unique(values: Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     for value in values {
@@ -477,4 +566,112 @@ fn unique(values: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::runtime::proposal_has_business_effect;
+    use licoup_conversation::continuity::{
+        ContinuityAssistantTurnResponse, ContinuityContextCompositionRequest,
+        ContinuityVisibilityScope,
+    };
+
+    fn test_assembly() -> AssemblySnapshot {
+        let source = fallback_source_ref("event:user-msg");
+        AssemblySnapshot {
+            invocation_id: "test-invocation".into(),
+            conversation_id: "test-conversation".into(),
+            request: ContinuityContextCompositionRequest {
+                conversation_id: "test-conversation".into(),
+                recipient_membership_id: "member:assistant".into(),
+                authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
+                revocation_generation: 0,
+                after: None,
+                limit: 100,
+            },
+            records: vec![ContextRecord {
+                conversation_id: "test-conversation".into(),
+                matter_id: Some("matter:test".into()),
+                class: InformationClass::ConversationFact,
+                source: source.clone(),
+                agreement: None,
+                membership_id: Some("member:user".into()),
+                recency: 1,
+                entities: Vec::new(),
+                text_bytes: 10,
+                explicit_refs: Vec::new(),
+                conversation_level: false,
+                is_current_input: true,
+                is_malicious_data: false,
+                is_summary: false,
+                is_worker_or_turn_exit: false,
+                is_mcp_return: false,
+            }],
+            input_refs: vec![source],
+            retrieved_reads: Vec::new(),
+            replay_key: "replay-key".into(),
+            observed_revision: 1,
+            designation_epoch: 1,
+        }
+    }
+
+    #[test]
+    fn ordinary_assistant_prose_produces_business_effect_proposal() {
+        let assembly = test_assembly();
+        let prose = "I investigated the code and fixed the issue.";
+        let proposal = proposal_from_turn_output(&assembly, prose).unwrap();
+        assert!(proposal_has_business_effect(&proposal));
+        assert_eq!(proposal.matter_associations.len(), 1);
+        assert_eq!(proposal.matter_associations[0].matter_id, "matter:test");
+        assert_eq!(proposal.commitment_proposals[0].expected_result, "reply");
+        assert!(proposal.uncertainty_reasons.is_empty());
+
+        let assistant_turn = proposal_from_assistant_turn_response(&assembly, prose).unwrap();
+        assert!(proposal_has_business_effect(&assistant_turn));
+        assert_eq!(assistant_turn.matter_associations.len(), 1);
+        assert_eq!(assistant_turn.commitment_proposals[0].expected_result, "reply");
+    }
+
+    #[test]
+    fn json_looking_text_or_missing_end_markers_produces_ordinary_proposal() {
+        let assembly = test_assembly();
+        // JSON-looking text that is not a valid proposal
+        let json_text = r#"{"status": "in_progress", "details": {"steps": [1, 2, 3]}}"#;
+        let proposal = proposal_from_turn_output(&assembly, json_text).unwrap();
+        assert!(proposal_has_business_effect(&proposal));
+        assert_eq!(proposal.commitment_proposals[0].expected_result, "reply");
+
+        // Missing markdown end markers
+        let unclosed = "Here is the result:\n```json\n{\"foo\": \"bar\"";
+        let proposal2 = proposal_from_assistant_turn_response(&assembly, unclosed).unwrap();
+        assert!(proposal_has_business_effect(&proposal2));
+        assert_eq!(proposal2.commitment_proposals[0].expected_result, "reply");
+    }
+
+    #[test]
+    fn empty_or_whitespace_output_abstains() {
+        let assembly = test_assembly();
+        let empty_output = proposal_from_turn_output(&assembly, "").unwrap();
+        assert!(!proposal_has_business_effect(&empty_output));
+        assert_eq!(empty_output.commitment_proposals[0].expected_result, "abstain");
+
+        let whitespace = proposal_from_assistant_turn_response(&assembly, "   \n\t  ").unwrap();
+        assert!(!proposal_has_business_effect(&whitespace));
+        assert_eq!(whitespace.commitment_proposals[0].expected_result, "abstain");
+    }
+
+    #[test]
+    fn valid_typed_envelope_is_preserved_and_restamped() {
+        let assembly = test_assembly();
+        let inner = ordinary_assistant_proposal(&assembly);
+        let envelope = ContinuityAssistantTurnResponse {
+            reply_text: "Here is the answer".into(),
+            interpretation_proposal: inner,
+        };
+        let serialized = serde_json::to_string(&envelope).unwrap();
+        let proposal = proposal_from_assistant_turn_response(&assembly, &serialized).unwrap();
+        assert!(proposal_has_business_effect(&proposal));
+        assert_eq!(proposal.envelope.conversation_id, "test-conversation");
+    }
 }
