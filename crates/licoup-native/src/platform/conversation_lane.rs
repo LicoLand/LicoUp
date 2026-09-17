@@ -1062,9 +1062,10 @@ pub fn dispatch_lane_operation(
 }
 
 /// L5 is the sole terminal decision point. Missing or zero `timeoutMs` uses
-/// the writable policy default. Only `timeoutUnbounded` keeps the turn
-/// without a deadline. The lower L4 compatibility default is therefore never
-/// observable through the Conversation lane unless the caller asked for it.
+/// the writable policy, whose default is unbounded (0); a resolved zero is
+/// forwarded as `timeoutUnbounded` so no lower layer reintroduces a deadline.
+/// Finite deadlines come only from an explicit caller value or a configured
+/// policy entry.
 fn send_and_settle(params: &Value) -> std::result::Result<Value, RuntimeAdapterError> {
     let resolved_timeout = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
         .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;

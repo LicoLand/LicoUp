@@ -526,9 +526,10 @@ impl WorkContextRuntime {
             }
         }
         if let Some(ref session_key) = conflict_key {
-            let session_busy = inner.writers.values().any(|claim| {
-                claim.conflict_key.as_deref() == Some(session_key.as_str())
-            });
+            let session_busy = inner
+                .writers
+                .values()
+                .any(|claim| claim.conflict_key.as_deref() == Some(session_key.as_str()));
             if session_busy {
                 inner.safe_log.push(SafeReason::WriterBusy);
                 if policy == ParallelPolicy::HonestQueue {
