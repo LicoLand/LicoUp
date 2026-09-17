@@ -199,6 +199,58 @@ fn codex_catalog_rejects_unrecognized_state_schema_and_falls_back_to_rollouts() 
 }
 
 #[test]
+fn codex_catalog_accepts_state_threads_without_optional_display_columns() {
+    let home = temp_dir("codex-catalog-narrow-state-schema");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let session_id = "019f0000-0000-7000-8000-0000000000f7";
+    let rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{session_id}.jsonl"));
+    fs::write(
+        &rollout,
+        codex_rollout_fixture(session_id, "Prompt", "Reply"),
+    )
+    .unwrap();
+
+    let now = now_epoch_seconds();
+    let connection = Connection::open(home.join(".codex/state_5.sqlite")).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE threads (
+                id TEXT PRIMARY KEY,
+                rollout_path TEXT,
+                created_at INTEGER,
+                updated_at INTEGER
+            )",
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO threads(id, rollout_path, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            (session_id, rollout.to_string_lossy().as_ref(), now - 1, now),
+        )
+        .unwrap();
+    drop(connection);
+
+    let listed = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(&home),
+        "limit": 20
+    }))
+    .unwrap();
+
+    assert_eq!(session_ids(&listed), vec![session_id.to_string()]);
+    assert_eq!(listed["sessions"][0]["model"], Value::Null);
+    assert!(
+        listed["sessions"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "Reply")
+    );
+}
+
+#[test]
 fn codex_catalog_leaves_archived_rollouts_out_of_browse_lists() {
     let home = temp_dir("codex-catalog-archived-excluded");
     let archived_dir = home.join(".codex/archived_sessions");
