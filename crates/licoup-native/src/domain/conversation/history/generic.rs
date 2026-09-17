@@ -19,7 +19,10 @@ pub(crate) fn parse_jsonl_sessions(
 ) -> Vec<Value> {
     let mut grouped = Vec::<JsonlSessionAccumulator>::new();
     let mut indexes = HashMap::<String, usize>::new();
-    let _ = scan_config;
+    let requested_session_id = scan_config.single_session_id();
+    let delegated_lineage = matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode)
+        .then(|| super::delegated_transcripts::delegated_transcript_lineage(path))
+        .flatten();
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(_) => return Vec::new(),
@@ -29,7 +32,16 @@ pub(crate) fn parse_jsonl_sessions(
         let Ok(line) = line else {
             return Vec::new();
         };
-        push_jsonl_record(adapter, path, index, &line, &mut grouped, &mut indexes);
+        push_jsonl_record(
+            adapter,
+            path,
+            index,
+            &line,
+            requested_session_id,
+            delegated_lineage.as_ref(),
+            &mut grouped,
+            &mut indexes,
+        );
     }
     grouped
         .into_iter()
@@ -158,6 +170,8 @@ fn push_jsonl_record(
     path: &Path,
     index: usize,
     line: &str,
+    requested_session_id: Option<&str>,
+    delegated_lineage: Option<&(String, String)>,
     grouped: &mut Vec<JsonlSessionAccumulator>,
     indexes: &mut HashMap<String, usize>,
 ) {
@@ -169,6 +183,13 @@ fn push_jsonl_record(
         let Some(session_id) = native_session_id_or_layout(adapter, &value, path) else {
             return;
         };
+        if requested_session_id.is_some_and(|requested| {
+            requested != session_id
+                && delegated_lineage
+                    .is_none_or(|(task, owner)| task != requested && owner != requested)
+        }) {
+            return;
+        }
         let group_index = match indexes.get(&session_id).copied() {
             Some(group_index) => group_index,
             None => {
@@ -219,6 +240,7 @@ pub(crate) fn parse_json_sessions(
     path: &Path,
     source_kind: &str,
     metadata: &fs::Metadata,
+    scan_config: HistoryScanConfig,
 ) -> Vec<Value> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
@@ -228,18 +250,31 @@ pub(crate) fn parse_json_sessions(
         Ok(value) => value,
         Err(_) => return Vec::new(),
     };
-    let sessions = collect_explicit_json_sessions(adapter, path, metadata, source_kind, &value);
+    let sessions = collect_explicit_json_sessions(
+        adapter,
+        path,
+        metadata,
+        source_kind,
+        &value,
+        scan_config.single_session_id(),
+    );
     if !sessions.is_empty() {
         return sessions;
+    }
+    let Some(native_session_id) = native_session_id_or_layout(adapter, &value, path) else {
+        return Vec::new();
+    };
+    if scan_config
+        .single_session_id()
+        .is_some_and(|requested| requested != native_session_id)
+    {
+        return Vec::new();
     }
     let mut messages = Vec::<Value>::new();
     collect_messages_from_value(adapter, path, &value, &mut messages);
     if messages.is_empty() {
         return Vec::new();
     }
-    let Some(native_session_id) = native_session_id_or_layout(adapter, &value, path) else {
-        return Vec::new();
-    };
     vec![session_from_messages_with_title(
         adapter,
         path,
@@ -291,6 +326,7 @@ pub(super) fn collect_explicit_json_sessions(
     metadata: &fs::Metadata,
     source_kind: &str,
     value: &Value,
+    requested_session_id: Option<&str>,
 ) -> Vec<Value> {
     let Some(object) = value.as_object() else {
         return Vec::new();
@@ -301,11 +337,6 @@ pub(super) fn collect_explicit_json_sessions(
             continue;
         };
         for (index, item) in items.iter().enumerate() {
-            let mut messages = Vec::<Value>::new();
-            collect_messages_from_value(adapter, path, item, &mut messages);
-            if messages.is_empty() && adapter != HistoryAdapter::Copilot {
-                continue;
-            }
             let native_session_id = if adapter == HistoryAdapter::Copilot {
                 crate::domain::conversation::snapshot_identity::extract_native_session_id(item)
             } else {
@@ -317,6 +348,14 @@ pub(super) fn collect_explicit_json_sessions(
             }) else {
                 continue;
             };
+            if requested_session_id.is_some_and(|requested| requested != native_session_id) {
+                continue;
+            }
+            let mut messages = Vec::<Value>::new();
+            collect_messages_from_value(adapter, path, item, &mut messages);
+            if messages.is_empty() && adapter != HistoryAdapter::Copilot {
+                continue;
+            }
             sessions.push(session_from_messages_with_title(
                 adapter,
                 path,
