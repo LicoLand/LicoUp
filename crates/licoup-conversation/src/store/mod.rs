@@ -177,6 +177,23 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
             ON subagent_mcp_inbound(
               conversation_id, caller_membership_id, target_membership_id, created_at, id
             );
+          CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
+            claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
+            state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
+            terminal_state TEXT,
+            payload TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            admitted_turn_id TEXT,
+            PRIMARY KEY (claim_id, kind)
+          );
+          CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
+            ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
          CREATE TABLE IF NOT EXISTS migration_provenance (
            source_kind TEXT NOT NULL, source_identity TEXT NOT NULL,
            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -3341,6 +3358,7 @@ impl ConversationStore {
                     params![conversation_id],
                 )?;
                 for table in [
+                    "subagent_dispatch_deliveries",
                     "subagent_dispatch_claims",
                     "conversation_dispatches",
                     "runtime_bindings",
@@ -3814,6 +3832,25 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         "subagent_dispatch_claims",
         "watchdog_deadline_unix_ms",
         "INTEGER",
+    )?;
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
+           claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
+           kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
+           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+           recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
+           state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
+           terminal_state TEXT,
+           payload TEXT,
+           attempt_count INTEGER NOT NULL DEFAULT 0,
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL,
+           delivered_at INTEGER,
+           admitted_turn_id TEXT,
+           PRIMARY KEY (claim_id, kind)
+         );
+         CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
+           ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);",
     )?;
     ensure_search_index(connection)?;
     let version: String = connection.query_row(
@@ -5602,6 +5639,12 @@ fn delete_conversation_events(
         "DELETE FROM direct_turns WHERE conversation_id=?1",
         params![conversation_id],
     )?;
+    if table_exists(connection, "subagent_dispatch_deliveries")? {
+        connection.execute(
+            "DELETE FROM subagent_dispatch_deliveries WHERE conversation_id=?1",
+            params![conversation_id],
+        )?;
+    }
     if table_exists(connection, "subagent_dispatch_claims")? {
         connection.execute(
             "DELETE FROM subagent_dispatch_claims WHERE conversation_id=?1",
