@@ -39,7 +39,9 @@ pub(crate) enum StdioRpcMethod {
         request: ClientStateSetRequest,
         portable_data_dir: Option<PathBuf>,
     },
-    Shutdown,
+    Shutdown {
+        params: Value,
+    },
 }
 
 #[derive(Debug)]
