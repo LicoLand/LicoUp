@@ -557,55 +557,10 @@ pub fn enqueue_wake(
     wake: &ContinuityWake,
     conversation_id: &str,
 ) -> Result<bool, ContinuityFailure> {
-    // Check if there is already an unconsumed wake for this goal in the conversation.
-    // Notifications may coalesce into one wake; original events must not be merged away.
-    // Duplicate notifications do not create a second logical delivery.
-    let existing_wake: Option<(String, String)> = unit
-        .query_row(
-            "SELECT logical_wake_id, payload FROM continuity_outbox
-             WHERE conversation_id=?1 AND goal_id=?2 AND consumed_at IS NULL
-             ORDER BY created_at ASC LIMIT 1",
-            [conversation_id, &wake.goal_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(sql_failure)?;
-
-    if let Some((existing_id, existing_payload)) = existing_wake {
-        if existing_id == wake.logical_wake_id {
-            // Duplicate notification: idempotent, no second logical delivery created
-            return Ok(false);
-        }
-        let mut existing: ContinuityWake = decode_json(&existing_payload)?;
-        let mut modified = false;
-        for ref_item in &wake.cause_refs {
-            if !existing.cause_refs.contains(ref_item) {
-                existing.cause_refs.push(ref_item.clone());
-                modified = true;
-            }
-        }
-        match (existing.due_at, wake.due_at) {
-            (Some(e_due), Some(w_due)) if w_due < e_due => {
-                existing.due_at = Some(w_due);
-                modified = true;
-            }
-            (None, Some(w_due)) => {
-                existing.due_at = Some(w_due);
-                modified = true;
-            }
-            _ => {}
-        }
-        if modified {
-            unit.execute(
-                "UPDATE continuity_outbox SET payload=?2
-                 WHERE logical_wake_id=?1 AND consumed_at IS NULL",
-                rusqlite::params![existing_id, encode_json(&existing)?],
-            )
-            .map_err(sql_failure)?;
-        }
-        return Ok(false);
-    }
-
+    // Distinct logical wakes stay distinct rows: original events are never
+    // merged away at enqueue. Consumption coalesces same-goal wakes into one
+    // logical advancement; a duplicate notification (same logical wake id) is
+    // idempotent and does not create a second logical delivery.
     let changed = unit
         .execute(
             "INSERT OR IGNORE INTO continuity_outbox(
@@ -622,7 +577,6 @@ pub fn enqueue_wake(
         .map_err(sql_failure)?;
     Ok(changed > 0)
 }
-
 
 pub fn consume_wake(
     unit: &ContinuityUnitOfWork<'_>,
