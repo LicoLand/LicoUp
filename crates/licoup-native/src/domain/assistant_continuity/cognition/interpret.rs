@@ -509,7 +509,10 @@ pub(crate) fn ordinary_assistant_proposal(
     {
         (id, ContinuityMatterSubject::Existing)
     } else {
-        ("matter:ordinary".into(), ContinuityMatterSubject::Unresolved)
+        (
+            "matter:ordinary".into(),
+            ContinuityMatterSubject::Unresolved,
+        )
     };
     let source_ref = assembly
         .input_refs
@@ -570,8 +573,8 @@ fn unique(values: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::runtime::proposal_has_business_effect;
+    use super::*;
     use licoup_conversation::continuity::{
         ContinuityAssistantTurnResponse, ContinuityContextCompositionRequest,
         ContinuityVisibilityScope,
@@ -630,7 +633,10 @@ mod tests {
         let assistant_turn = proposal_from_assistant_turn_response(&assembly, prose).unwrap();
         assert!(proposal_has_business_effect(&assistant_turn));
         assert_eq!(assistant_turn.matter_associations.len(), 1);
-        assert_eq!(assistant_turn.commitment_proposals[0].expected_result, "reply");
+        assert_eq!(
+            assistant_turn.commitment_proposals[0].expected_result,
+            "reply"
+        );
     }
 
     #[test]
@@ -654,11 +660,17 @@ mod tests {
         let assembly = test_assembly();
         let empty_output = proposal_from_turn_output(&assembly, "").unwrap();
         assert!(!proposal_has_business_effect(&empty_output));
-        assert_eq!(empty_output.commitment_proposals[0].expected_result, "abstain");
+        assert_eq!(
+            empty_output.commitment_proposals[0].expected_result,
+            "abstain"
+        );
 
         let whitespace = proposal_from_assistant_turn_response(&assembly, "   \n\t  ").unwrap();
         assert!(!proposal_has_business_effect(&whitespace));
-        assert_eq!(whitespace.commitment_proposals[0].expected_result, "abstain");
+        assert_eq!(
+            whitespace.commitment_proposals[0].expected_result,
+            "abstain"
+        );
     }
 
     #[test]
