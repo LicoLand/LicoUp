@@ -25,6 +25,29 @@ pub enum OperationGrant {
     ReadScope { graph_id: String },
 }
 
+impl OperationGrant {
+    /// Whether this held grant covers the required grant.
+    pub fn covers(&self, required: &OperationGrant) -> bool {
+        if self == required {
+            return true;
+        }
+        match self {
+            Self::GraphAll => true,
+            Self::GraphControl { graph_id } => match required {
+                OperationGrant::NodeControl {
+                    graph_id: required_graph,
+                    ..
+                }
+                | OperationGrant::ReadScope {
+                    graph_id: required_graph,
+                } => graph_id == required_graph,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+}
+
 /// Verified principal constructing an internal, non-serializable proof of authority.
 ///
 /// Notice: `VerifiedPrincipal` deliberately does NOT implement `Deserialize`.
@@ -102,35 +125,24 @@ impl VerifiedPrincipal {
         matches!(self, Self::LocalAdmin { .. })
     }
 
+    /// Held grants that cover the required grant.
+    ///
+    /// A local administrator's authority is implicit rather than grant-based,
+    /// so this returns an empty set for it even though [`Self::has_grant`]
+    /// reports true.
+    pub fn covering_grants<'a>(&'a self, required: &OperationGrant) -> Vec<&'a OperationGrant> {
+        match self {
+            Self::LocalAdmin { .. } => Vec::new(),
+            Self::LocalUser { grants, .. } | Self::PeerSession { grants, .. } => grants
+                .iter()
+                .filter(|grant| grant.covers(required))
+                .collect(),
+        }
+    }
+
     /// Check if this principal holds the requested grant.
     pub fn has_grant(&self, required: &OperationGrant) -> bool {
-        if self.is_local_admin() {
-            return true;
-        }
-        let grants = match self {
-            Self::LocalAdmin { .. } => return true,
-            Self::LocalUser { grants, .. } => grants,
-            Self::PeerSession { grants, .. } => grants,
-        };
-        if grants.contains(&OperationGrant::GraphAll) {
-            return true;
-        }
-        if grants.contains(required) {
-            return true;
-        }
-        match required {
-            OperationGrant::NodeControl { graph_id, .. } => {
-                grants.contains(&OperationGrant::GraphControl {
-                    graph_id: graph_id.clone(),
-                })
-            }
-            OperationGrant::ReadScope { graph_id } => {
-                grants.contains(&OperationGrant::GraphControl {
-                    graph_id: graph_id.clone(),
-                })
-            }
-            _ => false,
-        }
+        self.is_local_admin() || !self.covering_grants(required).is_empty()
     }
 }
 
@@ -475,9 +487,13 @@ pub trait ControlledStore: Send + Sync {
     fn find_idempotency_record(&self, request_id: &str) -> Option<(AdmissionReceipt, String)>;
 
     /// Durably commit an admitted command to the queue.
+    ///
+    /// The store assigns the monotonically increasing admission sequence on the
+    /// receipt, persists the admitted control revision of the target node, and
+    /// records the stop/pause negotiation facts implied by the operation.
     fn record_admission(
         &mut self,
-        receipt: AdmissionReceipt,
+        receipt: &mut AdmissionReceipt,
         payload_digest: String,
     ) -> Result<(), AdmissionConflict>;
 }
@@ -625,24 +641,56 @@ impl ControlledStore for InMemoryControlledStore {
 
     fn record_admission(
         &mut self,
-        receipt: AdmissionReceipt,
+        receipt: &mut AdmissionReceipt,
         payload_digest: String,
     ) -> Result<(), AdmissionConflict> {
+        receipt.admitted_sequence = self.next_sequence;
+        self.next_sequence += 1;
+
+        // Persist the admitted control revision so a competing exclusive
+        // control based on the previous revision conflicts.
+        if let Some(node) = &receipt.target_node_id {
+            self.node_control_revisions.insert(
+                (receipt.graph_id.clone(), node.clone()),
+                receipt.control_revision,
+            );
+        }
+
+        match &receipt.operation {
+            // Record stop-requested at the admitted scope. Invocation-scoped
+            // stops use a node/invocation key so sibling invocations of the
+            // same node are not fenced.
+            ControlOperation::Stop { scope, .. } => {
+                let target_str = match scope {
+                    ControlScope::Graph => "graph".to_string(),
+                    ControlScope::Node(n) => n.clone(),
+                    ControlScope::Invocation {
+                        node_id,
+                        invocation_id,
+                    } => format!("{}/{}", node_id, invocation_id),
+                };
+                self.stop_requested_targets
+                    .insert((receipt.graph_id.clone(), target_str));
+            }
+            // An admitted pause is under negotiation until the safe boundary
+            // is observed and the negotiation marker is cleared.
+            ControlOperation::Pause { scope } => {
+                let target_str = match scope {
+                    ControlScope::Graph => "graph".to_string(),
+                    ControlScope::Node(n) => n.clone(),
+                    ControlScope::Invocation { node_id, .. } => node_id.clone(),
+                };
+                self.pause_negotiating_targets
+                    .insert((receipt.graph_id.clone(), target_str));
+            }
+            _ => {}
+        }
+
         self.idempotency_log.insert(
             receipt.request_id.clone(),
             (receipt.clone(), payload_digest),
         );
-        // If operation is a Stop command, mark target as stop requested
-        if let ControlOperation::Stop { scope, .. } = &receipt.operation {
-            let target_str = match scope {
-                ControlScope::Graph => "graph".to_string(),
-                ControlScope::Node(n) => n.clone(),
-                ControlScope::Invocation { node_id, .. } => node_id.clone(),
-            };
-            self.stop_requested_targets
-                .insert((receipt.graph_id.clone(), target_str));
-        }
-        self.admitted_queue.push(receipt);
+        self.admitted_queue.push(receipt.clone());
         Ok(())
     }
 }
@@ -666,6 +714,24 @@ impl<S: ControlledStore> InterventionProxy<S> {
         &mut self.store
     }
 
+    /// Authorization effective at use: the principal holds at least one grant
+    /// covering the requirement that has not been revoked. A local
+    /// administrator's authority is implicit and not grant-revocable here.
+    fn has_effective_grant(
+        &self,
+        principal: &VerifiedPrincipal,
+        required: &OperationGrant,
+    ) -> bool {
+        if principal.is_local_admin() {
+            return true;
+        }
+        let principal_id = principal.principal_id();
+        principal
+            .covering_grants(required)
+            .into_iter()
+            .any(|grant| !self.store.is_grant_revoked(&principal_id, grant))
+    }
+
     /// Admit an operation through the Proxy into the queue.
     pub fn admit(
         &mut self,
@@ -686,7 +752,7 @@ impl<S: ControlledStore> InterventionProxy<S> {
                 reason: "principal does not hold required grant".to_string(),
             });
         }
-        if self.store.is_grant_revoked(&principal_id, &required_grant) {
+        if !self.has_effective_grant(principal, &required_grant) {
             return Err(AdmissionConflict::PermissionDenied {
                 principal_id,
                 graph_id: request.graph_id,
@@ -734,18 +800,46 @@ impl<S: ControlledStore> InterventionProxy<S> {
             ControlOperation::Steer { .. } => target_node.unwrap_or("unknown").to_string(),
             _ => target_node.unwrap_or("graph").to_string(),
         };
-
-        if self
+        // Invocation-scoped stops are recorded under a node/invocation key so
+        // stopping one invocation does not fence sibling invocations of the node.
+        let invocation_scope_str = match &request.operation {
+            ControlOperation::Steer { invocation_id, .. } => {
+                target_node.map(|node| format!("{}/{}", node, invocation_id))
+            }
+            ControlOperation::Resume {
+                scope:
+                    ControlScope::Invocation {
+                        node_id,
+                        invocation_id,
+                    },
+            } => Some(format!("{}/{}", node_id, invocation_id)),
+            _ => None,
+        };
+        let stopped_target = if self
             .store
             .is_stop_requested(&request.graph_id, &target_scope_str)
         {
-            match request.operation {
+            Some(target_scope_str.clone())
+        } else {
+            invocation_scope_str.filter(|key| self.store.is_stop_requested(&request.graph_id, key))
+        };
+
+        if let Some(target) = stopped_target {
+            match &request.operation {
                 ControlOperation::Steer { .. } | ControlOperation::Resume { .. } => {
                     return Err(AdmissionConflict::StopMonotonicViolation {
-                        target: target_scope_str,
+                        target,
                         reason:
                             "stop-requested is monotonic; later steer or resume cannot resurrect it"
                                 .to_string(),
+                    });
+                }
+                // Stop-requested prevents new work in the scope; a new task
+                // needs its own identity and an admitting scope.
+                ControlOperation::SubmitTask { .. } => {
+                    return Err(AdmissionConflict::StopMonotonicViolation {
+                        target,
+                        reason: "stop-requested scope does not admit new work".to_string(),
                     });
                 }
                 _ => {}
@@ -833,8 +927,9 @@ impl<S: ControlledStore> InterventionProxy<S> {
 
         // 10. Durable receipt creation & commit
         let next_control_rev = current_control_rev + 1;
-        let receipt = AdmissionReceipt {
-            admitted_sequence: 0, // Assigned by store or sequence counter
+        let mut receipt = AdmissionReceipt {
+            // Assigned from the store's durable sequence counter at commit.
+            admitted_sequence: 0,
             request_id: request.request_id,
             graph_id: request.graph_id,
             target_node_id: request.target_node_id,
@@ -846,8 +941,7 @@ impl<S: ControlledStore> InterventionProxy<S> {
             is_replay: false,
         };
 
-        self.store
-            .record_admission(receipt.clone(), payload_digest)?;
+        self.store.record_admission(&mut receipt, payload_digest)?;
         Ok(receipt)
     }
 
@@ -868,10 +962,7 @@ impl<S: ControlledStore> InterventionProxy<S> {
                 reason: "principal does not have read grant for this graph".to_string(),
             });
         }
-        if self
-            .store
-            .is_grant_revoked(&principal.principal_id(), &read_grant)
-        {
+        if !self.has_effective_grant(principal, &read_grant) {
             return Err(AdmissionConflict::PermissionDenied {
                 principal_id: principal.principal_id(),
                 graph_id: graph_id.to_string(),
@@ -893,10 +984,7 @@ impl<S: ControlledStore> InterventionProxy<S> {
                 let read_grant = OperationGrant::ReadScope {
                     graph_id: receipt.graph_id.clone(),
                 };
-                principal.has_grant(&read_grant)
-                    && !self
-                        .store
-                        .is_grant_revoked(&principal.principal_id(), &read_grant)
+                self.has_effective_grant(principal, &read_grant)
             })
             .cloned()
             .collect()
@@ -1446,5 +1534,304 @@ mod tests {
             proxy.filter_admitted_receipts(&authorized_user, &[receipt1.clone(), receipt2]);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].graph_id, graph_id);
+    }
+
+    #[test]
+    fn test_admission_assigns_monotonic_sequences() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let admin = VerifiedPrincipal::local_admin("admin-seq");
+
+        let make_submit = |request_id: &str| AdmissionRequest {
+            request_id: request_id.to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::SubmitTask {
+                input: json!({"task": request_id}),
+            },
+            timestamp_unix_ms: 1000,
+        };
+
+        let receipt1 = proxy
+            .admit(&admin, make_submit("req-seq-1"))
+            .expect("first");
+        let receipt2 = proxy
+            .admit(&admin, make_submit("req-seq-2"))
+            .expect("second");
+        assert_eq!(receipt1.admitted_sequence, 1);
+        assert_eq!(receipt2.admitted_sequence, 2);
+
+        // A replay returns the originally assigned sequence.
+        let replay = proxy
+            .admit(&admin, make_submit("req-seq-1"))
+            .expect("replay");
+        assert!(replay.is_replay);
+        assert_eq!(replay.admitted_sequence, receipt1.admitted_sequence);
+    }
+
+    #[test]
+    fn test_admitted_control_revision_advances_and_stale_competitor_conflicts() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let admin = VerifiedPrincipal::local_admin("admin-cas");
+
+        let make_pause = |request_id: &str, expected: Option<u64>| AdmissionRequest {
+            request_id: request_id.to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: expected,
+            expected_target_generation: None,
+            operation: ControlOperation::Pause {
+                scope: ControlScope::Node("node-1".to_string()),
+            },
+            timestamp_unix_ms: 1000,
+        };
+
+        // The first matching control revision is admitted and advances the revision.
+        let first = proxy
+            .admit(&admin, make_pause("req-cas-1", Some(0)))
+            .expect("first admitted");
+        assert_eq!(first.control_revision, 1);
+
+        // A competing exclusive control based on the stale revision conflicts.
+        match proxy.admit(&admin, make_pause("req-cas-2", Some(0))) {
+            Err(AdmissionConflict::ControlRevisionConflict {
+                expected, current, ..
+            }) => {
+                assert_eq!(expected, 0);
+                assert_eq!(current, 1);
+            }
+            other => panic!("expected ControlRevisionConflict, got {:?}", other),
+        }
+
+        // A control rebased on the advanced revision is admitted.
+        let rebased = proxy
+            .admit(&admin, make_pause("req-cas-3", Some(1)))
+            .expect("rebased admitted");
+        assert_eq!(rebased.control_revision, 2);
+    }
+
+    #[test]
+    fn test_revocation_of_covering_grant_takes_effect_at_use() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let user = VerifiedPrincipal::local_user(
+            "dana",
+            "sess-dana",
+            vec![OperationGrant::GraphControl {
+                graph_id: graph_id.clone(),
+            }],
+        );
+
+        let steer_req = |request_id: &str| AdmissionRequest {
+            request_id: request_id.to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Steer {
+                invocation_id: "inv-1".to_string(),
+                instruction: "adjust".to_string(),
+                follow_up: false,
+            },
+            timestamp_unix_ms: 1000,
+        };
+
+        // A covering grant admits operations requiring a narrower grant.
+        proxy
+            .admit(&user, steer_req("req-cover-1"))
+            .expect("covering grant admits");
+
+        // Revoking the held covering grant denies use, even though the narrower
+        // required grant was never individually revoked.
+        proxy.store_mut().revoke_grant(
+            user.principal_id(),
+            OperationGrant::GraphControl {
+                graph_id: graph_id.clone(),
+            },
+        );
+        let result = proxy.admit(&user, steer_req("req-cover-2"));
+        assert!(matches!(
+            result,
+            Err(AdmissionConflict::PermissionDenied { .. })
+        ));
+
+        // A principal holding two covering grants remains authorized through
+        // the surviving grant when only one of them is revoked.
+        let dual = VerifiedPrincipal::local_user(
+            "erin",
+            "sess-erin",
+            vec![
+                OperationGrant::GraphControl {
+                    graph_id: graph_id.clone(),
+                },
+                OperationGrant::NodeControl {
+                    graph_id: graph_id.clone(),
+                    node_id: "node-1".to_string(),
+                },
+            ],
+        );
+        proxy.store_mut().revoke_grant(
+            dual.principal_id(),
+            OperationGrant::NodeControl {
+                graph_id: graph_id.clone(),
+                node_id: "node-1".to_string(),
+            },
+        );
+        proxy
+            .admit(&dual, steer_req("req-cover-3"))
+            .expect("surviving covering grant still authorizes");
+    }
+
+    #[test]
+    fn test_stop_requested_scope_blocks_new_task_submission() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let admin = VerifiedPrincipal::local_admin("admin-stop");
+
+        // An admitted node-scope stop records the stop-requested fact.
+        let stop_req = AdmissionRequest {
+            request_id: "req-stop-node".to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Stop {
+                scope: ControlScope::Node("node-1".to_string()),
+                reason: "obsolete".to_string(),
+            },
+            timestamp_unix_ms: 1000,
+        };
+        proxy.admit(&admin, stop_req).expect("stop admitted");
+
+        let make_submit = |request_id: &str, node: &str| AdmissionRequest {
+            request_id: request_id.to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some(node.to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::SubmitTask {
+                input: json!({"task": request_id}),
+            },
+            timestamp_unix_ms: 1100,
+        };
+
+        // New work in the stop-requested scope is rejected.
+        match proxy.admit(&admin, make_submit("req-submit-stopped", "node-1")) {
+            Err(AdmissionConflict::StopMonotonicViolation { target, .. }) => {
+                assert_eq!(target, "node-1");
+            }
+            other => panic!("expected StopMonotonicViolation, got {:?}", other),
+        }
+
+        // A sibling node scope still admits new work.
+        proxy
+            .admit(&admin, make_submit("req-submit-sibling", "node-2"))
+            .expect("sibling scope admits new work");
+    }
+
+    #[test]
+    fn test_invocation_scoped_stop_does_not_fence_sibling_invocations() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let admin = VerifiedPrincipal::local_admin("admin-inv-stop");
+
+        let stop_inv = AdmissionRequest {
+            request_id: "req-stop-inv".to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Stop {
+                scope: ControlScope::Invocation {
+                    node_id: "node-1".to_string(),
+                    invocation_id: "inv-1".to_string(),
+                },
+                reason: "cancel one".to_string(),
+            },
+            timestamp_unix_ms: 1000,
+        };
+        proxy
+            .admit(&admin, stop_inv)
+            .expect("invocation stop admitted");
+
+        let make_steer = |request_id: &str, invocation_id: &str| AdmissionRequest {
+            request_id: request_id.to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Steer {
+                invocation_id: invocation_id.to_string(),
+                instruction: "adjust".to_string(),
+                follow_up: false,
+            },
+            timestamp_unix_ms: 1100,
+        };
+
+        // Steer on the stopped invocation cannot resurrect it.
+        match proxy.admit(&admin, make_steer("req-steer-stopped", "inv-1")) {
+            Err(AdmissionConflict::StopMonotonicViolation { target, .. }) => {
+                assert_eq!(target, "node-1/inv-1");
+            }
+            other => panic!("expected StopMonotonicViolation, got {:?}", other),
+        }
+
+        // A sibling invocation on the same node remains steerable.
+        proxy
+            .admit(&admin, make_steer("req-steer-sibling", "inv-2"))
+            .expect("sibling invocation remains steerable");
+    }
+
+    #[test]
+    fn test_pause_admission_marks_negotiation_until_cleared() {
+        let (mut proxy, graph_id) = setup_proxy();
+        let admin = VerifiedPrincipal::local_admin("admin-pause");
+
+        let pause_req = AdmissionRequest {
+            request_id: "req-pause-mark".to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Pause {
+                scope: ControlScope::Node("node-1".to_string()),
+            },
+            timestamp_unix_ms: 1000,
+        };
+        proxy.admit(&admin, pause_req).expect("pause admitted");
+        assert!(proxy.store().is_pause_negotiating(&graph_id, "node-1"));
+
+        let resume_req = AdmissionRequest {
+            request_id: "req-resume-mark".to_string(),
+            graph_id: graph_id.clone(),
+            target_node_id: Some("node-1".to_string()),
+            expected_graph_revision: None,
+            expected_control_revision: None,
+            expected_target_generation: None,
+            operation: ControlOperation::Resume {
+                scope: ControlScope::Node("node-1".to_string()),
+            },
+            timestamp_unix_ms: 1100,
+        };
+        match proxy.admit(&admin, resume_req.clone()) {
+            Err(AdmissionConflict::PendingTransition { target, .. }) => {
+                assert_eq!(target, "node-1");
+            }
+            other => panic!("expected PendingTransition, got {:?}", other),
+        }
+
+        // Once the negotiation marker clears, resume is admitted.
+        proxy
+            .store_mut()
+            .clear_pause_negotiating(&graph_id, "node-1");
+        proxy
+            .admit(&admin, resume_req)
+            .expect("resume admitted after negotiation clears");
     }
 }
