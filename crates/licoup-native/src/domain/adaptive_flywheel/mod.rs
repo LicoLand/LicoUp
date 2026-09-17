@@ -4,16 +4,24 @@
 //! immutable, reducers are pure, and every external effect is represented by
 //! a durable command before an adapter is allowed to run it.
 
+pub mod adapter;
 mod assistant;
 #[cfg(test)]
 mod conformance;
 pub mod control;
+pub mod driver;
+pub mod node;
 mod package;
 pub mod routing;
 mod service;
 mod store;
 mod strategy_types;
 
+pub use adapter::{
+    AdapterError, AdapterExecutionStatus, CancelOutcome, CooperativeDrainAdapter,
+    NodeCapabilityAdapter, NodeInvocation, PauseOutcome, ResumeOutcome,
+    SingleWriterSessionRegistry, SteerOutcome, SyntheticCapabilityAdapter,
+};
 pub use assistant::{
     ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, PreflightFailure, PreflightReceipt,
     preflight_assistant_graph,
@@ -21,6 +29,15 @@ pub use assistant::{
 pub use control::{
     AdmissionConflict, AdmissionReceipt, AdmissionRequest, ControlOperation, ControlScope,
     ControlledStore, InMemoryControlledStore, InterventionProxy, OperationGrant, VerifiedPrincipal,
+};
+pub use driver::{
+    ContinuousNodeDriver, DispatchedEffectReport, DriverError, DriverStepOutcome, GraphPauseReport,
+    GraphStopReport, PerNodePauseOutcome, PerNodeStopOutcome, ResultReentry,
+};
+pub use node::{
+    CancellationFacts, InvocationRecord, NodeExecutionError, NodeExecutionOutcome,
+    NodeExecutionReceipt, NodeFacade, NodeObservation, PauseResult, ResumeResult, SteerResult,
+    StopResult,
 };
 pub use package::{PreparedPackage, StrategyPackageImporter, synthetic_fixture_package_bytes};
 pub use routing::{
