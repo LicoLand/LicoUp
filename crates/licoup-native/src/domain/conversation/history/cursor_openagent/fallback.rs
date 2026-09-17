@@ -16,10 +16,11 @@ pub(super) fn parse_generic_sqlite_sessions(
     path: &Path,
     source_kind: &str,
     metadata: &fs::Metadata,
-    _scan_config: &HistoryScanConfig,
+    scan_config: &HistoryScanConfig,
     connection: &Connection,
 ) -> Vec<Value> {
     let mut sessions = Vec::<Value>::new();
+    let requested_session_id = scan_config.single_session_id();
     let mut table_statement = match connection
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     {
@@ -82,6 +83,9 @@ pub(super) fn parse_generic_sqlite_sessions(
             let session_id = row_key
                 .clone()
                 .unwrap_or_else(|| format!("{}:{}", table, row_index));
+            if requested_session_id.is_some_and(|requested| requested != session_id.as_str()) {
+                continue;
+            }
             let row_key_value = row_key.unwrap_or_default();
             let mut row_messages = Vec::<Value>::new();
             for (_, value) in &fields {
