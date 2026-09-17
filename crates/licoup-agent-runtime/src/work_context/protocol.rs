@@ -30,6 +30,10 @@ pub trait NativeProtocolAdapter: Send + Sync {
     fn compact(&self, key: &NativeWorkContextKey) -> ProtocolOutcome;
     fn steer(&self, request: &NativeControlRequest) -> ProtocolOutcome;
     fn cancel(&self, request: &NativeControlRequest) -> ProtocolOutcome;
+    fn session_conflict_key(&self, key: &NativeWorkContextKey) -> Option<String> {
+        let _ = key;
+        None
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +82,7 @@ pub struct HermeticProtocol {
     next_resume: Option<ProtocolOutcome>,
     next_cancel: Option<ProtocolOutcome>,
     knowledge_injected: bool,
+    session_conflict_key: Option<String>,
 }
 
 impl HermeticProtocol {
@@ -93,6 +98,7 @@ impl HermeticProtocol {
             next_resume: None,
             next_cancel: None,
             knowledge_injected: profile == CapabilityProfile::Low,
+            session_conflict_key: None,
         }
     }
 
@@ -136,6 +142,11 @@ impl HermeticProtocol {
 
     pub fn with_scripted_cancel(mut self, outcome: ProtocolOutcome) -> Self {
         self.next_cancel = Some(outcome);
+        self
+    }
+
+    pub fn with_session_conflict_key(mut self, key: impl Into<String>) -> Self {
+        self.session_conflict_key = Some(key.into());
         self
     }
 
@@ -263,5 +274,9 @@ impl NativeProtocolAdapter for HermeticProtocol {
             NativeCapabilitySupport::Supported => ProtocolOutcome::applied(self.methods().cancel),
             _ => ProtocolOutcome::failed(self.methods().cancel, super::unsupported_capability()),
         }
+    }
+
+    fn session_conflict_key(&self, _key: &NativeWorkContextKey) -> Option<String> {
+        self.session_conflict_key.clone()
     }
 }
