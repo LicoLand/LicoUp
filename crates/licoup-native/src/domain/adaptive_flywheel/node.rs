@@ -286,8 +286,14 @@ impl NodeFacade {
             attempt_token: attempt_token.clone(),
         };
 
-        // Start invocation in adapter
-        self.adapter.start_invocation(&invocation)?;
+        // Start invocation in adapter. A failed start must not strand the
+        // single-writer reservation acquired above.
+        if let Err(error) = self.adapter.start_invocation(&invocation) {
+            if let (Some(session_id), Some(registry)) = (&self.session_id, &self.session_registry) {
+                registry.release_writer(session_id, &self.node_id);
+            }
+            return Err(error.into());
+        }
 
         self.active_invocation = Some(invocation.clone());
         self.lifecycle_state = NodeLifecycleState::Running;
@@ -316,6 +322,9 @@ impl NodeFacade {
         instruction: &str,
         follow_up: bool,
     ) -> Result<SteerResult, NodeExecutionError> {
+        if self.stop_requested || self.lifecycle_state.is_stop_requested() {
+            return Err(NodeExecutionError::StopRequestedMonotonic);
+        }
         if !self.capabilities.contains(&NodeCapability::Steer) {
             return Err(NodeExecutionError::CapabilityUnsupported(
                 NodeCapability::Steer,
@@ -375,6 +384,9 @@ impl NodeFacade {
     /// In-flight work may suspend if supported, or drain to safe boundary.
     /// Never fakes pause by killing processes.
     pub fn pause(&mut self) -> Result<PauseResult, NodeExecutionError> {
+        if self.stop_requested || self.lifecycle_state.is_stop_requested() {
+            return Err(NodeExecutionError::StopRequestedMonotonic);
+        }
         if !self.capabilities.contains(&NodeCapability::Pause) {
             return Err(NodeExecutionError::CapabilityUnsupported(
                 NodeCapability::Pause,
@@ -423,6 +435,9 @@ impl NodeFacade {
 
     /// Resume a paused or waiting node.
     pub fn resume(&mut self) -> Result<ResumeResult, NodeExecutionError> {
+        if self.stop_requested || self.lifecycle_state.is_stop_requested() {
+            return Err(NodeExecutionError::StopRequestedMonotonic);
+        }
         if !self.capabilities.contains(&NodeCapability::Resume) {
             return Err(NodeExecutionError::CapabilityUnsupported(
                 NodeCapability::Resume,
@@ -588,7 +603,16 @@ impl NodeFacade {
 
         // Determine resulting lifecycle state
         if self.stop_requested {
-            self.lifecycle_state = NodeLifecycleState::Stopped;
+            let work_stopped = match &outcome {
+                NodeExecutionOutcome::Cancelled { acknowledged } => *acknowledged,
+                NodeExecutionOutcome::Suspended { .. } => false,
+                NodeExecutionOutcome::Success { .. } | NodeExecutionOutcome::Failure { .. } => true,
+            };
+            self.lifecycle_state = if work_stopped {
+                NodeLifecycleState::Stopped
+            } else {
+                NodeLifecycleState::StopRequested
+            };
         } else if self.lifecycle_state == NodeLifecycleState::PauseRequested {
             // Reached safe boundary upon invocation completion
             self.lifecycle_state = NodeLifecycleState::Paused;
@@ -636,9 +660,84 @@ impl NodeFacade {
 mod tests {
     use super::*;
     use crate::domain::adaptive_flywheel::adapter::{
-        CooperativeDrainAdapter, SyntheticCapabilityAdapter,
+        AdapterExecutionStatus, CooperativeDrainAdapter, SyntheticCapabilityAdapter,
     };
     use serde_json::json;
+    use std::collections::BTreeSet;
+
+    struct StartFailingAdapter;
+
+    impl NodeCapabilityAdapter for StartFailingAdapter {
+        fn adapter_identity(&self) -> &str {
+            "start-fails"
+        }
+
+        fn declared_capabilities(&self) -> BTreeSet<NodeCapability> {
+            [NodeCapability::Submit, NodeCapability::Stop]
+                .into_iter()
+                .collect()
+        }
+
+        fn supports_inflight_steer(&self) -> bool {
+            false
+        }
+
+        fn supports_inflight_pause(&self) -> bool {
+            false
+        }
+
+        fn supports_cooperative_cancel(&self) -> bool {
+            false
+        }
+
+        fn start_invocation(&self, _invocation: &NodeInvocation) -> Result<(), AdapterError> {
+            Err(AdapterError::BackendError("start failed".to_string()))
+        }
+
+        fn steer_invocation(
+            &self,
+            invocation_id: &str,
+            _instruction: &str,
+        ) -> Result<SteerOutcome, AdapterError> {
+            Err(AdapterError::InvocationNotFound(invocation_id.to_string()))
+        }
+
+        fn pause_invocation(&self, invocation_id: &str) -> Result<PauseOutcome, AdapterError> {
+            Err(AdapterError::InvocationNotFound(invocation_id.to_string()))
+        }
+
+        fn resume_invocation(&self, invocation_id: &str) -> Result<ResumeOutcome, AdapterError> {
+            Err(AdapterError::InvocationNotFound(invocation_id.to_string()))
+        }
+
+        fn cancel_invocation(&self, invocation_id: &str) -> Result<CancelOutcome, AdapterError> {
+            Err(AdapterError::InvocationNotFound(invocation_id.to_string()))
+        }
+
+        fn poll_status(&self, invocation_id: &str) -> Result<AdapterExecutionStatus, AdapterError> {
+            Err(AdapterError::InvocationNotFound(invocation_id.to_string()))
+        }
+    }
+
+    #[test]
+    fn test_node_facade_failed_start_releases_session_writer() {
+        let registry = SingleWriterSessionRegistry::new();
+        let mut facade = NodeFacade::new(
+            "node-start-fails",
+            "graph-1",
+            1,
+            "worker",
+            Arc::new(StartFailingAdapter),
+            Some("session-1".to_string()),
+            Some(registry.clone()),
+        );
+
+        let principal = VerifiedPrincipal::local_admin("admin-1");
+        assert!(facade.submit(json!({"work": true}), &principal, 1).is_err());
+        assert_eq!(registry.current_writer("session-1"), None);
+        assert_eq!(facade.lifecycle_state, NodeLifecycleState::Ready);
+        assert!(facade.active_invocation.is_none());
+    }
 
     #[test]
     fn test_node_facade_submit_lifecycle_transition() {
@@ -772,6 +871,8 @@ mod tests {
         // Case 1: Acknowledged cooperative cancel
         let ack_adapter = Arc::new(
             SyntheticCapabilityAdapter::new("ack-adapter")
+                .with_inflight_steer(true)
+                .with_inflight_pause(true)
                 .with_forced_cancel_outcome(CancelOutcome::Acknowledged),
         );
         let mut facade_ack =
@@ -782,11 +883,23 @@ mod tests {
         let stop_ack = facade_ack.stop("graceful shutdown").unwrap();
         assert!(matches!(stop_ack, StopResult::Stopped));
         assert_eq!(facade_ack.lifecycle_state, NodeLifecycleState::Stopped);
-        let facts = facade_ack.cancellation_facts.unwrap();
+        let facts = facade_ack.cancellation_facts.clone().unwrap();
         assert!(facts.requested);
         assert!(facts.acknowledged);
         assert!(!facts.effect_unknown);
         assert_eq!(facts.reason, "graceful shutdown");
+        assert!(matches!(
+            facade_ack.steer("settled", "late", false),
+            Err(NodeExecutionError::StopRequestedMonotonic)
+        ));
+        assert!(matches!(
+            facade_ack.pause(),
+            Err(NodeExecutionError::StopRequestedMonotonic)
+        ));
+        assert!(matches!(
+            facade_ack.resume(),
+            Err(NodeExecutionError::StopRequestedMonotonic)
+        ));
 
         // Case 2: Effect unknown cancellation
         let unk_adapter = Arc::new(
@@ -810,11 +923,21 @@ mod tests {
             facade_unk.lifecycle_state,
             NodeLifecycleState::StopRequested
         );
-        let unk_facts = facade_unk.cancellation_facts.unwrap();
+        let unk_facts = facade_unk.cancellation_facts.clone().unwrap();
         assert!(unk_facts.requested);
         assert!(!unk_facts.acknowledged);
         assert!(unk_facts.effect_unknown);
         assert_eq!(unk_facts.reason, "timeout awaiting cancellation ack");
+
+        let receipt = facade_unk
+            .settle_invocation_completion(
+                NodeExecutionOutcome::Cancelled {
+                    acknowledged: false,
+                },
+                2,
+            )
+            .unwrap();
+        assert_eq!(receipt.resulting_state, NodeLifecycleState::StopRequested);
     }
 
     #[test]
