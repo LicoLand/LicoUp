@@ -92,6 +92,8 @@ export const FLUTTER_MODULES = Object.freeze([
       summary: "Pure Application signals, independent shell planes, complete semantic Bindings, isolated renderers, composition wiring, and causal frame telemetry",
       inputs: [
         "packages/presentation_contract/**",
+        "packages/presentation_runtime/**",
+        "packages/presentation_flutter/**",
         "apps/desktop/lib/app.dart",
         "apps/desktop/lib/src/presentation/**",
         "apps/desktop/lib/src/projections/**",

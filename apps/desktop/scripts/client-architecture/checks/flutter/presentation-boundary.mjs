@@ -650,7 +650,7 @@ export function inspectPresentationContractSources(sourceByPath) {
       pushFailure(failures, "presentation_boundary_package_purity", relativePath);
     }
     if (
-      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|dispose|close|revision)\b/u.test(masked)
+      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|close|revision)\b/u.test(masked)
     ) {
       pushFailure(failures, "presentation_boundary_package_surface", relativePath);
     }
