@@ -14,7 +14,12 @@ export function plan(dataRoot, targetProfileOrVersion = "latest") {
   let hasReverse = false;
 
   for (const [domainId, probeResult] of Object.entries(observed)) {
-    const currentVersion = probeResult.storeVersion;
+    if (probeResult.error) {
+      // Never plan conversions over a store the probe rejected; the native
+      // admission boundary fails the same shapes as unsupported_state_shape.
+      throw new Error(`unsupported_state_shape: probe failed for ${domainId}: ${probeResult.error}`);
+    }
+    const currentVersion = probeResult.effectiveVersion !== undefined ? probeResult.effectiveVersion : probeResult.storeVersion;
     const targetVersion = target.domains[domainId] !== undefined ? target.domains[domainId] : 0;
     const def = getDomainDefinition(domainId);
 
@@ -51,22 +56,23 @@ export function plan(dataRoot, targetProfileOrVersion = "latest") {
       let cursor = currentVersion;
       while (cursor > targetVersion) {
         const edge = def.reverseSteps?.find((s) => s.fromSchemaVersion === cursor);
-        const stepId = edge ? edge.stepId : `${domainId}.${cursor}-to-${cursor - 1}`;
-        const nextVersion = edge ? edge.toSchemaVersion : cursor - 1;
+        if (!edge) {
+          throw new Error(`migration_frontier_incomplete: missing reverse edge for ${domainId} from ${cursor}`);
+        }
         steps.push({
           domainId,
           direction: "reverse",
           fromVersion: cursor,
-          toVersion: nextVersion,
-          stepId,
+          toVersion: edge.toSchemaVersion,
+          stepId: edge.stepId,
         });
         preservationsPlanned.push({
           domainId,
           fromVersion: cursor,
-          toVersion: nextVersion,
-          note: `Preserve ${domainId} records/metadata not expressible in schema ${nextVersion}`,
+          toVersion: edge.toSchemaVersion,
+          note: `Preserve ${domainId} records/metadata not expressible in schema ${edge.toSchemaVersion}`,
         });
-        cursor = nextVersion;
+        cursor = edge.toSchemaVersion;
       }
     }
   }

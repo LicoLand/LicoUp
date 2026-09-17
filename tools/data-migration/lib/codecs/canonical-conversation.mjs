@@ -72,6 +72,17 @@ export function probe(dataRoot) {
     return { version: 0, present: legacyPresent };
   }
 
+  // A database without a readable schema version is unsupported shape, not a
+  // legacy store (mirrors probe_sqlite_meta on the native side).
+  const sqliteVer = readSqliteSchemaVersion(dbPath);
+  if (sqliteVer === null) {
+    throw new Error(`unsupported_state_shape: schema_meta unreadable in ${DOMAIN_ID}`);
+  }
+  const numeric = parseInt(sqliteVer, 10);
+  if (!isNaN(numeric) && numeric > parseInt(CURRENT_SQLITE_SCHEMA_VERSION, 10)) {
+    throw new Error(`state_newer_than_binary in ${DOMAIN_ID}`);
+  }
+
   if (!markerPresent) {
     return { version: 0, present: true };
   }
@@ -81,15 +92,9 @@ export function probe(dataRoot) {
     throw new Error(`unsupported_state_shape: completion marker content mismatch in ${DOMAIN_ID}`);
   }
 
-  const sqliteVer = readSqliteSchemaVersion(dbPath);
-  if (sqliteVer !== null) {
-    const numeric = parseInt(sqliteVer, 10);
-    if (!isNaN(numeric) && numeric >= 5) {
-      return { version: 1, present: true, sqliteVersion: sqliteVer };
-    }
-  }
-
-  return { version: 0, present: true };
+  // The completion marker is authoritative for the domain version; the inner
+  // SQLite schema advances through in-store upgrades owned by the client.
+  return { version: 1, present: true, sqliteVersion: sqliteVer };
 }
 
 export function forward(dataRoot, fromVer, toVer) {

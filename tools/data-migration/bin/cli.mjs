@@ -7,7 +7,14 @@ import { plan } from "../lib/plan.mjs";
 import { convert } from "../lib/convert.mjs";
 import { resume } from "../lib/resume.mjs";
 import { buildPackageArtifact } from "../lib/package-manifest.mjs";
-import { PUBLISHED_FORMAT_PROFILES } from "../lib/catalog.mjs";
+
+function readOptionValue(argv, i, flag) {
+  const value = argv[i + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`Missing value for ${flag}`);
+  }
+  return value;
+}
 
 function printUsage() {
   console.log(`
@@ -57,16 +64,22 @@ function parseArgs(argv) {
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg === "--data-root") {
-      args.dataRoot = argv[++i];
+      args.dataRoot = readOptionValue(argv, i, arg); i++;
     } else if (arg === "--target") {
-      args.target = argv[++i];
+      args.target = readOptionValue(argv, i, arg); i++;
     } else if (arg === "--format") {
-      args.format = argv[++i];
+      args.format = readOptionValue(argv, i, arg); i++;
     } else if (arg === "--out-dir") {
-      args.outDir = argv[++i];
+      args.outDir = readOptionValue(argv, i, arg); i++;
     } else if (!arg.startsWith("--")) {
       positional.push(arg);
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
     }
+  }
+
+  if (args.format !== "json" && args.format !== "text") {
+    throw new Error(`Unknown format: "${args.format}" (expected json or text)`);
   }
 
   args.command = positional[0] || null;
@@ -151,12 +164,26 @@ function formatTextConvert(result) {
     }
   }
 
+  if (result.pendingAuthorizationDomains && result.pendingAuthorizationDomains.length > 0) {
+    lines.push("");
+    lines.push(`Pending Authorization (${result.pendingAuthorizationDomains.length}):`);
+    for (const d of result.pendingAuthorizationDomains) {
+      lines.push(`  * ${d}: requires the platform credential custody bridge; store left untouched`);
+    }
+  }
+
   return lines.join("\n");
 }
 
 function main() {
   const argv = process.argv.slice(2);
-  const args = parseArgs(argv);
+  let args;
+  try {
+    args = parseArgs(argv);
+  } catch (err) {
+    console.error(`Error: ${err.message}. Run 'licoup-migrate --help' for usage.`);
+    process.exit(1);
+  }
 
   if (args.help || (!args.command && !args.version)) {
     printUsage();
@@ -211,6 +238,11 @@ function main() {
           if (result.resumedSteps) {
             for (const s of result.resumedSteps) {
               console.log(`  * ${s.domainId}: ${s.status} (v${s.version})`);
+            }
+          }
+          if (result.pendingAuthorizationDomains) {
+            for (const d of result.pendingAuthorizationDomains) {
+              console.log(`  * ${d}: pending authorization (platform credential custody bridge)`);
             }
           }
         }

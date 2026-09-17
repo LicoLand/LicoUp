@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import fsp from "node:fs/promises";
 import path from "node:path";
 
 export const MAX_JSON_BYTES = 16 * 1024 * 1024;

@@ -51,6 +51,32 @@ export function probeAllDomains(dataRoot) {
     }
 
     const markerVersion = readMarker(dataRoot, domainId);
+
+    // Effective authoritative version mirrors probe_domain on the native
+    // side: a present store wins; an absent store falls back to the marker;
+    // a legacy (version 0) store conflicts with an advanced marker.
+    let effectiveVersion = 0;
+    let conflict = null;
+    if (storeProbe.error) {
+      conflict = storeProbe.error;
+    } else if (storeProbe.version > def.targetSchemaVersion) {
+      conflict = `state_newer_than_binary: ${domainId} store version ${storeProbe.version}`;
+    } else if (storeProbe.version > 0) {
+      if (markerVersion !== null && markerVersion > storeProbe.version) {
+        conflict = `unsupported_state_shape: ${domainId} marker v${markerVersion} ahead of store v${storeProbe.version}`;
+      } else {
+        effectiveVersion = storeProbe.version;
+      }
+    } else if (storeProbe.present) {
+      if (markerVersion !== null && markerVersion > 0) {
+        conflict = `unsupported_state_shape: ${domainId} legacy store conflicts with marker v${markerVersion}`;
+      } else {
+        effectiveVersion = 0;
+      }
+    } else {
+      effectiveVersion = markerVersion !== null ? markerVersion : 0;
+    }
+
     results[domainId] = {
       domainId,
       durability: def.durability,
@@ -58,8 +84,9 @@ export function probeAllDomains(dataRoot) {
       storeVersion: storeProbe.version,
       storePresent: storeProbe.present,
       markerVersion: markerVersion,
+      effectiveVersion,
       pendingAuthorization: Boolean(storeProbe.pendingAuthorization),
-      error: storeProbe.error || null,
+      error: conflict,
     };
   }
   return results;

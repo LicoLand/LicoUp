@@ -48,11 +48,11 @@ test("Rust native client admits state upgraded by independent migration tool", (
       },
     });
     writeJsonAtomicSync(path.join(stateDir, "agent-tab-order.json"), ["test-agent"]);
-    writeJsonAtomicSync(path.join(root, ".licoup-workspace.json"), { name: "test-compat" });
 
     // 1. Upgrade state with independent tool
     const result = convert(root, "0.0.1-alpha");
     assert.equal(result.status, "success");
+    assert.ok(result.pendingAuthorizationDomains.includes("gateway-credential-custody"));
 
     // 2. Invoke native Rust CLI: licoup-cli state admit <data-root>
     const proc = spawnSync(nativeCli, ["state", "admit", root], {

@@ -5,7 +5,6 @@ import {
   readJsonSync,
   isRegularFileSync,
 } from "../fs-atomic.mjs";
-import { savePreservation, loadPreservation, clearPreservation } from "../preservation.mjs";
 
 const DOMAIN_ID = "client-state";
 const STATE_SCHEMA_VERSION = "v0.0.1:schema:definition-1";
