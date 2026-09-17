@@ -1,13 +1,13 @@
 //! TASK-02-002 focused acceptance. Synthetic ids only.
 
 use licoup_conversation::continuity::{
-    ContextCompositionPort, ContinuityAgreement, ContinuityAgreementOrigin,
-    ContinuityAgreementProposal, ContinuityAgreementScope, ContinuityCommitBasis,
-    ContinuityContextCompositionRequest, ContinuityContextTransition, ContinuityFailureCode,
-    ContinuityFollowThroughKind, ContinuityInterpretationProposal, ContinuityMatterSubject,
-    ContinuityParentContextGrant, ContinuityParentGrantStatus, ContinuitySourceOwnerKind,
-    ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct, ContinuityUtf8ByteSpan,
-    ContinuityVisibilityScope, DiscoveredKnowledgePort, InterpretationPort,
+    CONTINUITY_MAX_ORIENTATION_ITEMS, ContextCompositionPort, ContinuityAgreement,
+    ContinuityAgreementOrigin, ContinuityAgreementProposal, ContinuityAgreementScope,
+    ContinuityCommitBasis, ContinuityContextCompositionRequest, ContinuityContextTransition,
+    ContinuityFailureCode, ContinuityFollowThroughKind, ContinuityInterpretationProposal,
+    ContinuityMatterSubject, ContinuityParentContextGrant, ContinuityParentGrantStatus,
+    ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
+    ContinuityUtf8ByteSpan, ContinuityVisibilityScope, DiscoveredKnowledgePort, InterpretationPort,
 };
 use licoup_native::domain::assistant_continuity::cognition::{
     ContextRecord, InformationClass, KnowledgeDiscoveryDescriptor, ScriptedAgent, SemanticScript,
@@ -645,18 +645,14 @@ fn revocation_and_scope_shrink_invalidate_manifest() {
     let store = FrozenContextStore::new();
     seed_basis(&store, "conversation:child-a", 2);
     store.set_recipient_revocation("conversation:child-a", "membership:child-coordinator", 0);
-    let mut parent_event = source(
+    let parent_base = source(
         ContinuitySourceOwnerKind::Event,
         "event:parent-span",
         2,
         13,
         ContinuityVisibilityScope::Conversation,
     );
-    parent_event.owner_kind = ContinuitySourceOwnerKind::Span;
-    parent_event.span = Some(ContinuityUtf8ByteSpan {
-        start_byte: 0,
-        end_byte: 20,
-    });
+    let parent_event = spanned(parent_base.clone(), 0, 20);
     let child_input = source(
         ContinuitySourceOwnerKind::Event,
         "event:child-now",
@@ -678,7 +674,7 @@ fn revocation_and_scope_shrink_invalidate_manifest() {
         "conversation:parent",
         None,
         InformationClass::ConversationFact,
-        parent_event.clone(),
+        parent_base,
         1,
     ));
     store.insert_grant(ContinuityParentContextGrant {
@@ -1421,5 +1417,406 @@ fn sibling_requested_read_is_denied_and_lost_binding_rehydrates() {
     assert_eq!(
         lost.context_transition,
         ContinuityContextTransition::Rehydrate
+    );
+}
+
+#[test]
+fn requested_scopes_and_full_source_identity_bound_reads() {
+    let store = FrozenContextStore::new();
+    seed_basis(&store, "conversation:scope", 2);
+    store.set_recipient_revocation("conversation:scope", "membership:assistant", 0);
+
+    let current_source = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:scope-now",
+        2,
+        34,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let parent_source = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:matter-only",
+        2,
+        35,
+        ContinuityVisibilityScope::Matter,
+    );
+    let local_matter_source = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:local-matter-only",
+        2,
+        81,
+        ContinuityVisibilityScope::Matter,
+    );
+    let mut current = record(
+        "conversation:scope",
+        None,
+        InformationClass::ConversationFact,
+        current_source,
+        2,
+    );
+    current.is_current_input = true;
+    current.explicit_refs = vec![parent_source.clone()];
+    store.insert_record(current);
+    store.insert_record(record(
+        "conversation:parent",
+        None,
+        InformationClass::ConversationFact,
+        parent_source.clone(),
+        1,
+    ));
+    store.insert_record(record(
+        "conversation:scope",
+        None,
+        InformationClass::ConversationFact,
+        local_matter_source,
+        1,
+    ));
+    store.insert_grant(ContinuityParentContextGrant {
+        grant_id: "grant:matter-only".into(),
+        source_conversation_id: "conversation:parent".into(),
+        recipient_conversation_id: "conversation:scope".into(),
+        recipient_membership_id: "membership:assistant".into(),
+        source_refs: vec![parent_source],
+        authorized_scopes: vec![ContinuityVisibilityScope::Matter],
+        status: ContinuityParentGrantStatus::Admitted,
+        request_id: "request:matter-only".into(),
+        revocation_generation: 0,
+    });
+
+    let mut restricted = request("conversation:scope", "membership:assistant", 0);
+    restricted.authorized_scopes = vec![ContinuityVisibilityScope::Conversation];
+    let (composer, _, _) = session(
+        store,
+        ScriptedAgent::new(),
+        UnavailableKnowledgeService::default(),
+    );
+    let manifest = composer.compose_authorized(&restricted).unwrap();
+    assert!(
+        manifest
+            .sources
+            .iter()
+            .any(|item| item.opaque_id == "event:matter-only")
+    );
+    assert!(
+        !manifest
+            .sources
+            .iter()
+            .any(|item| item.opaque_id == "event:local-matter-only")
+    );
+
+    let store = FrozenContextStore::new();
+    seed_basis(&store, "conversation:identity", 2);
+    let current_source = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:identity-now",
+        2,
+        36,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let stored_ref = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:identity-target",
+        2,
+        37,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let mut forged_ref = stored_ref.clone();
+    forged_ref.digest = digest(38);
+    let mut current = record(
+        "conversation:identity",
+        None,
+        InformationClass::ConversationFact,
+        current_source,
+        2,
+    );
+    current.is_current_input = true;
+    current.explicit_refs = vec![forged_ref];
+    store.insert_record(current);
+    store.insert_record(record(
+        "conversation:identity",
+        None,
+        InformationClass::ConversationFact,
+        stored_ref,
+        1,
+    ));
+    let (composer, _, _) = session(
+        store,
+        ScriptedAgent::new(),
+        UnavailableKnowledgeService::default(),
+    );
+    assert_eq!(
+        composer
+            .compose_authorized(&request("conversation:identity", "membership:assistant", 0,))
+            .unwrap_err()
+            .code,
+        ContinuityFailureCode::SourceUnavailable
+    );
+}
+
+#[test]
+fn dispatch_rechecks_basis_designation_and_acl_generation() {
+    let fixture = || {
+        let store = FrozenContextStore::new();
+        seed_basis(&store, "conversation:dispatch", 2);
+        let mut current = record(
+            "conversation:dispatch",
+            None,
+            InformationClass::ConversationFact,
+            source(
+                ContinuitySourceOwnerKind::Event,
+                "event:dispatch-now",
+                2,
+                39,
+                ContinuityVisibilityScope::Conversation,
+            ),
+            2,
+        );
+        current.is_current_input = true;
+        store.insert_record(current);
+        let (composer, _, _) = session(
+            store.clone(),
+            ScriptedAgent::new(),
+            UnavailableKnowledgeService::default(),
+        );
+        let manifest = composer
+            .compose_authorized(&request("conversation:dispatch", "membership:assistant", 0))
+            .unwrap();
+        (store, composer, manifest)
+    };
+
+    let (store, composer, manifest) = fixture();
+    store.set_commit_basis(basis("conversation:dispatch", 3));
+    assert_eq!(
+        composer.recheck_dispatch(&manifest).unwrap_err().code,
+        ContinuityFailureCode::StaleRevision
+    );
+
+    let (store, composer, manifest) = fixture();
+    let mut designation_changed = basis("conversation:dispatch", 2);
+    designation_changed.designation_epoch = 2;
+    store.set_commit_basis(designation_changed);
+    assert_eq!(
+        composer.recheck_dispatch(&manifest).unwrap_err().code,
+        ContinuityFailureCode::DesignationChanged
+    );
+
+    let (store, composer, manifest) = fixture();
+    store.set_acl_generation("conversation:dispatch", 2);
+    assert_eq!(
+        composer.recheck_dispatch(&manifest).unwrap_err().code,
+        ContinuityFailureCode::StaleRevision
+    );
+}
+
+#[test]
+fn orientation_budget_and_token_estimate_are_bounded() {
+    let store = FrozenContextStore::new();
+    seed_basis(&store, "conversation:budget", 40);
+    let mut current = record(
+        "conversation:budget",
+        None,
+        InformationClass::ConversationFact,
+        source(
+            ContinuitySourceOwnerKind::Event,
+            "event:budget-now",
+            40,
+            80,
+            ContinuityVisibilityScope::Conversation,
+        ),
+        40,
+    );
+    current.is_current_input = true;
+    current.text_bytes = u64::MAX;
+    store.insert_record(current);
+
+    for revision in 1_i64..=40 {
+        let agreement_id = format!("agreement:budget-{revision}");
+        let statement_ref = source(
+            ContinuitySourceOwnerKind::Agreement,
+            &agreement_id,
+            revision,
+            revision as u8,
+            ContinuityVisibilityScope::Conversation,
+        );
+        let mut agreement_record = record(
+            "conversation:budget",
+            None,
+            InformationClass::Agreement,
+            statement_ref.clone(),
+            revision,
+        );
+        agreement_record.text_bytes = u64::MAX;
+        agreement_record.agreement = Some(ContinuityAgreement {
+            id: agreement_id,
+            scope: ContinuityAgreementScope::Conversation,
+            statement_ref,
+            origin: ContinuityAgreementOrigin::UserExplicit,
+            effective_revision: revision,
+            supersedes: None,
+            valid_from: revision,
+            valid_until: None,
+            revocation_generation: 0,
+        });
+        store.insert_record(agreement_record);
+    }
+
+    let (composer, _, _) = session(
+        store,
+        ScriptedAgent::new(),
+        UnavailableKnowledgeService::default(),
+    );
+    let manifest = composer
+        .compose_authorized(&request("conversation:budget", "membership:assistant", 0))
+        .unwrap();
+    assert_eq!(manifest.sources.len(), CONTINUITY_MAX_ORIENTATION_ITEMS);
+    assert!(
+        manifest
+            .sources
+            .iter()
+            .any(|item| item.opaque_id == "event:budget-now")
+    );
+    assert_eq!(manifest.token_estimate, u64::MAX);
+}
+
+#[test]
+fn granted_parent_current_input_survives_orientation_budget() {
+    let store = FrozenContextStore::new();
+    seed_basis(&store, "conversation:child-feed", 2);
+    let parent_live = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:parent-live",
+        2,
+        82,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let child_input = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:child-feed-now",
+        2,
+        83,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let mut current = record(
+        "conversation:child-feed",
+        None,
+        InformationClass::ConversationFact,
+        child_input,
+        3,
+    );
+    current.is_current_input = true;
+    store.insert_record(current);
+    let mut parent_current = record(
+        "conversation:parent-feed",
+        None,
+        InformationClass::ConversationFact,
+        parent_live.clone(),
+        2,
+    );
+    parent_current.is_current_input = true;
+    store.insert_record(parent_current);
+    store.insert_grant(ContinuityParentContextGrant {
+        grant_id: "grant:parent-live".into(),
+        source_conversation_id: "conversation:parent-feed".into(),
+        recipient_conversation_id: "conversation:child-feed".into(),
+        recipient_membership_id: "membership:assistant".into(),
+        source_refs: vec![parent_live],
+        authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
+        status: ContinuityParentGrantStatus::Admitted,
+        request_id: "request:parent-live".into(),
+        revocation_generation: 0,
+    });
+    let (composer, _, _) = session(
+        store,
+        ScriptedAgent::new(),
+        UnavailableKnowledgeService::default(),
+    );
+    let manifest = composer
+        .compose_authorized(&request(
+            "conversation:child-feed",
+            "membership:assistant",
+            0,
+        ))
+        .unwrap();
+    assert!(
+        manifest
+            .sources
+            .iter()
+            .any(|item| item.opaque_id == "event:parent-live")
+    );
+}
+
+#[test]
+fn revoked_stored_source_cannot_be_projected_through_span_request() {
+    let store = FrozenContextStore::new();
+    seed_basis(&store, "conversation:child-revoke", 2);
+    let child_input = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:child-revoke-now",
+        2,
+        84,
+        ContinuityVisibilityScope::Conversation,
+    );
+    let granted_span = spanned(
+        source(
+            ContinuitySourceOwnerKind::Event,
+            "event:revoked-parent",
+            2,
+            85,
+            ContinuityVisibilityScope::Conversation,
+        ),
+        0,
+        20,
+    );
+    let mut revoked_base = source(
+        ContinuitySourceOwnerKind::Event,
+        "event:revoked-parent",
+        2,
+        85,
+        ContinuityVisibilityScope::Conversation,
+    );
+    revoked_base.validity = ContinuitySourceValidity::Revoked;
+    let mut current = record(
+        "conversation:child-revoke",
+        None,
+        InformationClass::ConversationFact,
+        child_input,
+        3,
+    );
+    current.is_current_input = true;
+    current.explicit_refs = vec![spanned(granted_span.clone(), 0, 8)];
+    store.insert_record(current);
+    store.insert_record(record(
+        "conversation:parent-revoke",
+        None,
+        InformationClass::ConversationFact,
+        revoked_base,
+        1,
+    ));
+    store.insert_grant(ContinuityParentContextGrant {
+        grant_id: "grant:revoked-span".into(),
+        source_conversation_id: "conversation:parent-revoke".into(),
+        recipient_conversation_id: "conversation:child-revoke".into(),
+        recipient_membership_id: "membership:assistant".into(),
+        source_refs: vec![granted_span],
+        authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
+        status: ContinuityParentGrantStatus::Admitted,
+        request_id: "request:revoked-span".into(),
+        revocation_generation: 0,
+    });
+    let (composer, _, _) = session(
+        store,
+        ScriptedAgent::new(),
+        UnavailableKnowledgeService::default(),
+    );
+    assert_eq!(
+        composer
+            .compose_authorized(&request(
+                "conversation:child-revoke",
+                "membership:assistant",
+                0,
+            ))
+            .unwrap_err()
+            .code,
+        ContinuityFailureCode::SourceRevoked
     );
 }
