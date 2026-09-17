@@ -4,8 +4,10 @@
 use super::error::store_to_continuity;
 use super::generated::ContinuityFailure;
 use crate::store::{ContinuityUnitOfWork, StoreResult};
+use anyhow::anyhow;
 
 pub const CONTINUITY_SCHEMA_VERSION: &str = "7";
+const CURRENT_CONTINUITY_SCHEMA_VERSION: u32 = 7;
 
 const STATEMENTS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS continuity_schema (
@@ -209,9 +211,14 @@ pub fn ensure_continuity_schema(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<
         Err(error) if is_missing_table(&error) => None,
         Err(error) => return Err(error.into()),
     };
-    if current.as_deref() == Some(CONTINUITY_SCHEMA_VERSION) {
-        ensure_adoption_policy_keys(unit)?;
-        return Ok(false);
+    let current_version = current
+        .as_deref()
+        .map(parse_continuity_schema_version)
+        .transpose()?;
+    if current_version == Some(CURRENT_CONTINUITY_SCHEMA_VERSION) {
+        let mut dirty = ensure_designation_epoch(unit)?;
+        dirty |= ensure_adoption_policy_keys(unit)?;
+        return Ok(dirty);
     }
     for statement in STATEMENTS {
         unit.execute(statement, [])?;
@@ -229,16 +236,33 @@ pub fn ensure_continuity_schema(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<
     Ok(true)
 }
 
-fn ensure_adoption_policy_keys(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<()> {
-    unit.execute(
-        "INSERT OR IGNORE INTO continuity_schema(key, value) VALUES ('adoption_enabled', '1')",
-        [],
-    )?;
-    unit.execute(
-        "INSERT OR IGNORE INTO continuity_schema(key, value) VALUES ('adoption_stage', 'offline')",
-        [],
-    )?;
-    Ok(())
+fn ensure_adoption_policy_keys(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<bool> {
+    let mut dirty = false;
+    for (key, value) in [("adoption_enabled", "1"), ("adoption_stage", "offline")] {
+        let present: i64 = unit.query_row(
+            "SELECT EXISTS(SELECT 1 FROM continuity_schema WHERE key=?1)",
+            [key],
+            |row| row.get(0),
+        )?;
+        if present == 0 {
+            unit.execute(
+                "INSERT INTO continuity_schema(key, value) VALUES (?1, ?2)",
+                rusqlite::params![key, value],
+            )?;
+            dirty = true;
+        }
+    }
+    Ok(dirty)
+}
+
+fn parse_continuity_schema_version(value: &str) -> StoreResult<u32> {
+    let version = value
+        .parse::<u32>()
+        .map_err(|_| anyhow!("continuity_schema_unsupported_version"))?;
+    if version > CURRENT_CONTINUITY_SCHEMA_VERSION {
+        return Err(anyhow!("continuity_schema_unsupported_version"));
+    }
+    Ok(version)
 }
 
 fn migrate_outstanding_pending_state(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<()> {
@@ -334,17 +358,28 @@ fn ensure_designation_epoch(unit: &ContinuityUnitOfWork<'_>) -> StoreResult<bool
         )?;
         dirty = true;
     }
-    unit.execute(
-        "CREATE TRIGGER IF NOT EXISTS continuity_bump_designation_epoch
-         AFTER UPDATE OF assistant_membership_id ON conversations
-         WHEN (OLD.assistant_membership_id IS NOT NEW.assistant_membership_id)
-         BEGIN
-           UPDATE conversations
-           SET designation_epoch = designation_epoch + 1
-           WHERE id = NEW.id;
-         END",
+    let trigger_present: i64 = unit.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM sqlite_master
+           WHERE type='trigger' AND name='continuity_bump_designation_epoch'
+         )",
         [],
+        |row| row.get(0),
     )?;
+    if trigger_present == 0 {
+        unit.execute(
+            "CREATE TRIGGER continuity_bump_designation_epoch
+             AFTER UPDATE OF assistant_membership_id ON conversations
+             WHEN (OLD.assistant_membership_id IS NOT NEW.assistant_membership_id)
+             BEGIN
+               UPDATE conversations
+               SET designation_epoch = designation_epoch + 1
+               WHERE id = NEW.id;
+             END",
+            [],
+        )?;
+        dirty = true;
+    }
     Ok(dirty)
 }
 
