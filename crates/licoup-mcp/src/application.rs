@@ -201,12 +201,7 @@ impl McpApplication for SubagentMcpApplication {
                 "admission",
             ));
         }
-        let request = json!({"name":name,"arguments":arguments,"caller":{
-            "providerId":context.caller.provider_id,
-            "conversationId":context.caller.conversation_id,
-            "membershipId":context.caller.membership_id,
-            "parentDispatchId":context.caller.parent_dispatch_id,
-        }});
+        let request = cli_invocation(name, arguments, context.caller);
         // A slow inventory/admission call cannot occupy the cancellation
         // session. HTTP admission bounds the normal pool to eight sessions and
         // reserves one separate control slot. No domain scheduling lives here.
@@ -238,6 +233,35 @@ impl McpApplication for SubagentMcpApplication {
         // Native errors are already public/redacted. Preserve their exact
         // payload without interpreting or duplicating domain policy here.
         Ok(response)
+    }
+}
+
+/// Build the native CLI invocation without inventing caller scope.
+///
+/// The CLI distinguishes an omitted optional binding from an explicit JSON
+/// `null`: the former is an unscoped inventory/probe call, while the latter is
+/// malformed context. Keep that distinction across the independent-process
+/// boundary and forward every declared value unchanged.
+fn cli_invocation(name: &str, arguments: &Map<String, Value>, caller: &CallerContext) -> Value {
+    let mut scope = Map::new();
+    scope.insert("providerId".to_owned(), json!(caller.provider_id));
+    insert_optional(
+        &mut scope,
+        "conversationId",
+        caller.conversation_id.as_ref(),
+    );
+    insert_optional(&mut scope, "membershipId", caller.membership_id.as_ref());
+    insert_optional(
+        &mut scope,
+        "parentDispatchId",
+        caller.parent_dispatch_id.as_ref(),
+    );
+    json!({"name": name, "arguments": arguments, "caller": scope})
+}
+
+fn insert_optional(scope: &mut Map<String, Value>, key: &str, value: Option<&String>) {
+    if let Some(value) = value {
+        scope.insert(key.to_owned(), json!(value));
     }
 }
 
@@ -291,6 +315,51 @@ fn valid_arguments(schema: &Value, arguments: &Map<String, Value>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_invocation_omits_undeclared_scope_and_preserves_declared_context() {
+        let unscoped = CallerContext {
+            provider_id: "codex".to_owned(),
+            conversation_id: None,
+            membership_id: None,
+            parent_dispatch_id: None,
+            authenticated: true,
+        };
+        let request = cli_invocation("lico_subagents_list", &Map::new(), &unscoped);
+        assert_eq!(
+            request,
+            json!({
+                "name": "lico_subagents_list",
+                "arguments": {},
+                "caller": {"providerId": "codex"},
+            })
+        );
+
+        let scoped = CallerContext {
+            provider_id: "cursor".to_owned(),
+            conversation_id: Some("conversation:one".to_owned()),
+            membership_id: Some("membership:worker".to_owned()),
+            parent_dispatch_id: Some("dispatch:parent".to_owned()),
+            authenticated: true,
+        };
+        let request = cli_invocation(
+            "lico_subagent_delegate",
+            &Map::from_iter([("prompt".to_owned(), json!("ordinary text"))]),
+            &scoped,
+        );
+        assert_eq!(
+            request["caller"],
+            json!({
+                "providerId": "cursor",
+                "conversationId": "conversation:one",
+                "membershipId": "membership:worker",
+                "parentDispatchId": "dispatch:parent",
+            })
+        );
+        assert_eq!(request["arguments"]["prompt"], "ordinary text");
+        assert!(request["caller"].get("authenticated").is_none());
+    }
+
     #[test]
     fn only_complete_subagents_operations_are_remotely_admitted() {
         let tools = REMOTE_TOOL_NAMES
