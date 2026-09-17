@@ -26,6 +26,7 @@ struct WriterClaim {
     conversation_id: String,
     membership_id: String,
     generation: i64,
+    conflict_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -498,6 +499,7 @@ impl WorkContextRuntime {
     fn occupy_writer(&self, key: &NativeWorkContextKey) -> Result<(), NativeWorkContextFailure> {
         let policy = self.adapter.parallel_policy();
         let isolation = self.adapter.isolation();
+        let conflict_key = self.adapter.session_conflict_key(key);
         let mut inner = self.lock()?;
         if self.config.knowledge_injected && !isolation.claims_clean() {
             let occupied_other = inner.writers.values().any(|claim| {
@@ -511,6 +513,31 @@ impl WorkContextRuntime {
                     matter_id: key.matter_id.clone(),
                     conversation_id: key.conversation_id.clone(),
                 });
+                Self::record_operation(
+                    &mut inner,
+                    key,
+                    OperationKind::ClaimWriter,
+                    key.generation,
+                    None,
+                    "writer/claim",
+                    false,
+                );
+                return Err(writer_busy());
+            }
+        }
+        if let Some(ref session_key) = conflict_key {
+            let session_busy = inner.writers.values().any(|claim| {
+                claim.conflict_key.as_deref() == Some(session_key.as_str())
+            });
+            if session_busy {
+                inner.safe_log.push(SafeReason::WriterBusy);
+                if policy == ParallelPolicy::HonestQueue {
+                    inner.safe_log.push(SafeReason::Queued);
+                    inner.queue.push(QueuedMatter {
+                        matter_id: key.matter_id.clone(),
+                        conversation_id: key.conversation_id.clone(),
+                    });
+                }
                 Self::record_operation(
                     &mut inner,
                     key,
@@ -545,22 +572,35 @@ impl WorkContextRuntime {
                     );
                     return Err(writer_busy());
                 }
-                if existing.generation != key.generation
-                    && existing.matter_id == key.matter_id
-                    && existing.membership_id != key.membership_id
-                {
-                    inner.safe_log.push(SafeReason::WriterBusy);
-                    return Err(writer_busy());
-                }
+                // Same matter and conversation: already occupied, only one writer per session
+                inner.safe_log.push(SafeReason::WriterBusy);
+                Self::record_operation(
+                    &mut inner,
+                    key,
+                    OperationKind::ClaimWriter,
+                    key.generation,
+                    None,
+                    "writer/claim",
+                    false,
+                );
+                return Err(writer_busy());
             }
         } else {
             for claim in inner.writers.values() {
                 if claim.matter_id == key.matter_id
                     && claim.conversation_id == key.conversation_id
                     && claim.membership_id == key.membership_id
-                    && claim.generation == key.generation
                 {
                     inner.safe_log.push(SafeReason::WriterBusy);
+                    Self::record_operation(
+                        &mut inner,
+                        key,
+                        OperationKind::ClaimWriter,
+                        key.generation,
+                        None,
+                        "writer/claim",
+                        false,
+                    );
                     return Err(writer_busy());
                 }
             }
@@ -573,6 +613,7 @@ impl WorkContextRuntime {
                 conversation_id: key.conversation_id.clone(),
                 membership_id: key.membership_id.clone(),
                 generation: key.generation,
+                conflict_key,
             },
         );
         Self::record_operation(
