@@ -173,7 +173,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
             outcome TEXT NOT NULL,
             created_at INTEGER NOT NULL
           );
-              CREATE INDEX IF NOT EXISTS subagent_mcp_inbound_edge_idx
+          CREATE INDEX IF NOT EXISTS subagent_mcp_inbound_edge_idx
             ON subagent_mcp_inbound(
               conversation_id, caller_membership_id, target_membership_id, created_at, id
             );
@@ -194,7 +194,7 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
           );
           CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
             ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
-          CREATE TABLE IF NOT EXISTS migration_provenance (
+         CREATE TABLE IF NOT EXISTS migration_provenance (
            source_kind TEXT NOT NULL, source_identity TEXT NOT NULL,
            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
            PRIMARY KEY(source_kind, source_identity)

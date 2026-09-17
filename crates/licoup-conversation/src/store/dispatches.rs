@@ -453,7 +453,6 @@ impl ConversationStore {
         })
     }
 
-
     /// Record an observation feedback delivery (e.g. timeout / watchdog deadline)
     /// for a subagent claim. Observation feedback uses a mark distinct from the
     /// terminal state mark; they never share a single fired flag.
@@ -496,7 +495,10 @@ impl ConversationStore {
     pub fn subagent_delivery_status(
         &self,
         claim_id: &str,
-    ) -> StoreResult<(Option<DispatchDeliveryRecord>, Option<DispatchDeliveryRecord>)> {
+    ) -> StoreResult<(
+        Option<DispatchDeliveryRecord>,
+        Option<DispatchDeliveryRecord>,
+    )> {
         validate_identifier(claim_id, "claim_id")?;
         self.with_connection(|connection| {
             let mut observation = None;
@@ -535,7 +537,8 @@ impl ConversationStore {
                  ORDER BY updated_at ASC, claim_id ASC",
             )?;
             let rows = statement.query_map(params![conversation_id], delivery_record_from_row)?;
-            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
         })
     }
 
@@ -560,7 +563,8 @@ impl ConversationStore {
                 params![conversation_id, recipient_membership_id],
                 delivery_record_from_row,
             )?;
-            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
         })
     }
 
@@ -571,10 +575,8 @@ impl ConversationStore {
         conversation_id: &str,
         recipient_membership_id: &str,
     ) -> StoreResult<Option<CoalescedDispatchWake>> {
-        let pending = self.pending_dispatch_deliveries_for_recipient(
-            conversation_id,
-            recipient_membership_id,
-        )?;
+        let pending = self
+            .pending_dispatch_deliveries_for_recipient(conversation_id, recipient_membership_id)?;
         if pending.is_empty() {
             return Ok(None);
         }
@@ -662,10 +664,7 @@ impl ConversationStore {
     }
 
     /// Active wait sources (subagent claims and direct turns) in this conversation.
-    pub fn active_wait_sources(
-        &self,
-        conversation_id: &str,
-    ) -> StoreResult<Vec<WaitSourceRecord>> {
+    pub fn active_wait_sources(&self, conversation_id: &str) -> StoreResult<Vec<WaitSourceRecord>> {
         validate_identifier(conversation_id, "conversation_id")?;
         self.with_connection(|connection| {
             let mut sources = Vec::new();
@@ -688,8 +687,8 @@ impl ConversationStore {
                         waiting_membership_id: row.get(2)?,
                         target_membership_id: Some(row.get(3)?),
                         state: row.get(4)?,
-                        created_at_unix_ms: row.get(5)?,
-                        updated_at_unix_ms: row.get(6)?,
+                        created_at_unix_ms: Some(row.get(5)?),
+                        updated_at_unix_ms: Some(row.get(6)?),
                         is_terminal: false,
                     })
                 })?;
@@ -698,7 +697,8 @@ impl ConversationStore {
                 }
             }
 
-            // 2. Direct turns
+            // 2. Direct turns (the table records no timestamps; leave them
+            // absent rather than fabricating zero values)
             {
                 let mut statement = connection.prepare(
                     "SELECT id, conversation_id, membership_id, state, ordinal
@@ -714,8 +714,8 @@ impl ConversationStore {
                         waiting_membership_id: row.get(2)?,
                         target_membership_id: None,
                         state: row.get(3)?,
-                        created_at_unix_ms: 0,
-                        updated_at_unix_ms: 0,
+                        created_at_unix_ms: None,
+                        updated_at_unix_ms: None,
                         is_terminal: false,
                     })
                 })?;
@@ -793,6 +793,7 @@ fn delivery_record_from_row(row: &Row<'_>) -> rusqlite::Result<DispatchDeliveryR
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_pending_delivery_in_tx(
     transaction: &impl super::CountedSqlite,
     claim_id: &str,
@@ -1566,7 +1567,8 @@ mod tests {
 
         let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
         assert_eq!(obs.unwrap().state, DispatchDeliveryState::Delivered);
-        let term = term.expect("terminal delivery must be recorded and not suppressed by observation");
+        let term =
+            term.expect("terminal delivery must be recorded and not suppressed by observation");
         assert_eq!(term.kind, DispatchDeliveryKind::Terminal);
         assert_eq!(term.state, DispatchDeliveryState::Pending);
         assert_eq!(term.terminal_state.as_deref(), Some("completed"));
@@ -1629,7 +1631,10 @@ mod tests {
         let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
         let term = term.unwrap();
         assert_eq!(term.state, DispatchDeliveryState::Delivered);
-        assert_eq!(term.admitted_turn_id.as_deref(), Some("admitted-terminal-turn-2"));
+        assert_eq!(
+            term.admitted_turn_id.as_deref(),
+            Some("admitted-terminal-turn-2")
+        );
         assert!(term.delivered_at_unix_ms.is_some());
     }
 
