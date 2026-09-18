@@ -238,6 +238,7 @@ impl PersistentConversationRuntime {
         ))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn idle(&self) -> bool {
         self.inner.clients.load(Ordering::Acquire) == 0
             && self.inner.turns.lock().is_ok_and(|turns| {
@@ -338,6 +339,9 @@ impl PersistentConversationRuntime {
         params: &Value,
         admission: PersistentTurnAdmission,
     ) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
+        if self.is_host_stop_requested() {
+            return Err(stdio_rpc_client_error("conversation_host_shutting_down"));
+        }
         let agent_id = params
             .get("agent")
             .or_else(|| params.get("agentId"))
@@ -3358,6 +3362,22 @@ mod tests {
             );
         });
         assert!(runtime.drain_admitted_turns(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn host_stop_requested_rejects_new_turn_admission() {
+        let runtime = runtime(64);
+        assert!(!runtime.is_host_stop_requested());
+        runtime.request_host_stop();
+        assert!(runtime.is_host_stop_requested());
+
+        let params = json!({
+            "agent": "fixture-agent",
+            "sessionId": "sess-1",
+            "text": "test turn",
+        });
+        let adapter_err = runtime.open_turn(&params).unwrap_err();
+        assert_eq!(adapter_err, RuntimeAdapterError::ConversationDispatchFailed);
     }
 
     #[test]
