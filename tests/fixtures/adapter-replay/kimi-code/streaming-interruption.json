@@ -1,63 +1,103 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "kimi-code",
-  "scenario": "streaming-interruption",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
-      "projection": [
-        {
-          "kind": "text",
-          "unitId": "kimi-code:reply",
-          "text": "<REDACTED_CONTENT>"
-        }
-      ]
-    },
-    {
-      "index": 1,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"stream-interrupted\"}",
-      "projection": [
-        {
-          "kind": "failed",
-          "code": "kimi_code_replay_stream_interrupted",
-          "stage": "protocol/read",
-          "message": "stream interrupted"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "lf-ndjson-acp",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"sessionCapabilities\":{\"resume\":{}}},\"agentInfo\":{\"name\":\"kimi-code\",\"version\":\"synthetic\"}}}",
+      "projection": [
+        {
+          "effect": "send",
+          "message": {
+            "id": 2,
+            "jsonrpc": "2.0",
+            "method": "session/load",
+            "params": {
+              "cwd": "/workspace/synthetic-project",
+              "mcpServers": [],
+              "sessionId": "native-session"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": "lf-ndjson-acp",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"native-session\",\"configOptions\":[]}}",
+      "projection": [
+        {
+          "effect": "send",
+          "message": {
+            "id": 3,
+            "jsonrpc": "2.0",
+            "method": "session/prompt",
+            "params": {
+              "prompt": [
+                {
+                  "text": "<REDACTED_CONTENT>",
+                  "type": "text"
+                }
+              ],
+              "sessionId": "native-session"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": "lf-ndjson-acp",
+      "direction": "agent-to-client",
+      "index": 2,
+      "payload": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"native-session\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"synthetic kimi-code reply\"}}}}",
+      "projection": []
+    },
+    {
+      "channel": "lf-ndjson-acp",
+      "direction": "agent-to-client",
+      "index": 3,
+      "payload": "{",
+      "projection": [
+        {
+          "error": "acp_json_line_invalid",
+          "message": "The ACP protocol message could not be processed safely.",
+          "stage": "protocol/read",
+          "userInteractionRequired": false
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "streaming-interruption",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:a0aa0aed512b062c7136d088f3d31de96b9bba7acef86f3386d8ceda93181f64"
+    "contentSha256": "sha256:905bb2aec4a7ab6f73ae5eaf651175bee92bc8edb9fac9a1235ec2860401dca7"
   }
 }

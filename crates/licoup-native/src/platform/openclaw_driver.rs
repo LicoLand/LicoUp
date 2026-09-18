@@ -27,4 +27,6 @@ pub(in crate::platform) fn cancel(
 }
 
 #[cfg(test)]
+pub(in crate::platform) mod replay;
+#[cfg(test)]
 mod tests;
