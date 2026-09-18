@@ -13,38 +13,36 @@ const SCENARIOS: [&str; 5] = [
 ];
 
 fn registered_adapters() -> Vec<String> {
-    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("resources/agent-conversation-drivers.json");
-    if let Ok(bytes) = fs::read(&manifest_path) {
-        if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
-            if let Some(drivers) = value.get("drivers").and_then(Value::as_array) {
-                let mut ids: Vec<String> = drivers
-                    .iter()
-                    .filter_map(|d| d.get("agentId").and_then(Value::as_str).map(String::from))
-                    .collect();
-                if !ids.is_empty() {
-                    ids.sort();
-                    ids.dedup();
-                    return ids;
-                }
-            }
-        }
-    }
-    vec![
-        "antigravity".into(),
-        "claude-code".into(),
-        "codex".into(),
-        "copilot".into(),
-        "cursor".into(),
-        "hermes".into(),
-        "kilo-code".into(),
-        "kimi-code".into(),
-        "openclaw".into(),
-        "opencode".into(),
-        "pi".into(),
-        "lico-agent".into(),
-        "deepseek-harness".into(),
-    ]
+    let manifest_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/agent-conversation-drivers.json");
+    let bytes = fs::read(&manifest_path).expect("registered adapter manifest must be readable");
+    let value: Value =
+        serde_json::from_slice(&bytes).expect("registered adapter manifest must be valid JSON");
+    let drivers = value
+        .get("drivers")
+        .and_then(Value::as_array)
+        .filter(|drivers| !drivers.is_empty())
+        .expect("registered adapter manifest must contain drivers");
+    let mut ids: Vec<String> = drivers
+        .iter()
+        .map(|driver| {
+            driver
+                .get("agentId")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .expect("registered adapter manifest driver must contain agentId")
+                .to_owned()
+        })
+        .collect();
+    let count = ids.len();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        count,
+        "registered adapter manifest contains duplicate agentId"
+    );
+    ids
 }
 
 fn corpus_root() -> PathBuf {
@@ -55,22 +53,27 @@ fn synthetic_fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/adapter-replay")
 }
 
+fn fixture_root() -> PathBuf {
+    let corpus = corpus_root();
+    if corpus.is_dir() {
+        corpus
+    } else {
+        synthetic_fixture_root()
+    }
+}
+
 fn fixture(adapter: &str, scenario: &str) -> Value {
-    let corpus_path = corpus_root().join(adapter).join(format!("{scenario}.json"));
-    if corpus_path.is_file() {
-        let bytes = fs::read(&corpus_path)
-            .unwrap_or_else(|error| panic!("replay fixture {} unreadable: {error}", corpus_path.display()));
-        return serde_json::from_slice(&bytes)
-            .unwrap_or_else(|error| panic!("replay fixture {} invalid: {error}", corpus_path.display()));
-    }
-    let synthetic_path = synthetic_fixture_root().join(adapter).join(format!("{scenario}.json"));
-    if synthetic_path.is_file() {
-        let bytes = fs::read(&synthetic_path)
-            .unwrap_or_else(|error| panic!("synthetic replay fixture {} unreadable: {error}", synthetic_path.display()));
-        return serde_json::from_slice(&bytes)
-            .unwrap_or_else(|error| panic!("synthetic replay fixture {} invalid: {error}", synthetic_path.display()));
-    }
-    panic!("corpus absent for adapter={adapter} scenario={scenario}: missing replay transcript cannot be reported as passed");
+    let path = fixture_root()
+        .join(adapter)
+        .join(format!("{scenario}.json"));
+    let bytes = fs::read(&path).unwrap_or_else(|error| {
+        panic!(
+            "replay fixture missing or unreadable for adapter={adapter} scenario={scenario}: {error}"
+        )
+    });
+    serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        panic!("replay fixture invalid for adapter={adapter} scenario={scenario}: {error}")
+    })
 }
 
 /// Public, extraction-safe replay vocabulary recorded in the corpus. Concrete

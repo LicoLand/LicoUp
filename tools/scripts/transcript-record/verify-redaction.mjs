@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import {
   adapterIds,
@@ -13,7 +13,8 @@ import {
 } from "./shared.mjs";
 
 const corpusArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
-const defaultRoot = existsSync(resolve("tests/replay-corpus"))
+const directoryExists = (path) => existsSync(path) && statSync(path).isDirectory();
+const defaultRoot = directoryExists(resolve("tests/replay-corpus"))
   ? "tests/replay-corpus"
   : "tests/fixtures/adapter-replay";
 const corpusRoot = resolve(corpusArgument || defaultRoot);
@@ -49,6 +50,10 @@ for (const file of files) {
   if (!reviewApproved(document)) pendingReviews += 1;
   if (document.redaction?.contentSha256 !== transcriptHash(document)) findings.push(`${file}:content_hash_mismatch`);
   for (const finding of privacyFindings(document, redactionSecrets())) findings.push(`${file}:${finding.code}@${finding.path}`);
+}
+if (fixtures === 0) {
+  process.stderr.write(`zero transcript fixtures found in: ${corpusRoot}\n`);
+  process.exit(1);
 }
 if (findings.length > 0) {
   process.stderr.write(`${findings.join("\n")}\n`);
