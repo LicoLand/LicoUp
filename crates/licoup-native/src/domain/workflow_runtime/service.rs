@@ -1523,32 +1523,24 @@ impl StrategyService {
         let definition = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
+        // The permission, version, and resource recheck is the only admission
+        // gate for this effect: it re-reads the authorization from the store and
+        // compares the claimed command's visit against the run's current visit,
+        // so a revoked authorization or a stale command stops here rather than
+        // inside the executor.
+        let recheck_ctx = super::evolution::EffectRecheckContext::for_run_command(
+            run_id,
+            &snapshot,
+            &definition,
+            command,
+            claimant,
+        );
+        super::evolution::recheck_before_effect(&recheck_ctx)
+            .map_err(|failure| anyhow!(failure.code()))?;
         let authorization = definition
             .authorization
             .as_ref()
-            .filter(|authorization| authorization.active)
             .ok_or_else(|| anyhow!("authorization_required"))?;
-        let state_visit = snapshot
-            .state_visits
-            .get(&command.state_id)
-            .copied()
-            .unwrap_or(0);
-        let recheck_ctx = super::evolution::EffectRecheckContext {
-            run_id,
-            command_id: &command.id,
-            definition_revision: &snapshot.definition_digest,
-            expected_revision: &definition.summary.revision_digest,
-            expected_generation: state_visit,
-            current_generation: state_visit,
-            authorization: definition.authorization.as_ref(),
-            claimant,
-            session_id: None,
-            single_writer_registry: None,
-            required_tokens: None,
-            token_budget_remaining: None,
-        };
-        super::evolution::recheck_before_effect(&recheck_ctx)
-            .map_err(|failure| anyhow!(failure.code()))?;
         match command.kind {
             CommandKind::Actor | CommandKind::WorksetItem => {
                 let binding = binding_for(
@@ -2627,6 +2619,12 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
         (FailureClass::Sandbox, "sandbox_unavailable")
     } else if message.contains("authorization") || message.contains("permit") {
         (FailureClass::Authority, "authorization_required")
+    } else if let Some(code) = recheck_failure_code(message) {
+        // The executor's own pre-effect recheck refused this effect. Keep the
+        // recheck's exact typed code (revision, generation, session writer, or
+        // budget) instead of flattening every refusal into a generic effect
+        // failure, so the run projection says which fact changed.
+        (FailureClass::Permanent, code)
     } else if message.contains("usage_limit_exceeded")
         || message.contains("quota_exhausted")
         || message.contains("strategy_actor_quota_exhausted")
@@ -2647,6 +2645,24 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
     } else {
         (FailureClass::Permanent, "effect_failed")
     }
+}
+
+/// The typed codes [`super::evolution::EffectRecheckFailure::code`] produces.
+///
+/// They are matched structurally rather than by an equality check because the
+/// executor wraps the refusal in its own error text on the way out.
+const RECHECK_FAILURE_CODES: [&str; 5] = [
+    "strategy_recheck_version_mismatch",
+    "strategy_recheck_stale_generation",
+    "strategy_recheck_session_writer_conflict",
+    "strategy_recheck_token_budget_exhausted",
+    "strategy_recheck_resource_unavailable",
+];
+
+fn recheck_failure_code(message: &str) -> Option<&'static str> {
+    RECHECK_FAILURE_CODES
+        .into_iter()
+        .find(|code| message.contains(code))
 }
 
 /// Actor/workset JSON that the runtime returned as a value, not a transport Err.
@@ -3357,6 +3373,21 @@ mod tests {
         assert_eq!(
             super::classify_effect_error("strategy_actor_dispatch_failed"),
             (FailureClass::Transient, "effect_temporarily_unavailable")
+        );
+        // A refusal from the executor's own pre-effect recheck keeps its typed
+        // code, so the run projection says which fact changed instead of
+        // reporting every refusal as a generic effect failure.
+        for code in super::RECHECK_FAILURE_CODES {
+            assert_eq!(
+                super::classify_effect_error(&format!("pre_effect_recheck:{code}")),
+                (FailureClass::Permanent, code)
+            );
+        }
+        // A revoked authorization stays an authority refusal the master can
+        // answer by re-authorizing, not a bare recheck code.
+        assert_eq!(
+            super::classify_effect_error("authorization_required"),
+            (FailureClass::Authority, "authorization_required")
         );
         assert_eq!(
             super::actor_output_failure(
@@ -4600,6 +4631,28 @@ mod tests {
             report["answerFields"],
             json!(["decision", "callbackStateId", "callbackStateVisit"])
         );
+        // The request carries the evolution facts and suggestions the Assistant
+        // decides from. Spend is reported as a number or as unknown (null),
+        // never as zero-on-failure, and no budget pool is claimed while the T04
+        // pool seam is unwired.
+        assert_eq!(report["facts"]["context"]["stateId"], json!("greet"));
+        assert_eq!(report["facts"]["context"]["stateVisit"], json!(1));
+        assert_eq!(
+            report["facts"]["observation"]["stateVisits"]["greet"],
+            json!(1)
+        );
+        assert_ne!(report["facts"]["cost"]["budgetPoolSeamActive"], json!(true));
+        assert_eq!(
+            report["suggestions"]["recommendedDecision"],
+            json!("advance")
+        );
+        assert_eq!(
+            report["suggestions"]["alternativeDecisions"],
+            json!(["return", "terminate"])
+        );
+        // Strategy versions advise; they never grant execution permission, and
+        // with no candidate catalog wired the request carries no advice at all.
+        assert!(report["suggestions"]["strategySuggestion"].is_null());
 
         // A bare resume never advances a callback wait.
         let resumed = service
@@ -4641,6 +4694,203 @@ mod tests {
             .unwrap();
         assert_eq!(replay["ok"], false);
         assert_eq!(replay["error"]["code"], "callback_stale");
+        remove_drive_root(root, service);
+    }
+
+    /// A callback edge whose target is a second actor state, so the master's
+    /// decision starts an effect that must pass the executor's own recheck.
+    fn authorized_callback_review_store(
+        root: &Path,
+        membership_id: &str,
+    ) -> (StrategyStore, String) {
+        use licoup_workflow::{
+            ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
+            TransitionMode, WorkflowDefinition, WorkflowMetadata,
+        };
+
+        let actor_state = |id: &str, label: &str, slot: &str| GraphState {
+            id: id.into(),
+            kind: GraphStateKind::Actor,
+            label: label.into(),
+            instruction: String::new(),
+            binding: Some(slot.into()),
+            runtime: None,
+            entry: None,
+            workset: None,
+            retry: RetryPolicy {
+                max_attempts: 2,
+                transient_only: true,
+            },
+        };
+        let driver_state = |id: &str, label: &str, kind: GraphStateKind| GraphState {
+            id: id.into(),
+            kind,
+            label: label.into(),
+            instruction: String::new(),
+            binding: None,
+            runtime: None,
+            entry: None,
+            workset: None,
+            retry: RetryPolicy::default(),
+        };
+        let mut entry = ActorSlot::required_actor("entry", "Entry");
+        entry.entry = true;
+        let mut reviewer = ActorSlot::required_actor("reviewer", "Reviewer");
+        reviewer.entry = false;
+        let workflow = WorkflowDefinition {
+            schema: licoup_workflow::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "entry-review-callback".into(),
+                name: "Entry review callback".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: licoup_workflow::WorkflowLimits {
+                max_parallelism: 1,
+                max_workset_items: 1,
+                max_attempts: 2,
+            },
+            actor_slots: vec![entry, reviewer],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "greet".into(),
+            states: vec![
+                actor_state("greet", "Greet", "entry"),
+                actor_state("review", "Review", "reviewer"),
+                driver_state("done", "Done", GraphStateKind::Succeed),
+                driver_state("failed", "Failed", GraphStateKind::Fail),
+            ],
+            transitions: vec![
+                Transition {
+                    id: "greeted".into(),
+                    from: "greet".into(),
+                    to: "review".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Callback,
+                    guard: None,
+                },
+                Transition {
+                    id: "greet-failed".into(),
+                    from: "greet".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "reviewed".into(),
+                    from: "review".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "review-failed".into(),
+                    from: "review".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+            ],
+        };
+
+        let store = StrategyStore::open(root).unwrap();
+        let revision = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        store
+            .register_definition(revision, revision, &workflow, 1, 1)
+            .unwrap();
+        for slot in ["entry", "reviewer"] {
+            store
+                .replace_slot_bindings(
+                    revision,
+                    slot,
+                    &[BindingCandidate {
+                        value_id: membership_id.to_owned(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    }],
+                    None,
+                )
+                .unwrap();
+        }
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        (store, revision.to_owned())
+    }
+
+    #[test]
+    fn revoked_authorization_stops_the_effect_the_master_decision_would_start() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_callback_review_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "revoked-callback-start-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let parked = wait_for_status(&store, &run_id, StrategyRunStatus::Waiting);
+        assert_eq!(parked.pending_callbacks.len(), 1);
+        assert_eq!(parked.pending_callbacks[0].target, "review");
+        let effects_before_revocation = calls.lock().unwrap().len();
+        wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-callback-request",
+        );
+
+        // The host revokes the authorization while the run waits. The master's
+        // decision is still accepted, but the effect it would start is refused
+        // before any actor call is made: the executor's pre-effect recheck
+        // reads the revoked row first, and the store's own effect authorization
+        // refuses it independently.
+        //
+        // This proves the end-to-end outcome, not which of the two gates fired:
+        // the recheck's own branches are pinned by the evolution unit tests.
+        store.revoke_authorization(&revision).unwrap();
+        let decided = service
+            .execute(json!({
+                "action": "strategy.run.resume",
+                "runId": run_id,
+                "decision": "advance",
+                "callbackStateId": "greet",
+                "callbackStateVisit": 1,
+            }))
+            .unwrap();
+        assert_eq!(decided["ok"], true, "{decided}");
+
+        let refused = wait_for_status(&store, &run_id, StrategyRunStatus::AuthorizationRequired);
+        assert_eq!(
+            refused.diagnostic_code.as_deref(),
+            Some("authorization_required")
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            effects_before_revocation,
+            "the review effect must not run without an active authorization"
+        );
         remove_drive_root(root, service);
     }
 

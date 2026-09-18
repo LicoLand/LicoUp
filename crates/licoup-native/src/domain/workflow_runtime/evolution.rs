@@ -8,7 +8,11 @@
 //! - The Assistant receives usable facts and actionable suggestions via callbacks.
 //! - Strategy versions (from T06.1) feed selection without granting execution permission.
 //!   Every [`StrategySuggestion`] explicitly marks `has_execution_permission: false`.
-//! - Permission, version, and resource recheck is strictly evaluated before any effect execution.
+//!   Suggestions are drawn from the candidate catalog the enricher is given; with no
+//!   catalog wired the payload carries no strategy advice instead of an invented model.
+//! - Permission, version, and resource recheck is strictly evaluated before any effect execution
+//!   through [`EffectRecheckContext::for_run_command`], the single construction path used by
+//!   the executor.
 //! - Group B (economics loop, T03–T06) is a separate Draft: integration seams are
 //!   strictly typed and wired against existing host-side seams, with gaps explicitly recorded
 //!   in [`GroupBIntegrationGaps`].
@@ -17,13 +21,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use licoup_workflow::{PendingCallback, RunSnapshot, StrategyRunStatus};
+use licoup_workflow::{PendingCallback, RunCommand, RunSnapshot, StrategyRunStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::domain::agent_usage::workflow_ledger;
 use crate::domain::workflow_runtime::adapter::SingleWriterSessionRegistry;
-use crate::domain::workflow_store::StrategyAuthorization;
+use crate::domain::workflow_store::{StrategyAuthorization, StrategyDefinition};
 
 // ============================================================================
 // Group B Typed Integration Seams & Gap Tracking
@@ -44,10 +48,10 @@ pub struct GroupBIntegrationGaps;
 impl GroupBIntegrationGaps {
     pub fn report() -> GroupBGapReport {
         GroupBGapReport {
-            t03_observation_gap: "assistant_continuity::observation with continuity_source_cursors is in group B branch (fix/t03-1-observation); wired here against NodeObservation and run snapshots",
-            t04_cost_budget_pool_gap: "workflow_ledger graph_usage_budget_pools and graph_usage_reservations are in group B branch (fix/t04-1-usage-admission); wired here against workflow_ledger v2 numeric token accounting",
+            t03_observation_gap: "assistant_continuity::observation with continuity_source_cursors is in group B branch (fix/t03-1-observation); wired here against run snapshots and NodeObservationSummary, whose producer is the T07.4 Node Facade observe() seam rather than native NodeObservation",
+            t04_cost_budget_pool_gap: "workflow_ledger graph_usage_budget_pools and graph_usage_reservations are in group B branch (fix/t04-1-usage-admission); wired here against workflow_ledger v2 numeric token accounting, so the configured budget pool and its reservations stay unavailable and the pre-effect budget recheck has no remaining-token fact to compare",
             t05_context_composition_gap: "assistant_continuity::context multi-source refinement with parent grants is in group B branch (fix/t05-1-context); wired here against conversation run/causation metadata",
-            t06_replaceable_strategy_gap: "domain::model_planning durable SQLite defaults and qualification policy are in group B branch (fix/t06-1-replaceable-strategy); wired here against typed strategy defaults and candidate ranking",
+            t06_replaceable_strategy_gap: "domain::model_planning durable SQLite defaults and qualification policy are in group B branch (fix/t06-1-replaceable-strategy); wired here against the typed suggestion port and an injected candidate catalog, which stays empty until that branch supplies durable defaults, so no strategy suggestion reaches a callback yet",
         }
     }
 }
@@ -127,7 +131,11 @@ pub struct BudgetPoolReservationSeam {
 }
 
 pub trait EvolutionCostPort: Send + Sync {
-    fn query_cost_facts(&self, portable_root: &Path, run_id: &str) -> CallbackCostFacts;
+    /// Facts about what this run has spent.
+    ///
+    /// `None` means no reading was available (the ledger could not be read).
+    /// Unknown spend is never reported as zero, per the plan's budget rule.
+    fn query_cost_facts(&self, portable_root: &Path, run_id: &str) -> Option<CallbackCostFacts>;
 }
 
 #[derive(Default)]
@@ -140,7 +148,7 @@ impl LedgerEvolutionCostPort {
 }
 
 impl EvolutionCostPort for LedgerEvolutionCostPort {
-    fn query_cost_facts(&self, portable_root: &Path, run_id: &str) -> CallbackCostFacts {
+    fn query_cost_facts(&self, portable_root: &Path, run_id: &str) -> Option<CallbackCostFacts> {
         let report_result = workflow_ledger::workflow_report(&json!({
             "stateRoot": portable_root,
             "runId": run_id,
@@ -148,20 +156,35 @@ impl EvolutionCostPort for LedgerEvolutionCostPort {
         match report_result {
             Ok(report) => {
                 let summary = report.get("summary");
-                CallbackCostFacts {
-                    prompt_tokens: summary.and_then(|s| s.get("promptTokens")).and_then(Value::as_u64).unwrap_or(0),
-                    cached_input_tokens: summary.and_then(|s| s.get("cachedInputTokens")).and_then(Value::as_u64).unwrap_or(0),
-                    completion_tokens: summary.and_then(|s| s.get("completionTokens")).and_then(Value::as_u64).unwrap_or(0),
-                    total_tokens: summary.and_then(|s| s.get("totalTokens")).and_then(Value::as_u64).unwrap_or(0),
-                    exact_count: summary.and_then(|s| s.get("exactCount")).and_then(Value::as_u64).unwrap_or(0),
-                    estimated_count: summary.and_then(|s| s.get("estimatedCount")).and_then(Value::as_u64).unwrap_or(0),
-                    budget_pool_seam_active: true,
-                }
+                Some(CallbackCostFacts {
+                    prompt_tokens: summary
+                        .and_then(|s| s.get("promptTokens"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    cached_input_tokens: summary
+                        .and_then(|s| s.get("cachedInputTokens"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    completion_tokens: summary
+                        .and_then(|s| s.get("completionTokens"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    total_tokens: summary
+                        .and_then(|s| s.get("totalTokens"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    exact_count: summary
+                        .and_then(|s| s.get("exactCount"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    estimated_count: summary
+                        .and_then(|s| s.get("estimatedCount"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                    budget_pool_seam_active: false,
+                })
             }
-            Err(_) => CallbackCostFacts {
-                budget_pool_seam_active: false,
-                ..Default::default()
-            },
+            Err(_) => None,
         }
     }
 }
@@ -351,7 +374,8 @@ impl EvolutionStrategyPort for DefaultEvolutionStrategyPort {
                     scope: Some(scope.clone()),
                     is_default: false,
                     has_execution_permission: false, // Invariant: no execution permission granted
-                    rationale: "Explicit user selection preserved without implicit upgrade".to_owned(),
+                    rationale: "Explicit user selection preserved without implicit upgrade"
+                        .to_owned(),
                 });
             }
         }
@@ -427,6 +451,10 @@ pub struct CallbackCostFacts {
     pub total_tokens: u64,
     pub exact_count: u64,
     pub estimated_count: u64,
+    /// Whether a configured budget pool and its reservations contributed to
+    /// these facts. Always `false` in this slice: the T04 pool seam is not
+    /// wired, so the numbers come from the ledger's recorded usage alone and no
+    /// pool is enforcing anything on this run.
     pub budget_pool_seam_active: bool,
 }
 
@@ -447,7 +475,9 @@ pub struct CallbackContextFacts {
 #[serde(rename_all = "camelCase")]
 pub struct CallbackFacts {
     pub observation: CallbackObservationFacts,
-    pub cost: CallbackCostFacts,
+    /// `None` when the run's spend could not be read: unknown cost is reported
+    /// as unknown, never as zero.
+    pub cost: Option<CallbackCostFacts>,
     pub context: CallbackContextFacts,
 }
 
@@ -473,6 +503,7 @@ pub struct CallbackEvolutionEnricher {
     cost_port: Arc<dyn EvolutionCostPort>,
     context_port: Arc<dyn EvolutionContextPort>,
     strategy_port: Arc<dyn EvolutionStrategyPort>,
+    strategy_candidates: Vec<AgentModelOptionSeam>,
 }
 
 impl CallbackEvolutionEnricher {
@@ -483,7 +514,18 @@ impl CallbackEvolutionEnricher {
             cost_port: Arc::new(LedgerEvolutionCostPort::new()),
             context_port: Arc::new(DefaultEvolutionContextPort::new()),
             strategy_port: Arc::new(DefaultEvolutionStrategyPort::new()),
+            strategy_candidates: Vec::new(),
         }
+    }
+
+    /// Supply the model options this host can actually run for a scope.
+    ///
+    /// Only options present here can be suggested; an empty catalog (the state
+    /// until the T06 durable-defaults seam is wired) yields no strategy
+    /// suggestion at all, never a model the host has not been told about.
+    pub fn with_strategy_candidates(mut self, candidates: Vec<AgentModelOptionSeam>) -> Self {
+        self.strategy_candidates = candidates;
+        self
     }
 
     pub fn with_observation_port(mut self, port: Arc<dyn EvolutionObservationPort>) -> Self {
@@ -512,7 +554,9 @@ impl CallbackEvolutionEnricher {
         pending: &PendingCallback,
         answer_channel: &str,
     ) -> CallbackEvolutionPayload {
-        let node_obs = self.observation_port.collect_node_observations(&snapshot.run_id);
+        let node_obs = self
+            .observation_port
+            .collect_node_observations(&snapshot.run_id);
         let obs_facts = CallbackObservationFacts {
             completed_states: snapshot.completed_states.iter().cloned().collect(),
             state_visits: snapshot.state_visits.clone(),
@@ -521,7 +565,9 @@ impl CallbackEvolutionEnricher {
             observation_seam_active: true,
         };
 
-        let cost_facts = self.cost_port.query_cost_facts(&self.portable_root, &snapshot.run_id);
+        let cost_facts = self
+            .cost_port
+            .query_cost_facts(&self.portable_root, &snapshot.run_id);
         let ctx_facts = self.context_port.assemble_context_facts(
             snapshot,
             &pending.state_id,
@@ -532,35 +578,36 @@ impl CallbackEvolutionEnricher {
 
         let mut decision_reasons = Vec::new();
         let recommended_decision = if snapshot.status == StrategyRunStatus::Failed {
-            decision_reasons.push("Run has encountered a terminal failure; termination recommended".into());
+            decision_reasons
+                .push("Run has encountered a terminal failure; termination recommended".into());
             "terminate".to_owned()
         } else {
             decision_reasons.push(format!(
                 "Callback parked at state '{}' (visit {}); previous states completed successfully",
                 pending.state_id, pending.state_visit
             ));
-            if cost_facts.total_tokens > 0 {
-                decision_reasons.push(format!(
+            match &cost_facts {
+                Some(cost) if cost.total_tokens > 0 => decision_reasons.push(format!(
                     "Current run usage is {} tokens (exact: {}, estimated: {})",
-                    cost_facts.total_tokens, cost_facts.exact_count, cost_facts.estimated_count
-                ));
+                    cost.total_tokens, cost.exact_count, cost.estimated_count
+                )),
+                Some(_) => {}
+                None => decision_reasons
+                    .push("Run usage could not be read from the ledger; spend is unknown".into()),
             }
             "advance".to_owned()
         };
 
-        // Synthesize strategy candidate recommendation
+        // Ask the strategy port to rank the options this host actually offers.
+        // The port only advises: the suggestion it returns never carries
+        // execution permission and never leaves the candidate catalog.
         let scope = PlanningScopeSeam {
             task_kind: "workflow-turn".to_owned(),
             configuration: pending.state_id.clone(),
         };
-        let candidates = vec![
-            AgentModelOptionSeam {
-                agent_id: "assistant".to_owned(),
-                model_id: "default-model".to_owned(),
-                thinking: "low".to_owned(),
-            },
-        ];
-        let strategy_suggestion = self.strategy_port.suggest_strategy(&scope, &candidates, None);
+        let strategy_suggestion =
+            self.strategy_port
+                .suggest_strategy(&scope, &self.strategy_candidates, None);
 
         let alternative_decisions = match recommended_decision.as_str() {
             "advance" => vec!["return".to_owned(), "terminate".to_owned()],
@@ -584,7 +631,9 @@ impl CallbackEvolutionEnricher {
     }
 
     pub fn enrich_terminal_outcome(&self, snapshot: &RunSnapshot) -> CallbackEvolutionPayload {
-        let node_obs = self.observation_port.collect_node_observations(&snapshot.run_id);
+        let node_obs = self
+            .observation_port
+            .collect_node_observations(&snapshot.run_id);
         let obs_facts = CallbackObservationFacts {
             completed_states: snapshot.completed_states.iter().cloned().collect(),
             state_visits: snapshot.state_visits.clone(),
@@ -593,14 +642,12 @@ impl CallbackEvolutionEnricher {
             observation_seam_active: true,
         };
 
-        let cost_facts = self.cost_port.query_cost_facts(&self.portable_root, &snapshot.run_id);
-        let ctx_facts = self.context_port.assemble_context_facts(
-            snapshot,
-            "",
-            0,
-            "",
-            "terminal",
-        );
+        let cost_facts = self
+            .cost_port
+            .query_cost_facts(&self.portable_root, &snapshot.run_id);
+        let ctx_facts = self
+            .context_port
+            .assemble_context_facts(snapshot, "", 0, "", "terminal");
 
         CallbackEvolutionPayload {
             facts: CallbackFacts {
@@ -626,7 +673,9 @@ impl CallbackEvolutionEnricher {
         state_id: &str,
         state_visit: u64,
     ) -> CallbackEvolutionPayload {
-        let node_obs = self.observation_port.collect_node_observations(&snapshot.run_id);
+        let node_obs = self
+            .observation_port
+            .collect_node_observations(&snapshot.run_id);
         let obs_facts = CallbackObservationFacts {
             completed_states: snapshot.completed_states.iter().cloned().collect(),
             state_visits: snapshot.state_visits.clone(),
@@ -635,7 +684,9 @@ impl CallbackEvolutionEnricher {
             observation_seam_active: true,
         };
 
-        let cost_facts = self.cost_port.query_cost_facts(&self.portable_root, &snapshot.run_id);
+        let cost_facts = self
+            .cost_port
+            .query_cost_facts(&self.portable_root, &snapshot.run_id);
         let ctx_facts = self.context_port.assemble_context_facts(
             snapshot,
             state_id,
@@ -677,10 +728,61 @@ pub struct EffectRecheckContext<'a> {
     pub current_generation: u64,
     pub authorization: Option<&'a StrategyAuthorization>,
     pub claimant: &'a str,
+    /// Native session this effect will write through, when the executor holds a
+    /// single-writer registration. `None` means the executor has no session lock
+    /// to recheck, not that the lock check passed.
     pub session_id: Option<&'a str>,
     pub single_writer_registry: Option<&'a SingleWriterSessionRegistry>,
+    /// Tokens this effect is about to spend against a configured pool, and what
+    /// is left of it. `None` means no pool fact is available to compare.
     pub required_tokens: Option<u64>,
     pub token_budget_remaining: Option<u64>,
+}
+
+impl<'a> EffectRecheckContext<'a> {
+    /// Build the pre-effect recheck context for one command the executor claimed.
+    ///
+    /// The generation check compares two independently sourced facts: the visit
+    /// the command was minted for (`RunCommand::state_visit`) against the visit
+    /// the run is at now (`RunSnapshot::state_visits`). A command whose state was
+    /// re-entered, or that was claimed for a state the run has since advanced
+    /// past, must not reach the executor with stale semantics.
+    ///
+    /// The revision check asserts the run is still bound to the definition it
+    /// was loaded from. That binding is structural here (the definition is read
+    /// by `snapshot.definition_digest`), so the check is an invariant assertion
+    /// rather than a second read of mutable state.
+    ///
+    /// Session-lock and token-budget facts stay `None` until the T07.4 node
+    /// facade and the T04 pool ports are reachable from the executor; see
+    /// [`GroupBIntegrationGaps`]. Callers holding those facts set the fields
+    /// directly.
+    pub fn for_run_command(
+        run_id: &'a str,
+        snapshot: &'a RunSnapshot,
+        definition: &'a StrategyDefinition,
+        command: &'a RunCommand,
+        claimant: &'a str,
+    ) -> Self {
+        Self {
+            run_id,
+            command_id: &command.id,
+            definition_revision: &snapshot.definition_digest,
+            expected_revision: &definition.summary.revision_digest,
+            expected_generation: command.state_visit,
+            current_generation: snapshot
+                .state_visits
+                .get(&command.state_id)
+                .copied()
+                .unwrap_or(0),
+            authorization: definition.authorization.as_ref(),
+            claimant,
+            session_id: None,
+            single_writer_registry: None,
+            required_tokens: None,
+            token_budget_remaining: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -732,7 +834,10 @@ impl std::fmt::Display for EffectRecheckFailure {
                 write!(f, "Version mismatch: expected {expected}, actual {actual}")
             }
             Self::StaleGeneration { expected, current } => {
-                write!(f, "Stale generation: expected {expected}, current {current}")
+                write!(
+                    f,
+                    "Stale generation: expected {expected}, current {current}"
+                )
             }
             Self::ResourceUnavailable { code, reason } => {
                 write!(f, "Resource unavailable ({code}): {reason}")
@@ -797,9 +902,7 @@ pub fn recheck_before_effect(
         if req > remaining {
             return Err(EffectRecheckFailure::ResourceUnavailable {
                 code: "token_budget_exhausted".into(),
-                reason: format!(
-                    "Required tokens ({req}) exceed remaining budget ({remaining})"
-                ),
+                reason: format!("Required tokens ({req}) exceed remaining budget ({remaining})"),
             });
         }
     }
@@ -833,9 +936,21 @@ mod tests {
     fn test_group_b_gap_report_identifies_all_four_subsystems() {
         let report = GroupBIntegrationGaps::report();
         assert!(report.t03_observation_gap.contains("fix/t03-1-observation"));
-        assert!(report.t04_cost_budget_pool_gap.contains("fix/t04-1-usage-admission"));
-        assert!(report.t05_context_composition_gap.contains("fix/t05-1-context"));
-        assert!(report.t06_replaceable_strategy_gap.contains("fix/t06-1-replaceable-strategy"));
+        assert!(
+            report
+                .t04_cost_budget_pool_gap
+                .contains("fix/t04-1-usage-admission")
+        );
+        assert!(
+            report
+                .t05_context_composition_gap
+                .contains("fix/t05-1-context")
+        );
+        assert!(
+            report
+                .t06_replaceable_strategy_gap
+                .contains("fix/t06-1-replaceable-strategy")
+        );
     }
 
     #[test]
@@ -943,7 +1058,10 @@ mod tests {
         let suggestion = port.suggest_strategy(&scope, &candidates, None).unwrap();
         assert_eq!(suggestion.candidate.agent_id, "reviewer-2");
         assert_eq!(suggestion.is_default, true);
-        assert_eq!(suggestion.ranking_basis, "adopted-default-comparable-outcome");
+        assert_eq!(
+            suggestion.ranking_basis,
+            "adopted-default-comparable-outcome"
+        );
         assert_eq!(suggestion.has_execution_permission, false);
 
         // Revoking the strategy drops back to catalog fallback
@@ -1103,13 +1221,17 @@ mod tests {
         };
 
         let err = recheck_before_effect(&ctx).unwrap_err();
-        assert!(matches!(err, EffectRecheckFailure::ResourceUnavailable { .. }));
+        assert!(matches!(
+            err,
+            EffectRecheckFailure::ResourceUnavailable { .. }
+        ));
         assert_eq!(err.code(), "strategy_recheck_token_budget_exhausted");
     }
 
     #[test]
     fn test_callback_evolution_enricher_populates_facts_and_suggestions() {
-        let temp_dir = std::env::temp_dir().join(format!("licoup-evolution-test-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("licoup-evolution-test-{}", uuid::Uuid::new_v4()));
         let enricher = CallbackEvolutionEnricher::new(&temp_dir);
 
         let mut snapshot = RunSnapshot::empty("test-run-1", "def-1", "sem-1");
@@ -1128,18 +1250,316 @@ mod tests {
             target: "step2".into(),
         };
 
-        let payload = enricher.enrich_callback_request(&snapshot, &pending, "lico_assistant_workflow_execute");
+        let payload = enricher.enrich_callback_request(
+            &snapshot,
+            &pending,
+            "lico_assistant_workflow_execute",
+        );
 
         // Facts assertions
         assert_eq!(payload.facts.observation.completed_states, vec!["init"]);
         assert_eq!(payload.facts.context.conversation_id, Some("conv-1".into()));
         assert_eq!(payload.facts.context.state_id, "step1");
-        assert_eq!(payload.facts.context.answer_channel, "lico_assistant_workflow_execute");
+        assert_eq!(
+            payload.facts.context.answer_channel,
+            "lico_assistant_workflow_execute"
+        );
 
         // Suggestions assertions
         assert_eq!(payload.suggestions.recommended_decision, "advance");
         assert!(payload.suggestions.decision_reasons.len() >= 1);
-        let strat_sugg = payload.suggestions.strategy_suggestion.unwrap();
-        assert_eq!(strat_sugg.has_execution_permission, false); // Invariant
+        assert!(
+            payload
+                .suggestions
+                .alternative_decisions
+                .contains(&"terminate".to_owned())
+        );
+        // No candidate catalog is wired in this slice, so the payload carries no
+        // strategy advice rather than a model option the host never offered.
+        assert!(payload.suggestions.strategy_suggestion.is_none());
+    }
+
+    #[test]
+    fn callback_payload_omits_strategy_advice_when_the_candidate_catalog_is_empty() {
+        let enricher = CallbackEvolutionEnricher::new(&temp_root("empty-catalog"));
+        let snapshot = waiting_snapshot();
+        let pending = callback_pending();
+
+        let payload = enricher.enrich_callback_request(&snapshot, &pending, "strategy.run.resume");
+
+        assert!(payload.suggestions.strategy_suggestion.is_none());
+        assert!(payload.facts.observation.observation_seam_active);
+        let cost = payload
+            .facts
+            .cost
+            .expect("the ledger under the test root is readable");
+        assert_eq!(cost.total_tokens, 0);
+        // No budget pool is wired in this slice, and the payload must not claim one.
+        assert!(!cost.budget_pool_seam_active);
+    }
+
+    #[test]
+    fn callback_payload_reports_unknown_spend_as_unknown_not_zero() {
+        struct UnreadableCostPort;
+        impl EvolutionCostPort for UnreadableCostPort {
+            fn query_cost_facts(&self, _root: &Path, _run_id: &str) -> Option<CallbackCostFacts> {
+                None
+            }
+        }
+
+        let enricher = CallbackEvolutionEnricher::new(&temp_root("unreadable-ledger"))
+            .with_cost_port(Arc::new(UnreadableCostPort));
+
+        let payload = enricher.enrich_callback_request(
+            &waiting_snapshot(),
+            &callback_pending(),
+            "strategy.run.resume",
+        );
+
+        assert!(payload.facts.cost.is_none());
+        assert!(
+            payload
+                .suggestions
+                .decision_reasons
+                .iter()
+                .any(|reason| reason.contains("spend is unknown")),
+            "{:?}",
+            payload.suggestions.decision_reasons
+        );
+    }
+
+    #[test]
+    fn callback_payload_carries_the_adopted_default_until_it_is_revoked() {
+        let strategy = Arc::new(DefaultEvolutionStrategyPort::new());
+        let candidates = vec![
+            option("reviewer-1", "fast", "low"),
+            option("reviewer-2", "deep", "high"),
+        ];
+        strategy.adopt_default(AdoptedPlanningDefaultSeam {
+            // The enricher scopes suggestions by the parked state.
+            scope: PlanningScopeSeam {
+                task_kind: "workflow-turn".into(),
+                configuration: "step1".into(),
+            },
+            source: StrategySourceSeam {
+                source_id: "eval-7".into(),
+                revision: "rev-3".into(),
+            },
+            selected_option: candidates[1].clone(),
+            revocable: true,
+            supersedes_revision: None,
+        });
+        let enricher = CallbackEvolutionEnricher::new(&temp_root("adopted-default"))
+            .with_strategy_port(strategy.clone())
+            .with_strategy_candidates(candidates);
+
+        let suggested = enricher
+            .enrich_callback_request(
+                &waiting_snapshot(),
+                &callback_pending(),
+                "strategy.run.resume",
+            )
+            .suggestions
+            .strategy_suggestion
+            .expect("the adopted default reaches the callback payload");
+        assert_eq!(suggested.candidate.model_id, "deep");
+        assert!(suggested.is_default);
+        assert!(!suggested.has_execution_permission);
+
+        strategy.revoke_strategy("eval-7");
+        let revoked = enricher
+            .enrich_callback_request(
+                &waiting_snapshot(),
+                &callback_pending(),
+                "strategy.run.resume",
+            )
+            .suggestions
+            .strategy_suggestion
+            .expect("the catalog fallback remains available after revocation");
+        assert_eq!(revoked.candidate.model_id, "fast");
+        assert!(!revoked.is_default);
+        assert!(!revoked.has_execution_permission);
+    }
+
+    #[test]
+    fn effect_recheck_compares_the_claimed_visit_against_the_run_visit() {
+        let definition = test_definition(Some(active_authorization()));
+        let mut snapshot = RunSnapshot::empty("run-1", "rev-1", "sem-1");
+        snapshot.state_visits.insert("step".into(), 2);
+
+        let receipt = recheck_before_effect(&EffectRecheckContext::for_run_command(
+            "run-1",
+            &snapshot,
+            &definition,
+            &test_command("step", 2),
+            "worker-1",
+        ))
+        .expect("the command minted for the current visit executes");
+        assert_eq!(receipt.generation, 2);
+        assert_eq!(receipt.revision_digest, "rev-1");
+
+        let failure = recheck_before_effect(&EffectRecheckContext::for_run_command(
+            "run-1",
+            &snapshot,
+            &definition,
+            &test_command("step", 1),
+            "worker-1",
+        ))
+        .expect_err("a command left over from a superseded visit must not execute");
+        assert!(matches!(
+            failure,
+            EffectRecheckFailure::StaleGeneration { .. }
+        ));
+        assert_eq!(failure.code(), "strategy_recheck_stale_generation");
+
+        let never_entered = recheck_before_effect(&EffectRecheckContext::for_run_command(
+            "run-1",
+            &snapshot,
+            &definition,
+            &test_command("elsewhere", 1),
+            "worker-1",
+        ))
+        .expect_err("a command for a state the run never entered must not execute");
+        assert_eq!(never_entered.code(), "strategy_recheck_stale_generation");
+    }
+
+    #[test]
+    fn effect_recheck_is_the_admission_gate_for_missing_and_revoked_authorization() {
+        let mut revoked = active_authorization();
+        revoked.active = false;
+        let mut snapshot = RunSnapshot::empty("run-1", "rev-1", "sem-1");
+        snapshot.state_visits.insert("step".into(), 1);
+        let command = test_command("step", 1);
+
+        for definition in [test_definition(Some(revoked)), test_definition(None)] {
+            let failure = recheck_before_effect(&EffectRecheckContext::for_run_command(
+                "run-1",
+                &snapshot,
+                &definition,
+                &command,
+                "worker-1",
+            ))
+            .expect_err("an unusable authorization stops the effect at the gate");
+            assert!(matches!(
+                failure,
+                EffectRecheckFailure::PermissionDenied { .. }
+            ));
+            assert_eq!(failure.code(), "authorization_required");
+        }
+    }
+
+    fn temp_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("licoup-evolution-{tag}-{}", uuid::Uuid::new_v4()))
+    }
+
+    fn option(agent_id: &str, model_id: &str, thinking: &str) -> AgentModelOptionSeam {
+        AgentModelOptionSeam {
+            agent_id: agent_id.into(),
+            model_id: model_id.into(),
+            thinking: thinking.into(),
+        }
+    }
+
+    fn waiting_snapshot() -> RunSnapshot {
+        let mut snapshot = RunSnapshot::empty("test-run-1", "rev-1", "sem-1");
+        snapshot.status = StrategyRunStatus::Waiting;
+        snapshot.conversation_id = Some("conv-1".into());
+        snapshot.assistant_membership_id = Some("asst-1".into());
+        snapshot.completed_states.insert("init".into());
+        snapshot.state_visits.insert("init".into(), 1);
+        snapshot.state_visits.insert("step1".into(), 1);
+        snapshot
+    }
+
+    fn callback_pending() -> PendingCallback {
+        PendingCallback {
+            state_id: "step1".into(),
+            state_visit: 1,
+            transition_id: "trans-1".into(),
+            event: licoup_workflow::TransitionEvent::Complete,
+            target: "step2".into(),
+        }
+    }
+
+    fn active_authorization() -> StrategyAuthorization {
+        StrategyAuthorization {
+            definition_digest: "rev-1".into(),
+            semantics_digest: "sem-1".into(),
+            binding_digest: "bind-1".into(),
+            authorization_digest: "auth-1".into(),
+            revision: 1,
+            active: true,
+        }
+    }
+
+    fn test_command(state_id: &str, state_visit: u64) -> RunCommand {
+        RunCommand {
+            id: format!("command:{state_id}:{state_visit}"),
+            state_id: state_id.to_owned(),
+            state_visit,
+            kind: licoup_workflow::CommandKind::Actor,
+            status: licoup_workflow::CommandStatus::Claimed,
+            attempt: 1,
+            attempt_token: "attempt:1".into(),
+            binding_id: Some("entry".into()),
+            runtime_id: None,
+            entry: None,
+            item_id: None,
+            session_policy: licoup_workflow::SessionPolicy::default(),
+            binding_ordinal: 0,
+            resume_session_id: None,
+            input_digest: "input-1".into(),
+            input: json!({"message": "hi"}),
+            output_digest: None,
+            failure_class: None,
+            failure_code: None,
+        }
+    }
+
+    fn test_definition(authorization: Option<StrategyAuthorization>) -> StrategyDefinition {
+        use licoup_workflow::{
+            GraphState, GraphStateKind, RetryPolicy, WorkflowDefinition, WorkflowLimits,
+            WorkflowMetadata,
+        };
+        StrategyDefinition {
+            summary: crate::domain::workflow_store::StrategyDefinitionSummary {
+                definition_id: "evolution-test".into(),
+                revision_digest: "rev-1".into(),
+                semantics_digest: "sem-1".into(),
+                name: "Evolution test".into(),
+                version: "1".into(),
+                imported_at_unix_ms: 0,
+                authorized: authorization.is_some(),
+            },
+            workflow: WorkflowDefinition {
+                schema: licoup_workflow::WORKFLOW_SCHEMA_VERSION.into(),
+                metadata: WorkflowMetadata {
+                    id: "evolution-test".into(),
+                    name: "Evolution test".into(),
+                    version: "1".into(),
+                    description: String::new(),
+                },
+                limits: WorkflowLimits::default(),
+                actor_slots: Vec::new(),
+                runtimes: Vec::new(),
+                worksets: Vec::new(),
+                initial: "step".into(),
+                states: vec![GraphState {
+                    id: "step".into(),
+                    kind: GraphStateKind::Succeed,
+                    label: "Step".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                }],
+                transitions: Vec::new(),
+            },
+            asset_count: 0,
+            bindings: Vec::new(),
+            authorization,
+        }
     }
 }

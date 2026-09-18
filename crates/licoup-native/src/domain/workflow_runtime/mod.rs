@@ -31,6 +31,16 @@ pub use driver::{
     ContinuousNodeDriver, DispatchedEffectReport, DriverError, DriverStepOutcome, GraphPauseReport,
     GraphStopReport, PerNodePauseOutcome, PerNodeStopOutcome, ResultReentry,
 };
+pub use evolution::{
+    AdoptedPlanningDefaultSeam, AgentModelOptionSeam, CallbackContextFacts, CallbackCostFacts,
+    CallbackEvolutionEnricher, CallbackEvolutionPayload, CallbackFacts, CallbackObservationFacts,
+    CallbackSuggestions, DefaultEvolutionContextPort, DefaultEvolutionObservationPort,
+    DefaultEvolutionStrategyPort, EffectRecheckContext, EffectRecheckFailure, EffectRecheckReceipt,
+    EvolutionContextPort, EvolutionCostPort, EvolutionObservationPort, EvolutionStrategyPort,
+    GroupBGapReport, GroupBIntegrationGaps, LedgerEvolutionCostPort, NodeObservationSummary,
+    PlanningScopeSeam, StrategySourceSeam, StrategySuggestion, StrategyVersionSeam,
+    recheck_before_effect,
+};
 pub use node::{
     CancellationFacts, InvocationRecord, NodeExecutionError, NodeExecutionOutcome,
     NodeExecutionReceipt, NodeFacade, NodeObservation, PauseResult, ResumeResult, SteerResult,
@@ -42,16 +52,6 @@ pub use routing::{
     FrozenTargets, NodeCapability, NodeFeatureIndex, NodeLifecycleState, NodeMetadata, QueueBounds,
     QueueCapacityExceeded, QueuedItem, RecipientEffectStatus, Subscription, SubscriptionPredicate,
     SubscriptionRegistry, SubscriptionScope, TargetSelector,
-};
-pub use evolution::{
-    AdoptedPlanningDefaultSeam, AgentModelOptionSeam, CallbackCostFacts, CallbackContextFacts,
-    CallbackEvolutionEnricher, CallbackEvolutionPayload, CallbackFacts, CallbackObservationFacts,
-    CallbackSuggestions, DefaultEvolutionContextPort, DefaultEvolutionObservationPort,
-    DefaultEvolutionStrategyPort, EffectRecheckContext, EffectRecheckFailure, EffectRecheckReceipt,
-    EvolutionCostPort, EvolutionContextPort, EvolutionObservationPort, EvolutionStrategyPort,
-    GroupBGapReport, GroupBIntegrationGaps, LedgerEvolutionCostPort, NodeObservationSummary,
-    PlanningScopeSeam, StrategySourceSeam, StrategySuggestion, StrategyVersionSeam,
-    recheck_before_effect,
 };
 pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
 
