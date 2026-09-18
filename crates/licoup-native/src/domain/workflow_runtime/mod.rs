@@ -1,21 +1,17 @@
-//! Adaptive Flywheel strategy definitions and durable Graph execution.
+//! Event-driven workflow runtime and native execution adapters.
 //!
-//! `workflow.json` is the only state-machine semantic source. Definitions are
-//! immutable, reducers are pure, and every external effect is represented by
-//! a durable command before an adapter is allowed to run it.
+//! Runtime leaves are intentionally separate from [`crate::domain::workflow_store`]:
+//! adapters may perform external work, while store transactions only persist
+//! state, commands, and post-commit intent.
 
 pub mod adapter;
 mod assistant;
-#[cfg(test)]
-mod conformance;
 pub mod control;
 pub mod driver;
 pub mod node;
 mod package;
 pub mod routing;
 mod service;
-mod store;
-mod strategy_types;
 
 pub use adapter::{
     AdapterError, AdapterExecutionStatus, CancelOutcome, CooperativeDrainAdapter,
@@ -47,11 +43,9 @@ pub use routing::{
     SubscriptionRegistry, SubscriptionScope, TargetSelector,
 };
 pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
-pub use store::StrategyStore;
-pub use strategy_types::{
-    BindingCandidate, BindingValue, StrategyAuthorization, StrategyDefinition,
-    StrategyDefinitionSummary, StrategyDiagnostic, StrategyError, StrategyErrorCode,
-    StrategyProjection,
-};
 
-pub const STRATEGY_SCHEMA_VERSION: &str = "licoup.adaptive-flywheel.state.v1";
+pub use crate::domain::workflow_store::{
+    BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,
+    StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyError,
+    StrategyErrorCode, StrategyProjection, StrategyStore, WorkflowStore,
+};
