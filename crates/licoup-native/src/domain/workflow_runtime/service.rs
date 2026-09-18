@@ -5,6 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::domain::workflow_store::{
+    CommittedTransition, StrategyStore, TransitionDecorator, TransitionObserver,
+};
 use crate::platform::runtime_adapters::RuntimeAdapterError;
 use crate::platform::strategy_runtime::{
     RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, admit_strategy_cwd, execute_actor,
@@ -14,8 +17,7 @@ use crate::platform::strategy_runtime::{
 use super::assistant::sha256_hex;
 use super::{
     ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingCandidate, BindingValue,
-    PreflightFailure, StrategyDefinition, StrategyPackageImporter, StrategyStore,
-    preflight_assistant_graph,
+    PreflightFailure, StrategyDefinition, StrategyPackageImporter, preflight_assistant_graph,
 };
 use licoup_workflow::machine::{effect_input_for, fallback_reason};
 use licoup_workflow::{
@@ -51,6 +53,52 @@ pub struct AssistantWakePort {
     pub wake: Arc<dyn Fn(&str, &str, &Value) -> std::result::Result<(), String> + Send + Sync>,
 }
 
+#[derive(Clone)]
+struct PostCommitDispatcher {
+    portable_root: PathBuf,
+    assistant_wake: Arc<Mutex<Option<Arc<AssistantWakePort>>>>,
+}
+
+impl PostCommitDispatcher {
+    fn new(portable_root: PathBuf) -> Self {
+        Self {
+            portable_root,
+            assistant_wake: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn set_assistant_wake(&self, assistant_wake: AssistantWakePort) {
+        let mut slot = self
+            .assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        *slot = Some(Arc::new(assistant_wake));
+    }
+
+    fn assistant_wake(&self) -> Option<Arc<AssistantWakePort>> {
+        self.assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
+    }
+}
+
+impl TransitionObserver for PostCommitDispatcher {
+    fn after_commit(&self, transition: &CommittedTransition) -> Result<()> {
+        let wake = self
+            .assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone();
+        StrategyService::report_master_gates(
+            &self.portable_root,
+            wake.as_deref(),
+            Some(&transition.before),
+            &transition.after,
+        )
+    }
+}
+
 fn driving_runs() -> &'static Mutex<BTreeSet<String>> {
     static RUNS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
     RUNS.get_or_init(|| Mutex::new(BTreeSet::new()))
@@ -62,7 +110,8 @@ pub struct StrategyService {
     importer: StrategyPackageImporter,
     portable_root: PathBuf,
     actor_port: Option<Arc<ActorTurnPort>>,
-    assistant_wake: Option<Arc<AssistantWakePort>>,
+    transition: TransitionDecorator,
+    post_commit: Arc<PostCommitDispatcher>,
     profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
 }
 
@@ -77,15 +126,14 @@ impl std::fmt::Debug for StrategyService {
 
 impl StrategyService {
     pub fn open(portable_root: &Path) -> Result<Self> {
-        let service = Self {
-            store: StrategyStore::open(portable_root)?,
-            importer: StrategyPackageImporter::open(portable_root)?,
-            portable_root: portable_root.to_path_buf(),
-            actor_port: None,
-            assistant_wake: None,
-            profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
-        };
+        let store = StrategyStore::open(portable_root)?;
+        let service = Self::from_parts(
+            portable_root.to_path_buf(),
+            store,
+            StrategyPackageImporter::open(portable_root)?,
+        );
         service.refresh_runtime_bindings()?;
+        let _ = service.transition.reconcile_pending();
         Ok(service)
     }
 
@@ -94,12 +142,15 @@ impl StrategyService {
         store: StrategyStore,
         importer: StrategyPackageImporter,
     ) -> Self {
+        let post_commit = Arc::new(PostCommitDispatcher::new(portable_root.clone()));
+        let transition = TransitionDecorator::new(store.clone()).with_observer(post_commit.clone());
         Self {
             store,
             importer,
             portable_root,
             actor_port: None,
-            assistant_wake: None,
+            transition,
+            post_commit,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         }
     }
@@ -109,8 +160,8 @@ impl StrategyService {
         self
     }
 
-    pub fn with_assistant_wake_port(mut self, assistant_wake: AssistantWakePort) -> Self {
-        self.assistant_wake = Some(Arc::new(assistant_wake));
+    pub fn with_assistant_wake_port(self, assistant_wake: AssistantWakePort) -> Self {
+        self.post_commit.set_assistant_wake(assistant_wake);
         self
     }
 
@@ -325,7 +376,7 @@ impl StrategyService {
                     cwd,
                 )?;
                 self.record_graph_usage(&snapshot, None)?;
-                let _ = self.report_master_gates(None, &snapshot);
+                let _ = self.transition.reconcile_pending();
                 let entry_turn = self.start_drive(&snapshot)?;
                 let mut value =
                     serde_json::to_value(self.store.projection_for_run(&snapshot.run_id)?)?;
@@ -412,7 +463,7 @@ impl StrategyService {
                                                 == Some(FailureClass::Authority)
                                     })
                                     .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                                self.store.apply_event(
+                                self.apply_run_event(
                                     run_id,
                                     ReducerEvent::RetryRequested {
                                         command_id: command.id.clone(),
@@ -426,7 +477,7 @@ impl StrategyService {
                                 .values()
                                 .find(|command| command.status == CommandStatus::Retryable)
                                 .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                            self.store.apply_event(
+                            self.apply_run_event(
                                 run_id,
                                 ReducerEvent::RetryRequested {
                                     command_id: command.id.clone(),
@@ -456,7 +507,7 @@ impl StrategyService {
                     .values()
                     .filter(|command| command.status == CommandStatus::CancelRequested)
                 {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::CancellationUnknown {
                             command_id: command.id.clone(),
@@ -480,7 +531,7 @@ impl StrategyService {
                     .values()
                     .find(|command| command.status == CommandStatus::Retryable)
                     .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                self.store.apply_event(
+                self.apply_run_event(
                     run_id,
                     ReducerEvent::RetryRequested {
                         command_id: command.id.clone(),
@@ -581,7 +632,7 @@ impl StrategyService {
                     .values()
                     .filter(|command| command.status == CommandStatus::CancelRequested)
                 {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::CancellationUnknown {
                             command_id: command.id.clone(),
@@ -773,7 +824,7 @@ impl StrategyService {
         // master agent's callback decision arrives with it and the reducer
         // applies it before the run is driven further.
         let snapshot = match decision {
-            Some((state_id, state_visit, kind)) => self.store.apply_event(
+            Some((state_id, state_visit, kind)) => self.apply_run_event(
                 run_id,
                 ReducerEvent::CallbackDecision {
                     state_id,
@@ -1149,6 +1200,7 @@ impl StrategyService {
     }
 
     fn start_drive(&self, snapshot: &RunSnapshot) -> Result<Option<Value>> {
+        let _ = self.transition.reconcile_pending();
         // Usage admission is local and deterministic, so it completes before
         // registering the first Membership turn or issuing any other effect.
         self.record_graph_usage(snapshot, None)?;
@@ -1198,7 +1250,7 @@ impl StrategyService {
             return self.settle_drive_failure(&snapshot.run_id);
         };
         let (class, code) = classify_effect_error(message);
-        let updated = self.store.apply_event(
+        let updated = self.apply_run_event(
             &snapshot.run_id,
             ReducerEvent::AssistantEffectFailed {
                 command_id: command.id.clone(),
@@ -1208,23 +1260,14 @@ impl StrategyService {
             },
         )?;
         self.refresh_graph_usage(&updated, None);
-        // Assistant-owned runs return the typed outcome on execute. Imported
-        // runs owe the same settlement to the Conversation's master agent.
-        if updated.assistant_membership_id.is_none() {
-            let _ = self.report_master_gates(Some(snapshot), &updated);
-        }
         Ok(())
     }
 
     fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
-        let drive_entry = self.store.run(run_id)?;
         self.store.reclaim_abandoned_host_commands(run_id)?;
         self.recover_expired_commands(run_id)?;
+        let _ = self.transition.reconcile_pending();
         let recovered = self.store.run(run_id)?;
-        // Recovery settles expired leases through the same reducer; any
-        // callback wait or terminal failure it produced still owes the master
-        // agent its report.
-        let _ = self.report_master_gates(Some(&drive_entry), &recovered);
         let assistant_owned = recovered.assistant_membership_id.is_some();
         let mut executed = 0usize;
         'drive: while executed < MAX_DRIVE_EFFECTS_PER_CALL {
@@ -1256,7 +1299,7 @@ impl StrategyService {
                     command.status == CommandStatus::Retryable
                         && command.failure_class == Some(FailureClass::Authority)
                 }) {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::RetryRequested {
                             command_id: command.id.clone(),
@@ -1284,7 +1327,7 @@ impl StrategyService {
                 else {
                     break;
                 };
-                self.store.apply_event(
+                self.apply_run_event(
                     run_id,
                     ReducerEvent::CommandStarted {
                         command_id: command.id.clone(),
@@ -1406,7 +1449,7 @@ impl StrategyService {
             }
             if !assistant_failures.is_empty() {
                 for (command, class, code, output) in assistant_failures {
-                    let updated = self.store.apply_event(
+                    let updated = self.apply_run_event(
                         run_id,
                         ReducerEvent::AssistantEffectFailed {
                             command_id: command.id.clone(),
@@ -1431,16 +1474,13 @@ impl StrategyService {
         if assistant_run_terminal(snapshot.status) {
             return Ok(());
         }
-        let updated = self.store.apply_event(
+        let updated = self.apply_run_event(
             run_id,
             ReducerEvent::AssistantDriveFailed {
                 code: "assistant_drive_outcome_unknown".to_owned(),
             },
         )?;
         self.refresh_graph_usage(&updated, None);
-        if updated.assistant_membership_id.is_none() {
-            let _ = self.report_master_gates(Some(&snapshot), &updated);
-        }
         Ok(())
     }
 
@@ -1602,7 +1642,7 @@ impl StrategyService {
         if current.status == CommandStatus::Retryable
             && current.failure_class == Some(FailureClass::Transient)
         {
-            self.store.apply_event(
+            self.apply_run_event(
                 run_id,
                 ReducerEvent::RetryRequested {
                     command_id: current.id,
@@ -1641,7 +1681,7 @@ impl StrategyService {
                     .or_insert_with(|| Value::String(session.to_owned()));
             }
         }
-        self.store.apply_event(
+        self.apply_run_event(
             run_id,
             ReducerEvent::FallbackIssued {
                 failed_command_id: current.id,
@@ -1717,10 +1757,7 @@ impl StrategyService {
     /// the reduction produced. The reduction commits first; the report is a
     /// Membership-scoped projection and never fails the drive.
     fn apply_run_event(&self, run_id: &str, event: ReducerEvent) -> Result<RunSnapshot> {
-        let before = self.store.run(run_id)?;
-        let updated = self.store.apply_event(run_id, event)?;
-        let _ = self.report_master_gates(Some(&before), &updated);
-        Ok(updated)
+        self.transition.apply_event(run_id, event)
     }
 
     /// Runs owe the master agent a Membership-scoped event when a
@@ -1733,7 +1770,12 @@ impl StrategyService {
     /// Membership for Assistant-owned runs and the bound Conversation's
     /// designated Assistant Membership for imported runs; the payload names
     /// the answer channel that actually settles the wait.
-    fn report_master_gates(&self, before: Option<&RunSnapshot>, after: &RunSnapshot) -> Result<()> {
+    fn report_master_gates(
+        portable_root: &Path,
+        assistant_wake: Option<&AssistantWakePort>,
+        before: Option<&RunSnapshot>,
+        after: &RunSnapshot,
+    ) -> Result<()> {
         let Some(conversation_id) = after
             .conversation_id
             .as_deref()
@@ -1783,7 +1825,9 @@ impl StrategyService {
             "strategy.run.resume"
         };
         for pending in newly_parked {
-            self.append_master_report(
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1803,7 +1847,9 @@ impl StrategyService {
             )?;
         }
         if failure_terminal {
-            self.append_master_report(
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1817,7 +1863,9 @@ impl StrategyService {
             )?;
         }
         for (state_id, state_visit) in flow_settled {
-            self.append_master_report(
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1842,7 +1890,10 @@ impl StrategyService {
         conversation_id: &str,
         projected: &Value,
     ) -> Result<()> {
-        self.append_master_report(
+        let wake = self.post_commit.assistant_wake();
+        Self::append_master_report(
+            &self.portable_root,
+            wake.as_deref(),
             conversation_id,
             None,
             None,
@@ -1857,14 +1908,14 @@ impl StrategyService {
     }
 
     fn append_master_report(
-        &self,
+        portable_root: &Path,
+        assistant_wake: Option<&AssistantWakePort>,
         conversation_id: &str,
         preferred_master_id: Option<&str>,
         causation_id: Option<&str>,
         part: Value,
     ) -> Result<()> {
-        let store =
-            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        let store = crate::domain::client_conversation::ConversationStore::open(portable_root)?;
         let conversation = store.get(conversation_id)?;
         let master_id = preferred_master_id.or(conversation.assistant_membership_id.as_deref());
         let Some(master) = master_id
@@ -1896,7 +1947,7 @@ impl StrategyService {
         // fire-and-forget surface that opens one new Assistant turn only when
         // no turn of that membership is in flight, so it never fails the
         // drive and never stacks a second turn.
-        if let Some(port) = self.assistant_wake.as_ref() {
+        if let Some(port) = assistant_wake {
             let _ = (port.wake)(conversation_id, &master, &part);
         }
         Ok(())
@@ -2994,7 +3045,7 @@ mod tests {
         let zip_path = root.join("fixture.zip");
         fs::write(
             &zip_path,
-            crate::domain::adaptive_flywheel::synthetic_fixture_package_bytes().unwrap(),
+            crate::domain::workflow_runtime::synthetic_fixture_package_bytes().unwrap(),
         )
         .unwrap();
         let prepared = service
