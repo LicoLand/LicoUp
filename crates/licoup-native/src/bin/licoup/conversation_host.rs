@@ -66,8 +66,9 @@ fn register_termination_signal_handler() {}
 
 pub(super) fn request_host_stop() -> Result<()> {
     let params = serde_json::json!({ "host": true });
-    let _response = licoup_native::platform::conversation_host_client::execute_existing("shutdown", &params)
-        .map_err(|_| anyhow!("persistent_conversation_transport_required"))?;
+    let _response =
+        licoup_native::platform::conversation_host_client::execute_existing("shutdown", &params)
+            .map_err(|_| anyhow!("persistent_conversation_transport_required"))?;
     let deadline = Instant::now() + NORMAL_SHUTDOWN_DRAIN_TIMEOUT + Duration::from_secs(5);
     while endpoint_accepts_connections() && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(50));
@@ -77,7 +78,6 @@ pub(super) fn request_host_stop() -> Result<()> {
     }
     Ok(())
 }
-
 
 fn host_generation_path(root: &Path) -> PathBuf {
     root.join("client-state")
@@ -1504,23 +1504,17 @@ mod tests {
 
         // When GUI A is alive, GUI B sees the host as Current (not Absent!)
         assert_eq!(
-            classify_host_ownership(
-                record.clone(),
-                &generation,
-                client_b,
-                |_| ProcessLiveness::Alive,
-            ),
+            classify_host_ownership(record.clone(), &generation, client_b, |_| {
+                ProcessLiveness::Alive
+            },),
             HostOwnership::Current
         );
 
         // Even when GUI A has quit (client_a is dead, but host is alive), GUI B still sees host as Current!
         assert_eq!(
-            classify_host_ownership(
-                record.clone(),
-                &generation,
-                client_b,
-                |_| ProcessLiveness::Alive,
-            ),
+            classify_host_ownership(record.clone(), &generation, client_b, |_| {
+                ProcessLiveness::Alive
+            },),
             HostOwnership::Current
         );
 
@@ -1550,9 +1544,8 @@ mod tests {
         let runtime = PersistentConversationRuntime::new(service.store().clone());
         let host_service = service.clone();
         let host_runtime = runtime.clone();
-        let host_thread = thread::spawn(move || {
-            serve_bound_host(listener, host_service, host_runtime, None)
-        });
+        let host_thread =
+            thread::spawn(move || serve_bound_host(listener, host_service, host_runtime, None));
 
         let mut stream = connect_test_host(&root);
         let request = serde_json::json!({
@@ -1673,7 +1666,10 @@ mod tests {
             .page_events(&scope.conversation_id, None, 100)
             .unwrap()
             .events;
-        assert!(!events.is_empty(), "durable facts must be preserved after crash recovery");
+        assert!(
+            !events.is_empty(),
+            "durable facts must be preserved after crash recovery"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

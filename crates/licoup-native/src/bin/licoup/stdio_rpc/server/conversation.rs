@@ -251,7 +251,9 @@ impl PersistentConversationRuntime {
     }
 
     pub(crate) fn request_host_stop(&self) {
-        self.inner.host_stop_requested.store(true, Ordering::Release);
+        self.inner
+            .host_stop_requested
+            .store(true, Ordering::Release);
         self.inner.turns_changed.notify_all();
     }
 
