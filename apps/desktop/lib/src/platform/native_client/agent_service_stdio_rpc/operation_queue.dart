@@ -16,19 +16,37 @@ final class StdioRpcOperationQueue {
   Future<void>? _closeFuture;
 
   bool get closing => _closing;
+  int get pendingCount => _pending.length;
+  int get pendingPayloadBytes => _pending.totalPayloadBytes;
+  bool get hasBackpressure => _pending.hasBackpressure;
 
-  Future<T> serialize<T>(RpcOp<T> operation, {RpcPriorityToken? priority}) {
+  Future<T> serialize<T>(
+    RpcOp<T> operation, {
+    RpcPriorityToken? priority,
+    int byteSize = 0,
+    void Function(RpcPendingEntryHandle<RpcOp<void>> handle)? onEnqueued,
+  }) {
     if (_closing) {
       return Future<T>.error(const LicoClientRpcException('service_disposed'));
     }
     final completer = Completer<T>();
-    _enqueue(() async {
-      try {
-        completer.complete(await operation());
-      } on Object catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
-    }, priority);
+    final handle = _enqueue(
+      () async {
+        try {
+          completer.complete(await operation());
+        } on Object catch (error, stackTrace) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+      priority: priority,
+      byteSize: byteSize,
+      onCancelled: () {
+        if (!completer.isCompleted) {
+          completer.completeError(const LicoClientRpcException('cancelled'));
+        }
+      },
+    );
+    onEnqueued?.call(handle);
     return completer.future;
   }
 
@@ -68,19 +86,33 @@ final class StdioRpcOperationQueue {
     return completer.future;
   }
 
-  void _enqueue(RpcOp<void> run, [RpcPriorityToken? priority]) {
-    _pending.add(run, priority: priority);
-    if (_running) return;
+  RpcPendingEntryHandle<RpcOp<void>> _enqueue(
+    RpcOp<void> run, {
+    RpcPriorityToken? priority,
+    int byteSize = 0,
+    void Function()? onCancelled,
+  }) {
+    final handle = _pending.add(
+      run,
+      priority: priority,
+      byteSize: byteSize,
+      onCancelled: onCancelled,
+    );
+    if (_running) return handle;
     _running = true;
     unawaited(_drain());
+    return handle;
   }
 
   Future<void> _drain() async {
-    while (!_pending.isEmpty) {
-      try {
-        await _pending.takeNext()();
-      } on Object catch (_) {}
+    try {
+      while (_pending.isNotEmpty) {
+        try {
+          await _pending.takeNext()();
+        } on Object catch (_) {}
+      }
+    } finally {
+      _running = false;
     }
-    _running = false;
   }
 }
