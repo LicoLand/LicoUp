@@ -1,9 +1,9 @@
 use super::super::*;
 use anyhow::anyhow;
 use licoup_conversation::continuity::{
-    ASSISTANT_TURN_INVALID_ERROR, TRUSTED_RESPONSE_MODE_ASSISTANT_TURN,
-    apply_admitted_validation_failure_facts, project_admitted_known_text_fields,
-    public_admitted_output, redact_live_runtime_event_with_assembly,
+    TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, apply_admitted_validation_failure_facts,
+    project_admitted_known_text_fields, public_admitted_output,
+    redact_live_runtime_event_with_assembly,
 };
 use licoup_native::domain::assistant_continuity::execution::CONTINUITY_KIND_USER_POSTED;
 use licoup_native::domain::client_conversation::{
@@ -267,11 +267,183 @@ impl PersistentConversationRuntime {
         self.begin_with(params, PersistentTurnAdmission::Public)
     }
 
+    /// Resolve the native context for one Membership-scoped dispatch at the
+    /// single runtime boundary. Callback, wake, Graph, and ordinary dispatch
+    /// producers may omit the private binding because it is host-owned; the
+    /// native adapter still receives the exact session and its working
+    /// location when the Membership already has one. An explicit session is
+    /// preserved so adapter-owned identity validation remains authoritative.
+    fn resolve_dispatch_params(&self, params: &Value) -> Value {
+        let Some(object) = params.as_object() else {
+            return params.clone();
+        };
+        let conversation_id = object
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let membership_id = object
+            .get("membershipId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let binding = match (conversation_id, membership_id) {
+            (Some(conversation_id), Some(membership_id)) => self
+                .inner
+                .store
+                .private_runtime_binding(conversation_id, membership_id)
+                .ok()
+                .flatten(),
+            _ => None,
+        };
+        let mut resolved = params.clone();
+        let Some(resolved_object) = resolved.as_object_mut() else {
+            return resolved;
+        };
+        if let Some(binding) = binding.as_ref() {
+            let binding_session = binding.runtime_session_id.trim();
+            let current_session = resolved_object
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if current_session.is_none() && !binding_session.is_empty() {
+                resolved_object.insert(
+                    "sessionId".to_owned(),
+                    Value::String(binding_session.to_owned()),
+                );
+            }
+            let session_matches_binding = resolved_object
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_some_and(|session| session == binding_session);
+            if session_matches_binding {
+                if resolved_object
+                    .get("sourcePath")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                {
+                    if let Some(path) = binding
+                        .runtime_conversation_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        resolved_object.insert("sourcePath".to_owned(), json!(path));
+                    }
+                }
+                if resolved_object
+                    .get("workingDirectory")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                {
+                    if let Some(cwd) = binding
+                        .working_directory
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        resolved_object.insert("workingDirectory".to_owned(), json!(cwd));
+                    }
+                }
+            }
+        }
+        if let Some(membership_id) = membership_id
+            && let Ok(Some(profile)) = self.inner.store.membership_profile(membership_id)
+        {
+            if resolved_object
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+            {
+                if let Some(model) = profile
+                    .preferred_model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    resolved_object.insert("model".to_owned(), json!(model));
+                }
+            }
+            if resolved_object
+                .get("reasoningEffort")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+            {
+                if let Some(reasoning) = profile
+                    .preferred_reasoning_effort
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    resolved_object.insert("reasoningEffort".to_owned(), json!(reasoning));
+                }
+            }
+            if resolved_object
+                .get("workingDirectory")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+            {
+                if let Some(environment) = profile
+                    .preferred_environment
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    resolved_object.insert("workingDirectory".to_owned(), json!(environment));
+                }
+            }
+            if !resolved_object.contains_key("requiredCapabilities")
+                && !profile.required_capabilities.is_empty()
+            {
+                resolved_object.insert(
+                    "requiredCapabilities".to_owned(),
+                    json!(profile.required_capabilities),
+                );
+            }
+        }
+        resolved
+    }
+
+    /// Keep an opened turn's admitted session stable until it settles. The
+    /// store binding may be updated by another lifecycle observer between
+    /// open and run; the handle is the authority for this already-admitted
+    /// dispatch.
+    fn params_for_turn(&self, turn: &Arc<PersistentTurn>, params: &Value) -> Value {
+        let mut resolved = params.clone();
+        let session_id = turn.session_id.lock().expect("turn session lock").clone();
+        let has_session = resolved
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some();
+        if !has_session
+            && !session_id.trim().is_empty()
+            && let Some(object) = resolved.as_object_mut()
+        {
+            object.insert("sessionId".to_owned(), Value::String(session_id));
+        }
+        self.resolve_dispatch_params(&resolved)
+    }
+
     fn begin_with(
         &self,
         params: &Value,
         admission: PersistentTurnAdmission,
     ) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
+        let params = self.resolve_dispatch_params(params);
         let agent_id = params
             .get("agent")
             .or_else(|| params.get("agentId"))
@@ -316,12 +488,12 @@ impl PersistentConversationRuntime {
                 params.get("dispatchId").and_then(Value::as_str),
             )
             .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
-        let continuity_kind = admission.continuity_kind(params);
+        let continuity_kind = admission.continuity_kind(&params);
         self.inner
             .store
-            .record_runtime_request(&scope, params)
+            .record_runtime_request(&scope, &params)
             .map_err(|_| stdio_rpc_client_error("conversation_persistence_failed"))?;
-        let admitted_assistant_turn = admission.admits_assistant_turn(params);
+        let admitted_assistant_turn = admission.admits_assistant_turn(&params);
         if admitted_assistant_turn {
             self.inner
                 .store
@@ -344,12 +516,11 @@ impl PersistentConversationRuntime {
         });
         turns.insert(scope.dispatch_id.clone(), Arc::clone(&turn));
         self.inner.turns_changed.notify_all();
-        // A claimed dispatch gets a watchdog after the writable timeout
-        // policy resolves (`timeoutMs` 0/omitted uses the policy; only
-        // timeoutUnbounded keeps the turn without a deadline). Ordinary
-        // (unclaimed) dispatches never register.
+        // Only a claimed dispatch with a finite resolved timeout gets a
+        // settlement watchdog. A zero resolved timeout is unbounded, and an
+        // ordinary unclaimed dispatch never registers one.
         let timeout_ms =
-            licoup_native::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
+            licoup_native::domain::dispatch_timeout_policy::resolve_dispatch_timeout(&params)
                 .unwrap_or(0);
         if timeout_ms > 0
             && matches!(
@@ -631,7 +802,10 @@ impl PersistentConversationRuntime {
         portable_data_dir: Option<PathBuf>,
         admission: PersistentTurnAdmission,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
-        let handle = self.open_turn_with(params, admission)?;
+        let handle = match admission {
+            PersistentTurnAdmission::Public => self.open_turn(params)?,
+            PersistentTurnAdmission::Host => self.open_admitted_turn(params)?,
+        };
         let Some(turn) = self.turn(&handle) else {
             self.abandon_turn(&handle);
             return Err(RuntimeAdapterError::ConversationDispatchFailed);
@@ -705,6 +879,7 @@ impl PersistentConversationRuntime {
         params: &Value,
         portable_data_dir: Option<PathBuf>,
     ) -> std::result::Result<Value, RuntimeAdapterError> {
+        let params = self.params_for_turn(&turn, params);
         let continuation_dir = portable_data_dir.clone();
         let persistence_failed = Arc::new(AtomicBool::new(false));
         let sink_failed = Arc::clone(&persistence_failed);
@@ -719,7 +894,7 @@ impl PersistentConversationRuntime {
         ));
         let execution = catch_unwind(AssertUnwindSafe(|| {
             let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-            licoup_native::platform::dispatch_lane_operation("send", params)
+            licoup_native::platform::dispatch_lane_operation("send", &params)
         }));
         drop(stream_guard);
         drop(raw_scope);
@@ -789,7 +964,10 @@ impl PersistentConversationRuntime {
                 .fail_direct_turn_unless_dispatched(&context.turn.id, diagnostic);
             return;
         };
-        if self.start_background(&params, portable_data_dir).is_err() {
+        if self
+            .start_admitted_background(&params, portable_data_dir)
+            .is_err()
+        {
             let diagnostic =
                 r#"{"code":"conversation_dispatch_failed","stage":"conversation/dispatch"}"#;
             let _ = self
@@ -1168,14 +1346,18 @@ impl PersistentConversationRuntime {
         )?;
         let mut callback_payload = terminal.payload.clone();
         if persisted_state != state {
-            callback_payload["ok"] = json!(false);
-            callback_payload["turnStatus"] = json!("failed");
-            callback_payload["code"] = json!(ASSISTANT_TURN_INVALID_ERROR);
-            callback_payload["error"] = json!({
-                "code": ASSISTANT_TURN_INVALID_ERROR,
-                "stage": "conversation/dispatch",
-                "turnStatus": "failed",
-            });
+            if turn.admitted_assistant_turn
+                && state == DispatchState::Completed
+                && persisted_state == DispatchState::Failed
+            {
+                // The Conversation store is the only authority that can
+                // reject a trusted response envelope. Ordinary prose is
+                // already accepted there and never reaches this branch.
+                apply_admitted_validation_failure_facts(&mut callback_payload);
+            } else {
+                callback_payload["ok"] = json!(false);
+                callback_payload["turnStatus"] = json!(persisted_state.as_str());
+            }
         }
         if callback_payload
             .get("conversationId")
@@ -1405,7 +1587,7 @@ impl PersistentConversationRuntime {
         let _ = std::thread::Builder::new()
             .name("subagent-callback".to_owned())
             .spawn(move || {
-                let _ = runtime.start_background(&params, None);
+                let _ = runtime.start_admitted_background(&params, None);
             });
     }
 
@@ -1441,6 +1623,9 @@ fn direct_turn_params(
     });
     if let (Some(field), Some(guidance)) = (delivery.field, delivery.guidance) {
         params[field] = json!(guidance);
+    }
+    if context.is_assistant {
+        params["continuityKind"] = json!(CONTINUITY_KIND_USER_POSTED);
     }
     if !context.source_attachments.is_empty() {
         params["attachments"] =
@@ -1978,9 +2163,10 @@ pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
 }
 
 /// The strategy drive's Conversation-dispatch port, composed once where the
-/// persistent host runtime already exists. Open registers a turn, run executes
-/// an opened turn, and abandon settles one that will never run; an absent
-/// runtime keeps the strategy service fail closed.
+/// persistent host runtime already exists. Strategy commands cross the host
+/// admission boundary before they run; open registers a turn, run executes an
+/// opened turn, and abandon settles one that will never run. An absent runtime
+/// keeps the strategy service fail closed.
 pub(super) fn strategy_turn_port(
     runtime: PersistentConversationRuntime,
     portable_data_dir: Option<PathBuf>,
@@ -1989,7 +2175,7 @@ pub(super) fn strategy_turn_port(
     let run_runtime = runtime.clone();
     let run_dir = portable_data_dir;
     licoup_native::domain::workflow_runtime::ActorTurnPort {
-        open: Arc::new(move |params| open_runtime.open_turn(params)),
+        open: Arc::new(move |params| open_runtime.open_admitted_turn(params)),
         run: Arc::new(move |handle, params| {
             run_runtime.run_open_turn(handle, params, run_dir.clone())
         }),
@@ -2037,7 +2223,7 @@ pub(super) fn assistant_wake_port(
             std::thread::Builder::new()
                 .name("assistant-wake".to_owned())
                 .spawn(move || {
-                    let _ = wake_runtime.start_background(&params, wake_dir);
+                    let _ = wake_runtime.start_admitted_background(&params, wake_dir);
                 })
                 .map_err(|error| error.to_string())?;
             Ok(())
@@ -2109,9 +2295,10 @@ mod tests {
         TRUSTED_RESPONSE_MODE_ASSISTANT_TURN, list_all_parent_grants, settlement_applied,
     };
     use licoup_native::domain::client_conversation::{
-        ConversationService, DirectTurn, DirectTurnExecutionContext, EventPartKind,
-        ImageAttachment, ImageAttachmentReference, MembershipAccess, PersistentRuntimePorts,
-        Principal, PrincipalKind, SubagentDispatchClaimState, TurnState,
+        ConversationService, DirectTurn, DirectTurnExecutionContext, DispatchSessionMode,
+        EventPartKind, ImageAttachment, ImageAttachmentReference, MembershipAccess,
+        PersistentRuntimePorts, Principal, PrincipalKind, RuntimeBinding,
+        SubagentDispatchClaimState, TurnState,
     };
     use serde_json::{Value, json};
 
@@ -2645,8 +2832,25 @@ mod tests {
             .unwrap()["id"]
             .as_str()
             .unwrap();
-        let runtime =
-            PersistentConversationRuntime::with_cache_budget(store, DEFAULT_TURN_CACHE_BYTES);
+        store
+            .runtime_binding_with_private_location(
+                RuntimeBinding {
+                    id: "binding:persistent-runtime".to_owned(),
+                    conversation_id: conversation_id.to_owned(),
+                    membership_id: membership_id.to_owned(),
+                    lane: "conversation".to_owned(),
+                    availability: "available".to_owned(),
+                    safe_reason: None,
+                },
+                Some("native-session-existing"),
+                Some("conversation.md"),
+                Some("/workspace/project"),
+            )
+            .unwrap();
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
         let turn = runtime
             .begin(&json!({
                 "agent": "synthetic",
@@ -2659,6 +2863,27 @@ mod tests {
 
         assert_eq!(turn.scope.conversation_id, conversation_id);
         assert_eq!(turn.scope.membership_id, membership_id);
+        assert_eq!(
+            turn.session_id.lock().unwrap().as_str(),
+            "native-session-existing"
+        );
+        let dispatch = store
+            .dispatch_record(&turn.scope.dispatch_id)
+            .unwrap()
+            .expect("group dispatch record");
+        assert_eq!(dispatch.session_mode, DispatchSessionMode::Resume);
+        let native_params = runtime.params_for_turn(
+            &turn,
+            &json!({
+                "agent": "synthetic",
+                "text": "group prompt",
+                "conversationId": conversation_id,
+                "membershipId": membership_id,
+            }),
+        );
+        assert_eq!(native_params["sessionId"], "native-session-existing");
+        assert_eq!(native_params["sourcePath"], "conversation.md");
+        assert_eq!(native_params["workingDirectory"], "/workspace/project");
         assert_eq!(
             runtime.active(&json!({"conversationId": conversation_id}))["turns"][0]["turnHandle"],
             turn.scope.dispatch_id
@@ -2757,6 +2982,131 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn subagent_callback_and_wake_reuse_caller_membership_session() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let fixture = subagent_fixture(&store);
+        store
+            .runtime_binding_with_private_location(
+                RuntimeBinding {
+                    id: "binding:callback-caller".to_owned(),
+                    conversation_id: fixture.conversation_id.clone(),
+                    membership_id: fixture.caller_membership.clone(),
+                    lane: "conversation".to_owned(),
+                    availability: "available".to_owned(),
+                    safe_reason: None,
+                },
+                Some("caller-native-session"),
+                Some("caller-conversation.md"),
+                Some("/workspace/caller"),
+            )
+            .unwrap();
+        let runtime = PersistentConversationRuntime::with_cache_budget(
+            store.clone(),
+            DEFAULT_TURN_CACHE_BYTES,
+        );
+        let target_turn = runtime
+            .begin(&json!({
+                "agent": "target-agent",
+                "text": "delegated prompt",
+                "conversationId": fixture.conversation_id.as_str(),
+                "membershipId": fixture.target_membership.as_str(),
+                "causationId": "subagent-mcp",
+                "dispatchId": fixture.claim_id.as_str(),
+            }))
+            .unwrap();
+        PersistentConversationRuntime::finish(
+            &target_turn,
+            PersistentTerminal {
+                ok: true,
+                payload: json!({"ok": true, "output": "delegated final answer"}),
+            },
+        )
+        .unwrap();
+
+        let callback_dispatch = {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(dispatch) = store
+                    .latest_send_dispatch(&fixture.conversation_id, &fixture.caller_membership)
+                    .unwrap()
+                {
+                    break dispatch;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "callback dispatch must be accepted by the persistent runtime"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        assert_eq!(callback_dispatch.session_mode, DispatchSessionMode::Resume);
+        assert_eq!(
+            runtime
+                .inspect_turn(&callback_dispatch.id)
+                .expect("callback PersistentTurn")
+                .0,
+            "caller-native-session"
+        );
+
+        let callback_dispatch = {
+            let callback_id = callback_dispatch.id.clone();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let dispatch = store
+                    .dispatch_record(&callback_id)
+                    .unwrap()
+                    .expect("callback dispatch record");
+                if matches!(
+                    dispatch.state,
+                    DispatchState::Completed | DispatchState::Failed | DispatchState::Cancelled
+                ) {
+                    break dispatch;
+                }
+                assert!(Instant::now() < deadline, "callback dispatch must settle");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+
+        let port = assistant_wake_port(runtime.clone(), None);
+        (port.wake)(
+            &fixture.conversation_id,
+            &fixture.caller_membership,
+            &json!({
+                "kind": "strategy-flow-settled",
+                "runId": "run-callback-wake",
+                "stateId": "resume",
+                "stateVisit": 1,
+                "mode": "flow",
+            }),
+        )
+        .unwrap();
+        let wake_dispatch = {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(dispatch) = store
+                    .latest_send_dispatch(&fixture.conversation_id, &fixture.caller_membership)
+                    .unwrap()
+                    .filter(|dispatch| dispatch.id != callback_dispatch.id)
+                {
+                    break dispatch;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "wake dispatch must be accepted by the persistent runtime"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        assert_eq!(wake_dispatch.session_mode, DispatchSessionMode::Resume);
+        assert_eq!(
+            runtime
+                .inspect_turn(&wake_dispatch.id)
+                .expect("wake PersistentTurn"),
+            ("caller-native-session".to_owned(), String::new())
+        );
     }
 
     /// A claimed delegated turn settles: the claim moves to the matching
@@ -3386,6 +3736,30 @@ mod tests {
         assert_eq!(
             before, after,
             "a live membership turn keeps the notice timeline-only"
+        );
+        runtime.abandon_turn(&handle);
+    }
+
+    #[test]
+    fn strategy_turn_port_routes_open_through_host_admission() {
+        let runtime = runtime(DEFAULT_TURN_CACHE_BYTES);
+        let service = ConversationService::from_store(runtime.inner.store.clone());
+        let (conversation_id, _owner, agent) =
+            create_designated_group(&service, "Strategy admission");
+        let port = strategy_turn_port(runtime.clone(), None);
+        let handle = (port.open)(&json!({
+            "agent": "codex",
+            "text": "run the graph actor",
+            "conversationId": conversation_id,
+            "membershipId": agent,
+            "causationId": "run:strategy-admission",
+            "continuityKind": CONTINUITY_KIND_USER_POSTED,
+        }))
+        .unwrap();
+        let turn = runtime.turn(&handle).expect("strategy PersistentTurn");
+        assert!(
+            turn.admitted_assistant_turn,
+            "strategy actor admission must use the host-only turn boundary"
         );
         runtime.abandon_turn(&handle);
     }
