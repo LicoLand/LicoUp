@@ -277,11 +277,27 @@ final class CanonicalConversationEventProjection {
     required Iterable<ConversationPartProjection> parts,
     required this.finalized,
     required this.sendStateLabel,
+    this.authorMembershipId = '',
+    this.causationId = '',
+    this.correlationId = '',
+    this.createdAtUnixMs = 0,
   }) : parts = immutablePresentationList(parts);
 
+  /// Durable Event identity. Message operations (retry/delete) address this
+  /// id, never a renderer-derived alias.
   final String id;
   final int sequence;
   final String authorLabel;
+
+  /// Authoring Membership, preserved so edit/delete causality never depends
+  /// on a display label.
+  final String authorMembershipId;
+
+  /// Edit/delete/diagnostic causality: the Event this one was caused by, and
+  /// the turn handle it correlates to. Both survive projection untouched.
+  final String causationId;
+  final String correlationId;
+  final int createdAtUnixMs;
   final List<ConversationPartProjection> parts;
   final bool finalized;
   final String sendStateLabel;
@@ -293,6 +309,10 @@ final class CanonicalConversationEventProjection {
           other.id == id &&
           other.sequence == sequence &&
           other.authorLabel == authorLabel &&
+          other.authorMembershipId == authorMembershipId &&
+          other.causationId == causationId &&
+          other.correlationId == correlationId &&
+          other.createdAtUnixMs == createdAtUnixMs &&
           samePresentationList(other.parts, parts) &&
           other.finalized == finalized &&
           other.sendStateLabel == sendStateLabel;
@@ -302,6 +322,10 @@ final class CanonicalConversationEventProjection {
     id,
     sequence,
     authorLabel,
+    authorMembershipId,
+    causationId,
+    correlationId,
+    createdAtUnixMs,
     Object.hashAll(parts),
     finalized,
     sendStateLabel,
