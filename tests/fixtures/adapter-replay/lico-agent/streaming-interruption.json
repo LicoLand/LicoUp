@@ -1,63 +1,59 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "lico-agent",
-  "scenario": "streaming-interruption",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
-      "projection": [
-        {
-          "kind": "text",
-          "unitId": "lico-agent:reply",
-          "text": "<REDACTED_CONTENT>"
-        }
-      ]
-    },
-    {
-      "index": 1,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"stream-interrupted\"}",
-      "projection": [
-        {
-          "kind": "failed",
-          "code": "lico_agent_replay_stream_interrupted",
-          "stage": "protocol/read",
-          "message": "stream interrupted"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"delta\":\"partial synthetic reply\"}}",
+      "projection": [
+        {
+          "delta": "partial synthetic reply",
+          "effect": "text"
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{",
+      "projection": [
+        {
+          "error": "invalid_json"
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "streaming-interruption",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:d79047bee1e4a6ac801123e0270167f5505dc724f26183b5f798f1166fcf1f9b"
+    "contentSha256": "sha256:28fc1ebd569a43d358abbb57751a042bc268f7da8f38835fd006da9433d9347c"
   }
 }

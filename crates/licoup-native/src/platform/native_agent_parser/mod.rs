@@ -21,6 +21,8 @@ pub(in crate::platform) fn require_registered(
 }
 
 #[cfg(test)]
+pub(in crate::platform) mod replay;
+#[cfg(test)]
 mod tests;
 
 /// Complete packaged inventory. The registry test proves this is bijective

@@ -1,49 +1,130 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "codex",
-  "scenario": "user-cancel",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"user-cancel\"}",
-      "projection": [
-        {
-          "kind": "control",
-          "method": "cancel",
-          "summary": "user-cancel"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "stdio-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"id\":1,\"result\":{\"userAgent\":\"codex-test\",\"platformFamily\":\"test\",\"platformOs\":\"test\",\"codexHome\":\"/redacted\"}}",
+      "projection": [
+        {
+          "effect": "protocol",
+          "send": {
+            "method": "initialized"
+          }
+        },
+        {
+          "effect": "protocol",
+          "send": {
+            "id": 4,
+            "method": "account/rateLimits/read",
+            "params": {
+              "supportsLunaReserve": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": "stdio-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"id\":4,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":0}}}}",
+      "projection": [
+        {
+          "effect": "protocol",
+          "send": {
+            "id": 2,
+            "method": "thread/start",
+            "params": {
+              "cwd": "/workspace/project"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": "stdio-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 2,
+      "payload": "{\"id\":2,\"result\":{\"thread\":{\"id\":\"synthetic-session\",\"cwd\":\"/workspace/project\"},\"cwd\":\"/workspace/project\",\"sandbox\":{\"type\":\"workspaceWrite\",\"writableRoots\":[]},\"approvalPolicy\":\"on-request\"}}",
+      "projection": [
+        {
+          "effect": "protocol",
+          "send": {
+            "id": 3,
+            "method": "turn/start",
+            "params": {
+              "input": [
+                {
+                  "text": "synthetic-user-prompt",
+                  "type": "text"
+                }
+              ],
+              "threadId": "synthetic-session"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": "stdio-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 3,
+      "payload": "{\"id\":3,\"result\":{\"turn\":{\"id\":\"synthetic-turn\",\"status\":\"inProgress\",\"items\":[]}}}",
+      "projection": []
+    },
+    {
+      "channel": "stdio-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 4,
+      "payload": "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"synthetic-session\",\"turn\":{\"id\":\"synthetic-turn\",\"status\":\"interrupted\",\"items\":[]}}}",
+      "projection": [
+        {
+          "effect": "protocol",
+          "fail": {
+            "error": "codex_turn_not_completed",
+            "message": "Codex interrupted the requested turn.",
+            "sessionId": "synthetic-session",
+            "stage": "turn/completed",
+            "threadId": "synthetic-session",
+            "turnId": "synthetic-turn",
+            "turnStatus": "interrupted",
+            "userInteractionRequired": false
+          }
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "user-cancel",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:8647d685fefb387766b098ffa9bc9abc9c2f0f38b01511c08ef03cd3e2e1a155"
+    "contentSha256": "sha256:eb552d518286b63be772863d70ace82d1903717c7625b9b287e7babbbab66a53"
   }
 }

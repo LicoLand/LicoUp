@@ -1,50 +1,60 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "lico-agent",
-  "scenario": "agent-error",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
-      "projection": [
-        {
-          "kind": "failed",
-          "code": "lico_agent_replay_agent_error",
-          "stage": "turn/execute",
-          "message": "<REDACTED_ERROR>"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"delta\":\"synthetic reply\"}}",
+      "projection": [
+        {
+          "delta": "synthetic reply",
+          "effect": "text"
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"type\":\"error\",\"code\":\"lico_agent_transcript_persist_failed\"}",
+      "projection": [
+        {
+          "code": "lico_agent_transcript_persist_failed",
+          "effect": "failed"
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "agent-error",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:190843e23ba0fcd7ca4844b0b854f94402c04e3d8a0c4a734d5950d1988d72b1"
+    "contentSha256": "sha256:df80faedcbb344b25871b28d6d3ed3a468df0cb3f9aa03cde93a7a3468fc2496"
   }
 }

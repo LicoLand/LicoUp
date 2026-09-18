@@ -1,50 +1,68 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "cursor",
-  "scenario": "agent-error",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
-      "projection": [
-        {
-          "kind": "failed",
-          "code": "cursor_replay_agent_error",
-          "stage": "turn/execute",
-          "message": "<REDACTED_ERROR>"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "strict-lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"synthetic\",\"cwd\":\"/workspace/project\",\"session_id\":\"synthetic-session\",\"model\":\"synthetic-model\",\"permissionMode\":\"default\"}",
+      "projection": []
+    },
+    {
+      "channel": "strict-lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"type\":\"user\",\"session_id\":\"synthetic-session\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"synthetic-user-prompt\"}]}}",
+      "projection": [
+        {
+          "effect": "accepted",
+          "sessionId": "synthetic-session",
+          "turnId": "cursor-turn"
+        }
+      ]
+    },
+    {
+      "channel": "strict-lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 2,
+      "payload": "{\"type\":\"result\",\"subtype\":\"authentication_required\",\"is_error\":true,\"request_id\":\"req-4\",\"result\":\"synthetic reply\",\"session_id\":\"synthetic-session\"}",
+      "projection": [
+        {
+          "error": "turn_failed",
+          "kind": "authentication_required"
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "agent-error",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:807bbf72a593a55c76c4ef5553ac679dbeddd0b21c8b02453c7f3545f2504166"
+    "contentSha256": "sha256:081702d5b7c8af4bcaf63b7c708e227dd88beb5f4d45ec480382e41a0636d37f"
   }
 }

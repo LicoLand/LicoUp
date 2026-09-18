@@ -49,6 +49,9 @@ for (const file of files) {
   if (document.provenance?.redacted !== true) findings.push(`${file}:redaction_not_attested`);
   if (!reviewApproved(document)) pendingReviews += 1;
   if (document.redaction?.contentSha256 !== transcriptHash(document)) findings.push(`${file}:content_hash_mismatch`);
+  for (const frame of document.frames || []) {
+    if (!Array.isArray(frame.projection)) findings.push(`${file}:projection_not_recorded@frame${frame.index}`);
+  }
   for (const finding of privacyFindings(document, redactionSecrets())) findings.push(`${file}:${finding.code}@${finding.path}`);
 }
 if (fixtures === 0) {

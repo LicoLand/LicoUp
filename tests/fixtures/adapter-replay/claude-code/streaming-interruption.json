@@ -1,63 +1,77 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "claude-code",
-  "scenario": "streaming-interruption",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
-      "projection": [
-        {
-          "kind": "text",
-          "unitId": "claude-code:reply",
-          "text": "<REDACTED_CONTENT>"
-        }
-      ]
-    },
-    {
-      "index": 1,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"stream-interrupted\"}",
-      "projection": [
-        {
-          "kind": "failed",
-          "code": "claude_code_replay_stream_interrupted",
-          "stage": "protocol/read",
-          "message": "stream interrupted"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"synthetic-session\",\"model\":\"synthetic-model\",\"permissionMode\":\"plan\"}",
+      "projection": [
+        {
+          "effect": "progress",
+          "sessionId": "synthetic-session"
+        }
+      ]
+    },
+    {
+      "channel": "lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"type\":\"assistant\",\"session_id\":\"synthetic-session\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"synthetic reply\"}]}}",
+      "projection": [
+        {
+          "effect": "progress",
+          "sessionId": "synthetic-session"
+        }
+      ]
+    },
+    {
+      "channel": "lf-ndjson",
+      "direction": "agent-to-client",
+      "index": 2,
+      "payload": "{\"type\":\"result\"",
+      "projection": [
+        {
+          "error": "claude_code_invalid_json",
+          "message": "Claude Code returned an invalid stream event.",
+          "sessionId": "synthetic-session",
+          "stage": "protocol/read",
+          "threadId": "synthetic-session",
+          "turnId": "synthetic-turn",
+          "userInteractionRequired": false
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "streaming-interruption",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:004c090f74193eed27f3d1d37e734a72e5a8379f12f36d9f5371efa8e28b88ed"
+    "contentSha256": "sha256:ee17eca080bec427ca2d56a027e01bb093f92328b7072b7fab57ec3e2b918a8d"
   }
 }
