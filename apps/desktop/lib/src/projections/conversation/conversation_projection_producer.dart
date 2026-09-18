@@ -588,6 +588,7 @@ final class ConversationProjectionProducer {
         _controller.clientConversationController.surfaceFailure(
           failure.stage.isEmpty ? 'native/turn' : failure.stage,
           failure.code,
+          conversationId: turn.conversationId,
           component: failure.component,
           retryable: failure.retryable,
           recovery: failure.recovery,
@@ -822,6 +823,15 @@ CanonicalConversationProjection _readCanonical(
     for (final membership in conversation?.memberships ?? const [])
       membership.id: membership,
   };
+  // A failure belongs to the Conversation that originated it. An unattributed
+  // (empty) failure stays global; an attributed one renders only on its own
+  // Conversation, so a late async failure never paints over another
+  // Conversation the user switched to.
+  final failureAttribution = owner.failureConversationId.trim();
+  final failureVisible =
+      owner.failureCode.isNotEmpty &&
+      (failureAttribution.isEmpty ||
+          failureAttribution == owner.selectedConversationId);
   return CanonicalConversationProjection(
     conversationId: owner.selectedConversationId,
     conversation: conversation,
@@ -833,10 +843,10 @@ CanonicalConversationProjection _readCanonical(
     assistantModel: (assistantProfile['preferredModel'] ?? '').toString(),
     assistantReasoningEffort:
         (assistantProfile['preferredReasoningEffort'] ?? '').toString(),
-    failureStage: owner.failureStage,
-    failureRef: owner.failureRef,
-    failureRecovery: owner.failureRecovery,
-    failureCopyBlob: owner.failureCopyBlob,
+    failureStage: failureVisible ? owner.failureStage : '',
+    failureRef: failureVisible ? owner.failureRef : '',
+    failureRecovery: failureVisible ? owner.failureRecovery : '',
+    failureCopyBlob: failureVisible ? owner.failureCopyBlob : '',
     sending: owner.sending,
     taskViews: owner.selectedTaskViews,
     events: [
@@ -847,6 +857,10 @@ CanonicalConversationProjection _readCanonical(
           authorLabel:
               memberships[event.authorMembershipId]?.principal.displayName ??
               '',
+          authorMembershipId: event.authorMembershipId,
+          causationId: event.causationId,
+          correlationId: event.correlationId,
+          createdAtUnixMs: event.createdAtUnixMs,
           parts: [
             for (final part in event.parts)
               ConversationPartProjection(
@@ -865,11 +879,11 @@ CanonicalConversationProjection _readCanonical(
     earlierError: owner.earlierEventsError,
     phase: owner.loading
         ? PresentationPhase.loading
-        : owner.failureCode.isNotEmpty
+        : failureVisible
         ? PresentationPhase.failed
         : PresentationPhase.ready,
     dispatchPending: owner.dispatchPending,
-    notice: owner.failureCode.isEmpty
+    notice: !failureVisible
         ? null
         : PresentationNotice(
             id: 'canonical-conversation',
@@ -888,11 +902,15 @@ PersistentTurnProjection _readPersistentTurns(
   ClientController controller,
   Map<String, _GroupTurn> groupTurns,
 ) {
-  final canonicalId = controller
-      .clientConversationController
-      .selectedConversationId
-      .trim();
+  final owner = controller.clientConversationController;
+  final canonicalId = owner.selectedConversationId.trim();
   if (canonicalId.isNotEmpty) {
+    final failureAttribution = owner.failureConversationId.trim();
+    final scopedFailure =
+        owner.failureCode.isNotEmpty &&
+            (failureAttribution.isEmpty || failureAttribution == canonicalId)
+        ? owner.failureCode
+        : '';
     return PersistentTurnProjection(
       conversationId: canonicalId,
       memberships: [
@@ -907,8 +925,7 @@ PersistentTurnProjection _readPersistentTurns(
               turnHandle: turn.handle,
               observed: turn.observing,
               waitingVisible: turn.observing,
-              fallbackFailure:
-                  controller.clientConversationController.failureCode,
+              fallbackFailure: scopedFailure,
             ),
       ],
     );
@@ -1107,11 +1124,16 @@ ConversationTabActivityProjection _readTabActivity(
   ];
   final canonical = controller.clientConversationController;
   if (canonical.selectedConversationId.isNotEmpty) {
+    final failureAttribution = canonical.failureConversationId.trim();
+    final failureVisible =
+        canonical.failureCode.isNotEmpty &&
+        (failureAttribution.isEmpty ||
+            failureAttribution == canonical.selectedConversationId);
     return ConversationTabActivityProjection(
       conversationId: canonical.selectedConversationId,
       active: true,
-      unreadCount: canonical.failureCode.isEmpty ? 0 : 1,
-      requiresAttention: canonical.failureCode.isNotEmpty,
+      unreadCount: failureVisible ? 1 : 0,
+      requiresAttention: failureVisible,
       agentActivities: agentActivities,
     );
   }

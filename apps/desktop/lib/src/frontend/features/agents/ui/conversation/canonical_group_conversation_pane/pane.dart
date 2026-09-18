@@ -280,9 +280,10 @@ class _CanonicalGroupConversationPaneState
   void _refreshAssistantThread() {
     if (_turnActive || widget.canonical.sending) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'assistant-refresh',
           reasonCode: 'assistant_turn_active',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return;
@@ -293,9 +294,10 @@ class _CanonicalGroupConversationPaneState
   void _clearHistory() {
     if (_turnActive || widget.canonical.sending) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'canonical-clear',
           reasonCode: 'conversation_clear_blocked',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return;
@@ -349,9 +351,10 @@ class _CanonicalGroupConversationPaneState
     if (widget.attachments.attachments.isNotEmpty &&
         !widget.attachments.acceptsImages) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'send',
           reasonCode: 'attachment_transport_unsupported',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return false;
@@ -591,11 +594,21 @@ class _CanonicalGroupConversationPaneState
         LoadEarlierConversationEvents(conversation.id),
       ),
       onCopyText: _copyText,
-      onRetryMessage: (eventId) async => widget.conversation.intents.send(
-        RetryCanonicalConversationMessage(eventId),
+      onRetryMessage: (messageId) async => widget.conversation.intents.send(
+        RetryCanonicalConversationMessage(
+          resolveCanonicalGroupSourceEventId(
+            messageId,
+            canonical.canonicalEvents,
+          ),
+        ),
       ),
-      onDeleteMessage: (eventId) async => widget.conversation.intents.send(
-        DeleteCanonicalConversationMessage(eventId),
+      onDeleteMessage: (messageId) async => widget.conversation.intents.send(
+        DeleteCanonicalConversationMessage(
+          resolveCanonicalGroupSourceEventId(
+            messageId,
+            canonical.canonicalEvents,
+          ),
+        ),
       ),
       onNewConversation: _refreshAssistantThread,
     );
