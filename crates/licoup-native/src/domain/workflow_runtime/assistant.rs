@@ -20,7 +20,7 @@ use licoup_workflow::{
 
 use licoup_workflow::{BindingKind, GraphStateKind, WorkflowDefinition, validate_workflow_value};
 
-use super::BindingValue;
+use crate::domain::workflow_store::BindingValue;
 
 pub const ASSISTANT_TEMPORARY_DEFINITION_PREFIX: &str = "assistant-temporary";
 

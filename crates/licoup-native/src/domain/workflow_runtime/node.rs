@@ -659,7 +659,7 @@ impl NodeFacade {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::adaptive_flywheel::adapter::{
+    use crate::domain::workflow_runtime::adapter::{
         AdapterExecutionStatus, CooperativeDrainAdapter, SyntheticCapabilityAdapter,
     };
     use serde_json::json;

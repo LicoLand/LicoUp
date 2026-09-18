@@ -522,7 +522,7 @@ impl ReadOnlyTargetPort for FixtureTargets {
 /// run end to end.
 struct StrategyFixtureHost {
     inner: FixtureHost,
-    strategy: crate::domain::adaptive_flywheel::StrategyService,
+    strategy: crate::domain::workflow_runtime::StrategyService,
 }
 
 impl ConversationHostPort for StrategyFixtureHost {
@@ -1080,7 +1080,7 @@ fn unverified_direct_dispatch_records_inbound_claim_and_preserves_native_failure
 
 #[test]
 fn assistant_execute_replays_settle_a_callback_wait_with_the_master_decision() {
-    use crate::domain::adaptive_flywheel::{
+    use crate::domain::workflow_runtime::{
         ActorTurnPort, StrategyPackageImporter, StrategyService, StrategyStore,
     };
 
