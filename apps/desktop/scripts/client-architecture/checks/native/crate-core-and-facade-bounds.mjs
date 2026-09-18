@@ -201,6 +201,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/platform/llm_gateway_inventory_control.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],
     ["crates/licoup-native/src/platform/pty_transport.rs", "PTY descriptor and ioctl ownership"],
+    ["crates/licoup-native/src/bin/licoup/conversation_host.rs", "process termination signal registration for graceful host shutdown"],
   ]);
   const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());
   assert([...reviewedRustUnsafeResponsibilities.values()].every((value) => value.length > 0),
