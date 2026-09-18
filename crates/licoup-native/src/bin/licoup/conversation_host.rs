@@ -37,6 +37,7 @@ const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(25);
 const STALE_HOST_WAIT: Duration = Duration::from_secs(2);
 #[allow(dead_code)]
 const OWNER_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+#[allow(dead_code)]
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(300);
 const NORMAL_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const CLIENT_PID_ENV: &str = "LICOUP_CLIENT_PID";
@@ -67,9 +68,12 @@ pub(super) fn request_host_stop() -> Result<()> {
     let params = serde_json::json!({ "host": true });
     let _response = licoup_native::platform::conversation_host_client::execute_existing("shutdown", &params)
         .map_err(|_| anyhow!("persistent_conversation_transport_required"))?;
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + NORMAL_SHUTDOWN_DRAIN_TIMEOUT + Duration::from_secs(5);
     while endpoint_accepts_connections() && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(50));
+    }
+    if endpoint_accepts_connections() {
+        return Err(anyhow!("conversation_host_stop_timeout"));
     }
     Ok(())
 }
@@ -679,6 +683,7 @@ impl AttendanceOwner {
     }
 }
 
+#[allow(dead_code)]
 fn generic_idle_may_exit(runtime_idle: bool, attendance_active: bool) -> bool {
     runtime_idle && !attendance_active
 }
@@ -689,6 +694,7 @@ fn serve_bound_host(
     runtime: PersistentConversationRuntime,
     stop: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
+    HOST_STOP_REQUESTED.store(false, Ordering::Release);
     register_termination_signal_handler();
     let attendance = AttendanceOwner::spawn(service.clone())?;
     let result = loop {
