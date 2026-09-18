@@ -533,7 +533,8 @@ final class CallbackActions<Action> implements PresentationActions<Action> {
   FutureOr<void> dispatch(Action action) => onDispatch(action, origin);
 }
 
-typedef Actions<Action> = PresentationActions<Action>;
+// No bare `Actions` alias: it would clash with Flutter's widgets.Actions in
+// any file importing both libraries (ambiguous_export).
 
 extension PresentationActionsSend<Action> on PresentationActions<Action> {
   FutureOr<void> send(Action action) => dispatch(action);
