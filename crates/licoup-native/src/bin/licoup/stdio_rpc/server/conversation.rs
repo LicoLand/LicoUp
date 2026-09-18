@@ -1984,11 +1984,11 @@ pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
 pub(super) fn strategy_turn_port(
     runtime: PersistentConversationRuntime,
     portable_data_dir: Option<PathBuf>,
-) -> licoup_native::domain::adaptive_flywheel::ActorTurnPort {
+) -> licoup_native::domain::workflow_runtime::ActorTurnPort {
     let open_runtime = runtime.clone();
     let run_runtime = runtime.clone();
     let run_dir = portable_data_dir;
-    licoup_native::domain::adaptive_flywheel::ActorTurnPort {
+    licoup_native::domain::workflow_runtime::ActorTurnPort {
         open: Arc::new(move |params| open_runtime.open_turn(params)),
         run: Arc::new(move |handle, params| {
             run_runtime.run_open_turn(handle, params, run_dir.clone())
@@ -2004,8 +2004,8 @@ pub(super) fn strategy_turn_port(
 pub(super) fn assistant_wake_port(
     runtime: PersistentConversationRuntime,
     portable_data_dir: Option<PathBuf>,
-) -> licoup_native::domain::adaptive_flywheel::AssistantWakePort {
-    licoup_native::domain::adaptive_flywheel::AssistantWakePort {
+) -> licoup_native::domain::workflow_runtime::AssistantWakePort {
+    licoup_native::domain::workflow_runtime::AssistantWakePort {
         wake: Arc::new(move |conversation_id, membership_id, notice| {
             if runtime.live_turn_for_membership(membership_id) {
                 return Ok(());
