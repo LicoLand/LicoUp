@@ -60,6 +60,7 @@ fn main() -> Result<()> {
     if args.as_slice() == ["rpc", "conversation-host", "--stop"]
         || args.as_slice() == ["rpc", "conversation-host", "stop"]
         || args.as_slice() == ["rpc", "conversation-host", "--shutdown"]
+        || args.as_slice() == ["rpc", "conversation-host", "shutdown"]
     {
         return conversation_host::request_host_stop();
     }
