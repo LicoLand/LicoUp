@@ -188,7 +188,10 @@ where
                     )?;
                 }
                 StdioRpcMethod::Shutdown { params } => {
-                    let stop_host = params.get("host").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let stop_host = params
+                        .get("host")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     if stop_host {
                         if let Some(runtime) = conversation_runtime.as_ref() {
                             runtime.request_host_stop();
