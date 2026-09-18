@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "claude-code",
+  "scenario": "agent-error",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "claude_code_replay_agent_error",
+          "stage": "turn/execute",
+          "message": "<REDACTED_ERROR>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:c32e30ab304b39ffc7a840b3e4823a706fa95716ec3a7a6d74dd000813cd2c55"
+  }
+}

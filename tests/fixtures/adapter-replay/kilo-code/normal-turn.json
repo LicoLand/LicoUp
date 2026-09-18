@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "kilo-code",
+  "scenario": "normal-turn",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
+      "projection": [
+        {
+          "kind": "text",
+          "unitId": "kilo-code:reply",
+          "text": "<REDACTED_CONTENT>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:e7c6a877f559c6690b143efe8233dfd0e346190e361f5350e85868c18156b1e9"
+  }
+}

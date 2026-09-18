@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "deepseek-harness",
+  "scenario": "streaming-interruption",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
+      "projection": [
+        {
+          "kind": "text",
+          "unitId": "deepseek-harness:reply",
+          "text": "<REDACTED_CONTENT>"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"stream-interrupted\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "deepseek_harness_replay_stream_interrupted",
+          "stage": "protocol/read",
+          "message": "stream interrupted"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:1837efbbe6a552ded8d2ed073b746ac196b21426fa1e8f525b2f3891661d2b3d"
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   adapterIds,
@@ -10,13 +10,18 @@ import {
 } from "./shared.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
-const corpusRoot = join(repositoryRoot, "tests/replay-corpus");
+const corpusRoot = existsSync(join(repositoryRoot, "tests/replay-corpus"))
+  ? join(repositoryRoot, "tests/replay-corpus")
+  : join(repositoryRoot, "tests/fixtures/adapter-replay");
 const e2ePath = join(repositoryRoot, "crates/licoup-native/resources/agent-conversation-evidence.json");
 const outputPath = join(repositoryRoot, "crates/licoup-native/resources/agent-adapter-tiers.json");
 const e2e = new Map((parseJson(e2ePath).adapters || []).map((entry) => [entry.agentId, entry]));
 
 const adapters = adapterIds.map((agentId) => {
-  const files = new Set(readdirSync(join(corpusRoot, agentId)).filter((name) => name.endsWith(".json")));
+  const adapterDir = join(corpusRoot, agentId);
+  const files = existsSync(adapterDir)
+    ? new Set(readdirSync(adapterDir).filter((name) => name.endsWith(".json")))
+    : new Set();
   const validDocuments = new Map();
   const replayScenarios = scenarioClasses.filter((scenario) => {
     const name = `${scenario}.json`;

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "codex",
+  "scenario": "streaming-interruption",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
+      "projection": [
+        {
+          "kind": "text",
+          "unitId": "codex:reply",
+          "text": "<REDACTED_CONTENT>"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"stream-interrupted\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "codex_replay_stream_interrupted",
+          "stage": "protocol/read",
+          "message": "stream interrupted"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:84d632d75290f800ceba52d890dc428cd5e27417c88b3daca7022a651c90223c"
+  }
+}

@@ -8,22 +8,35 @@ export const scenarioClasses = Object.freeze([
   "user-cancel",
   "agent-error",
   "streaming-interruption",
+  "native-resume",
 ]);
-export const adapterIds = Object.freeze([
-  "antigravity",
-  "claude-code",
-  "codex",
-  "copilot",
-  "cursor",
-  "hermes",
-  "kilo-code",
-  "kimi-code",
-  "openclaw",
-  "opencode",
-  "pi",
-  "lico-agent",
-  "deepseek-harness",
-]);
+
+export function getRegisteredAdapterIds(root = resolve(import.meta.dirname, "../../..")) {
+  try {
+    const driversPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
+    const data = JSON.parse(readFileSync(driversPath, "utf8"));
+    if (Array.isArray(data.drivers) && data.drivers.length > 0) {
+      return Object.freeze(data.drivers.map((d) => d.agentId));
+    }
+  } catch {}
+  return Object.freeze([
+    "antigravity",
+    "claude-code",
+    "codex",
+    "copilot",
+    "cursor",
+    "hermes",
+    "kilo-code",
+    "kimi-code",
+    "openclaw",
+    "opencode",
+    "pi",
+    "lico-agent",
+    "deepseek-harness",
+  ]);
+}
+
+export const adapterIds = getRegisteredAdapterIds();
 
 export const historySource = "local-agent-history-catalog";
 export const syntheticSource = "synthetic-fallback";
@@ -75,6 +88,11 @@ export function scenarioEvents(scenario) {
         { event: "assistant-text", text: "<REDACTED_CONTENT>" },
         { event: "stream-interrupted" },
       ];
+    case "native-resume":
+      return [
+        { event: "session-resumed" },
+        { event: "assistant-text", text: "<REDACTED_CONTENT>" },
+      ];
     default:
       throw new Error(`scenario_unknown:${scenario}`);
   }
@@ -84,6 +102,8 @@ export function projectionForEvent(adapterId, event) {
   switch (event.event) {
     case "assistant-text":
       return [{ kind: "text", unitId: `${adapterId}:reply`, text: event.text }];
+    case "session-resumed":
+      return [{ kind: "control", method: "resume", summary: "session-resumed" }];
     case "user-cancel":
       return [{ kind: "control", method: "cancel", summary: "user-cancel" }];
     case "agent-error":
