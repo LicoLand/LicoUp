@@ -5,7 +5,7 @@ import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/sessio
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
-typedef _ReadOperation = Future<void> Function(StdioRpcSessionManager);
+typedef StdioRpcReadOperation = Future<void> Function(StdioRpcSessionManager);
 
 /// Reuses a bounded number of independent native query sessions. Pending work
 /// is assigned when any session becomes available, so a slow query cannot hold
@@ -19,26 +19,43 @@ final class StdioRpcReadPool {
   static const int capacity = 4;
 
   final NativeCliProcessContext _processContext;
-  final RpcOperationPendingQueue<_ReadOperation> _pending =
-      RpcOperationPendingQueue<_ReadOperation>();
+  final RpcOperationPendingQueue<StdioRpcReadOperation> _pending =
+      RpcOperationPendingQueue<StdioRpcReadOperation>();
   final List<_ReadWorker> _workers = [];
   Future<void>? _closeFuture;
+
+  int get pendingCount => _pending.length;
+  int get pendingPayloadBytes => _pending.totalPayloadBytes;
+  bool get hasBackpressure => _pending.hasBackpressure;
 
   Future<T> execute<T>(
     Future<T> Function(StdioRpcSessionManager) operation, {
     RpcPriorityToken? priority,
+    int byteSize = 0,
+    void Function(RpcPendingEntryHandle<StdioRpcReadOperation> handle)?
+    onEnqueued,
   }) {
     if (_closeFuture != null) {
       return Future<T>.error(const LicoClientRpcException('service_disposed'));
     }
     final result = Completer<T>();
-    _pending.add((manager) async {
-      try {
-        result.complete(await operation(manager));
-      } on Object catch (error, stackTrace) {
-        result.completeError(error, stackTrace);
-      }
-    }, priority: priority);
+    final handle = _pending.add(
+      (manager) async {
+        try {
+          result.complete(await operation(manager));
+        } on Object catch (error, stackTrace) {
+          result.completeError(error, stackTrace);
+        }
+      },
+      priority: priority,
+      byteSize: byteSize,
+      onCancelled: () {
+        if (!result.isCompleted) {
+          result.completeError(const LicoClientRpcException('cancelled'));
+        }
+      },
+    );
+    onEnqueued?.call(handle);
     var worker = _workers.where((worker) => worker.running == null).firstOrNull;
     if (worker == null && _workers.length < capacity) {
       worker = _ReadWorker(
@@ -53,10 +70,15 @@ final class StdioRpcReadPool {
   }
 
   Future<void> _drain(_ReadWorker worker) async {
-    while (!_pending.isEmpty) {
-      await _pending.takeNext()(worker.manager);
+    try {
+      while (_pending.isNotEmpty) {
+        try {
+          await _pending.takeNext()(worker.manager);
+        } on Object catch (_) {}
+      }
+    } finally {
+      worker.running = null;
     }
-    worker.running = null;
   }
 
   /// Rejects new reads, lets accepted reads settle, and closes each idle
