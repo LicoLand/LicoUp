@@ -1,62 +1,132 @@
 {
-  "schemaVersion": "lico.adapter-transcript.v1",
   "adapterId": "deepseek-harness",
-  "scenario": "native-resume",
-  "provenance": {
-    "source": "synthetic-fallback",
-    "taskContent": "synthetic-engineering-only",
-    "redacted": true,
-    "humanReviewed": true
-  },
-  "invocation": {
-    "interface": "native-history-catalog",
-    "readOnly": true
-  },
-  "frames": [
-    {
-      "index": 0,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"session-resumed\"}",
-      "projection": [
-        {
-          "kind": "control",
-          "method": "resume",
-          "summary": "session-resumed"
-        }
-      ]
-    },
-    {
-      "index": 1,
-      "direction": "agent-to-client",
-      "channel": "history-catalog-replay",
-      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
-      "projection": [
-        {
-          "kind": "text",
-          "unitId": "deepseek-harness:reply",
-          "text": "<REDACTED_CONTENT>"
-        }
-      ]
-    }
-  ],
   "exit": {
     "code": 0,
     "signal": null
   },
+  "frames": [
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 0,
+      "payload": "{\"jsonrpc\":\"2.0\",\"id\":\"initialize\",\"result\":{\"serverInfo\":{\"name\":\"deepseek-harness-sdk-runtime\"}}}",
+      "projection": [
+        {
+          "effect": "frame",
+          "wireBytes": 100
+        },
+        {
+          "accepted": true,
+          "effect": "handshake"
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 1,
+      "payload": "{\"jsonrpc\":\"2.0\",\"id\":\"prompt-1\",\"result\":{\"messageId\":\"message-2\"}}",
+      "projection": [
+        {
+          "effect": "frame",
+          "wireBytes": 69
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 2,
+      "payload": "{\"jsonrpc\":\"2.0\",\"method\":\"session.event\",\"params\":{\"sessionId\":\"resumed-session-1\",\"event\":{\"type\":\"agent/inbox/spliced\",\"data\":{\"inserted\":[{\"id\":\"message-2\"}]}}}}",
+      "projection": [
+        {
+          "effect": "frame",
+          "wireBytes": 166
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 3,
+      "payload": "{\"jsonrpc\":\"2.0\",\"method\":\"session.event\",\"params\":{\"sessionId\":\"resumed-session-1\",\"event\":{\"type\":\"assistant/message\",\"data\":{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"synthetic resumed reply\"}]}}}}}",
+      "projection": [
+        {
+          "effect": "frame",
+          "wireBytes": 205
+        }
+      ]
+    },
+    {
+      "channel": "lf-jsonl-jsonrpc",
+      "direction": "agent-to-client",
+      "index": 4,
+      "payload": "{\"jsonrpc\":\"2.0\",\"method\":\"session.status\",\"params\":{\"sessionId\":\"resumed-session-1\",\"status\":\"idle\"}}",
+      "projection": [
+        {
+          "effect": "frame",
+          "wireBytes": 103
+        },
+        {
+          "effect": "turn",
+          "output": "synthetic resumed reply",
+          "transitions": [
+            {
+              "kind": "lifecycle",
+              "stage": "submitted"
+            },
+            {
+              "kind": "lifecycle",
+              "stage": "accepted"
+            },
+            {
+              "kind": "lifecycle",
+              "stage": "processing"
+            },
+            {
+              "kind": "lifecycle",
+              "stage": "responding"
+            },
+            {
+              "kind": "text",
+              "text": "synthetic resumed reply",
+              "unitId": "deepseek-harness:reply:1"
+            },
+            {
+              "kind": "lifecycle",
+              "stage": "completed"
+            }
+          ],
+          "turnId": "message-2"
+        }
+      ]
+    }
+  ],
+  "invocation": {
+    "interface": "native-adapter-parser-replay",
+    "readOnly": true
+  },
+  "provenance": {
+    "humanReviewed": true,
+    "redacted": true,
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only"
+  },
   "review": {
-    "status": "approved",
-    "reviewerClass": "human",
     "checklist": {
-      "syntheticTaskConfirmed": true,
+      "framesMatchProtocolCapture": true,
       "noUserConversation": true,
       "pathsAndIdentityChecked": true,
-      "framesMatchProtocolCapture": true,
-      "projectionsMatchParserOutput": true
-    }
+      "projectionsMatchParserOutput": true,
+      "syntheticTaskConfirmed": true
+    },
+    "reviewerClass": "human",
+    "status": "approved"
   },
+  "scenario": "native-resume",
+  "schemaVersion": "lico.adapter-transcript.v1",
   "redaction": {
     "algorithm": "lico-transcript-redaction-v1",
-    "contentSha256": "sha256:1fcc22be3a17f6c2632734a5056b1fa5bfd273310091bf13c894396e16d1204b"
+    "contentSha256": "sha256:18996747f9549215b54c0143232c9b3773319cce1041a36d3e8e69d364858f37"
   }
 }
