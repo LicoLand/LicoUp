@@ -11,6 +11,7 @@ use super::{
     BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
+use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
     RunSnapshot, StrategyRunStatus, Transition, TransitionEvent, TransitionMode,
@@ -94,13 +95,35 @@ impl StrategyStore {
         &self.db_path
     }
 
-    fn with_connection<T>(
+    pub fn durable_queue(&self) -> super::DurableQueue {
+        super::DurableQueue::from_store(self.clone())
+    }
+
+    pub fn durable_subscriptions(&self) -> super::DurableSubscriptionStore {
+        super::DurableSubscriptionStore::from_store(self.clone())
+    }
+
+    pub fn durable_control(&self) -> super::DurableControlledStore {
+        super::DurableControlledStore::from_store(self.clone())
+    }
+
+    pub(crate) fn with_connection<T>(
         &self,
         operation: impl FnOnce(&mut Connection) -> Result<T>,
     ) -> Result<T> {
+        self.with_connection_typed(operation)
+    }
+
+    pub(crate) fn with_connection_typed<T, E>(
+        &self,
+        operation: impl FnOnce(&mut Connection) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E>
+    where
+        E: From<anyhow::Error>,
+    {
         let mut connection = Connection::open(&self.db_path)
-            .map_err(|_| anyhow!("strategy_database_open_failed"))?;
-        configure_connection(&connection)?;
+            .map_err(|_| E::from(anyhow!("strategy_database_open_failed")))?;
+        configure_connection(&connection).map_err(E::from)?;
         operation(&mut connection)
     }
 
@@ -553,6 +576,7 @@ impl StrategyStore {
             )?;
             persist_event_and_commands(
                 &transaction,
+                &empty,
                 &snapshot,
                 &event,
                 &output.emitted_commands,
@@ -587,7 +611,7 @@ impl StrategyStore {
             workflow
                 .metadata
                 .id
-                .starts_with(super::ASSISTANT_TEMPORARY_DEFINITION_PREFIX),
+                .starts_with(ASSISTANT_TEMPORARY_DEFINITION_PREFIX),
             "graph_identity_rejected"
         );
         let compiled = compile_workflow(workflow.clone())?;
@@ -765,6 +789,7 @@ impl StrategyStore {
             )?;
             persist_event_and_commands(
                 &transaction,
+                &empty,
                 &snapshot,
                 &event,
                 &output.emitted_commands,
@@ -797,6 +822,18 @@ impl StrategyStore {
     }
 
     pub fn apply_event(&self, run_id: &str, event: ReducerEvent) -> Result<RunSnapshot> {
+        let committed = self.apply_event_with_commit(run_id, event)?;
+        match committed {
+            Some(committed) => Ok(committed.after),
+            None => self.run(run_id),
+        }
+    }
+
+    pub(crate) fn apply_event_with_commit(
+        &self,
+        run_id: &str,
+        event: ReducerEvent,
+    ) -> Result<Option<super::CommittedTransition>> {
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -808,6 +845,7 @@ impl StrategyStore {
                 let now = now_ms();
                 persist_event_and_commands(
                     &transaction,
+                    &previous,
                     &output.snapshot,
                     &event,
                     &output.emitted_commands,
@@ -826,7 +864,18 @@ impl StrategyStore {
                 )?;
             }
             transaction.commit()?;
-            Ok(output.snapshot)
+            if output.applied {
+                Ok(Some(super::CommittedTransition {
+                    run_id: run_id.to_owned(),
+                    sequence: output.snapshot.sequence,
+                    event,
+                    before: previous,
+                    after: output.snapshot,
+                    created_at_unix_ms: now_ms(),
+                }))
+            } else {
+                Ok(None)
+            }
         })
     }
 
@@ -896,6 +945,7 @@ impl StrategyStore {
             ensure!(output.applied, "strategy_command_not_claimable");
             persist_event_and_commands(
                 &transaction,
+                &previous,
                 &output.snapshot,
                 &event,
                 &output.emitted_commands,
@@ -1151,6 +1201,7 @@ impl StrategyStore {
             let now = now_ms();
             persist_event_and_commands(
                 &transaction,
+                &previous,
                 &failure.snapshot,
                 &failure_event,
                 &failure.emitted_commands,
@@ -1168,6 +1219,7 @@ impl StrategyStore {
                 let retry = reduce(&compiled, &failure.snapshot, retry_event.clone())?;
                 persist_event_and_commands(
                     &transaction,
+                    &failure.snapshot,
                     &retry.snapshot,
                     &retry_event,
                     &retry.emitted_commands,
@@ -1287,7 +1339,7 @@ impl StrategyStore {
             }
             _ => {}
         }
-        let history_count = self.with_connection(|connection| {
+        let history_count = self.with_connection(|connection| -> Result<u64> {
             connection
                 .query_row(
                     "SELECT COUNT(*) FROM strategy_run_events WHERE run_id=?1",
@@ -1554,6 +1606,10 @@ fn initialize_schema_through(
     } else {
         connection.execute("UPDATE strategy_meta SET value='2' WHERE key='version'", [])?;
     }
+    super::queue::initialize_schema(connection)?;
+    super::subscriptions::initialize_schema(connection)?;
+    super::commit::initialize_schema(connection)?;
+    super::control::initialize_schema(connection)?;
     Ok(retired)
 }
 
@@ -1597,6 +1653,10 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     ensure!(version == "3", "strategy_schema_migration_required");
+    super::queue::initialize_schema(connection)?;
+    super::subscriptions::initialize_schema(connection)?;
+    super::commit::initialize_schema(connection)?;
+    super::control::initialize_schema(connection)?;
     Ok(())
 }
 
@@ -1701,7 +1761,7 @@ fn migrate_legacy_workflow_definitions(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn normalize_legacy_workflow(
+pub(crate) fn normalize_legacy_workflow(
     mut workflow: WorkflowDefinition,
 ) -> Option<WorkflowDefinition> {
     let mut changed = false;
@@ -2031,6 +2091,7 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunSnapshot> {
 
 fn persist_event_and_commands(
     transaction: &Transaction<'_>,
+    before: &RunSnapshot,
     snapshot: &RunSnapshot,
     event: &ReducerEvent,
     emitted: &[RunCommand],
@@ -2048,6 +2109,15 @@ fn persist_event_and_commands(
             event_json,
             now
         ],
+    )?;
+    super::commit::insert_intent(
+        transaction,
+        &snapshot.run_id,
+        snapshot.sequence,
+        event,
+        before,
+        snapshot,
+        now,
     )?;
     for command in emitted {
         transaction.execute(

@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
+use super::routing::QueueCapacityExceeded;
+
 /// Operation-scoped authorization grant.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -356,6 +358,10 @@ pub enum AdmissionConflict {
     },
     /// Graph scope admission barrier prevents new tasks from starting.
     ScopeAdmissionBarrier { graph_id: String, reason: String },
+    /// The durable admission transaction could not be committed.
+    Storage { reason: String },
+    /// The durable control queue has reached its configured bounds.
+    QueueCapacity(QueueCapacityExceeded),
 }
 
 impl Display for AdmissionConflict {
@@ -451,6 +457,8 @@ impl Display for AdmissionConflict {
                     graph_id, reason
                 )
             }
+            Self::Storage { reason } => write!(formatter, "durable admission failed: {reason}"),
+            Self::QueueCapacity(capacity) => write!(formatter, "{capacity}"),
         }
     }
 }

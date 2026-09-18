@@ -27,7 +27,7 @@ const MAX_SCRIPT_FILES: usize = 64;
 const PREPARATION_SCHEMA: &str = "licoup.adaptive-flywheel.preparation.v1";
 const SYNTHETIC_FIXTURE_WORKFLOW: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/adaptive_flywheel/synthetic-entry-worker.fixture"
+    "/tests/fixtures/workflow_runtime/synthetic-entry-worker.fixture"
 ));
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -223,7 +223,8 @@ impl StrategyPackageImporter {
             "strategy_revision_content_drifted"
         );
         let definition =
-            super::store::normalize_legacy_workflow(definition.clone()).unwrap_or(definition);
+            crate::domain::workflow_store::normalize_legacy_workflow(definition.clone())
+                .unwrap_or(definition);
         compile_workflow(definition).map_err(|_| anyhow!("strategy_revision_content_drifted"))?;
         Ok(content)
     }

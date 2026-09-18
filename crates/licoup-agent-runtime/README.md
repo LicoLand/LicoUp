@@ -41,6 +41,7 @@ crates/licoup-native/src/platform/kimi_code_driver.rs
 crates/licoup-native/src/platform/conversation_lane.rs
 crates/licoup-native/src/platform/conversation_runtime.rs
 crates/licoup-native/src/platform/runtime_adapters/
-crates/licoup-native/src/domain/adaptive_flywheel/
+crates/licoup-native/src/domain/workflow_runtime/
+crates/licoup-native/src/domain/workflow_store/
 crates/licoup-native/src/domain/agent_hub/
 ```
