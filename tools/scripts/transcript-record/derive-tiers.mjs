@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   adapterIds,
@@ -10,16 +10,19 @@ import {
 } from "./shared.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
-const corpusRoot = existsSync(join(repositoryRoot, "tests/replay-corpus"))
-  ? join(repositoryRoot, "tests/replay-corpus")
-  : join(repositoryRoot, "tests/fixtures/adapter-replay");
+const directoryExists = (path) => existsSync(path) && statSync(path).isDirectory();
+const developerCorpusRoot = join(repositoryRoot, "tests/replay-corpus");
+const syntheticFixtureRoot = join(repositoryRoot, "tests/fixtures/adapter-replay");
+const usingDeveloperCorpus = directoryExists(developerCorpusRoot);
+const corpusRoot = usingDeveloperCorpus ? developerCorpusRoot : syntheticFixtureRoot;
+const replaySource = usingDeveloperCorpus ? "tests/replay-corpus" : "tests/fixtures/adapter-replay";
 const e2ePath = join(repositoryRoot, "crates/licoup-native/resources/agent-conversation-evidence.json");
 const outputPath = join(repositoryRoot, "crates/licoup-native/resources/agent-adapter-tiers.json");
 const e2e = new Map((parseJson(e2ePath).adapters || []).map((entry) => [entry.agentId, entry]));
 
 const adapters = adapterIds.map((agentId) => {
   const adapterDir = join(corpusRoot, agentId);
-  const files = existsSync(adapterDir)
+  const files = directoryExists(adapterDir)
     ? new Set(readdirSync(adapterDir).filter((name) => name.endsWith(".json")))
     : new Set();
   const validDocuments = new Map();
@@ -58,7 +61,7 @@ const document = {
   schemaVersion: "lico.agent-adapter-tier-projection.v1",
   derivation: "first-class requires complete human-reviewed replay scenario coverage and passing native e2e evidence; otherwise best-effort",
   sources: [
-    "tests/replay-corpus",
+    replaySource,
     "agent-conversation-evidence.json",
   ],
   adapters,

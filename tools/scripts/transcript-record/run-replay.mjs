@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const corpusRoot = resolve(repositoryRoot, "tests/replay-corpus");
 const syntheticRoot = resolve(repositoryRoot, "tests/fixtures/adapter-replay");
+const directoryExists = (path) => existsSync(path) && statSync(path).isDirectory();
 
 let activeFixtureRoot = null;
 let source = null;
-if (existsSync(corpusRoot)) {
+if (directoryExists(corpusRoot)) {
   activeFixtureRoot = corpusRoot;
   source = "developer-corpus";
-} else if (existsSync(syntheticRoot)) {
+} else if (directoryExists(syntheticRoot)) {
   activeFixtureRoot = syntheticRoot;
   source = "synthetic-fixtures";
 }
