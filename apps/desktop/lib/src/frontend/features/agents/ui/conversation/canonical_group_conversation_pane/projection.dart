@@ -394,6 +394,32 @@ AgentConversationSession canonicalGroupConversationSession(
   );
 }
 
+/// Resolves a derived [AgentConversationMessage.id] back to the durable Event
+/// identity that message operations (retry/delete) must address.
+///
+/// The derivation above keys a human message's first text flush by the Event
+/// id and later flushes by `<eventId>:text:<n>`. Only identities verified
+/// against the loaded [events] resolve; anything else returns unchanged so
+/// the store layer fails closed instead of acting on a fabricated id.
+String resolveCanonicalGroupSourceEventId(
+  String messageId,
+  List<ClientConversationEvent> events,
+) {
+  final trimmed = messageId.trim();
+  if (trimmed.isEmpty) return messageId;
+  for (final event in events) {
+    if (event.id == trimmed) return event.id;
+  }
+  final separator = trimmed.indexOf(':text:');
+  if (separator > 0) {
+    final base = trimmed.substring(0, separator);
+    for (final event in events) {
+      if (event.id == base) return event.id;
+    }
+  }
+  return messageId;
+}
+
 /// Live PersistentTurn frames may still carry the submitted-user-message
 /// delta. Canonical Events already own human speech, so group live turns
 /// keep only agent content. When the live list has no user rows, the same
