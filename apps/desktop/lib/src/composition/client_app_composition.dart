@@ -243,9 +243,12 @@ final class ClientAppComposition {
       effects: rawMonitoring.effects,
     );
     final rawConversation = _conversation.binding;
+    final rawConversationExecution = rawConversation.execution;
     conversation = ConversationBinding(
       projection: _projectionTracing.wrap(rawConversation.projection),
-      execution: rawConversation.execution,
+      execution: rawConversationExecution == null
+          ? null
+          : _projectionTracing.wrap(rawConversationExecution),
       nativeCatalog: _projectionTracing.wrap(rawConversation.nativeCatalog),
       canonicalEvents: _projectionTracing.wrap(rawConversation.canonicalEvents),
       persistentTurns: _projectionTracing.wrap(rawConversation.persistentTurns),
