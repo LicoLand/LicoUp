@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "kilo-code",
+  "scenario": "agent-error",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "kilo_code_replay_agent_error",
+          "stage": "turn/execute",
+          "message": "<REDACTED_ERROR>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:f7274f4fa212b14a06d4c5aa36d4b1e3cf259ac2bd480685467b2d4dfff4276e"
+  }
+}

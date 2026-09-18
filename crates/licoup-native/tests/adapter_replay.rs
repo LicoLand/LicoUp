@@ -4,55 +4,73 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-const ADAPTERS: [&str; 13] = [
-    "antigravity",
-    "claude-code",
-    "codex",
-    "copilot",
-    "cursor",
-    "hermes",
-    "kilo-code",
-    "kimi-code",
-    "openclaw",
-    "opencode",
-    "pi",
-    "lico-agent",
-    "deepseek-harness",
-];
-const SCENARIOS: [&str; 4] = [
+const SCENARIOS: [&str; 5] = [
     "normal-turn",
     "user-cancel",
     "agent-error",
     "streaming-interruption",
+    "native-resume",
 ];
+
+fn registered_adapters() -> Vec<String> {
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("resources/agent-conversation-drivers.json");
+    if let Ok(bytes) = fs::read(&manifest_path) {
+        if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+            if let Some(drivers) = value.get("drivers").and_then(Value::as_array) {
+                let mut ids: Vec<String> = drivers
+                    .iter()
+                    .filter_map(|d| d.get("agentId").and_then(Value::as_str).map(String::from))
+                    .collect();
+                if !ids.is_empty() {
+                    ids.sort();
+                    ids.dedup();
+                    return ids;
+                }
+            }
+        }
+    }
+    vec![
+        "antigravity".into(),
+        "claude-code".into(),
+        "codex".into(),
+        "copilot".into(),
+        "cursor".into(),
+        "hermes".into(),
+        "kilo-code".into(),
+        "kimi-code".into(),
+        "openclaw".into(),
+        "opencode".into(),
+        "pi".into(),
+        "lico-agent".into(),
+        "deepseek-harness".into(),
+    ]
+}
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/replay-corpus")
 }
 
-/// The replay corpus is developer-local (ingested from local machine history,
-/// never committed to the remote repository). On machines without a local
-/// corpus — fresh clones, CI — the replay suite reports itself skipped rather
-/// than failing; run tools/scripts/transcript-record/ingest-corpus.mjs to
-/// materialize it locally.
-fn corpus_available() -> bool {
-    corpus_root().is_dir()
-}
-
-fn skip_without_corpus(test: &str) -> bool {
-    if corpus_available() {
-        return false;
-    }
-    eprintln!("skipping {test}: tests/replay-corpus is developer-local and absent on this machine");
-    true
+fn synthetic_fixture_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/adapter-replay")
 }
 
 fn fixture(adapter: &str, scenario: &str) -> Value {
-    let path = corpus_root().join(adapter).join(format!("{scenario}.json"));
-    let bytes = fs::read(&path)
-        .unwrap_or_else(|error| panic!("replay fixture {} unreadable: {error}", path.display()));
-    serde_json::from_slice(&bytes)
-        .unwrap_or_else(|error| panic!("replay fixture {} invalid: {error}", path.display()))
+    let corpus_path = corpus_root().join(adapter).join(format!("{scenario}.json"));
+    if corpus_path.is_file() {
+        let bytes = fs::read(&corpus_path)
+            .unwrap_or_else(|error| panic!("replay fixture {} unreadable: {error}", corpus_path.display()));
+        return serde_json::from_slice(&bytes)
+            .unwrap_or_else(|error| panic!("replay fixture {} invalid: {error}", corpus_path.display()));
+    }
+    let synthetic_path = synthetic_fixture_root().join(adapter).join(format!("{scenario}.json"));
+    if synthetic_path.is_file() {
+        let bytes = fs::read(&synthetic_path)
+            .unwrap_or_else(|error| panic!("synthetic replay fixture {} unreadable: {error}", synthetic_path.display()));
+        return serde_json::from_slice(&bytes)
+            .unwrap_or_else(|error| panic!("synthetic replay fixture {} invalid: {error}", synthetic_path.display()));
+    }
+    panic!("corpus absent for adapter={adapter} scenario={scenario}: missing replay transcript cannot be reported as passed");
 }
 
 /// Public, extraction-safe replay vocabulary recorded in the corpus. Concrete
@@ -82,6 +100,11 @@ fn project(adapter: &str, payload: &str) -> Result<Vec<Value>, String> {
             "code": format!("{}_replay_stream_interrupted", adapter.replace('-', "_")),
             "stage": "protocol/read",
             "message": "stream interrupted",
+        })]),
+        Some("session-resumed") => Ok(vec![json!({
+            "kind": "control",
+            "method": "resume",
+            "summary": "session-resumed",
         })]),
         other => Err(format!("unknown replay event {other:?}")),
     }
@@ -138,36 +161,31 @@ fn replay(document: &Value) -> Result<(), String> {
 
 #[test]
 fn adapter_replay_corpus_is_complete_and_frame_deterministic() {
-    if skip_without_corpus("adapter_replay_corpus_is_complete_and_frame_deterministic") {
-        return;
-    }
+    let adapters = registered_adapters();
     let mut coverage = BTreeMap::<String, BTreeSet<String>>::new();
-    for adapter in ADAPTERS {
+    for adapter in &adapters {
         for scenario in SCENARIOS {
             let document = fixture(adapter, scenario);
             assert_eq!(document["schemaVersion"], "lico.adapter-transcript.v1");
-            assert_eq!(document["adapterId"], adapter);
+            assert_eq!(document["adapterId"], adapter.as_str());
             assert_eq!(document["scenario"], scenario);
             assert_eq!(document["provenance"]["redacted"], true);
             assert_eq!(document["invocation"]["readOnly"], true);
             replay(&document).unwrap_or_else(|error| panic!("{error}"));
             coverage
-                .entry(adapter.to_owned())
+                .entry(adapter.clone())
                 .or_default()
                 .insert(scenario.to_owned());
         }
     }
-    assert_eq!(coverage.len(), ADAPTERS.len());
-    for adapter in ADAPTERS {
+    assert_eq!(coverage.len(), adapters.len());
+    for adapter in &adapters {
         assert_eq!(coverage[adapter].len(), SCENARIOS.len(), "{adapter}");
     }
 }
 
 #[test]
 fn adapter_replay_mutation_attributes_the_exact_frame_index() {
-    if skip_without_corpus("adapter_replay_mutation_attributes_the_exact_frame_index") {
-        return;
-    }
     let mut document = fixture("codex", "streaming-interruption");
     document["frames"][1]["payload"] = json!(r#"{"event":"assistant-text","text":"mutated"}"#);
     let error = replay(&document).expect_err("mutated frame must fail replay");

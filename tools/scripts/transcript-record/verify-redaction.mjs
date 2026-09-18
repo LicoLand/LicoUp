@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import {
   adapterIds,
@@ -13,7 +13,14 @@ import {
 } from "./shared.mjs";
 
 const corpusArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
-const corpusRoot = resolve(corpusArgument || "tests/replay-corpus");
+const defaultRoot = existsSync(resolve("tests/replay-corpus"))
+  ? "tests/replay-corpus"
+  : "tests/fixtures/adapter-replay";
+const corpusRoot = resolve(corpusArgument || defaultRoot);
+if (!existsSync(corpusRoot)) {
+  process.stderr.write(`replay fixtures directory absent: ${corpusRoot}\n`);
+  process.exit(1);
+}
 const files = [];
 const visit = (directory) => {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -23,6 +30,10 @@ const visit = (directory) => {
   }
 };
 visit(corpusRoot);
+if (files.length === 0) {
+  process.stderr.write(`zero transcript fixtures found in: ${corpusRoot}\n`);
+  process.exit(1);
+}
 const findings = [];
 let fixtures = 0;
 let pendingReviews = 0;
