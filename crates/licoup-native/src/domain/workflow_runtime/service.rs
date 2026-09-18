@@ -1528,6 +1528,27 @@ impl StrategyService {
             .as_ref()
             .filter(|authorization| authorization.active)
             .ok_or_else(|| anyhow!("authorization_required"))?;
+        let state_visit = snapshot
+            .state_visits
+            .get(&command.state_id)
+            .copied()
+            .unwrap_or(0);
+        let recheck_ctx = super::evolution::EffectRecheckContext {
+            run_id,
+            command_id: &command.id,
+            definition_revision: &snapshot.definition_digest,
+            expected_revision: &definition.summary.revision_digest,
+            expected_generation: state_visit,
+            current_generation: state_visit,
+            authorization: definition.authorization.as_ref(),
+            claimant,
+            session_id: None,
+            single_writer_registry: None,
+            required_tokens: None,
+            token_budget_remaining: None,
+        };
+        super::evolution::recheck_before_effect(&recheck_ctx)
+            .map_err(|failure| anyhow!(failure.code()))?;
         match command.kind {
             CommandKind::Actor | CommandKind::WorksetItem => {
                 let binding = binding_for(
@@ -1824,7 +1845,9 @@ impl StrategyService {
         } else {
             "strategy.run.resume"
         };
+        let enricher = super::evolution::CallbackEvolutionEnricher::new(portable_root);
         for pending in newly_parked {
+            let evolution = enricher.enrich_callback_request(after, pending, answer_channel);
             Self::append_master_report(
                 portable_root,
                 assistant_wake,
@@ -1843,10 +1866,14 @@ impl StrategyService {
                     "decisions": ["advance", "return", "terminate"],
                     "answerChannel": answer_channel,
                     "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
         if failure_terminal {
+            let evolution = enricher.enrich_terminal_outcome(after);
             Self::append_master_report(
                 portable_root,
                 assistant_wake,
@@ -1859,10 +1886,14 @@ impl StrategyService {
                     "runId": after.run_id,
                     "status": wire_enum(after.status)?,
                     "diagnostic": after.diagnostic_code,
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
         for (state_id, state_visit) in flow_settled {
+            let evolution = enricher.enrich_flow_settled(after, state_id, state_visit);
             Self::append_master_report(
                 portable_root,
                 assistant_wake,
@@ -1876,6 +1907,9 @@ impl StrategyService {
                     "stateId": state_id,
                     "stateVisit": state_visit,
                     "mode": "flow",
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
