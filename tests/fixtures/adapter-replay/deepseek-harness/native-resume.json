@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "deepseek-harness",
+  "scenario": "native-resume",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"session-resumed\"}",
+      "projection": [
+        {
+          "kind": "control",
+          "method": "resume",
+          "summary": "session-resumed"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"assistant-text\",\"text\":\"<REDACTED_CONTENT>\"}",
+      "projection": [
+        {
+          "kind": "text",
+          "unitId": "deepseek-harness:reply",
+          "text": "<REDACTED_CONTENT>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:1fcc22be3a17f6c2632734a5056b1fa5bfd273310091bf13c894396e16d1204b"
+  }
+}

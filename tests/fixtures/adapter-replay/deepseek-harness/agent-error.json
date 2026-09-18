@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "deepseek-harness",
+  "scenario": "agent-error",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "deepseek_harness_replay_agent_error",
+          "stage": "turn/execute",
+          "message": "<REDACTED_ERROR>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:8086a48314f847b94620404b2899833dd40eb08448bd996152156ee93d1c9db4"
+  }
+}

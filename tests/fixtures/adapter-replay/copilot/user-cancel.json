@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "copilot",
+  "scenario": "user-cancel",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"user-cancel\"}",
+      "projection": [
+        {
+          "kind": "control",
+          "method": "cancel",
+          "summary": "user-cancel"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:ffe36e43e5854fd1c5817d97d80158a9896d21196b7cf78240ccd9bd3270c40d"
+  }
+}

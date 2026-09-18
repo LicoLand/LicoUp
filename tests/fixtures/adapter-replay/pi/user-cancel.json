@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "pi",
+  "scenario": "user-cancel",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"user-cancel\"}",
+      "projection": [
+        {
+          "kind": "control",
+          "method": "cancel",
+          "summary": "user-cancel"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:47b8de4726985ec7a3eba0d2b5f2c2758f66376ea36d5b8843a3f7b1afe6bbf4"
+  }
+}

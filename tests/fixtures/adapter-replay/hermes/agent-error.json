@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "lico.adapter-transcript.v1",
+  "adapterId": "hermes",
+  "scenario": "agent-error",
+  "provenance": {
+    "source": "synthetic-fallback",
+    "taskContent": "synthetic-engineering-only",
+    "redacted": true,
+    "humanReviewed": true
+  },
+  "invocation": {
+    "interface": "native-history-catalog",
+    "readOnly": true
+  },
+  "frames": [
+    {
+      "index": 0,
+      "direction": "agent-to-client",
+      "channel": "history-catalog-replay",
+      "payload": "{\"event\":\"agent-error\",\"message\":\"<REDACTED_ERROR>\"}",
+      "projection": [
+        {
+          "kind": "failed",
+          "code": "hermes_replay_agent_error",
+          "stage": "turn/execute",
+          "message": "<REDACTED_ERROR>"
+        }
+      ]
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "review": {
+    "status": "approved",
+    "reviewerClass": "human",
+    "checklist": {
+      "syntheticTaskConfirmed": true,
+      "noUserConversation": true,
+      "pathsAndIdentityChecked": true,
+      "framesMatchProtocolCapture": true,
+      "projectionsMatchParserOutput": true
+    }
+  },
+  "redaction": {
+    "algorithm": "lico-transcript-redaction-v1",
+    "contentSha256": "sha256:3da5f75004e6ef32df6eb90947a551c143a561ed1bfa1b157912e510b933999a"
+  }
+}
