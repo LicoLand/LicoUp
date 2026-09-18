@@ -533,9 +533,10 @@ final class _DockConversationComposer extends StatelessWidget {
   }) async {
     if (attachments.attachments.isNotEmpty && !attachments.acceptsImages) {
       this.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'send',
           reasonCode: 'attachment_transport_unsupported',
+          conversationId: conversation.id,
         ),
       );
       return false;

@@ -1353,6 +1353,43 @@ void main() {
     expect(find.byKey(const Key('canonical-group-create-dialog')), findsOne);
     expect(find.byKey(const Key('canonical-group-create-failure')), findsOne);
   });
+
+  test('message operation identities resolve back to the source Event', () {
+    final events = [
+      ClientConversationEvent.fromJson({
+        'id': 'event:user',
+        'conversationId': 'conversation:group',
+        'sequence': 1,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 10,
+        'finalized': true,
+        'parts': [_part('part:text', 0, 'text', 'hello')],
+      }),
+    ];
+
+    // First-flush identity is already the Event identity.
+    expect(
+      resolveCanonicalGroupSourceEventId('event:user', events),
+      'event:user',
+    );
+    // A later text flush derives '<eventId>:text:<n>' and resolves back.
+    expect(
+      resolveCanonicalGroupSourceEventId('event:user:text:1', events),
+      'event:user',
+    );
+    // Assistant turn identities and unknown flushes never resolve to a
+    // fabricated Event; the store layer fails closed on them instead.
+    expect(
+      resolveCanonicalGroupSourceEventId('turn:1-assistant', events),
+      'turn:1-assistant',
+    );
+    expect(
+      resolveCanonicalGroupSourceEventId('event:missing:text:0', events),
+      'event:missing:text:0',
+    );
+    expect(resolveCanonicalGroupSourceEventId('', events), '');
+  });
 }
 
 final class _DialogConversationBinding
