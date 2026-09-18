@@ -1,5 +1,5 @@
 name: presentation_runtime
-description: Riverpod entry declarations for the LicoUp presentation runtime.
+description: Riverpod presentation state, preparation, scheduling, and cache runtime for LicoUp.
 version: 0.1.0
 publish_to: none
 
