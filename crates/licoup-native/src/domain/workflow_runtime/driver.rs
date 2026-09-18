@@ -736,10 +736,10 @@ impl ContinuousNodeDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::adaptive_flywheel::adapter::{
+    use crate::domain::workflow_runtime::adapter::{
         CooperativeDrainAdapter, SyntheticCapabilityAdapter,
     };
-    use crate::domain::adaptive_flywheel::routing::{
+    use crate::domain::workflow_runtime::routing::{
         DeliveryMode, FrozenTargetRecipient, QueueBounds, Subscription, TargetSelector,
     };
     use serde_json::json;
