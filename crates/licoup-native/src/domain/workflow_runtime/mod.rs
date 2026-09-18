@@ -8,6 +8,7 @@ pub mod adapter;
 mod assistant;
 pub mod control;
 pub mod driver;
+pub mod evolution;
 pub mod node;
 mod package;
 pub mod routing;
@@ -41,6 +42,16 @@ pub use routing::{
     FrozenTargets, NodeCapability, NodeFeatureIndex, NodeLifecycleState, NodeMetadata, QueueBounds,
     QueueCapacityExceeded, QueuedItem, RecipientEffectStatus, Subscription, SubscriptionPredicate,
     SubscriptionRegistry, SubscriptionScope, TargetSelector,
+};
+pub use evolution::{
+    AdoptedPlanningDefaultSeam, AgentModelOptionSeam, CallbackCostFacts, CallbackContextFacts,
+    CallbackEvolutionEnricher, CallbackEvolutionPayload, CallbackFacts, CallbackObservationFacts,
+    CallbackSuggestions, DefaultEvolutionContextPort, DefaultEvolutionObservationPort,
+    DefaultEvolutionStrategyPort, EffectRecheckContext, EffectRecheckFailure, EffectRecheckReceipt,
+    EvolutionCostPort, EvolutionContextPort, EvolutionObservationPort, EvolutionStrategyPort,
+    GroupBGapReport, GroupBIntegrationGaps, LedgerEvolutionCostPort, NodeObservationSummary,
+    PlanningScopeSeam, StrategySourceSeam, StrategySuggestion, StrategyVersionSeam,
+    recheck_before_effect,
 };
 pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
 
