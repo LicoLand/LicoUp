@@ -5,7 +5,7 @@ use crate::domain::mobile_relay::support::MOBILE_RELAY_KEY_BYTES;
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 

@@ -1,7 +1,7 @@
 use super::super::DeviceTrustPublicIdentity;
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::{Value, json};
 
 pub(super) fn identity_fixture(endpoint_id: &str) -> (SigningKey, DeviceTrustPublicIdentity) {

@@ -1,177 +1,81 @@
-//! Fail-closed admission for exact versioned Protocol Line inputs.
+//! Admission of one explicitly supplied Protocol Line authority artifact.
 //!
-//! No published Lico Arc Protocol Line is registered here. Completeness of a
-//! candidate is not admission: this crate refuses to mint a client-owned line.
+//! Protocol definition, line identity, source closure, and every algorithm
+//! belong to LicoArc and its Rust SDK. This crate owns only the caller-side
+//! boundary: it hands the caller's exact bytes to the SDK and accepts only what
+//! the SDK verifies as the fixed Candidate. There is no second parser, no
+//! project-level digest gate, and no line that LicoUp can mint, patch, or
+//! extrapolate on its own.
 
-const SHA256_HEX_LEN: usize = 64;
+use core::fmt;
 
-/// Stable failure code returned for every refused Protocol Line candidate.
+use licoarc::artifact::{AuthorityBundle, VerifiedProtocolLine};
+use licoarc::error::Error;
+
+/// Stable code reported for every refused authority artifact.
 pub const AUTHORIZATION_REQUIRED: &str = "authorization_required";
 
-/// One required Protocol Line admission input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AdmissionInput {
-    ArtifactVersion,
-    Digest,
-    SchemaSet,
-    HostileCorpus,
-    AuthorityBoundary,
-}
-
-impl AdmissionInput {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ArtifactVersion => "artifact_version",
-            Self::Digest => "digest",
-            Self::SchemaSet => "schema_set",
-            Self::HostileCorpus => "hostile_corpus",
-            Self::AuthorityBoundary => "authority_boundary",
-        }
-    }
-}
-
-/// Why admission refused a candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdmissionDetail {
-    MissingInputs,
-    InvalidDigest,
-    UnpublishedProtocolLine,
-}
-
-impl AdmissionDetail {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::MissingInputs => "missing_inputs",
-            Self::InvalidDigest => "invalid_digest",
-            Self::UnpublishedProtocolLine => "unpublished_protocol_line",
-        }
-    }
-}
-
-/// Candidate presented for Protocol Line admission.
+/// One explicitly supplied, read-only authority artifact.
 ///
-/// Empty or whitespace-only fields are treated as missing. This type does not
-/// carry Protocol Line semantics.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProtocolInputCandidate {
-    pub artifact_version: Option<String>,
-    pub digest: Option<String>,
-    pub schema_set: Vec<String>,
-    pub hostile_corpus: Vec<String>,
-    pub authority_boundary: Option<String>,
+/// The bytes are the caller's fixed input. They are never fetched, synthesized,
+/// or modified here, and an empty or oversized input is refused like any other
+/// input that is not the fixed Candidate.
+#[derive(Clone, Copy, Debug)]
+pub struct AuthorityInput<'a> {
+    bytes: &'a [u8],
 }
 
-/// Fail-closed Protocol Line admission evaluator.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ProtocolInputAdmission;
-
-/// Refused admission. Never constructs a Protocol Line.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AdmissionOutcome {
-    AuthorizationRequired {
-        code: &'static str,
-        missing: Vec<AdmissionInput>,
-        detail: AdmissionDetail,
-    },
-}
-
-impl AdmissionOutcome {
-    pub fn is_admitted(&self) -> bool {
-        false
-    }
-
-    pub fn authorization_code(&self) -> &'static str {
-        match self {
-            Self::AuthorizationRequired { code, .. } => code,
-        }
-    }
-}
-
-/// Published Protocol Line pins. Empty until an exact Lico Arc line exists.
-const PUBLISHED_PROTOCOL_LINES: &[PublishedProtocolLinePin] = &[];
-
-struct PublishedProtocolLinePin {
-    artifact_version: &'static str,
-    digest: &'static str,
-}
-
-impl ProtocolInputAdmission {
-    /// Admit a candidate, or refuse with `authorization_required`.
-    ///
-    /// Refuses before any write or egress. Never synthesizes a Protocol Line.
+impl<'a> AuthorityInput<'a> {
     #[must_use]
-    pub fn admit(candidate: &ProtocolInputCandidate) -> AdmissionOutcome {
-        admit(candidate)
+    pub const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// Admit the fixed Candidate, or refuse with [`AUTHORIZATION_REQUIRED`].
+    ///
+    /// The SDK decides this: it checks the artifact version, wire identity,
+    /// generation, Candidate lifecycle, complete definition, session
+    /// eligibility, absent publication eligibility, source closure, and content
+    /// address. Any other input — unknown, incomplete, mutated, or a different
+    /// line — is refused here, before LicoUp writes or sends anything.
+    pub fn admit(self) -> Result<VerifiedProtocolLine, AdmissionRefusal> {
+        AuthorityBundle::new(self.bytes)
+            .admit()
+            .map_err(AdmissionRefusal::new)
     }
 }
 
-/// Admit a candidate, or refuse with `authorization_required`.
-#[must_use]
-pub fn admit(candidate: &ProtocolInputCandidate) -> AdmissionOutcome {
-    let mut missing = Vec::new();
-    let version = present_text(candidate.artifact_version.as_deref());
-    let digest = present_text(candidate.digest.as_deref());
-    let schemas = present_tokens(&candidate.schema_set);
-    let corpus = present_tokens(&candidate.hostile_corpus);
-    let boundary = present_text(candidate.authority_boundary.as_deref());
-
-    if version.is_none() {
-        missing.push(AdmissionInput::ArtifactVersion);
-    }
-    if digest.is_none() {
-        missing.push(AdmissionInput::Digest);
-    } else if digest.is_some_and(|value| !is_sha256_hex(value)) {
-        return refuse(Vec::new(), AdmissionDetail::InvalidDigest);
-    }
-    if schemas.is_empty() {
-        missing.push(AdmissionInput::SchemaSet);
-    }
-    if corpus.is_empty() {
-        missing.push(AdmissionInput::HostileCorpus);
-    }
-    if boundary.is_none() {
-        missing.push(AdmissionInput::AuthorityBoundary);
-    }
-
-    if !missing.is_empty() {
-        missing.sort();
-        missing.dedup();
-        return refuse(missing, AdmissionDetail::MissingInputs);
-    }
-
-    let version = version.expect("artifact_version present");
-    let digest = digest.expect("digest present");
-    let _matched_published_pin = PUBLISHED_PROTOCOL_LINES
-        .iter()
-        .any(|pin| pin.artifact_version == version && pin.digest == digest);
-    // Completeness and even a future pin match do not mint a client-owned
-    // Protocol Line. Bindings generation stays with a later exact-input node.
-    refuse(Vec::new(), AdmissionDetail::UnpublishedProtocolLine)
+/// Refused authority artifact.
+///
+/// One stable LicoUp code, plus the SDK's bounded cause. It never carries input
+/// bytes, payloads, secrets, or paths.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdmissionRefusal {
+    cause: Error,
 }
 
-fn refuse(missing: Vec<AdmissionInput>, detail: AdmissionDetail) -> AdmissionOutcome {
-    AdmissionOutcome::AuthorizationRequired {
-        code: AUTHORIZATION_REQUIRED,
-        missing,
-        detail,
+impl AdmissionRefusal {
+    const fn new(cause: Error) -> Self {
+        Self { cause }
+    }
+
+    /// Stable LicoUp code for every refused artifact.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        AUTHORIZATION_REQUIRED
+    }
+
+    /// Bounded SDK error that refused the artifact.
+    #[must_use]
+    pub const fn cause(self) -> Error {
+        self.cause
     }
 }
 
-fn present_text(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
+impl fmt::Display for AdmissionRefusal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", AUTHORIZATION_REQUIRED, self.cause)
+    }
 }
 
-fn present_tokens(values: &[String]) -> Vec<&str> {
-    values
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .collect()
-}
-
-fn is_sha256_hex(value: &str) -> bool {
-    value.len() == SHA256_HEX_LEN
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
-}
+impl std::error::Error for AdmissionRefusal {}
