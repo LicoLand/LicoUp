@@ -9,7 +9,7 @@ use super::super::persistence::{
 use super::super::*;
 use super::support::{leaf, state_path};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use rusqlite::{Connection, TransactionBehavior, params};
 
 #[test]

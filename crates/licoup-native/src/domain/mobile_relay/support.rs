@@ -4,7 +4,7 @@ pub(super) use base64::{Engine, engine::general_purpose};
 #[cfg(test)]
 pub(super) use ed25519_dalek::SigningKey;
 pub(super) use hmac::{Hmac, Mac};
-pub(super) use rand::{RngCore, rngs::OsRng};
+pub(super) use rand_core::{OsRng, RngCore};
 pub(super) use serde_json::{Value, json};
 pub(super) use sha2::{Digest, Sha256};
 #[cfg(test)]

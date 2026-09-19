@@ -3,9 +3,14 @@ use std::ffi::c_void;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, ensure};
-use jni::JNIEnv;
+use jni::Env;
+use jni::EnvUnowned;
 use jni::JavaVM;
-use jni::objects::{GlobalRef, JByteArray, JObject, JString, JValue};
+use jni::errors::LogErrorAndDefault;
+use jni::jni_sig;
+use jni::jni_str;
+use jni::objects::{JByteArray, JObject, JString, JValue};
+use jni::refs::Global;
 use jni::sys::jstring;
 use serde_json::json;
 
@@ -43,39 +48,45 @@ pub extern "system" fn Java_com_liko_arc_MainActivity_nativeSecureMeshRuntimePro
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_liko_arc_MainActivity_nativeSecureMeshJson(
-    mut env: JNIEnv,
-    _this: JObject,
-    request_json: JString,
-    files_dir: JString,
-    secret_store_bridge: JObject,
+pub extern "system" fn Java_com_liko_arc_MainActivity_nativeSecureMeshJson<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    request_json: JString<'local>,
+    files_dir: JString<'local>,
+    secret_store_bridge: JObject<'local>,
 ) -> jstring {
-    let response =
-        match android_secure_mesh_json(&mut env, &secret_store_bridge, request_json, files_dir) {
-            Ok(value) => value,
-            Err(_error) => json!({
-                "ok": false,
-                "code": "android_secure_mesh_native_json_failed",
-                "error": "Secure Mesh native request failed.",
-                "errorDetailRedacted": true,
-            }),
-        };
-    let serialized = serde_json::to_string(&response).unwrap_or_else(|_error| {
-        r#"{"ok":false,"code":"android_secure_mesh_json_serialize_failed","error":"Secure Mesh response serialization failed.","errorDetailRedacted":true}"#.to_string()
-    });
-    env.new_string(serialized)
-        .map(|value| value.into_raw())
-        .unwrap_or(std::ptr::null_mut())
+    // Every failure is reported to Java as a JSON error object, so the only
+    // outcome that maps to a null return is a failed `new_string`, which
+    // `LogErrorAndDefault` resolves to the default (null) `jstring`.
+    unowned_env
+        .with_env(|env| -> jni::errors::Result<jstring> {
+            let response =
+                match android_secure_mesh_json(env, &secret_store_bridge, request_json, files_dir)
+                {
+                    Ok(value) => value,
+                    Err(_error) => json!({
+                        "ok": false,
+                        "code": "android_secure_mesh_native_json_failed",
+                        "error": "Secure Mesh native request failed.",
+                        "errorDetailRedacted": true,
+                    }),
+                };
+            let serialized = serde_json::to_string(&response).unwrap_or_else(|_error| {
+                r#"{"ok":false,"code":"android_secure_mesh_json_serialize_failed","error":"Secure Mesh response serialization failed.","errorDetailRedacted":true}"#.to_string()
+            });
+            env.new_string(serialized).map(|value| value.into_raw())
+        })
+        .resolve::<LogErrorAndDefault>()
 }
 
-fn android_secure_mesh_json(
-    env: &mut JNIEnv,
-    secret_store_bridge: &JObject,
-    request_json: JString,
-    files_dir: JString,
+fn android_secure_mesh_json<'local>(
+    env: &mut Env<'local>,
+    secret_store_bridge: &JObject<'local>,
+    request_json: JString<'local>,
+    files_dir: JString<'local>,
 ) -> anyhow::Result<serde_json::Value> {
-    let request_text: String = env.get_string(&request_json)?.into();
-    let files_dir_text: String = env.get_string(&files_dir)?.into();
+    let request_text: String = request_json.try_to_string(env)?;
+    let files_dir_text: String = files_dir.try_to_string(env)?;
     let pairwise_secret_store: Arc<dyn SecureMeshSecretStore> =
         Arc::new(AndroidJniSecretStore::new(env, secret_store_bridge)?);
     crate::ffi::secure_mesh_mobile_ffi::dispatch_json_with_files_dir_and_pairwise_secret_store(
@@ -88,7 +99,7 @@ fn android_secure_mesh_json(
 
 struct AndroidJniSecretStore {
     java_vm: JavaVM,
-    secret_store: GlobalRef,
+    secret_store: Global<JObject<'static>>,
     selected_backend: AndroidSelectedCustodyBackend,
 }
 
@@ -116,12 +127,12 @@ impl AndroidSelectedCustodyBackend {
 }
 
 impl AndroidJniSecretStore {
-    fn new(env: &mut JNIEnv, secret_store: &JObject) -> Result<Self> {
+    fn new<'local>(env: &mut Env<'local>, secret_store: &JObject<'local>) -> Result<Self> {
         let selected_backend = env
             .call_method(
                 secret_store,
-                "secureMeshAndroidSelectedCustodyBackend",
-                "()Ljava/lang/String;",
+                jni_str!("secureMeshAndroidSelectedCustodyBackend"),
+                jni_sig!("()Ljava/lang/String;"),
                 &[],
             )
             .context("android selected custody backend call failed")?
@@ -131,10 +142,9 @@ impl AndroidJniSecretStore {
             !selected_backend.is_null(),
             "android selected custody backend is unavailable"
         );
-        let selected_backend: String = env
-            .get_string(&JString::from(selected_backend))
-            .context("android selected custody backend string failed")?
-            .into();
+        let selected_backend: String = JString::cast_local(env, selected_backend)
+            .and_then(|selected_backend| selected_backend.try_to_string(env))
+            .context("android selected custody backend string failed")?;
         Ok(Self {
             java_vm: env
                 .get_java_vm()
@@ -147,133 +157,138 @@ impl AndroidJniSecretStore {
     }
 
     fn call_set(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<bool> {
-        let mut env = self
-            .java_vm
-            .attach_current_thread()
-            .context("android secret store thread attach failed")?;
-        let namespace = JObject::from(
-            env.new_string(handle.namespace())
-                .context("android secret store namespace bridge failed")?,
-        );
-        let key = JObject::from(
-            env.new_string(handle.key())
-                .context("android secret store key bridge failed")?,
-        );
-        let secret_len = i32::try_from(secret.expose_bytes().len())
-            .context("android secret store payload is too large")?;
-        let secret_array = env
-            .new_byte_array(secret_len)
-            .context("android secret store byte-array allocation failed")?;
-        // SAFETY: JNI jbyte is the signed representation of one byte and the
-        // slice retains the same allocation and length.
-        let signed_secret = unsafe {
-            std::slice::from_raw_parts(
-                secret.expose_bytes().as_ptr().cast::<i8>(),
-                secret.expose_bytes().len(),
-            )
-        };
-        env.set_byte_array_region(&secret_array, 0, signed_secret)
-            .context("android secret store byte-array copy failed")?;
-        let mut guarded = AndroidSecretByteArrayGuard::new(&mut env, secret_array);
-        guarded.call_set(self.secret_store.as_obj(), &namespace, &key)
+        self.java_vm
+            .attach_current_thread(|env| -> Result<bool> {
+                let namespace = JObject::from(
+                    env.new_string(handle.namespace())
+                        .context("android secret store namespace bridge failed")?,
+                );
+                let key = JObject::from(
+                    env.new_string(handle.key())
+                        .context("android secret store key bridge failed")?,
+                );
+                let secret_len = secret.expose_bytes().len();
+                ensure!(
+                    secret_len <= jni::sys::jsize::MAX as usize,
+                    "android secret store payload is too large"
+                );
+                let secret_array = env
+                    .new_byte_array(secret_len)
+                    .context("android secret store byte-array allocation failed")?;
+                // SAFETY: JNI jbyte is the signed representation of one byte and the
+                // slice retains the same allocation and length.
+                let signed_secret = unsafe {
+                    std::slice::from_raw_parts(
+                        secret.expose_bytes().as_ptr().cast::<i8>(),
+                        secret.expose_bytes().len(),
+                    )
+                };
+                secret_array
+                    .set_region(env, 0, signed_secret)
+                    .context("android secret store byte-array copy failed")?;
+                let mut guarded = AndroidSecretByteArrayGuard::new(env, secret_array);
+                guarded.call_set(self.secret_store.as_obj(), &namespace, &key)
+            })
+            .context("android secret store thread attach failed")
     }
 
     fn call_get(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
-        let mut env = self
-            .java_vm
-            .attach_current_thread()
-            .context("android secret store thread attach failed")?;
-        let namespace = JObject::from(
-            env.new_string(handle.namespace())
-                .context("android secret store namespace bridge failed")?,
-        );
-        let key = JObject::from(
-            env.new_string(handle.key())
-                .context("android secret store key bridge failed")?,
-        );
-        let value = env
-            .call_method(
-                self.secret_store.as_obj(),
-                "secureMeshAndroidSecretStoreGet",
-                "(Ljava/lang/String;Ljava/lang/String;)[B",
-                &[JValue::Object(&namespace), JValue::Object(&key)],
-            )
-            .context("android secret store get call failed")?
-            .l()
-            .context("android secret store get return failed")?;
-        if value.is_null() {
-            return normalize_android_secret_store_get(None);
-        }
-        let value = JByteArray::from(value);
-        let length = usize::try_from(env.get_array_length(&value)?)
-            .context("android secret store returned an invalid byte-array length")?;
-        ensure!(
-            length <= MAX_SECRET_BYTES,
-            "android secret store returned an oversized existing record"
-        );
-        let guarded = AndroidSecretByteArrayGuard::new(&mut env, value);
-        let bytes = guarded.convert_byte_array()?;
-        normalize_android_secret_store_get(Some(bytes))
+        self.java_vm
+            .attach_current_thread(|env| -> Result<Option<SecretBytes>> {
+                let namespace = JObject::from(
+                    env.new_string(handle.namespace())
+                        .context("android secret store namespace bridge failed")?,
+                );
+                let key = JObject::from(
+                    env.new_string(handle.key())
+                        .context("android secret store key bridge failed")?,
+                );
+                let value = env
+                    .call_method(
+                        self.secret_store.as_obj(),
+                        jni_str!("secureMeshAndroidSecretStoreGet"),
+                        jni_sig!("(Ljava/lang/String;Ljava/lang/String;)[B"),
+                        &[JValue::Object(&namespace), JValue::Object(&key)],
+                    )
+                    .context("android secret store get call failed")?
+                    .l()
+                    .context("android secret store get return failed")?;
+                if value.is_null() {
+                    return normalize_android_secret_store_get(None);
+                }
+                let value = JByteArray::cast_local(env, value)
+                    .context("android secret store get return failed")?;
+                let length = value
+                    .len(env)
+                    .context("android secret store returned an invalid byte-array length")?;
+                ensure!(
+                    length <= MAX_SECRET_BYTES,
+                    "android secret store returned an oversized existing record"
+                );
+                let guarded = AndroidSecretByteArrayGuard::new(env, value);
+                let bytes = guarded.convert_byte_array()?;
+                normalize_android_secret_store_get(Some(bytes))
+            })
+            .context("android secret store thread attach failed")
     }
 
     fn call_delete(&self, handle: &SecretStoreHandle) -> Result<bool> {
-        let mut env = self
-            .java_vm
-            .attach_current_thread()
-            .context("android secret store thread attach failed")?;
-        let namespace = JObject::from(
-            env.new_string(handle.namespace())
-                .context("android secret store namespace bridge failed")?,
-        );
-        let key = JObject::from(
-            env.new_string(handle.key())
-                .context("android secret store key bridge failed")?,
-        );
-        env.call_method(
-            self.secret_store.as_obj(),
-            "secureMeshAndroidSecretStoreDelete",
-            "(Ljava/lang/String;Ljava/lang/String;)Z",
-            &[JValue::Object(&namespace), JValue::Object(&key)],
-        )
-        .context("android secret store delete call failed")?
-        .z()
-        .context("android secret store delete return failed")
+        self.java_vm
+            .attach_current_thread(|env| -> Result<bool> {
+                let namespace = JObject::from(
+                    env.new_string(handle.namespace())
+                        .context("android secret store namespace bridge failed")?,
+                );
+                let key = JObject::from(
+                    env.new_string(handle.key())
+                        .context("android secret store key bridge failed")?,
+                );
+                env.call_method(
+                    self.secret_store.as_obj(),
+                    jni_str!("secureMeshAndroidSecretStoreDelete"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+                    &[JValue::Object(&namespace), JValue::Object(&key)],
+                )
+                .context("android secret store delete call failed")?
+                .z()
+                .context("android secret store delete return failed")
+            })
+            .context("android secret store thread attach failed")
     }
 
     fn call_capability_facts(&self) -> Result<Vec<CapabilityFact>> {
-        let mut env = self
-            .java_vm
-            .attach_current_thread()
-            .context("android capability probe thread attach failed")?;
-        let value = env
-            .call_method(
-                self.secret_store.as_obj(),
-                "secureMeshAndroidCapabilityProbeJson",
-                "()Ljava/lang/String;",
-                &[],
-            )
-            .context("android capability probe call failed")?
-            .l()
-            .context("android capability probe return failed")?;
-        ensure!(
-            !value.is_null(),
-            "android capability probe returned no snapshot"
-        );
-        let source: String = env
-            .get_string(&JString::from(value))
-            .context("android capability probe string failed")?
-            .into();
-        parse_android_capability_facts(&source)
+        self.java_vm
+            .attach_current_thread(|env| -> Result<Vec<CapabilityFact>> {
+                let value = env
+                    .call_method(
+                        self.secret_store.as_obj(),
+                        jni_str!("secureMeshAndroidCapabilityProbeJson"),
+                        jni_sig!("()Ljava/lang/String;"),
+                        &[],
+                    )
+                    .context("android capability probe call failed")?
+                    .l()
+                    .context("android capability probe return failed")?;
+                ensure!(
+                    !value.is_null(),
+                    "android capability probe returned no snapshot"
+                );
+                let source: String = JString::cast_local(env, value)
+                    .and_then(|value| value.try_to_string(env))
+                    .context("android capability probe string failed")?;
+                parse_android_capability_facts(&source)
+            })
+            .context("android capability probe thread attach failed")
     }
 }
 
 struct AndroidSecretByteArrayGuard<'local, 'env> {
-    env: &'env mut JNIEnv<'local>,
+    env: &'env mut Env<'local>,
     value: JByteArray<'local>,
 }
 
 impl<'local, 'env> AndroidSecretByteArrayGuard<'local, 'env> {
-    fn new(env: &'env mut JNIEnv<'local>, value: JByteArray<'local>) -> Self {
+    fn new(env: &'env mut Env<'local>, value: JByteArray<'local>) -> Self {
         Self { env, value }
     }
 
@@ -286,8 +301,8 @@ impl<'local, 'env> AndroidSecretByteArrayGuard<'local, 'env> {
         self.env
             .call_method(
                 bridge,
-                "secureMeshAndroidSecretStoreSet",
-                "(Ljava/lang/String;Ljava/lang/String;[B)Z",
+                jni_str!("secureMeshAndroidSecretStoreSet"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;[B)Z"),
                 &[
                     JValue::Object(namespace),
                     JValue::Object(key),
@@ -308,9 +323,9 @@ impl<'local, 'env> AndroidSecretByteArrayGuard<'local, 'env> {
 
 impl Drop for AndroidSecretByteArrayGuard<'_, '_> {
     fn drop(&mut self) {
-        if let Ok(length) = self.env.get_array_length(&self.value) {
-            let zeros = vec![0_i8; usize::try_from(length).unwrap_or_default()];
-            let _ = self.env.set_byte_array_region(&self.value, 0, &zeros);
+        if let Ok(length) = self.value.len(self.env) {
+            let zeros = vec![0_i8; length];
+            let _ = self.value.set_region(self.env, 0, &zeros);
         }
     }
 }
