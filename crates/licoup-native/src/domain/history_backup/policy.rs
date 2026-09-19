@@ -3,7 +3,7 @@ use chacha20poly1305::{
     aead::{Aead, Payload},
 };
 use hkdf::Hkdf;
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;

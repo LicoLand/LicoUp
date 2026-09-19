@@ -1,7 +1,7 @@
 use std::mem;
 
 use anyhow::{Result, ensure};
-use rand::{CryptoRng, RngCore, rngs::OsRng};
+use rand_core::{CryptoRng, OsRng, RngCore};
 
 #[cfg(test)]
 use super::protocol_state::MlKemBraidStateName;

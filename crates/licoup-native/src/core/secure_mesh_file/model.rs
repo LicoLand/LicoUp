@@ -1,7 +1,7 @@
 use super::constants::*;
 use super::primitives::*;
 use anyhow::{Context, Result, anyhow, ensure};
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use zeroize::Zeroizing;

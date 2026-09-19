@@ -17,7 +17,7 @@ use licoup_native::core::secure_mesh_directory::{
 use licoup_native::core::secure_mesh_transparency::{
     KT_JSON_SAFE_INTEGER_MAX, SecureMeshKtGossipPayload, SecureMeshKtLog,
 };
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::{Value, json};
 
 const MOCK_SCHEMA_VERSION: u64 = 1;

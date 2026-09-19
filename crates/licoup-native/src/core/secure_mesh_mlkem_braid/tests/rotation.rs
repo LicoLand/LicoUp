@@ -1,4 +1,5 @@
-use rand::{SeedableRng, rngs::StdRng};
+use rand_chacha::ChaCha12Rng as StdRng;
+use rand_core::SeedableRng;
 
 use super::{
     super::{protocol_state::MlKemBraidStateName, session::MlKemBraidSession},

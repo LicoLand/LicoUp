@@ -4,7 +4,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, KeyInit, Payload as AeadPayload},
 };
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use zeroize::Zeroizing;
 
 use super::{
