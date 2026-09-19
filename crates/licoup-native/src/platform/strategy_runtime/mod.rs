@@ -256,7 +256,7 @@ pub(crate) fn actor_fingerprint(
 pub(crate) fn execute_actor(
     command: &RunCommand,
     authorization_digest: &str,
-    binding: &crate::domain::adaptive_flywheel::BindingValue,
+    binding: &crate::domain::workflow_store::BindingValue,
     permit: &mut StrategyEffectPermit,
     cwd: Option<&str>,
 ) -> Result<Value> {

@@ -15,6 +15,9 @@ pub(crate) mod workflow_ledger;
 pub use command::{report, scan};
 pub use incremental::{UsageIncrementalAuthority, UsageWindowProjection};
 pub(crate) use variant::{model_label as recorded_usage_model, prefer_recorded_model};
+pub use workflow_ledger::{
+    graph_admission_report, release_graph_command, reserve_graph_command, settle_graph_command,
+};
 
 #[cfg(test)]
 mod tests;
