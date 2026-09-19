@@ -187,12 +187,21 @@ where
                         portable_data_dir,
                     )?;
                 }
-                StdioRpcMethod::Shutdown => {
+                StdioRpcMethod::Shutdown { params } => {
+                    let stop_host = params
+                        .get("host")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if stop_host {
+                        if let Some(runtime) = conversation_runtime.as_ref() {
+                            runtime.request_host_stop();
+                        }
+                    }
                     write_stdio_rpc_success_shared(
                         &writer,
                         &request.id,
                         &request.workflow_id,
-                        json!({"status": "shutdown"}),
+                        json!({"status": "shutdown", "host_stop_requested": stop_host}),
                     )?;
                     // Shutdown closes the RPC session, not the Agent turns it has
                     // already accepted. Acknowledge first so the client can leave.
@@ -503,7 +512,7 @@ where
                         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
                         let root = licoup_native::platform::paths::portable_data_dir()?;
                         let service =
-                            licoup_native::domain::adaptive_flywheel::StrategyService::open(&root)?;
+                            licoup_native::domain::workflow_runtime::StrategyService::open(&root)?;
                         let service = if let Some(runtime) = runtime {
                             service
                                 .with_actor_turn_port(conversation::strategy_turn_port(
@@ -788,7 +797,7 @@ pub(crate) fn bind_conversation_runtime(
             move |request| {
                 let port =
                     conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
-                licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
+                licoup_native::domain::workflow_runtime::StrategyService::open(&strategy_root)?
                     .with_actor_turn_port(port)
                     .with_assistant_wake_port(conversation::assistant_wake_port(
                         actor_runtime.clone(),

@@ -86,6 +86,10 @@ use super::execution::{
     review_cause_refs, settlement_identity, strip_review_unsafe_effects,
 };
 use super::live::{insert_task_subject, populate_live_store};
+use super::observation::{
+    ObservationFact, ObservationIndex, ObservationRecordOutcome, load_observation_index,
+    record_observation,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct IngressOutcome {
@@ -296,6 +300,22 @@ impl ContinuityHost {
 
     pub fn cognition_invocation_count(&self) -> u64 {
         lock(&self.cognition).invocation_count()
+    }
+
+    /// Record one already-admitted run fact without changing execution state.
+    /// Observation is deliberately separate from admission and permission.
+    pub fn record_observation(
+        &self,
+        fact: &ObservationFact,
+    ) -> Result<ObservationRecordOutcome, ContinuityFailure> {
+        record_observation(&self.store, fact)
+    }
+
+    pub fn observation_index(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ObservationIndex, ContinuityFailure> {
+        load_observation_index(&self.store, conversation_id)
     }
 
     pub fn install_script(&self, script: SemanticScript) {
