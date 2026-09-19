@@ -83,7 +83,9 @@ mixin AgentConversationSessionController
       return Future.value();
     }
     _groupHydrationGeneration = generation;
-    groupNativeSessions.loading = true;
+    // The loading spinner belongs to the initial empty load. A refresh over an
+    // already-listed catalog reads silently instead of blanking the sidebar.
+    groupNativeSessions.loading = groupNativeSessions.sessionsByAgent.isEmpty;
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     var cursor = 0;

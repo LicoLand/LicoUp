@@ -145,7 +145,24 @@ mixin AgentConversationMessageController
       agentWorkspaceNotifyStateChanged();
     }
     if (attached && !agentWorkspaceDisposed) {
-      await refreshConversationCatalogInternal(agentId, foreground: true);
+      // Only a session the catalog does not know yet justifies a foreground
+      // refresh; reattaching to an already-listed conversation must not churn
+      // the sidebar after every send.
+      final recoveredSession = (turn['sessionId'] ?? scopedSession)
+          .toString()
+          .trim();
+      final catalogKnowsSession = groupNativeSessions.conversationId.isNotEmpty
+          ? groupNativeSessions.resolve(agentId, recoveredSession) != null
+          : (conversationSessionsByAgent[agentId] ??
+                    const <AgentConversationSession>[])
+                .any(
+                  (session) =>
+                      session.nativeSessionId == recoveredSession ||
+                      session.id == recoveredSession,
+                );
+      if (!catalogKnowsSession) {
+        await refreshConversationCatalogInternal(agentId, foreground: true);
+      }
     }
     return attached;
   }
