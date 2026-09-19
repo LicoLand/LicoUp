@@ -79,6 +79,9 @@ const scenarioMatch = (session) => {
         || /\b(error|failed|failure|exception)\b/iu.test(eventText(session));
     case "streaming-interruption":
       return /\b(stream[^\n]{0,32}(?:interrupt|disconnect|incomplete)|unexpected eof|truncated)\b/iu.test(eventText(session));
+    case "native-resume":
+      return session.resumed === true
+        || /\b(resume|reconnect|reattach|restore)\b/iu.test(eventText(session));
     default:
       return false;
   }
