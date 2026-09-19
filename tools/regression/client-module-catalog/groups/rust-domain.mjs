@@ -6,13 +6,14 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       kind: "rust-domain",
       summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
       inputs: [
-        "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/src/domain/workflow_runtime/**",
+        "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-workflow/**",
         "crates/licoup-native/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
-      command: rustLayer("domain::adaptive_flywheel::"),
+      command: rustLayer("domain::workflow_"),
     }),
   defineModule({
       id: "rust.domain.subagents",
