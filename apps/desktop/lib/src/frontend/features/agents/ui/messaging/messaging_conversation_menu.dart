@@ -78,7 +78,8 @@ class _MessagingConversationMenuState extends State<MessagingConversationMenu> {
           MessagingConversationOverlayGlass(
             borderRadius: BorderRadius.circular(999),
             child: SizedBox.square(
-              dimension: MessagingDesktopMetrics.conversationHeaderMenuExtent,
+              dimension:
+                  MessagingDesktopMetrics.conversationHeaderCapsuleButtonExtent,
               child: IconButton(
                 key: widget.triggerKey,
                 focusNode: _focusNode,
