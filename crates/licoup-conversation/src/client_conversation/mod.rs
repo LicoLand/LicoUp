@@ -471,6 +471,134 @@ pub struct SubagentMeshEdge {
     pub dispatch_state: Option<String>,
 }
 
+/// Delivery category for subagent dispatch wakes and callback notices.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DispatchDeliveryKind {
+    Observation,
+    Terminal,
+}
+
+impl DispatchDeliveryKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Observation => "observation",
+            Self::Terminal => "terminal",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "observation" => Some(Self::Observation),
+            "terminal" => Some(Self::Terminal),
+            _ => None,
+        }
+    }
+}
+
+/// Settlement lifecycle of a dispatch delivery.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DispatchDeliveryState {
+    Pending,
+    Delivering,
+    Delivered,
+    Failed,
+}
+
+impl DispatchDeliveryState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Delivering => "delivering",
+            Self::Delivered => "delivered",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "delivering" => Some(Self::Delivering),
+            "delivered" => Some(Self::Delivered),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+/// Durable delivery record for a subagent notification or wake.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchDeliveryRecord {
+    pub claim_id: String,
+    pub kind: DispatchDeliveryKind,
+    pub conversation_id: String,
+    pub recipient_membership_id: String,
+    pub state: DispatchDeliveryState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<String>,
+    pub attempt_count: u32,
+    pub created_at_unix_ms: i64,
+    pub updated_at_unix_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admitted_turn_id: Option<String>,
+}
+
+/// Coalesced wake combining multiple pending notifications for one recipient
+/// membership without merging away original events.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoalescedDispatchWake {
+    pub conversation_id: String,
+    pub recipient_membership_id: String,
+    pub claim_ids: Vec<String>,
+    pub has_terminal: bool,
+    pub has_observation: bool,
+    pub deliveries: Vec<DispatchDeliveryRecord>,
+}
+
+/// Classification of waiting conditions tracked by the conversation store.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WaitSourceKind {
+    SubagentClaim,
+    DirectTurn,
+    ToolExecution,
+}
+
+impl WaitSourceKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SubagentClaim => "subagent-claim",
+            Self::DirectTurn => "direct-turn",
+            Self::ToolExecution => "tool-execution",
+        }
+    }
+}
+
+/// Record of an active or settled wait source in the conversation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitSourceRecord {
+    pub wait_source_id: String,
+    pub kind: WaitSourceKind,
+    pub conversation_id: String,
+    pub waiting_membership_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_membership_id: Option<String>,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at_unix_ms: Option<i64>,
+    pub is_terminal: bool,
+}
+
 impl DispatchSessionMode {
     pub const fn as_str(self) -> &'static str {
         match self {

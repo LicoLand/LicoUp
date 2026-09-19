@@ -1,6 +1,6 @@
 use super::{
-    CallerContext, ConversationHostPort, ReadOnlyTargetPort, SubagentApplication, SubagentError,
-    TargetMembership, permanent,
+    CallerContext, ConversationHostPort, ReadOnlyTargetPort, SubagentAdmissionRequest,
+    SubagentApplication, SubagentError, TargetMembership, permanent,
 };
 use crate::domain::client_conversation::{Conversation, MembershipStatus, PrincipalKind};
 use licoup_agent_adapters::AdapterRegistry;
@@ -222,6 +222,10 @@ impl ConversationHostPort for NativeConversationHost {
                 .get("preferredReasoningEffort")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            working_directory: target
+                .get("workingDirectory")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })
     }
 
@@ -248,6 +252,26 @@ impl ConversationHostPort for NativeConversationHost {
                 "conversation/authorize",
             )),
         }
+    }
+
+    fn admit_subagent(
+        &self,
+        request: &SubagentAdmissionRequest,
+    ) -> Result<TargetMembership, SubagentError> {
+        let result = self.execute(json!({
+            "action": "conversation.subagent.admit",
+            "conversationId": request.conversation_id,
+            "callerMembershipId": request.caller_membership_id,
+            "agentId": request.agent_id,
+            "preferredModel": request.preferred_model,
+            "preferredReasoningEffort": request.preferred_reasoning_effort,
+            "workingDirectory": request.working_directory,
+        }))?;
+        let membership_id = result
+            .get("membershipId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| permanent("subagent_admission_failed", "target/admit"))?;
+        self.target_membership(&request.conversation_id, membership_id)
     }
 
     fn claim_dispatch(
@@ -349,6 +373,23 @@ impl ConversationHostPort for NativeConversationHost {
                 .map(str::to_owned),
         )
         .map_err(|_| permanent("subagent_resume_unavailable", "identity/resolve"))
+    }
+
+    fn bind_resume_session(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        runtime_session_id: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<(), SubagentError> {
+        self.execute(json!({
+            "action": "conversation.subagent.binding.set",
+            "conversationId": conversation_id,
+            "membershipId": membership_id,
+            "runtimeSessionId": runtime_session_id,
+            "workingDirectory": working_directory,
+        }))?;
+        Ok(())
     }
 }
 
@@ -462,6 +503,17 @@ fn project_host_failure(error: anyhow::Error) -> SubagentError {
             permanent("subagent_dispatch_not_found", "dispatch/transition")
         }
         "subagent_target_invalid" => permanent("subagent_target_invalid", "conversation/authorize"),
+        "subagent_target_seat_missing" => {
+            retryable("subagent_target_seat_missing", "conversation/authorize")
+        }
+        "subagent_admission_unsupported" | "unsupported_action" => {
+            permanent("subagent_admission_unsupported", "target/admit")
+        }
+        "subagent_admission_failed" => permanent("subagent_admission_failed", "target/admit"),
+        "conversation_working_directory_mismatch" => permanent(
+            "conversation_working_directory_mismatch",
+            "workspace/verify",
+        ),
         "invalid_request" => permanent("invalid_request", "schema/validate"),
         _ => retryable("conversation_state_unavailable", "conversation/store"),
     }

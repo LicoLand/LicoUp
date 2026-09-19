@@ -2,11 +2,12 @@
 
 use super::{ConversationStore, StoreResult, new_id, now_ms, validate_identifier};
 use crate::{
-    ConversationDispatch, DispatchState, SubagentDispatchClaim, SubagentDispatchClaimState,
-    SubagentMeshEdge,
+    CoalescedDispatchWake, ConversationDispatch, DispatchDeliveryKind, DispatchDeliveryRecord,
+    DispatchDeliveryState, DispatchState, SubagentDispatchClaim, SubagentDispatchClaimState,
+    SubagentMeshEdge, WaitSourceKind, WaitSourceRecord,
 };
 use anyhow::anyhow;
-use rusqlite::{OptionalExtension, TransactionBehavior, params};
+use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 
 /// The bounded multi-hop contract counts the direct edge as depth one.
 pub const MAX_SUBAGENT_INVOCATION_DEPTH: u8 = 4;
@@ -451,6 +452,385 @@ impl ConversationStore {
             Ok(inbound)
         })
     }
+
+    /// Record an observation feedback delivery (e.g. timeout / watchdog deadline)
+    /// for a subagent claim. Observation feedback uses a mark distinct from the
+    /// terminal state mark; they never share a single fired flag.
+    pub fn record_subagent_observation_delivery(
+        &self,
+        claim_id: &str,
+        payload: Option<&str>,
+    ) -> StoreResult<bool> {
+        validate_identifier(claim_id, "claim_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let claim_info: Option<(String, String)> = transaction
+                .query_row(
+                    "SELECT conversation_id, caller_membership_id FROM subagent_dispatch_claims WHERE id=?1",
+                    params![claim_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let Some((conversation_id, caller_membership_id)) = claim_info else {
+                return Err(anyhow!("subagent_dispatch_not_found"));
+            };
+            let inserted = record_pending_delivery_in_tx(
+                &transaction,
+                claim_id,
+                DispatchDeliveryKind::Observation,
+                &conversation_id,
+                &caller_membership_id,
+                None,
+                payload,
+                now,
+            )?;
+            transaction.commit()?;
+            Ok(inserted)
+        })
+    }
+
+    /// Read the separate observation and terminal delivery marks for a claim.
+    pub fn subagent_delivery_status(
+        &self,
+        claim_id: &str,
+    ) -> StoreResult<(
+        Option<DispatchDeliveryRecord>,
+        Option<DispatchDeliveryRecord>,
+    )> {
+        validate_identifier(claim_id, "claim_id")?;
+        self.with_connection(|connection| {
+            let mut observation = None;
+            let mut terminal = None;
+            let mut statement = connection.prepare(
+                "SELECT claim_id, kind, conversation_id, recipient_membership_id, state,
+                        terminal_state, payload, attempt_count, created_at, updated_at,
+                        delivered_at, admitted_turn_id
+                 FROM subagent_dispatch_deliveries WHERE claim_id=?1",
+            )?;
+            let rows = statement.query_map(params![claim_id], delivery_record_from_row)?;
+            for row in rows {
+                let record = row?;
+                match record.kind {
+                    DispatchDeliveryKind::Observation => observation = Some(record),
+                    DispatchDeliveryKind::Terminal => terminal = Some(record),
+                }
+            }
+            Ok((observation, terminal))
+        })
+    }
+
+    /// Read all pending dispatch deliveries across one conversation.
+    pub fn pending_dispatch_deliveries(
+        &self,
+        conversation_id: &str,
+    ) -> StoreResult<Vec<DispatchDeliveryRecord>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT claim_id, kind, conversation_id, recipient_membership_id, state,
+                        terminal_state, payload, attempt_count, created_at, updated_at,
+                        delivered_at, admitted_turn_id
+                 FROM subagent_dispatch_deliveries
+                 WHERE conversation_id=?1 AND state='pending'
+                 ORDER BY updated_at ASC, claim_id ASC",
+            )?;
+            let rows = statement.query_map(params![conversation_id], delivery_record_from_row)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Read pending dispatch deliveries for a specific recipient membership.
+    pub fn pending_dispatch_deliveries_for_recipient(
+        &self,
+        conversation_id: &str,
+        recipient_membership_id: &str,
+    ) -> StoreResult<Vec<DispatchDeliveryRecord>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        validate_identifier(recipient_membership_id, "recipient_membership_id")?;
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT claim_id, kind, conversation_id, recipient_membership_id, state,
+                        terminal_state, payload, attempt_count, created_at, updated_at,
+                        delivered_at, admitted_turn_id
+                 FROM subagent_dispatch_deliveries
+                 WHERE conversation_id=?1 AND recipient_membership_id=?2 AND state='pending'
+                 ORDER BY updated_at ASC, claim_id ASC",
+            )?;
+            let rows = statement.query_map(
+                params![conversation_id, recipient_membership_id],
+                delivery_record_from_row,
+            )?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Coalesce multiple pending notifications for one recipient membership into
+    /// a single logical wake without merging away original events.
+    pub fn coalesce_pending_deliveries_for_recipient(
+        &self,
+        conversation_id: &str,
+        recipient_membership_id: &str,
+    ) -> StoreResult<Option<CoalescedDispatchWake>> {
+        let pending = self
+            .pending_dispatch_deliveries_for_recipient(conversation_id, recipient_membership_id)?;
+        if pending.is_empty() {
+            return Ok(None);
+        }
+        let mut claim_ids = Vec::new();
+        let mut has_terminal = false;
+        let mut has_observation = false;
+        for record in &pending {
+            if !claim_ids.contains(&record.claim_id) {
+                claim_ids.push(record.claim_id.clone());
+            }
+            match record.kind {
+                DispatchDeliveryKind::Terminal => has_terminal = true,
+                DispatchDeliveryKind::Observation => has_observation = true,
+            }
+        }
+        Ok(Some(CoalescedDispatchWake {
+            conversation_id: conversation_id.to_owned(),
+            recipient_membership_id: recipient_membership_id.to_owned(),
+            claim_ids,
+            has_terminal,
+            has_observation,
+            deliveries: pending,
+        }))
+    }
+
+    /// Mark a dispatch delivery as in-flight delivering. Increments attempt_count.
+    pub fn mark_dispatch_delivery_delivering(
+        &self,
+        claim_id: &str,
+        kind: DispatchDeliveryKind,
+    ) -> StoreResult<bool> {
+        validate_identifier(claim_id, "claim_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE subagent_dispatch_deliveries
+                 SET state='delivering', attempt_count=attempt_count+1, updated_at=?3
+                 WHERE claim_id=?1 AND kind=?2 AND state='pending'",
+                params![claim_id, kind.as_str(), now],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
+    /// Start failure, busy, or error reverts delivery state back to pending
+    /// so the delivery is not lost.
+    pub fn revert_dispatch_delivery_to_pending(
+        &self,
+        claim_id: &str,
+        kind: DispatchDeliveryKind,
+    ) -> StoreResult<bool> {
+        validate_identifier(claim_id, "claim_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE subagent_dispatch_deliveries
+                 SET state='pending', updated_at=?3
+                 WHERE claim_id=?1 AND kind=?2 AND state='delivering'",
+                params![claim_id, kind.as_str(), now],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
+    /// Assistant turn is associated with delivery success only after durable
+    /// admission. Process-create success is not confirmation.
+    pub fn admit_dispatch_delivery(
+        &self,
+        claim_id: &str,
+        kind: DispatchDeliveryKind,
+        admitted_turn_id: &str,
+    ) -> StoreResult<bool> {
+        validate_identifier(claim_id, "claim_id")?;
+        validate_identifier(admitted_turn_id, "admitted_turn_id")?;
+        let now = now_ms();
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE subagent_dispatch_deliveries
+                 SET state='delivered', delivered_at=?3, admitted_turn_id=?4, updated_at=?3
+                 WHERE claim_id=?1 AND kind=?2 AND state IN ('pending','delivering')",
+                params![claim_id, kind.as_str(), now, admitted_turn_id],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
+    /// Active wait sources (subagent claims and direct turns) in this conversation.
+    pub fn active_wait_sources(&self, conversation_id: &str) -> StoreResult<Vec<WaitSourceRecord>> {
+        validate_identifier(conversation_id, "conversation_id")?;
+        self.with_connection(|connection| {
+            let mut sources = Vec::new();
+
+            // 1. Subagent claims
+            {
+                let mut statement = connection.prepare(
+                    "SELECT id, conversation_id, caller_membership_id, target_membership_id,
+                            state, created_at, updated_at
+                     FROM subagent_dispatch_claims
+                     WHERE conversation_id=?1
+                       AND state IN ('claimed','running','cancel-requested','reconciliation-required')
+                     ORDER BY created_at ASC, id ASC",
+                )?;
+                let rows = statement.query_map(params![conversation_id], |row| {
+                    Ok(WaitSourceRecord {
+                        wait_source_id: row.get(0)?,
+                        kind: WaitSourceKind::SubagentClaim,
+                        conversation_id: row.get(1)?,
+                        waiting_membership_id: row.get(2)?,
+                        target_membership_id: Some(row.get(3)?),
+                        state: row.get(4)?,
+                        created_at_unix_ms: Some(row.get(5)?),
+                        updated_at_unix_ms: Some(row.get(6)?),
+                        is_terminal: false,
+                    })
+                })?;
+                for row in rows {
+                    sources.push(row?);
+                }
+            }
+
+            // 2. Direct turns (the table records no timestamps; leave them
+            // absent rather than fabricating zero values)
+            {
+                let mut statement = connection.prepare(
+                    "SELECT id, conversation_id, membership_id, state, ordinal
+                     FROM direct_turns
+                     WHERE conversation_id=?1 AND state IN ('pending','claimed','running')
+                     ORDER BY ordinal ASC, id ASC",
+                )?;
+                let rows = statement.query_map(params![conversation_id], |row| {
+                    Ok(WaitSourceRecord {
+                        wait_source_id: row.get(0)?,
+                        kind: WaitSourceKind::DirectTurn,
+                        conversation_id: row.get(1)?,
+                        waiting_membership_id: row.get(2)?,
+                        target_membership_id: None,
+                        state: row.get(3)?,
+                        created_at_unix_ms: None,
+                        updated_at_unix_ms: None,
+                        is_terminal: false,
+                    })
+                })?;
+                for row in rows {
+                    sources.push(row?);
+                }
+            }
+
+            Ok(sources)
+        })
+    }
+
+    /// Active wait sources where the given membership is the waiting party.
+    pub fn active_wait_sources_for_membership(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> StoreResult<Vec<WaitSourceRecord>> {
+        let all = self.active_wait_sources(conversation_id)?;
+        Ok(all
+            .into_iter()
+            .filter(|s| s.waiting_membership_id == membership_id)
+            .collect())
+    }
+}
+
+fn delivery_record_from_row(row: &Row<'_>) -> rusqlite::Result<DispatchDeliveryRecord> {
+    let claim_id: String = row.get(0)?;
+    let kind_str: String = row.get(1)?;
+    let conversation_id: String = row.get(2)?;
+    let recipient_membership_id: String = row.get(3)?;
+    let state_str: String = row.get(4)?;
+    let terminal_state: Option<String> = row.get(5)?;
+    let payload: Option<String> = row.get(6)?;
+    let attempt_count: u32 = row.get(7)?;
+    let created_at_unix_ms: i64 = row.get(8)?;
+    let updated_at_unix_ms: i64 = row.get(9)?;
+    let delivered_at_unix_ms: Option<i64> = row.get(10)?;
+    let admitted_turn_id: Option<String> = row.get(11)?;
+
+    let kind = DispatchDeliveryKind::from_wire(&kind_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid delivery kind",
+            )),
+        )
+    })?;
+    let state = DispatchDeliveryState::from_wire(&state_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            4,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid delivery state",
+            )),
+        )
+    })?;
+
+    Ok(DispatchDeliveryRecord {
+        claim_id,
+        kind,
+        conversation_id,
+        recipient_membership_id,
+        state,
+        terminal_state,
+        payload,
+        attempt_count,
+        created_at_unix_ms,
+        updated_at_unix_ms,
+        delivered_at_unix_ms,
+        admitted_turn_id,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_pending_delivery_in_tx(
+    transaction: &impl super::CountedSqlite,
+    claim_id: &str,
+    kind: DispatchDeliveryKind,
+    conversation_id: &str,
+    recipient_membership_id: &str,
+    terminal_state: Option<&str>,
+    payload: Option<&str>,
+    now: i64,
+) -> StoreResult<bool> {
+    let existing_state: Option<String> = transaction
+        .query_row(
+            "SELECT state FROM subagent_dispatch_deliveries WHERE claim_id=?1 AND kind=?2",
+            params![claim_id, kind.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    if existing_state.is_some() {
+        return Ok(false);
+    }
+
+    transaction.execute(
+        "INSERT INTO subagent_dispatch_deliveries
+         (claim_id, kind, conversation_id, recipient_membership_id, state, terminal_state, payload, attempt_count, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, 0, ?7, ?7)",
+        params![
+            claim_id,
+            kind.as_str(),
+            conversation_id,
+            recipient_membership_id,
+            terminal_state,
+            payload,
+            now,
+        ],
+    )?;
+    Ok(true)
 }
 
 /// Project terminal PersistentTurn state back into the private lineage claim.
@@ -493,6 +873,7 @@ fn reconcile_subagent_claims(
 pub(super) fn reconcile_terminal_subagent_claims(
     transaction: &impl super::CountedSqlite,
 ) -> StoreResult<()> {
+    let now = now_ms();
     transaction.execute(
         "UPDATE subagent_dispatch_claims
          SET state = CASE (
@@ -511,7 +892,23 @@ pub(super) fn reconcile_terminal_subagent_claims(
              WHERE d.id=subagent_dispatch_claims.id
                AND d.state IN ('completed','failed','cancelled')
            )",
-        params![now_ms()],
+        params![now],
+    )?;
+    // Ensure every terminal claim has a recorded pending delivery if not already recorded.
+    transaction.execute(
+        "INSERT OR IGNORE INTO subagent_dispatch_deliveries
+         (claim_id, kind, conversation_id, recipient_membership_id, state, terminal_state, payload, attempt_count, created_at, updated_at)
+         SELECT c.id, 'terminal', c.conversation_id, c.caller_membership_id, 'pending', c.state, NULL, 0, ?1, ?1
+         FROM subagent_dispatch_claims c
+         WHERE c.state IN ('completed', 'failed', 'cancelled')",
+        params![now],
+    )?;
+    // Host recovery resets any interrupted 'delivering' status back to 'pending'.
+    transaction.execute(
+        "UPDATE subagent_dispatch_deliveries
+         SET state='pending', updated_at=?1
+         WHERE state='delivering'",
+        params![now],
     )?;
     Ok(())
 }
@@ -533,22 +930,33 @@ pub(super) fn writeback_subagent_claim_terminal(
         DispatchState::Cancelled => SubagentDispatchClaimState::Cancelled,
         _ => return Ok(()),
     };
-    let current: Option<String> = transaction
+    let claim_info: Option<(String, String, String)> = transaction
         .query_row(
-            "SELECT state FROM subagent_dispatch_claims WHERE id=?1",
+            "SELECT state, conversation_id, caller_membership_id FROM subagent_dispatch_claims WHERE id=?1",
             params![dispatch_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
-    let Some(current) = current else {
+    let Some((current, conversation_id, caller_membership_id)) = claim_info else {
         return Ok(());
     };
     if !valid_claim_transition(&current, next) {
         return Ok(());
     }
+    let now = now_ms();
     transaction.execute(
         "UPDATE subagent_dispatch_claims SET state=?2, updated_at=?3 WHERE id=?1",
-        params![dispatch_id, next.as_str(), now_ms()],
+        params![dispatch_id, next.as_str(), now],
+    )?;
+    record_pending_delivery_in_tx(
+        transaction,
+        dispatch_id,
+        DispatchDeliveryKind::Terminal,
+        &conversation_id,
+        &caller_membership_id,
+        Some(next.as_str()),
+        None,
+        now,
     )?;
     Ok(())
 }
@@ -1069,5 +1477,297 @@ mod tests {
             .update_subagent_claim_state(&claim.id, SubagentDispatchClaimState::Completed)
             .unwrap();
         assert!(store.pending_subagent_watchdogs().unwrap().is_empty());
+    }
+
+    #[test]
+    fn terminal_state_and_pending_delivery_commit_together() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+
+        // Prior to finish, no deliveries exist
+        let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert!(obs.is_none());
+        assert!(term.is_none());
+
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        // Terminal claim state and pending delivery commit together
+        assert_eq!(
+            store.subagent_claim(&claim.id).unwrap().unwrap().state,
+            SubagentDispatchClaimState::Completed
+        );
+        let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert!(obs.is_none());
+        let term = term.expect("terminal delivery must be recorded atomically");
+        assert_eq!(term.kind, DispatchDeliveryKind::Terminal);
+        assert_eq!(term.state, DispatchDeliveryState::Pending);
+        assert_eq!(term.recipient_membership_id, membership[0]);
+        assert_eq!(term.terminal_state.as_deref(), Some("completed"));
+        assert_eq!(term.attempt_count, 0);
+        assert!(term.admitted_turn_id.is_none());
+    }
+
+    #[test]
+    fn observation_feedback_and_terminal_state_use_separate_marks() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+
+        // 1. Observation feedback (e.g. timeout / watchdog) is recorded
+        let inserted = store
+            .record_subagent_observation_delivery(&claim.id, Some("watchdog_timeout_payload"))
+            .unwrap();
+        assert!(inserted);
+
+        let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        let obs = obs.expect("observation delivery should exist");
+        assert_eq!(obs.kind, DispatchDeliveryKind::Observation);
+        assert_eq!(obs.state, DispatchDeliveryState::Pending);
+        assert_eq!(obs.payload.as_deref(), Some("watchdog_timeout_payload"));
+        assert!(term.is_none());
+
+        // 2. Admit the observation delivery: process-create success is not confirmation,
+        // it must have durable admission.
+        store
+            .mark_dispatch_delivery_delivering(&claim.id, DispatchDeliveryKind::Observation)
+            .unwrap();
+        let admitted = store
+            .admit_dispatch_delivery(
+                &claim.id,
+                DispatchDeliveryKind::Observation,
+                "admitted-obs-turn-1",
+            )
+            .unwrap();
+        assert!(admitted);
+
+        let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        let obs = obs.unwrap();
+        assert_eq!(obs.state, DispatchDeliveryState::Delivered);
+        assert_eq!(obs.admitted_turn_id.as_deref(), Some("admitted-obs-turn-1"));
+        assert!(term.is_none());
+
+        // 3. Subagent turn eventually finishes later.
+        // Observation delivery must NOT suppress the real terminal delivery!
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "final subagent result"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        let (obs, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert_eq!(obs.unwrap().state, DispatchDeliveryState::Delivered);
+        let term =
+            term.expect("terminal delivery must be recorded and not suppressed by observation");
+        assert_eq!(term.kind, DispatchDeliveryKind::Terminal);
+        assert_eq!(term.state, DispatchDeliveryState::Pending);
+        assert_eq!(term.terminal_state.as_deref(), Some("completed"));
+    }
+
+    #[test]
+    fn delivery_in_flight_failure_reverts_to_pending_and_requires_admission() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        // 1. Mark in-flight delivering
+        let marked = store
+            .mark_dispatch_delivery_delivering(&claim.id, DispatchDeliveryKind::Terminal)
+            .unwrap();
+        assert!(marked);
+
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        let term = term.unwrap();
+        assert_eq!(term.state, DispatchDeliveryState::Delivering);
+        assert_eq!(term.attempt_count, 1);
+
+        // 2. Start failure or busy reverts state back to pending
+        let reverted = store
+            .revert_dispatch_delivery_to_pending(&claim.id, DispatchDeliveryKind::Terminal)
+            .unwrap();
+        assert!(reverted);
+
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        let term = term.unwrap();
+        assert_eq!(term.state, DispatchDeliveryState::Pending);
+        assert_eq!(term.attempt_count, 1); // Attempt count retained
+
+        // 3. Subsequent retry marks delivering again (attempt increments to 2)
+        store
+            .mark_dispatch_delivery_delivering(&claim.id, DispatchDeliveryKind::Terminal)
+            .unwrap();
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert_eq!(term.unwrap().attempt_count, 2);
+
+        // 4. Durable admission confirms delivery
+        let admitted = store
+            .admit_dispatch_delivery(
+                &claim.id,
+                DispatchDeliveryKind::Terminal,
+                "admitted-terminal-turn-2",
+            )
+            .unwrap();
+        assert!(admitted);
+
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        let term = term.unwrap();
+        assert_eq!(term.state, DispatchDeliveryState::Delivered);
+        assert_eq!(
+            term.admitted_turn_id.as_deref(),
+            Some("admitted-terminal-turn-2")
+        );
+        assert!(term.delivered_at_unix_ms.is_some());
+    }
+
+    #[test]
+    fn duplicate_notifications_do_not_create_second_delivery() {
+        let (store, conversation, membership) = fixture();
+        let claim = store
+            .claim_subagent_dispatch(&conversation, &membership[0], &membership[1], None)
+            .unwrap();
+
+        // First observation notification creates delivery record
+        let first = store
+            .record_subagent_observation_delivery(&claim.id, Some("first"))
+            .unwrap();
+        assert!(first);
+
+        // Duplicate observation notification is idempotent and does not create a second delivery
+        let duplicate = store
+            .record_subagent_observation_delivery(&claim.id, Some("second"))
+            .unwrap();
+        assert!(!duplicate);
+
+        let pending = store.pending_dispatch_deliveries(&conversation).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].payload.as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn coalescing_pending_deliveries_for_recipient() {
+        let (store, conversation, membership) = fixture();
+        let (claim1, scope1) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+        let (claim2, _scope2) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[2]);
+
+        // Finish claim1 (creates terminal delivery for membership[0])
+        store
+            .finish_runtime_dispatch(
+                &scope1,
+                &serde_json::json!({"output": "claim1 done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        // Record observation delivery for claim2 (also for membership[0])
+        store
+            .record_subagent_observation_delivery(&claim2.id, Some("timeout claim2"))
+            .unwrap();
+
+        // Coalesce deliveries for recipient membership[0]
+        let coalesced = store
+            .coalesce_pending_deliveries_for_recipient(&conversation, &membership[0])
+            .unwrap()
+            .expect("should have coalesced wake");
+
+        assert_eq!(coalesced.conversation_id, conversation);
+        assert_eq!(coalesced.recipient_membership_id, membership[0]);
+        assert_eq!(coalesced.claim_ids.len(), 2);
+        assert!(coalesced.claim_ids.contains(&claim1.id));
+        assert!(coalesced.claim_ids.contains(&claim2.id));
+        assert!(coalesced.has_terminal);
+        assert!(coalesced.has_observation);
+        // Original deliveries are not merged away
+        assert_eq!(coalesced.deliveries.len(), 2);
+    }
+
+    #[test]
+    fn cold_recovery_reverts_in_flight_deliveries_and_ensures_terminal() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        // Delivery is in-flight delivering when crash happens
+        store
+            .mark_dispatch_delivery_delivering(&claim.id, DispatchDeliveryKind::Terminal)
+            .unwrap();
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert_eq!(term.unwrap().state, DispatchDeliveryState::Delivering);
+
+        // Host cold recovery runs
+        let report = store.cold_recover().unwrap();
+        let _ = report;
+
+        // Delivering delivery must have reverted to pending
+        let (_, term) = store.subagent_delivery_status(&claim.id).unwrap();
+        assert_eq!(term.unwrap().state, DispatchDeliveryState::Pending);
+    }
+
+    #[test]
+    fn active_wait_sources_tracks_claims_and_settles() {
+        let (store, conversation, membership) = fixture();
+        let (claim, scope) =
+            running_dispatch(&store, &conversation, &membership[0], &membership[1]);
+
+        // While running, wait source is active
+        let sources = store.active_wait_sources(&conversation).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].wait_source_id, claim.id);
+        assert_eq!(sources[0].kind, WaitSourceKind::SubagentClaim);
+        assert_eq!(sources[0].waiting_membership_id, membership[0]);
+
+        // Scoped to recipient membership
+        let sources_for_m0 = store
+            .active_wait_sources_for_membership(&conversation, &membership[0])
+            .unwrap();
+        assert_eq!(sources_for_m0.len(), 1);
+
+        let sources_for_m1 = store
+            .active_wait_sources_for_membership(&conversation, &membership[1])
+            .unwrap();
+        assert!(sources_for_m1.is_empty());
+
+        // Finish dispatch settles the wait source
+        store
+            .finish_runtime_dispatch(
+                &scope,
+                &serde_json::json!({"output": "done"}),
+                crate::DispatchState::Completed,
+                None,
+            )
+            .unwrap();
+
+        let sources_after = store.active_wait_sources(&conversation).unwrap();
+        assert!(sources_after.is_empty());
     }
 }
