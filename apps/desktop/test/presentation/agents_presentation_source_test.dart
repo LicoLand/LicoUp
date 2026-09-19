@@ -178,7 +178,7 @@ void main() {
       final actions = AgentsCatalogActions.fromIntents(intents);
 
       await actions.initializeAdaptiveFlywheel(initialRevision: 'rev-1');
-      await actions.importAdaptiveFlywheelPackage('/tmp/pkg.zip');
+      await actions.importAdaptiveFlywheelPackage('package-fixture.zip');
       await actions.selectAdaptiveFlywheelDefinition('rev-1');
       await actions.saveAdaptiveFlywheelActorBindings(const [
         AdaptiveFlywheelAssignmentIntent(
@@ -204,7 +204,7 @@ void main() {
       );
       expect(
         (intents.values[1] as ImportAdaptiveFlywheelPackage).path,
-        '/tmp/pkg.zip',
+        'package-fixture.zip',
       );
       expect(
         (intents.values[2] as SelectAdaptiveFlywheelDefinition).revision,
