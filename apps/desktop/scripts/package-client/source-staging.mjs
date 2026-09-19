@@ -41,6 +41,14 @@ export function stagedPresentationContractRoot() {
   return path.join(cleanBuildRoot(), "source", "packages", "presentation_contract");
 }
 
+export function stagedPresentationRuntimeRoot() {
+  return path.join(cleanBuildRoot(), "source", "packages", "presentation_runtime");
+}
+
+export function stagedPresentationFlutterRoot() {
+  return path.join(cleanBuildRoot(), "source", "packages", "presentation_flutter");
+}
+
 export function stagedPubCacheRoot() {
   return path.join(cleanBuildRoot(), "pub-cache");
 }
@@ -78,17 +86,17 @@ export function copyTree(source, target, options = {}) {
 
 export function prepareStagedFlutterSource() {
   const stagedRoot = stagedFlutterClientRoot();
-  const stagedPresentationContract = stagedPresentationContractRoot();
-  const presentationContractSource = presentationContractSourceRoot();
-  assertOutsideWorkspace(stagedRoot, "clean_source_inside_workspace");
-  assertOutsideWorkspace(
-    stagedPresentationContract,
-    "clean_source_inside_workspace",
+  const presentationPackages = [
+    "presentation_contract",
+    "presentation_runtime",
+    "presentation_flutter",
+  ];
+  const stagedPackageRoots = presentationPackages.map((name) =>
+    path.join(cleanBuildRoot(), "source", "packages", name),
   );
+  assertOutsideWorkspace(stagedRoot, "clean_source_inside_workspace");
   rmSync(stagedRoot, { recursive: true, force: true });
-  rmSync(stagedPresentationContract, { recursive: true, force: true });
   mkdirSync(path.dirname(stagedRoot), { recursive: true });
-  mkdirSync(path.dirname(stagedPresentationContract), { recursive: true });
   copyTree(packageClientRuntime.flutterClientRoot, stagedRoot, {
     filter: (sourcePath) =>
       !isExcludedDartSourcePath(
@@ -96,14 +104,16 @@ export function prepareStagedFlutterSource() {
         packageClientRuntime.flutterClientRoot,
       ),
   });
-  copyTree(
-    presentationContractSource,
-    stagedPresentationContract,
-    {
-      filter: (sourcePath) =>
-        !isExcludedDartSourcePath(sourcePath, presentationContractSource),
-    },
-  );
+  for (const [index, name] of presentationPackages.entries()) {
+    const source = presentationPackageSourceRoot(name);
+    const staged = stagedPackageRoots[index];
+    assertOutsideWorkspace(staged, "clean_source_inside_workspace");
+    rmSync(staged, { recursive: true, force: true });
+    mkdirSync(path.dirname(staged), { recursive: true });
+    copyTree(source, staged, {
+      filter: (sourcePath) => !isExcludedDartSourcePath(sourcePath, source),
+    });
+  }
   return stagedRoot;
 }
 
@@ -166,11 +176,11 @@ function temporaryCleanupFailure(error, stage) {
   throw error;
 }
 
-function presentationContractSourceRoot() {
+function presentationPackageSourceRoot(name) {
   return path.join(
     packageClientRuntime.workspaceRoot,
     "packages",
-    "presentation_contract",
+    name,
   );
 }
 

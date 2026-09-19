@@ -57,7 +57,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.mentionTargets = const [],
     this.mentionLabels = const {},
     this.leading,
-    this.fieldLeading,
+    this.fieldTrailing,
   });
 
   final String targetLabel;
@@ -122,9 +122,9 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// Optional action control in the floating toolbar, or before a compact field.
   final Widget? leading;
 
-  /// Optional compact control inside the composer (for example the assistant
-  /// toggle), placed in the floating toolbar or beside compact text input.
-  final Widget? fieldLeading;
+  /// Optional quiet readout before the send action (for example the assistant
+  /// model readout), placed in the floating toolbar or beside a compact field.
+  final Widget? fieldTrailing;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -495,17 +495,11 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                         tooltip: strings.attachments,
                         onPressed: interactive ? widget.onAttach : null,
                       ),
-                    if (widget.fieldLeading != null) ...[
-                      if (widget.leading != null || widget.onAttach != null)
-                        const SizedBox(width: 12),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: widget.fieldLeading!,
-                        ),
-                      ),
-                    ] else
-                      const Spacer(),
+                    const Spacer(),
+                    if (widget.fieldTrailing != null) ...[
+                      widget.fieldTrailing!,
+                      const SizedBox(width: 8),
+                    ],
                     send,
                   ],
                 ),
@@ -518,14 +512,6 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (widget.fieldLeading != null)
-                    SizedBox(
-                      height: double.infinity,
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: widget.fieldLeading!,
-                      ),
-                    ),
                   Expanded(
                     child: SizedBox(
                       height: double.infinity,
@@ -538,6 +524,11 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                       ),
                     ),
                   ),
+                  if (widget.fieldTrailing != null)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: widget.fieldTrailing!,
+                    ),
                   const SizedBox(width: LicoContentSpacing.compact),
                   send,
                 ],

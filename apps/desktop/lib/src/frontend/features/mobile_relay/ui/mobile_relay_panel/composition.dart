@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/pairing.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/scan.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart';
@@ -15,8 +17,9 @@ import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_providers.dart';
 
 class MobileRelayPanel extends StatefulWidget {
   const MobileRelayPanel({super.key, required this.binding, this.chatChannels});
@@ -58,35 +61,36 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
     return EffectListener<MobileRelayEffect>(
       source: widget.binding.effects,
       onEffect: _onEffect,
-      child: ProjectionBuilder<MobileRelayProjection, MobileRelayProjection>(
-        source: widget.binding.projection,
-        select: (projection) => projection,
-        builder: (context, projection) {
-          _syncStation(projection.stationLabel);
-          return _buildProjection(context, projection);
-        },
-      ),
+      child:
+          AsyncRegion<MobileRelayPairingInputs, IntentSink<MobileRelayIntent>>(
+            source: mobileRelayPairingInputsProvider,
+            actions: widget.binding.intents,
+            loading: (_, _) => const SizedBox.shrink(),
+            data: (context, pairing, intents) {
+              _syncStation(pairing.stationLabel);
+              return _buildPanel(context, pairing, intents);
+            },
+          ),
     );
   }
 
-  Widget _buildProjection(
+  Widget _buildPanel(
     BuildContext context,
-    MobileRelayProjection projection,
+    MobileRelayPairingInputs pairing,
+    IntentSink<MobileRelayIntent> intents,
   ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final paired = projection.paired;
+    final paired = pairing.paired;
     final mobileClient =
-        projection.mobileRuntime || isMobileClientPlatform(context);
-    final busy = projection.busy || projection.polling;
+        pairing.mobileRuntime || isMobileClientPlatform(context);
+    final busy = pairing.busy || pairing.polling;
     // The standard feature-page structure: pane title bar (移动配对 +
     // refresh) above, the pairing/trust/capability content below.
     return LicoPaneScaffold(
       title: strings.mobilePairing,
       refreshTooltip: strings.refresh,
-      onRefresh: busy
-          ? null
-          : () => widget.binding.intents.send(const RefreshMobileRelay()),
+      onRefresh: busy ? null : () => intents.send(const RefreshMobileRelay()),
       refreshing: busy,
       refreshButtonKey: const Key('mobile-relay-refresh'),
       body: ListView(
@@ -104,47 +108,90 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
             ),
             MobileRelayPairingInfoRow(
               label: strings.pairingId,
-              value: projection.pairingId,
+              value: pairing.pairingId,
             ),
             MobileRelayPairingInfoRow(
               label: strings.expires,
-              value: projection.pairingExpiresLabel,
+              value: pairing.pairingExpiresLabel,
             ),
           ] else
             MobileRelayPairingWorkspaceCard(
-              projection: projection,
-              intents: widget.binding.intents,
+              inputs: pairing,
+              intents: intents,
               stationBaseUrlController: _stationBaseUrlController,
             ),
-          if (paired && projection.trust != null) ...[
-            const _MobileRelayDivider(),
-            MobileRelayTrustVerificationCard(
-              presentation: projection.trust!,
-              colors: colors,
-            ),
-          ],
           if (paired) ...[
+            AsyncRegion<MobileRelayTrustInputs, IntentSink<MobileRelayIntent>>(
+              source: mobileRelayTrustInputsProvider,
+              actions: intents,
+              loading: (_, _) => const SizedBox.shrink(),
+              data: (context, trust, _) {
+                final presentation = trust.trust;
+                if (presentation == null) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _MobileRelayDivider(),
+                    MobileRelayTrustVerificationCard(
+                      presentation: presentation,
+                      colors: colors,
+                    ),
+                  ],
+                );
+              },
+            ),
             const _MobileRelayDivider(),
-            SecureMeshFileSyncCard(
-              projection: projection,
-              intents: widget.binding.intents,
+            AsyncRegion<
+              MobileRelayTransfersInputs,
+              IntentSink<MobileRelayIntent>
+            >(
+              source: mobileRelayTransfersInputsProvider,
+              actions: intents,
+              loading: (_, _) => const SizedBox.shrink(),
+              data: (context, transfers, _) =>
+                  SecureMeshFileSyncCard(inputs: transfers, intents: intents),
             ),
             const SizedBox(height: 12),
-            SecureMeshApprovalCard(
-              projection: projection,
-              intents: widget.binding.intents,
+            AsyncRegion<
+              MobileRelayApprovalsInputs,
+              IntentSink<MobileRelayIntent>
+            >(
+              source: mobileRelayApprovalsInputsProvider,
+              actions: intents,
+              loading: (_, _) => const SizedBox.shrink(),
+              data: (context, approvals, _) => SecureMeshApprovalCard.inputs(
+                inputs: approvals,
+                intents: intents,
+              ),
             ),
           ],
           if (widget.chatChannels != null) ...[
             const _MobileRelayDivider(),
             widget.chatChannels!,
           ],
-          if (projection.secureMeshCapabilities != null) ...[
-            const _MobileRelayDivider(),
-            SecureMeshCapabilityCard(
-              projection: projection.secureMeshCapabilities!,
-            ),
-          ],
+          AsyncRegion<
+            MobileRelayCapabilitiesInputs,
+            IntentSink<MobileRelayIntent>
+          >(
+            source: mobileRelayCapabilitiesInputsProvider,
+            actions: intents,
+            loading: (_, _) => const SizedBox.shrink(),
+            data: (context, capabilities, _) {
+              final projection = capabilities.capabilities;
+              if (projection == null) return const SizedBox.shrink();
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _MobileRelayDivider(),
+                  SecureMeshCapabilityCard(projection: projection),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );

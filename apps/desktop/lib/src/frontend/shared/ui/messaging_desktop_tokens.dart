@@ -242,17 +242,10 @@ abstract final class MessagingDesktopMetrics {
         isDark ? userBubbleGlassFillDarkAlpha : userBubbleGlassFillLightAlpha,
       );
 
-  /// Accent edge-light shared by conversation bubbles — Kiro-style: a thin,
-  /// bright rim line plus a light field that decays outward from the rim.
-  /// Interiors stay dark glass. Never brand/primary — lemon rims read as
-  /// olive 泛黄 on the dark chat canvas.
-  ///
-  /// The light is stroked around the rounded rim by
-  /// `MessagingBubbleEdgeGlowPainter` as bloom: crisp rim plus gaussian
-  /// passes whose blur grows while alpha falls. A gradient band painted
-  /// under an inset fill bleeds through translucent glass, and a radial tint
-  /// clamps to its edge color past the gradient radius and floods wide
-  /// bubbles.
+  /// Accent edge-light shared by conversation bubbles: a thin, bright rim
+  /// line and nothing else — no light field, no fog. Interiors stay dark
+  /// glass. Never brand/primary — lemon rims read as olive 泛黄 on the dark
+  /// chat canvas.
   static const double bubbleEdgeRimWidth = 1;
 
   /// Rim line alpha at the top edge (dark canvas) — thin and bright.
@@ -266,24 +259,6 @@ abstract final class MessagingDesktopMetrics {
 
   /// Rim line alpha at the bottom edge (light canvas).
   static const int bubbleEdgeGlowDimAlphaLight = 105;
-
-  /// Near field alpha (dark canvas): the bright glow hugging the line.
-  static const int bubbleEdgeGlowNearAlphaDark = 160;
-
-  /// Near field alpha (light canvas).
-  static const int bubbleEdgeGlowNearAlphaLight = 132;
-
-  /// Mid field alpha (dark canvas): the first outward decay step.
-  static const int bubbleEdgeGlowMidAlphaDark = 115;
-
-  /// Mid field alpha (light canvas).
-  static const int bubbleEdgeGlowMidAlphaLight = 95;
-
-  /// Far field alpha (dark canvas): the wide lamp-light cast.
-  static const int bubbleEdgeGlowFarAlphaDark = 70;
-
-  /// Far field alpha (light canvas).
-  static const int bubbleEdgeGlowFarAlphaLight = 58;
 
   /// Rim-light band: brightest along the top edge, calm at the bottom.
   static Gradient bubbleEdgeGlowBand(
@@ -301,20 +276,6 @@ abstract final class MessagingDesktopMetrics {
       ),
     ],
   );
-
-  /// Distance-decay field gradient for one glow pass: the rim hue at [alpha]
-  /// on the top edge, fading toward the bottom. Painted by the rim painter
-  /// (outward-clipped) instead of a `boxShadow`: a shadow's blurred
-  /// silhouette fills the whole box and would wash the translucent interior.
-  static Gradient bubbleEdgeGlowAura(Color accentGlow, {required int alpha}) =>
-      LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          accentGlow.withAlpha(alpha),
-          accentGlow.withAlpha((alpha * 0.45).round()),
-        ],
-      );
 
   /// Agent bubble interior: the shared black readability veil, not an accent
   /// tint — the accent lives only on the rim light.
@@ -441,24 +402,12 @@ abstract final class MessagingDesktopMetrics {
   /// with the window: [windowCornerRadius] − [mainCardMargin] = 24 − 4 = 20.
   static const double mainCardCornerRadius = 20;
 
-  /// Dark preset window veil — a clear black mask. High enough that chat
-  /// text stays readable, low enough that the desktop still shows through
-  /// faintly. Must stay below 255: an opaque fill hides the wallpaper.
-  static const int chromeTintDarkAlpha = 225;
-
-  /// Light preset window veil — a clear white mask with the same see-through
-  /// job as [chromeTintDarkAlpha]. Not a frosted material.
-  static const int lightSurfaceGlassAlpha = 217;
-
-  /// Clear (non-blurred) window veil shared by shell regions. Dark paints
-  /// black; light paints white. Wallpaper shows through sharply — do not
-  /// restore NSVisualEffectView or BackdropFilter on this layer.
-  static Color surfaceGlassTint({required bool isDark}) => Color.fromARGB(
-    isDark ? chromeTintDarkAlpha : lightSurfaceGlassAlpha,
-    isDark ? 0 : 255,
-    isDark ? 0 : 255,
-    isDark ? 0 : 255,
-  );
+  /// Solid window ground shared by shell regions — opaque grouped backgrounds:
+  /// black content canvas in dark, the ice-cream cream in light. No wallpaper
+  /// bleed and no blur on this layer; translucency stays on the control layer
+  /// (capsules, composer, menus).
+  static Color surfaceGlassTint({required bool isDark}) =>
+      isDark ? const Color(0xFF000000) : const Color(0xFFF4E3DC);
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).

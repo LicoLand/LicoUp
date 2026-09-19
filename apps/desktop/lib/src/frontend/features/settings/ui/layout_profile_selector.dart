@@ -2,11 +2,12 @@ import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_projection.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -16,8 +17,9 @@ import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
-import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 const _eagerProfileOptionLimit = 12;
 const _virtualizedVisibleRows = 3;
@@ -36,17 +38,15 @@ final class LayoutProfileSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<SettingsProjection, LayoutSettingsSelection>(
-      source: binding.projection,
-      select: LayoutSettingsSelection.from,
-      builder: _buildProjection,
+    return AsyncRegion<SettingsLayoutInputs, IntentSink<SettingsIntent>>(
+      source: settingsLayoutInputsProvider,
+      actions: binding.intents,
+      loading: (_, _) => const SizedBox.shrink(),
+      data: (context, inputs, _) => _buildProjection(context, inputs),
     );
   }
 
-  Widget _buildProjection(
-    BuildContext context,
-    LayoutSettingsSelection settings,
-  ) {
+  Widget _buildProjection(BuildContext context, SettingsLayoutInputs settings) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
     final choices = {
