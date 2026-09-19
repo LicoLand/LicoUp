@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use zeroize::Zeroizing;
 
 use super::constants::{CHANNEL_BINDING_BYTES, DELIVERY_SECRET_BYTES};

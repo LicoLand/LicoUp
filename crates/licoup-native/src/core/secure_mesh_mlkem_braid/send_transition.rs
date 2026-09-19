@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use libcrux_ml_kem::{KEY_GENERATION_SEED_SIZE, mlkem1024::incremental};
-use rand::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::{

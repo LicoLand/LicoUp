@@ -1,5 +1,5 @@
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::super::{

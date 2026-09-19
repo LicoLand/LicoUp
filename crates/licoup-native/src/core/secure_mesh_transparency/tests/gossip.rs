@@ -2,7 +2,7 @@ use super::super::persistence::require_fresh_gossip_observation_transaction;
 use super::super::*;
 use super::support::{leaf, state_path};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use rusqlite::{TransactionBehavior, params};
 
 #[test]
