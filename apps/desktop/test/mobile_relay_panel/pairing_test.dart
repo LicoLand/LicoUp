@@ -29,7 +29,7 @@ void main() {
     await tester.pumpWidget(
       mobileRelayPanelTestApp(
         child: MobileRelayPairingWorkspaceCard(
-          projection: projection,
+          inputs: MobileRelayPairingInputs.fromProjection(projection),
           intents: intents,
           stationBaseUrlController: stationBaseUrlController,
         ),

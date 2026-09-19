@@ -413,7 +413,7 @@ The response above may be incomplete.
     });
 
     test(
-      'incremental growth reuses completed heading, list, fence, and paragraph',
+      'incremental growth keeps completed heading, list, fence, and paragraph',
       () {
         const headingAndList = '# Title\n\n- one\n- tw';
         final mid = parseStreamingMessageMarkdownBlocks(headingAndList);
@@ -427,16 +427,22 @@ The response above may be incomplete.
 
         const stillOpenItem = '# Title\n\n- one\n- two more';
         final openItem = parseStreamingMessageMarkdownBlocks(stillOpenItem);
-        expect(identical(openItem.complete, mid.complete), isTrue);
-        expect(identical(openItem.complete[0], mid.complete[0]), isTrue);
-        expect(identical(openItem.complete[1], mid.complete[1]), isTrue);
+        expect(openItem.complete, hasLength(2));
+        expect(openItem.complete[0].type, MessageMarkdownBlockType.heading);
+        expect(openItem.complete[0].text, 'Title');
+        expect(
+          openItem.complete[1].type,
+          MessageMarkdownBlockType.unorderedList,
+        );
+        expect(openItem.complete[1].items, ['one']);
         expect(openItem.tail?.text, 'two more');
 
         const closedListThenParagraph = '# Title\n\n- one\n- two more\n\nNext';
         final grown = parseStreamingMessageMarkdownBlocks(
           closedListThenParagraph,
         );
-        expect(identical(grown.complete[0], mid.complete[0]), isTrue);
+        expect(grown.complete[0].type, MessageMarkdownBlockType.heading);
+        expect(grown.complete[0].text, 'Title');
         expect(grown.complete[1].type, MessageMarkdownBlockType.unorderedList);
         expect(grown.complete[1].items, ['one', 'two more']);
         expect(grown.tail?.type, MessageMarkdownBlockType.paragraph);
@@ -455,12 +461,32 @@ The response above may be incomplete.
           'Hello there\n\n```dart\nint x = 1;',
         );
         expect(
-          identical(grownFence.complete.single, openFence.complete.single),
-          isTrue,
+          grownFence.complete.single.type,
+          MessageMarkdownBlockType.paragraph,
         );
+        expect(grownFence.complete.single.text, 'Hello there');
         expect(grownFence.tail?.text, 'int x = 1;');
       },
     );
+
+    test('a reply sharing a closed prefix never inherits its blocks', () {
+      // Two replies may stream alternately (group conversations) or a new
+      // reply may reuse an earlier opening. Each parse must stand on its own
+      // source: a quote closed by a real blank line stays complete, and the
+      // next quote opens a fresh tail instead of merging across replies.
+      const closed = '> a\n\n';
+      final first = parseStreamingMessageMarkdownBlocks(closed);
+      expect(first.complete.single.type, MessageMarkdownBlockType.quote);
+      expect(first.complete.single.text, 'a');
+      expect(first.tail, isNull);
+
+      const unrelated = '> a\n\n> b';
+      final second = parseStreamingMessageMarkdownBlocks(unrelated);
+      expect(second.complete.single.type, MessageMarkdownBlockType.quote);
+      expect(second.complete.single.text, 'a');
+      expect(second.tail?.type, MessageMarkdownBlockType.quote);
+      expect(second.tail?.text, 'b');
+    });
 
     test('a fully terminated document has no tail and equals the finalized '
         'parse', () {

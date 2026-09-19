@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/plugin_management/plugin_management_feature_composition.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/plugin_surface.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
@@ -13,6 +15,11 @@ import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_inputs.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+
+import 'fixtures/plugin_management_presentation_fixture.dart';
 
 void main() {
   testWidgets('adapter cards fit at minimum desktop size at 200% text scale', (
@@ -192,6 +199,87 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a collaboration-only publish keeps the plugin cards installed', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final presentation = await _pumpPanel(tester, locale: const Locale('en'));
+    final cards = find.byKey(const Key('adapter-plugin-kimi-code'));
+    final installed = tester.widget<PluginSurface>(cards);
+
+    presentation.publishCollaboration(
+      PluginCollaborationInputs(
+        collaboration: CollaborationProjection(
+          statusLoaded: true,
+          enabled: false,
+          installed: false,
+          loaded: false,
+          runnerTrusted: false,
+          catalogLoaded: false,
+          phase: PresentationPhase.ready,
+          workflows: const [],
+        ),
+        phase: PresentationPhase.ready,
+        notice: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(identical(tester.widget<PluginSurface>(cards), installed), isTrue);
+
+    presentation.publishCatalog(
+      PluginCatalogInputs(
+        plugins: presentation.catalog.value.plugins,
+        phase: PresentationPhase.ready,
+        notice: const PresentationNotice(
+          id: 'plugin-management-failure',
+          title: 'Plugin Management',
+          message: 'adapter_plugin_install_failed',
+          severity: PresentationNoticeSeverity.error,
+          reasonCode: 'adapter_plugin_install_failed',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(identical(tester.widget<PluginSurface>(cards), installed), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the composition installs its live region sources', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final feature = await _preloadPanelFeature();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: feature.providerOverrides,
+        child: _panelApp(feature, const Locale('en')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('adapter-plugin-kimi-code')), findsOneWidget);
+    expect(find.byKey(const Key('adapter-plugin-antigravity')), findsOneWidget);
+    expect(
+      find.byKey(const Key('adapter-capability-kimi-code-web-server')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('managed plugin action executes only after user confirmation', (
     tester,
   ) async {
@@ -361,7 +449,7 @@ void main() {
   );
 }
 
-Future<void> _pumpPanel(WidgetTester tester, {required Locale locale}) async {
+Future<PluginManagementFeatureComposition> _preloadPanelFeature() async {
   final controller = ClientController(
     agentService: _CatalogAgentService(),
     presentationPreferencesRepository: _PanelPreferencesRepository(),
@@ -371,32 +459,54 @@ Future<void> _pumpPanel(WidgetTester tester, {required Locale locale}) async {
   await controller.adapterPluginController.refresh();
   final feature = PluginManagementFeatureComposition(controller);
   addTearDown(feature.dispose);
-  await _pumpBinding(tester, feature, locale);
+  return feature;
 }
 
-Future<void> _pumpBinding(
+Future<PluginManagementPresentationFixture> _pumpPanel(
+  WidgetTester tester, {
+  required Locale locale,
+}) async {
+  return _pumpBinding(tester, await _preloadPanelFeature(), locale);
+}
+
+Widget _panelApp(
+  PluginManagementFeatureComposition feature,
+  Locale locale, {
+  bool withToastHost = false,
+}) {
+  final panel = Scaffold(body: AdapterPluginPanel(binding: feature.binding));
+  return MaterialApp(
+    locale: locale,
+    supportedLocales: LicoStrings.supportedLocales,
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
+    theme: buildLicoTheme(
+      platformBrightness: Brightness.dark,
+    ).copyWith(platform: TargetPlatform.macOS),
+    home: withToastHost ? LicoToastHost(child: panel) : panel,
+  );
+}
+
+Future<PluginManagementPresentationFixture> _pumpBinding(
   WidgetTester tester,
   PluginManagementFeatureComposition feature,
   Locale locale, {
   bool withToastHost = false,
 }) async {
-  final panel = Scaffold(body: AdapterPluginPanel(binding: feature.binding));
+  final presentation = PluginManagementPresentationFixture();
+  presentation.publishProjection(feature.binding.projection.current);
+  addTearDown(presentation.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: locale,
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(
-        platformBrightness: Brightness.dark,
-      ).copyWith(platform: TargetPlatform.macOS),
-      home: withToastHost ? LicoToastHost(child: panel) : panel,
+    ProviderScope(
+      overrides: presentation.overrides,
+      child: _panelApp(feature, locale, withToastHost: withToastHost),
     ),
   );
   await tester.pumpAndSettle();
+  return presentation;
 }
 
 final class _CatalogAgentService extends AgentService {
