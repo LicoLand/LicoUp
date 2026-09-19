@@ -36,7 +36,7 @@ void main() {
           RelayTransferProjection(
             id: 'transfer-1',
             fileLabel: 'notes.txt',
-            destinationLabel: '/tmp/received',
+            destinationLabel: 'received-notes',
             progress: 0.5,
             stateLabel: 'evaluating',
             chunkCount: 2,
