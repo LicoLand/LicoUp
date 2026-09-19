@@ -5,7 +5,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
   testWidgets(
-    'name toggles separately from edit and unconfigured name is disabled',
+    'name and pencil open the editor while the toggle switches participation',
     (tester) async {
       var toggles = 0;
       var edits = 0;
@@ -38,19 +38,23 @@ void main() {
       await tester.tap(
         find.byKey(const Key('canonical-group-assistant-control')),
       );
-      expect(toggles, 1);
-      expect(edits, 0);
-      await tester.tap(find.byKey(const Key('canonical-group-assistant-edit')));
       expect(edits, 1);
+      expect(toggles, 0);
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
+      );
       expect(toggles, 1);
+      expect(edits, 1);
       expect(tester.takeException(), isNull);
       await mount(false);
       await tester.tap(
         find.byKey(const Key('canonical-group-assistant-control')),
       );
-      expect(toggles, 1);
-      await tester.tap(find.byKey(const Key('canonical-group-assistant-edit')));
       expect(edits, 2);
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
+      );
+      expect(toggles, 1);
     },
   );
 
@@ -88,17 +92,21 @@ void main() {
       of: find.byKey(const Key('canonical-group-assistant-control')),
       matching: find.byType(ShaderMask),
     );
+    final rim = find.byKey(const Key('canonical-group-assistant-sunset-rim'));
     expect(mask, findsOneWidget);
+    expect(rim, findsOneWidget);
     final first = tester.widget<ShaderMask>(mask);
     await tester.pump(const Duration(milliseconds: 500));
     expect(identical(first, tester.widget<ShaderMask>(mask)), isFalse);
     await mount(reduced: true);
     await tester.pumpAndSettle();
     expect(mask, findsNothing);
+    expect(rim, findsOneWidget);
     expect(tester.binding.transientCallbackCount, 0);
     await mount(active: false);
     await tester.pumpAndSettle();
     expect(mask, findsNothing);
+    expect(rim, findsNothing);
     expect(
       find.byKey(const Key('canonical-group-assistant-status-paused')),
       findsOneWidget,

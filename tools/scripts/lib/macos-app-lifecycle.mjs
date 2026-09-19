@@ -75,7 +75,11 @@ function inventory(installDir, ports) {
 }
 
 function unregister(apps, ports, stage) {
-  if (apps.length && !ports.unregister(apps)) fail("macos_install_unregister_failed", stage);
+  // Stale Spotlight/lsregister entries whose volume or worktree is gone fail
+  // the whole lsregister batch; unregister only real app bundles that still
+  // exist (non-.app paths are not valid bundles and abort the batch).
+  const existing = apps.filter((app) => app.endsWith(".app") && ports.exists(app));
+  if (existing.length && !ports.unregister(existing)) fail("macos_install_unregister_failed", stage);
 }
 
 function removeInstallation(app, ports) {
@@ -114,6 +118,8 @@ export function installMacosApplication(
 
     stages.push("macos-install-quit-running");
     ports.quitRunning([...new Set([...current.installed, ...current.registrations])]);
+    stages.push("macos-install-stop-conversation-host");
+    ports.stopConversationHosts();
     stages.push("macos-install-unregister");
     unregister([...new Set([...current.registrations, ...current.installed, sourceApp])], ports, "macos-install-unregister");
 
@@ -251,6 +257,22 @@ function quitRunning(apps) {
   if (remaining().length > 0) fail("macos_install_quit_failed", "macos-install-quit-running");
 }
 
+function stopConversationHosts() {
+  // The durable conversation host survives app replacement while it holds the
+  // shared state root's owner lock; a next-generation binary then finds the
+  // root wedged and every send fails as transport_failed. Any `licoup-cli rpc
+  // conversation-host` on this machine serves that same state root, so the
+  // install retires them all and lets the next launch spawn a fresh host.
+  const pids = capture("/bin/ps", ["-axo", "pid=,args="])
+    .split(/\r?\n/u).flatMap((line) => {
+      const match = /^\s*(\d+)\s+(.+)$/u.exec(line);
+      return match && /\blicoup-cli\s+rpc\s+conversation-host\b/u.test(match[2])
+        ? [Number(match[1])]
+        : [];
+    });
+  for (const pid of pids) command("/bin/kill", [String(pid)]);
+}
+
 export function createMacosAppPorts() {
   return {
     exists: existsSync,
@@ -263,14 +285,18 @@ export function createMacosAppPorts() {
     indexedApps: () => capture("/usr/bin/mdfind", [`kMDItemCFBundleIdentifier == "${MACOS_BUNDLE_ID}"`]).split(/\r?\n/u).filter(Boolean),
     buildApps,
     quitRunning,
+    stopConversationHosts,
     mkdir: (root) => mkdirSync(root, { recursive: true }),
     makeTempDirectory: (root) => mkdtempSync(path.join(root, ".licoup-install-")),
     remove: (target) => rmSync(target, { recursive: true, force: true }),
     move: renameSync,
     copyTree: (source, target) => cpSync(source, target, { recursive: true, dereference: false, verbatimSymlinks: true }),
     unregister: (apps) => {
-      for (let index = 0; index < apps.length; index += 100) {
-        if (command(LSREGISTER, ["-u", ...apps.slice(index, index + 100)]).status !== 0) return false;
+      // lsregister -u aborts the whole batch on any stale or unscannable
+      // entry (-10814); unregister per app and treat failures as already
+      // stale — the fresh register that follows rewrites the database row.
+      for (const app of apps) {
+        command(LSREGISTER, ["-u", app]);
       }
       return true;
     },

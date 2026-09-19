@@ -5,7 +5,6 @@ const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterFlowDirs = [
   "events",
   "projections",
-  "display",
   "protocol",
   "shared",
   "presentation",
@@ -34,29 +33,26 @@ const flutterLayerImportRules = [
     forbiddenTokens: [
       "package:licoup/src/application/",
       "package:licoup/src/backend/",
-      "package:licoup/src/display/",
       "package:licoup/src/frontend/"
     ],
-    message: "events must serialize generated commands through protocol without depending on legacy orchestration or display"
+    message: "events must serialize generated commands through protocol without depending on legacy orchestration"
   },
   {
     root: `${flutterSrcRoot}/projections`,
     forbiddenTokens: [
       "package:licoup/src/backend/",
-      "package:licoup/src/display/",
       "package:licoup/src/frontend/"
     ],
-    message: "projection consumers must not depend on backend adapters or display widgets"
+    message: "projection producers must not depend on backend adapters or renderer widgets"
   },
   {
     root: `${flutterSrcRoot}/protocol`,
     forbiddenTokens: [
       "package:licoup/src/application/",
       "package:licoup/src/backend/",
-      "package:licoup/src/display/",
       "package:licoup/src/frontend/"
     ],
-    message: "protocol frame management must remain independent of orchestration and display"
+    message: "protocol frame management must remain independent of orchestration"
   },
   {
     root: `${flutterSrcRoot}/application`,
@@ -433,7 +429,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   for (const requiredDir of requiredFlutterFlowDirs) {
     assert(
       flutterTopLevelDirs.includes(requiredDir),
-      `${flutterSrcRoot}/${requiredDir} must exist for the Flutter event/projection/display/protocol flow architecture`
+      `${flutterSrcRoot}/${requiredDir} must exist for the Flutter event/projection/protocol flow architecture`
     );
   }
   for (const requiredDir of requiredFlutterImplementationDirs) {

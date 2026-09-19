@@ -358,6 +358,9 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
   // painted but not hit-testable). Extent = 6 gap + 17 copy box + 2 margin.
   static const double _hoverBandExtent = 25;
 
+  /// Short messages still read as a bubble instead of a cramped chip.
+  static const double _bubbleMinWidth = 64;
+
   Widget _buildBubbleWithHoverBand(BuildContext context, Widget bubble) {
     final colors = context.licoColors;
     final messageTime = _messageTime;
@@ -546,6 +549,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
         Flexible(
           child: ConstrainedBox(
             constraints: BoxConstraints(
+              minWidth: _bubbleMinWidth,
               maxWidth: widget.adapter.userBubble.maxWidth,
             ),
             child: _buildBubbleWithHoverBand(context, bubble),
@@ -568,7 +572,12 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
               ? Align(alignment: Alignment.centerRight, child: userBubble)
               : Align(
                   alignment: Alignment.centerLeft,
-                  child: _buildBubbleWithHoverBand(context, bubble),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: _bubbleMinWidth,
+                    ),
+                    child: _buildBubbleWithHoverBand(context, bubble),
+                  ),
                 ),
         ),
       ),
