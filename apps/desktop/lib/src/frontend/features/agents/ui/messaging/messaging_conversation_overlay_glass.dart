@@ -7,7 +7,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// Shared clear-glass chrome for messaging conversation overlays: header
 /// identity capsule, header icon buttons, and the floating composer field.
 /// Fill / blur / shadow come from [MessagingDesktopMetrics] overlay tokens.
-/// The rim is the glass owner's conic specular highlight, not a hairline.
+/// The rim is the glass owner's broad specular light field, not a uniform hairline.
 class MessagingConversationOverlayGlass extends StatelessWidget {
   const MessagingConversationOverlayGlass({
     super.key,

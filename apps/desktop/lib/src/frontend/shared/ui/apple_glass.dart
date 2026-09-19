@@ -70,7 +70,7 @@ class AppleGlassSurface extends StatelessWidget {
     final readBackdrop = fillAlpha != null && blurSigma > 0;
     final warning = !focused ? idleBorderColor : null;
     final rimAllowed = borderAlpha == null || borderAlpha! > 0;
-    Widget glass = LicoGlass(
+    final glass = LicoGlass(
       borderRadius: borderRadius,
       fill: fill,
       size: LicoGlassSize.small,
@@ -85,21 +85,18 @@ class AppleGlassSurface extends StatelessWidget {
           focusedBorderWidth ?? AppleControlMetrics.searchFocusRingWidth,
       child: child,
     );
-    if (warning != null) {
-      glass = DecoratedBox(
-        decoration: ShapeDecoration(
-          shape: ContinuousRoundedBorder(
-            borderRadius: borderRadius,
-            side: BorderSide(
-              color: warning,
-              width: AppleControlMetrics.hairline,
-            ),
-          ),
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: ShapeDecoration(
+        shape: ContinuousRoundedBorder(
+          borderRadius: borderRadius,
+          side: warning == null
+              ? BorderSide.none
+              : BorderSide(color: warning, width: AppleControlMetrics.hairline),
         ),
-        child: glass,
-      );
-    }
-    return glass;
+      ),
+      child: glass,
+    );
   }
 }
 
