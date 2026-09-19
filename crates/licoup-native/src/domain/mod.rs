@@ -1,4 +1,3 @@
-pub mod adaptive_flywheel;
 pub mod agent_catalog;
 pub mod agent_hub;
 pub mod agent_intelligence_catalog;
@@ -43,3 +42,5 @@ pub mod session_policy;
 pub mod skill_hub;
 pub mod subagents;
 pub mod targets;
+pub mod workflow_runtime;
+pub mod workflow_store;

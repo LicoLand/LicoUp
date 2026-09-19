@@ -382,6 +382,27 @@ fn fixture_runtime(
 struct FixtureHost {
     store: ConversationStore,
     providers: BTreeMap<String, ProviderId>,
+    dynamic_providers: Mutex<BTreeMap<String, ProviderId>>,
+    working_directories: Mutex<BTreeMap<String, String>>,
+    runtime_session_ids: Mutex<BTreeMap<String, String>>,
+    profiles: Mutex<BTreeMap<String, (Option<String>, Option<String>)>>,
+    simulate_profile_failure: AtomicBool,
+    simulate_cwd_failure: AtomicBool,
+}
+
+impl FixtureHost {
+    fn new(store: ConversationStore, providers: BTreeMap<String, ProviderId>) -> Self {
+        Self {
+            store,
+            providers,
+            dynamic_providers: Mutex::new(BTreeMap::new()),
+            working_directories: Mutex::new(BTreeMap::new()),
+            runtime_session_ids: Mutex::new(BTreeMap::new()),
+            profiles: Mutex::new(BTreeMap::new()),
+            simulate_profile_failure: AtomicBool::new(false),
+            simulate_cwd_failure: AtomicBool::new(false),
+        }
+    }
 }
 
 impl ConversationHostPort for FixtureHost {
@@ -391,7 +412,9 @@ impl ConversationHostPort for FixtureHost {
         conversation_id: &str,
     ) -> Result<(), SubagentError> {
         let membership = caller.effect_scope(conversation_id)?;
-        if self.providers.get(membership) == Some(&caller.provider_id) {
+        let valid = self.providers.get(membership) == Some(&caller.provider_id)
+            || self.dynamic_providers.lock().unwrap().get(membership) == Some(&caller.provider_id);
+        if valid {
             Ok(())
         } else {
             Err(permanent("caller_identity_mismatch", "fixture"))
@@ -421,13 +444,34 @@ impl ConversationHostPort for FixtureHost {
             .providers
             .get(membership_id)
             .cloned()
+            .or_else(|| {
+                self.dynamic_providers
+                    .lock()
+                    .unwrap()
+                    .get(membership_id)
+                    .cloned()
+            })
             .ok_or_else(|| permanent("membership_not_found", "fixture"))?;
+        let (preferred_model, preferred_reasoning_effort) = self
+            .profiles
+            .lock()
+            .unwrap()
+            .get(membership_id)
+            .cloned()
+            .unwrap_or((None, None));
+        let working_directory = self
+            .working_directories
+            .lock()
+            .unwrap()
+            .get(membership_id)
+            .cloned();
         Ok(TargetMembership {
             conversation_id: conversation_id.into(),
             membership_id: membership_id.into(),
             provider_id,
-            preferred_model: None,
-            preferred_reasoning_effort: None,
+            preferred_model,
+            preferred_reasoning_effort,
+            working_directory,
         })
     }
     fn target_membership_by_agent(
@@ -435,12 +479,21 @@ impl ConversationHostPort for FixtureHost {
         conversation_id: &str,
         agent: &str,
     ) -> Result<TargetMembership, SubagentError> {
-        let matches = self
+        let mut matches = self
             .providers
             .iter()
             .filter(|(_, provider)| provider.as_str() == agent)
             .map(|(membership_id, _)| membership_id.clone())
             .collect::<Vec<_>>();
+        let dynamic_matches = self
+            .dynamic_providers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, provider)| provider.as_str() == agent)
+            .map(|(membership_id, _)| membership_id.clone())
+            .collect::<Vec<_>>();
+        matches.extend(dynamic_matches);
         match matches.as_slice() {
             [membership_id] => self.target_membership(conversation_id, membership_id),
             _ => Err(SubagentError::retryable(
@@ -448,6 +501,83 @@ impl ConversationHostPort for FixtureHost {
                 "conversation/authorize",
             )),
         }
+    }
+    fn admit_subagent(
+        &self,
+        request: &SubagentAdmissionRequest,
+    ) -> Result<TargetMembership, SubagentError> {
+        request.validate()?;
+        let parsed_provider = ProviderId::parse(request.agent_id.clone())
+            .map_err(|_| permanent("subagent_target_invalid", "conversation/authorize"))?;
+
+        let principal = Principal {
+            id: format!("agent:{}", request.agent_id),
+            kind: PrincipalKind::Agent,
+            display_name: request.agent_id.clone(),
+            agent_id: Some(request.agent_id.clone()),
+            created_at_unix_ms: 1,
+        };
+        let member = self
+            .store
+            .add_member(
+                &request.conversation_id,
+                principal,
+                MembershipAccess::Member,
+            )
+            .map_err(|_| permanent("subagent_admission_failed", "store/admit"))?;
+        let membership_id = member.id.clone();
+
+        // Step 1: Provisional member seat admission
+        self.dynamic_providers
+            .lock()
+            .unwrap()
+            .insert(membership_id.clone(), parsed_provider);
+
+        let rollback = |id: &str| {
+            let _ = self.store.leave_member(&request.conversation_id, id);
+            self.dynamic_providers.lock().unwrap().remove(id);
+            self.profiles.lock().unwrap().remove(id);
+            self.working_directories.lock().unwrap().remove(id);
+        };
+
+        // Step 2: Profile binding
+        if self
+            .simulate_profile_failure
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            rollback(&membership_id);
+            return Err(permanent(
+                "subagent_profile_binding_failed",
+                "admission/profile",
+            ));
+        }
+        self.profiles.lock().unwrap().insert(
+            membership_id.clone(),
+            (
+                request.preferred_model.clone(),
+                request.preferred_reasoning_effort.clone(),
+            ),
+        );
+
+        // Step 3: Cwd reservation
+        if self
+            .simulate_cwd_failure
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            rollback(&membership_id);
+            return Err(permanent(
+                "subagent_cwd_binding_failed",
+                "admission/workspace",
+            ));
+        }
+        if let Some(cwd) = &request.working_directory {
+            self.working_directories
+                .lock()
+                .unwrap()
+                .insert(membership_id.clone(), cwd.clone());
+        }
+
+        self.target_membership(&request.conversation_id, &membership_id)
     }
     fn claim_dispatch(
         &self,
@@ -491,18 +621,58 @@ impl ConversationHostPort for FixtureHost {
             .record_subagent_mcp_inbound(conversation_id, caller, target, tool, outcome)
             .map_err(|_| permanent("inbound_failed", "fixture"))
     }
+    fn bind_resume_session(
+        &self,
+        _conversation_id: &str,
+        membership_id: &str,
+        runtime_session_id: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<(), SubagentError> {
+        if let Some(session_id) = runtime_session_id {
+            self.runtime_session_ids
+                .lock()
+                .unwrap()
+                .insert(membership_id.to_owned(), session_id.to_owned());
+        }
+        if let Some(cwd) = working_directory {
+            self.working_directories
+                .lock()
+                .unwrap()
+                .insert(membership_id.to_owned(), cwd.to_owned());
+        }
+        Ok(())
+    }
     fn latest_resume_binding(
         &self,
         _: &str,
         membership_id: &str,
     ) -> Result<DurableNativeBinding, SubagentError> {
-        DurableNativeBinding::new(
-            self.providers[membership_id].clone(),
-            format!("native-{membership_id}"),
-            None,
-            None,
-        )
-        .map_err(project_adapter_failure)
+        let provider = self
+            .providers
+            .get(membership_id)
+            .cloned()
+            .or_else(|| {
+                self.dynamic_providers
+                    .lock()
+                    .unwrap()
+                    .get(membership_id)
+                    .cloned()
+            })
+            .ok_or_else(|| permanent("membership_not_found", "fixture"))?;
+        let cwd = self
+            .working_directories
+            .lock()
+            .unwrap()
+            .get(membership_id)
+            .cloned();
+        let session_id = self
+            .runtime_session_ids
+            .lock()
+            .unwrap()
+            .get(membership_id)
+            .cloned()
+            .unwrap_or_else(|| format!("native-{membership_id}"));
+        DurableNativeBinding::new(provider, session_id, None, cwd).map_err(project_adapter_failure)
     }
 }
 
@@ -512,6 +682,9 @@ impl ReadOnlyTargetPort for FixtureTargets {
         Ok(json!({"count":3}))
     }
     fn probe(&self, provider: &ProviderId) -> Result<Value, SubagentError> {
+        if provider.as_str() == "unknown" {
+            return Err(permanent("subagent_unavailable", "target/probe"));
+        }
         Ok(json!({"agentId":provider.as_str()}))
     }
 }
@@ -522,7 +695,7 @@ impl ReadOnlyTargetPort for FixtureTargets {
 /// run end to end.
 struct StrategyFixtureHost {
     inner: FixtureHost,
-    strategy: crate::domain::adaptive_flywheel::StrategyService,
+    strategy: crate::domain::workflow_runtime::StrategyService,
 }
 
 impl ConversationHostPort for StrategyFixtureHost {
@@ -567,6 +740,12 @@ impl ConversationHostPort for StrategyFixtureHost {
         self.inner
             .target_membership_by_agent(conversation_id, agent)
     }
+    fn admit_subagent(
+        &self,
+        request: &SubagentAdmissionRequest,
+    ) -> Result<TargetMembership, SubagentError> {
+        self.inner.admit_subagent(request)
+    }
     fn claim_dispatch(
         &self,
         conversation_id: &str,
@@ -596,6 +775,20 @@ impl ConversationHostPort for StrategyFixtureHost {
     ) -> Result<Option<SubagentDispatchClaim>, SubagentError> {
         self.inner
             .active_claim(conversation_id, caller_membership_id, target_membership_id)
+    }
+    fn bind_resume_session(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        runtime_session_id: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<(), SubagentError> {
+        self.inner.bind_resume_session(
+            conversation_id,
+            membership_id,
+            runtime_session_id,
+            working_directory,
+        )
     }
     fn latest_resume_binding(
         &self,
@@ -716,6 +909,7 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         provider_id: ProviderId::parse("cursor").unwrap(),
         preferred_model: Some("profile-model".into()),
         preferred_reasoning_effort: Some("profile-effort".into()),
+        working_directory: None,
     };
     let claim = SubagentDispatchClaim {
         id: "subagent:fixture".into(),
@@ -734,6 +928,7 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         "membership:caller",
         &target,
         &claim,
+        None,
     )
     .unwrap();
     assert_eq!(inherited.model.as_deref(), Some("profile-model"));
@@ -761,6 +956,7 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         "membership:caller",
         &target,
         &claim,
+        None,
     )
     .unwrap();
     assert_eq!(overridden.model.as_deref(), Some("request-model"));
@@ -781,6 +977,7 @@ fn dispatch_request_inherits_target_profile_and_preserves_explicit_overrides() {
         "membership:caller",
         &target,
         &claim,
+        None,
     )
     .unwrap();
     assert!(unbounded.timeout_unbounded);
@@ -798,6 +995,7 @@ fn impossible_runtime_admission_stops_before_target_effect() {
         provider_id: provider.clone(),
         preferred_model: None,
         preferred_reasoning_effort: None,
+        working_directory: None,
     };
     let app_with = |runtime: FixtureRuntime| {
         let mut registry = AdapterRegistry::empty();
@@ -810,10 +1008,10 @@ fn impossible_runtime_admission_stops_before_target_effect() {
             )
             .unwrap();
         SubagentApplication::new(
-            Arc::new(FixtureHost {
-                store: ConversationStore::open_in_memory().unwrap(),
-                providers: BTreeMap::new(),
-            }),
+            Arc::new(FixtureHost::new(
+                ConversationStore::open_in_memory().unwrap(),
+                BTreeMap::new(),
+            )),
             registry,
             Arc::new(FixtureTargets),
         )
@@ -842,10 +1040,10 @@ fn impossible_runtime_admission_stops_before_target_effect() {
     );
 
     let empty = SubagentApplication::new(
-        Arc::new(FixtureHost {
-            store: ConversationStore::open_in_memory().unwrap(),
-            providers: BTreeMap::new(),
-        }),
+        Arc::new(FixtureHost::new(
+            ConversationStore::open_in_memory().unwrap(),
+            BTreeMap::new(),
+        )),
         AdapterRegistry::empty(),
         Arc::new(FixtureTargets),
     );
@@ -921,9 +1119,9 @@ fn unverified_direct_dispatch_records_inbound_claim_and_preserves_native_failure
         })
         .collect::<BTreeMap<_, _>>();
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let host = Arc::new(FixtureHost {
-        store: store.clone(),
-        providers: by_provider
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        by_provider
             .iter()
             .map(|(provider, membership)| {
                 (
@@ -932,7 +1130,7 @@ fn unverified_direct_dispatch_records_inbound_claim_and_preserves_native_failure
                 )
             })
             .collect(),
-    });
+    ));
     let mut registry = AdapterRegistry::empty();
     for provider in ["codex", "cursor", "antigravity"] {
         let provider_id = ProviderId::parse(provider).unwrap();
@@ -1080,7 +1278,7 @@ fn unverified_direct_dispatch_records_inbound_claim_and_preserves_native_failure
 
 #[test]
 fn assistant_execute_replays_settle_a_callback_wait_with_the_master_decision() {
-    use crate::domain::adaptive_flywheel::{
+    use crate::domain::workflow_runtime::{
         ActorTurnPort, StrategyPackageImporter, StrategyService, StrategyStore,
     };
 
@@ -1145,13 +1343,10 @@ fn assistant_execute_replays_settle_a_callback_wait_with_the_master_decision() {
     .with_profile_snapshot_authority(std::sync::Arc::new(Mutex::new(Box::new(ReadyProfiles))));
 
     let host = Arc::new(StrategyFixtureHost {
-        inner: FixtureHost {
-            store: store.clone(),
-            providers: BTreeMap::from([(
-                membership.id.clone(),
-                ProviderId::parse("codex").unwrap(),
-            )]),
-        },
+        inner: FixtureHost::new(
+            store.clone(),
+            BTreeMap::from([(membership.id.clone(), ProviderId::parse("codex").unwrap())]),
+        ),
         strategy,
     });
     let mut registry = AdapterRegistry::empty();
@@ -1382,10 +1577,10 @@ fn self_call_records_rejected_inbound_without_a_claim() {
         .unwrap()
         .id
         .clone();
-    let host = Arc::new(FixtureHost {
-        store: store.clone(),
-        providers: BTreeMap::from([(membership.clone(), ProviderId::parse("codex").unwrap())]),
-    });
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([(membership.clone(), ProviderId::parse("codex").unwrap())]),
+    ));
     let mut registry = AdapterRegistry::empty();
     let provider_id = ProviderId::parse("codex").unwrap();
     registry
@@ -1471,9 +1666,9 @@ fn session_bound_delegate_accepts_agent_and_prompt() {
         })
         .collect::<BTreeMap<_, _>>();
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let host = Arc::new(FixtureHost {
-        store: store.clone(),
-        providers: by_provider
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        by_provider
             .iter()
             .map(|(provider, membership)| {
                 (
@@ -1482,7 +1677,7 @@ fn session_bound_delegate_accepts_agent_and_prompt() {
                 )
             })
             .collect(),
-    });
+    ));
     let mut registry = AdapterRegistry::empty();
     for provider in ["codex", "cursor"] {
         let provider_id = ProviderId::parse(provider).unwrap();
@@ -1543,4 +1738,611 @@ fn session_bound_delegate_accepts_agent_and_prompt() {
     .unwrap_err();
     assert_eq!(no_target.code, "subagent_target_seat_missing");
     assert!(no_target.retryable);
+}
+
+#[test]
+fn test_subagent_workspace_isolation_facts() {
+    let isolation = SubagentWorkspaceIsolation::new("/abs/workspace/path").unwrap();
+    assert_eq!(isolation.working_directory, "/abs/workspace/path");
+    // Explicit assertion: cwd isolation is NOT isolation of quota, database, generated dirs, or tool effects
+    assert!(!isolation.isolates_quota);
+    assert!(!isolation.isolates_database);
+    assert!(!isolation.isolates_generated_dirs);
+    assert!(!isolation.isolates_tool_effects);
+    isolation.assert_unisolated_invariants();
+
+    let json_repr = serde_json::to_value(&isolation).unwrap();
+    assert_eq!(json_repr["isolatesQuota"], false);
+    assert_eq!(json_repr["isolatesDatabase"], false);
+    assert_eq!(json_repr["isolatesGeneratedDirs"], false);
+    assert_eq!(json_repr["isolatesToolEffects"], false);
+}
+
+#[test]
+fn test_subagent_continuity_modes_rebuild_not_exact_restore() {
+    // Only ExactResume represents exact restore; Fork, Rehydrate, and Rebuild do not.
+    assert!(SubagentContinuityMode::ExactResume.is_exact_restore());
+    assert!(!SubagentContinuityMode::Fork.is_exact_restore());
+    assert!(!SubagentContinuityMode::Rehydrate.is_exact_restore());
+    assert!(!SubagentContinuityMode::Rebuild.is_exact_restore());
+
+    let capabilities = SubagentExtendedCapabilities {
+        exact_resume: true,
+        fork: false,
+        rehydrate: false,
+        rebuild: true,
+    };
+    assert!(
+        capabilities
+            .validate_mode(SubagentContinuityMode::ExactResume)
+            .is_ok()
+    );
+    assert_eq!(
+        capabilities
+            .validate_mode(SubagentContinuityMode::Fork)
+            .unwrap_err()
+            .code,
+        "subagent_fork_unavailable"
+    );
+    assert_eq!(
+        capabilities
+            .validate_mode(SubagentContinuityMode::Rehydrate)
+            .unwrap_err()
+            .code,
+        "subagent_rehydrate_unavailable"
+    );
+    // Rebuild is always supported as a fallback, but is NOT exact restore
+    assert!(
+        capabilities
+            .validate_mode(SubagentContinuityMode::Rebuild)
+            .is_ok()
+    );
+}
+
+#[test]
+fn test_resume_working_directory_verification_rules() {
+    // 1. None requested, none recorded => Ok(None)
+    assert_eq!(verify_resume_working_directory(None, None).unwrap(), None);
+
+    // 2. None requested, recorded present => Ok(Some(recorded)) [inherits recorded cwd]
+    assert_eq!(
+        verify_resume_working_directory(None, Some("/repo/base")).unwrap(),
+        Some("/repo/base".to_string())
+    );
+
+    // 3. Requested matches recorded => Ok(Some(recorded))
+    assert_eq!(
+        verify_resume_working_directory(Some("/repo/base"), Some("/repo/base")).unwrap(),
+        Some("/repo/base".to_string())
+    );
+
+    // 4. Requested differs from recorded => Err(conversation_working_directory_mismatch)
+    let mismatch =
+        verify_resume_working_directory(Some("/repo/other"), Some("/repo/base")).unwrap_err();
+    assert_eq!(mismatch.code, "conversation_working_directory_mismatch");
+
+    // 5. Requested present, but none was recorded => Err(conversation_working_directory_mismatch)
+    let new_binding = verify_resume_working_directory(Some("/repo/other"), None).unwrap_err();
+    assert_eq!(new_binding.code, "conversation_working_directory_mismatch");
+}
+
+fn create_test_conversation(
+    store: &ConversationStore,
+    providers: &[&str],
+) -> (licoup_conversation::Conversation, BTreeMap<String, String>) {
+    let owner = Principal {
+        id: "human:owner".into(),
+        kind: PrincipalKind::Human,
+        display_name: "Owner".into(),
+        agent_id: None,
+        created_at_unix_ms: 1,
+    };
+    let members = providers
+        .iter()
+        .map(|provider| {
+            (
+                Principal {
+                    id: format!("agent:{provider}"),
+                    kind: PrincipalKind::Agent,
+                    display_name: (*provider).into(),
+                    agent_id: Some((*provider).into()),
+                    created_at_unix_ms: 1,
+                },
+                MembershipAccess::Member,
+            )
+        })
+        .collect::<Vec<_>>();
+    let conversation = store
+        .create_conversation_with_members("TestConversation", owner, &members)
+        .unwrap();
+    let by_provider = conversation
+        .memberships
+        .iter()
+        .filter_map(|membership| {
+            membership
+                .principal
+                .agent_id
+                .as_deref()
+                .map(|provider| (provider.to_owned(), membership.id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    (conversation, by_provider)
+}
+
+#[test]
+fn test_atomic_admission_binds_member_profile_and_cwd_together() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex"]);
+    let caller_member_id = by_provider["codex"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([(
+            caller_member_id.clone(),
+            ProviderId::parse("codex").unwrap(),
+        )]),
+    ));
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "antigravity"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    // Before delegation: "antigravity" has no seat in the conversation
+    assert!(
+        host.target_membership_by_agent(&conversation.id, "antigravity")
+            .is_err()
+    );
+
+    // Delegate to unseated agent "antigravity" with explicit cwd, model, and reasoning effort
+    let receipt = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "antigravity",
+            "prompt": "run task with cwd and model",
+            "workingDirectory": "/var/tmp/project",
+            "model": "gemini-ultra",
+            "reasoningEffort": "high"
+        }),
+    )
+    .unwrap();
+    assert_eq!(receipt["accepted"], true);
+    assert_eq!(receipt["agentId"], "antigravity");
+
+    // Verify target membership was atomically admitted into host with all attributes
+    let target = host
+        .target_membership_by_agent(&conversation.id, "antigravity")
+        .unwrap();
+    assert_eq!(target.provider_id.as_str(), "antigravity");
+    assert_eq!(target.preferred_model.as_deref(), Some("gemini-ultra"));
+    assert_eq!(target.preferred_reasoning_effort.as_deref(), Some("high"));
+    assert_eq!(
+        target.working_directory.as_deref(),
+        Some("/var/tmp/project")
+    );
+}
+
+#[test]
+fn test_atomic_admission_failure_rolls_back_and_leaves_no_half_member() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex"]);
+    let caller_member_id = by_provider["codex"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([(
+            caller_member_id.clone(),
+            ProviderId::parse("codex").unwrap(),
+        )]),
+    ));
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "antigravity"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    // Case 1: Profile binding failure causes complete atomic rollback
+    host.simulate_profile_failure
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let err = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "antigravity",
+            "prompt": "run task",
+            "workingDirectory": "/var/tmp/project",
+            "model": "gemini-ultra"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "subagent_profile_binding_failed");
+
+    // Assert NO half-member remains in host
+    assert!(host.dynamic_providers.lock().unwrap().is_empty());
+    assert!(host.profiles.lock().unwrap().is_empty());
+    assert!(host.working_directories.lock().unwrap().is_empty());
+    assert_eq!(
+        host.target_membership_by_agent(&conversation.id, "antigravity")
+            .unwrap_err()
+            .code,
+        "subagent_target_seat_missing"
+    );
+
+    // Case 2: CWD binding failure causes complete atomic rollback
+    host.simulate_profile_failure
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    host.simulate_cwd_failure
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let err = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "antigravity",
+            "prompt": "run task",
+            "workingDirectory": "/var/tmp/project",
+            "model": "gemini-ultra"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "subagent_cwd_binding_failed");
+
+    // Assert NO half-member, orphan profile, or leaked cwd remains
+    assert!(host.dynamic_providers.lock().unwrap().is_empty());
+    assert!(host.profiles.lock().unwrap().is_empty());
+    assert!(host.working_directories.lock().unwrap().is_empty());
+    assert_eq!(
+        host.target_membership_by_agent(&conversation.id, "antigravity")
+            .unwrap_err()
+            .code,
+        "subagent_target_seat_missing"
+    );
+}
+
+#[test]
+fn test_resume_rejects_conflicting_working_directory_end_to_end() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex", "cursor"]);
+    let caller_member_id = by_provider["codex"].clone();
+    let target_member_id = by_provider["cursor"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([
+            (
+                caller_member_id.clone(),
+                ProviderId::parse("codex").unwrap(),
+            ),
+            (
+                target_member_id.clone(),
+                ProviderId::parse("cursor").unwrap(),
+            ),
+        ]),
+    ));
+    // Pre-record working directory for the target member
+    host.working_directories.lock().unwrap().insert(
+        target_member_id.clone(),
+        "/var/tmp/workspace-original".into(),
+    );
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "cursor"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    // Attempting to continue with a DIFFERENT working directory must be rejected
+    let mismatch_err = invoke(
+        &app,
+        &caller,
+        "lico_subagent_continue",
+        json!({
+            "agent": "cursor",
+            "prompt": "continue with different cwd",
+            "workingDirectory": "/var/tmp/workspace-conflicting"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(mismatch_err.code, "conversation_working_directory_mismatch");
+    // No dispatch calls were made to runtime
+    assert_eq!(calls.lock().unwrap().len(), 0);
+}
+
+#[test]
+fn test_resume_inherits_recorded_working_directory_end_to_end() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex", "cursor"]);
+    let caller_member_id = by_provider["codex"].clone();
+    let target_member_id = by_provider["cursor"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([
+            (
+                caller_member_id.clone(),
+                ProviderId::parse("codex").unwrap(),
+            ),
+            (
+                target_member_id.clone(),
+                ProviderId::parse("cursor").unwrap(),
+            ),
+        ]),
+    ));
+    host.working_directories.lock().unwrap().insert(
+        target_member_id.clone(),
+        "/var/tmp/workspace-original".into(),
+    );
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "cursor"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    // Continuing with NO workingDirectory inherits the recorded working directory
+    let receipt = invoke(
+        &app,
+        &caller,
+        "lico_subagent_continue",
+        json!({
+            "agent": "cursor",
+            "prompt": "continue with inherited cwd"
+        }),
+    )
+    .unwrap();
+    assert_eq!(receipt["accepted"], true);
+    assert_eq!(calls.lock().unwrap().len(), 1);
+
+    // Verify latest resume binding in host holds the inherited working directory
+    let binding = host
+        .latest_resume_binding(&conversation.id, &target_member_id)
+        .unwrap();
+    assert_eq!(
+        binding.working_directory(),
+        Some("/var/tmp/workspace-original")
+    );
+}
+
+#[test]
+fn test_relative_working_directory_rejected() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex"]);
+    let caller_member_id = by_provider["codex"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([(
+            caller_member_id.clone(),
+            ProviderId::parse("codex").unwrap(),
+        )]),
+    ));
+    let registry = AdapterRegistry::empty();
+    let app = SubagentApplication::new(host, registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    let err = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "cursor",
+            "prompt": "task",
+            "workingDirectory": "relative/path"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "invalid_working_directory");
+}
+
+#[test]
+fn test_continue_to_unseated_agent_does_not_auto_admit() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex"]);
+    let caller_member_id = by_provider["codex"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([(
+            caller_member_id.clone(),
+            ProviderId::parse("codex").unwrap(),
+        )]),
+    ));
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "antigravity"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    // "antigravity" is probe-able inventory but holds no seat: a continue has
+    // no native session to resume and must not admit one as a side effect.
+    let err = invoke(
+        &app,
+        &caller,
+        "lico_subagent_continue",
+        json!({
+            "agent": "antigravity",
+            "prompt": "continue task"
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "subagent_target_seat_missing");
+    assert!(
+        host.target_membership_by_agent(&conversation.id, "antigravity")
+            .is_err()
+    );
+    assert!(host.dynamic_providers.lock().unwrap().is_empty());
+    assert_eq!(calls.lock().unwrap().len(), 0);
+}
+
+#[test]
+fn test_delegate_records_cwd_without_replacing_native_session_identity() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    let (conversation, by_provider) = create_test_conversation(&store, &["codex", "cursor"]);
+    let caller_member_id = by_provider["codex"].clone();
+    let target_member_id = by_provider["cursor"].clone();
+
+    let host = Arc::new(FixtureHost::new(
+        store.clone(),
+        BTreeMap::from([
+            (
+                caller_member_id.clone(),
+                ProviderId::parse("codex").unwrap(),
+            ),
+            (
+                target_member_id.clone(),
+                ProviderId::parse("cursor").unwrap(),
+            ),
+        ]),
+    ));
+    // The member already holds a durable native session identity.
+    host.runtime_session_ids
+        .lock()
+        .unwrap()
+        .insert(target_member_id.clone(), "native-session-cursor".to_owned());
+
+    let mut registry = AdapterRegistry::empty();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    for provider in ["codex", "cursor"] {
+        let provider_id = ProviderId::parse(provider).unwrap();
+        registry
+            .register_pair(
+                Arc::new(FixtureCaller {
+                    provider: provider_id.clone(),
+                }),
+                Arc::new(fixture_runtime(provider_id, Arc::clone(&calls), None)),
+            )
+            .unwrap();
+    }
+
+    let app = SubagentApplication::new(host.clone(), registry, Arc::new(FixtureTargets));
+    let caller = CallerContext {
+        provider_id: ProviderId::parse("codex").unwrap(),
+        conversation_id: Some(conversation.id.clone()),
+        membership_id: Some(caller_member_id),
+        parent_dispatch_id: None,
+        authenticated: true,
+    };
+
+    let receipt = invoke(
+        &app,
+        &caller,
+        "lico_subagent_delegate",
+        json!({
+            "agent": "cursor",
+            "prompt": "run task in workspace",
+            "workingDirectory": "/var/tmp/workspace-delegated"
+        }),
+    )
+    .unwrap();
+    assert_eq!(receipt["accepted"], true);
+    let dispatch_id = receipt["dispatchId"].as_str().unwrap().to_owned();
+
+    // The effective cwd is recorded, but the dispatch claim id never replaces
+    // the native session identity used for exact resume.
+    let binding = host
+        .latest_resume_binding(&conversation.id, &target_member_id)
+        .unwrap();
+    assert_eq!(
+        binding.working_directory(),
+        Some("/var/tmp/workspace-delegated")
+    );
+    assert_eq!(binding.native_session_id(), "native-session-cursor");
+    assert_ne!(binding.native_session_id(), dispatch_id);
 }
