@@ -382,25 +382,13 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       fontWeight: FontWeight.w400,
       height: 1.2,
     );
-    return Stack(
+    final bubbleBand = Stack(
       clipBehavior: Clip.none,
       children: [
         Padding(
-          padding: EdgeInsets.only(
-            top: widget.authorIsUser ? 0 : 28,
-            bottom: _hoverBandExtent,
-          ),
+          padding: const EdgeInsets.only(bottom: _hoverBandExtent),
           child: bubble,
         ),
-        if (!widget.authorIsUser)
-          Positioned(
-            right: 0,
-            top: 0,
-            child: ConversationExecutionMenu(
-              message: widget.message,
-              target: widget.target,
-            ),
-          ),
         if (canCopy)
           Positioned(
             left: 0,
@@ -414,6 +402,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
           ),
         if (showMeta)
           Positioned(
+            left: 0,
             right: 0,
             bottom: 2,
             child: AnimatedOpacity(
@@ -421,11 +410,10 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
               duration: context.motion(LicoMotion.micro),
               curve: LicoMotion.standard,
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   if (conversationId.isNotEmpty) ...[
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 220),
+                    Flexible(
                       child: Tooltip(
                         message: conversationId,
                         waitDuration: LicoMotion.tooltipWait,
@@ -436,6 +424,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
                           style: metaStyle,
                         ),
                       ),
@@ -452,6 +441,23 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
               ),
             ),
           ),
+      ],
+    );
+    if (widget.authorIsUser) {
+      return bubbleBand;
+    }
+    // The more-actions control rides the bubble's right edge at its top, not
+    // a reserved band above it.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(child: bubbleBand),
+        const SizedBox(width: 6),
+        ConversationExecutionMenu(
+          message: widget.message,
+          target: widget.target,
+        ),
       ],
     );
   }
