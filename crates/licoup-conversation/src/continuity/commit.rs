@@ -1,7 +1,8 @@
 use super::admission::{
     admit_achieved_required_current_evidence, admit_completion_against_current,
     admit_completion_transition, admit_goal_progress, admit_idempotency, admit_source_ref,
-    admit_task_child_admission, admit_utf8_span, admit_versions, current_required_evidence,
+    admit_task_child_admission, admit_utf8_span, admit_versions, admit_wake,
+    current_required_evidence,
 };
 use super::error::{continuity_failure, sql_failure, store_to_continuity};
 use super::generated::{
@@ -1436,6 +1437,7 @@ pub fn enqueue_follow_up(
     store: &ConversationStore,
     wake: &ContinuityWake,
 ) -> Result<ContinuityCommitReceipt, ContinuityFailure> {
+    admit_wake(wake)?;
     run_unit(store, |unit| {
         migrate_or_fail(unit)?;
         let conversation_id = goal_conversation_id(unit, &wake.goal_id)?.ok_or_else(|| {
@@ -2285,6 +2287,7 @@ pub fn enqueue_review_wake(
     conversation_id: &str,
     wake: &ContinuityWake,
 ) -> Result<bool, ContinuityFailure> {
+    admit_wake(wake)?;
     run_unit(store, |unit| {
         migrate_or_fail(unit)?;
         let inserted = enqueue_wake(unit, wake, conversation_id)?;
