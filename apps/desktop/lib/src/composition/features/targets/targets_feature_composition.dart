@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
@@ -9,6 +10,8 @@ import 'package:licoup/src/presentation/targets/targets_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_effect.dart';
 import 'package:licoup/src/presentation/targets/targets_intent.dart';
 import 'package:licoup/src/presentation/targets/targets_projection.dart';
+import 'package:licoup/src/presentation/targets/targets_view.dart';
+import 'package:licoup/src/projections/targets/targets_presentation_source.dart';
 import 'package:licoup/src/projections/targets/targets_projection_producer.dart';
 
 const _manualTargetOptions = <ManualTargetOptionProjection>[
@@ -47,6 +50,9 @@ final class TargetsFeatureComposition {
     );
     _effects = SemanticEffectChannel<TargetsEffect>();
     _intents = SemanticIntentChannel<TargetsIntent>(_handleIntent);
+    _catalogSource = TargetsPresentationSource(projection: _projection);
+    catalogEntry = presentationProviderEntry(_catalogSource);
+    catalogActions = TargetsCatalogActions.fromIntents(_intents);
     binding = TargetsBinding(
       projection: _projection,
       intents: _intents,
@@ -59,6 +65,13 @@ final class TargetsFeatureComposition {
   late final TargetsProjectionProducer _projection;
   late final SemanticEffectChannel<TargetsEffect> _effects;
   late final SemanticIntentChannel<TargetsIntent> _intents;
+  late final TargetsPresentationSource _catalogSource;
+
+  /// F01 Riverpod entry for the target catalog resource.
+  late final PresentationProviderEntry<TargetsProjection> catalogEntry;
+
+  /// Narrow renderer actions with the targets scope pinned.
+  late final TargetsCatalogActions catalogActions;
   late final TargetsBinding binding;
   Future<void>? _disposal;
 
@@ -146,6 +159,7 @@ final class TargetsFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await _catalogSource.dispose();
     await _projection.dispose();
     await _effects.dispose();
   }

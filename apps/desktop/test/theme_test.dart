@@ -302,12 +302,12 @@ void main() {
       }
     });
 
-    test('neutrals stay clean instead of dusty', () {
-      // The first attempt at this palette put the neutral ramp at OKLCH chroma
-      // 0.019-0.026, which is the dusty-slate band, and the whole interface
-      // read as grey haze. Production dark systems sit near 0.004 and the
-      // brief's own graphite reference is 0.013. This is the gate that would
-      // have caught it.
+    test('neutrals stay in the family their mode owns', () {
+      // Dark: the dusty-slate band (OKLCH chroma 0.019-0.026) reads as grey
+      // haze; production dark systems sit near 0.004 and the graphite
+      // reference is 0.013. Light: the ice-cream palette makes neutrals
+      // deliberately warm — the gate is the cream hue family with bounded
+      // chroma, not near-zero chroma.
       for (final preset in _fixedPresets) {
         final c = licoColorsFor(preset.id);
         final neutrals = <String, Color>{
@@ -322,30 +322,70 @@ void main() {
           'text-muted': c.textMuted,
         };
         neutrals.forEach((name, color) {
-          expect(
-            _chroma(color),
-            lessThanOrEqualTo(0.013),
-            reason: '${preset.id}: $name is too chromatic to read as neutral',
-          );
+          if (c.isDark) {
+            expect(
+              _chroma(color),
+              lessThanOrEqualTo(0.013),
+              reason: '${preset.id}: $name is too chromatic to read as neutral',
+            );
+          } else {
+            expect(
+              _hue(color),
+              inInclusiveRange(10, 45),
+              reason: '${preset.id}: $name left the cream hue family',
+            );
+            expect(
+              _chroma(color),
+              inInclusiveRange(0.008, 0.075),
+              reason:
+                  '${preset.id}: $name reads as gray or as candy, not cream',
+            );
+          }
         });
       }
     });
 
-    test('electric brand and silver interaction remain distinct', () {
-      // A brand that is scarce *and* desaturated is invisible. The reference
-      // point is the brief's own electric yellow #D9F14A at chroma 0.1855.
+    test('brand and interaction stay vivid in their own hue families', () {
+      // A brand that is scarce *and* desaturated is invisible.
       for (final preset in _fixedPresets) {
         final c = licoColorsFor(preset.id);
-        expect(
-          _chroma(c.primary),
-          greaterThanOrEqualTo(0.185),
-          reason: '${preset.id}: brand must be at least as vivid as #D9F14A',
-        );
-        expect(
-          _chroma(c.accent),
-          lessThanOrEqualTo(0.06),
-          reason: '${preset.id}: interaction belongs to the silver ramp',
-        );
+        if (c.isDark) {
+          // Electric lemon against the silver ramp — the reference point is
+          // the brief's own electric yellow #D9F14A at chroma 0.1855.
+          expect(
+            _chroma(c.primary),
+            greaterThanOrEqualTo(0.185),
+            reason: '${preset.id}: brand must be at least as vivid as #D9F14A',
+          );
+          expect(
+            _chroma(c.accent),
+            lessThanOrEqualTo(0.06),
+            reason: '${preset.id}: interaction belongs to the silver ramp',
+          );
+        } else {
+          // The logo's cherry and ice blue both stay vivid; neither may dust
+          // out into the neutral ramp.
+          expect(
+            _chroma(c.primary),
+            greaterThanOrEqualTo(0.14),
+            reason: '${preset.id}: the cherry brand must stay vivid',
+          );
+          expect(
+            _hue(c.primary),
+            lessThanOrEqualTo(25),
+            reason: '${preset.id}: the brand stays in the cherry family',
+          );
+          expect(
+            _hue(c.accent),
+            inInclusiveRange(185, 220),
+            reason: '${preset.id}: interaction stays in the ice-blue family',
+          );
+          expect(
+            _chroma(c.accent),
+            greaterThanOrEqualTo(0.07),
+            reason: '${preset.id}: the ice blue must stay vivid',
+          );
+        }
       }
     });
 
@@ -499,9 +539,10 @@ void main() {
     }
   });
 
-  test('following the system appearance never changes the brand hue', () {
-    // The previous built-ins paired a yellow dark brand with a cobalt light
-    // brand, so switching the OS appearance silently rebranded the client.
+  test('each mode carries its own brand family from the logo system', () {
+    // Dark rides the Orbital lemon; light rides the ice-cream cherry. A system
+    // flip changes the palette by design — into the other owned family, never
+    // into an unrelated third hue.
     final light = licoColorsFor(
       AppearancePresetIds.defaultSystem,
       platformBrightness: Brightness.light,
@@ -510,8 +551,9 @@ void main() {
       AppearancePresetIds.defaultSystem,
       platformBrightness: Brightness.dark,
     );
-    expect(_hue(light.primary), closeTo(_hue(dark.primary), 24));
-    expect(_hue(light.accent), closeTo(_hue(dark.accent), 24));
+    expect(_hue(dark.primary), closeTo(63, 12));
+    expect(_hue(light.primary), lessThanOrEqualTo(25));
+    expect(_hue(light.accent), inInclusiveRange(185, 220));
   });
 
   test('every built-in light preset is directly selectable', () {
@@ -722,15 +764,13 @@ void main() {
     expect(result.errors.join('; '), contains('accent'));
   });
 
-  test('window veil is a clear see-through mask, not frosted transparent', () {
+  test('window ground is an opaque grouped background, not a veil', () {
     final dark = MessagingDesktopMetrics.surfaceGlassTint(isDark: true);
     final light = MessagingDesktopMetrics.surfaceGlassTint(isDark: false);
-    expect(dark, const Color.fromARGB(225, 0, 0, 0));
-    expect(light, const Color.fromARGB(217, 255, 255, 255));
-    expect(dark.a, greaterThan(0.0));
-    expect(dark.a, lessThan(1.0));
-    expect(light.a, greaterThan(0.0));
-    expect(light.a, lessThan(1.0));
+    expect(dark, const Color(0xFF000000));
+    expect(light, const Color(0xFFF4E3DC));
+    expect(dark.a, 1.0);
+    expect(light.a, 1.0);
   });
 
   test('glass edge rim uses distinct lit and far-edge alphas', () {

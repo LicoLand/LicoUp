@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
@@ -11,6 +12,7 @@ import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
@@ -20,15 +22,22 @@ void main() {
     final source = SettingsProjectionFixture(
       settingsProjectionFixture(phase: PresentationPhase.applying),
     );
+    final presentation = SettingsPresentationFixture(
+      projection: settingsProjectionFixture(phase: PresentationPhase.applying),
+    );
     final binding = settingsBindingFixture(source: source);
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(),
-        builder: (context, child) =>
-            FixtureLayoutPresentationScope(child: child!),
-        home: Scaffold(
-          body: ArchivedConversationsSettingsSection(binding: binding),
+      ProviderScope(
+        overrides: presentation.overrides,
+        child: MaterialApp(
+          theme: buildLicoTheme(),
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          home: Scaffold(
+            body: ArchivedConversationsSettingsSection(binding: binding),
+          ),
         ),
       ),
     );
@@ -41,9 +50,12 @@ void main() {
       find.byKey(const Key('archived-conversation-loading')),
       findsNothing,
     );
-    source.publish(
+    presentation.publishProjection(
       settingsProjectionFixture(archivedConversationsLoading: true),
     );
+    // The runtime delivers source changes asynchronously so a build never
+    // re-enters synchronously; the second pump installs the new frame.
+    await tester.pump();
     await tester.pump();
     expect(
       find.byKey(const Key('archived-conversation-loading')),
@@ -64,6 +76,9 @@ void main() {
     final source = SettingsProjectionFixture(
       settingsProjectionFixture(archived: [archived]),
     );
+    final presentation = SettingsPresentationFixture(
+      projection: settingsProjectionFixture(archived: [archived]),
+    );
     final intents = RecordingSettingsIntents();
     final effects = RecordingSettingsEffects();
     final binding = settingsBindingFixture(
@@ -72,27 +87,31 @@ void main() {
       effects: effects,
     );
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
     addTearDown(effects.dispose);
 
     await tester.binding.setSurfaceSize(const Size(900, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(
-        builder: (context, child) =>
-            FixtureLayoutPresentationScope(child: child!),
-        locale: const Locale('zh'),
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ArchivedConversationsSettingsSection(binding: binding),
+      ProviderScope(
+        overrides: presentation.overrides,
+        child: MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ArchivedConversationsSettingsSection(binding: binding),
+            ),
           ),
         ),
       ),
@@ -133,13 +152,14 @@ void main() {
         .single;
     expect(restore.conversationId, archived.id);
 
-    source.publish(settingsProjectionFixture());
+    presentation.publishProjection(settingsProjectionFixture());
     effects.emit(
       ArchivedConversationRestoreCompleted(
         conversationId: archived.id,
         restored: true,
       ),
     );
+    await tester.pump();
     await tester.pump();
     expect(find.byKey(const Key('archived-conversation-list')), findsNothing);
     expect(find.textContaining('设计评审群'), findsOneWidget);

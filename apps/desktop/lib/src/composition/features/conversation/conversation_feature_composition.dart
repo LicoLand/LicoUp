@@ -144,6 +144,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           ),
           trace,
           stage: 'canonical-select',
+          conversationId: conversationId,
         );
       case ClearCanonicalConversationSelection():
         _controller.clientConversationController.clearSelection();
@@ -181,6 +182,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             },
             trace,
             stage: 'canonical-load-earlier',
+            conversationId: conversationId,
           );
         } else {
           _run(
@@ -330,12 +332,14 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             ),
             trace,
             stage: 'canonical-retry',
+            conversationId: conversationId,
           );
         } else {
           _runResult(
             () => _controller.retryDeniedConversationTurn(),
             trace,
             stage: 'native-retry',
+            conversationId: conversationId,
           );
         }
       case DismissConversationFailure():
@@ -351,12 +355,14 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
             () => _projection.cancelGroupTurn(membershipId),
             trace,
             stage: 'canonical-cancel',
+            conversationId: conversationId,
           );
         } else {
           _run(
             _controller.cancelActiveConversationTurn,
             trace,
             stage: 'native-cancel',
+            conversationId: conversationId,
           );
         }
       case RetryCanonicalConversationMessage(:final eventId):
@@ -391,10 +397,15 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           trace,
           stage: 'assistant-profile-refresh',
         );
-      case SurfaceConversationFailure(:final stage, :final reasonCode):
+      case SurfaceConversationFailure(
+        :final stage,
+        :final reasonCode,
+        :final conversationId,
+      ):
         _controller.clientConversationController.surfaceFailure(
           stage,
           reasonCode,
+          conversationId: conversationId,
         );
         _projection.publishLocalChange(trace: trace);
       case EnsureCanonicalAgentMembership(:final agentId, :final displayName):
@@ -433,6 +444,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           ),
           trace,
           stage: 'canonical-pin',
+          conversationId: conversationId,
         );
       case SetCanonicalConversationSurfaceAttached(:final attached):
         attached
@@ -451,6 +463,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           ),
           trace,
           stage: 'archive',
+          conversationId: conversationId,
         );
       case RestoreConversation(:final conversationId):
         _runResult(
@@ -459,6 +472,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           ),
           trace,
           stage: 'restore',
+          conversationId: conversationId,
         );
       case BackupAllNativeConversations(
         :final sourceAgentId,
@@ -485,6 +499,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
               ),
           trace,
           stage: 'continuity-command',
+          conversationId: conversationId,
         );
       case ActivateContinuityCompletionNotice(:final notificationId):
         _run(
@@ -611,12 +626,17 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     _projection.publishLocalChange(trace: trace);
   }
 
-  void _runArchive(Future<void> Function() action, TraceContext? trace) {
+  void _runArchive(
+    Future<void> Function() action,
+    TraceContext? trace, {
+    String conversationId = '',
+  }) {
+    final origin = _originConversationId(conversationId);
     _projection.publishLocalChange(trace: trace);
     unawaited(
       action()
           .catchError((Object _) {
-            _reject(trace, 'native-archive');
+            _reject(trace, 'native-archive', origin);
           })
           .whenComplete(() {
             _projection.publishLocalChange(trace: trace);
@@ -645,6 +665,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         ),
         trace,
         stage: 'canonical-send',
+        conversationId: canonicalId,
         onSuccess: () => _clearComposer(conversationId, trace: trace),
       );
       return;
@@ -656,6 +677,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
       ),
       trace,
       stage: 'native-send',
+      conversationId: conversationId,
     );
   }
 
@@ -696,7 +718,9 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     Future<void> Function() action,
     TraceContext? trace, {
     required String stage,
+    String conversationId = '',
   }) {
+    final origin = _originConversationId(conversationId);
     unawaited(() async {
       try {
         final pending = action();
@@ -704,7 +728,7 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         await pending;
         _projection.publishLocalChange(trace: trace);
       } on Object {
-        _reject(trace, stage);
+        _reject(trace, stage, origin);
       }
     }());
   }
@@ -713,8 +737,10 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
     Future<bool> Function() action,
     TraceContext? trace, {
     required String stage,
+    String conversationId = '',
     void Function()? onSuccess,
   }) {
+    final origin = _originConversationId(conversationId);
     unawaited(() async {
       try {
         final pending = action();
@@ -724,18 +750,32 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           onSuccess?.call();
           _projection.publishLocalChange(trace: trace);
         } else {
-          _reject(trace, stage);
+          _reject(trace, stage, origin);
         }
       } on Object {
-        _reject(trace, stage);
+        _reject(trace, stage, origin);
       }
     }());
   }
 
-  void _reject(TraceContext? trace, String stage) {
+  /// Pins a rejection to the Conversation the intent targeted. The origin is
+  /// captured when the intent is dispatched, so an asynchronous failure is
+  /// never attributed to whatever Conversation is selected when it lands.
+  String _originConversationId(String explicit) {
+    final trimmed = explicit.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    final canonical = _controller
+        .clientConversationController
+        .selectedConversationId
+        .trim();
+    if (canonical.isNotEmpty) return canonical;
+    return _projection.projection.current.conversationId;
+  }
+
+  void _reject(TraceContext? trace, String stage, String conversationId) {
     _effects.add(
       ConversationActionRejected(
-        conversationId: _projection.projection.current.conversationId,
+        conversationId: conversationId,
         stage: stage,
         reasonCode: 'conversation_action_failed',
         trace: trace,
