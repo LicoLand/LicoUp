@@ -150,10 +150,7 @@ void main() {
       expect(toggleCapsuleRect.width, closeTo(toggleCapsuleRect.height, 0.1));
       expect(
         toggleCapsuleRect.height,
-        closeTo(
-          MessagingDesktopMetrics.conversationHeaderCapsuleButtonExtent,
-          0.1,
-        ),
+        closeTo(MessagingDesktopMetrics.conversationHeaderMenuExtent, 0.1),
       );
       // The roster and compact overflow control share their right axis.
       expect(surfaceRect.width, MessagingDesktopMetrics.groupRosterExtent);

@@ -39,7 +39,7 @@ const ColorFilter _glassLuminosity = ColorFilter.matrix(<double>[
 ]);
 
 /// Control-layer Liquid Glass: shadows, optional lensed blur, luminosity
-/// fill, then a 1 px conic specular rim in the foreground. Content-layer
+/// fill, then a thin, softly lit rim in the foreground. Content-layer
 /// cards must not use this widget.
 class LicoGlass extends StatefulWidget {
   const LicoGlass({
@@ -77,8 +77,8 @@ class LicoGlass extends StatefulWidget {
   final Color? focusColor;
   final double focusWidth;
 
-  /// Resting light: CSS 145° from north, as Flutter sweep radians (east, clockwise).
-  static const restLightAngle = 55 * math.pi / 180;
+  /// Resting light comes from above-left (east is zero, clockwise is positive).
+  static const restLightAngle = -135 * math.pi / 180;
 
   @override
   State<LicoGlass> createState() => _LicoGlassState();
@@ -92,10 +92,10 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
   late final AnimationController _press;
   final GlobalKey _hoverKey = GlobalKey();
   Size? _slabSize;
-  double _fromAngle = LicoGlass.restLightAngle;
-  double _toAngle = LicoGlass.restLightAngle;
   GlassLensFilter? _lens;
   ({double radius, double displace, double chroma})? _lensParameters;
+  double _fromAngle = LicoGlass.restLightAngle;
+  double _toAngle = LicoGlass.restLightAngle;
 
   @override
   void initState() {
@@ -202,13 +202,12 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
         (widget.size == LicoGlassSize.large
             ? MessagingDesktopMetrics.conversationOverlayGlassBlurSigma
             : 8.0);
-    final encloseRim = widget.size == LicoGlassSize.small;
 
-    Widget inner = ColoredBox(color: fill, child: widget.child);
     final useBackdrop =
         widget.readBackdrop && blur > 0 && fill.a < 0.98 && !reduceTransparency;
+    ImageFilter filter = ImageFilter.blur(sigmaX: 0, sigmaY: 0);
     if (useBackdrop) {
-      ImageFilter filter = ImageFilter.blur(
+      filter = ImageFilter.blur(
         sigmaX: blur,
         sigmaY: blur,
         tileMode: TileMode.clamp,
@@ -220,8 +219,8 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
           GlassLens.isSupported) {
         final parameters = (
           radius: _uniformRadius(widget.borderRadius, size),
-          displace: widget.size == LicoGlassSize.large ? 12.0 : 8.0,
-          chroma: widget.chroma ? 0.08 : 0.0,
+          displace: widget.size == LicoGlassSize.large ? 6.0 : 4.0,
+          chroma: widget.chroma ? 0.04 : 0.0,
         );
         if (_lens == null || _lensParameters != parameters) {
           _lens?.dispose();
@@ -239,8 +238,12 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
         }
       }
       filter = ImageFilter.compose(inner: filter, outer: _glassLuminosity);
-      inner = BackdropFilter(filter: filter, child: inner);
     }
+    final inner = BackdropFilter(
+      enabled: useBackdrop,
+      filter: filter,
+      child: ColoredBox(color: fill, child: widget.child),
+    );
 
     Widget slab = ClipRRect(
       borderRadius: widget.borderRadius,
@@ -253,97 +256,92 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
       ),
     );
 
-    // The wrapper stack around the child must stay structurally stable across
-    // focus, rim and activity toggles: swapping wrapper widget types deactivates
-    // the child's element subtree, which drops focus and the text input
-    // connection of any field inside. Toggle painter/decoration parameters
-    // instead of adding or removing wrapper widgets.
+    // Keep the child at the same element position as interaction and
+    // accessibility settings change. Replacing wrappers would close an
+    // EditableText connection and discard descendant state on focus.
     slab = AnimatedBuilder(
       animation: _light,
+      builder: (context, child) => CustomPaint(
+        foregroundPainter: widget.drawRim && !widget.focused && !highContrast
+            ? GlassSpecularRimPainter(
+                borderRadius: widget.borderRadius,
+                rimWidth: MessagingDesktopMetrics.glassEdgeRimWidth,
+                lightAngle: widget.trackLight && !reduceMotion
+                    ? _angle
+                    : LicoGlass.restLightAngle,
+                rimHi: MessagingDesktopMetrics.glassEdgeRimHi(isDark: isDark),
+                rimLo: MessagingDesktopMetrics.glassEdgeRimLo(isDark: isDark),
+              )
+            : null,
+        child: child,
+      ),
+      child: slab,
+    );
+
+    final trackLight = widget.trackLight && !reduceMotion;
+    slab = MouseRegion(
+      key: _hoverKey,
+      opaque: trackLight,
+      onHover: trackLight
+          ? (event) {
+              final box = _hoverKey.currentContext?.findRenderObject();
+              if (box is! RenderBox || !box.hasSize) return;
+              final center = box.size.center(Offset.zero);
+              final local = event.localPosition;
+              _aim(
+                math.atan2(local.dy - center.dy, local.dx - center.dx),
+                animate: false,
+              );
+            }
+          : null,
+      onExit: trackLight
+          ? (_) => _aim(LicoGlass.restLightAngle, animate: true)
+          : null,
+      child: slab,
+    );
+
+    final BorderSide interactionSide;
+    if (widget.focused && widget.focusColor != null && widget.focusWidth > 0) {
+      interactionSide = BorderSide(
+        color: widget.focusColor!,
+        width: widget.focusWidth,
+      );
+    } else if (highContrast && widget.drawRim) {
+      interactionSide = BorderSide(color: isDark ? Colors.white : Colors.black);
+    } else {
+      interactionSide = BorderSide.none;
+    }
+    slab = DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: ShapeDecoration(
+        shape: ContinuousRoundedBorder(
+          borderRadius: widget.borderRadius,
+          side: interactionSide,
+        ),
+      ),
+      child: slab,
+    );
+    slab = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: widget.borderRadius,
+        boxShadow: widget.shadows,
+      ),
+      child: slab,
+    );
+    slab = AnimatedBuilder(
+      animation: _press,
       builder: (context, child) {
-        final showRim = widget.drawRim && !widget.focused && !highContrast;
-        return CustomPaint(
-          foregroundPainter: showRim
-              ? GlassSpecularRimPainter(
-                  borderRadius: widget.borderRadius,
-                  rimWidth: MessagingDesktopMetrics.glassEdgeRimWidth,
-                  lightAngle: widget.trackLight && !reduceMotion
-                      ? _angle
-                      : LicoGlass.restLightAngle,
-                  rimHi: MessagingDesktopMetrics.glassEdgeRimHi(isDark: isDark),
-                  rimLo: MessagingDesktopMetrics.glassEdgeRimLo(isDark: isDark),
-                  enclose: encloseRim,
-                )
-              : null,
+        final value = widget.gelPress && !reduceMotion
+            ? LicoMotion.emphasized.transform(_press.value)
+            : 0.0;
+        return Transform.scale(
+          scaleX: 1 + (_flexX - 1) * value,
+          scaleY: 1 + (_flexY - 1) * value,
           child: child,
         );
       },
       child: slab,
     );
-
-    if (widget.trackLight && !reduceMotion) {
-      slab = MouseRegion(
-        key: _hoverKey,
-        onHover: (event) {
-          final box = _hoverKey.currentContext?.findRenderObject();
-          if (box is! RenderBox || !box.hasSize) return;
-          final center = box.size.center(Offset.zero);
-          final local = event.localPosition;
-          _aim(
-            math.atan2(local.dy - center.dy, local.dx - center.dx),
-            animate: false,
-          );
-        },
-        onExit: (_) => _aim(LicoGlass.restLightAngle, animate: true),
-        child: slab,
-      );
-    }
-
-    final Color? interactionRingColor =
-        widget.focused && widget.focusColor != null && widget.focusWidth > 0
-        ? widget.focusColor!
-        : highContrast && widget.drawRim
-        ? (isDark ? Colors.white : Colors.black)
-        : null;
-    final double interactionRingWidth =
-        widget.focused && widget.focusColor != null && widget.focusWidth > 0
-        ? widget.focusWidth
-        : 1;
-    slab = CustomPaint(
-      foregroundPainter: interactionRingColor == null
-          ? null
-          : ContinuousStrokePainter(
-              borderRadius: widget.borderRadius,
-              color: interactionRingColor,
-              width: interactionRingWidth,
-            ),
-      child: slab,
-    );
-
-    if (widget.shadows != null && widget.shadows!.isNotEmpty) {
-      slab = DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: widget.borderRadius,
-          boxShadow: widget.shadows,
-        ),
-        child: slab,
-      );
-    }
-
-    if (widget.gelPress && !reduceMotion) {
-      slab = AnimatedBuilder(
-        animation: _press,
-        builder: (context, child) {
-          final value = LicoMotion.emphasized.transform(_press.value);
-          return Transform.scale(
-            scaleX: 1 + (_flexX - 1) * value,
-            scaleY: 1 + (_flexY - 1) * value,
-            child: child,
-          );
-        },
-        child: slab,
-      );
-    }
 
     return slab;
   }
@@ -354,8 +352,8 @@ class _LicoGlassState extends State<LicoGlass> with TickerProviderStateMixin {
   }
 }
 
-/// Foreground specular rim. One dominant lit arc and a whisper on the far
-/// edge — a uniform alpha ring reads as a drawn outline, not glass.
+/// Foreground edge light fades broadly toward the far side. Its brightness
+/// varies continuously along straight edges and corners without a bright pole.
 class GlassEdgeLight extends StatelessWidget {
   const GlassEdgeLight({
     super.key,
@@ -387,7 +385,6 @@ class GlassEdgeLight extends StatelessWidget {
         lightAngle: lightAngle,
         rimHi: rimHi ?? MessagingDesktopMetrics.glassEdgeRimHi(isDark: isDark),
         rimLo: rimLo ?? MessagingDesktopMetrics.glassEdgeRimLo(isDark: isDark),
-        enclose: false,
       ),
       child: child,
     );
@@ -401,7 +398,6 @@ class GlassSpecularRimPainter extends CustomPainter {
     required this.rimLo,
     required this.lightAngle,
     this.rimWidth = 1,
-    this.enclose = false,
   });
 
   final BorderRadius borderRadius;
@@ -410,11 +406,6 @@ class GlassSpecularRimPainter extends CustomPainter {
   final double lightAngle;
   final double rimWidth;
 
-  /// When true, the light/shadow ring travels the full silhouette and never
-  /// drops to transparent — buttons stay enclosed. Overlay glass keeps the
-  /// open highlight (lit arc + far whisper).
-  final bool enclose;
-
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty || rimWidth <= 0) return;
@@ -422,42 +413,20 @@ class GlassSpecularRimPainter extends CustomPainter {
     final outer = borderRadius.toRRect(rect).scaleRadii();
     final inner = outer.deflate(rimWidth);
     if (inner.width <= 0 || inner.height <= 0) return;
-    final far = rimLo.withValues(alpha: rimLo.a * 0.65);
-    final shader =
-        (enclose
-                ? SweepGradient(
-                    startAngle: lightAngle,
-                    endAngle: lightAngle + math.pi * 2,
-                    colors: [rimHi, rimLo, far, rimLo, rimHi],
-                    stops: const [0, 0.22, 0.5, 0.78, 1],
-                  )
-                : SweepGradient(
-                    startAngle: lightAngle,
-                    endAngle: lightAngle + math.pi * 2,
-                    colors: [
-                      rimHi,
-                      rimLo,
-                      Colors.transparent,
-                      Colors.transparent,
-                      far,
-                      Colors.transparent,
-                      Colors.transparent,
-                      rimLo,
-                      rimHi,
-                    ],
-                    stops: const [
-                      0,
-                      36 / 360,
-                      88 / 360,
-                      152 / 360,
-                      180 / 360,
-                      208 / 360,
-                      286 / 360,
-                      330 / 360,
-                      1,
-                    ],
-                  ))
-            .createShader(rect);
+    // Project the entire slab onto the light direction. A broad ramp avoids
+    // the concentrated bright pole a conic gradient creates on long edges.
+    final dx = math.cos(lightAngle);
+    final dy = math.sin(lightAngle);
+    final extent = dx.abs() * size.width + dy.abs() * size.height;
+    final direction = Alignment(
+      dx * extent / size.width,
+      dy * extent / size.height,
+    );
+    final shader = LinearGradient(
+      begin: -direction,
+      end: direction,
+      colors: [rimLo, rimHi],
+    ).createShader(rect);
     canvas.drawDRRect(
       outer,
       inner,
@@ -474,6 +443,5 @@ class GlassSpecularRimPainter extends CustomPainter {
       oldDelegate.rimHi != rimHi ||
       oldDelegate.rimLo != rimLo ||
       oldDelegate.lightAngle != lightAngle ||
-      oldDelegate.rimWidth != rimWidth ||
-      oldDelegate.enclose != enclose;
+      oldDelegate.rimWidth != rimWidth;
 }
