@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import '../fixtures/mobile_relay_presentation_fixture.dart';
+
 export '../fixtures/mobile_relay_binding_fixture.dart';
+export '../fixtures/mobile_relay_presentation_fixture.dart';
 export 'package:flutter/material.dart';
 export 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 export 'package:licoup/src/contracts/mobile_pairing_presentation.dart';
@@ -13,6 +17,7 @@ export 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 export 'package:licoup/src/frontend/shared/ui/theme.dart';
 export 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 export 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
+export 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 export 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 export 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 export 'package:licoup/src/presentation/presentation_semantics.dart';
@@ -23,9 +28,14 @@ export 'package:qr_flutter/qr_flutter.dart';
 Widget mobileRelayPanelTestApp({
   required Widget child,
   TargetPlatform platform = TargetPlatform.macOS,
+  MobileRelayPresentationFixture? presentation,
 }) {
-  return MaterialApp(
+  final app = MaterialApp(
     theme: buildLicoTheme().copyWith(platform: platform),
     home: Scaffold(body: child),
   );
+  final overrides = presentation?.overrides;
+  return overrides == null
+      ? app
+      : ProviderScope(overrides: overrides, child: app);
 }

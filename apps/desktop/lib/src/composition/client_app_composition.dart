@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
@@ -378,6 +379,16 @@ final class ClientAppComposition {
   late final SettingsBinding settings;
   late final ShellRendererPort renderer;
   Future<void>? _disposal;
+
+  /// Aggregated Riverpod overrides that install every migrated feature's live
+  /// presentation sources. The app root wraps its tree in a `ProviderScope`
+  /// with these; feature tests install their own synthetic overrides instead.
+  List<Override> get presentationOverrides => <Override>[
+    ..._settings.providerOverrides,
+    ..._pluginManagement.providerOverrides,
+    ..._skillHub.providerOverrides,
+    ..._mobileRelay.providerOverrides,
+  ];
 
   Future<void> initialize() => _controller.initialize();
 
