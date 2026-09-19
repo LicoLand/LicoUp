@@ -1215,10 +1215,10 @@ fn apply_authoritative_store(
                 // StrategyStore migrations execute in SQLite transactions; a
                 // failed process resumes from the authoritative meta value.
                 if edge.to_schema_version == 1 {
-                    crate::domain::adaptive_flywheel::StrategyStore::migrate_to_schema_2(root)
+                    crate::domain::workflow_store::StrategyStore::migrate_to_schema_2(root)
                         .context("migration_step_failed")?;
                 } else {
-                    crate::domain::adaptive_flywheel::StrategyStore::open_for_migration(root)
+                    crate::domain::workflow_store::StrategyStore::open_for_migration(root)
                         .context("migration_step_failed")?;
                 }
             }
