@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_effect.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/composition/client_app_composition.dart';
 import 'src/frontend/binding/projection_builder.dart';
@@ -177,9 +178,13 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
       },
     );
     final telemetry = _composition.telemetry;
+    final scoped = ProviderScope(
+      overrides: _composition.presentationOverrides,
+      child: app,
+    );
     return telemetry == null
-        ? app
-        : ProjectionTelemetryScope(observer: telemetry, child: app);
+        ? scoped
+        : ProjectionTelemetryScope(observer: telemetry, child: scoped);
   }
 }
 

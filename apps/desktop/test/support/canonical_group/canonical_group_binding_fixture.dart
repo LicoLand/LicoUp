@@ -118,8 +118,18 @@ final class CanonicalGroupBindingFixture {
       ConversationTabActivityProjection(
         conversationId: controller.selectedConversationId,
         active: controller.selectedConversationId.isNotEmpty,
-        unreadCount: controller.failureCode.isEmpty ? 0 : 1,
-        requiresAttention: controller.failureCode.isNotEmpty,
+        unreadCount:
+            controller.failureCode.isNotEmpty &&
+                (controller.failureConversationId.trim().isEmpty ||
+                    controller.failureConversationId.trim() ==
+                        controller.selectedConversationId)
+            ? 1
+            : 0,
+        requiresAttention:
+            controller.failureCode.isNotEmpty &&
+            (controller.failureConversationId.trim().isEmpty ||
+                controller.failureConversationId.trim() ==
+                    controller.selectedConversationId),
       ),
     ),
     notifications: _ProjectionSource<ConversationNotificationsProjection>(
@@ -215,6 +225,13 @@ final class CanonicalGroupBindingFixture {
       for (final membership in selected?.memberships ?? const [])
         membership.id: membership,
     };
+    // Mirrors the production producer: an attributed failure renders only on
+    // the Conversation that originated it.
+    final failureAttribution = controller.failureConversationId.trim();
+    final failureVisible =
+        controller.failureCode.isNotEmpty &&
+        (failureAttribution.isEmpty ||
+            failureAttribution == controller.selectedConversationId);
     return CanonicalConversationProjection(
       conversationId: controller.selectedConversationId,
       conversation: selected,
@@ -228,6 +245,10 @@ final class CanonicalGroupBindingFixture {
             authorLabel:
                 memberships[event.authorMembershipId]?.principal.displayName ??
                 '',
+            authorMembershipId: event.authorMembershipId,
+            causationId: event.causationId,
+            correlationId: event.correlationId,
+            createdAtUnixMs: event.createdAtUnixMs,
             parts: [
               for (final part in event.parts)
                 ConversationPartProjection(
@@ -246,17 +267,17 @@ final class CanonicalGroupBindingFixture {
       earlierError: controller.earlierEventsError,
       assistantModel: assistantModel,
       assistantReasoningEffort: assistantReasoningEffort,
-      failureStage: controller.failureStage,
-      failureRef: controller.failureRef,
-      failureRecovery: controller.failureRecovery,
-      failureCopyBlob: controller.failureCopyBlob,
+      failureStage: failureVisible ? controller.failureStage : '',
+      failureRef: failureVisible ? controller.failureRef : '',
+      failureRecovery: failureVisible ? controller.failureRecovery : '',
+      failureCopyBlob: failureVisible ? controller.failureCopyBlob : '',
       phase: controller.loading
           ? PresentationPhase.loading
-          : controller.failureCode.isNotEmpty
+          : failureVisible
           ? PresentationPhase.failed
           : PresentationPhase.ready,
       dispatchPending: controller.dispatchPending,
-      notice: controller.failureCode.isEmpty
+      notice: !failureVisible
           ? null
           : PresentationNotice(
               id: 'canonical-conversation',
@@ -627,6 +648,7 @@ final class CanonicalGroupBindingFixture {
         controller.surfaceFailure(
           failure.stage.isEmpty ? 'native/turn' : failure.stage,
           failure.code,
+          conversationId: turn.conversationId,
           component: failure.component,
           retryable: failure.retryable,
           recovery: failure.recovery,
@@ -1067,8 +1089,16 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
         unawaited(controller.clearSelectedHistory());
       case RefreshCanonicalAssistantProfile():
         break;
-      case SurfaceConversationFailure(:final stage, :final reasonCode):
-        controller.surfaceFailure(stage, reasonCode);
+      case SurfaceConversationFailure(
+        :final stage,
+        :final reasonCode,
+        :final conversationId,
+      ):
+        controller.surfaceFailure(
+          stage,
+          reasonCode,
+          conversationId: conversationId,
+        );
       case EnsureCanonicalAgentMembership(:final agentId, :final displayName):
         unawaited(
           controller.ensureSelectedAgentMembership(

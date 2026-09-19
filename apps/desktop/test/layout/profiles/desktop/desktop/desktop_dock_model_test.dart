@@ -167,13 +167,21 @@ void main() {
       final directory = Directory.systemTemp.createTempSync(
         'desktop_dock_restart_test',
       );
-      addTearDown(() => directory.deleteSync(recursive: true));
       final portableData = createDesktopDockPortableData(directory);
-
-      final first = DesktopDockModel(
-        store: createDesktopDockLayoutStore(),
-        portableData: portableData,
+      final store = ObservedDesktopDockLayoutStore(
+        createDesktopDockLayoutStore(),
       );
+
+      final first = DesktopDockModel(store: store, portableData: portableData);
+      DesktopDockModel? second;
+      addTearDown(() async {
+        await store.waitForWrites();
+        second?.dispose();
+        first.dispose();
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
       await first.load();
       first
         ..openApp(DesktopAppId.monitoring)
@@ -182,41 +190,20 @@ void main() {
       first.mergeEntries('app:modelsGateway', 'app:monitoring');
       first.moveEntry('app:agentHub', 0);
 
-      // The persists are fire-and-forget: poll a restarting controller until
-      // the serialized writes land instead of waiting a fixed delay. The
-      // match must be the final shape — intermediate states can share the
-      // entry count.
-      bool matchesFinalShape(DesktopDockModel controller) {
-        if (controller.entries.length != 2) return false;
-        final first = controller.entries.first;
-        final last = controller.entries.last;
-        return first is DesktopDockAppEntry &&
-            first.app == DesktopAppId.agentHub &&
-            last is DesktopDockFolderEntry &&
-            last.children.length == 2 &&
-            last.children.first == DesktopAppId.monitoring &&
-            last.children.last == DesktopAppId.modelsGateway;
-      }
+      expect(store.writeCount, 5);
+      await store.waitForWrites();
 
-      DesktopDockModel? second;
-      for (var attempt = 0; attempt < 100; attempt++) {
-        final candidate = DesktopDockModel(
-          store: createDesktopDockLayoutStore(),
-          portableData: portableData,
-        );
-        await candidate.load();
-        if (matchesFinalShape(candidate)) {
-          second = candidate;
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      expect(second, isNotNull, reason: 'dock layout never persisted');
+      final restarted = DesktopDockModel(
+        store: createDesktopDockLayoutStore(),
+        portableData: portableData,
+      );
+      second = restarted;
+      await restarted.load();
       expect(
-        (second!.entries.first as DesktopDockAppEntry).app,
+        (restarted.entries.first as DesktopDockAppEntry).app,
         DesktopAppId.agentHub,
       );
-      final folder = second.entries.last as DesktopDockFolderEntry;
+      final folder = restarted.entries.last as DesktopDockFolderEntry;
       expect(folder.children, [
         DesktopAppId.monitoring,
         DesktopAppId.modelsGateway,
