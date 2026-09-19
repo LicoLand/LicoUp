@@ -14,7 +14,7 @@ use super::generated::{
     ContinuityParentGrantStatus, ContinuityRecoveryClass, ContinuitySourceOwnerKind,
     ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
     ContinuityTaskChildAdmission, ContinuityTaskConversationRelation, ContinuityTaskListingKind,
-    ContinuityUtf8ByteSpan, ContinuityVisibilityScope, ContinuityWriteEnvelope,
+    ContinuityUtf8ByteSpan, ContinuityVisibilityScope, ContinuityWake, ContinuityWriteEnvelope,
 };
 use serde_json::Value;
 
@@ -604,5 +604,29 @@ pub fn admit_composition_request(
         ));
     }
     admit_page_limit(request.limit)?;
+    Ok(())
+}
+
+pub fn admit_wake(wake: &ContinuityWake) -> Result<(), ContinuityFailure> {
+    if wake.logical_wake_id.trim().is_empty() || wake.goal_id.trim().is_empty() {
+        return Err(failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    if wake.epoch < 0 || wake.goal_revision < 0 || wake.host_generation < 0 {
+        return Err(failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityAdmission,
+        ));
+    }
+    for cause in &wake.cause_refs {
+        if cause.opaque_id.trim().is_empty() || cause.digest.trim().is_empty() {
+            return Err(failure(
+                ContinuityFailureCode::InvalidRequest,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+    }
     Ok(())
 }

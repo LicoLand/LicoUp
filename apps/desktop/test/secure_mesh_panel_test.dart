@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
@@ -11,7 +12,21 @@ import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dar
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/mobile_relay_binding_fixture.dart';
+import 'fixtures/mobile_relay_presentation_fixture.dart';
 import 'fixtures/secure_mesh_capability_projection.dart';
+
+Widget panelApp(
+  MobileRelayBindingFixture fixture,
+  MobileRelayPresentationFixture presentation,
+) {
+  return ProviderScope(
+    overrides: presentation.overrides,
+    child: MaterialApp(
+      theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
+      home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
+    ),
+  );
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -90,14 +105,14 @@ void main() {
           pairingExpiresLabel: '2026-06-12T12:00:00Z',
         ),
       );
-      addTearDown(fixture.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-        ),
+      final presentation = MobileRelayPresentationFixture(
+        projection: fixture.projection.current,
       );
+      addTearDown(fixture.dispose);
+      addTearDown(presentation.dispose);
+
+      await tester.pumpWidget(panelApp(fixture, presentation));
+      await tester.pump();
       await tester.pump();
 
       expect(find.byType(PanelFrame), findsNothing);
@@ -189,14 +204,14 @@ void main() {
         stationConfigured: true,
       ),
     );
-    addTearDown(fixture.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-      ),
+    final presentation = MobileRelayPresentationFixture(
+      projection: fixture.projection.current,
     );
+    addTearDown(fixture.dispose);
+    addTearDown(presentation.dispose);
+
+    await tester.pumpWidget(panelApp(fixture, presentation));
+    await tester.pump();
     await tester.pump();
 
     expect(find.byType(PanelFrame), findsNothing);
@@ -220,14 +235,14 @@ void main() {
           ),
         ),
       );
-      addTearDown(fixture.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-        ),
+      final presentation = MobileRelayPresentationFixture(
+        projection: fixture.projection.current,
       );
+      addTearDown(fixture.dispose);
+      addTearDown(presentation.dispose);
+
+      await tester.pumpWidget(panelApp(fixture, presentation));
+      await tester.pump();
       await tester.pump();
 
       expect(
@@ -366,14 +381,14 @@ void main() {
           ),
         ),
       );
-      addTearDown(fixture.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-        ),
+      final presentation = MobileRelayPresentationFixture(
+        projection: fixture.projection.current,
       );
+      addTearDown(fixture.dispose);
+      addTearDown(presentation.dispose);
+
+      await tester.pumpWidget(panelApp(fixture, presentation));
+      await tester.pump();
       await tester.pump();
       await tester.scrollUntilVisible(
         find.byKey(const Key('secure-mesh-trust-verification-card')),
@@ -401,6 +416,7 @@ void main() {
     tester,
   ) async {
     final copiedCodes = <String>[];
+    late final MobileRelayPresentationFixture presentation;
     final fixture = MobileRelayBindingFixture(
       projection: mobileRelayProjectionFixture(
         stationLabel: 'https://station.example.test',
@@ -409,15 +425,15 @@ void main() {
       onIntent: (intent, fixture) {
         switch (intent) {
           case CreateRelayPairing():
-            fixture.publish(
-              mobileRelayProjectionFixture(
-                stationLabel: 'https://station.example.test',
-                stationConfigured: true,
-                pairingCode: 'CODE-1',
-                pairingInvite: 'opaque-invite-1',
-                pairingId: 'pair-1',
-              ),
+            final next = mobileRelayProjectionFixture(
+              stationLabel: 'https://station.example.test',
+              stationConfigured: true,
+              pairingCode: 'CODE-1',
+              pairingInvite: 'opaque-invite-1',
+              pairingId: 'pair-1',
             );
+            fixture.publish(next);
+            presentation.publishProjection(next);
           case CopyRelayPairingCode(:final pairingCode):
             copiedCodes.add(pairingCode);
             fixture.effects.add(const RelayPairingCodeCopied());
@@ -426,14 +442,14 @@ void main() {
         }
       },
     );
-    addTearDown(fixture.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-      ),
+    presentation = MobileRelayPresentationFixture(
+      projection: fixture.projection.current,
     );
+    addTearDown(fixture.dispose);
+    addTearDown(presentation.dispose);
+
+    await tester.pumpWidget(panelApp(fixture, presentation));
+    await tester.pump();
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('pairing-qr-frame')));
@@ -455,6 +471,7 @@ void main() {
     (tester) async {
       var createPairingCalls = 0;
       var refreshPairingStatusCalls = 0;
+      late final MobileRelayPresentationFixture presentation;
       final fixture = MobileRelayBindingFixture(
         projection: mobileRelayProjectionFixture(
           stationLabel: 'https://station.example.test',
@@ -464,15 +481,15 @@ void main() {
           switch (intent) {
             case CreateRelayPairing():
               createPairingCalls += 1;
-              fixture.publish(
-                mobileRelayProjectionFixture(
-                  stationLabel: 'https://station.example.test',
-                  stationConfigured: true,
-                  pairingCode: 'CODE-$createPairingCalls',
-                  pairingInvite: 'opaque-invite-$createPairingCalls',
-                  pairingId: 'pair-$createPairingCalls',
-                ),
+              final next = mobileRelayProjectionFixture(
+                stationLabel: 'https://station.example.test',
+                stationConfigured: true,
+                pairingCode: 'CODE-$createPairingCalls',
+                pairingInvite: 'opaque-invite-$createPairingCalls',
+                pairingId: 'pair-$createPairingCalls',
               );
+              fixture.publish(next);
+              presentation.publishProjection(next);
             case RefreshMobileRelay():
               refreshPairingStatusCalls += 1;
             default:
@@ -480,14 +497,14 @@ void main() {
           }
         },
       );
-      addTearDown(fixture.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(body: MobileRelayPanel(binding: fixture.binding)),
-        ),
+      presentation = MobileRelayPresentationFixture(
+        projection: fixture.projection.current,
       );
+      addTearDown(fixture.dispose);
+      addTearDown(presentation.dispose);
+
+      await tester.pumpWidget(panelApp(fixture, presentation));
+      await tester.pump();
       await tester.pump();
 
       await tester.tap(find.byKey(const Key('pairing-qr-frame')));

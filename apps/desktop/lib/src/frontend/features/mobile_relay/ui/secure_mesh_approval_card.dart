@@ -5,24 +5,34 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class SecureMeshApprovalCard extends StatelessWidget {
-  const SecureMeshApprovalCard({
+  SecureMeshApprovalCard({
     super.key,
-    required this.projection,
+    required MobileRelayProjection projection,
+    required this.intents,
+  }) : inputs = MobileRelayApprovalsInputs(
+         approvals: projection.approvals,
+         busy: projection.busy,
+       );
+
+  const SecureMeshApprovalCard.inputs({
+    super.key,
+    required this.inputs,
     required this.intents,
   });
 
-  final MobileRelayProjection projection;
+  final MobileRelayApprovalsInputs inputs;
   final IntentSink<MobileRelayIntent> intents;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final pending = projection.approvals
+    final pending = inputs.approvals
         .where((item) => item.state == RelayApprovalState.pending)
         .toList(growable: false);
     return Container(
@@ -50,7 +60,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
               ),
               OutlinedButton(
                 key: const Key('secure-mesh-approval-refresh'),
-                onPressed: projection.busy
+                onPressed: inputs.busy
                     ? null
                     : () => intents.send(const RefreshRelayApprovals()),
                 child: Text(strings.refresh),
@@ -100,7 +110,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
                     children: [
                       FilledButton(
                         key: Key('secure-mesh-approval-allow-${item.id}'),
-                        onPressed: projection.busy || !item.resolvable
+                        onPressed: inputs.busy || !item.resolvable
                             ? null
                             : () => intents.send(
                                 ResolveRelayApproval(item.id, true),
@@ -109,7 +119,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
                       ),
                       OutlinedButton(
                         key: Key('secure-mesh-approval-deny-${item.id}'),
-                        onPressed: projection.busy || !item.resolvable
+                        onPressed: inputs.busy || !item.resolvable
                             ? null
                             : () => intents.send(
                                 ResolveRelayApproval(item.id, false),
@@ -122,7 +132,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
               ),
             ),
           ],
-          if (projection.approvals.any(
+          if (inputs.approvals.any(
             (item) => item.state != RelayApprovalState.pending,
           )) ...[
             const SizedBox(height: 16),
@@ -135,7 +145,7 @@ class SecureMeshApprovalCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             for (final item
-                in projection.approvals
+                in inputs.approvals
                     .where((entry) => entry.state != RelayApprovalState.pending)
                     .take(6))
               Padding(

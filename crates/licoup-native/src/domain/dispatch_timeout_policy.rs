@@ -1,8 +1,9 @@
 //! Writable per-agent (and optional task) dispatch timeout policy.
 //!
-//! `timeoutMs` 0 or a missing value means "use this policy". An explicit
-//! `timeoutUnbounded` / `unboundedTimeout` flag is the only way to keep a
-//! turn without a deadline. Finite values stay inside the 1s–30min clamp.
+//! `timeoutMs` 0 or a missing value means "use this policy". The default
+//! policy has no execution deadline (0 ms). Observation windows are not kill
+//! timers; turns run unbounded unless an explicit deadline or policy is configured.
+//! Finite non-zero values stay inside the 1s–30min clamp.
 
 use crate::platform::client_state::ClientStateStore;
 use serde::{Deserialize, Serialize};
@@ -34,7 +35,7 @@ pub struct DispatchTimeoutPolicy {
 impl Default for DispatchTimeoutPolicy {
     fn default() -> Self {
         Self {
-            default_timeout_ms: MAX_DISPATCH_TIMEOUT_MS,
+            default_timeout_ms: 0,
             agents: BTreeMap::new(),
         }
     }
@@ -52,7 +53,11 @@ impl DispatchTimeoutPolicy {
 }
 
 pub fn clamp_timeout_ms(value: u64) -> u64 {
-    value.clamp(MIN_DISPATCH_TIMEOUT_MS, MAX_DISPATCH_TIMEOUT_MS)
+    if value == 0 {
+        0
+    } else {
+        value.clamp(MIN_DISPATCH_TIMEOUT_MS, MAX_DISPATCH_TIMEOUT_MS)
+    }
 }
 
 pub fn timeout_unbounded(params: &Value) -> bool {
@@ -286,5 +291,27 @@ mod tests {
         );
         set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn default_timeout_is_unbounded_zero() {
+        assert_eq!(DispatchTimeoutPolicy::default().default_timeout_ms, 0);
+        assert_eq!(clamp_timeout_ms(0), 0);
+        assert_eq!(clamp_timeout_ms(500), MIN_DISPATCH_TIMEOUT_MS);
+        assert_eq!(clamp_timeout_ms(50_000_000), MAX_DISPATCH_TIMEOUT_MS);
+
+        // Without policy in params or store, resolution returns 0 (unbounded)
+        let resolved = resolve_dispatch_timeout(&json!({
+            "agent": "codex"
+        }))
+        .unwrap();
+        assert_eq!(resolved, 0);
+
+        let resolved_zero = resolve_dispatch_timeout(&json!({
+            "agent": "codex",
+            "timeoutMs": 0
+        }))
+        .unwrap();
+        assert_eq!(resolved_zero, 0);
     }
 }
