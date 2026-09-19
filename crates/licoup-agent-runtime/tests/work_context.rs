@@ -332,6 +332,39 @@ fn high_capability_can_run_parallel_matters() {
 }
 
 #[test]
+fn recovery_generation_shares_conflict_key_and_is_writer_busy() {
+    let runtime = WorkContextRuntime::hermetic_codex(CapabilityProfile::High, config(false));
+    let gen1 = key("matter:docs", 1);
+    let gen2 = key("matter:docs", 2);
+    runtime.claim_writer(&gen1).unwrap();
+    assert_eq!(
+        runtime.claim_writer(&gen2).unwrap_err().code,
+        ContinuityFailureCode::WriterBusy
+    );
+}
+
+#[test]
+fn honest_queue_double_write_on_same_binding_is_writer_busy() {
+    let runtime = WorkContextRuntime::hermetic_codex(CapabilityProfile::Low, config(false));
+    let source = key("matter:docs", 1);
+    runtime.claim_writer(&source).unwrap();
+    assert_eq!(
+        runtime.claim_writer(&source).unwrap_err().code,
+        ContinuityFailureCode::WriterBusy
+    );
+}
+
+#[test]
+fn shared_native_session_conflict_key_prevents_concurrent_writes() {
+    let protocol = HermeticProtocol::codex(CapabilityProfile::High)
+        .with_session_conflict_key("native-thread:shared");
+    let runtime = WorkContextRuntime::from_hermetic(protocol, config(false));
+    runtime.claim_writer(&key("matter:a", 1)).unwrap();
+    let second = runtime.claim_writer(&key("matter:b", 1)).unwrap_err();
+    assert_eq!(second.code, ContinuityFailureCode::WriterBusy);
+}
+
+#[test]
 fn fork_requires_explicit_inheritance_and_does_not_imply_isolation() {
     let runtime = WorkContextRuntime::from_hermetic(
         HermeticProtocol::codex(CapabilityProfile::High)
