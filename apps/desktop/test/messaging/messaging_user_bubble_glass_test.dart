@@ -86,7 +86,8 @@ void main() {
         matching: find.byType(CustomPaint),
       ),
     );
-    final painter = glowPaint.painter! as MessagingBubbleEdgeGlowPainter;
+    final painter =
+        glowPaint.foregroundPainter! as MessagingBubbleEdgeGlowPainter;
     expect(painter.strokeWidth, MessagingDesktopMetrics.bubbleEdgeRimWidth);
     final rimGradient = painter.rimGradient as LinearGradient;
     // The default bubble light is white; agent brand hues resolve per target.
@@ -97,27 +98,7 @@ void main() {
       _alpha8(rimGradient.colors.first),
       MessagingDesktopMetrics.bubbleEdgeGlowAlphaDark,
     );
-    // The field decays with distance: each pass is softer than the one
-    // closer to the rim.
-    final nearGradient = painter.nearGradient as LinearGradient;
-    final midGradient = painter.midGradient as LinearGradient;
-    final farGradient = painter.farGradient as LinearGradient;
-    expect(
-      _alpha8(nearGradient.colors.first),
-      MessagingDesktopMetrics.bubbleEdgeGlowNearAlphaDark,
-    );
-    expect(
-      _alpha8(nearGradient.colors.first),
-      lessThan(_alpha8(rimGradient.colors.first)),
-    );
-    expect(
-      _alpha8(midGradient.colors.first),
-      lessThan(_alpha8(nearGradient.colors.first)),
-    );
-    expect(
-      _alpha8(farGradient.colors.first),
-      lessThan(_alpha8(midGradient.colors.first)),
-    );
+    // The light is the border itself — no field passes blur outward.
 
     final animated = tester.widget<AnimatedContainer>(
       find.descendant(
@@ -165,7 +146,8 @@ void main() {
         matching: find.byType(CustomPaint),
       ),
     );
-    final litPainter = litPaint.painter! as MessagingBubbleEdgeGlowPainter;
+    final litPainter =
+        litPaint.foregroundPainter! as MessagingBubbleEdgeGlowPainter;
     expect(litPainter.opacity, 1);
     final litAnimated = tester.widget<AnimatedContainer>(
       find.descendant(

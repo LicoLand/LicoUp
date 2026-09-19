@@ -1115,7 +1115,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.push_pin_rounded), findsNothing);
     expect(find.byKey(const Key('canonical-group-roster')), findsOneWidget);
     final headerAvatar = tester.widget<Container>(
       find.byKey(const Key('canonical-group-header-avatar')),

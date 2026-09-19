@@ -36,6 +36,7 @@ class ComposerCapsuleRow extends StatelessWidget {
     this.onReasoningEffortChanged,
     this.fast = false,
     this.flywheel,
+    this.assistantCapsule,
     this.licoProfileCapsule,
   });
 
@@ -53,6 +54,7 @@ class ComposerCapsuleRow extends StatelessWidget {
   final ValueChanged<String>? onReasoningEffortChanged;
   final bool fast;
   final Widget? flywheel;
+  final Widget? assistantCapsule;
   final Widget? licoProfileCapsule;
 
   bool get _showWorkspace {
@@ -68,6 +70,7 @@ class ComposerCapsuleRow extends StatelessWidget {
       _showWorkspace ||
       _showRuntimeSelector ||
       flywheel != null ||
+      assistantCapsule != null ||
       licoProfileCapsule != null;
 
   @override
@@ -90,6 +93,7 @@ class ComposerCapsuleRow extends StatelessWidget {
                 selectable: workingDirectorySelectable,
                 onChoose: onChooseWorkingDirectory,
               ),
+            ?assistantCapsule,
             ?flywheel,
             ?licoProfileCapsule,
             if (_showRuntimeSelector)

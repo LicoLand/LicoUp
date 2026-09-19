@@ -4,6 +4,7 @@ import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -246,30 +247,15 @@ class _ReleaseTrackSelector extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
-              child: SegmentedButton<ReleaseTrack>(
+              child: SettingsSegmentedControl<ReleaseTrack>(
                 key: const Key('client-update-release-track'),
                 segments: [
-                  ButtonSegment(
-                    value: ReleaseTrack.nightly,
-                    label: Text(nightlyLabel),
-                  ),
-                  ButtonSegment(
-                    value: ReleaseTrack.stable,
-                    label: Text(stableLabel),
-                  ),
+                  (value: ReleaseTrack.nightly, label: nightlyLabel),
+                  (value: ReleaseTrack.stable, label: stableLabel),
                 ],
-                style: ButtonStyle(
-                  textStyle: WidgetStatePropertyAll(
-                    Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                selected: {selected},
-                showSelectedIcon: false,
-                onSelectionChanged: enabled
-                    ? (selection) => onSelected(selection.single)
-                    : null,
+                selected: selected,
+                enabled: enabled,
+                onChanged: onSelected,
               ),
             ),
           ),

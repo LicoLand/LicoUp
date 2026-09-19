@@ -86,9 +86,10 @@ final class DashboardDesktopAgentsPresentation
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
-          // 90% transparency means 10% surface alpha. Do not inherit a
-          // global card opacity: conversation bubbles carry their own material.
-          color: colors.surface.withValues(alpha: 0.10),
+          // Solid elevated panel on the opaque ground — secondary grouped
+          // background in dark, the theme's cream surface card in light
+          // (Stocks sidebar idiom).
+          color: colors.isDark ? const Color(0xFF1C1C1E) : colors.surface,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: MessagingDesktopMetrics.conversationListCardShadows(
             isDark: colors.isDark,
