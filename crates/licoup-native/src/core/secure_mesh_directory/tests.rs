@@ -3,7 +3,7 @@ use crate::core::secure_mesh_transparency::{
     KtAuthorityProvenance, SecureMeshKtLog, directory_scope_commitment, stable_directory_label,
 };
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 
 #[test]
 fn typed_authority_carries_identity_pairwise_mls_and_test_provenance() {

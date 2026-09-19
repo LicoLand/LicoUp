@@ -1,4 +1,4 @@
-use rand::rngs::StdRng;
+use rand_chacha::ChaCha12Rng as StdRng;
 
 use super::super::{output::MlKemBraidOutputKey, session::MlKemBraidSession};
 

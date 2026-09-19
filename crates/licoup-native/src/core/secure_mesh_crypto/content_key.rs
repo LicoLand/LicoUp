@@ -1,4 +1,4 @@
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use zeroize::Zeroizing;
 
 use super::constants::CONTENT_KEY_LEN;

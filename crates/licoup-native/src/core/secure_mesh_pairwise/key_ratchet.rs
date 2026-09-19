@@ -10,7 +10,7 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload as AeadPayload},
 };
 use hkdf::Hkdf;
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::{Zeroize, Zeroizing};
