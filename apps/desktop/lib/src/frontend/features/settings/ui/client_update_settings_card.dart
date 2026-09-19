@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/contracts/client_update_models.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 class ClientUpdateSettingsCard extends StatefulWidget {
   const ClientUpdateSettingsCard({super.key, required this.binding});
@@ -45,17 +49,12 @@ class _ClientUpdateSettingsCardState extends State<ClientUpdateSettingsCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<
-      SettingsProjection,
-      ({SettingsClientUpdateProjection status, String repository})
-    >(
-      source: widget.binding.projection,
-      select: (projection) => (
-        status: projection.clientUpdate,
-        repository: projection.clientUpdateRepo,
-      ),
-      builder: (context, selected) =>
-          _buildCard(context, selected.status, selected.repository),
+    return AsyncRegion<SettingsUpdateInputs, IntentSink<SettingsIntent>>(
+      source: settingsUpdateInputsProvider,
+      actions: widget.binding.intents,
+      loading: (_, _) => const SizedBox.shrink(),
+      data: (context, inputs, _) =>
+          _buildCard(context, inputs.status, inputs.repository),
     );
   }
 
