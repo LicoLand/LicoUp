@@ -75,7 +75,11 @@ function inventory(installDir, ports) {
 }
 
 function unregister(apps, ports, stage) {
-  if (apps.length && !ports.unregister(apps)) fail("macos_install_unregister_failed", stage);
+  // Stale Spotlight/lsregister entries whose volume or worktree is gone fail
+  // the whole lsregister batch; unregister only real app bundles that still
+  // exist (non-.app paths are not valid bundles and abort the batch).
+  const existing = apps.filter((app) => app.endsWith(".app") && ports.exists(app));
+  if (existing.length && !ports.unregister(existing)) fail("macos_install_unregister_failed", stage);
 }
 
 function removeInstallation(app, ports) {
@@ -288,8 +292,11 @@ export function createMacosAppPorts() {
     move: renameSync,
     copyTree: (source, target) => cpSync(source, target, { recursive: true, dereference: false, verbatimSymlinks: true }),
     unregister: (apps) => {
-      for (let index = 0; index < apps.length; index += 100) {
-        if (command(LSREGISTER, ["-u", ...apps.slice(index, index + 100)]).status !== 0) return false;
+      // lsregister -u aborts the whole batch on any stale or unscannable
+      // entry (-10814); unregister per app and treat failures as already
+      // stale — the fresh register that follows rewrites the database row.
+      for (const app of apps) {
+        command(LSREGISTER, ["-u", app]);
       }
       return true;
     },
