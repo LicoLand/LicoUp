@@ -51,7 +51,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "15";
+pub const CURRENT_SCHEMA_VERSION: &str = "16";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -3674,7 +3674,9 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15") => {}
+        Some(
+            "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16",
+        ) => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -3860,6 +3862,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if version == "14" {
         native_sessions::migrate_native_sessions_v15(connection)?;
+    }
+    let version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == "15" {
+        migrate_subagent_dispatch_deliveries_v16(connection)?;
     }
     Ok(())
 }
@@ -4212,6 +4222,36 @@ fn migrate_licoup_guide_profile_references_v13(connection: &mut Connection) -> S
         "INSERT INTO schema_meta(key, value) VALUES ('version', '13')
          ON CONFLICT(key) DO UPDATE SET value='13'",
         [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Version 16 creates the subagent dispatch delivery table. The table entered
+/// the schema after version 15 was already deployed, so stores that reached 15
+/// before its introduction never created it.
+fn migrate_subagent_dispatch_deliveries_v16(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(
+        "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
+           claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
+           kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
+           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+           recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
+           state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
+           terminal_state TEXT,
+           payload TEXT,
+           attempt_count INTEGER NOT NULL DEFAULT 0,
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL,
+           delivered_at INTEGER,
+           admitted_turn_id TEXT,
+           PRIMARY KEY (claim_id, kind)
+         );
+         CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
+           ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
+         INSERT INTO schema_meta(key, value) VALUES ('version', '16')
+           ON CONFLICT(key) DO UPDATE SET value='16';",
     )?;
     transaction.commit()?;
     Ok(())
@@ -8102,6 +8142,42 @@ mod tests {
         for membership in conversation.memberships {
             assert_eq!(membership.status, MembershipStatus::Active);
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v15_store_missing_dispatch_deliveries_is_healed_by_migration() {
+        let root = std::env::temp_dir().join(format!("lico-conv-v15-delivery-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
+        let store = ConversationStore::open_for_migration(&root).unwrap();
+        assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
+        drop(store);
+
+        let fixture = open_fixture_connection(&root);
+        fixture
+            .execute_batch(
+                "DROP TABLE subagent_dispatch_deliveries;
+                 UPDATE schema_meta SET value='15' WHERE key='version';",
+            )
+            .unwrap();
+        fixture.close().unwrap();
+
+        assert!(ConversationStore::open(&root).is_err());
+        let store = ConversationStore::open_for_migration(&root).unwrap();
+        store
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM subagent_dispatch_deliveries",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap();
+                Ok(())
+            })
+            .unwrap();
+        drop(store);
+        ConversationStore::open(&root).unwrap();
         let _ = std::fs::remove_dir_all(&root);
     }
 
