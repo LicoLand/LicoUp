@@ -5,6 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::domain::workflow_store::{
+    CommittedTransition, StrategyStore, TransitionDecorator, TransitionObserver,
+};
 use crate::platform::runtime_adapters::RuntimeAdapterError;
 use crate::platform::strategy_runtime::{
     RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, admit_strategy_cwd, execute_actor,
@@ -14,8 +17,7 @@ use crate::platform::strategy_runtime::{
 use super::assistant::sha256_hex;
 use super::{
     ASSISTANT_TEMPORARY_DEFINITION_PREFIX, AssistantPreflight, BindingCandidate, BindingValue,
-    PreflightFailure, StrategyDefinition, StrategyPackageImporter, StrategyStore,
-    preflight_assistant_graph,
+    PreflightFailure, StrategyDefinition, StrategyPackageImporter, preflight_assistant_graph,
 };
 use licoup_workflow::machine::{effect_input_for, fallback_reason};
 use licoup_workflow::{
@@ -51,6 +53,52 @@ pub struct AssistantWakePort {
     pub wake: Arc<dyn Fn(&str, &str, &Value) -> std::result::Result<(), String> + Send + Sync>,
 }
 
+#[derive(Clone)]
+struct PostCommitDispatcher {
+    portable_root: PathBuf,
+    assistant_wake: Arc<Mutex<Option<Arc<AssistantWakePort>>>>,
+}
+
+impl PostCommitDispatcher {
+    fn new(portable_root: PathBuf) -> Self {
+        Self {
+            portable_root,
+            assistant_wake: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn set_assistant_wake(&self, assistant_wake: AssistantWakePort) {
+        let mut slot = self
+            .assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        *slot = Some(Arc::new(assistant_wake));
+    }
+
+    fn assistant_wake(&self) -> Option<Arc<AssistantWakePort>> {
+        self.assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
+    }
+}
+
+impl TransitionObserver for PostCommitDispatcher {
+    fn after_commit(&self, transition: &CommittedTransition) -> Result<()> {
+        let wake = self
+            .assistant_wake
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone();
+        StrategyService::report_master_gates(
+            &self.portable_root,
+            wake.as_deref(),
+            Some(&transition.before),
+            &transition.after,
+        )
+    }
+}
+
 fn driving_runs() -> &'static Mutex<BTreeSet<String>> {
     static RUNS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
     RUNS.get_or_init(|| Mutex::new(BTreeSet::new()))
@@ -62,7 +110,8 @@ pub struct StrategyService {
     importer: StrategyPackageImporter,
     portable_root: PathBuf,
     actor_port: Option<Arc<ActorTurnPort>>,
-    assistant_wake: Option<Arc<AssistantWakePort>>,
+    transition: TransitionDecorator,
+    post_commit: Arc<PostCommitDispatcher>,
     profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
 }
 
@@ -77,15 +126,14 @@ impl std::fmt::Debug for StrategyService {
 
 impl StrategyService {
     pub fn open(portable_root: &Path) -> Result<Self> {
-        let service = Self {
-            store: StrategyStore::open(portable_root)?,
-            importer: StrategyPackageImporter::open(portable_root)?,
-            portable_root: portable_root.to_path_buf(),
-            actor_port: None,
-            assistant_wake: None,
-            profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
-        };
+        let store = StrategyStore::open(portable_root)?;
+        let service = Self::from_parts(
+            portable_root.to_path_buf(),
+            store,
+            StrategyPackageImporter::open(portable_root)?,
+        );
         service.refresh_runtime_bindings()?;
+        let _ = service.transition.reconcile_pending();
         Ok(service)
     }
 
@@ -94,12 +142,15 @@ impl StrategyService {
         store: StrategyStore,
         importer: StrategyPackageImporter,
     ) -> Self {
+        let post_commit = Arc::new(PostCommitDispatcher::new(portable_root.clone()));
+        let transition = TransitionDecorator::new(store.clone()).with_observer(post_commit.clone());
         Self {
             store,
             importer,
             portable_root,
             actor_port: None,
-            assistant_wake: None,
+            transition,
+            post_commit,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
         }
     }
@@ -109,8 +160,8 @@ impl StrategyService {
         self
     }
 
-    pub fn with_assistant_wake_port(mut self, assistant_wake: AssistantWakePort) -> Self {
-        self.assistant_wake = Some(Arc::new(assistant_wake));
+    pub fn with_assistant_wake_port(self, assistant_wake: AssistantWakePort) -> Self {
+        self.post_commit.set_assistant_wake(assistant_wake);
         self
     }
 
@@ -325,7 +376,7 @@ impl StrategyService {
                     cwd,
                 )?;
                 self.record_graph_usage(&snapshot, None)?;
-                let _ = self.report_master_gates(None, &snapshot);
+                let _ = self.transition.reconcile_pending();
                 let entry_turn = self.start_drive(&snapshot)?;
                 let mut value =
                     serde_json::to_value(self.store.projection_for_run(&snapshot.run_id)?)?;
@@ -412,7 +463,7 @@ impl StrategyService {
                                                 == Some(FailureClass::Authority)
                                     })
                                     .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                                self.store.apply_event(
+                                self.apply_run_event(
                                     run_id,
                                     ReducerEvent::RetryRequested {
                                         command_id: command.id.clone(),
@@ -426,7 +477,7 @@ impl StrategyService {
                                 .values()
                                 .find(|command| command.status == CommandStatus::Retryable)
                                 .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                            self.store.apply_event(
+                            self.apply_run_event(
                                 run_id,
                                 ReducerEvent::RetryRequested {
                                     command_id: command.id.clone(),
@@ -456,7 +507,7 @@ impl StrategyService {
                     .values()
                     .filter(|command| command.status == CommandStatus::CancelRequested)
                 {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::CancellationUnknown {
                             command_id: command.id.clone(),
@@ -480,7 +531,7 @@ impl StrategyService {
                     .values()
                     .find(|command| command.status == CommandStatus::Retryable)
                     .ok_or_else(|| anyhow!("run_not_retryable"))?;
-                self.store.apply_event(
+                self.apply_run_event(
                     run_id,
                     ReducerEvent::RetryRequested {
                         command_id: command.id.clone(),
@@ -581,7 +632,7 @@ impl StrategyService {
                     .values()
                     .filter(|command| command.status == CommandStatus::CancelRequested)
                 {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::CancellationUnknown {
                             command_id: command.id.clone(),
@@ -773,7 +824,7 @@ impl StrategyService {
         // master agent's callback decision arrives with it and the reducer
         // applies it before the run is driven further.
         let snapshot = match decision {
-            Some((state_id, state_visit, kind)) => self.store.apply_event(
+            Some((state_id, state_visit, kind)) => self.apply_run_event(
                 run_id,
                 ReducerEvent::CallbackDecision {
                     state_id,
@@ -1149,6 +1200,7 @@ impl StrategyService {
     }
 
     fn start_drive(&self, snapshot: &RunSnapshot) -> Result<Option<Value>> {
+        let _ = self.transition.reconcile_pending();
         // Usage admission is local and deterministic, so it completes before
         // registering the first Membership turn or issuing any other effect.
         self.record_graph_usage(snapshot, None)?;
@@ -1198,7 +1250,7 @@ impl StrategyService {
             return self.settle_drive_failure(&snapshot.run_id);
         };
         let (class, code) = classify_effect_error(message);
-        let updated = self.store.apply_event(
+        let updated = self.apply_run_event(
             &snapshot.run_id,
             ReducerEvent::AssistantEffectFailed {
                 command_id: command.id.clone(),
@@ -1208,23 +1260,14 @@ impl StrategyService {
             },
         )?;
         self.refresh_graph_usage(&updated, None);
-        // Assistant-owned runs return the typed outcome on execute. Imported
-        // runs owe the same settlement to the Conversation's master agent.
-        if updated.assistant_membership_id.is_none() {
-            let _ = self.report_master_gates(Some(snapshot), &updated);
-        }
         Ok(())
     }
 
     fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
-        let drive_entry = self.store.run(run_id)?;
         self.store.reclaim_abandoned_host_commands(run_id)?;
         self.recover_expired_commands(run_id)?;
+        let _ = self.transition.reconcile_pending();
         let recovered = self.store.run(run_id)?;
-        // Recovery settles expired leases through the same reducer; any
-        // callback wait or terminal failure it produced still owes the master
-        // agent its report.
-        let _ = self.report_master_gates(Some(&drive_entry), &recovered);
         let assistant_owned = recovered.assistant_membership_id.is_some();
         let mut executed = 0usize;
         'drive: while executed < MAX_DRIVE_EFFECTS_PER_CALL {
@@ -1256,7 +1299,7 @@ impl StrategyService {
                     command.status == CommandStatus::Retryable
                         && command.failure_class == Some(FailureClass::Authority)
                 }) {
-                    self.store.apply_event(
+                    self.apply_run_event(
                         run_id,
                         ReducerEvent::RetryRequested {
                             command_id: command.id.clone(),
@@ -1284,7 +1327,7 @@ impl StrategyService {
                 else {
                     break;
                 };
-                self.store.apply_event(
+                self.apply_run_event(
                     run_id,
                     ReducerEvent::CommandStarted {
                         command_id: command.id.clone(),
@@ -1406,7 +1449,7 @@ impl StrategyService {
             }
             if !assistant_failures.is_empty() {
                 for (command, class, code, output) in assistant_failures {
-                    let updated = self.store.apply_event(
+                    let updated = self.apply_run_event(
                         run_id,
                         ReducerEvent::AssistantEffectFailed {
                             command_id: command.id.clone(),
@@ -1431,16 +1474,13 @@ impl StrategyService {
         if assistant_run_terminal(snapshot.status) {
             return Ok(());
         }
-        let updated = self.store.apply_event(
+        let updated = self.apply_run_event(
             run_id,
             ReducerEvent::AssistantDriveFailed {
                 code: "assistant_drive_outcome_unknown".to_owned(),
             },
         )?;
         self.refresh_graph_usage(&updated, None);
-        if updated.assistant_membership_id.is_none() {
-            let _ = self.report_master_gates(Some(&snapshot), &updated);
-        }
         Ok(())
     }
 
@@ -1483,10 +1523,23 @@ impl StrategyService {
         let definition = self
             .store
             .definition_by_revision(&snapshot.definition_digest)?;
+        // The permission, version, and resource recheck is the only admission
+        // gate for this effect: it re-reads the authorization from the store and
+        // compares the claimed command's visit against the run's current visit,
+        // so a revoked authorization or a stale command stops here rather than
+        // inside the executor.
+        let recheck_ctx = super::evolution::EffectRecheckContext::for_run_command(
+            run_id,
+            &snapshot,
+            &definition,
+            command,
+            claimant,
+        );
+        super::evolution::recheck_before_effect(&recheck_ctx)
+            .map_err(|failure| anyhow!(failure.code()))?;
         let authorization = definition
             .authorization
             .as_ref()
-            .filter(|authorization| authorization.active)
             .ok_or_else(|| anyhow!("authorization_required"))?;
         match command.kind {
             CommandKind::Actor | CommandKind::WorksetItem => {
@@ -1602,7 +1655,7 @@ impl StrategyService {
         if current.status == CommandStatus::Retryable
             && current.failure_class == Some(FailureClass::Transient)
         {
-            self.store.apply_event(
+            self.apply_run_event(
                 run_id,
                 ReducerEvent::RetryRequested {
                     command_id: current.id,
@@ -1641,7 +1694,7 @@ impl StrategyService {
                     .or_insert_with(|| Value::String(session.to_owned()));
             }
         }
-        self.store.apply_event(
+        self.apply_run_event(
             run_id,
             ReducerEvent::FallbackIssued {
                 failed_command_id: current.id,
@@ -1717,10 +1770,7 @@ impl StrategyService {
     /// the reduction produced. The reduction commits first; the report is a
     /// Membership-scoped projection and never fails the drive.
     fn apply_run_event(&self, run_id: &str, event: ReducerEvent) -> Result<RunSnapshot> {
-        let before = self.store.run(run_id)?;
-        let updated = self.store.apply_event(run_id, event)?;
-        let _ = self.report_master_gates(Some(&before), &updated);
-        Ok(updated)
+        self.transition.apply_event(run_id, event)
     }
 
     /// Runs owe the master agent a Membership-scoped event when a
@@ -1733,7 +1783,12 @@ impl StrategyService {
     /// Membership for Assistant-owned runs and the bound Conversation's
     /// designated Assistant Membership for imported runs; the payload names
     /// the answer channel that actually settles the wait.
-    fn report_master_gates(&self, before: Option<&RunSnapshot>, after: &RunSnapshot) -> Result<()> {
+    fn report_master_gates(
+        portable_root: &Path,
+        assistant_wake: Option<&AssistantWakePort>,
+        before: Option<&RunSnapshot>,
+        after: &RunSnapshot,
+    ) -> Result<()> {
         let Some(conversation_id) = after
             .conversation_id
             .as_deref()
@@ -1782,8 +1837,12 @@ impl StrategyService {
         } else {
             "strategy.run.resume"
         };
+        let enricher = super::evolution::CallbackEvolutionEnricher::new(portable_root);
         for pending in newly_parked {
-            self.append_master_report(
+            let evolution = enricher.enrich_callback_request(after, pending, answer_channel);
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1799,11 +1858,17 @@ impl StrategyService {
                     "decisions": ["advance", "return", "terminate"],
                     "answerChannel": answer_channel,
                     "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
         if failure_terminal {
-            self.append_master_report(
+            let evolution = enricher.enrich_terminal_outcome(after);
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1813,11 +1878,17 @@ impl StrategyService {
                     "runId": after.run_id,
                     "status": wire_enum(after.status)?,
                     "diagnostic": after.diagnostic_code,
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
         for (state_id, state_visit) in flow_settled {
-            self.append_master_report(
+            let evolution = enricher.enrich_flow_settled(after, state_id, state_visit);
+            Self::append_master_report(
+                portable_root,
+                assistant_wake,
                 conversation_id,
                 after.assistant_membership_id.as_deref(),
                 Some(&after.run_id),
@@ -1828,6 +1899,9 @@ impl StrategyService {
                     "stateId": state_id,
                     "stateVisit": state_visit,
                     "mode": "flow",
+                    "evolution": evolution,
+                    "facts": evolution.facts,
+                    "suggestions": evolution.suggestions,
                 }),
             )?;
         }
@@ -1842,7 +1916,10 @@ impl StrategyService {
         conversation_id: &str,
         projected: &Value,
     ) -> Result<()> {
-        self.append_master_report(
+        let wake = self.post_commit.assistant_wake();
+        Self::append_master_report(
+            &self.portable_root,
+            wake.as_deref(),
             conversation_id,
             None,
             None,
@@ -1857,14 +1934,14 @@ impl StrategyService {
     }
 
     fn append_master_report(
-        &self,
+        portable_root: &Path,
+        assistant_wake: Option<&AssistantWakePort>,
         conversation_id: &str,
         preferred_master_id: Option<&str>,
         causation_id: Option<&str>,
         part: Value,
     ) -> Result<()> {
-        let store =
-            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        let store = crate::domain::client_conversation::ConversationStore::open(portable_root)?;
         let conversation = store.get(conversation_id)?;
         let master_id = preferred_master_id.or(conversation.assistant_membership_id.as_deref());
         let Some(master) = master_id
@@ -1896,7 +1973,7 @@ impl StrategyService {
         // fire-and-forget surface that opens one new Assistant turn only when
         // no turn of that membership is in flight, so it never fails the
         // drive and never stacks a second turn.
-        if let Some(port) = self.assistant_wake.as_ref() {
+        if let Some(port) = assistant_wake {
             let _ = (port.wake)(conversation_id, &master, &part);
         }
         Ok(())
@@ -2542,6 +2619,12 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
         (FailureClass::Sandbox, "sandbox_unavailable")
     } else if message.contains("authorization") || message.contains("permit") {
         (FailureClass::Authority, "authorization_required")
+    } else if let Some(code) = recheck_failure_code(message) {
+        // The executor's own pre-effect recheck refused this effect. Keep the
+        // recheck's exact typed code (revision, generation, session writer, or
+        // budget) instead of flattening every refusal into a generic effect
+        // failure, so the run projection says which fact changed.
+        (FailureClass::Permanent, code)
     } else if message.contains("usage_limit_exceeded")
         || message.contains("quota_exhausted")
         || message.contains("strategy_actor_quota_exhausted")
@@ -2562,6 +2645,24 @@ fn classify_effect_error(message: &str) -> (FailureClass, &'static str) {
     } else {
         (FailureClass::Permanent, "effect_failed")
     }
+}
+
+/// The typed codes [`super::evolution::EffectRecheckFailure::code`] produces.
+///
+/// They are matched structurally rather than by an equality check because the
+/// executor wraps the refusal in its own error text on the way out.
+const RECHECK_FAILURE_CODES: [&str; 5] = [
+    "strategy_recheck_version_mismatch",
+    "strategy_recheck_stale_generation",
+    "strategy_recheck_session_writer_conflict",
+    "strategy_recheck_token_budget_exhausted",
+    "strategy_recheck_resource_unavailable",
+];
+
+fn recheck_failure_code(message: &str) -> Option<&'static str> {
+    RECHECK_FAILURE_CODES
+        .into_iter()
+        .find(|code| message.contains(code))
 }
 
 /// Actor/workset JSON that the runtime returned as a value, not a transport Err.
@@ -2994,7 +3095,7 @@ mod tests {
         let zip_path = root.join("fixture.zip");
         fs::write(
             &zip_path,
-            crate::domain::adaptive_flywheel::synthetic_fixture_package_bytes().unwrap(),
+            crate::domain::workflow_runtime::synthetic_fixture_package_bytes().unwrap(),
         )
         .unwrap();
         let prepared = service
@@ -3272,6 +3373,21 @@ mod tests {
         assert_eq!(
             super::classify_effect_error("strategy_actor_dispatch_failed"),
             (FailureClass::Transient, "effect_temporarily_unavailable")
+        );
+        // A refusal from the executor's own pre-effect recheck keeps its typed
+        // code, so the run projection says which fact changed instead of
+        // reporting every refusal as a generic effect failure.
+        for code in super::RECHECK_FAILURE_CODES {
+            assert_eq!(
+                super::classify_effect_error(&format!("pre_effect_recheck:{code}")),
+                (FailureClass::Permanent, code)
+            );
+        }
+        // A revoked authorization stays an authority refusal the master can
+        // answer by re-authorizing, not a bare recheck code.
+        assert_eq!(
+            super::classify_effect_error("authorization_required"),
+            (FailureClass::Authority, "authorization_required")
         );
         assert_eq!(
             super::actor_output_failure(
@@ -4515,6 +4631,28 @@ mod tests {
             report["answerFields"],
             json!(["decision", "callbackStateId", "callbackStateVisit"])
         );
+        // The request carries the evolution facts and suggestions the Assistant
+        // decides from. Spend is reported as a number or as unknown (null),
+        // never as zero-on-failure, and no budget pool is claimed while the T04
+        // pool seam is unwired.
+        assert_eq!(report["facts"]["context"]["stateId"], json!("greet"));
+        assert_eq!(report["facts"]["context"]["stateVisit"], json!(1));
+        assert_eq!(
+            report["facts"]["observation"]["stateVisits"]["greet"],
+            json!(1)
+        );
+        assert_ne!(report["facts"]["cost"]["budgetPoolSeamActive"], json!(true));
+        assert_eq!(
+            report["suggestions"]["recommendedDecision"],
+            json!("advance")
+        );
+        assert_eq!(
+            report["suggestions"]["alternativeDecisions"],
+            json!(["return", "terminate"])
+        );
+        // Strategy versions advise; they never grant execution permission, and
+        // with no candidate catalog wired the request carries no advice at all.
+        assert!(report["suggestions"]["strategySuggestion"].is_null());
 
         // A bare resume never advances a callback wait.
         let resumed = service
@@ -4556,6 +4694,203 @@ mod tests {
             .unwrap();
         assert_eq!(replay["ok"], false);
         assert_eq!(replay["error"]["code"], "callback_stale");
+        remove_drive_root(root, service);
+    }
+
+    /// A callback edge whose target is a second actor state, so the master's
+    /// decision starts an effect that must pass the executor's own recheck.
+    fn authorized_callback_review_store(
+        root: &Path,
+        membership_id: &str,
+    ) -> (StrategyStore, String) {
+        use licoup_workflow::{
+            ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
+            TransitionMode, WorkflowDefinition, WorkflowMetadata,
+        };
+
+        let actor_state = |id: &str, label: &str, slot: &str| GraphState {
+            id: id.into(),
+            kind: GraphStateKind::Actor,
+            label: label.into(),
+            instruction: String::new(),
+            binding: Some(slot.into()),
+            runtime: None,
+            entry: None,
+            workset: None,
+            retry: RetryPolicy {
+                max_attempts: 2,
+                transient_only: true,
+            },
+        };
+        let driver_state = |id: &str, label: &str, kind: GraphStateKind| GraphState {
+            id: id.into(),
+            kind,
+            label: label.into(),
+            instruction: String::new(),
+            binding: None,
+            runtime: None,
+            entry: None,
+            workset: None,
+            retry: RetryPolicy::default(),
+        };
+        let mut entry = ActorSlot::required_actor("entry", "Entry");
+        entry.entry = true;
+        let mut reviewer = ActorSlot::required_actor("reviewer", "Reviewer");
+        reviewer.entry = false;
+        let workflow = WorkflowDefinition {
+            schema: licoup_workflow::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "entry-review-callback".into(),
+                name: "Entry review callback".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: licoup_workflow::WorkflowLimits {
+                max_parallelism: 1,
+                max_workset_items: 1,
+                max_attempts: 2,
+            },
+            actor_slots: vec![entry, reviewer],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "greet".into(),
+            states: vec![
+                actor_state("greet", "Greet", "entry"),
+                actor_state("review", "Review", "reviewer"),
+                driver_state("done", "Done", GraphStateKind::Succeed),
+                driver_state("failed", "Failed", GraphStateKind::Fail),
+            ],
+            transitions: vec![
+                Transition {
+                    id: "greeted".into(),
+                    from: "greet".into(),
+                    to: "review".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Callback,
+                    guard: None,
+                },
+                Transition {
+                    id: "greet-failed".into(),
+                    from: "greet".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "reviewed".into(),
+                    from: "review".into(),
+                    to: "done".into(),
+                    event: TransitionEvent::Success,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+                Transition {
+                    id: "review-failed".into(),
+                    from: "review".into(),
+                    to: "failed".into(),
+                    event: TransitionEvent::Failure,
+                    mode: TransitionMode::Flow,
+                    guard: None,
+                },
+            ],
+        };
+
+        let store = StrategyStore::open(root).unwrap();
+        let revision = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        store
+            .register_definition(revision, revision, &workflow, 1, 1)
+            .unwrap();
+        for slot in ["entry", "reviewer"] {
+            store
+                .replace_slot_bindings(
+                    revision,
+                    slot,
+                    &[BindingCandidate {
+                        value_id: membership_id.to_owned(),
+                        model: String::new(),
+                        reasoning_effort: String::new(),
+                    }],
+                    None,
+                )
+                .unwrap();
+        }
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        (store, revision.to_owned())
+    }
+
+    #[test]
+    fn revoked_authorization_stops_the_effect_the_master_decision_would_start() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_callback_review_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let port = recording_port(Arc::clone(&calls), |_, _| {
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port);
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "revoked-callback-start-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let parked = wait_for_status(&store, &run_id, StrategyRunStatus::Waiting);
+        assert_eq!(parked.pending_callbacks.len(), 1);
+        assert_eq!(parked.pending_callbacks[0].target, "review");
+        let effects_before_revocation = calls.lock().unwrap().len();
+        wait_for_master_report(
+            &conversation_store,
+            &conversation_id,
+            "strategy-callback-request",
+        );
+
+        // The host revokes the authorization while the run waits. The master's
+        // decision is still accepted, but the effect it would start is refused
+        // before any actor call is made: the executor's pre-effect recheck
+        // reads the revoked row first, and the store's own effect authorization
+        // refuses it independently.
+        //
+        // This proves the end-to-end outcome, not which of the two gates fired:
+        // the recheck's own branches are pinned by the evolution unit tests.
+        store.revoke_authorization(&revision).unwrap();
+        let decided = service
+            .execute(json!({
+                "action": "strategy.run.resume",
+                "runId": run_id,
+                "decision": "advance",
+                "callbackStateId": "greet",
+                "callbackStateVisit": 1,
+            }))
+            .unwrap();
+        assert_eq!(decided["ok"], true, "{decided}");
+
+        let refused = wait_for_status(&store, &run_id, StrategyRunStatus::AuthorizationRequired);
+        assert_eq!(
+            refused.diagnostic_code.as_deref(),
+            Some("authorization_required")
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            effects_before_revocation,
+            "the review effect must not run without an active authorization"
+        );
         remove_drive_root(root, service);
     }
 
