@@ -15,13 +15,163 @@ export 'package:licoup/src/frontend/features/settings/ui/settings_dropdown_list.
 const _appearanceSegmentLabelWidth = 72.0;
 const _appearanceToggleWidth = 320.0;
 
-Widget _appearanceSegmentLabel(String label) {
-  return SizedBox(
-    width: _appearanceSegmentLabelWidth,
-    child: Center(
-      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-    ),
-  );
+/// One segmented control recipe for settings surfaces: a hairline rounded
+/// track with an inset sliding thumb — the iOS idiom, in the interface's own
+/// rounded-rectangle language. Shared by the appearance day/night toggle and
+/// the client-update channel selector.
+class SettingsSegmentedControl<T> extends StatelessWidget {
+  const SettingsSegmentedControl({
+    super.key,
+    required this.segments,
+    required this.selected,
+    required this.onChanged,
+    this.disabledSegments = const {},
+    this.enabled = true,
+    this.segmentMinWidth = 88,
+    this.width,
+  });
+
+  final List<({T value, String label})> segments;
+  final T selected;
+  final ValueChanged<T> onChanged;
+  final Set<T> disabledSegments;
+  final bool enabled;
+  final double segmentMinWidth;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final count = segments.length;
+    final selectedIndex = segments.indexWhere(
+      (segment) => segment.value == selected,
+    );
+    final effectiveWidth = width ?? segmentMinWidth * count + 4;
+    return SizedBox(
+      width: effectiveWidth,
+      child: DecoratedBox(
+        decoration: continuousHairlineDecoration(
+          color: colors.surfaceLow,
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
+          stroke: colors.line,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Opacity(
+            opacity: enabled ? 1 : 0.55,
+            child: SizedBox(
+              height: 28,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final segmentWidth = constraints.maxWidth / count;
+                  return Stack(
+                    children: [
+                      if (selectedIndex >= 0)
+                        AnimatedPositioned(
+                          duration: context.motion(LicoMotion.micro),
+                          curve: LicoMotion.standard,
+                          left: selectedIndex * segmentWidth,
+                          width: segmentWidth,
+                          top: 0,
+                          bottom: 0,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(
+                                LicoRadius.chip - 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colors.text.withValues(
+                                    alpha: colors.isDark ? 0.22 : 0.10,
+                                  ),
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          for (var index = 0; index < count; index++)
+                            Expanded(
+                              child: _SettingsSegment(
+                                label: segments[index].label,
+                                selected: index == selectedIndex,
+                                enabled:
+                                    enabled &&
+                                    !disabledSegments.contains(
+                                      segments[index].value,
+                                    ),
+                                onTap: () => onChanged(segments[index].value),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsSegment extends StatelessWidget {
+  const _SettingsSegment({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final foreground = !enabled
+        ? colors.textMuted.withAlpha(110)
+        : selected
+        ? colors.primaryStrong
+        : colors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: enabled,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(LicoRadius.chip - 2),
+          mouseCursor: enabled
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          child: Center(
+            child: AnimatedDefaultTextStyle(
+              duration: context.motion(LicoMotion.micro),
+              curve: LicoMotion.standard,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                height: 1.15,
+              ),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SettingsDropdownRow<T> extends StatelessWidget {
@@ -140,35 +290,14 @@ class SettingsDayNightToggleRow extends StatelessWidget {
         label: strings.appearanceNight,
       ),
     ];
-    // SegmentedButton cannot disable individual segments, so the toggle is a
-    // custom three-segment row where each segment decides its own enabled
-    // state.
-    final toggle = SizedBox(
+    final toggle = SettingsSegmentedControl<AppearanceBrightnessSelection>(
+      key: const Key('appearance-day-night-toggle'),
+      segments: segments,
+      selected: selection,
+      onChanged: onChanged,
+      disabledSegments: disabledSegments,
+      segmentMinWidth: _appearanceSegmentLabelWidth,
       width: _appearanceToggleWidth,
-      child: DecoratedBox(
-        key: const Key('appearance-day-night-toggle'),
-        decoration: continuousHairlineDecoration(
-          color: colors.surfaceLow,
-          borderRadius: BorderRadius.circular(LicoRadius.chip),
-          stroke: colors.line,
-        ),
-        child: Row(
-          children: [
-            for (var index = 0; index < segments.length; index++) ...[
-              if (index > 0)
-                Container(width: 1, height: 20, color: colors.line),
-              Expanded(
-                child: _DayNightSegment(
-                  label: _appearanceSegmentLabel(segments[index].label),
-                  selected: selection == segments[index].value,
-                  enabled: !disabledSegments.contains(segments[index].value),
-                  onTap: () => onChanged(segments[index].value),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
 
     return Padding(
@@ -207,54 +336,6 @@ class SettingsDayNightToggleRow extends StatelessWidget {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class _DayNightSegment extends StatelessWidget {
-  const _DayNightSegment({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final Widget label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final foreground = !enabled
-        ? colors.textMuted.withAlpha(110)
-        : selected
-        ? colors.primaryStrong
-        : colors.text;
-    final background = selected ? colors.surface : Colors.transparent;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(7),
-        child: AnimatedContainer(
-          duration: context.motion(LicoMotion.micro),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: DefaultTextStyle.merge(
-            style: TextStyle(
-              color: foreground,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            ),
-            child: label,
-          ),
-        ),
       ),
     );
   }

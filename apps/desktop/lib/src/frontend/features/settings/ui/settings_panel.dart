@@ -3,13 +3,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
@@ -26,13 +27,14 @@ import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 const _settingsSectionIds = settingsSectionIdOrder;
 
@@ -275,6 +277,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   Future<void> _travelToSection(String id, int revision) async {
     final targetIndex = _settingsSectionIds.indexOf(id);
     if (targetIndex < 0) return;
+    var alignmentAttempts = 0;
     while (mounted &&
         revision == _jumpRevision &&
         _scrollController.hasClients) {
@@ -286,7 +289,21 @@ class _SettingsPanelState extends State<SettingsPanel> {
           curve: Curves.easeOutQuart,
           alignment: 0.02,
         );
-        return;
+        // Sections above the target can still be installing their
+        // asynchronous regions; their growth shifts the target while the
+        // alignment scroll runs. Re-verify against the settled geometry and
+        // align again instead of stopping on a stale measurement.
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || revision != _jumpRevision) return;
+        final settled = _keyFor(id).currentContext;
+        if (settled != null &&
+            settled.mounted &&
+            _sectionStartsInsideViewport(settled)) {
+          return;
+        }
+        alignmentAttempts += 1;
+        if (alignmentAttempts >= 4) return;
+        continue;
       }
       final known = _sectionOffsets();
       if (known.isEmpty) return;
@@ -308,6 +325,22 @@ class _SettingsPanelState extends State<SettingsPanel> {
       _scrollController.jumpTo(destination);
       await WidgetsBinding.instance.endOfFrame;
     }
+  }
+
+  /// Whether the section's top edge sits inside the content viewport.
+  bool _sectionStartsInsideViewport(BuildContext context) {
+    final viewportBox = _contentKey.currentContext?.findRenderObject();
+    final box = context.findRenderObject();
+    if (viewportBox is! RenderBox ||
+        !viewportBox.hasSize ||
+        box is! RenderBox ||
+        !box.hasSize) {
+      return true;
+    }
+    final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+    final top = box.localToGlobal(Offset.zero).dy;
+    return top >= viewportTop - 1 &&
+        top < viewportTop + viewportBox.size.height - 1;
   }
 
   void _unwatchLayoutState() {
@@ -640,10 +673,12 @@ class _GeneralSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      ProjectionBuilder<SettingsProjection, String?>(
-        source: binding.projection,
-        select: (projection) => _selectedChoiceId(projection.localeChoices),
-        builder: (context, locale) {
+      AsyncRegion<SettingsGeneralInputs, IntentSink<SettingsIntent>>(
+        source: settingsGeneralInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, intents) {
+          final locale = _selectedChoiceId(inputs.localeChoices);
           final strings = LicoStrings.of(context);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -672,8 +707,7 @@ class _GeneralSettings extends StatelessWidget {
                       key: Key('settings-locale-$preference'),
                     ),
                 ],
-                onSelected: (value) =>
-                    binding.intents.send(SetLocalePreference(value)),
+                onSelected: (value) => intents.send(SetLocalePreference(value)),
               ),
             ],
           );
@@ -694,15 +728,17 @@ class _AppearanceSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      ProjectionBuilder<SettingsProjection, AppearanceSettingsSelection>(
-        source: binding.projection,
-        select: AppearanceSettingsSelection.from,
-        builder: _buildAppearance,
+      AsyncRegion<SettingsAppearanceInputs, IntentSink<SettingsIntent>>(
+        source: settingsAppearanceInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: _buildAppearance,
       );
 
   Widget _buildAppearance(
     BuildContext context,
-    AppearanceSettingsSelection projection,
+    SettingsAppearanceInputs projection,
+    IntentSink<SettingsIntent> intents,
   ) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
@@ -745,7 +781,7 @@ class _AppearanceSettings extends StatelessWidget {
               ? AppearanceBrightnessSelection.values.toSet()
               : const {},
           onChanged: (selection) {
-            binding.intents.send(
+            intents.send(
               SetAppearancePreference(
                 _appearancePresetIdForBrightnessSelection(
                   selection,
@@ -770,7 +806,7 @@ class _AppearanceSettings extends StatelessWidget {
               ),
           ],
           onSelected: (presetId) {
-            binding.intents.send(SetAppearancePreference(presetId));
+            intents.send(SetAppearancePreference(presetId));
           },
         ),
         SettingsDropdownRow<String>(
@@ -787,8 +823,7 @@ class _AppearanceSettings extends StatelessWidget {
                     : effect.englishLabel,
               ),
           ],
-          onSelected: (id) =>
-              binding.intents.send(SetLoadingEffectPreference(id)),
+          onSelected: (id) => intents.send(SetLoadingEffectPreference(id)),
         ),
         _ReduceMotionSetting(
           binding: binding,
@@ -808,7 +843,7 @@ class _AppearanceSettings extends StatelessWidget {
             readOnly: true,
             padding: presentation.rowPadding,
             onOpen: (_) {
-              binding.intents.send(
+              intents.send(
                 OpenSettingsDirectory(
                   SettingsDirectory.appearancePresets,
                   caption: strings.appearancePresetDirectory,
@@ -819,7 +854,7 @@ class _AppearanceSettings extends StatelessWidget {
             headerTrailing: IconButton(
               tooltip: strings.reloadPresets,
               onPressed: () {
-                binding.intents.send(const ReloadAppearancePresets());
+                intents.send(const ReloadAppearancePresets());
               },
               icon: const Icon(Icons.refresh_outlined, size: 18),
             ),
@@ -923,19 +958,20 @@ class _StorageSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      ProjectionBuilder<SettingsProjection, StorageSettingsSelection>(
-        source: binding.projection,
-        select: selectStorageSettings,
-        builder: (context, projection) =>
-            _StorageSettingsBody(binding: binding, projection: projection),
+      AsyncRegion<SettingsStorageInputs, IntentSink<SettingsIntent>>(
+        source: settingsStorageInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, _) =>
+            _StorageSettingsBody(binding: binding, inputs: inputs),
       );
 }
 
 class _StorageSettingsBody extends StatefulWidget {
-  const _StorageSettingsBody({required this.binding, required this.projection});
+  const _StorageSettingsBody({required this.binding, required this.inputs});
 
   final SettingsBinding binding;
-  final StorageSettingsSelection projection;
+  final SettingsStorageInputs inputs;
 
   @override
   State<_StorageSettingsBody> createState() => _StorageSettingsState();
@@ -948,7 +984,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
   @override
   void initState() {
     super.initState();
-    _lastSnapshotRootPath = widget.projection.snapshotRootPath;
+    _lastSnapshotRootPath = widget.inputs.snapshotRootPath;
     _snapshotRootController = TextEditingController(
       text: _lastSnapshotRootPath,
     );
@@ -957,7 +993,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
   @override
   void didUpdateWidget(_StorageSettingsBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final next = widget.projection.snapshotRootPath;
+    final next = widget.inputs.snapshotRootPath;
     if (next != _lastSnapshotRootPath) {
       _lastSnapshotRootPath = next;
       _snapshotRootController.text = next;
@@ -989,7 +1025,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
         DirectoryPathField(
           title: strings.portableData,
           label: strings.portableData,
-          path: widget.projection.portableDataPath,
+          path: widget.inputs.portableDataPath,
           icon: Icons.folder_outlined,
           readOnly: true,
           padding: presentation.rowPadding,
@@ -1009,8 +1045,8 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
           controller: _snapshotRootController,
           icon: Icons.inventory_2_outlined,
           padding: presentation.rowPadding,
-          enabled: !widget.projection.savingSnapshotRoot,
-          busy: widget.projection.savingSnapshotRoot,
+          enabled: !widget.inputs.savingSnapshotRoot,
+          busy: widget.inputs.savingSnapshotRoot,
           onOpen: (_) {
             widget.binding.intents.send(
               OpenSettingsDirectory(
@@ -1034,7 +1070,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
             SizedBox(
               height: 38,
               child: FilledButton.icon(
-                onPressed: widget.projection.savingSnapshotRoot
+                onPressed: widget.inputs.savingSnapshotRoot
                     ? null
                     : () {
                         widget.binding.intents.send(
@@ -1043,7 +1079,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
                           ),
                         );
                       },
-                icon: widget.projection.savingSnapshotRoot
+                icon: widget.inputs.savingSnapshotRoot
                     ? const SizedBox(
                         width: 14,
                         height: 14,

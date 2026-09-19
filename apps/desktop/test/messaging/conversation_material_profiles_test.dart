@@ -11,7 +11,7 @@ import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
-  testWidgets('Dashboard owns translucent sidebar and opaque message roles', (
+  testWidgets('Dashboard owns a solid sidebar and opaque message roles', (
     tester,
   ) async {
     for (final presentation in <LayoutAgentsPresentation>[
@@ -80,7 +80,8 @@ void main() {
           find.byKey(const Key('sidebar')),
         );
         final decoration = sidebar.decoration as BoxDecoration;
-        expect(decoration.color!.a, closeTo(0.10, 0.001));
+        expect(decoration.color, const Color(0xFF1C1C1E));
+        expect(decoration.color!.a, 1.0);
         expect(
           decoration.border,
           isNull,
