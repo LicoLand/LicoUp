@@ -172,6 +172,9 @@ void main() {
 
     final controller = ClientController(
       agentService: _UiAgentService(),
+      conversationNativePort: FakeConversationTransport(
+        command: (_, _) async => {'ok': true, 'turns': [], 'result': []},
+      ).native,
       presentationPreferencesRepository: _JourneyPreferencesRepository(),
     );
     addTearDown(controller.dispose);

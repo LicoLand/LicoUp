@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
@@ -28,7 +29,7 @@ final class MobileAgentList extends StatelessWidget {
   });
 
   final AgentsProjection agents;
-  final MobileRelayProjection relay;
+  final MobileRelayHomeInputs relay;
   final IntentSink<AgentsIntent> agentIntents;
   final IntentSink<MobileRelayIntent> relayIntents;
   final ValueChanged<AgentTargetProjection> onSelect;

@@ -11,6 +11,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_inputs.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 
@@ -99,14 +100,14 @@ final class _SkillCategoryChip extends StatelessWidget {
 class SkillCollection extends StatelessWidget {
   const SkillCollection({
     super.key,
-    required this.projection,
+    required this.inputs,
     required this.intents,
     required this.selectedCategory,
     this.agentId,
   });
 
   final String? agentId;
-  final SkillHubProjection projection;
+  final SkillHubCatalogInputs inputs;
   final IntentSink<SkillHubIntent> intents;
   final String selectedCategory;
 
@@ -114,16 +115,16 @@ class SkillCollection extends StatelessWidget {
   Widget build(BuildContext context) {
     final skills = filterAndRankSkillProjections(
       skills: agentId == null
-          ? projection.skills
-          : projection.skills
+          ? inputs.skills
+          : inputs.skills
                 .where(
                   (skill) => skill.agents.any((agent) => agent.id == agentId),
                 )
                 .toList(growable: false),
       category: selectedCategory,
-      query: projection.query,
+      query: inputs.query,
     );
-    if (projection.phase == PresentationPhase.loading && skills.isEmpty) {
+    if (inputs.phase == PresentationPhase.loading && skills.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
         child: SkillScanningPlaceholder(),
@@ -135,7 +136,7 @@ class SkillCollection extends StatelessWidget {
         child: LicoEmptyState(
           icon: Icons.extension_outlined,
           iconSize: 64,
-          title: projection.phase == PresentationPhase.failed
+          title: inputs.phase == PresentationPhase.failed
               ? (LicoStrings.of(context).isChinese
                     ? '技能加载失败'
                     : 'Skills could not be loaded')
@@ -158,7 +159,7 @@ class SkillCollection extends StatelessWidget {
           (context, index) => _SkillCard(
             skill: skills[index],
             intents: intents,
-            usageAvailable: projection.usageAvailable,
+            usageAvailable: inputs.usageAvailable,
           ),
           childCount: skills.length,
         ),

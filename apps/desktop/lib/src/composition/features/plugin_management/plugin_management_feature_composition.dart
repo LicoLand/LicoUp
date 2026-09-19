@@ -1,4 +1,5 @@
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
@@ -6,7 +7,10 @@ import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_effect.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_inputs.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_intent.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_providers.dart';
+import 'package:licoup/src/projections/plugin_management/plugin_management_presentation_sources.dart';
 import 'package:licoup/src/projections/plugin_management/plugin_management_projection_producer.dart';
 
 final class PluginManagementFeatureComposition {
@@ -26,6 +30,12 @@ final class PluginManagementFeatureComposition {
       intents: _intents,
       effects: _effects,
     );
+    _catalogSource = pluginCatalogPresentationSource(_projection);
+    _collaborationSource = pluginCollaborationPresentationSource(_projection);
+    providerOverrides = <Override>[
+      pluginCatalogSourceProvider.overrideWithValue(_catalogSource),
+      pluginCollaborationSourceProvider.overrideWithValue(_collaborationSource),
+    ];
   }
 
   final ClientController _controller;
@@ -33,7 +43,16 @@ final class PluginManagementFeatureComposition {
   late final PluginManagementProjectionProducer _projection;
   late final SemanticEffectChannel<PluginManagementEffect> _effects;
   late final SemanticIntentChannel<PluginManagementIntent> _intents;
+  late final PluginManagementRegionPresentationSource<PluginCatalogInputs>
+  _catalogSource;
+  late final PluginManagementRegionPresentationSource<PluginCollaborationInputs>
+  _collaborationSource;
   late final PluginManagementBinding binding;
+
+  /// Riverpod overrides that supply this feature's live presentation sources.
+  /// The root ProviderScope (F01.7) and feature tests install them; the legacy
+  /// [binding] remains for the consumers that have not migrated yet.
+  late final List<Override> providerOverrides;
   _PendingPluginPlan? _pendingPluginPlan;
   var _nextPluginPlan = 0;
   Future<void>? _disposal;
@@ -404,6 +423,8 @@ final class PluginManagementFeatureComposition {
 
   Future<void> _dispose() async {
     _pendingPluginPlan = null;
+    await _catalogSource.dispose();
+    await _collaborationSource.dispose();
     await _projection.dispose();
     await _effects.dispose();
   }

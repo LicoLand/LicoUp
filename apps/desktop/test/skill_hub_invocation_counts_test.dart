@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -190,20 +191,23 @@ Future<void> _pumpSkillHub(
   final feature = SkillHubFeatureComposition(controller);
   addTearDown(feature.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: const Locale('en'),
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(
-        body: SizedBox(
-          width: 900,
-          height: 650,
-          child: SkillHubPanel(binding: feature.binding),
+    ProviderScope(
+      overrides: feature.providerOverrides,
+      child: MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 650,
+            child: SkillHubPanel(binding: feature.binding),
+          ),
         ),
       ),
     ),

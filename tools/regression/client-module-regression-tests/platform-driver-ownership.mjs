@@ -319,11 +319,12 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  assert.deepEqual(stdioTransport.command.args.slice(-7), [
+  assert.deepEqual(stdioTransport.command.args.slice(-8), [
     "test/stdio_rpc_method_policy_test.dart",
     "test/native_stdio_rpc_client_test.dart",
     "test/native_stdio_rpc_read_pool_test.dart",
     "test/native_stdio_rpc_decoding_test.dart",
+    "test/native_stdio_rpc_operation_pending_queue_test.dart",
     "test/conversation_execution_transport_test.dart",
     "test/native_conversation_port_test.dart",
     "test/stdio_rpc_operation_queue_test.dart",
