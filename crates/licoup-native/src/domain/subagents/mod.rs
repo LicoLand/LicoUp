@@ -46,11 +46,20 @@ pub struct SubagentCallContext<'a, C> {
     pub cancelled: Arc<AtomicBool>,
 }
 
+pub mod admission;
 mod callback;
 mod production;
+pub mod workspace;
 
+pub use admission::{
+    SubagentAdmissionRequest, SubagentContinuityMode, SubagentExtendedCapabilities,
+};
 pub use callback::{CALLBACK_CAUSATION_ID, subagent_callback_plan};
 pub use production::production_application;
+pub use workspace::{
+    InMemorySubagentWorkspacePort, SubagentWorkspaceBinding, SubagentWorkspaceIsolation,
+    SubagentWorkspacePort, verify_resume_working_directory,
+};
 
 pub const MAX_PROMPT_BYTES: usize = 48 * 1024;
 pub const MAX_ID_BYTES: usize = 256;
@@ -115,6 +124,7 @@ pub struct TargetMembership {
     pub provider_id: ProviderId,
     pub preferred_model: Option<String>,
     pub preferred_reasoning_effort: Option<String>,
+    pub working_directory: Option<String>,
 }
 
 /// Canonical Conversation and PersistentTurn authority. Implementations must
@@ -146,6 +156,16 @@ pub trait ConversationHostPort: Send + Sync {
         conversation_id: &str,
         agent: &str,
     ) -> Result<TargetMembership, SubagentError>;
+    fn admit_subagent(
+        &self,
+        request: &SubagentAdmissionRequest,
+    ) -> Result<TargetMembership, SubagentError> {
+        let _ = request;
+        Err(permanent(
+            "subagent_admission_unsupported",
+            "admission/admit",
+        ))
+    }
     fn claim_dispatch(
         &self,
         conversation_id: &str,
@@ -169,6 +189,21 @@ pub trait ConversationHostPort: Send + Sync {
         conversation_id: &str,
         membership_id: &str,
     ) -> Result<DurableNativeBinding, SubagentError>;
+    fn bind_resume_session(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+        runtime_session_id: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<(), SubagentError> {
+        let _ = (
+            conversation_id,
+            membership_id,
+            runtime_session_id,
+            working_directory,
+        );
+        Ok(())
+    }
     fn record_inbound(
         &self,
         conversation_id: &str,
@@ -191,6 +226,7 @@ pub struct SubagentApplication {
     conversation: Arc<dyn ConversationHostPort>,
     adapters: AdapterRegistry,
     targets: Arc<dyn ReadOnlyTargetPort>,
+    workspaces: Arc<dyn SubagentWorkspacePort>,
 }
 
 impl SubagentApplication {
@@ -203,7 +239,13 @@ impl SubagentApplication {
             conversation,
             adapters,
             targets,
+            workspaces: Arc::new(InMemorySubagentWorkspacePort::new()),
         }
+    }
+
+    pub fn with_workspace(mut self, workspaces: Arc<dyn SubagentWorkspacePort>) -> Self {
+        self.workspaces = workspaces;
+        self
     }
 
     /// Mesh members: the providers the adapter registry admits as callers, in
@@ -255,6 +297,7 @@ impl SubagentApplication {
     fn resolve_target(
         &self,
         conversation_id: &str,
+        caller_membership_id: Option<&str>,
         arguments: &Map<String, Value>,
     ) -> Result<TargetMembership, SubagentError> {
         if let Some(membership_id) = optional_bounded_text(arguments, "membershipId", MAX_ID_BYTES)?
@@ -264,9 +307,36 @@ impl SubagentApplication {
                 .target_membership(conversation_id, &membership_id);
         }
         if let Some(agent) = optional_bounded_text(arguments, "agent", MAX_ID_BYTES)? {
-            return self
+            match self
                 .conversation
-                .target_membership_by_agent(conversation_id, &agent);
+                .target_membership_by_agent(conversation_id, &agent)
+            {
+                Ok(target) => return Ok(target),
+                Err(err) if err.code == "subagent_target_seat_missing" => {
+                    if let Some(caller_id) = caller_membership_id {
+                        if let Ok(provider_id) = ProviderId::parse(agent.clone()) {
+                            if self.targets.probe(&provider_id).is_ok() {
+                                let working_directory =
+                                    optional_text(arguments, "workingDirectory");
+                                let model = optional_text(arguments, "model");
+                                let reasoning_effort = optional_text(arguments, "reasoningEffort");
+                                let admission_req = SubagentAdmissionRequest {
+                                    conversation_id: conversation_id.to_owned(),
+                                    caller_membership_id: caller_id.to_owned(),
+                                    agent_id: agent,
+                                    preferred_model: model,
+                                    preferred_reasoning_effort: reasoning_effort,
+                                    working_directory,
+                                };
+                                admission_req.validate()?;
+                                return self.conversation.admit_subagent(&admission_req);
+                            }
+                        }
+                    }
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            }
         }
         Err(retryable(
             "subagent_target_seat_missing",
@@ -295,7 +365,13 @@ impl SubagentApplication {
         }
         let caller_membership_id = caller.effect_scope(&conversation_id)?;
         self.conversation.verify_caller(caller, &conversation_id)?;
-        let target = self.resolve_target(&conversation_id, arguments)?;
+        // Only a fresh delegate may admit a missing seat; continuing a seat
+        // that was never admitted has no native session to resume.
+        let target = self.resolve_target(
+            &conversation_id,
+            (!continuing).then_some(caller_membership_id),
+            arguments,
+        )?;
         let operation = if continuing {
             Operation::Continue
         } else {
@@ -305,28 +381,31 @@ impl SubagentApplication {
 
         // Exact resume identity is adapter-owned and resolved before the new
         // durable claim. A stale or ambiguous identity therefore has zero
-        // effect and leaves no active edge.
-        let resume_identity = if continuing {
+        // effect and leaves no active edge. Resume must not bind the same
+        // request to a different working directory.
+        let (resume_identity, effective_working_directory, recorded_session_id) = if continuing {
             let binding = self
                 .conversation
                 .latest_resume_binding(&conversation_id, &target.membership_id)?;
-            if let (Some(requested), Some(recorded)) = (
+            let effective_cwd = self.workspaces.verify_resume_workspace(
                 arguments.get("workingDirectory").and_then(Value::as_str),
                 binding.working_directory(),
-            ) && requested != recorded
-            {
-                return Err(permanent(
-                    "conversation_working_directory_mismatch",
-                    "identity/resolve",
-                ));
-            }
-            Some(
-                runtime
-                    .resolve_resume_identity(&binding)
-                    .map_err(project_adapter_failure)?,
+            )?;
+            let identity = runtime
+                .resolve_resume_identity(&binding)
+                .map_err(project_adapter_failure)?;
+            (
+                Some(identity),
+                effective_cwd,
+                Some(binding.native_session_id().to_owned()),
             )
         } else {
-            None
+            let requested_cwd = arguments
+                .get("workingDirectory")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| target.working_directory.clone());
+            (None, requested_cwd, None)
         };
 
         let claim = self.conversation.claim_dispatch(
@@ -335,7 +414,13 @@ impl SubagentApplication {
             &target.membership_id,
             caller.parent_dispatch_id.as_deref(),
         )?;
-        let request = dispatch_request(arguments, caller_membership_id, &target, &claim)?;
+        let request = dispatch_request(
+            arguments,
+            caller_membership_id,
+            &target,
+            &claim,
+            effective_working_directory.as_deref(),
+        )?;
         let result = if let Some(identity) = resume_identity {
             runtime.continue_turn(&SubagentContinueRequest {
                 dispatch: request,
@@ -353,6 +438,23 @@ impl SubagentApplication {
                 {
                     return Err(reconciliation_required());
                 }
+                // Post-effect bookkeeping: the dispatch was accepted, so a
+                // binding write failure must not fail the call. Record only a
+                // session identity the runtime actually returned or the one
+                // already bound; the dispatch claim id is not a native
+                // session id and must never be recorded as one.
+                let session_id = receipt
+                    .identity
+                    .as_ref()
+                    .and_then(|identity| identity.binding_for_adapter(&target.provider_id))
+                    .map(str::to_owned)
+                    .or(recorded_session_id);
+                let _ = self.conversation.bind_resume_session(
+                    &conversation_id,
+                    &target.membership_id,
+                    session_id.as_deref(),
+                    effective_working_directory.as_deref(),
+                );
                 receipt
             }
             Err(error) => {
@@ -387,7 +489,7 @@ impl SubagentApplication {
         let conversation_id = resolve_conversation_id(caller, arguments)?;
         let caller_membership_id = caller.effect_scope(&conversation_id)?;
         self.conversation.verify_caller(caller, &conversation_id)?;
-        let target = self.resolve_target(&conversation_id, arguments)?;
+        let target = self.resolve_target(&conversation_id, None, arguments)?;
         let runtime = self.runtime(&target, Operation::Cancel)?;
         let claim = self
             .conversation
@@ -594,6 +696,7 @@ fn dispatch_request(
     caller_membership_id: &str,
     target: &TargetMembership,
     claim: &SubagentDispatchClaim,
+    effective_working_directory: Option<&str>,
 ) -> Result<SubagentDispatchRequest, SubagentError> {
     Ok(SubagentDispatchRequest {
         conversation_id: target.conversation_id.clone(),
@@ -604,7 +707,9 @@ fn dispatch_request(
         model: optional_text(arguments, "model").or_else(|| target.preferred_model.clone()),
         reasoning_effort: optional_text(arguments, "reasoningEffort")
             .or_else(|| target.preferred_reasoning_effort.clone()),
-        working_directory: optional_text(arguments, "workingDirectory"),
+        working_directory: effective_working_directory
+            .map(str::to_owned)
+            .or_else(|| optional_text(arguments, "workingDirectory")),
         task_type: optional_text(arguments, "taskType"),
         timeout_ms: arguments.get("timeoutMs").and_then(Value::as_u64),
         timeout_unbounded: arguments

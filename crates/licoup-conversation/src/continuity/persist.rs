@@ -557,6 +557,10 @@ pub fn enqueue_wake(
     wake: &ContinuityWake,
     conversation_id: &str,
 ) -> Result<bool, ContinuityFailure> {
+    // Distinct logical wakes stay distinct rows: original events are never
+    // merged away at enqueue. Consumption coalesces same-goal wakes into one
+    // logical advancement; a duplicate notification (same logical wake id) is
+    // idempotent and does not create a second logical delivery.
     let changed = unit
         .execute(
             "INSERT OR IGNORE INTO continuity_outbox(

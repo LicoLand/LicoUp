@@ -84,8 +84,8 @@ test("CLI and MCP meet at one argv envelope for the same tool call", () => {
   // CLI decodes. If one side renamed a field, the two interfaces would quietly
   // stop asking for the same thing.
   const mcpEnvelope = remoteApplication.slice(
-    remoteApplication.indexOf("let request = json!"),
-    remoteApplication.indexOf("// A slow inventory"),
+    remoteApplication.indexOf("fn cli_invocation"),
+    remoteApplication.indexOf("// Validate the closed scalar schemas"),
   );
   const cliEnvelope = cliSurface.slice(
     cliSurface.indexOf("struct Invocation"),
@@ -104,10 +104,12 @@ test("CLI and MCP meet at one argv envelope for the same tool call", () => {
     assert.ok(cliEnvelope.includes(field), `the CLI decodes ${field}`);
   }
   assert.match(cliEnvelope, /rename_all = "camelCase"/u);
-  assert.match(remoteApplication, /"providerId":context\.caller\.provider_id/u);
-  assert.match(remoteApplication, /"conversationId":context\.caller\.conversation_id/u);
-  assert.match(remoteApplication, /"membershipId":context\.caller\.membership_id/u);
-  assert.match(remoteApplication, /"parentDispatchId":context\.caller\.parent_dispatch_id/u);
+  assert.match(mcpEnvelope, /"providerId"[\s\S]*caller\.provider_id/u);
+  assert.match(mcpEnvelope, /"conversationId"[\s\S]*caller\.conversation_id/u);
+  assert.match(mcpEnvelope, /"membershipId"[\s\S]*caller\.membership_id/u);
+  assert.match(mcpEnvelope, /"parentDispatchId"[\s\S]*caller\.parent_dispatch_id/u);
+  assert.match(mcpEnvelope, /insert_optional/u);
+  assert.doesNotMatch(mcpEnvelope, /authenticated/u);
   // Both sides address the operation by the same tool name, and the MCP reaches
   // the CLI through the one route the facade serves.
   assert.match(remoteApplication, /"subagents"\.into\(\).*"execute"\.into\(\)/su);

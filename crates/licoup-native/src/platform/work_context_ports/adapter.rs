@@ -251,6 +251,15 @@ impl NativeProtocolAdapter for CodexAdapterProtocol {
         }
     }
 
+    fn session_conflict_key(&self, key: &NativeWorkContextKey) -> Option<String> {
+        let session = stored_session_id(self.store.as_ref(), key);
+        if session.is_empty() {
+            None
+        } else {
+            Some(format!("codex:{session}"))
+        }
+    }
+
     fn exact_resume(&self, key: &NativeWorkContextKey) -> ProtocolOutcome {
         let method = self.methods().exact_resume;
         let stored = stored_native_binding(self.store.as_ref(), key);
@@ -416,6 +425,15 @@ impl NativeProtocolAdapter for PiAdapterProtocol {
             SessionPresence::Unknown
         } else {
             SessionPresence::Present
+        }
+    }
+
+    fn session_conflict_key(&self, key: &NativeWorkContextKey) -> Option<String> {
+        let session = stored_session_id(self.store.as_ref(), key);
+        if session.is_empty() {
+            None
+        } else {
+            Some(format!("pi:{session}"))
         }
     }
 
