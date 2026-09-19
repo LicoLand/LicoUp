@@ -503,7 +503,7 @@ where
                         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
                         let root = licoup_native::platform::paths::portable_data_dir()?;
                         let service =
-                            licoup_native::domain::adaptive_flywheel::StrategyService::open(&root)?;
+                            licoup_native::domain::workflow_runtime::StrategyService::open(&root)?;
                         let service = if let Some(runtime) = runtime {
                             service
                                 .with_actor_turn_port(conversation::strategy_turn_port(
@@ -788,7 +788,7 @@ pub(crate) fn bind_conversation_runtime(
             move |request| {
                 let port =
                     conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
-                licoup_native::domain::adaptive_flywheel::StrategyService::open(&strategy_root)?
+                licoup_native::domain::workflow_runtime::StrategyService::open(&strategy_root)?
                     .with_actor_turn_port(port)
                     .with_assistant_wake_port(conversation::assistant_wake_port(
                         actor_runtime.clone(),
