@@ -5,3 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+
+[dependencies]
+# Fixed Candidate admission delegates protocol verification to the LicoArc SDK.
+licoarc.workspace = true

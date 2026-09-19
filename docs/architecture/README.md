@@ -174,7 +174,7 @@ To maintain clarity across the four primary architectural tiers, detailed domain
 | `crates/licoup-agent-runtime/` | Agent Runtime and adapter crate (workspace member; extraction in progress) |
 | `crates/licoup-platform-bridges/` | Native platform ABI and handle management (Tier 4) |
 | `crates/licoup-endpoint-core/` | Endpoint identity, key custody, crypto foundations |
-| `crates/licoup-protocol-bindings/` | Protocol type definitions |
+| `crates/licoup-protocol-bindings/` | Fixed-input admission for the LicoArc Candidate (verification by the LicoArc SDK) |
 | `crates/licoup-client-state/` | Client state management contracts |
 | `crates/licoup-agent-adapters/` | Agent adapter trait definitions |
 | `crates/lico-catalog-convergence/` | Catalog convergence logic |
@@ -371,7 +371,7 @@ crates/
 ├── licoup-workflow/            # Pure workflow compiler and transition machine
 ├── licoup-agent-runtime/       # L4+L5: Agent adapters + settlement arbiter
 ├── licoup-endpoint-core/       # Endpoint identity, key derivation, crypto
-├── licoup-protocol-bindings/   # L2: Wire protocol types + frame codec
+├── licoup-protocol-bindings/   # L2: Fixed-input admission for the LicoArc Candidate
 ├── licoup-client-state/        # Client state management (quotas, persistence)
 ├── licoup-platform-bridges/    # OS-specific bridges (Keychain, WinCred, etc.)
 ├── licoup-agent-adapters/      # Agent adapter trait definitions

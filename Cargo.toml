@@ -40,6 +40,11 @@ icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
 interprocess = "2.4"
 jni = "0.21"
 libc = "0.2"
+# Fixed LicoArc stable-core SDK for the Candidate integrated in L03 (D22/5.7).
+# The package is not published to any registry and its repository is private, so
+# a revision-pinned git source is the reproducible fixed input; an adjacent
+# directory path dependency would not be reproducible outside this machine.
+licoarc = { package = "licoarc-rust", git = "https://github.com/LicoLand/LicoArc-Rust.git", rev = "244ce7186cac1690c18f091dbe02df36a0860ef4" }
 libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = [
     "alloc",
     "incremental",
