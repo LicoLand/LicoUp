@@ -8,10 +8,10 @@ import {
   parseJson,
   privacyFindings,
   redactionSecrets,
-  replayFrames,
   schemaVersion,
   transcriptHash,
 } from "./shared.mjs";
+import { protocolFrames } from "./protocol-frames.mjs";
 
 const [inputArg, outputArg] = process.argv.slice(2);
 if (!inputArg || !outputArg) throw new Error("usage: redact.mjs <private-raw.json> <candidate.json>");
@@ -31,7 +31,7 @@ const document = deepRedact({
     interface: "native-history-catalog",
     readOnly: true,
   },
-  frames: replayFrames(input.adapterId, input.scenario),
+  frames: protocolFrames(input.adapterId, input.scenario),
   exit: { code: 0, signal: null },
 }, repositoryRoot);
 document.provenance = {
