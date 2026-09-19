@@ -11,7 +11,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// User message surface: profile-owned opaque material when requested, or
 /// frosted transparent glass with a thin neutral hairline at rest. On hover the **edge light** fades in — a thin
-/// bright rim plus a lamp-like field in the shared white light (Kiro-style).
+/// bright rim in the shared white light, nothing more.
 /// Never brand/primary: lemon rims read as olive 泛黄 on the dark chat canvas.
 class MessagingUserBubbleGlass extends StatelessWidget {
   const MessagingUserBubbleGlass({
@@ -35,9 +35,6 @@ class MessagingUserBubbleGlass extends StatelessWidget {
     final opaque = ConversationMaterialScope.opaqueBubblesOf(context);
     var fill = MessagingDesktopMetrics.userBubbleGlassFill(isDark: isDark);
     if (opaque) fill = colors.surface.withValues(alpha: 1);
-    if (hovered) {
-      fill = Color.alphaBlend(colors.hoverOverlay, fill);
-    }
     final restingBorder = MessagingDesktopMetrics.bubbleRestingBorder(
       colors.line,
       isDark: isDark,

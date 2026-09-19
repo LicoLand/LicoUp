@@ -18,6 +18,8 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 
 /// Reproducible component board for Design System visual review.
 /// Uses synthetic content only; GLASS_REVIEW_OUTPUT exports candidate PNGs.
+void _noop() {}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('capture accepted glass reference composition', (tester) async {
@@ -92,9 +94,9 @@ class _Scene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final ink = dark ? const Color(0xFFF4F4F6) : const Color(0xFF21242A);
+    final ink = dark ? const Color(0xFFF4F4F6) : const Color(0xFF472413);
     return ColoredBox(
-      color: dark ? const Color(0xFF17191E) : const Color(0xFFF3F4F7),
+      color: dark ? const Color(0xFF17191E) : const Color(0xFFF4E3DC),
       child: Padding(
         padding: const EdgeInsets.all(36),
         child: DefaultTextStyle(
@@ -183,10 +185,10 @@ class _Scene extends StatelessWidget {
                                     Color(0xFF212B40),
                                   ]
                                 : const [
-                                    Color(0xFFBECEDC),
-                                    Color(0xFFE6CFBD),
-                                    Color(0xFFA9C9CA),
-                                    Color(0xFFB7BDD4),
+                                    Color(0xFFDAEEF6),
+                                    Color(0xFFF9DCD4),
+                                    Color(0xFFFEE9C6),
+                                    Color(0xFFE8D2C5),
                                   ],
                           ),
                         ),
@@ -277,7 +279,7 @@ class _Scene extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: dark
                                     ? const Color(0xFF282D38)
-                                    : const Color(0xFFF6F5F2),
+                                    : const Color(0xFFFCF3EA),
                                 borderRadius: BorderRadius.circular(18),
                               ),
                               child: const Text(
@@ -286,9 +288,24 @@ class _Scene extends StatelessWidget {
                             ),
                             const Spacer(),
                             if (productionChrome) ...[
-                              GroupStrategyPickerCapsule(
-                                selectedRevision: null,
-                                onOpen: (_) {},
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  AssistantToggleButton(
+                                    active: true,
+                                    configured: true,
+                                    label: 'Kimi Code',
+                                    status: GroupAssistantStatusLight.ready,
+                                    onTap: () {},
+                                    onEdit: () {},
+                                  ),
+                                  GroupStrategyPickerCapsule(
+                                    selectedRevision: null,
+                                    onOpen: (_) {},
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                             ],
@@ -313,13 +330,12 @@ class _Scene extends StatelessWidget {
                                   onNewConversation: () {},
                                   onClearHistory: () {},
                                 ),
-                                fieldLeading: AssistantToggleButton(
-                                  active: true,
-                                  configured: true,
-                                  label: 'Kimi Code',
-                                  status: GroupAssistantStatusLight.ready,
-                                  onTap: () {},
-                                  onEdit: () {},
+                                fieldTrailing: const AssistantModelReadout(
+                                  visible: true,
+                                  modelLabel: 'GPT-6 Astra',
+                                  effortLabel: 'Extra High',
+                                  tooltip: 'Configure Assistant',
+                                  onTap: _noop,
                                 ),
                               )
                             else

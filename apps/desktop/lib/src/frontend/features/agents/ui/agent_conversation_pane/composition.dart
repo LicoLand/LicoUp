@@ -220,7 +220,7 @@ class _AgentConversationActivePaneState
             .toList(growable: false),
         mentionLabels: state.composerMentionLabels,
         leading: state.composerLeading,
-        fieldLeading: state.composerFieldLeading,
+        fieldTrailing: state.composerFieldTrailing,
       ),
     );
     final sendUnavailable = state.composerEnabled
@@ -376,6 +376,7 @@ class _AgentConversationActivePaneState
                     defaultReasoningEffort: state.defaultReasoningEffort,
                     onReasoningEffortChanged: actions.onReasoningEffortChanged,
                     licoProfileCapsule: licoProfileCapsule,
+                    assistantCapsule: state.composerAssistantCapsule,
                     flywheel: state.composerFlywheel,
                   ),
                 MobileComposerSurface(child: composer),
@@ -418,6 +419,7 @@ class _AgentConversationActivePaneState
                 defaultReasoningEffort: state.defaultReasoningEffort,
                 onReasoningEffortChanged: actions.onReasoningEffortChanged,
                 licoProfileCapsule: licoProfileCapsule,
+                assistantCapsule: state.composerAssistantCapsule,
                 flywheel: state.composerFlywheel,
               ),
             composer,
@@ -501,6 +503,7 @@ class _AgentConversationActivePaneState
               defaultReasoningEffort: state.defaultReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
               licoProfileCapsule: licoProfileCapsule,
+              assistantCapsule: state.composerAssistantCapsule,
               flywheel: state.composerFlywheel,
             ),
           composer,

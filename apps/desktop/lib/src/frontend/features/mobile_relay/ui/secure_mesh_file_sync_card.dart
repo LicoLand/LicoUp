@@ -7,17 +7,17 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class SecureMeshFileSyncCard extends StatelessWidget {
   const SecureMeshFileSyncCard({
     super.key,
-    required this.projection,
+    required this.inputs,
     required this.intents,
   });
 
-  final MobileRelayProjection projection;
+  final MobileRelayTransfersInputs inputs;
   final IntentSink<MobileRelayIntent> intents;
 
   Future<void> _pickSourceFile() async {
@@ -49,7 +49,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final draft = projection.draftTransfer;
+    final draft = inputs.draft;
     return Container(
       key: const Key('secure-mesh-file-sync-card'),
       width: double.infinity,
@@ -83,12 +83,12 @@ class SecureMeshFileSyncCard extends StatelessWidget {
             children: [
               FilledButton.tonal(
                 key: const Key('secure-mesh-file-sync-pick-source'),
-                onPressed: projection.busy ? null : _pickSourceFile,
+                onPressed: inputs.busy ? null : _pickSourceFile,
                 child: Text(strings.chooseFile),
               ),
               OutlinedButton(
                 key: const Key('secure-mesh-file-sync-pick-destination'),
-                onPressed: projection.busy || draft == null
+                onPressed: inputs.busy || draft == null
                     ? null
                     : _pickDestination,
                 child: Text(strings.chooseDestination),
@@ -96,7 +96,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               FilledButton(
                 key: const Key('secure-mesh-file-sync-prepare'),
                 onPressed:
-                    projection.busy ||
+                    inputs.busy ||
                         draft == null ||
                         draft.destinationLabel.isEmpty ||
                         draft.awaitsConfirmation
@@ -139,7 +139,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               children: [
                 FilledButton(
                   key: const Key('secure-mesh-file-sync-confirm'),
-                  onPressed: projection.busy
+                  onPressed: inputs.busy
                       ? null
                       : () =>
                             intents.send(ConfirmRelayTransfer(draft!.id, true)),
@@ -147,7 +147,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
                 ),
                 OutlinedButton(
                   key: const Key('secure-mesh-file-sync-reject'),
-                  onPressed: projection.busy
+                  onPressed: inputs.busy
                       ? null
                       : () => intents.send(
                           ConfirmRelayTransfer(draft!.id, false),
@@ -157,7 +157,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               ],
             ),
           ],
-          if (projection.transfers.isNotEmpty) ...[
+          if (inputs.transfers.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
               strings.fileSyncQueue,
@@ -167,7 +167,7 @@ class SecureMeshFileSyncCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            for (final transfer in projection.transfers.reversed.take(6))
+            for (final transfer in inputs.transfers.reversed.take(6))
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
