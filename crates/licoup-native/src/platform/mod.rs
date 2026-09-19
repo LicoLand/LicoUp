@@ -53,7 +53,7 @@ pub mod claude_code_subagent_mcp_manager;
 pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;
-pub(crate) mod conversation_host_client;
+pub mod conversation_host_client;
 pub mod conversation_host_transport;
 pub mod cursor_subagent_mcp_manager;
 pub mod file_security;

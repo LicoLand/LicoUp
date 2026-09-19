@@ -162,7 +162,9 @@ pub(crate) fn parse_stdio_rpc_request(
             ),
             portable_data_dir,
         },
-        ConversationProtocolMethod::Shutdown => StdioRpcMethod::Shutdown,
+        ConversationProtocolMethod::Shutdown => StdioRpcMethod::Shutdown {
+            params: command.params,
+        },
     };
     Ok(StdioRpcRequest {
         id: request_id.clone(),
