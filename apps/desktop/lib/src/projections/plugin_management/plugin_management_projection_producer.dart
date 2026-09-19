@@ -59,11 +59,47 @@ final class PluginManagementProjectionProducer
     await closeBroadcastController(_changes);
   }
 
+  /// Phase of the adapter plugin domain alone. The combined projection carries
+  /// this value at the top level, so the plugin catalog presentation region
+  /// reads the same derivation.
+  static PresentationPhase pluginDomainPhase(AdapterPluginController plugins) =>
+      plugins.lastErrorCode.isNotEmpty
+      ? PresentationPhase.failed
+      : plugins.busy
+      ? PresentationPhase.loading
+      : PresentationPhase.ready;
+
+  /// Failure notice of the adapter plugin domain alone.
+  static PresentationNotice? pluginDomainNotice(
+    AdapterPluginController plugins,
+  ) {
+    final failure = plugins.lastErrorCode;
+    return failure.isEmpty
+        ? null
+        : _notice('plugin-management-failure', failure);
+  }
+
+  /// Phase of the optional collaboration domain alone.
+  static PresentationPhase collaborationDomainPhase(
+    OptionalCollaborationController collaboration,
+  ) => collaboration.errorCode.isNotEmpty
+      ? PresentationPhase.failed
+      : collaboration.busy
+      ? PresentationPhase.applying
+      : PresentationPhase.ready;
+
+  /// Failure notice of the optional collaboration domain alone.
+  static PresentationNotice? collaborationDomainNotice(
+    OptionalCollaborationController collaboration,
+  ) {
+    final failure = collaboration.errorCode;
+    return failure.isEmpty ? null : _notice('collaboration-failure', failure);
+  }
+
   static PluginManagementProjection _read(
     AdapterPluginController plugins,
     OptionalCollaborationController collaboration,
   ) {
-    final failure = plugins.lastErrorCode;
     final state = collaboration.state;
     final catalog = collaboration.workflowCatalog;
     final workflows = [
@@ -87,11 +123,7 @@ final class PluginManagementProjectionProducer
         loaded: state?.pluginLoaded == true,
         runnerTrusted: state?.runnerTrust != null,
         catalogLoaded: collaboration.catalogLoaded,
-        phase: collaboration.errorCode.isNotEmpty
-            ? PresentationPhase.failed
-            : collaboration.busy
-            ? PresentationPhase.applying
-            : PresentationPhase.ready,
+        phase: collaborationDomainPhase(collaboration),
         workflows: [
           for (final workflow in workflows)
             PresentationChoice(
@@ -106,18 +138,10 @@ final class PluginManagementProjectionProducer
         localDeploymentPlan: collaboration.workflows.localDeploymentPlan,
         mcpInstallPlan: collaboration.workflows.mcpInstallPlan,
         localServers: collaboration.workflows.localServers,
-        notice: collaboration.errorCode.isEmpty
-            ? null
-            : _notice('collaboration-failure', collaboration.errorCode),
+        notice: collaborationDomainNotice(collaboration),
       ),
-      phase: failure.isNotEmpty
-          ? PresentationPhase.failed
-          : plugins.busy
-          ? PresentationPhase.loading
-          : PresentationPhase.ready,
-      notice: failure.isEmpty
-          ? null
-          : _notice('plugin-management-failure', failure),
+      phase: pluginDomainPhase(plugins),
+      notice: pluginDomainNotice(plugins),
     );
   }
 

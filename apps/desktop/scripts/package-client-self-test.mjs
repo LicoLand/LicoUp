@@ -265,11 +265,22 @@ try {
     "presentation_contract_generated_state_was_staged",
   );
   requireValue(
-    stagedPackageEntries.length === 1 &&
-      stagedPackageEntries[0].isDirectory() &&
-      stagedPackageEntries[0].name === "presentation_contract",
+    stagedPackageEntries.length === 3 &&
+      stagedPackageEntries.every((entry) => entry.isDirectory()) &&
+      stagedPackageEntries
+        .map((entry) => entry.name)
+        .sort()
+        .join(",") ===
+        "presentation_contract,presentation_flutter,presentation_runtime",
     "unrelated_packages_were_staged",
   );
+  for (const name of ["presentation_runtime", "presentation_flutter"]) {
+    const stagedPackageRoot = path.join(stagedPackagesRoot, name);
+    requireValue(
+      existsSync(path.join(stagedPackageRoot, "pubspec.yaml")),
+      `${name}_was_not_staged`,
+    );
+  }
 } finally {
   if (previousCleanBuildRoot === undefined) {
     delete process.env.LICO_CLIENT_CLEAN_BUILD_ROOT;

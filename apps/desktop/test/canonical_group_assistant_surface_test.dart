@@ -1420,6 +1420,71 @@ void main() {
       controller.dispose();
     },
   );
+
+  testWidgets(
+    'assistant model readout follows activation and opens the editor',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _AssistantSurfaceRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      await tester.pumpWidget(
+        _groupApp(
+          CanonicalGroupConversationPaneFixture(
+            controller: controller,
+            targets: [_target('codex', 'Codex')],
+            onCopyText: (_) async {},
+            framed: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final readout = find.byKey(
+        const Key('canonical-group-assistant-model-readout'),
+      );
+      expect(readout, findsOneWidget);
+      expect(find.text('gpt-5.4'), findsOneWidget);
+      expect(find.text('High'), findsOneWidget);
+      expect(
+        tester.getRect(readout).right,
+        lessThanOrEqualTo(
+          tester
+              .getRect(
+                find.byKey(const Key('agent-conversation-composer-send')),
+              )
+              .left,
+        ),
+      );
+
+      // Pausing the toggle hides the readout; activating brings it back.
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
+      );
+      await tester.pump();
+      expect(readout, findsNothing);
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-toggle')),
+      );
+      await tester.pump();
+      expect(readout, findsOneWidget);
+
+      await tester.tap(readout);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('assistant-configuration-dialog')),
+        findsOneWidget,
+      );
+      controller.dispose();
+    },
+  );
 }
 
 /// Timeline messages carrying image attachments, projected by the participant

@@ -20,12 +20,14 @@ final class ClientConversationController extends ApplicationStateOwner {
     ClientConversationService? service,
     void Function(String conversationId)? onSelectionChanged,
     void Function(ClientConversation conversation)? onSnapshotApplied,
+    bool Function(Map<String, dynamic> notice)? completionNoticePublisher,
     ClientMemoryDiagnosticJournal? memoryJournal,
     Duration? pendingNoticePollInterval,
     Duration? activityEchoInterval,
   }) : _service = service ?? ClientConversationService(native: native),
        _onSelectionChanged = onSelectionChanged,
        _onSnapshotApplied = onSnapshotApplied,
+       _completionNoticePublisher = completionNoticePublisher,
        _memoryJournal = memoryJournal,
        _pendingNoticePollInterval =
            pendingNoticePollInterval ?? defaultPendingNoticePollInterval,
@@ -45,6 +47,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
   final void Function(ClientConversation conversation)? _onSnapshotApplied;
+  final bool Function(Map<String, dynamic> notice)? _completionNoticePublisher;
   final ClientMemoryDiagnosticJournal? _memoryJournal;
   final Duration _pendingNoticePollInterval;
   final Duration _activityEchoInterval;
@@ -65,6 +68,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   String _draft = '';
   String _failureStage = '';
   String _failureCode = '';
+  String _failureConversationId = '';
   String _failureComponent = '';
   bool? _failureRetryable;
   String _failureRecovery = '';
@@ -96,6 +100,12 @@ final class ClientConversationController extends ApplicationStateOwner {
   String get draft => _draft;
   String get failureStage => _failureStage;
   String get failureCode => _failureCode;
+
+  /// The Conversation one in-flight failure belongs to. Empty means the
+  /// failure is not conversation-scoped (for example a catalog read); scoped
+  /// failures must not paint over a different Conversation after a selection
+  /// change.
+  String get failureConversationId => _failureConversationId;
   String get failureComponent => _failureComponent;
   bool? get failureRetryable => _failureRetryable;
   String get failureRecovery => _failureRecovery;
@@ -139,9 +149,14 @@ final class ClientConversationController extends ApplicationStateOwner {
       _archivedSummaries;
 
   /// Surfaces a group-operation failure on the conversation banner.
+  ///
+  /// [conversationId] pins the failure to the Conversation that originated
+  /// the operation; when empty, the Conversation selected at call time owns
+  /// it. An empty selection leaves the failure unscoped.
   void surfaceFailure(
     String stage,
     String code, {
+    String conversationId = '',
     String component = '',
     bool? retryable,
     String recovery = '',
@@ -150,9 +165,11 @@ final class ClientConversationController extends ApplicationStateOwner {
     final nextStage = stage.trim();
     final nextCode = code.trim();
     if (nextStage.isEmpty || nextCode.isEmpty) return;
+    final scopedId = conversationId.trim();
     _recordFailure(
       nextStage,
       nextCode,
+      conversationId: scopedId.isEmpty ? _selectedConversationId : scopedId,
       component: component,
       retryable: retryable,
       recovery: recovery,
@@ -163,6 +180,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   void _clearFailure() {
     _failureStage = '';
     _failureCode = '';
+    _failureConversationId = '';
     _failureComponent = '';
     _failureRetryable = null;
     _failureRecovery = '';
@@ -174,6 +192,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   void _recordFailure(
     String stage,
     String code, {
+    String conversationId = '',
     String strategyCode = '',
     String component = '',
     bool? retryable,
@@ -181,6 +200,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   }) {
     _failureStage = stage;
     _failureCode = code;
+    _failureConversationId = conversationId.trim();
     _failureStrategyCode = strategyCode;
     _failureComponent = component.trim();
     _failureRetryable = retryable;
@@ -200,10 +220,28 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   List<Map<String, dynamic>> get selectedTaskViews => _selectedTaskViews;
 
-  List<Map<String, dynamic>> takeFreshCompletionNotices() {
+  /// Drains freshly polled completion notices to the wired Application-level
+  /// publisher and acknowledges the ones it accepted. Publication is a
+  /// notification side effect owned here, not by any projection producer; an
+  /// unpublished notice stays unacknowledged so the next poll retries it.
+  void _publishFreshCompletionNotices() {
+    final publisher = _completionNoticePublisher;
+    if (publisher == null || _freshCompletionNotices.isEmpty) return;
     final notices = _freshCompletionNotices;
     _freshCompletionNotices = const <Map<String, dynamic>>[];
-    return notices;
+    final published = <String>[];
+    for (final notice in notices) {
+      final id = (notice['notificationId'] ?? '').toString().trim();
+      if (id.isEmpty) continue;
+      try {
+        if (publisher(notice)) published.add(id);
+      } on Object {
+        continue;
+      }
+    }
+    if (published.isNotEmpty) {
+      acknowledgePublishedCompletionNotices(published);
+    }
   }
 
   List<ClientConversationSummary> get groupConversations {
@@ -430,6 +468,7 @@ final class ClientConversationController extends ApplicationStateOwner {
         _queueCompletionNotice(notice);
         queued = queued || _freshCompletionNotices.length > before;
       }
+      _publishFreshCompletionNotices();
       if (queued) _publishChange();
     } on ClientConversationServiceFailure {
       return;
@@ -502,6 +541,7 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<bool> _refresh({bool preloadLocal = false}) => _guard(
     'list',
+    conversationId: '',
     () async {
       await _refreshCatalogWithoutGuard();
       if (_disposed) return;
@@ -925,6 +965,7 @@ final class ClientConversationController extends ApplicationStateOwner {
                 _recordFailure(
                   stage.isEmpty ? 'strategy/start' : stage,
                   code,
+                  conversationId: conversation.id,
                   strategyCode: code,
                 );
                 _dispatchPending = false;
@@ -932,7 +973,7 @@ final class ClientConversationController extends ApplicationStateOwner {
             }
           }
         } on ClientConversationServiceFailure catch (failure) {
-          _recordFailure('send', failure.code);
+          _recordFailure('send', failure.code, conversationId: conversation.id);
           await _persistDispatchFailure(
             conversationId: conversation.id,
             eventId: eventId,
@@ -957,7 +998,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       await _loadSelected();
       return true;
     } on ClientConversationServiceFailure catch (failure) {
-      _recordFailure('send', failure.code);
+      _recordFailure('send', failure.code, conversationId: conversation.id);
       _liveTurns = const [];
       _dispatchPending = false;
       return false;
@@ -1007,6 +1048,11 @@ final class ClientConversationController extends ApplicationStateOwner {
   Future<bool> retryMessage(String eventId) async {
     final event = _eventById(eventId);
     if (event == null || !_eventHasFailedTurn(event.id)) return false;
+    // The re-post below always authors as the local owner. Refuse to re-author
+    // another Membership's Event under that identity; the original author and
+    // its causal chain stay untouched instead.
+    final owner = _selectedConversation?.localOwnerMembership;
+    if (owner == null || event.authorMembershipId != owner.id) return false;
     final text = event.parts
         .where((part) => part.kind == ConversationEventPartKind.text)
         .map((part) => part.content)
@@ -1138,7 +1184,7 @@ final class ClientConversationController extends ApplicationStateOwner {
     await _waitUntilIdle();
     final id = conversationId.trim();
     if (id.isEmpty) return false;
-    return _guard('archive', () async {
+    return _guard('archive', conversationId: id, () async {
       await _service.execute({
         'action': 'conversation.archive',
         'conversationId': id,
@@ -1153,13 +1199,17 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<bool> refreshArchived() async {
     await _waitUntilIdle();
-    return _guard('archived-list', _refreshArchivedWithoutGuard);
+    return _guard(
+      'archived-list',
+      _refreshArchivedWithoutGuard,
+      conversationId: '',
+    );
   }
 
   Future<bool> restoreArchived(String conversationId) async {
     await _waitUntilIdle();
-    return _guard('restore', () async {
-      final id = conversationId.trim();
+    final id = conversationId.trim();
+    return _guard('restore', conversationId: id.isEmpty ? null : id, () async {
       if (id.isEmpty) {
         throw const ClientConversationServiceFailure('invalid_request');
       }
@@ -1174,8 +1224,8 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   Future<void> setPinned(String conversationId, bool pinned) async {
     await _waitUntilIdle();
-    await _guard('pin', () async {
-      final id = conversationId.trim();
+    final id = conversationId.trim();
+    await _guard('pin', conversationId: id.isEmpty ? null : id, () async {
       if (id.isEmpty) {
         throw const ClientConversationServiceFailure('invalid_request');
       }
@@ -1567,8 +1617,19 @@ final class ClientConversationController extends ApplicationStateOwner {
     }
   }
 
-  Future<bool> _guard(String stage, Future<void> Function() operation) async {
+  /// Runs one mutation under the loading latch. A failure is attributed to
+  /// [conversationId], or — when it is null — to the Conversation selected
+  /// when the operation started, never to whatever the user happens to view
+  /// when the asynchronous failure lands. An explicitly empty
+  /// [conversationId] keeps the failure global (for example a catalog read),
+  /// so it stays visible across a selection change.
+  Future<bool> _guard(
+    String stage,
+    Future<void> Function() operation, {
+    String? conversationId,
+  }) async {
     if (_loading) return false;
+    final originId = conversationId?.trim() ?? _selectedConversationId;
     _loading = true;
     final loadingCompletion = Completer<void>();
     _loadingCompletion = loadingCompletion;
@@ -1578,7 +1639,7 @@ final class ClientConversationController extends ApplicationStateOwner {
       await operation();
       return true;
     } on ClientConversationServiceFailure catch (failure) {
-      _recordFailure(stage, failure.code);
+      _recordFailure(stage, failure.code, conversationId: originId);
       return false;
     } catch (_) {
       return false;

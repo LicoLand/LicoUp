@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -14,6 +15,7 @@ import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/layout_host_test_fixtures.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
@@ -23,8 +25,10 @@ void main() {
   ) async {
     final registry = buildFixtureLayoutRuntime().registry;
     final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final presentation = SettingsPresentationFixture();
     final binding = settingsBindingFixture(source: source);
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
 
     await _pumpSelector(
       tester,
@@ -32,6 +36,7 @@ void main() {
       registry: registry,
       surface: LayoutRuntimeSurface.desktop,
       locale: const Locale('zh'),
+      presentation: presentation,
     );
     expect(
       find.byKey(const ValueKey<String>('layout-profile-selector')),
@@ -54,6 +59,7 @@ void main() {
       registry: registry,
       surface: LayoutRuntimeSurface.mobile,
       locale: const Locale('zh'),
+      presentation: presentation,
     );
     expect(
       find.byKey(const Key('fixture-preview-dashboard-mobile')),
@@ -70,10 +76,17 @@ void main() {
   ) async {
     final registry = buildFixtureLayoutRuntime().registry;
     final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final presentation = SettingsPresentationFixture();
     final intents = RecordingSettingsIntents();
     final binding = settingsBindingFixture(source: source, intents: intents);
     addTearDown(source.dispose);
-    await _pumpSelector(tester, binding: binding, registry: registry);
+    addTearDown(presentation.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      presentation: presentation,
+    );
 
     await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
     await tester.pump();
@@ -100,26 +113,28 @@ void main() {
         ),
     ];
     final runtime = buildFixtureLayoutRuntime(profiles: profiles);
-    final source = SettingsProjectionFixture(
-      settingsProjectionFixture(
-        layoutChoices: [
-          for (final profile in profiles)
-            PresentationChoice(
-              id: profile.id.value,
-              label: profile.label.english,
-              selected: profile.id.value == 'dashboard',
-              enabled: profile.id.value != 'dashboard',
-            ),
-        ],
-      ),
+    final projection = settingsProjectionFixture(
+      layoutChoices: [
+        for (final profile in profiles)
+          PresentationChoice(
+            id: profile.id.value,
+            label: profile.label.english,
+            selected: profile.id.value == 'dashboard',
+            enabled: profile.id.value != 'dashboard',
+          ),
+      ],
     );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
     final binding = settingsBindingFixture(source: source);
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
     await _pumpSelector(
       tester,
       binding: binding,
       registry: runtime.registry,
       width: 860,
+      presentation: presentation,
     );
 
     for (final profile in profiles) {
@@ -134,20 +149,24 @@ void main() {
     tester,
   ) async {
     final registry = buildFixtureLayoutRuntime().registry;
-    final source = SettingsProjectionFixture(
-      settingsProjectionFixture(layoutPhase: PresentationPhase.applying),
+    final projection = settingsProjectionFixture(
+      layoutPhase: PresentationPhase.applying,
     );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
     final binding = settingsBindingFixture(source: source);
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
     await _pumpSelector(
       tester,
       binding: binding,
       registry: registry,
       locale: const Locale('zh'),
+      presentation: presentation,
     );
     expect(find.text('正在保存布局…'), findsOneWidget);
 
-    source.publish(
+    presentation.publishProjection(
       settingsProjectionFixture(
         layoutPhase: PresentationPhase.failed,
         layoutFailureReasonCode: 'persistenceFailed',
@@ -161,6 +180,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump();
     expect(find.text('无法保存布局，请稍后重试。'), findsOneWidget);
   });
 
@@ -168,12 +188,15 @@ void main() {
     tester,
   ) async {
     final registry = buildFixtureLayoutRuntime().registry;
-    final source = SettingsProjectionFixture(
-      settingsProjectionFixture(layoutPhase: PresentationPhase.loading),
+    final projection = settingsProjectionFixture(
+      layoutPhase: PresentationPhase.loading,
     );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
     final intents = RecordingSettingsIntents();
     final binding = settingsBindingFixture(source: source, intents: intents);
     addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
     await _pumpSelector(
       tester,
       binding: binding,
@@ -181,10 +204,12 @@ void main() {
       width: 360,
       disableAnimations: true,
       locale: const Locale('zh'),
+      presentation: presentation,
     );
     expect(find.byKey(const Key('layout-selector-loading')), findsOneWidget);
 
-    source.publish(settingsProjectionFixture());
+    presentation.publishProjection(settingsProjectionFixture());
+    await tester.pump();
     await tester.pump();
     final options = tester.widgetList<AnimatedContainer>(
       find.byType(AnimatedContainer),
@@ -203,35 +228,46 @@ Future<void> _pumpSelector(
   WidgetTester tester, {
   required SettingsBinding binding,
   required LayoutRegistry registry,
+  required SettingsPresentationFixture presentation,
   LayoutRuntimeSurface surface = LayoutRuntimeSurface.desktop,
   Locale locale = const Locale('en'),
   double width = 860,
   bool disableAnimations = false,
-}) => tester.pumpWidget(
-  MaterialApp(
-    builder: (context, child) => FixtureLayoutPresentationScope(child: child!),
-    locale: locale,
-    supportedLocales: LicoStrings.supportedLocales,
-    localizationsDelegates: const [
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    theme: buildLicoTheme(),
-    home: Scaffold(
-      body: MediaQuery(
-        data: MediaQueryData(disableAnimations: disableAnimations),
-        child: SingleChildScrollView(
-          child: SizedBox(
-            width: width,
-            child: LayoutProfileSelector(
-              binding: binding,
-              registry: registry,
-              surface: surface,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: presentation.overrides,
+      child: MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        locale: locale,
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(),
+        home: Scaffold(
+          body: MediaQuery(
+            data: MediaQueryData(disableAnimations: disableAnimations),
+            child: SingleChildScrollView(
+              child: SizedBox(
+                width: width,
+                child: LayoutProfileSelector(
+                  binding: binding,
+                  registry: registry,
+                  surface: surface,
+                ),
+              ),
             ),
           ),
         ),
       ),
     ),
-  ),
-);
+  );
+  // Source observation opens and the runtime's first install both complete
+  // asynchronously; the second pump installs the initial frame.
+  await tester.pump();
+  await tester.pump();
+}
