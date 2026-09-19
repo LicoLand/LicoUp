@@ -35,9 +35,49 @@ const CONNECT_ATTEMPTS: usize = 80;
 const CONNECT_RETRY: Duration = Duration::from_millis(25);
 const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(25);
 const STALE_HOST_WAIT: Duration = Duration::from_secs(2);
+#[allow(dead_code)]
 const OWNER_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+#[allow(dead_code)]
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(300);
+const NORMAL_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const CLIENT_PID_ENV: &str = "LICOUP_CLIENT_PID";
+
+static HOST_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+fn register_termination_signal_handler() {
+    extern "C" fn handle_signal(_: libc::c_int) {
+        HOST_STOP_REQUESTED.store(true, Ordering::SeqCst);
+    }
+    unsafe {
+        libc::signal(
+            libc::SIGTERM,
+            handle_signal as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
+            handle_signal as *const () as libc::sighandler_t,
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn register_termination_signal_handler() {}
+
+pub(super) fn request_host_stop() -> Result<()> {
+    let params = serde_json::json!({ "host": true });
+    let _response =
+        licoup_native::platform::conversation_host_client::execute_existing("shutdown", &params)
+            .map_err(|_| anyhow!("persistent_conversation_transport_required"))?;
+    let deadline = Instant::now() + NORMAL_SHUTDOWN_DRAIN_TIMEOUT + Duration::from_secs(5);
+    while endpoint_accepts_connections() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    if endpoint_accepts_connections() {
+        return Err(anyhow!("conversation_host_stop_timeout"));
+    }
+    Ok(())
+}
 
 fn host_generation_path(root: &Path) -> PathBuf {
     root.join("client-state")
@@ -182,10 +222,10 @@ impl HostOwnership {
 fn classify_host_ownership(
     record: Option<(String, Option<u32>, Option<u32>)>,
     generation: &str,
-    expected_client: Option<u32>,
+    _expected_client: Option<u32>,
     liveness: impl Fn(u32) -> ProcessLiveness,
 ) -> HostOwnership {
-    let Some((recorded, host_pid, recorded_client)) = record else {
+    let Some((recorded, host_pid, _recorded_client)) = record else {
         return HostOwnership::Absent;
     };
     if recorded != generation {
@@ -196,13 +236,6 @@ fn classify_host_ownership(
     let Some(host_pid) = host_pid else {
         return HostOwnership::Stale;
     };
-    // Another client of the same generation owns the host this names, live or
-    // not: this process may not claim it.
-    if let Some(expected) = expected_client
-        && recorded_client != Some(expected)
-    {
-        return HostOwnership::Absent;
-    }
     if liveness(host_pid) == ProcessLiveness::Dead {
         return HostOwnership::Stale;
     }
@@ -415,6 +448,7 @@ fn windows_process_liveness(pid: u32) -> ProcessLiveness {
     }
 }
 
+#[allow(dead_code)]
 fn client_owner_is_gone() -> bool {
     configured_client_pid().is_some_and(|pid| process_liveness(pid) == ProcessLiveness::Dead)
 }
@@ -591,6 +625,7 @@ pub(super) fn serve_host() -> Result<()> {
 /// loop and returns immediately so a held cognition cannot pin the listener.
 struct AttendanceOwner {
     stop: Arc<AtomicBool>,
+    #[allow(dead_code)]
     active: Arc<AtomicBool>,
     wake: Arc<(Mutex<()>, Condvar)>,
     join: Option<thread::JoinHandle<()>>,
@@ -634,6 +669,7 @@ impl AttendanceOwner {
         })
     }
 
+    #[allow(dead_code)]
     fn active(&self) -> bool {
         self.active.load(Ordering::Acquire)
     }
@@ -647,6 +683,7 @@ impl AttendanceOwner {
     }
 }
 
+#[allow(dead_code)]
 fn generic_idle_may_exit(runtime_idle: bool, attendance_active: bool) -> bool {
     runtime_idle && !attendance_active
 }
@@ -657,13 +694,15 @@ fn serve_bound_host(
     runtime: PersistentConversationRuntime,
     stop: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
+    HOST_STOP_REQUESTED.store(false, Ordering::Release);
+    register_termination_signal_handler();
     let attendance = AttendanceOwner::spawn(service.clone())?;
-    let mut idle_since = None;
-    let mut next_owner_check = Instant::now();
     let result = loop {
         if stop
             .as_ref()
             .is_some_and(|flag| flag.load(Ordering::Acquire))
+            || HOST_STOP_REQUESTED.load(Ordering::Acquire)
+            || runtime.is_host_stop_requested()
         {
             break Ok(());
         }
@@ -675,7 +714,6 @@ fn serve_bound_host(
                 if stream.set_nonblocking(false).is_err() {
                     continue;
                 }
-                idle_since = None;
                 runtime.client_connected();
                 let runtime = runtime.clone();
                 let conversation_service = service.clone();
@@ -692,24 +730,8 @@ fn serve_bound_host(
                 });
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                if configured_client_pid().is_some() && Instant::now() >= next_owner_check {
-                    if client_owner_is_gone() {
-                        let _ = service.store().checkpoint();
-                        break Ok(());
-                    }
-                    next_owner_check = Instant::now() + OWNER_CHECK_INTERVAL;
-                }
-                if configured_client_pid().is_none()
-                    && generic_idle_may_exit(runtime.idle(), attendance.active())
-                {
-                    let since = idle_since.get_or_insert_with(Instant::now);
-                    if since.elapsed() >= IDLE_EXIT_GRACE {
-                        let _ = service.store().checkpoint();
-                        break Ok(());
-                    }
-                } else {
-                    idle_since = None;
-                }
+                // Per D19, GUI client exit does not stop the host, and generic idle
+                // does not stop the host. Explicit stop is the only stop.
                 thread::sleep(CONNECT_RETRY);
             }
             Err(_) => {
@@ -717,6 +739,10 @@ fn serve_bound_host(
             }
         }
     };
+    // Normal shutdown: drain admitted in-flight work and flush database checkpoint
+    // before releasing host-owner lock and attendance.
+    let _ = runtime.drain_admitted_turns(NORMAL_SHUTDOWN_DRAIN_TIMEOUT);
+    let _ = service.store().checkpoint();
     attendance.shutdown();
     result
 }
@@ -725,6 +751,7 @@ fn serve_bound_host(
 mod tests {
     use super::*;
     use interprocess::local_socket::Stream;
+    use std::io::BufRead as _;
 
     #[test]
     fn idle_exit_waits_minutes_after_the_owner_is_empty() {
@@ -851,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_for_another_generation_or_client_is_absent() {
+    fn a_record_for_another_generation_is_absent_while_another_client_is_current_or_stale() {
         assert_eq!(
             classify_host_ownership(
                 Some(ownership_record(Some(4242), Some(99))),
@@ -861,19 +888,26 @@ mod tests {
             ),
             HostOwnership::Absent
         );
-        // The same generation, but another client owns the host — whether the
-        // host it names is still running or not.
-        for liveness in [ProcessLiveness::Alive, ProcessLiveness::Dead] {
-            assert_eq!(
-                classify_host_ownership(
-                    Some(ownership_record(Some(4242), Some(7))),
-                    OWNERSHIP_GENERATION,
-                    Some(99),
-                    |_| liveness,
-                ),
-                HostOwnership::Absent
-            );
-        }
+        // Per D19, the same generation with another client PID connects to the
+        // existing host if alive (Current), or reports Stale if the host died.
+        assert_eq!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), Some(7))),
+                OWNERSHIP_GENERATION,
+                Some(99),
+                |_| ProcessLiveness::Alive,
+            ),
+            HostOwnership::Current
+        );
+        assert_eq!(
+            classify_host_ownership(
+                Some(ownership_record(Some(4242), Some(7))),
+                OWNERSHIP_GENERATION,
+                Some(99),
+                |_| ProcessLiveness::Dead,
+            ),
+            HostOwnership::Stale
+        );
     }
 
     #[test]
@@ -1457,5 +1491,186 @@ mod tests {
                 Err(error) => return Err(error),
             }
         }
+    }
+
+    #[test]
+    fn d19_gui_quit_and_reopen_shares_same_host() {
+        let generation = executable_generation().unwrap();
+        let client_a = Some(1111);
+        let client_b = Some(2222);
+
+        // Host was launched by GUI A (client_a)
+        let record = Some((generation.clone(), Some(4242), client_a));
+
+        // When GUI A is alive, GUI B sees the host as Current (not Absent!)
+        assert_eq!(
+            classify_host_ownership(record.clone(), &generation, client_b, |_| {
+                ProcessLiveness::Alive
+            },),
+            HostOwnership::Current
+        );
+
+        // Even when GUI A has quit (client_a is dead, but host is alive), GUI B still sees host as Current!
+        assert_eq!(
+            classify_host_ownership(record.clone(), &generation, client_b, |_| {
+                ProcessLiveness::Alive
+            },),
+            HostOwnership::Current
+        );
+
+        // CLI (no client PID) also sees host as Current
+        assert_eq!(
+            classify_host_ownership(record, &generation, None, |_| ProcessLiveness::Alive),
+            HostOwnership::Current
+        );
+    }
+
+    #[test]
+    fn explicit_stop_via_rpc_shuts_down_host() {
+        let root =
+            std::env::temp_dir().join(format!("lico-ca-host-stop-rpc-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let service =
+            licoup_native::domain::client_conversation::ConversationService::open(&root).unwrap();
+        let name =
+            licoup_native::platform::conversation_host_transport::endpoint_name_for_root(&root)
+                .unwrap();
+        let listener = ListenerOptions::new()
+            .name(name)
+            .nonblocking(ListenerNonblockingMode::Accept)
+            .try_overwrite(true)
+            .create_sync()
+            .expect("test host listener");
+        let runtime = PersistentConversationRuntime::new(service.store().clone());
+        let host_service = service.clone();
+        let host_runtime = runtime.clone();
+        let host_thread =
+            thread::spawn(move || serve_bound_host(listener, host_service, host_runtime, None));
+
+        let mut stream = connect_test_host(&root);
+        let request = serde_json::json!({
+            "protocol": licoup_native::platform::conversation_host_transport::STDIO_RPC_PROTOCOL,
+            "id": "stop-req",
+            "workflowId": "stop-wf",
+            "method": "shutdown",
+            "params": { "host": true },
+        });
+        serde_json::to_writer(&mut stream, &request).unwrap();
+        stream.write_all(b"\n").unwrap();
+        stream.flush().unwrap();
+
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(response["ok"], true);
+        assert_eq!(response["result"]["status"], "shutdown");
+        assert_eq!(response["result"]["host_stop_requested"], true);
+
+        // Host thread must terminate after receiving host stop
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while !host_thread.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "host thread must exit on explicit stop"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+        let _ = host_thread.join().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn system_offline_reported_honestly() {
+        let root =
+            std::env::temp_dir().join(format!("lico-ca-host-offline-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let previous =
+            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+
+        // When no host is running:
+        // 1. connect_for_cli(true) returns persistent_conversation_transport_required
+        let err = connect_for_cli(true).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "persistent_conversation_transport_required"
+        );
+
+        // 2. request_host_stop() returns persistent_conversation_transport_required
+        let stop_err = request_host_stop().unwrap_err();
+        assert_eq!(
+            stop_err.to_string(),
+            "persistent_conversation_transport_required"
+        );
+
+        // 3. host_is_current() is false
+        assert!(!host_is_current());
+
+        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn crash_recovery_restores_from_real_run_and_durable_facts() {
+        use licoup_conversation::{ConversationStore, DispatchState};
+
+        let root =
+            std::env::temp_dir().join(format!("lico-ca-host-crash-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+
+        let scope = {
+            let store = ConversationStore::open(&root).unwrap();
+            let scope = store
+                .prepare_runtime_dispatch(
+                    "fixture-agent",
+                    "",
+                    "persist this turn",
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+            store
+                .append_runtime_frame(
+                    &scope,
+                    1,
+                    &serde_json::json!({"type": "agent.message.chunk", "delta": "partial"}),
+                )
+                .unwrap();
+            assert_eq!(
+                store
+                    .dispatch_record(&scope.dispatch_id)
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                DispatchState::Running
+            );
+            // Dropping store without checkpoint/drain simulates host crash
+            scope
+        };
+
+        // Reopen store (as ConversationService::open does on startup): cold_recover runs
+        let reopened = ConversationStore::open(&root).unwrap();
+        let dispatch = reopened
+            .dispatch_record(&scope.dispatch_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(dispatch.state, DispatchState::Failed);
+        assert_eq!(
+            dispatch.error_code.as_deref(),
+            Some("host_lifecycle_interrupted")
+        );
+
+        let events = reopened
+            .page_events(&scope.conversation_id, None, 100)
+            .unwrap()
+            .events;
+        assert!(
+            !events.is_empty(),
+            "durable facts must be preserved after crash recovery"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

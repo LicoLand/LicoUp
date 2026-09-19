@@ -26,7 +26,7 @@ pub(crate) fn execute_read_only(method: &str, params: &Value) -> Result<Value> {
 
 /// Execute through an already-running Conversation host without creating an
 /// endpoint or retrying through a process-local ConversationService.
-pub(crate) fn execute_existing(method: &str, params: &Value) -> Result<Value> {
+pub fn execute_existing(method: &str, params: &Value) -> Result<Value> {
     execute_with_connector(
         method,
         params,

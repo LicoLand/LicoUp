@@ -1316,8 +1316,10 @@ fn newest_codex_state_database(sessions_dir: &Path) -> Option<PathBuf> {
 }
 
 /// Read the codex app-server thread catalog. The database is codex-internal and
-/// versioned by filename, so any schema drift is rejected as a whole and the
-/// caller falls back to rollout files instead of trusting partial rows.
+/// versioned by filename, so drift in the identity or ordering columns is
+/// rejected as a whole and the caller falls back to rollout files instead of
+/// trusting partial rows. Presentation columns are additive and project as NULL
+/// when an older state schema omits them.
 fn read_codex_state_threads(
     db_path: &Path,
     cutoff: SystemTime,
@@ -1330,28 +1332,36 @@ fn read_codex_state_threads(
     }
     let columns = sqlite_columns(&connection, "threads")
         .map_err(|_| fail("codex_state_schema_unrecognized"))?;
-    for required in [
-        "id",
-        "rollout_path",
-        "created_at",
-        "updated_at",
-        "title",
-        "archived",
-    ] {
+    for required in ["id", "rollout_path", "created_at", "updated_at"] {
         if !columns.contains(required) {
             return Err(fail("codex_state_schema_unrecognized"));
         }
     }
+    // Codex's state database is an internal, versioned store. Identity and
+    // ordering columns are required for the catalog; presentation columns are
+    // additive and must not make the whole catalog disappear when an older
+    // state schema omits them.
+    let optional_column = |name: &str| {
+        if columns.contains(name) {
+            name.to_string()
+        } else {
+            "NULL".to_string()
+        }
+    };
     let cutoff_seconds = cutoff
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0);
     let mut statement = connection
-        .prepare(
-            "SELECT id, rollout_path, created_at, updated_at, title, cwd, model \
-             FROM threads WHERE COALESCE(archived, 0) = 0 AND updated_at >= ?1 \
+        .prepare(&format!(
+            "SELECT id, rollout_path, created_at, updated_at, {}, {}, {} \
+             FROM threads WHERE COALESCE({}, 0) = 0 AND updated_at >= ?1 \
              ORDER BY updated_at DESC, id ASC",
-        )
+            optional_column("title"),
+            optional_column("cwd"),
+            optional_column("model"),
+            optional_column("archived"),
+        ))
         .map_err(|_| fail("codex_state_schema_unrecognized"))?;
     let rows = statement
         .query_map([cutoff_seconds], |row| {
