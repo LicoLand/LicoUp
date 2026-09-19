@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:path/path.dart' as p;
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/composition/agent_resource_usage_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -12,8 +13,10 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/projections/settings/settings_autostart_projection_source.dart';
+import 'package:licoup/src/projections/settings/settings_presentation_sources.dart';
 import 'package:licoup/src/projections/settings/settings_projection_producer.dart';
 import 'package:licoup/src/projections/settings/settings_resource_usage_projection_source.dart';
 
@@ -22,6 +25,7 @@ final class SettingsFeatureComposition {
     required ClientController controller,
     RendererIntentTraceFactory? beginRendererIntent,
   }) : _projection = SettingsProjectionProducer(controller),
+       _presentationHub = SettingsPresentationHub(controller),
        _effects = _SettingsEffects() {
     _resourceUsage = SettingsResourceUsageProjectionSource(
       client: createClientResourceUsageController(),
@@ -38,6 +42,7 @@ final class SettingsFeatureComposition {
     _intents = _SettingsIntents(
       controller: controller,
       projection: _projection,
+      presentationHub: _presentationHub,
       resourceUsage: _resourceUsage,
       autostart: _autostart,
       effects: _effects,
@@ -50,14 +55,49 @@ final class SettingsFeatureComposition {
       intents: _intents,
       effects: _effects,
     );
+    providerOverrides = <Override>[
+      settingsGeneralSourceProvider.overrideWithValue(
+        _presentationHub.generalSource(),
+      ),
+      settingsAppearanceSourceProvider.overrideWithValue(
+        _presentationHub.appearanceSource(),
+      ),
+      settingsLayoutSourceProvider.overrideWithValue(
+        _presentationHub.layoutSource(),
+      ),
+      settingsStorageSourceProvider.overrideWithValue(
+        _presentationHub.storageSource(),
+      ),
+      settingsUpdateSourceProvider.overrideWithValue(
+        _presentationHub.updateSource(),
+      ),
+      settingsArchivedSourceProvider.overrideWithValue(
+        _presentationHub.archivedSource(),
+      ),
+      settingsLogExportSourceProvider.overrideWithValue(
+        _presentationHub.logExportSource(),
+      ),
+      settingsAutostartSourceProvider.overrideWithValue(
+        settingsAutostartPresentationSource(_autostart),
+      ),
+      settingsResourceUsageSourceProvider.overrideWithValue(
+        settingsResourceUsagePresentationSource(_resourceUsage),
+      ),
+    ];
   }
 
   final SettingsProjectionProducer _projection;
+  final SettingsPresentationHub _presentationHub;
   final _SettingsEffects _effects;
   late final SettingsResourceUsageProjectionSource _resourceUsage;
   late final SettingsAutostartProjectionSource _autostart;
   late final _SettingsIntents _intents;
   late final SettingsBinding binding;
+
+  /// Riverpod overrides that supply this feature's live presentation sources.
+  /// The root ProviderScope (F01.7) and feature tests install them; the legacy
+  /// [binding] remains for the consumers that have not migrated yet.
+  late final List<Override> providerOverrides;
   Future<void>? _disposal;
 
   Future<void> dispose() => _disposal ??= _dispose();
@@ -66,6 +106,7 @@ final class SettingsFeatureComposition {
     await _autostart.dispose();
     await _resourceUsage.dispose();
     await _projection.dispose();
+    await _presentationHub.dispose();
     await _effects.dispose();
   }
 }
@@ -93,12 +134,14 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
   _SettingsIntents({
     required ClientController controller,
     required SettingsProjectionProducer projection,
+    required SettingsPresentationHub presentationHub,
     required SettingsResourceUsageProjectionSource resourceUsage,
     required SettingsAutostartProjectionSource autostart,
     required _SettingsEffects effects,
     RendererIntentTraceFactory? beginRendererIntent,
   }) : _controller = controller,
        _projection = projection,
+       _presentationHub = presentationHub,
        _resourceUsage = resourceUsage,
        _autostart = autostart,
        _effects = effects,
@@ -106,6 +149,7 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
 
   final ClientController _controller;
   final SettingsProjectionProducer _projection;
+  final SettingsPresentationHub _presentationHub;
   final SettingsResourceUsageProjectionSource _resourceUsage;
   final SettingsAutostartProjectionSource _autostart;
   final _SettingsEffects _effects;
@@ -157,6 +201,7 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
       case SetClientUpdateReleaseTrack(:final track):
         _controller.selectClientUpdateReleaseTrack(track);
         _projection.refresh(cause);
+        _presentationHub.refresh(cause);
       case ExportClientDiagnostics(:final destinationPath):
         _run(() => _controller.exportClientLogs(destinationPath), trace);
       case OpenSettingsDirectory(
@@ -219,7 +264,9 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
     unawaited(
       Future<Object?>.sync(action)
           .then((_) {
-            _projection.refresh(applicationCauseForTrace(trace));
+            final cause = applicationCauseForTrace(trace);
+            _projection.refresh(cause);
+            _presentationHub.refresh(cause);
           })
           .catchError((Object _) {
             _effects.emit(
@@ -245,7 +292,9 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
       try {
         restored = await _controller.clientConversationController
             .restoreArchived(conversationId);
-        _projection.refresh(applicationCauseForTrace(trace));
+        final cause = applicationCauseForTrace(trace);
+        _projection.refresh(cause);
+        _presentationHub.refresh(cause);
       } catch (_) {
         _effects.emit(
           SettingsActionRejected('settings_action_failed', trace: trace),

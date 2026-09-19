@@ -317,6 +317,7 @@ class ClientController extends AgentConversationController
       },
       onSnapshotApplied: (conversation) =>
           unawaited(hydrateGroupConversationSessions(conversation)),
+      completionNoticePublisher: _publishContinuityCompletionNotice,
       memoryJournal: clientMemoryDiagnosticJournal,
       pendingNoticePollInterval: pendingNoticePollInterval,
     );
@@ -324,6 +325,38 @@ class ClientController extends AgentConversationController
     clientConversationController.syncAvailableConversationAgents(
       scannedTargets,
     );
+  }
+
+  /// Application-owned publication of one continuity completion notice. The
+  /// conversation controller drains its polled notices through this sink so no
+  /// projection producer performs the notification-center side effect.
+  bool _publishContinuityCompletionNotice(Map<String, dynamic> notice) {
+    final id = (notice['notificationId'] ?? '').toString().trim();
+    if (id.isEmpty) return false;
+    final parent = (notice['parentConversationId'] ?? '').toString().trim();
+    final child = (notice['childConversationId'] ?? '').toString().trim();
+    final goalId = (notice['goalId'] ?? '').toString().trim();
+    final cardEventId = (notice['cardEventId'] ?? '').toString().trim();
+    final cardSequence =
+        int.tryParse((notice['cardSequence'] ?? '').toString()) ?? 0;
+    messagingNotificationCenter.publish(
+      id: id,
+      messageChinese: '任务已完成',
+      messageEnglish: 'Task completed',
+      tone: MessagingNotificationTone.success,
+      code: 'continuity-goal-completed',
+      completionTarget: parent.isEmpty
+          ? null
+          : ContinuityCompletionNoticeTarget(
+              notificationId: id,
+              parentConversationId: parent,
+              childConversationId: child,
+              goalId: goalId,
+              cardEventId: cardEventId,
+              cardSequence: cardSequence,
+            ),
+    );
+    return true;
   }
 
   @override

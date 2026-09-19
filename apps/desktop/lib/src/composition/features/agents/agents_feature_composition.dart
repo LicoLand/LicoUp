@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_controller.dart';
@@ -12,6 +13,9 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_view.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
 import 'package:licoup/src/projections/agents/agents_projection_producer.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 
@@ -37,6 +41,9 @@ final class AgentsFeatureComposition {
       projection: _projection,
     );
     _intents.effects = _effects;
+    _catalogSource = AgentsPresentationSource(projection: _projection);
+    catalogEntry = presentationProviderEntry(_catalogSource);
+    catalogActions = AgentsCatalogActions.fromIntents(_intents);
     binding = AgentsBinding(
       projection: _projection,
       intents: _intents,
@@ -48,12 +55,20 @@ final class AgentsFeatureComposition {
   late final AgentsProjectionProducer _projection;
   late final _AgentsEffects _effects;
   late final _AgentsIntents _intents;
+  late final AgentsPresentationSource _catalogSource;
+
+  /// F01 Riverpod entry for the agent catalog resource.
+  late final PresentationProviderEntry<AgentsProjection> catalogEntry;
+
+  /// Narrow renderer actions with the agents scope pinned.
+  late final AgentsCatalogActions catalogActions;
   late final AgentsBinding binding;
   bool _closed = false;
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    await _catalogSource.dispose();
     await _projection.close();
     _adaptiveFlywheel.dispose();
     await _effects.close();

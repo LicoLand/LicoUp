@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
@@ -11,8 +13,9 @@ import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_effect.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_inputs.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
-import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_providers.dart';
 
 export 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart'
     show SkillCategoryIconBadge, resolveSkillIconColor, showSkillIconPicker;
@@ -42,58 +45,59 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
     return EffectListener<SkillHubEffect>(
       source: widget.binding.effects,
       onEffect: _handleEffect,
-      child: ProjectionBuilder<SkillHubProjection, SkillHubProjection>(
-        source: widget.binding.projection,
-        select: (projection) => projection,
-        builder: (context, projection) {
-          for (final skill in projection.skills) {
-            _skillNames[skill.id] = skill.name;
-          }
-          final body = CustomScrollView(
-            slivers: [
-              if (projection.phase == PresentationPhase.failed &&
-                  projection.skills.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      LicoStrings.of(context).isChinese
-                          ? '技能刷新失败，请重试。'
-                          : 'Skills could not be refreshed. Try again.',
-                      key: const Key('skill-hub-refresh-failed'),
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ),
-              SliverToBoxAdapter(
-                child: SkillCategoryFilter(
-                  selectedCategory: _category,
-                  onChanged: (value) => setState(() => _category = value),
-                ),
-              ),
-              SkillCollection(
-                projection: projection,
-                intents: widget.binding.intents,
-                selectedCategory: _category,
-                agentId: widget.agentId,
-              ),
-            ],
-          );
-          if (widget.embedded) return body;
-          return LicoPaneScaffold(
-            title: LicoStrings.of(context).skillHub,
-            refreshTooltip: LicoStrings.of(context).refreshSkills,
-            onRefresh: projection.phase == PresentationPhase.loading
-                ? null
-                : () => widget.binding.intents.send(const RefreshSkillHub()),
-            refreshing: projection.phase == PresentationPhase.loading,
-            refreshButtonKey: const Key('skill-hub-refresh'),
-            body: body,
-          );
-        },
+      child: AsyncRegion<SkillHubCatalogInputs, IntentSink<SkillHubIntent>>(
+        source: skillHubCatalogInputsProvider,
+        actions: widget.binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, _) => _buildCatalog(context, inputs),
       ),
+    );
+  }
+
+  Widget _buildCatalog(BuildContext context, SkillHubCatalogInputs inputs) {
+    for (final skill in inputs.skills) {
+      _skillNames[skill.id] = skill.name;
+    }
+    final body = CustomScrollView(
+      slivers: [
+        if (inputs.phase == PresentationPhase.failed &&
+            inputs.skills.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                LicoStrings.of(context).isChinese
+                    ? '技能刷新失败，请重试。'
+                    : 'Skills could not be refreshed. Try again.',
+                key: const Key('skill-hub-refresh-failed'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: SkillCategoryFilter(
+            selectedCategory: _category,
+            onChanged: (value) => setState(() => _category = value),
+          ),
+        ),
+        SkillCollection(
+          inputs: inputs,
+          intents: widget.binding.intents,
+          selectedCategory: _category,
+          agentId: widget.agentId,
+        ),
+      ],
+    );
+    if (widget.embedded) return body;
+    return LicoPaneScaffold(
+      title: LicoStrings.of(context).skillHub,
+      refreshTooltip: LicoStrings.of(context).refreshSkills,
+      onRefresh: inputs.phase == PresentationPhase.loading
+          ? null
+          : () => widget.binding.intents.send(const RefreshSkillHub()),
+      refreshing: inputs.phase == PresentationPhase.loading,
+      refreshButtonKey: const Key('skill-hub-refresh'),
+      body: body,
     );
   }
 

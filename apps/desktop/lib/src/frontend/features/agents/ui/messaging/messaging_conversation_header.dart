@@ -147,9 +147,11 @@ class MessagingConversationHeader extends StatelessWidget {
       key: const Key('messaging-conversation-identity-capsule'),
       borderRadius: radius,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: MessagingDesktopMetrics.conversationHeaderCapsulePadH,
-          vertical: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+        padding: const EdgeInsets.only(
+          left: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+          right: MessagingDesktopMetrics.conversationHeaderCapsulePadH,
+          top: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
+          bottom: MessagingDesktopMetrics.conversationHeaderCapsulePadV,
         ),
         child: identity,
       ),

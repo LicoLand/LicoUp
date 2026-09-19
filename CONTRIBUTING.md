@@ -54,6 +54,14 @@ npm run client:gate:android         # Android changes only
 npm run client:gate:dependencies    # dependency authority changes only
 ```
 
+**One crate, one version.** The dependency graph must not carry two versions of
+the same crate. Duplicates bloat the binary, split types across versions, and
+hide unmaintained generations behind the pin of another consumer. When a new
+dependency would introduce a second generation of an existing crate, converge
+to the latest compatible version instead of raising the duplicate allowance.
+The dependency gate fails on any duplicate generation; the historical exception
+list is being burned down to zero and accepts no new entries.
+
 Build-producing tests share one managed compiler target. The test runner holds
 an active lease while a build is using it and marks the output reclaimable on
 every terminal path. Inspect or remove only inactive, marked output with:
