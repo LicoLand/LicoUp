@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:riverpod/misc.dart' show Override;
+
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_effect.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_providers.dart';
+import 'package:licoup/src/projections/skill_hub/skill_hub_presentation_sources.dart';
 import 'package:licoup/src/projections/skill_hub/skill_hub_projection_producer.dart';
 
 final class SkillHubFeatureComposition {
@@ -27,14 +31,24 @@ final class SkillHubFeatureComposition {
       intents: _intents,
       effects: _effects,
     );
+    _catalog = skillHubCatalogPresentationSource(_projection);
+    providerOverrides = <Override>[
+      skillHubCatalogSourceProvider.overrideWithValue(_catalog),
+    ];
   }
 
   final ClientController _controller;
   final RendererIntentTraceFactory? _beginRendererIntent;
   late final SkillHubProjectionProducer _projection;
+  late final SkillHubCatalogPresentationSource _catalog;
   late final SemanticEffectChannel<SkillHubEffect> _effects;
   late final SemanticIntentChannel<SkillHubIntent> _intents;
   late final SkillHubBinding binding;
+
+  /// Riverpod overrides that supply this feature's live presentation sources.
+  /// The root ProviderScope (F01.7) and feature tests install them; the legacy
+  /// [binding] remains for the consumers that have not migrated yet.
+  late final List<Override> providerOverrides;
   Future<void>? _disposal;
 
   Future<void> _handleIntent(SkillHubIntent intent) async {
@@ -120,6 +134,7 @@ final class SkillHubFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await _catalog.dispose();
     await _projection.dispose();
     await _effects.dispose();
   }

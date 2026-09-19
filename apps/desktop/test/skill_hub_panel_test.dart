@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/skill_hub_binding_fixture.dart';
+import 'fixtures/skill_hub_presentation_fixture.dart';
 
 void main() {
   testWidgets('Skill Hub shows centered scanning state while busy and empty', (
     tester,
   ) async {
-    final fixture = SkillHubBindingFixture(
+    final fixture = _SkillHubFixture(
       skills: const [],
       phase: PresentationPhase.loading,
     );
@@ -169,12 +172,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(fixture.plannedSkillId, 'public-reviewer');
+      // The panel renders the published catalog, so the confirmed removal is
+      // republished here the way the production producer does.
+      fixture.presentation.removeSkill('public-reviewer');
+      await tester.pumpAndSettle();
+
+      expect(fixture.hub.plannedSkillId, 'public-reviewer');
       expect(
-        fixture.plannedPath,
+        fixture.hub.plannedPath,
         '<portable-root>/.agents/skills/public-reviewer',
       );
-      expect(fixture.appliedConfirmation, 'trash:public-reviewer:test-plan');
+      expect(
+        fixture.hub.appliedConfirmation,
+        'trash:public-reviewer:test-plan',
+      );
       expect(find.text('Public Reviewer'), findsNothing);
       expect(
         find.text('Moved "Public Reviewer" to the system trash.'),
@@ -235,7 +246,7 @@ void main() {
           'romeo sierra tango uniform victor whiskey xray yankee zulu '
           'wrapped line three continues with extra sample words so the '
           'card body must ellipsize after exactly three lines of text';
-      final fixture = SkillHubBindingFixture(
+      final fixture = _SkillHubFixture(
         skills: [
           skillHubFixtureSkill(
             id: 'sample-wrap-skill',
@@ -290,7 +301,7 @@ void main() {
     tester,
   ) async {
     const shortDescription = 'Short.';
-    final fixture = SkillHubBindingFixture(
+    final fixture = _SkillHubFixture(
       skills: [
         skillHubFixtureSkill(
           id: 'sample-short-skill',
@@ -329,6 +340,27 @@ void main() {
       expect(cardRect.inflate(0.5).contains(rect.bottomRight), isTrue);
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('catalog source observes only while the panel is mounted', (
+    tester,
+  ) async {
+    final fixture = _skillHubFixture();
+    addTearDown(fixture.dispose);
+
+    expect(fixture.presentation.openCount, 0);
+    expect(fixture.presentation.closeCount, 0);
+
+    await _pumpSkillHub(tester, fixture: fixture, locale: const Locale('en'));
+
+    expect(fixture.presentation.openCount, 1);
+    expect(find.text('Public Reviewer'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(fixture.presentation.openCount, 0);
+    expect(fixture.presentation.closeCount, 1);
   });
 
   testWidgets(
@@ -387,69 +419,101 @@ int _lineCount(List<TextBox> boxes) {
 
 Future<void> _pumpSkillHub(
   WidgetTester tester, {
-  required SkillHubBindingFixture fixture,
+  required _SkillHubFixture fixture,
   required Locale locale,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      locale: locale,
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child!,
-        );
-      },
-      home: Scaffold(
-        body: SizedBox(
-          width: 900,
-          height: 650,
-          child: SkillHubPanel(binding: fixture.binding),
+    ProviderScope(
+      overrides: fixture.presentation.overrides,
+      child: MaterialApp(
+        locale: locale,
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          );
+        },
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 650,
+            child: SkillHubPanel(binding: fixture.binding),
+          ),
         ),
       ),
     ),
   );
   await tester.pump();
+  await tester.pump();
 }
 
-SkillHubBindingFixture _skillHubFixture() {
-  return SkillHubBindingFixture(
-    phase: PresentationPhase.loading,
-    skills: [
-      skillHubFixtureSkill(
-        id: 'public-reviewer',
-        name: 'Public Reviewer',
-        author: 'Example Org',
-        description: 'Reviews changes.',
-        version: '1.2.3',
-        isPublic: true,
-        path: '<portable-root>/.agents/skills/public-reviewer',
-        iconId: 'shield',
-        agents: const [
-          SkillAgentProjection(id: 'codex', label: 'Codex'),
-          SkillAgentProjection(id: 'cursor', label: 'Cursor'),
-          SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
-          SkillAgentProjection(id: 'opencode', label: 'OpenCode'),
-        ],
-      ),
-      skillHubFixtureSkill(
-        id: 'private-helper',
-        name: 'Private Helper',
-        isPublic: false,
-        path: '<portable-root>/.claude/skills/private-helper',
-        iconId: 'wrench',
-        agents: const [
-          SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
-        ],
-      ),
-    ],
-  );
+_SkillHubFixture _skillHubFixture() => _SkillHubFixture(
+  phase: PresentationPhase.loading,
+  skills: [
+    skillHubFixtureSkill(
+      id: 'public-reviewer',
+      name: 'Public Reviewer',
+      author: 'Example Org',
+      description: 'Reviews changes.',
+      version: '1.2.3',
+      isPublic: true,
+      path: '<portable-root>/.agents/skills/public-reviewer',
+      iconId: 'shield',
+      agents: const [
+        SkillAgentProjection(id: 'codex', label: 'Codex'),
+        SkillAgentProjection(id: 'cursor', label: 'Cursor'),
+        SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
+        SkillAgentProjection(id: 'opencode', label: 'OpenCode'),
+      ],
+    ),
+    skillHubFixtureSkill(
+      id: 'private-helper',
+      name: 'Private Helper',
+      isPublic: false,
+      path: '<portable-root>/.claude/skills/private-helper',
+      iconId: 'wrench',
+      agents: const [
+        SkillAgentProjection(id: 'claude-code', label: 'Claude Code'),
+      ],
+    ),
+  ],
+);
+
+final class _SkillHubFixture {
+  _SkillHubFixture({
+    required List<SkillProjectionItem> skills,
+    PresentationPhase phase = PresentationPhase.ready,
+    bool usageAvailable = false,
+  }) : hub = SkillHubBindingFixture(
+         skills: skills,
+         phase: phase,
+         usageAvailable: usageAvailable,
+       ),
+       presentation = SkillHubPresentationFixture(
+         projection: SkillHubProjection(
+           skills: skills,
+           query: '',
+           phase: phase,
+           usageAvailable: usageAvailable,
+         ),
+       );
+
+  final SkillHubBindingFixture hub;
+  final SkillHubPresentationFixture presentation;
+
+  SkillHubBinding get binding => hub.binding;
+
+  Future<void> dispose() async {
+    await hub.dispose();
+    await presentation.dispose();
+  }
 }
 
 bool _hasTooltip(WidgetTester tester, String message) {
