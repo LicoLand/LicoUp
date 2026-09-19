@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
@@ -22,6 +23,7 @@ import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_card.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/fixtures/layout_scoped_state_fixture.dart';
 import 'layout/layout_host_test_fixtures.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
@@ -170,10 +172,15 @@ void main() {
     await _pumpSettings(tester, fixture, height: 720);
 
     await tester.tap(find.text('Startup').first);
-    for (var frame = 0; frame < 24; frame += 1) {
+    // Sections install their regions asynchronously, so the lazy travel may
+    // re-align while heights settle; pump until the target is visible.
+    for (
+      var frame = 0;
+      frame < 120 && !tester.any(find.text('Enable auto-start'));
+      frame += 1
+    ) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-
     expect(find.text('Enable auto-start'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -183,6 +190,7 @@ void main() {
   ) async {
     final fixture = _settingsFixture();
     addTearDown(fixture.source.dispose);
+    addTearDown(fixture.presentation.dispose);
     final scopedState = buildLayoutScopedStateFixture(
       profile: BuiltInLayoutSpec.dashboard,
       surface: LayoutRuntimeSurface.desktop,
@@ -228,10 +236,13 @@ void main() {
     );
 
     await tester.pumpWidget(
-      host(
-        SettingsPanel(
-          binding: fixture.binding,
-          layoutRegistry: buildFixtureLayoutRuntime().registry,
+      ProviderScope(
+        overrides: fixture.presentation.overrides,
+        child: host(
+          SettingsPanel(
+            binding: fixture.binding,
+            layoutRegistry: buildFixtureLayoutRuntime().registry,
+          ),
         ),
       ),
     );
@@ -250,7 +261,12 @@ void main() {
     await gesture.moveBy(const Offset(0, -240));
     await tester.pump();
 
-    await tester.pumpWidget(host(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: fixture.presentation.overrides,
+        child: host(const SizedBox.shrink()),
+      ),
+    );
     await tester.pump();
     await gesture.up();
 
@@ -343,7 +359,7 @@ void main() {
     final layoutBefore = tester.widget(
       find.byKey(const Key('layout-profile-selector')),
     );
-    fixture.source.publish(
+    fixture.presentation.publishProjection(
       settingsProjectionFixture(
         catalog: const SettingsCatalogProjection(
           phase: SettingsCatalogPhase.reconciling,
@@ -356,6 +372,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
     await tester.pump();
     expect(
       identical(
@@ -384,7 +401,7 @@ void main() {
     tester,
   ) async {
     final fixture = _settingsFixture();
-    fixture.source.publish(
+    fixture.presentation.publishProjection(
       settingsProjectionFixture(
         layoutPhase: PresentationPhase.loading,
         phase: PresentationPhase.loading,
@@ -440,7 +457,13 @@ void main() {
     final fixture = _settingsFixture();
     await _pumpSettings(tester, fixture);
     await tester.tap(find.text('Diagnostics').first);
-    for (var frame = 0; frame < 24; frame += 1) {
+    // Sections install their regions asynchronously, so the lazy travel may
+    // re-align while heights settle; pump until the target is visible.
+    for (
+      var frame = 0;
+      frame < 120 && !tester.any(find.text('Export Logs'));
+      frame += 1
+    ) {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(find.text('Export Logs'), findsOneWidget);
@@ -452,7 +475,7 @@ void main() {
     tester,
   ) async {
     final fixture = _settingsFixture();
-    fixture.source.publish(
+    fixture.presentation.publishProjection(
       settingsProjectionFixture(appearancePresets: const []),
     );
     await _pumpSettings(tester, fixture);
@@ -503,24 +526,25 @@ void main() {
   SettingsProjectionFixture source,
   RecordingSettingsIntents intents,
   SettingsBinding binding,
+  SettingsPresentationFixture presentation,
 })
 _settingsFixture({
   String appearanceId = AppearancePresetIds.licoSoda,
   String locale = 'system',
   String snapshotRoot = 'test-data/licoup/backups',
 }) {
-  final source = SettingsProjectionFixture(
-    settingsProjectionFixture(
-      appearanceId: appearanceId,
-      locale: locale,
-      snapshotRootPath: snapshotRoot,
-    ),
+  final projection = settingsProjectionFixture(
+    appearanceId: appearanceId,
+    locale: locale,
+    snapshotRootPath: snapshotRoot,
   );
+  final source = SettingsProjectionFixture(projection);
   final intents = RecordingSettingsIntents();
   return (
     source: source,
     intents: intents,
     binding: settingsBindingFixture(source: source, intents: intents),
+    presentation: SettingsPresentationFixture(projection: projection),
   );
 }
 
@@ -530,6 +554,7 @@ Future<void> _pumpSettings(
     SettingsProjectionFixture source,
     RecordingSettingsIntents intents,
     SettingsBinding binding,
+    SettingsPresentationFixture presentation,
   })
   fixture, {
   Locale locale = const Locale('en'),
@@ -538,37 +563,44 @@ Future<void> _pumpSettings(
   bool disableAnimations = false,
 }) async {
   addTearDown(fixture.source.dispose);
+  addTearDown(fixture.presentation.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      builder: (context, child) => FixtureLayoutPresentationScope(
-        child: MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(disableAnimations: disableAnimations),
-          child: child!,
+    ProviderScope(
+      overrides: fixture.presentation.overrides,
+      child: MaterialApp(
+        builder: (context, child) => FixtureLayoutPresentationScope(
+          child: MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(disableAnimations: disableAnimations),
+            child: child!,
+          ),
         ),
-      ),
-      locale: locale,
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(
-        platformBrightness: Brightness.dark,
-      ).copyWith(platform: platform),
-      home: Scaffold(
-        body: SizedBox(
-          width: 980,
-          height: height,
-          child: SettingsPanel(
-            binding: fixture.binding,
-            layoutRegistry: buildFixtureLayoutRuntime().registry,
+        locale: locale,
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: platform),
+        home: Scaffold(
+          body: SizedBox(
+            width: 980,
+            height: height,
+            child: SettingsPanel(
+              binding: fixture.binding,
+              layoutRegistry: buildFixtureLayoutRuntime().registry,
+            ),
           ),
         ),
       ),
     ),
   );
+  // Source observation opens and the runtime's first install both complete
+  // asynchronously; the second pump installs the initial frame everywhere.
+  await tester.pump();
   await tester.pump();
 }

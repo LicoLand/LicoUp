@@ -17,6 +17,7 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_gr
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/support.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
@@ -137,11 +138,36 @@ class _CanonicalGroupConversationPaneState
     });
   }
 
-  String _mentionLabel(ClientConversationMembership membership) {
+  String _mentionLabel(
+    ClientConversationMembership membership,
+    TargetCandidate target,
+  ) {
     final displayName = membership.principal.displayName.trim();
-    return displayName.isEmpty
-        ? membership.principal.agentId.trim()
-        : displayName;
+    if (displayName.isNotEmpty) return displayName;
+    final known =
+        agentProductDisplayName(target.target) ??
+        agentProductDisplayName(target.id);
+    if (known != null) return known;
+    return agentConversationTargetDisplayName(target);
+  }
+
+  /// Capsule label for the assistant identity: canonical product names first
+  /// ("Codex", "Kimi Code"), otherwise each word capitalized.
+  String _assistantCapsuleLabel(
+    ClientConversationMembership membership,
+    TargetCandidate target,
+  ) {
+    final raw = _mentionLabel(membership, target);
+    final known = agentProductDisplayName(raw);
+    if (known != null) return known;
+    final words = raw
+        .split(RegExp(r'[\s\-_]+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return raw;
+    return words
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
   }
 
   TargetCandidate? _assistantTarget(
@@ -155,6 +181,27 @@ class _CanonicalGroupConversationPaneState
       if (target.target == agentId) return target;
     }
     return null;
+  }
+
+  /// Catalog display name for the assistant's preferred model; the raw value
+  /// stays when the target or its catalog is unknown.
+  String _assistantModelLabel(
+    CanonicalConversationProjection canonical,
+    TargetCandidate? assistantTarget,
+  ) {
+    final model = canonical.assistantModel.trim();
+    if (model.isEmpty || assistantTarget == null) return model;
+    return agentOrchestrationModelDisplayName(assistantTarget, model);
+  }
+
+  String _assistantEffortLabel(
+    CanonicalConversationProjection canonical,
+    LicoStrings strings,
+  ) {
+    final effort = canonical.assistantReasoningEffort.trim();
+    return effort.isEmpty
+        ? ''
+        : strings.reasoningEffortOptionLabel(effort, effort);
   }
 
   Map<String, AgentParticipantRuntimeProfile> get _runtimeProfiles => {
@@ -280,9 +327,10 @@ class _CanonicalGroupConversationPaneState
   void _refreshAssistantThread() {
     if (_turnActive || widget.canonical.sending) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'assistant-refresh',
           reasonCode: 'assistant_turn_active',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return;
@@ -293,9 +341,10 @@ class _CanonicalGroupConversationPaneState
   void _clearHistory() {
     if (_turnActive || widget.canonical.sending) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'canonical-clear',
           reasonCode: 'conversation_clear_blocked',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return;
@@ -349,9 +398,10 @@ class _CanonicalGroupConversationPaneState
     if (widget.attachments.attachments.isNotEmpty &&
         !widget.attachments.acceptsImages) {
       widget.conversation.intents.send(
-        const SurfaceConversationFailure(
+        SurfaceConversationFailure(
           stage: 'send',
           reasonCode: 'attachment_transport_unsupported',
+          conversationId: widget.canonical.conversationId,
         ),
       );
       return false;
@@ -396,7 +446,7 @@ class _CanonicalGroupConversationPaneState
     }
     final label = membership == null
         ? agentConversationTargetDisplayName(target)
-        : _mentionLabel(membership);
+        : _mentionLabel(membership, target);
     final separator =
         widget.composer.draft.isEmpty ||
             RegExp(r'\\s$').hasMatch(widget.composer.draft)
@@ -488,7 +538,7 @@ class _CanonicalGroupConversationPaneState
         membership.principal.agentId,
       );
       if (target == null) continue;
-      mentionLabels[target.target] = _mentionLabel(membership);
+      mentionLabels[target.target] = _mentionLabel(membership, target);
     }
     final state = AgentConversationPaneState(
       target: paneTarget,
@@ -537,15 +587,33 @@ class _CanonicalGroupConversationPaneState
             : conversation.strategyRevision.trim(),
         onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
       ),
-      composerFieldLeading: AssistantToggleButton(
+      composerAssistantCapsule: AssistantToggleButton(
         active: _assistantActive(conversation),
         configured: conversation.assistantMembership != null,
         label: conversation.assistantMembership == null
             ? strings.assistantNeedsConfigurationStatus
-            : _mentionLabel(conversation.assistantMembership!),
+            : _assistantCapsuleLabel(
+                conversation.assistantMembership!,
+                _assistantTarget(conversation, participantTargets) ??
+                    participantTargets.firstWhere(
+                      (t) =>
+                          t.target ==
+                          conversation.assistantMembership!.principal.agentId,
+                      orElse: () => participantTargets.first,
+                    ),
+              ),
         status: assistantStatus,
         onTap: () => _toggleAssistant(conversation),
         onEdit: () => unawaited(_openAssistantConfiguration()),
+      ),
+      composerFieldTrailing: AssistantModelReadout(
+        visible:
+            _assistantActive(conversation) &&
+            canonical.assistantModel.trim().isNotEmpty,
+        modelLabel: _assistantModelLabel(canonical, assistantTarget),
+        effortLabel: _assistantEffortLabel(canonical, strings),
+        tooltip: strings.configureAssistantTooltip,
+        onTap: () => unawaited(_openAssistantConfiguration()),
       ),
       composerLeading: CanonicalGroupAssistantActions(
         onPickAttachments:
@@ -591,11 +659,21 @@ class _CanonicalGroupConversationPaneState
         LoadEarlierConversationEvents(conversation.id),
       ),
       onCopyText: _copyText,
-      onRetryMessage: (eventId) async => widget.conversation.intents.send(
-        RetryCanonicalConversationMessage(eventId),
+      onRetryMessage: (messageId) async => widget.conversation.intents.send(
+        RetryCanonicalConversationMessage(
+          resolveCanonicalGroupSourceEventId(
+            messageId,
+            canonical.canonicalEvents,
+          ),
+        ),
       ),
-      onDeleteMessage: (eventId) async => widget.conversation.intents.send(
-        DeleteCanonicalConversationMessage(eventId),
+      onDeleteMessage: (messageId) async => widget.conversation.intents.send(
+        DeleteCanonicalConversationMessage(
+          resolveCanonicalGroupSourceEventId(
+            messageId,
+            canonical.canonicalEvents,
+          ),
+        ),
       ),
       onNewConversation: _refreshAssistantThread,
     );

@@ -37,7 +37,7 @@ void main() {
                   onSend: (_) async => true,
                   floatingMatteCapsule: true,
                   onAttach: () {},
-                  fieldLeading: const SizedBox.square(
+                  fieldTrailing: const SizedBox.square(
                     dimension: 32,
                     child: Icon(Icons.auto_awesome_outlined),
                   ),
@@ -999,8 +999,8 @@ void main() {
             onDraftChanged: (_) {},
             onSend: (_) async => true,
             floatingMatteCapsule: true,
-            fieldLeading: const SizedBox.square(
-              key: Key('test-field-leading'),
+            fieldTrailing: const SizedBox.square(
+              key: Key('test-field-trailing'),
               dimension: 32,
             ),
           ),
@@ -1016,7 +1016,7 @@ void main() {
         ),
       );
       final leadingSingle = tester.getRect(
-        find.byKey(const Key('test-field-leading')),
+        find.byKey(const Key('test-field-trailing')),
       );
       final fieldSingle = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),
@@ -1036,7 +1036,7 @@ void main() {
         ),
       );
       final leadingMulti = tester.getRect(
-        find.byKey(const Key('test-field-leading')),
+        find.byKey(const Key('test-field-trailing')),
       );
       final fieldMulti = tester.getRect(
         find.byKey(const Key('agent-conversation-composer-field')),

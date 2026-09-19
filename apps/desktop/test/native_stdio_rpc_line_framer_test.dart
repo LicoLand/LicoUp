@@ -39,4 +39,46 @@ void main() {
     expect(oversized, 1);
     expect(frames.map((bytes) => utf8.decode(bytes)), ['ok']);
   });
+
+  test('line framer enforces 16 MiB boundary constraint', () {
+    const maxBound = 16 * 1024 * 1024;
+    final framer = StdioRpcLineFramer(maxFrameBytes: maxBound);
+    var framesCount = 0;
+    var lastFrameLength = 0;
+    var oversizedCount = 0;
+
+    // Test a frame right at the 16 MiB limit: payload of 16 MiB - 1 byte, plus '\n' = 16 MiB total.
+    final atLimitPayload = Uint8List(maxBound - 1);
+    atLimitPayload.fillRange(0, atLimitPayload.length, 0x61); // 'a'
+    final atLimitChunk = Uint8List(maxBound);
+    atLimitChunk.setRange(0, atLimitPayload.length, atLimitPayload);
+    atLimitChunk[maxBound - 1] = 0x0a; // '\n'
+
+    framer.accept(
+      atLimitChunk,
+      onFrame: (bytes) {
+        framesCount += 1;
+        lastFrameLength = bytes.length;
+      },
+      onOversizedFrame: () => oversizedCount += 1,
+    );
+
+    expect(oversizedCount, 0);
+    expect(framesCount, 1);
+    expect(lastFrameLength, maxBound - 1);
+
+    // Test a frame exceeding 16 MiB limit by 1 byte: 16 MiB bytes + '\n' = 16 MiB + 1.
+    final oversizedChunk = Uint8List(maxBound + 1);
+    oversizedChunk.fillRange(0, maxBound, 0x62); // 'b'
+    oversizedChunk[maxBound] = 0x0a; // '\n'
+
+    framer.accept(
+      oversizedChunk,
+      onFrame: (bytes) => framesCount += 1,
+      onOversizedFrame: () => oversizedCount += 1,
+    );
+
+    expect(oversizedCount, 1);
+    expect(framesCount, 1); // No frame was delivered for the oversized one
+  });
 }
