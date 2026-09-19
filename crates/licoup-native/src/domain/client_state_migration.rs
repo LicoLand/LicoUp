@@ -239,6 +239,11 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
         );
     }
     validate_ledger_reconciliation(&ledger, &frontier, &observed)?;
+    // An authoritative store may have committed before the process crashed
+    // while writing its ledger entry. Rebuild the completed prefix from the
+    // store probe before admitting the next edge, otherwise a later edge can
+    // be recorded without the earlier one and make the next admission fail.
+    reconcile_authoritative_ledger_prefix(&mut ledger, &frontier, &observed);
 
     // Once persisted, an older binary is permanently denied even if a later
     // domain step fails. Recovery is same/newer forward repair only.
@@ -419,6 +424,25 @@ fn validate_ledger_reconciliation(
         );
     }
     Ok(())
+}
+
+fn reconcile_authoritative_ledger_prefix(
+    ledger: &mut Ledger,
+    frontier: &MigrationFrontier,
+    observed: &BTreeMap<String, u32>,
+) {
+    for domain in &frontier.domains {
+        let Some(&authoritative) = observed.get(&domain.domain_id) else {
+            continue;
+        };
+        for edge in domain
+            .steps
+            .iter()
+            .filter(|edge| edge.to_schema_version <= authoritative)
+        {
+            reconcile_ledger(ledger, domain, edge);
+        }
+    }
 }
 
 #[cfg(not(test))]
@@ -1191,10 +1215,10 @@ fn apply_authoritative_store(
                 // StrategyStore migrations execute in SQLite transactions; a
                 // failed process resumes from the authoritative meta value.
                 if edge.to_schema_version == 1 {
-                    crate::domain::adaptive_flywheel::StrategyStore::migrate_to_schema_2(root)
+                    crate::domain::workflow_store::StrategyStore::migrate_to_schema_2(root)
                         .context("migration_step_failed")?;
                 } else {
-                    crate::domain::adaptive_flywheel::StrategyStore::open_for_migration(root)
+                    crate::domain::workflow_store::StrategyStore::open_for_migration(root)
                         .context("migration_step_failed")?;
                 }
             }
@@ -2081,6 +2105,49 @@ mod tests {
         let adaptive = &ledger.domains["adaptive-flywheel"];
         assert_eq!(adaptive.schema_version, 2);
         assert_eq!(adaptive.completed_step_ids.len(), 2);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn interrupted_multi_step_migration_reconciles_the_committed_prefix() {
+        let root = std::env::temp_dir().join(format!(
+            "licoup-adaptive-prefix-recovery-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let database = root.join("client-state/adaptive-flywheel/strategies.sqlite3");
+        fs::create_dir_all(database.parent().unwrap()).unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE strategy_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO strategy_meta(key,value) VALUES ('version','1');",
+            )
+            .unwrap();
+        drop(connection);
+
+        {
+            let _guard = MigrationFailpointGuard::set("after-store");
+            assert_eq!(
+                admit(&root).unwrap_err().to_string(),
+                "migration_step_failed"
+            );
+        }
+
+        assert_eq!(probe_adaptive_flywheel(&root).unwrap().version, 1);
+        admit(&root).unwrap();
+        assert_eq!(admit(&root).unwrap().status, "ready");
+
+        let ledger: Ledger = serde_json::from_slice(
+            &fs::read(root.join("client-state/migrations/ledger.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            ledger.domains["adaptive-flywheel"].completed_step_ids,
+            vec![
+                "adaptive-flywheel.absent-to-1".to_owned(),
+                "adaptive-flywheel.workflow-routing-to-2".to_owned(),
+            ]
+        );
         let _ = fs::remove_dir_all(root);
     }
 

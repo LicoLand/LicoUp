@@ -57,6 +57,13 @@ fn main() -> Result<()> {
         }));
         return conversation_host::serve_proxy();
     }
+    if args.as_slice() == ["rpc", "conversation-host", "--stop"]
+        || args.as_slice() == ["rpc", "conversation-host", "stop"]
+        || args.as_slice() == ["rpc", "conversation-host", "--shutdown"]
+        || args.as_slice() == ["rpc", "conversation-host", "shutdown"]
+    {
+        return conversation_host::request_host_stop();
+    }
     if args.as_slice() == ["rpc", "conversation-host"] {
         panic::set_hook(Box::new(|_| {
             eprintln!("licoup conversation RPC host terminated unexpectedly");

@@ -169,29 +169,45 @@ impl AssemblySource for ContinuityWorkspace {
 
 pub fn invocation_id(
     request: &ContinuityContextCompositionRequest,
-    input_opaque_id: Option<&str>,
+    input_identity: Option<&str>,
     refine: bool,
 ) -> String {
     format!(
-        "invocation:{}:{}:{}:{}:{}",
+        "invocation:{}:{}:{}:{}:{}:{}:{}",
         request.conversation_id,
         request.recipient_membership_id,
         request.revocation_generation,
-        input_opaque_id.unwrap_or("none"),
+        authorization_key(request),
+        request.after.as_deref().unwrap_or("none"),
+        input_identity.unwrap_or("none"),
         if refine { "refine" } else { "compose" }
     )
 }
 
 pub fn replay_key(
     request: &ContinuityContextCompositionRequest,
-    input_opaque_id: Option<&str>,
+    input_identity: Option<&str>,
     input_revision: Option<i64>,
 ) -> String {
     format!(
-        "replay:{}:{}:{}:{}",
+        "replay:{}:{}:{}:{}:{}:{}:{}",
         request.conversation_id,
-        input_opaque_id.unwrap_or("none"),
+        request.recipient_membership_id,
+        authorization_key(request),
+        request.after.as_deref().unwrap_or("none"),
+        input_identity.unwrap_or("none"),
         input_revision.unwrap_or(0),
         request.revocation_generation
     )
+}
+
+fn authorization_key(request: &ContinuityContextCompositionRequest) -> String {
+    let mut scopes = request
+        .authorized_scopes
+        .iter()
+        .map(|scope| format!("{scope:?}"))
+        .collect::<Vec<_>>();
+    scopes.sort();
+    scopes.dedup();
+    scopes.join(",")
 }
