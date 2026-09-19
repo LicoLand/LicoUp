@@ -265,6 +265,58 @@ boundaries and avoids per-frame descendant rebuilds or backdrop reads.
 
 ## Conversation loading and hierarchy
 
+Desktop messaging places a content-sized identity capsule at the upper left and
+one circular ellipsis menu at the upper right. Long titles truncate within the
+available width. The direct-conversation menu retains history, new-conversation
+and details access; the group menu retains the member-list toggle. Menus support
+keyboard activation, Escape dismissal and focus return to the trigger. The
+identity capsule has generous horizontal padding. The group member list starts
+collapsed and opens from the ellipsis menu.
+
+The desktop messaging composer is a rounded rectangle even for a single line.
+Its text area sits above an action row with attachment and group controls on the
+left and send/cancel on the right. Typing, wrapping and clearing change the input
+height without morphing the container into a pill. Existing draft, attachment,
+mention, model, assistant and cancellation ownership stays with its current
+feature. Transcript clearance, the latest-message action and the member list
+follow the actual composer height. A layout with an external composer clips only
+the measured internal composer, preserving the controls above it. Mobile and
+console layout geometry retain their respective owners.
+
+The group action row uses a bare plus glyph, and the capsule row above the
+composer leads with the Assistant identity capsule followed by the Adaptive
+Flywheel capsule — both glass, the same height. The Assistant name opens its
+editor in a centered dialog, and a small purple toggle at the trailing edge
+pauses or resumes future Assistant participation. An active capsule carries the
+purple-and-gold sunset light on its rim and across the name; paused or
+unconfigured capsules rest as plain glass. Reduced motion keeps a static rim.
+Inactive names remain readable. Before the send action, a quiet readout shows
+the active Assistant's selected model in the readable text color with its
+reasoning effort muted behind it; it opens the same editor, hides the effort
+half when no effort is configured, and disappears entirely while the Assistant
+is paused or unconfigured. The Adaptive Flywheel capsule opens its
+configuration only. Configuration and
+message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
+
+桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
+长标题在可用宽度内省略。单聊菜单保留历史、新建与详情入口，群聊菜单保留成员
+名单显隐，默认收起；菜单支持键盘操作、Escape 关闭和焦点返回。身份胶囊采用
+更宽的左右内边距。桌面消息输入框始终采用
+圆角矩形，上方编辑文字，下方左侧放附件与群组控件、右侧放发送或取消。输入、
+换行与清空只改变高度，不再切换成胶囊。草稿、附件、提及、模型、助手和取消的
+原有功能属主不变。正文留白、回到最新消息按钮和名单随输入区实际高度避让；
+外置输入框布局只裁掉实测的内部输入区，保留其上方控件。移动端与控制台的布局
+几何仍由各自属主维护。
+
+群聊操作行使用不带圆形底的加号；输入框上方胶囊行先放助手身份胶囊、再放
+Adaptive Flywheel 胶囊，两者同为玻璃材质、同高。点击助手名称打开独立的助手编辑框；
+尾部一枚紫色小开关控制后续助手参与。激活时助手胶囊边框与名称同披紫金晚霞流光，
+暂停或未配置时回到素玻璃；减弱动态时保留静态边框，关闭时文字仍清晰可读。发送按钮
+前方有一处安静的模型展示器：以正文色显示激活助手已选的模型名称，思考强度以弱化色
+跟在其后，点击同样打开助手编辑框；未配置思考强度时不显示后半段，助手暂停或未配置
+时整体消失。Adaptive Flywheel 胶囊仅打开其配置；配置和发送语义
+由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
+
 The product-owned **Local** group is the highest-priority cold-start data
 target. After native state admission, load the canonical group catalog and
 Local's latest 20 events before target-cache hydration, Agent discovery,
