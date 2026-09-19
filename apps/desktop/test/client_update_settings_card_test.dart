@@ -8,8 +8,10 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
@@ -222,16 +224,17 @@ void main() {
   SettingsProjectionFixture source,
   RecordingSettingsIntents intents,
   SettingsBinding binding,
+  SettingsPresentationFixture presentation,
 })
 _fixture(ClientUpdateStatus status) {
-  final source = SettingsProjectionFixture(
-    settingsProjectionFixture(clientUpdateStatus: status),
-  );
+  final projection = settingsProjectionFixture(clientUpdateStatus: status);
+  final source = SettingsProjectionFixture(projection);
   final intents = RecordingSettingsIntents();
   return (
     source: source,
     intents: intents,
     binding: settingsBindingFixture(source: source, intents: intents),
+    presentation: SettingsPresentationFixture(projection: projection),
   );
 }
 
@@ -241,24 +244,31 @@ Future<void> _pumpCard(
     SettingsProjectionFixture source,
     RecordingSettingsIntents intents,
     SettingsBinding binding,
+    SettingsPresentationFixture presentation,
   })
   fixture, {
   Locale locale = const Locale('en'),
 }) async {
   addTearDown(fixture.source.dispose);
+  addTearDown(fixture.presentation.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: locale,
-      builder: (context, child) =>
-          FixtureLayoutPresentationScope(child: child!),
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(body: ClientUpdateSettingsCard(binding: fixture.binding)),
+    ProviderScope(
+      overrides: fixture.presentation.overrides,
+      child: MaterialApp(
+        locale: locale,
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: ClientUpdateSettingsCard(binding: fixture.binding),
+        ),
+      ),
     ),
   );
   await tester.pump();

@@ -296,6 +296,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.35"
+  flutter_riverpod:
+    dependency: "direct main"
+    description:
+      name: flutter_riverpod
+      sha256: "2b7f9d2a3c730ac1a98221b420cef966b990fca7ab546ede324642ca57a533e3"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.4.3"
   flutter_svg:
     dependency: "direct main"
     description:
@@ -603,6 +611,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  presentation_flutter:
+    dependency: "direct main"
+    description:
+      path: "../../packages/presentation_flutter"
+      relative: true
+    source: path
+    version: "0.1.0"
   presentation_runtime:
     dependency: "direct main"
     description:
@@ -667,7 +682,7 @@ packages:
     source: hosted
     version: "0.6.0"
   riverpod:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: riverpod
       sha256: "484dfc873ea4c4f4240e5635444fa066f87b07862b7279ebd004a2b71fba4b7a"

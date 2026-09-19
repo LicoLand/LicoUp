@@ -1,7 +1,9 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -9,6 +11,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 /// Settings card: login autostart for the desktop client and background helpers.
 final class StartupAutostartCard extends StatefulWidget {
@@ -37,13 +40,11 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<
-      SettingsAutostartProjection,
-      SettingsAutostartProjection
-    >(
-      source: widget.binding.autostart,
-      select: _autostartIdentity,
-      builder: _buildProjection,
+    return AsyncRegion<SettingsAutostartProjection, IntentSink<SettingsIntent>>(
+      source: settingsAutostartInputsProvider,
+      actions: widget.binding.intents,
+      loading: (_, _) => const SizedBox.shrink(),
+      data: (context, projection, _) => _buildProjection(context, projection),
     );
   }
 
@@ -208,10 +209,6 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
     );
   }
 }
-
-SettingsAutostartProjection _autostartIdentity(
-  SettingsAutostartProjection value,
-) => value;
 
 final class _SectionLabel extends StatelessWidget {
   const _SectionLabel({required this.label});
