@@ -16,6 +16,7 @@ use super::codec::{sqlite_table_exists, sqlite_value_text};
 #[derive(Clone, Debug)]
 pub(super) struct OpenAgentSessionMeta {
     id: String,
+    parent_id: Option<String>,
     title: Option<String>,
     directory: Option<String>,
     path: Option<String>,
@@ -32,6 +33,7 @@ pub(super) fn parse_openagent_sqlite_sessions(
     source_kind: &str,
     metadata: &fs::Metadata,
     connection: &mut Connection,
+    only_session_id: Option<&str>,
 ) -> Vec<Value> {
     let transaction = match connection.transaction_with_behavior(TransactionBehavior::Deferred) {
         Ok(transaction) => transaction,
@@ -44,48 +46,51 @@ pub(super) fn parse_openagent_sqlite_sessions(
         return Vec::new();
     }
 
-    let sessions = openagent_session_rows(&transaction)
-        .into_iter()
-        .filter_map(|meta| {
-            let messages = openagent_messages_for_session(adapter, path, &transaction, &meta.id);
-            if messages.is_empty() {
-                return None;
-            }
-            let mut session = session_from_messages_with_title(
-                adapter,
-                path,
-                metadata,
-                source_kind,
-                meta.id,
-                messages,
-                meta.title,
-            );
-            if let Some(object) = session.as_object_mut() {
-                if let Some(created_at) = meta.created_at {
-                    object.insert("createdAt".to_string(), json!(created_at));
+    let sessions =
+        retain_requested_session_lineage(openagent_session_rows(&transaction), only_session_id)
+            .into_iter()
+            .filter_map(|meta| {
+                let messages =
+                    openagent_messages_for_session(adapter, path, &transaction, &meta.id);
+                if messages.is_empty() {
+                    return None;
                 }
-                if let Some(updated_at) = meta.updated_at {
-                    object.insert("updatedAt".to_string(), json!(updated_at));
+                let mut session = session_from_messages_with_title(
+                    adapter,
+                    path,
+                    metadata,
+                    source_kind,
+                    meta.id,
+                    messages,
+                    meta.title,
+                );
+                if let Some(object) = session.as_object_mut() {
+                    if let Some(created_at) = meta.created_at {
+                        object.insert("createdAt".to_string(), json!(created_at));
+                    }
+                    if let Some(updated_at) = meta.updated_at {
+                        object.insert("updatedAt".to_string(), json!(updated_at));
+                    }
+                    if let Some(directory) = meta.directory.filter(|value| !value.trim().is_empty())
+                    {
+                        object.insert("workingDirectory".to_string(), json!(directory));
+                    }
+                    if let Some(path) = meta.path.filter(|value| !value.trim().is_empty()) {
+                        object.insert("projectPath".to_string(), json!(path));
+                    }
+                    if let Some(agent) = meta.agent.filter(|value| !value.trim().is_empty()) {
+                        object.insert("nativeAgent".to_string(), json!(agent));
+                    }
+                    if let Some(model) = meta.model.filter(|value| !value.trim().is_empty()) {
+                        object.insert("model".to_string(), json!(model));
+                    }
+                    if let Some(usage) = meta.usage {
+                        object.insert("usage".to_string(), usage);
+                    }
                 }
-                if let Some(directory) = meta.directory.filter(|value| !value.trim().is_empty()) {
-                    object.insert("workingDirectory".to_string(), json!(directory));
-                }
-                if let Some(path) = meta.path.filter(|value| !value.trim().is_empty()) {
-                    object.insert("projectPath".to_string(), json!(path));
-                }
-                if let Some(agent) = meta.agent.filter(|value| !value.trim().is_empty()) {
-                    object.insert("nativeAgent".to_string(), json!(agent));
-                }
-                if let Some(model) = meta.model.filter(|value| !value.trim().is_empty()) {
-                    object.insert("model".to_string(), json!(model));
-                }
-                if let Some(usage) = meta.usage {
-                    object.insert("usage".to_string(), usage);
-                }
-            }
-            Some(session)
-        })
-        .collect();
+                Some(session)
+            })
+            .collect();
     if transaction.commit().is_err() {
         return Vec::new();
     }
@@ -94,7 +99,7 @@ pub(super) fn parse_openagent_sqlite_sessions(
 
 /// Columns the session projection can use when the store happens to have them.
 /// `id` is the only one every schema is required to carry.
-const OPENAGENT_SESSION_COLUMNS: [&str; 13] = [
+const OPENAGENT_SESSION_COLUMNS: [&str; 14] = [
     "id",
     "title",
     "directory",
@@ -108,6 +113,7 @@ const OPENAGENT_SESSION_COLUMNS: [&str; 13] = [
     "tokens_reasoning",
     "tokens_cache_read",
     "tokens_cache_write",
+    "parent_id",
 ];
 
 /// Session rows from one OpenCode-shaped store.
@@ -158,6 +164,7 @@ pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSe
         let tokens_cache_write = row.get::<_, Option<i64>>(12)?;
         Ok(Some(OpenAgentSessionMeta {
             id,
+            parent_id: sqlite_value_text(row.get_ref(13)?),
             title: sqlite_value_text(row.get_ref(1)?),
             directory: sqlite_value_text(row.get_ref(2)?)
                 .as_deref()
@@ -192,6 +199,38 @@ pub(super) fn openagent_session_rows(connection: &Connection) -> Vec<OpenAgentSe
         }
     }
     sessions
+}
+
+/// Narrow an OpenCode/Kilo database before reading message parts. Child
+/// sessions remain in scope so the normal lineage fold can still produce the
+/// parent conversation's delegated-task cards.
+fn retain_requested_session_lineage(
+    sessions: Vec<OpenAgentSessionMeta>,
+    only_session_id: Option<&str>,
+) -> Vec<OpenAgentSessionMeta> {
+    let Some(requested) = only_session_id.map(str::trim).filter(|id| !id.is_empty()) else {
+        return sessions;
+    };
+    let mut wanted = std::collections::HashSet::<String>::from([requested.to_owned()]);
+    loop {
+        let before = wanted.len();
+        for session in &sessions {
+            if session
+                .parent_id
+                .as_deref()
+                .is_some_and(|parent| wanted.contains(parent))
+            {
+                wanted.insert(session.id.clone());
+            }
+        }
+        if wanted.len() == before {
+            break;
+        }
+    }
+    sessions
+        .into_iter()
+        .filter(|session| wanted.contains(&session.id))
+        .collect()
 }
 
 fn sqlite_table_columns(

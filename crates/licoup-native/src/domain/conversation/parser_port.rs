@@ -65,7 +65,7 @@ pub(crate) fn parse_history(
             parse_jsonl_sessions(adapter, path, source_kind, metadata, scan_config)
         }
         HistoryParserKind::JsonDocument => {
-            parse_json_sessions(adapter, path, source_kind, metadata)
+            parse_json_sessions(adapter, path, source_kind, metadata, scan_config)
         }
         HistoryParserKind::TextTranscript => {
             parse_text_session(adapter, path, source_kind, metadata)

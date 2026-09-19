@@ -58,6 +58,7 @@ struct PersistentConversationRuntimeInner {
     subagent_watchdog_spawned: AtomicBool,
     settlement_hook: Mutex<Option<Arc<dyn Fn(&str, &Value) -> Result<(), String> + Send + Sync>>>,
     live_turn_observer: Mutex<Option<Arc<dyn Fn(&str, &str, &str, &str) + Send + Sync>>>,
+    host_stop_requested: AtomicBool,
 }
 
 pub(super) struct PersistentTurn {
@@ -192,6 +193,7 @@ impl PersistentConversationRuntime {
                 subagent_watchdog_spawned: AtomicBool::new(false),
                 settlement_hook: Mutex::new(None),
                 live_turn_observer: Mutex::new(None),
+                host_stop_requested: AtomicBool::new(false),
             }),
         };
         runtime.rearm_persisted_watchdogs();
@@ -236,6 +238,7 @@ impl PersistentConversationRuntime {
         ))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn idle(&self) -> bool {
         self.inner.clients.load(Ordering::Acquire) == 0
             && self.inner.turns.lock().is_ok_and(|turns| {
@@ -245,6 +248,72 @@ impl PersistentConversationRuntime {
                         .is_ok_and(|state| state.terminal.is_some())
                 })
             })
+    }
+
+    pub(crate) fn request_host_stop(&self) {
+        self.inner
+            .host_stop_requested
+            .store(true, Ordering::Release);
+        self.inner.turns_changed.notify_all();
+    }
+
+    pub(crate) fn is_host_stop_requested(&self) -> bool {
+        self.inner.host_stop_requested.load(Ordering::Acquire)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn has_active_turns(&self) -> bool {
+        let turns = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        turns.values().any(|turn| {
+            turn.state
+                .lock()
+                .map(|state| state.terminal.is_none())
+                .unwrap_or(false)
+        })
+    }
+
+    pub(crate) fn drain_admitted_turns(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        let mut turns_guard = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            let active = turns_guard.values().any(|turn| {
+                turn.state
+                    .lock()
+                    .map(|state| state.terminal.is_none())
+                    .unwrap_or(false)
+            });
+            if !active {
+                return true;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = deadline - now;
+            let (next_guard, wait_res) = self
+                .inner
+                .turns_changed
+                .wait_timeout(turns_guard, remaining)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            turns_guard = next_guard;
+            if wait_res.timed_out() {
+                let still_active = turns_guard.values().any(|turn| {
+                    turn.state
+                        .lock()
+                        .map(|state| state.terminal.is_none())
+                        .unwrap_or(false)
+                });
+                return !still_active;
+            }
+        }
     }
 
     /// True while a Membership-scoped turn is registered and not terminal.
@@ -443,6 +512,9 @@ impl PersistentConversationRuntime {
         params: &Value,
         admission: PersistentTurnAdmission,
     ) -> std::result::Result<Arc<PersistentTurn>, ClientError> {
+        if self.is_host_stop_requested() {
+            return Err(stdio_rpc_client_error("conversation_host_shutting_down"));
+        }
         let params = self.resolve_dispatch_params(params);
         let agent_id = params
             .get("agent")
@@ -1407,6 +1479,7 @@ impl PersistentConversationRuntime {
         // signal to the caller membership. Turns without a durable subagent
         // claim — including every callback turn — never trigger a callback.
         if let Some(inner) = turn.runtime.upgrade() {
+            inner.turns_changed.notify_all();
             PersistentConversationRuntime {
                 inner: inner.clone(),
             }
@@ -1596,6 +1669,9 @@ impl PersistentConversationRuntime {
         if state.terminal.is_none() {
             state.terminal = Some(terminal);
             turn.changed.notify_all();
+            if let Some(inner) = turn.runtime.upgrade() {
+                inner.turns_changed.notify_all();
+            }
         }
     }
 }
@@ -3588,6 +3664,72 @@ mod tests {
         release.send(()).unwrap();
         joined_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         host.join().unwrap();
+    }
+
+    #[test]
+    fn persistent_runtime_drain_admitted_turns_waits_for_completion() {
+        let runtime = runtime(64);
+        assert!(runtime.drain_admitted_turns(Duration::from_millis(50)));
+
+        let scope = ConversationRuntimeScope {
+            conversation_id: "conv-drain".into(),
+            membership_id: "mem-drain".into(),
+            event_id: "evt-drain".into(),
+            dispatch_id: "disp-drain".into(),
+        };
+        let turn = Arc::new(PersistentTurn {
+            scope: scope.clone(),
+            agent_id: "agent-drain".into(),
+            session_id: Mutex::new("sess-drain".into()),
+            turn_id: Mutex::new("turn-drain".into()),
+            state: Mutex::new(PersistentTurnState::default()),
+            cancel_requested: AtomicBool::new(false),
+            changed: Condvar::new(),
+            store: runtime.inner.store.clone(),
+            cache_budget: 1024,
+            runtime: Arc::downgrade(&runtime.inner),
+            continuity_kind: None,
+            admitted_assistant_turn: false,
+        });
+        runtime
+            .inner
+            .turns
+            .lock()
+            .unwrap()
+            .insert(scope.dispatch_id.clone(), Arc::clone(&turn));
+
+        // Active turn causes drain to wait and time out if not terminal
+        assert!(!runtime.drain_admitted_turns(Duration::from_millis(30)));
+
+        // Once turn becomes terminal, drain succeeds
+        let turn_clone = Arc::clone(&turn);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            PersistentConversationRuntime::force_terminal(
+                &turn_clone,
+                PersistentTerminal {
+                    ok: true,
+                    payload: json!({"output": "done"}),
+                },
+            );
+        });
+        assert!(runtime.drain_admitted_turns(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn host_stop_requested_rejects_new_turn_admission() {
+        let runtime = runtime(64);
+        assert!(!runtime.is_host_stop_requested());
+        runtime.request_host_stop();
+        assert!(runtime.is_host_stop_requested());
+
+        let params = json!({
+            "agent": "fixture-agent",
+            "sessionId": "sess-1",
+            "text": "test turn",
+        });
+        let adapter_err = runtime.open_turn(&params).unwrap_err();
+        assert_eq!(adapter_err, RuntimeAdapterError::ConversationDispatchFailed);
     }
 
     #[test]

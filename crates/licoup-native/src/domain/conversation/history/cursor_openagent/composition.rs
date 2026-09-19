@@ -32,8 +32,14 @@ pub(crate) fn parse_sqlite_sessions(
         return Vec::new();
     };
     if matches!(adapter, HistoryAdapter::OpenCode | HistoryAdapter::KiloCode) {
-        let precise_sessions =
-            parse_openagent_sqlite_sessions(adapter, path, source_kind, metadata, &mut connection);
+        let precise_sessions = parse_openagent_sqlite_sessions(
+            adapter,
+            path,
+            source_kind,
+            metadata,
+            &mut connection,
+            scan_config.single_session_id(),
+        );
         if !precise_sessions.is_empty() {
             return precise_sessions;
         }
@@ -42,7 +48,14 @@ pub(crate) fn parse_sqlite_sessions(
         let Ok(Some(document)) = copilot_chat_sessions_document(&connection) else {
             return Vec::new();
         };
-        return collect_explicit_json_sessions(adapter, path, metadata, source_kind, &document);
+        return collect_explicit_json_sessions(
+            adapter,
+            path,
+            metadata,
+            source_kind,
+            &document,
+            scan_config.single_session_id(),
+        );
     }
     if adapter == HistoryAdapter::Cursor {
         if path
