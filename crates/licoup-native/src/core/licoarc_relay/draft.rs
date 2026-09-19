@@ -4,7 +4,7 @@ use std::fmt;
 
 use anyhow::{Result, ensure};
 use base64::{Engine as _, engine::general_purpose};
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 
 use super::aad::licoarc_outer_authenticated_data;
 use super::carrier::{encode_carrier, preflight_carrier_size};

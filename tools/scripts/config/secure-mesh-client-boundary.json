@@ -448,11 +448,12 @@
       "tokens": [
         "secret_store_bridge: JObject",
         "AndroidJniSecretStore::new(env, secret_store_bridge)",
-        "secret_store: GlobalRef",
+        "secret_store: Global<JObject<'static>>",
         "self.secret_store.as_obj()"
       ],
       "forbiddenTokens": [
         "activity: GlobalRef",
+        "activity: Global<JObject<'static>>",
         "AndroidJniSecretStore::new(env, this)",
         "self.activity.as_obj()"
       ]

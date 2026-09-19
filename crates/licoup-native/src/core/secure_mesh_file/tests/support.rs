@@ -16,7 +16,7 @@ pub(super) use crate::core::secure_mesh_prekey::{
 pub(super) use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::SigningKey;
-pub(super) use rand::rngs::OsRng;
+pub(super) use rand_core::OsRng;
 pub(super) use serde_json::{Value, json};
 pub(super) use sha2::{Digest, Sha256};
 pub(super) use std::collections::HashSet;

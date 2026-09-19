@@ -9,7 +9,7 @@ use anyhow::{Result, anyhow, ensure};
 use hkdf::Hkdf;
 use libcrux_ml_kem::mlkem1024::{MlKem1024, MlKem1024PublicKey};
 use libcrux_traits::kem::arrayref::Kem;
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};

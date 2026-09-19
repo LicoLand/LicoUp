@@ -42,7 +42,6 @@ semver.workspace = true
 sha2.workspace = true
 subtle.workspace = true
 fs2.workspace = true
-notify.workspace = true
 interprocess.workspace = true
 icu_segmenter.workspace = true
 libcrux-ml-kem.workspace = true
@@ -64,7 +63,7 @@ url.workspace = true
 uuid.workspace = true
 toml.workspace = true
 ed25519-dalek.workspace = true
-rand.workspace = true
+rand_core.workspace = true
 regex.workspace = true
 x25519-dalek.workspace = true
 zeroize.workspace = true
@@ -100,6 +99,7 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
+rand_chacha = "0.3"
 # Bench-only async runtime: production target builds without tokio; benches
 # drive the async backend lanes under criterion.
 tokio = { version = "1", features = ["rt", "sync", "macros"] }

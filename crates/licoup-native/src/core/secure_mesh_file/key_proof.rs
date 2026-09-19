@@ -9,7 +9,7 @@ use chacha20poly1305::{
 };
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use zeroize::Zeroizing;
