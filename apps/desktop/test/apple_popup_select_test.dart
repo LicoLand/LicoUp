@@ -62,32 +62,25 @@ void main() {
     expect(focusedSurface.focused, isTrue);
     expect(focusedSurface.focusColor, brandGold);
 
-    final focusedDecoration = tester.widget<DecoratedBox>(
-      find.descendant(
-        of: find.byKey(const Key('apple-popup-select')),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is DecoratedBox &&
-              widget.decoration is ShapeDecoration &&
-              (widget.decoration as ShapeDecoration).shape
-                  is ContinuousRoundedBorder &&
-              ((widget.decoration as ShapeDecoration).shape
-                          as ContinuousRoundedBorder)
-                      .side
-                      .style ==
-                  BorderStyle.solid,
-        ),
-      ),
-    );
-    expect(focusedDecoration.position, DecorationPosition.foreground);
-    final stroke =
-        (focusedDecoration.decoration as ShapeDecoration).shape
-            as ContinuousRoundedBorder;
+    final ringPainter =
+        tester
+                .widget<CustomPaint>(
+                  find.descendant(
+                    of: find.byKey(const Key('apple-popup-select')),
+                    matching: find.byWidgetPredicate(
+                      (widget) =>
+                          widget is CustomPaint &&
+                          widget.foregroundPainter is ContinuousStrokePainter,
+                    ),
+                  ),
+                )
+                .foregroundPainter
+            as ContinuousStrokePainter;
     // The focus ring is drawn at full strength: a translucent one-pixel color
     // shift is not a reliable focus signal, so the ring is opaque and wider.
-    expect(stroke.side.color, brandGold);
-    expect(stroke.side.width, AppleControlMetrics.searchFocusRingWidth);
-    expect(stroke.side.color, isNot(kAppleMenuSelectionBlue));
+    expect(ringPainter.color, brandGold);
+    expect(ringPainter.width, AppleControlMetrics.searchFocusRingWidth);
+    expect(ringPainter.color, isNot(kAppleMenuSelectionBlue));
 
     expect(find.text('Beta'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);

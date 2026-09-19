@@ -43,14 +43,11 @@ void paintContinuousStroke(
     return;
   }
   canvas.drawPath(
-    Path.combine(
-      PathOperation.difference,
-      Path()
-        ..fillType = PathFillType.evenOdd
-        ..addRRect(outer)
-        ..addRRect(inner),
-      Path()..addRect(gap),
-    ),
+    Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRRect(outer)
+      ..addRRect(inner)
+      ..addRect(gap),
     paint,
   );
 }
@@ -316,24 +313,6 @@ class ContinuousOutlineInputBorder extends OutlineInputBorder {
   }
 
   @override
-  ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
-    if (a is ContinuousOutlineInputBorder) {
-      return ContinuousOutlineInputBorder(
-        borderSide: BorderSide.lerp(a.borderSide, borderSide, t),
-        borderRadius: BorderRadius.lerp(a.borderRadius, borderRadius, t)!,
-        gapPadding: a.gapPadding + (gapPadding - a.gapPadding) * t,
-      );
-    }
-    return super.lerpFrom(a, t);
-  }
-
-  @override
-  ShapeBorder? lerpTo(ShapeBorder? b, double t) {
-    if (b is ContinuousOutlineInputBorder) return b.lerpFrom(this, t);
-    return super.lerpTo(b, t);
-  }
-
-  @override
   void paint(
     Canvas canvas,
     Rect rect, {
@@ -344,15 +323,16 @@ class ContinuousOutlineInputBorder extends OutlineInputBorder {
   }) {
     Rect? gap;
     if (gapStart != null && gapExtent > 0 && gapPercentage > 0) {
-      final extent = (gapExtent + gapPadding * 2) * gapPercentage;
+      final extent = gapExtent * gapPercentage;
+      final padded = extent + gapPadding;
       final start = switch (textDirection ?? TextDirection.ltr) {
-        TextDirection.rtl => gapStart + gapPadding - extent,
-        TextDirection.ltr => gapStart - gapPadding,
+        TextDirection.rtl => gapStart + gapExtent - extent,
+        TextDirection.ltr => gapStart,
       };
       gap = Rect.fromLTWH(
-        rect.left + start.clamp(0.0, rect.width),
+        rect.left + start - gapPadding / 2,
         rect.top - borderSide.width,
-        extent,
+        padded,
         borderSide.width * 2,
       );
     }
@@ -389,14 +369,16 @@ abstract class BaseControlSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = DecoratedBox(
-      decoration: continuousHairlineDecoration(
-        color: fill,
+    final content = CustomPaint(
+      foregroundPainter: ContinuousStrokePainter(
         borderRadius: borderRadius,
-        stroke: stroke,
-        strokeWidth: strokeWidth,
+        color: stroke,
+        width: strokeWidth,
       ),
-      child: Material(type: MaterialType.transparency, child: child),
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: fill, borderRadius: borderRadius),
+        child: Material(type: MaterialType.transparency, child: child),
+      ),
     );
     return clipBehavior == Clip.none
         ? content

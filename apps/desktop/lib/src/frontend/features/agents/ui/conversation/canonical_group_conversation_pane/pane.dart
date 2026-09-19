@@ -137,11 +137,17 @@ class _CanonicalGroupConversationPaneState
     });
   }
 
-  String _mentionLabel(ClientConversationMembership membership) {
+  String _mentionLabel(
+    ClientConversationMembership membership,
+    TargetCandidate target,
+  ) {
     final displayName = membership.principal.displayName.trim();
-    return displayName.isEmpty
-        ? membership.principal.agentId.trim()
-        : displayName;
+    if (displayName.isNotEmpty) return displayName;
+    final known =
+        agentProductDisplayName(target.target) ??
+        agentProductDisplayName(target.id);
+    if (known != null) return known;
+    return agentConversationTargetDisplayName(target);
   }
 
   TargetCandidate? _assistantTarget(
@@ -399,7 +405,7 @@ class _CanonicalGroupConversationPaneState
     }
     final label = membership == null
         ? agentConversationTargetDisplayName(target)
-        : _mentionLabel(membership);
+        : _mentionLabel(membership, target);
     final separator =
         widget.composer.draft.isEmpty ||
             RegExp(r'\\s$').hasMatch(widget.composer.draft)
@@ -491,7 +497,7 @@ class _CanonicalGroupConversationPaneState
         membership.principal.agentId,
       );
       if (target == null) continue;
-      mentionLabels[target.target] = _mentionLabel(membership);
+      mentionLabels[target.target] = _mentionLabel(membership, target);
     }
     final state = AgentConversationPaneState(
       target: paneTarget,
@@ -545,7 +551,16 @@ class _CanonicalGroupConversationPaneState
         configured: conversation.assistantMembership != null,
         label: conversation.assistantMembership == null
             ? strings.assistantNeedsConfigurationStatus
-            : _mentionLabel(conversation.assistantMembership!),
+            : _mentionLabel(
+                conversation.assistantMembership!,
+                _assistantTarget(conversation, participantTargets) ??
+                    participantTargets.firstWhere(
+                      (t) =>
+                          t.target ==
+                          conversation.assistantMembership!.principal.agentId,
+                      orElse: () => participantTargets.first,
+                    ),
+              ),
         status: assistantStatus,
         onTap: () => _toggleAssistant(conversation),
         onEdit: () => unawaited(_openAssistantConfiguration()),
