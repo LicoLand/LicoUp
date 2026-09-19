@@ -4,7 +4,7 @@ use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::platform::{file_security, paths};
 use anyhow::{Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use std::path::{Path, PathBuf};
 
 const STATE_DIRECTORY: &str = "llm-gateway";

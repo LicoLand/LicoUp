@@ -1,5 +1,5 @@
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::{Value, json};
 
 use crate::core::secure_mesh_directory::{
