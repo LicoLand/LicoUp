@@ -17,6 +17,7 @@ import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_gr
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/support.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
@@ -150,6 +151,25 @@ class _CanonicalGroupConversationPaneState
     return agentConversationTargetDisplayName(target);
   }
 
+  /// Capsule label for the assistant identity: canonical product names first
+  /// ("Codex", "Kimi Code"), otherwise each word capitalized.
+  String _assistantCapsuleLabel(
+    ClientConversationMembership membership,
+    TargetCandidate target,
+  ) {
+    final raw = _mentionLabel(membership, target);
+    final known = agentProductDisplayName(raw);
+    if (known != null) return known;
+    final words = raw
+        .split(RegExp(r'[\s\-_]+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return raw;
+    return words
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+
   TargetCandidate? _assistantTarget(
     ClientConversation conversation,
     List<TargetCandidate> targets,
@@ -161,6 +181,27 @@ class _CanonicalGroupConversationPaneState
       if (target.target == agentId) return target;
     }
     return null;
+  }
+
+  /// Catalog display name for the assistant's preferred model; the raw value
+  /// stays when the target or its catalog is unknown.
+  String _assistantModelLabel(
+    CanonicalConversationProjection canonical,
+    TargetCandidate? assistantTarget,
+  ) {
+    final model = canonical.assistantModel.trim();
+    if (model.isEmpty || assistantTarget == null) return model;
+    return agentOrchestrationModelDisplayName(assistantTarget, model);
+  }
+
+  String _assistantEffortLabel(
+    CanonicalConversationProjection canonical,
+    LicoStrings strings,
+  ) {
+    final effort = canonical.assistantReasoningEffort.trim();
+    return effort.isEmpty
+        ? ''
+        : strings.reasoningEffortOptionLabel(effort, effort);
   }
 
   Map<String, AgentParticipantRuntimeProfile> get _runtimeProfiles => {
@@ -546,12 +587,12 @@ class _CanonicalGroupConversationPaneState
             : conversation.strategyRevision.trim(),
         onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
       ),
-      composerFieldLeading: AssistantToggleButton(
+      composerAssistantCapsule: AssistantToggleButton(
         active: _assistantActive(conversation),
         configured: conversation.assistantMembership != null,
         label: conversation.assistantMembership == null
             ? strings.assistantNeedsConfigurationStatus
-            : _mentionLabel(
+            : _assistantCapsuleLabel(
                 conversation.assistantMembership!,
                 _assistantTarget(conversation, participantTargets) ??
                     participantTargets.firstWhere(
@@ -564,6 +605,15 @@ class _CanonicalGroupConversationPaneState
         status: assistantStatus,
         onTap: () => _toggleAssistant(conversation),
         onEdit: () => unawaited(_openAssistantConfiguration()),
+      ),
+      composerFieldTrailing: AssistantModelReadout(
+        visible:
+            _assistantActive(conversation) &&
+            canonical.assistantModel.trim().isNotEmpty,
+        modelLabel: _assistantModelLabel(canonical, assistantTarget),
+        effortLabel: _assistantEffortLabel(canonical, strings),
+        tooltip: strings.configureAssistantTooltip,
+        onTap: () => unawaited(_openAssistantConfiguration()),
       ),
       composerLeading: CanonicalGroupAssistantActions(
         onPickAttachments:
