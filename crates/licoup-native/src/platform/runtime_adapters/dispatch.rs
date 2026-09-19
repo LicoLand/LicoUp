@@ -156,9 +156,9 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
-    // Omission and zero mean "use the writable policy". Only an explicit
-    // timeoutUnbounded override keeps the turn without a deadline. Finite
-    // caller values stay inside the 1s–30min clamp.
+    // Omission and zero mean "use the writable policy", whose default is
+    // unbounded (0). A finite deadline comes only from an explicit caller
+    // value or a configured policy entry inside the 1s–30min clamp.
     let timeout_ms = crate::domain::dispatch_timeout_policy::resolve_dispatch_timeout(params)
         .map_err(|_| RuntimeAdapterError::InvalidRuntimeSetting { field: "timeoutMs" })?;
     let max_stdout = optional_output_param(params, "maxStdoutBytes").map_err(|_| {
