@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import {
   adapterIds,
@@ -13,7 +13,15 @@ import {
 } from "./shared.mjs";
 
 const corpusArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
-const corpusRoot = resolve(corpusArgument || "tests/replay-corpus");
+const directoryExists = (path) => existsSync(path) && statSync(path).isDirectory();
+const defaultRoot = directoryExists(resolve("tests/replay-corpus"))
+  ? "tests/replay-corpus"
+  : "apps/desktop/test/fixtures/adapter-replay";
+const corpusRoot = resolve(corpusArgument || defaultRoot);
+if (!existsSync(corpusRoot)) {
+  process.stderr.write(`replay fixtures directory absent: ${corpusRoot}\n`);
+  process.exit(1);
+}
 const files = [];
 const visit = (directory) => {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -23,6 +31,10 @@ const visit = (directory) => {
   }
 };
 visit(corpusRoot);
+if (files.length === 0) {
+  process.stderr.write(`zero transcript fixtures found in: ${corpusRoot}\n`);
+  process.exit(1);
+}
 const findings = [];
 let fixtures = 0;
 let pendingReviews = 0;
@@ -37,7 +49,14 @@ for (const file of files) {
   if (document.provenance?.redacted !== true) findings.push(`${file}:redaction_not_attested`);
   if (!reviewApproved(document)) pendingReviews += 1;
   if (document.redaction?.contentSha256 !== transcriptHash(document)) findings.push(`${file}:content_hash_mismatch`);
+  for (const frame of document.frames || []) {
+    if (!Array.isArray(frame.projection)) findings.push(`${file}:projection_not_recorded@frame${frame.index}`);
+  }
   for (const finding of privacyFindings(document, redactionSecrets())) findings.push(`${file}:${finding.code}@${finding.path}`);
+}
+if (fixtures === 0) {
+  process.stderr.write(`zero transcript fixtures found in: ${corpusRoot}\n`);
+  process.exit(1);
 }
 if (findings.length > 0) {
   process.stderr.write(`${findings.join("\n")}\n`);

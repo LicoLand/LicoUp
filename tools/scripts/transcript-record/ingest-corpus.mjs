@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { adapterIds, scenarioClasses } from "./shared.mjs";
+import { record } from "./record-projections.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const corpusArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
@@ -40,6 +41,9 @@ try {
       run("redact.mjs", [raw, candidate]);
     }
   }
+  // A redacted candidate carries frames but no projections: only the real
+  // adapter parsers can say what those frames mean.
+  record(corpusRoot);
   process.stdout.write(`ingested ${adapterIds.length * scenarioClasses.length} redacted commit candidates; raw history removed\n`);
 } finally {
   rmSync(privateRoot, { recursive: true, force: true });

@@ -269,9 +269,17 @@ struct ChildGuard {
 
 impl ChildGuard {
     fn spawn() -> Self {
-        let child = Command::new("sleep")
-            .arg("30")
-            .stdin(Stdio::null())
+        #[cfg(unix)]
+        let child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        #[cfg(windows)]
+        let child = Command::new("cmd")
+            .args(["/C", "pause"])
+            .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()

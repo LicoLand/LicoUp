@@ -8,22 +8,31 @@ export const scenarioClasses = Object.freeze([
   "user-cancel",
   "agent-error",
   "streaming-interruption",
+  "native-resume",
 ]);
-export const adapterIds = Object.freeze([
-  "antigravity",
-  "claude-code",
-  "codex",
-  "copilot",
-  "cursor",
-  "hermes",
-  "kilo-code",
-  "kimi-code",
-  "openclaw",
-  "opencode",
-  "pi",
-  "lico-agent",
-  "deepseek-harness",
-]);
+
+export function getRegisteredAdapterIds(root = resolve(import.meta.dirname, "../../..")) {
+  const driversPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
+  let data;
+  try {
+    data = JSON.parse(readFileSync(driversPath, "utf8"));
+  } catch {
+    throw new Error("registered_adapter_manifest_unreadable");
+  }
+  if (!Array.isArray(data.drivers) || data.drivers.length === 0) {
+    throw new Error("registered_adapter_manifest_empty");
+  }
+  const ids = data.drivers.map((driver) => driver?.agentId);
+  if (ids.some((id) => typeof id !== "string" || id.length === 0)) {
+    throw new Error("registered_adapter_manifest_invalid");
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("registered_adapter_manifest_duplicate");
+  }
+  return Object.freeze(ids);
+}
+
+export const adapterIds = getRegisteredAdapterIds();
 
 export const historySource = "local-agent-history-catalog";
 export const syntheticSource = "synthetic-fallback";
@@ -60,59 +69,6 @@ export function transcriptHash(document) {
     exit: document.exit,
   };
   return `sha256:${sha256(canonicalJson(projection))}`;
-}
-
-export function scenarioEvents(scenario) {
-  switch (scenario) {
-    case "normal-turn":
-      return [{ event: "assistant-text", text: "<REDACTED_CONTENT>" }];
-    case "user-cancel":
-      return [{ event: "user-cancel" }];
-    case "agent-error":
-      return [{ event: "agent-error", message: "<REDACTED_ERROR>" }];
-    case "streaming-interruption":
-      return [
-        { event: "assistant-text", text: "<REDACTED_CONTENT>" },
-        { event: "stream-interrupted" },
-      ];
-    default:
-      throw new Error(`scenario_unknown:${scenario}`);
-  }
-}
-
-export function projectionForEvent(adapterId, event) {
-  switch (event.event) {
-    case "assistant-text":
-      return [{ kind: "text", unitId: `${adapterId}:reply`, text: event.text }];
-    case "user-cancel":
-      return [{ kind: "control", method: "cancel", summary: "user-cancel" }];
-    case "agent-error":
-      return [{
-        kind: "failed",
-        code: `${adapterId.replaceAll("-", "_")}_replay_agent_error`,
-        stage: "turn/execute",
-        message: event.message,
-      }];
-    case "stream-interrupted":
-      return [{
-        kind: "failed",
-        code: `${adapterId.replaceAll("-", "_")}_replay_stream_interrupted`,
-        stage: "protocol/read",
-        message: "stream interrupted",
-      }];
-    default:
-      throw new Error(`replay_event_unknown:${event.event}`);
-  }
-}
-
-export function replayFrames(adapterId, scenario) {
-  return scenarioEvents(scenario).map((event, index) => ({
-    index,
-    direction: "agent-to-client",
-    channel: "history-catalog-replay",
-    payload: canonicalJson(event),
-    projection: projectionForEvent(adapterId, event),
-  }));
 }
 
 export function assertAdapterAndScenario(adapterId, scenario) {

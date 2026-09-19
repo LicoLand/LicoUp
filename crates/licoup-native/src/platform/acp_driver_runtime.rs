@@ -30,4 +30,6 @@ pub(in crate::platform) use probe::probe_acp;
 pub(in crate::platform) use stdio_transport::execute_acp;
 
 #[cfg(test)]
+pub(in crate::platform) mod replay;
+#[cfg(test)]
 mod tests;
