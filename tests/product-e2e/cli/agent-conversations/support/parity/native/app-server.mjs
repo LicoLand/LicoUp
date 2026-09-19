@@ -91,7 +91,7 @@ export async function runAppServerTurn(client, threadId, prompt, model = "", eff
 
 export async function nativeAppServerTurn(context, requestedSessionId, prompt) {
   const forcedModel = context.config.id === "codex"
-    ? parityModelForAgent("codex")
+    ? (context.parityModel || parityModelForAgent("codex"))
     : "";
   const forcedEffort = context.config.id === "codex"
     ? parityEffortForAgent("codex", forcedModel)
@@ -139,7 +139,7 @@ export async function nativeAppServerTurn(context, requestedSessionId, prompt) {
 
 export async function nativeAppServerReadback(context, sessionId) {
   const forcedModel = context.config.id === "codex"
-    ? parityModelForAgent("codex")
+    ? (context.parityModel || parityModelForAgent("codex"))
     : "";
   const forcedEffort = context.config.id === "codex"
     ? parityEffortForAgent("codex", forcedModel)

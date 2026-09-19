@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 
@@ -52,7 +53,7 @@ abstract final class AppleControlButtons {
       ),
       minimumSize: const WidgetStatePropertyAll(Size(0, 34)),
       shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(
+        ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(
             AppleControlMetrics.controlCornerRadius,
           ),
@@ -104,7 +105,7 @@ abstract final class AppleControlButtons {
       ),
       minimumSize: const WidgetStatePropertyAll(Size(0, 34)),
       shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(
+        ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(
             AppleControlMetrics.controlCornerRadius,
           ),
@@ -129,7 +130,7 @@ abstract final class AppleControlButtons {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       minimumSize: const Size(0, 32),
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(
           AppleControlMetrics.controlCornerRadius,
         ),

@@ -54,6 +54,14 @@ npm run client:gate:android         # Android changes only
 npm run client:gate:dependencies    # dependency authority changes only
 ```
 
+**One crate, one version.** The dependency graph must not carry two versions of
+the same crate. Duplicates bloat the binary, split types across versions, and
+hide unmaintained generations behind the pin of another consumer. When a new
+dependency would introduce a second generation of an existing crate, converge
+to the latest compatible version instead of raising the duplicate allowance.
+The dependency gate fails on any duplicate generation; the historical exception
+list is being burned down to zero and accepts no new entries.
+
 Build-producing tests share one managed compiler target. The test runner holds
 an active lease while a build is using it and marks the output reclaimable on
 every terminal path. Inspect or remove only inactive, marked output with:
@@ -107,11 +115,27 @@ Honor an explicit request to skip installation and report the remaining
 verification. Local installation does not authorize signing, notarization,
 source promotion, public publication, or production changes.
 
-A live Agent conversation test spends real tokens, so use the cheapest model
-that can do the job, not the strongest. The per-Agent choice has one file:
+A live response or transport check spends real tokens, so use the cheapest
+adequate model. The per-Agent choice has one file:
 [`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml).
-Change a test model there and nowhere else. Codex currently uses
-`gpt-5.6-luna` at `max` effort. Other Agents keep their own entry in that file.
+Change a test model there and nowhere else; inherited environment variables
+must not select a more expensive model or effort. Use the lowest supported
+reasoning effort for a response check. Send `Hi` once and accept the Agent's
+own reply; a specific word, number, marker, or output format is not required.
+Use another short turn only when exact session continuation is being tested.
+Never request counting, repetition, long lists, or endless output to keep a
+paid turn active. Test prolonged streams, waiting, and cancellation races with
+a controlled local fixture. A live control check may use a short greeting; if
+it finishes before the control action, that action is unverified, not a reason
+to generate longer output, repeat paid probes, or upgrade the model. Keep a
+connectivity check scoped to its purpose.
+The local fixture proves stream, cancellation, and event-order behavior only;
+it does not prove long-task capability. End-to-end long-task acceptance uses a
+real Issue within the authorized scope. The executing Agent chooses a capable,
+cost-conscious model using available discovery and evaluation, and adjusts it
+from actual performance without repeated approval for model choice. The
+response-check model file does not govern Issue work. Reuse existing evaluation
+results and avoid probes that add no task value.
 
 ## Agent guidance
 
@@ -318,8 +342,9 @@ never replace an asset in place.
 - The change has one clear scope.
 - No Agent reply was made to fit a LicoUp format, and no plain reply was called
   invalid, empty or an abstention for having none.
-- A live Agent conversation test used the cheapest model that can do the job,
-  taken from the verification model authority instead of hardcoded.
+- A live response or transport check used the cheapest adequate model from
+  the verification model authority. Real Issue work follows the executing
+  Agent's task-based model selection.
 - Native CLI or generated contract changes keep the Flutter and Rust sides
   consistent in the same change.
 - Old paths and old names are removed when a migration is complete.

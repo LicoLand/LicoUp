@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileComposerSurface extends StatelessWidget {
@@ -10,9 +11,10 @@ class MobileComposerSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: colors.line)),
+    return CustomPaint(
+      painter: ContinuousEdgeHairlinePainter(
+        color: colors.line,
+        edge: AxisDirection.up,
       ),
       child: child,
     );

@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -62,13 +63,14 @@ final class DesktopSettingsNavCard extends StatelessWidget {
     final scopedState = LayoutScope.maybeOf(context)?.state;
     return DecoratedBox(
       key: const Key('desktop-settings-nav-card'),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: desktopDesktopSurfaceBlack,
         borderRadius: BorderRadius.circular(
           DesktopDesktopMetrics.settingsNavCardRadius,
         ),
-        border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
-        boxShadow: const [
+        stroke: DesktopDesktopOnBlack.line,
+        strokeWidth: 0.5,
+        shadows: const [
           BoxShadow(
             color: Color(0x59000000),
             blurRadius: 18,

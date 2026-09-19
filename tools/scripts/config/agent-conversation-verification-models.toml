@@ -7,14 +7,12 @@
 #   - client-agent-conversation-verify / product-e2e
 #
 # A live conversation test spends real tokens: always pick the cheapest model
-# that can still settle the round, never the strongest one. Codex additionally
-# uses the recommended Max reasoning effort, paired with the model in
-# agent-conversation-verification-models.mjs, because the cheap model at a high
-# effort is cheaper than a strong model at low effort.
+# that can still settle the round, with the lowest supported reasoning effort.
+# Response checks send Hi and accept the Agent's own reply. Never request long
+# output to keep a paid turn active for a control or liveness test.
 #
 # Maintain only this file when changing a verification test model.
-# Runtime loads it once (module cache). Environment overrides remain:
-#   LICO_<AGENT_ID>_PARITY_MODEL
+# Runtime loads it once (module cache). No environment model/effort overrides.
 
 schema_version = "licoup.agent-conversation-verification-models.v1"
 
@@ -22,7 +20,7 @@ schema_version = "licoup.agent-conversation-verification-models.v1"
 # agent-id = "wire-or-alias model id passed to the agent / gate"
 antigravity = "gemini-3.7-flash-medium"
 "claude-code" = "haiku"
-# Codex recommendation: Luna at Max effort. The maintained model cost table
+# Codex recommendation: Luna at low effort. The maintained model cost table
 # records gpt-5.6-luna as the lowest-cost active route.
 codex = "gpt-5.6-luna"
 cursor = "composer-2.5"

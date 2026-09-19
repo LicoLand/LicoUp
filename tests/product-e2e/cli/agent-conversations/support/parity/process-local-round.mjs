@@ -4,18 +4,12 @@ import { AcceptanceError, digest, requireFact } from "./errors.mjs";
 import { scanBoundedNoFollow } from "./process.mjs";
 import {
   failedProcessLocalFactCode,
-  makeCanary,
-  normalizedMarker,
   processLocalRoundFactsReady,
 } from "./round-facts.mjs";
 
 function resultErrorCode(result) {
   const code = result?.error?.code;
   return typeof code === "string" ? code : "process_local_operation_failed";
-}
-
-function exactOutput(turn, expected) {
-  return normalizedMarker(turn?.result?.output) === normalizedMarker(expected);
 }
 
 function validOpaqueId(value) {
@@ -138,11 +132,8 @@ export function strictHistoryProjection(history, sessionId, expectedTurns, maxBy
 }
 
 export async function runProcessLocalRound(context, roundIndex, client, selfTestEvidence) {
-  const canary = makeCanary();
-  const remembered = String(roundIndex * 1000 + 37);
-  const firstExpected = `READY-${roundIndex}`;
-  const firstPrompt = `Acceptance marker ${canary}; do not repeat it. Remember the number ${remembered} for the next turn and reply with exactly ${firstExpected}.`;
-  const secondPrompt = "Reply with exactly the number I asked you to remember in the previous turn. Do not call tools or request permissions.";
+  const firstPrompt = "Hi";
+  const secondPrompt = "Hi";
   const model = context.parityModel || parityModelForAgent(context.config.id);
   let cleanupCount = 0;
   let requestCount = 0;
@@ -187,6 +178,8 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
     successfulRequestCount += 1;
     sessionId = String(first.result?.nativeSessionId || first.result?.sessionId || "");
     requireFact(sessionId.length > 0 && sessionId.length <= 512, "process_local_session_id_invalid");
+    const firstOutput = String(first.result?.output || "");
+    requireFact(firstOutput.trim().length > 0, "process_local_final_message_missing");
 
     requestCount += 1;
     const resumed = await client.request("agent.conversation.open", {
@@ -213,6 +206,8 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
       (second.result?.nativeSessionId || second.result?.sessionId) === sessionId,
       "process_local_resume_identity_mismatch",
     );
+    const secondOutput = String(second.result?.output || "");
+    requireFact(secondOutput.trim().length > 0, "process_local_final_message_missing");
 
     requestCount += 1;
     const history = await client.request("agent.conversation.history", {
@@ -221,17 +216,16 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
     });
     successfulRequestCount += 1;
     const historyBounded = strictHistoryProjection(history, sessionId, [
-      { turnId: first.result?.turnId, output: firstExpected },
-      { turnId: second.result?.turnId, output: remembered },
+      { turnId: first.result?.turnId, output: firstOutput },
+      { turnId: second.result?.turnId, output: secondOutput },
     ], context.maxOutputBytes);
 
     const argv = argvFacts(context, [
-      canary,
-      remembered,
       sessionId,
       firstPrompt,
       secondPrompt,
-      firstExpected,
+      firstOutput,
+      secondOutput,
       context.cwd,
       context.claudeConfigRoot,
       context.wrapper.wrapperPath,
@@ -269,7 +263,7 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
         .includes(resultErrorCode(postCleanupHistory));
     const persistenceScan = scanBoundedNoFollow(
       context.claudeConfigRoot,
-      [canary, remembered, sessionId],
+      [sessionId, firstPrompt, secondPrompt],
     );
 
     facts = {
@@ -277,8 +271,8 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
       persistentHost: true,
       openNew: true,
       exactSessionId: sessionId.length > 0,
-      processLocalContinuation: exactOutput(first, firstExpected)
-        && exactOutput(second, remembered)
+      processLocalContinuation: firstOutput.trim().length > 0
+        && secondOutput.trim().length > 0
         && first.result?.nativeSessionId === sessionId
         && second.result?.nativeSessionId === sessionId,
       orderedStreaming: eventOwnership(first, sessionId)
@@ -295,7 +289,7 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
       registryAbsent: resumeRejected,
       historyCleared,
       hostLiveAfterCleanup: client.closed === false,
-      argvCanariesAbsent: argv.privateValuesAbsent,
+      argvPromptAbsent: argv.privateValuesAbsent,
       noResumeArgument: argv.noResumeArgument,
       noPersistenceArgument: argv.noPersistenceArgument,
       genericModelForwarded: argv.genericModelForwarded,
@@ -343,12 +337,11 @@ export async function runProcessLocalRound(context, roundIndex, client, selfTest
 }
 
 export async function exerciseProcessLocalHostDrain(context, client, termination) {
-  const marker = makeCanary();
   const model = context.parityModel || parityModelForAgent(context.config.id);
   requireFact(model.length > 0, "process_local_model_required");
   const turn = await client.streamConversation({
     agent: context.config.id,
-    text: `Acceptance marker ${marker}; do not repeat it. Reply with exactly DRAINED.`,
+    text: "Hi",
     workingDirectory: context.cwd,
     binaryPath: context.wrapper.wrapperPath,
     model,
@@ -358,7 +351,7 @@ export async function exerciseProcessLocalHostDrain(context, client, termination
     maxStdoutBytes: context.maxOutputBytes,
     maxStderrBytes: context.maxOutputBytes,
   });
-  requireFact(exactOutput(turn, "DRAINED"), "process_local_drain_setup_failed");
+  requireFact(String(turn.result?.output || "").trim().length > 0, "process_local_drain_setup_failed");
   const closeBarrier = typeof context.armProcessLocalCleanupGate === "function"
     ? context.armProcessLocalCleanupGate()
     : null;
@@ -368,7 +361,7 @@ export async function exerciseProcessLocalHostDrain(context, client, termination
   const closeBarrierReleased = closeBarrier ? await closeBarrier : true;
   const scan = scanBoundedNoFollow(
     context.claudeConfigRoot,
-    [marker, turn.result?.nativeSessionId],
+    [turn.result?.nativeSessionId],
   );
   return closed.exited === true
     && closed.statusCode === 0

@@ -4,6 +4,7 @@ import 'package:mime/mime.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
@@ -53,10 +54,10 @@ class SecureMeshFileSyncCard extends StatelessWidget {
       key: const Key('secure-mesh-file-sync-card'),
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(LicoRadius.card),
-        border: Border.all(color: colors.line.withAlpha(90)),
+        stroke: colors.line.withAlpha(90),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

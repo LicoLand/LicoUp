@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_layout.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
 
@@ -127,13 +128,11 @@ final class _WorkflowNode extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: active ? colors.accentSurface : colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: active ? colors.accent : colors.line,
-          width: active ? 2 : 1,
-        ),
+        stroke: active ? colors.accent : colors.line,
+        strokeWidth: active ? 2 : 1,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),

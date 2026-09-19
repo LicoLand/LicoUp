@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// One Launchpad grid entry. Built-in entries launch a [DesktopAppId]; the
@@ -62,16 +63,14 @@ final class DesktopLaunchpad extends StatelessWidget {
                 maxWidth: DesktopDesktopMetrics.launchpadMaxWidth,
               ),
               child: Container(
-                decoration: BoxDecoration(
+                decoration: continuousHairlineDecoration(
                   color: desktopDesktopSurfaceBlack,
                   borderRadius: BorderRadius.circular(
                     DesktopDesktopMetrics.launchpadRadius,
                   ),
-                  border: Border.all(
-                    color: DesktopDesktopOnBlack.line,
-                    width: 0.5,
-                  ),
-                  boxShadow: const [
+                  stroke: DesktopDesktopOnBlack.line,
+                  strokeWidth: 0.5,
+                  shadows: const [
                     BoxShadow(
                       color: Color(0x73000000),
                       blurRadius: 36,
@@ -151,18 +150,16 @@ final class _DesktopLaunchpadIconState extends State<_DesktopLaunchpadIcon> {
                   duration: context.motion(LicoMotion.micro),
                   width: DesktopDesktopMetrics.launchpadIconExtent,
                   height: DesktopDesktopMetrics.launchpadIconExtent,
-                  decoration: BoxDecoration(
+                  decoration: continuousHairlineDecoration(
                     color: _hovered
                         ? DesktopDesktopOnBlack.hoverOverlay
                         : desktopDesktopSurfaceBlack,
                     borderRadius: BorderRadius.circular(
                       DesktopDesktopMetrics.launchpadIconRadius,
                     ),
-                    border: Border.all(
-                      color: DesktopDesktopOnBlack.line,
-                      width: 0.5,
-                    ),
-                    boxShadow: const [
+                    stroke: DesktopDesktopOnBlack.line,
+                    strokeWidth: 0.5,
+                    shadows: const [
                       BoxShadow(
                         color: Color(0x40000000),
                         blurRadius: 12,
@@ -219,12 +216,13 @@ final class _DesktopLaunchpadPluginSlot extends StatelessWidget {
           Container(
             width: DesktopDesktopMetrics.launchpadIconExtent,
             height: DesktopDesktopMetrics.launchpadIconExtent,
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(
                 DesktopDesktopMetrics.launchpadIconRadius,
               ),
-              border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
+              stroke: DesktopDesktopOnBlack.line,
+              strokeWidth: 0.5,
             ),
             child: const Icon(
               Icons.add_rounded,

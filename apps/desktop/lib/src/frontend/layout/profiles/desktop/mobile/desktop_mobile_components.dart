@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 /// The complete styled component recipe for the Desktop mobile profile.
 ///
@@ -42,7 +43,7 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
       label: label,
       child: Material(
         color: selected ? colors.primaryContainer : Colors.transparent,
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(
             desktopMobileTokens.cardRadius * 0.72,
           ),
@@ -106,7 +107,7 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
           : colors.surfaceContainerLow,
       elevation: emphasized ? desktopMobileTokens.elevation : 0,
       shadowColor: colors.shadow.withValues(alpha: 0.14),
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(desktopMobileTokens.cardRadius),
         side: BorderSide(
           color: emphasized
@@ -142,7 +143,7 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
         color: colors.surfaceContainer,
         elevation: desktopMobileTokens.elevation,
         shadowColor: colors.shadow.withValues(alpha: 0.12),
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(
             desktopMobileTokens.cardRadius * 0.84,
           ),
@@ -175,14 +176,12 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
       container: true,
       label: semanticLabel,
       child: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(
             desktopMobileTokens.cardRadius * 0.64,
           ),
-          border: Border.all(
-            color: colors.outlineVariant.withValues(alpha: 0.72),
-          ),
+          stroke: colors.outlineVariant.withValues(alpha: 0.72),
         ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 52),
@@ -210,7 +209,7 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
       color: colors.surfaceContainerHigh,
       elevation: desktopMobileTokens.elevation * 3,
       shadowColor: colors.shadow.withValues(alpha: 0.18),
-      shape: RoundedRectangleBorder(
+      shape: ContinuousRoundedBorder(
         borderRadius: BorderRadius.circular(desktopMobileTokens.cardRadius),
         side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.64)),
       ),
@@ -245,12 +244,12 @@ final class DesktopMobileComponentKit implements LayoutComponentKit {
         child: IconTheme.merge(
           data: IconThemeData(color: foreground),
           child: DecoratedBox(
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: background,
               borderRadius: BorderRadius.circular(
                 desktopMobileTokens.cardRadius * 0.64,
               ),
-              border: Border.all(color: foreground.withValues(alpha: 0.2)),
+              stroke: foreground.withValues(alpha: 0.2),
             ),
             child: Padding(
               padding: EdgeInsets.symmetric(

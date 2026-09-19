@@ -4,6 +4,7 @@ import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
 
@@ -113,6 +114,40 @@ void main() {
     expect(controller.initialized, isTrue);
   });
 
+  test('client close drains pending diagnostic writes', () async {
+    final directory = await Directory.systemTemp.createTemp('local-close-');
+    final portableData = _BlockedDiagnosticDataRoot(directory);
+    final controller = ClientController(
+      portableData: portableData,
+      agentService: FakeAgentService(),
+      conversationNativePort: _StartupConversationNative(),
+    );
+    addTearDown(() async {
+      if (!portableData.release.isCompleted) portableData.release.complete();
+      await controller.close();
+      await directory.delete(recursive: true);
+    });
+
+    controller.observeClientMemory(
+      const ClientMemoryDiagnosticObservation(
+        event: ClientMemoryDiagnosticEvent.conversationOpened,
+        surface: ClientMemoryDiagnosticSurface.canonical,
+      ),
+    );
+    await portableData.started.future;
+    var closed = false;
+    final closing = controller.close().then((_) => closed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+
+    portableData.release.complete();
+    await closing;
+    final log = File(
+      '${directory.path}/client-state/diagnostics/client-memory.jsonl',
+    );
+    expect(await log.readAsLines(), hasLength(1));
+  });
+
   test('Local preload preserves a saved different group', () async {
     final directory = await Directory.systemTemp.createTemp('local-selection-');
     final native = _StartupConversationNative();
@@ -163,6 +198,21 @@ void main() {
       expect(controller.failureCode, isEmpty);
     },
   );
+}
+
+final class _BlockedDiagnosticDataRoot extends PortableDataRoot {
+  _BlockedDiagnosticDataRoot(Directory directory)
+    : super(dataDirectoryOverride: directory);
+
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<Directory> clientDirectory() async {
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return super.clientDirectory();
+  }
 }
 
 final class _StartupClient extends ClientController {

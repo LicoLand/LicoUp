@@ -140,6 +140,22 @@ test("toolchain processes drain captured stdout and stderr through explicit hand
   assert.equal(stderr, "safe-error");
 });
 
+test("Flutter capture rejects an exited child without complete reporter results", async () => {
+  const { runPreparedCommand } = await import(
+    pathToFileURL(path.join(repoRoot, moduleRoot, "flutter.mjs")).href
+  );
+  const start = { type: "start", time: 0, protocolVersion: "0.1.1" };
+  for (const events of [[], [start]]) {
+    const output = events.map((event) => JSON.stringify(event)).join("\n");
+    await assert.rejects(runPreparedCommand({
+      command: process.execPath,
+      args: ["-e", `process.stdout.write(${JSON.stringify(output)});`],
+      env: process.env,
+      captureFlutterTestOutput: true,
+    }, repoRoot), /flutter_test_result_incomplete/u);
+  }
+});
+
 test("Windows command resolution prefers executable tools and handles command wrappers", async () => {
   const module = await import(
     `${pathToFileURL(path.join(repoRoot, moduleRoot, "windows.mjs")).href}?windows-behavior`

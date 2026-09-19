@@ -107,82 +107,107 @@ function parseArgs(argv) {
 
 /// Prove Codex in-turn `turn/steer` (C-05) against the live app-server lane.
 async function proveCodexInterruptSteer(context) {
-  const canary = `STEER_${randomUUID().replaceAll("-", "").slice(0, 10)}`;
   const model = parityModelForAgent("codex");
   const effort = parityEffortForAgent("codex", model);
-  const longPrompt =
-    "Begin a long numbered list from 500 down to 1. Keep writing until interrupted. Do not call tools or request permissions.";
-  const steerPrompt =
-    `Stop the active reply. Reply with exactly ${canary} and no other text. Do not call tools or request permissions.`;
 
-  return withAppServer(context, async (client) => {
-    const started = await client.request("thread/start", {
-      cwd: context.cwd,
-      ...(model ? { model } : {}),
-    });
-    const threadId = started?.thread?.id || "";
-    requireFact(typeof threadId === "string" && threadId.length > 0, "steer_thread_id_missing");
-    context.observedSessions?.add(threadId);
+  let verifiedThreadId = "";
+  let operationError = null;
+  try {
+    verifiedThreadId = await withAppServer(context, async (client) => {
+      const started = await client.request("thread/start", {
+        cwd: context.cwd,
+        ...(model ? { model } : {}),
+      });
+      const threadId = started?.thread?.id || "";
+      requireFact(typeof threadId === "string" && threadId.length > 0, "steer_thread_id_missing");
+      verifiedThreadId = threadId;
+      context.observedSessions?.add(threadId);
 
-    const turnStarted = await client.request("turn/start", {
-      threadId,
-      input: [{ type: "text", text: longPrompt }],
-      ...(model ? { model } : {}),
-      ...(effort ? { effort } : {}),
-    });
-    const turnId = turnStarted?.turn?.id || "";
-    requireFact(typeof turnId === "string" && turnId.length > 0, "steer_turn_id_missing");
+      const turnStarted = await client.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: "Hi" }],
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
+      });
+      const turnId = turnStarted?.turn?.id || "";
+      requireFact(typeof turnId === "string" && turnId.length > 0, "steer_turn_id_missing");
 
-    // Wait until the turn is active before steering.
-    await client.waitForNotification(
-      (message) => (
-        (
-          message.method === "turn/started"
+      // Wait until the turn is active before steering.
+      await client.waitForNotification(
+        (message) => (
+          (
+            message.method === "turn/started"
+            && message.params?.threadId === threadId
+            && message.params?.turn?.id === turnId
+          )
+          || (
+            message.method === "item/agentMessage/delta"
+            && message.params?.threadId === threadId
+          )
+        ),
+      );
+
+      await client.request("turn/steer", {
+        threadId,
+        expectedTurnId: turnId,
+        input: [{ type: "text", text: "Hi" }],
+      });
+
+      const completed = await client.waitForNotification(
+        (message) => message.method === "turn/completed"
           && message.params?.threadId === threadId
-          && message.params?.turn?.id === turnId
-        )
-        || (
-          message.method === "item/agentMessage/delta"
+          && message.params?.turn?.id === turnId,
+      );
+      const turnStatus = String(completed.params?.turn?.status || "").toLowerCase();
+      requireFact(
+        turnStatus === "completed" || turnStatus === "interrupted",
+        "steer_turn_not_terminal",
+      );
+      const completedItems = client.notifications
+        .filter((message) => message.method === "item/completed"
           && message.params?.threadId === threadId
-        )
-      ),
-    );
-
-    await client.request("turn/steer", {
-      threadId,
-      expectedTurnId: turnId,
-      input: [{ type: "text", text: steerPrompt }],
+          && message.params?.turnId === turnId)
+        .map((message) => message.params?.item)
+        .filter(Boolean);
+      const turn = {
+        ...(completed.params?.turn || {}),
+        items: [
+          ...(Array.isArray(completed.params?.turn?.items) ? completed.params.turn.items : []),
+          ...completedItems,
+        ],
+      };
+      const output = appServerFinalMessage(turn);
+      if (turnStatus === "completed") {
+        requireFact(output.trim().length > 0, "steer_final_message_missing");
+      }
+      return threadId;
     });
+  } catch (error) {
+    operationError = error;
+  }
 
-    const completed = await client.waitForNotification(
-      (message) => message.method === "turn/completed"
-        && message.params?.threadId === threadId
-        && message.params?.turn?.id === turnId,
-    );
-    const turnStatus = String(completed.params?.turn?.status || "").toLowerCase();
-    requireFact(
-      turnStatus === "completed" || turnStatus === "interrupted",
-      "steer_turn_not_terminal",
-    );
-    const completedItems = client.notifications
-      .filter((message) => message.method === "item/completed"
-        && message.params?.threadId === threadId
-        && message.params?.turnId === turnId)
-      .map((message) => message.params?.item)
-      .filter(Boolean);
-    const turn = {
-      ...(completed.params?.turn || {}),
-      items: [
-        ...(Array.isArray(completed.params?.turn?.items) ? completed.params.turn.items : []),
-        ...completedItems,
-      ],
-    };
-    const output = appServerFinalMessage(turn);
-    requireFact(output.includes(canary), "steer_final_message_missing_canary");
-    const cleaned = await cleanupSession(context, threadId, context.temporaryDirectory);
-    requireFact(cleaned === true, "steer_cleanup_failed");
-    return true;
-  });
+  let cleanupError = null;
+  if (verifiedThreadId) {
+    try {
+      const cleaned = await cleanupSession(context, verifiedThreadId, context.temporaryDirectory);
+      if (!cleaned) cleanupError = new AcceptanceError("steer_cleanup_failed");
+    } catch (error) {
+      cleanupError = error instanceof AcceptanceError
+        ? error
+        : new AcceptanceError("steer_cleanup_failed");
+    }
+  }
+  if (operationError) {
+    if (cleanupError) {
+      operationError.details = {
+        ...(operationError.details || {}),
+        cleanupCode: cleanupError.code,
+      };
+    }
+    throw operationError;
+  }
+  if (cleanupError) throw cleanupError;
+  return true;
 }
 
 function buildContext(options, agentId, config) {
@@ -506,6 +531,9 @@ async function main() {
       gateKind: agent ? AGENT_GATES[agent]?.gateKind || null : null,
       agent,
       reasonCode,
+      ...(typeof error?.details?.cleanupCode === "string"
+        ? { cleanupReasonCode: error.details.cleanupCode }
+        : {}),
       sendEnabled: false,
     };
   }

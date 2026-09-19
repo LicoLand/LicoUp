@@ -277,6 +277,47 @@ void main() {
     );
   });
 
+  test('shared UI does not paint closed rims with Border.all', () {
+    final offenders = <String>[];
+    for (final file in _dartFiles(Directory('lib/src/frontend/shared/ui'))) {
+      final name = file.uri.pathSegments.last;
+      if (name == 'continuous_stroke.dart') {
+        continue;
+      }
+      if (file.readAsStringSync().contains('Border.all(')) {
+        offenders.add(name);
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'Closed 1 px rims use continuousHairlineDecoration / '
+          'ContinuousRoundedBorder, not Flutter BoxBorder.\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
+  test('frontend Border.all debt only shrinks', () {
+    // Two remaining call sites are 2 px activity/status dots, not the 1 px
+    // structural hairline. New closed rims must use the shared ring draw.
+    const budget = 2;
+    final offenders = <String>[];
+    for (final file in _dartFiles(frontend)) {
+      final source = file.readAsStringSync();
+      for (final match in RegExp(r'Border\.all\(').allMatches(source)) {
+        offenders.add('${file.path}:${_lineNumber(source, match.start)}');
+      }
+    }
+    expect(
+      offenders.length,
+      lessThanOrEqualTo(budget),
+      reason:
+          'New Border.all closed rims are not allowed.\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
   test('the composer send control is a circle', () {
     final source = File(
       'lib/src/frontend/features/agents/ui/agent_conversation_composer.dart',
@@ -359,6 +400,9 @@ Iterable<File> _dartFiles(Directory directory) {
       .whereType<File>()
       .where((file) => file.path.endsWith('.dart'));
 }
+
+int _lineNumber(String source, int offset) =>
+    source.substring(0, offset).split('\n').length;
 
 final _whiteBlackAlpha = RegExp(
   r'Colors\.(white|black)\s*\.\s*with(Alpha|Opacity|Values)\s*\(',

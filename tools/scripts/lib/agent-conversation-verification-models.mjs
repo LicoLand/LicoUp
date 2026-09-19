@@ -95,12 +95,10 @@ export function verificationModelForAgent(agentId, options = {}) {
 
 /**
  * Reasoning effort paired with a verification model, so the pairing lives next
- * to the model authority instead of in every gate. A cheap model at a high
- * effort still costs less than a strong model at a low one, and some harnesses
- * reject a turn whose reasoning.effort is omitted or invalid.
+ * to the model authority instead of in every gate. A short greeting uses the
+ * lowest supported effort; it does not need extended reasoning.
  *
  * An agent or model without a recorded pairing keeps the harness default.
- * Callers apply their own environment override before this recommendation.
  */
 export function verificationEffortForAgent(agentId, model) {
   const id = String(agentId || "").trim();
@@ -108,7 +106,7 @@ export function verificationEffortForAgent(agentId, model) {
   const loweredModel = String(model || "").toLowerCase();
   if (id === "codex") {
     if (loweredModel.includes("spark")) return "low";
-    if (loweredModel.includes("luna")) return "max";
+    if (loweredModel.includes("luna")) return "low";
   }
   return "";
 }

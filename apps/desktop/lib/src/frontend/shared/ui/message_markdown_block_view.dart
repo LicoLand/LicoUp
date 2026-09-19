@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
@@ -105,10 +106,10 @@ final class MessageMarkdownBlockView extends StatelessWidget {
         renderStyle: renderStyle,
       ),
       MessageMarkdownBlockType.quote => DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: blockBackground,
           borderRadius: BorderRadius.circular(renderStyle.quoteRadius),
-          border: Border.all(color: borderColor),
+          stroke: borderColor,
         ),
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -198,10 +199,10 @@ final class _WarningBlock extends StatelessWidget {
       fontWeight: FontWeight.w800,
     );
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: Color.lerp(blockBackground, error, 0.12)!,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: Color.lerp(borderColor, error, 0.7)!),
+        stroke: Color.lerp(borderColor, error, 0.7)!,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -333,9 +334,9 @@ final class _MarkdownTable extends StatelessWidget {
           }
         }
         return DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: borderColor),
+          decoration: continuousHairlineDecoration(
             borderRadius: BorderRadius.circular(6),
+            stroke: borderColor,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(6),
@@ -407,10 +408,10 @@ final class _CodeBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: background,
         borderRadius: BorderRadius.circular(renderStyle.codeRadius),
-        border: Border.all(color: borderColor),
+        stroke: borderColor,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
