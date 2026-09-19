@@ -44,7 +44,7 @@ pub(super) use crate::platform::secure_mesh_secret_store::EphemeralSecretStore;
 pub(super) use anyhow::{Result, anyhow, ensure};
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::SigningKey;
-pub(super) use rand::rngs::OsRng;
+pub(super) use rand_core::OsRng;
 pub(super) use rusqlite::{Connection as TestConnection, params};
 pub(super) use serde_json::{Value, json};
 pub(super) use sha2::{Digest, Sha256};

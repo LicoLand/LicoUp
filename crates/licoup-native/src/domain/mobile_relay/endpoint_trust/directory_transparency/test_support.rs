@@ -13,7 +13,7 @@ use crate::domain::mobile_relay::endpoint_trust::{
 use crate::platform::client_state::ClientStateStore;
 use anyhow::{Result, anyhow, ensure};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::BTreeMap;

@@ -3,7 +3,7 @@ use super::super::sparse_map::sparse_map_default_hashes;
 use super::super::*;
 use super::support::leaf;
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 
 #[test]
 fn rfc9162_inclusion_paths_are_logarithmic_and_exact() {

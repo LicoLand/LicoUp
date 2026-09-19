@@ -5,7 +5,7 @@ use chacha20poly1305::{
     Key, KeyInit, XChaCha20Poly1305, XNonce,
     aead::{Aead, Payload as AeadPayload},
 };
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use zeroize::Zeroizing;
 
 use super::constants::{
