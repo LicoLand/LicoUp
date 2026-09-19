@@ -1,0 +1,28 @@
+{
+  "name": "@licoland/data-migration",
+  "version": "0.3.0",
+  "description": "Independent LicoUp data migration CLI and engine",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "bin": {
+    "licoup-migrate": "./bin/cli.mjs",
+    "licoup-data-migration": "./bin/cli.mjs"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./catalog": "./lib/catalog.mjs",
+    "./probe": "./lib/probe.mjs",
+    "./plan": "./lib/plan.mjs",
+    "./convert": "./lib/convert.mjs",
+    "./resume": "./lib/resume.mjs",
+    "./preservation": "./lib/preservation.mjs"
+  },
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0 || ^26.0.0"
+  },
+  "scripts": {
+    "test": "node --test tests/**/*.test.mjs",
+    "package": "node scripts/package-tool.mjs"
+  }
+}

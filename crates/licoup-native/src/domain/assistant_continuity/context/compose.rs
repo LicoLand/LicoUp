@@ -6,6 +6,7 @@
 //! granted parent refs, then current agreements, then entity overlap as
 //! a clue only, then recency. Lexical clues never set speech act or Goal.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use licoup_conversation::continuity::{
@@ -13,8 +14,9 @@ use licoup_conversation::continuity::{
     ContinuityContextCompositionRequest, ContinuityContextManifest, ContinuityContextTransition,
     ContinuityFailure, ContinuityFailureCode, ContinuityFailureStage, ContinuityParentContextGrant,
     ContinuityParentGrantBasis, ContinuityParentGrantStatus, ContinuityReadPort,
-    ContinuitySourceRef, ContinuitySourceValidity, PENDING_OBLIGATION_PAGE_SIZE,
-    admit_composition_request, admit_parent_context_grant, admit_source_ref,
+    ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity,
+    PENDING_OBLIGATION_PAGE_SIZE, admit_composition_request, admit_parent_context_grant,
+    admit_source_ref,
 };
 
 use super::super::cognition::{
@@ -48,40 +50,52 @@ impl UnavailableContextCompositionService {
         let grants = listed_grants(store, request)?;
         let mut retrieved = Vec::new();
         let mut records = Vec::new();
+        let mut seen = HashSet::new();
+        let all = store.records();
         for wanted in &prior.requested_reads {
-            scope_filter_before_read(store, request, wanted, &grants)?;
-            let Some(record) = store
-                .records()
-                .into_iter()
-                .find(|item| source_key(&item.source) == source_key(wanted))
-            else {
+            if !seen.insert(source_identity_key(wanted)) {
+                continue;
+            }
+            if seen.len() > CONTINUITY_MAX_REFS {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityAdmission,
+                ));
+            }
+            let Some(record) = authorized_record(store, request, wanted, &grants, &all)? else {
                 return Err(continuity_failure(
                     ContinuityFailureCode::SourceUnavailable,
                     ContinuityFailureStage::ContinuityAdmission,
                 ));
             };
             recheck_record(request, &record, &grants)?;
-            retrieved.push(wanted.clone());
+            retrieved.push(record.source.clone());
             records.push(record);
         }
-        let prior_id = invocation_id(
-            request,
-            prior
-                .envelope
-                .source_event_refs
-                .first()
-                .map(|source| source.opaque_id.as_str()),
-            false,
-        );
+        let prior_input_key = prior
+            .envelope
+            .source_event_refs
+            .first()
+            .map(source_identity_key);
+        let prior_id = invocation_id(request, prior_input_key.as_deref(), false);
         let mut snapshot = self.workspace.merge_reads(&prior_id, retrieved, records)?;
-        snapshot.invocation_id = invocation_id(
-            request,
+        let current_input = snapshot
+            .records
+            .iter()
+            .find(|record| record.is_current_input)
+            .cloned();
+        snapshot.records = apply_budget(snapshot.records, current_input.as_ref());
+        snapshot.retrieved_reads.retain(|source| {
             snapshot
-                .input_refs
-                .first()
-                .map(|source| source.opaque_id.as_str()),
-            true,
-        );
+                .records
+                .iter()
+                .any(|record| source_identity_key(&record.source) == source_identity_key(source))
+        });
+        for record in &snapshot.records {
+            recheck_record(request, record, &grants)?;
+        }
+        let refined_input_key = snapshot.input_refs.first().map(source_identity_key);
+        snapshot.invocation_id = invocation_id(request, refined_input_key.as_deref(), true);
         self.workspace.remember_assembly(snapshot.clone());
         manifest_from(&snapshot, store, request)
     }
@@ -92,6 +106,32 @@ impl UnavailableContextCompositionService {
     ) -> Result<(), ContinuityFailure> {
         let snapshot = self.workspace.assembly_snapshot(&manifest.invocation_id)?;
         let store = &self.workspace.store;
+        let basis = store.commit_basis(&snapshot.request.conversation_id)?;
+        if basis.revision != snapshot.observed_revision {
+            return Err(continuity_failure(
+                ContinuityFailureCode::StaleRevision,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        if basis.designation_epoch != snapshot.designation_epoch {
+            return Err(continuity_failure(
+                ContinuityFailureCode::DesignationChanged,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        if manifest.recipient_binding != snapshot.request.recipient_membership_id {
+            return Err(continuity_failure(
+                ContinuityFailureCode::ScopeDenied,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
+        let current_acl_generation = store.acl_generation(&snapshot.request.conversation_id);
+        if manifest.acl_generation != current_acl_generation {
+            return Err(continuity_failure(
+                ContinuityFailureCode::StaleRevision,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
         let current_generation = store.recipient_revocation(
             &snapshot.request.conversation_id,
             &snapshot.request.recipient_membership_id,
@@ -104,19 +144,44 @@ impl UnavailableContextCompositionService {
                 ContinuityFailureStage::ContinuityAdmission,
             ));
         }
+        let expected_sources: HashSet<_> = snapshot
+            .records
+            .iter()
+            .map(|record| source_identity_key(&record.source))
+            .collect();
+        let manifest_sources: HashSet<_> =
+            manifest.sources.iter().map(source_identity_key).collect();
+        if expected_sources.len() != snapshot.records.len()
+            || manifest_sources.len() != manifest.sources.len()
+            || expected_sources != manifest_sources
+        {
+            return Err(continuity_failure(
+                ContinuityFailureCode::StaleRevision,
+                ContinuityFailureStage::ContinuityAdmission,
+            ));
+        }
         let grants = listed_grants(store, &snapshot.request)?;
-        for source in &manifest.sources {
-            let record = snapshot
-                .records
+        let current_records = store.records();
+        for record in &snapshot.records {
+            let current = current_records
                 .iter()
-                .find(|item| source_key(&item.source) == source_key(source))
+                .find(|item| source_reference_matches(item, &record.source))
                 .ok_or_else(|| {
                     continuity_failure(
                         ContinuityFailureCode::SourceUnavailable,
                         ContinuityFailureStage::ContinuityAdmission,
                     )
                 })?;
-            recheck_record(&snapshot.request, record, &grants)?;
+            let current = project_record(current, &record.source);
+            if current.class == InformationClass::Agreement
+                && !latest_agreement(&current_records, &current)
+            {
+                return Err(continuity_failure(
+                    ContinuityFailureCode::StaleRevision,
+                    ContinuityFailureStage::ContinuityAdmission,
+                ));
+            }
+            recheck_record(&snapshot.request, &current, &grants)?;
         }
         Ok(())
     }
@@ -180,6 +245,7 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
         for record in all.iter().filter(|record| {
             record.class == InformationClass::Agreement
                 && record_in_scope(request, record, &attention)
+                && candidate_scope_authorized(request, record)
         }) {
             if latest_agreement(&all, record) {
                 push_unique(
@@ -194,6 +260,7 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
         for record in all.iter().filter(|record| {
             record.class == InformationClass::Responsibility
                 && record_in_scope(request, record, &attention)
+                && candidate_scope_authorized(request, record)
         }) {
             push_unique(
                 &mut selected,
@@ -211,6 +278,7 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
             .filter(|record| {
                 !record.is_current_input
                     && record_in_scope(request, record, &attention)
+                    && candidate_scope_authorized(request, record)
                     && !input_entities.is_empty()
                     && record
                         .entities
@@ -235,6 +303,7 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
             .filter(|record| {
                 record.conversation_id == request.conversation_id
                     && record_in_scope(request, record, &attention)
+                    && candidate_scope_authorized(request, record)
                     && !record.is_current_input
             })
             .cloned()
@@ -258,12 +327,9 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
             recheck_record(request, record, &grants)?;
         }
 
+        let input_identity = current_input.map(|record| source_identity_key(&record.source));
         let snapshot = AssemblySnapshot {
-            invocation_id: invocation_id(
-                request,
-                current_input.map(|record| record.source.opaque_id.as_str()),
-                false,
-            ),
+            invocation_id: invocation_id(request, input_identity.as_deref(), false),
             conversation_id: request.conversation_id.clone(),
             request: request.clone(),
             records: selected.clone(),
@@ -273,7 +339,7 @@ impl ContextCompositionPort for UnavailableContextCompositionService {
             retrieved_reads: Vec::new(),
             replay_key: replay_key(
                 request,
-                current_input.map(|record| record.source.opaque_id.as_str()),
+                input_identity.as_deref(),
                 current_input.map(|record| record.source.source_revision),
             ),
             observed_revision: basis.revision,
@@ -342,21 +408,11 @@ fn authorized_record(
     scope_filter_before_read(store, request, reference, grants)?;
     if let Some(record) = all
         .iter()
-        .find(|record| source_key(&record.source) == source_key(reference))
+        .find(|record| source_reference_matches(record, reference))
     {
-        return Ok(Some(record.clone()));
+        return Ok(Some(project_record(record, reference)));
     }
-    Ok(all.iter().find_map(|record| {
-        if record.source.opaque_id == reference.opaque_id
-            && conversation_readable(request, record, grants)
-        {
-            let mut projected = record.clone();
-            projected.source = reference.clone();
-            Some(projected)
-        } else {
-            None
-        }
-    }))
+    Ok(None)
 }
 
 fn scope_filter_before_read(
@@ -365,26 +421,27 @@ fn scope_filter_before_read(
     reference: &ContinuitySourceRef,
     grants: &[licoup_conversation::continuity::ContinuityParentContextGrant],
 ) -> Result<(), ContinuityFailure> {
-    let Some(record) = store.records().into_iter().find(|item| {
-        source_key(&item.source) == source_key(reference)
-            || item.source.opaque_id == reference.opaque_id
-    }) else {
+    let Some(record) = store
+        .records()
+        .into_iter()
+        .find(|item| source_reference_matches(item, reference))
+    else {
         return Err(continuity_failure(
             ContinuityFailureCode::SourceUnavailable,
             ContinuityFailureStage::ContinuityAdmission,
         ));
     };
-    if !conversation_readable(request, &record, grants) {
+    let projected = project_record(&record, reference);
+    if projected.source.validity == ContinuitySourceValidity::Revoked {
         return Err(continuity_failure(
-            ContinuityFailureCode::ScopeDenied,
+            ContinuityFailureCode::SourceRevoked,
             ContinuityFailureStage::ContinuityAdmission,
         ));
     }
-    if !request
-        .authorized_scopes
-        .contains(&record.source.visibility_scope)
-        && record.conversation_id == request.conversation_id
-    {
+    if record.conversation_id == request.conversation_id {
+        admit_source_ref(&request.authorized_scopes, &projected.source)?;
+    }
+    if !conversation_readable(request, &projected, grants) {
         return Err(continuity_failure(
             ContinuityFailureCode::ScopeDenied,
             ContinuityFailureStage::ContinuityAdmission,
@@ -433,8 +490,11 @@ fn granted_parent_records(
             }
             if let Some(record) = all.iter().find(|item| {
                 item.conversation_id == grant.source_conversation_id
-                    && source_key(&item.source) == source_key(allowed)
+                    && source_identity_key(&item.source) == source_identity_key(allowed)
             }) {
+                if record.class == InformationClass::Agreement && !latest_agreement(all, record) {
+                    continue;
+                }
                 out.push(record.clone());
             }
         }
@@ -458,6 +518,64 @@ fn record_in_scope(
         (Some(matter), Some(record_matter)) => matter == record_matter,
         (None, Some(_)) => false,
     }
+}
+
+fn candidate_scope_authorized(
+    request: &ContinuityContextCompositionRequest,
+    record: &ContextRecord,
+) -> bool {
+    // A local record uses the request scope list. An external record is
+    // authorized by its admitted parent grant, which carries its own scope.
+    record.conversation_id != request.conversation_id
+        || admit_source_ref(&request.authorized_scopes, &record.source).is_ok()
+}
+
+fn source_identity_key(source: &ContinuitySourceRef) -> String {
+    format!("{}:{:?}", source_key(source), source.visibility_scope)
+}
+
+fn source_reference_matches(record: &ContextRecord, requested: &ContinuitySourceRef) -> bool {
+    let stored = &record.source;
+    source_identity_key(stored) == source_identity_key(requested)
+        || (requested.owner_kind == ContinuitySourceOwnerKind::Span
+            && stored.opaque_id == requested.opaque_id
+            && stored.part_id == requested.part_id
+            && stored.source_revision == requested.source_revision
+            && stored.digest == requested.digest
+            && stored.visibility_scope == requested.visibility_scope
+            && requested_span_is_contained(record, requested))
+}
+
+fn requested_span_is_contained(record: &ContextRecord, requested: &ContinuitySourceRef) -> bool {
+    let Some(requested_span) = requested.span.as_ref() else {
+        return false;
+    };
+    let (base_start, base_end) = record
+        .source
+        .span
+        .as_ref()
+        .map(|span| (span.start_byte, span.end_byte))
+        .unwrap_or((0, record.text_bytes));
+    requested_span.start_byte >= base_start
+        && requested_span.end_byte <= base_end
+        && requested_span.start_byte <= requested_span.end_byte
+}
+
+fn project_record(record: &ContextRecord, requested: &ContinuitySourceRef) -> ContextRecord {
+    if source_identity_key(&record.source) == source_identity_key(requested) {
+        return record.clone();
+    }
+    let mut projected = record.clone();
+    projected.source = requested.clone();
+    // The stored record decides provenance: a requested ref cannot project
+    // away a revocation.
+    if record.source.validity == ContinuitySourceValidity::Revoked {
+        projected.source.validity = ContinuitySourceValidity::Revoked;
+    }
+    if let Some(span) = requested.span.as_ref() {
+        projected.text_bytes = span.end_byte.saturating_sub(span.start_byte);
+    }
+    projected
 }
 
 fn latest_agreement(all: &[ContextRecord], record: &ContextRecord) -> bool {
@@ -486,6 +604,8 @@ fn recheck_record(
     if record.conversation_id == request.conversation_id {
         return admit_source_ref(&request.authorized_scopes, &record.source);
     }
+    // A parent grant is the external disclosure ACL. Its authorized scope is
+    // checked by `exact_grant_for_source` against the current recipient basis.
     if exact_grant_for_source(request, &record.conversation_id, &record.source, grants).is_none() {
         return Err(continuity_failure(
             ContinuityFailureCode::ScopeDenied,
@@ -499,39 +619,49 @@ fn apply_budget(
     selected: Vec<ContextRecord>,
     current_input: Option<&ContextRecord>,
 ) -> Vec<ContextRecord> {
-    if selected.len() <= CONTINUITY_MAX_ORIENTATION_ITEMS {
-        return order_stable_prefix(selected);
-    }
+    let within_budget = selected.len() <= CONTINUITY_MAX_ORIENTATION_ITEMS;
     let mut kept = Vec::new();
     if let Some(input) = current_input {
         kept.push(input.clone());
     }
-    for record in &selected {
-        if record.class == InformationClass::Agreement
-            || record.class == InformationClass::Responsibility
-            || matches!(
-                record.class,
-                InformationClass::ConversationFact | InformationClass::CallbackFact
-            ) && record.conversation_level
+    let mut mandatory = selected
+        .iter()
+        .filter(|record| {
+            record.class == InformationClass::Agreement
+                || record.class == InformationClass::Responsibility
+                || matches!(
+                    record.class,
+                    InformationClass::ConversationFact | InformationClass::CallbackFact
+                ) && record.conversation_level
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    mandatory.sort_by(|left, right| {
+        class_rank(left)
+            .cmp(&class_rank(right))
+            .then_with(|| right.recency.cmp(&left.recency))
+    });
+    for record in mandatory {
+        if kept.len() >= CONTINUITY_MAX_ORIENTATION_ITEMS {
+            break;
+        }
+        if !kept
+            .iter()
+            .any(|have| source_identity_key(&have.source) == source_identity_key(&record.source))
         {
-            if !kept
-                .iter()
-                .any(|have| source_key(&have.source) == source_key(&record.source))
-            {
-                kept.push(record.clone());
-            }
+            kept.push(record);
         }
     }
     for record in selected {
         if kept.len() >= CONTINUITY_MAX_ORIENTATION_ITEMS {
             break;
         }
-        if record.class == InformationClass::WorkingNote {
+        if record.class == InformationClass::WorkingNote && !within_budget {
             continue;
         }
         if !kept
             .iter()
-            .any(|have| source_key(&have.source) == source_key(&record.source))
+            .any(|have| source_identity_key(&have.source) == source_identity_key(&record.source))
         {
             kept.push(record);
         }
@@ -567,8 +697,11 @@ fn push_unique(
     let Some(record) = record else {
         return;
     };
-    let key = source_key(&record.source);
-    if selected.iter().any(|have| source_key(&have.source) == key) {
+    let key = source_identity_key(&record.source);
+    if selected
+        .iter()
+        .any(|have| source_identity_key(&have.source) == key)
+    {
         return;
     }
     reasons.push((key, reason.into()));
@@ -578,7 +711,7 @@ fn push_unique(
 fn stable_reasons(selected: &[ContextRecord], reasons: &[(String, String)]) -> Vec<String> {
     let mut out = Vec::new();
     for record in selected {
-        let key = source_key(&record.source);
+        let key = source_identity_key(&record.source);
         if let Some((_, reason)) = reasons.iter().find(|(item, _)| item == &key) {
             if !out.contains(reason) {
                 out.push(reason.clone());
@@ -627,11 +760,9 @@ fn manifest_from(
                 .map(|agreement| agreement.effective_revision)
         })
         .collect();
-    let token_estimate = snapshot
-        .records
-        .iter()
-        .map(|record| record.text_bytes.div_ceil(4).max(1))
-        .sum();
+    let token_estimate = snapshot.records.iter().fold(0_u64, |total, record| {
+        total.saturating_add(record.text_bytes.div_ceil(4).max(1))
+    });
     Ok(ContinuityContextManifest {
         invocation_id: snapshot.invocation_id.clone(),
         sources: snapshot

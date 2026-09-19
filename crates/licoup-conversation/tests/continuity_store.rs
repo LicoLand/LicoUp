@@ -183,6 +183,79 @@ fn migrate_does_not_synthesize_goals_or_revive_summaries() {
 }
 
 #[test]
+fn current_schema_repairs_missing_defaults_and_designation_trigger() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    assert!(store.ensure_continuity_migrated().unwrap());
+    store
+        .with_continuity_unit_of_work(|unit| {
+            unit.execute(
+                "DELETE FROM continuity_schema
+                 WHERE key IN ('adoption_enabled', 'adoption_stage')",
+                [],
+            )?;
+            unit.execute("DROP TRIGGER continuity_bump_designation_epoch", [])?;
+            unit.request_commit();
+            Ok(())
+        })
+        .unwrap();
+
+    assert!(store.ensure_continuity_migrated().unwrap());
+    let values = store
+        .with_continuity_unit_of_work(|unit| {
+            Ok((
+                unit.query_row(
+                    "SELECT value FROM continuity_schema WHERE key='adoption_enabled'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?,
+                unit.query_row(
+                    "SELECT value FROM continuity_schema WHERE key='adoption_stage'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?,
+                unit.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type='trigger' AND name='continuity_bump_designation_epoch'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?,
+            ))
+        })
+        .unwrap();
+    assert_eq!(values, ("1".to_owned(), "offline".to_owned(), 1));
+    assert!(!store.ensure_continuity_migrated().unwrap());
+}
+
+#[test]
+fn newer_continuity_schema_is_rejected_without_rewriting_it() {
+    let store = ConversationStore::open_in_memory().unwrap();
+    store.ensure_continuity_migrated().unwrap();
+    store
+        .with_continuity_unit_of_work(|unit| {
+            unit.execute(
+                "UPDATE continuity_schema SET value='8' WHERE key='version'",
+                [],
+            )?;
+            unit.request_commit();
+            Ok(())
+        })
+        .unwrap();
+
+    let error = store.ensure_continuity_migrated().unwrap_err();
+    assert_eq!(error.to_string(), "continuity_schema_unsupported_version");
+    let version = store
+        .with_continuity_unit_of_work(|unit| {
+            Ok(unit.query_row(
+                "SELECT value FROM continuity_schema WHERE key='version'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(version, "8");
+}
+
+#[test]
 fn commit_is_atomic_for_state_cursor_and_outbox() {
     let mut harness = Harness::new("atomic");
     let proposal = harness.proposal("request:atomic", "goal:notes", "matter:notes", false);
