@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 /// Desktop mobile's private non-flush Settings strategy.
@@ -61,9 +62,14 @@ final class DesktopMobileSettingsPresentation
         color: hovered
             ? palette.surface.withAlpha(palette.isDark ? 30 : 18)
             : Colors.transparent,
-        border: Border(right: BorderSide(color: palette.line.withAlpha(60))),
       ),
-      child: child,
+      child: CustomPaint(
+        foregroundPainter: ContinuousEdgeHairlinePainter(
+          color: palette.line.withAlpha(60),
+          edge: AxisDirection.right,
+        ),
+        child: child,
+      ),
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
@@ -34,61 +35,67 @@ final class MobileDesktopAgentList extends StatelessWidget {
     final strings = LicoStrings.of(context);
     return Column(
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.background,
-            border: Border(
-              bottom: BorderSide(color: colors.line.withAlpha(120)),
-            ),
+        CustomPaint(
+          foregroundPainter: ContinuousEdgeHairlinePainter(
+            color: colors.line.withAlpha(120),
+            edge: AxisDirection.down,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-            child: Row(
-              children: [
-                IconButton(
-                  key: const Key('mobile-desktop-agents-back'),
-                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                  onPressed: onBack,
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                Icon(Icons.computer_rounded, color: colors.accent, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        strings.arcDesktop,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.text,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        device.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: colors.textMuted, fontSize: 12),
-                      ),
-                    ],
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: colors.background),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
+              child: Row(
+                children: [
+                  IconButton(
+                    key: const Key('mobile-desktop-agents-back'),
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).backButtonTooltip,
+                    onPressed: onBack,
+                    icon: const Icon(Icons.chevron_left_rounded),
                   ),
-                ),
-                IconButton(
-                  key: const Key('mobile-desktop-agents-refresh'),
-                  tooltip: strings.refreshAgents,
-                  onPressed: scanning ? null : onRefresh,
-                  icon: scanning
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: LicoLoadingIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                ),
-              ],
+                  Icon(Icons.computer_rounded, color: colors.accent, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          strings.arcDesktop,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.text,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          device.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('mobile-desktop-agents-refresh'),
+                    tooltip: strings.refreshAgents,
+                    onPressed: scanning ? null : onRefresh,
+                    icon: scanning
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: LicoLoadingIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

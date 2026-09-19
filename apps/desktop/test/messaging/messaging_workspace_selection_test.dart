@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_message.dart';
 import 'package:licoup/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -203,6 +204,7 @@ void main() {
     final controller = ClientController(
       agentService: agentService,
       conversationNativePort: agentService,
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       llmGatewayMonitorInterval: Duration.zero,
     );
     addTearDown(controller.dispose);
@@ -522,7 +524,7 @@ final class _GroupNavigationController extends ClientController {
     required super.agentService,
     required super.conversationNativePort,
     super.llmGatewayMonitorInterval,
-  });
+  }) : super(memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink());
 
   @override
   Future<ConversationSessionPage> readConversationSessionPage(
@@ -557,7 +559,7 @@ final class _GroupNavigationController extends ClientController {
           title: agentId == 'codex'
               ? 'Agent detail'
               : 'Historical group Agent detail',
-          at: '2026-09-13T00:00:00Z',
+          at: DateTime.now().toUtc().toIso8601String(),
         ),
       ],
       hasMore: false,

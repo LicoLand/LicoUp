@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/profiles/desktop/mobile/desktop_mobile_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 const String desktopMobilePreviewSemanticLabel = 'layout.profile.desktop.label';
 
@@ -21,11 +22,12 @@ Widget buildDesktopMobilePreview(BuildContext context) {
             desktopMobileTokens.cardRadius * 0.72,
           ),
           child: DecoratedBox(
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: colors.surfaceContainerLow,
-              border: Border.all(
-                color: colors.outlineVariant.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(
+                desktopMobileTokens.cardRadius * 0.72,
               ),
+              stroke: colors.outlineVariant.withValues(alpha: 0.7),
             ),
             child: Padding(
               padding: EdgeInsets.all(desktopMobileTokens.spacingUnit * 1.25),
@@ -143,10 +145,10 @@ final class _PreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final lineColor = foreground?.withValues(alpha: 0.42) ?? outline;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: color,
         borderRadius: BorderRadius.circular(desktopMobileTokens.cardRadius),
-        border: Border.all(color: outline),
+        stroke: outline,
       ),
       child: Padding(
         padding: EdgeInsets.all(desktopMobileTokens.spacingUnit * 1.5),
@@ -173,10 +175,10 @@ final class _PreviewComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     key: const ValueKey<String>('desktop-mobile-preview-composer'),
-    decoration: BoxDecoration(
+    decoration: continuousHairlineDecoration(
       color: colors.surfaceContainerLowest,
       borderRadius: BorderRadius.circular(desktopMobileTokens.cardRadius),
-      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.64)),
+      stroke: colors.outlineVariant.withValues(alpha: 0.64),
     ),
     child: Padding(
       padding: EdgeInsets.all(desktopMobileTokens.spacingUnit),

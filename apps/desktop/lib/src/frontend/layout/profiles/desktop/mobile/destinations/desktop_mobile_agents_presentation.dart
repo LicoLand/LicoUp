@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 /// Desktop mobile's private Agents strategy. The mobile workspace does not
 /// draw desktop chrome, while retaining the current generic detail treatment
@@ -71,11 +72,11 @@ final class DesktopMobileAgentsPresentation
       ),
       child: DecoratedBox(
         key: key,
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: palette.surface,
           borderRadius: BorderRadius.circular(_floatingCardRadius),
-          border: Border.all(color: palette.line.withAlpha(80)),
-          boxShadow: [
+          stroke: palette.line.withAlpha(80),
+          shadows: [
             BoxShadow(
               color: Colors.black.withAlpha(palette.isDark ? 90 : 28),
               blurRadius: 28,

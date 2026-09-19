@@ -6,6 +6,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desk
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// Drag payloads for dock interactions.
@@ -122,13 +123,14 @@ final class DesktopDockBar extends StatelessWidget {
             key: const Key('desktop-dock-bar'),
             width: barWidth,
             height: DesktopDesktopMetrics.dockBarHeight,
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: desktopDesktopSurfaceBlack,
               borderRadius: BorderRadius.circular(
                 DesktopDesktopMetrics.dockBarRadius,
               ),
-              border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
-              boxShadow: const [
+              stroke: DesktopDesktopOnBlack.line,
+              strokeWidth: 0.5,
+              shadows: const [
                 BoxShadow(
                   color: Color(0x66000000),
                   blurRadius: 26,
@@ -369,17 +371,15 @@ final class DesktopDockIconState extends State<DesktopDockIcon> {
                   duration: context.motion(LicoMotion.micro),
                   width: DesktopDesktopMetrics.dockIconExtent,
                   height: DesktopDesktopMetrics.dockIconExtent,
-                  decoration: BoxDecoration(
+                  decoration: continuousHairlineDecoration(
                     color: _hovered
                         ? DesktopDesktopOnBlack.hoverOverlay
                         : desktopDesktopSurfaceBlack,
                     borderRadius: BorderRadius.circular(
                       DesktopDesktopMetrics.dockIconRadius,
                     ),
-                    border: Border.all(
-                      color: DesktopDesktopOnBlack.line,
-                      width: 0.5,
-                    ),
+                    stroke: DesktopDesktopOnBlack.line,
+                    strokeWidth: 0.5,
                   ),
                   child: Icon(
                     widget.icon,
@@ -443,15 +443,13 @@ final class DesktopDockFolderIcon extends StatelessWidget {
                   width: DesktopDesktopMetrics.dockIconExtent,
                   height: DesktopDesktopMetrics.dockIconExtent,
                   padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
+                  decoration: continuousHairlineDecoration(
                     color: desktopDesktopSurfaceBlack,
                     borderRadius: BorderRadius.circular(
                       DesktopDesktopMetrics.dockIconRadius,
                     ),
-                    border: Border.all(
-                      color: DesktopDesktopOnBlack.line,
-                      width: 0.5,
-                    ),
+                    stroke: DesktopDesktopOnBlack.line,
+                    strokeWidth: 0.5,
                   ),
                   child: GridView.count(
                     crossAxisCount: 2,
@@ -567,11 +565,12 @@ final class DesktopDockFolderView extends StatelessWidget {
             key: const Key('desktop-folder-popup'),
             constraints: const BoxConstraints(maxWidth: 320),
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: desktopDesktopSurfaceBlack,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
-              boxShadow: const [
+              stroke: DesktopDesktopOnBlack.line,
+              strokeWidth: 0.5,
+              shadows: const [
                 BoxShadow(
                   color: Color(0x66000000),
                   blurRadius: 24,

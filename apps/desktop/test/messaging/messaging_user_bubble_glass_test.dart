@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_bubble_edge_glow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -124,14 +125,14 @@ void main() {
         matching: find.byType(AnimatedContainer),
       ),
     );
-    final decoration = animated.decoration! as BoxDecoration;
+    final decoration = animated.decoration! as ShapeDecoration;
     expect(_alpha8(decoration.color!), 0);
     expect(decoration.gradient, isNull);
-    expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
+    expect(decoration.shadows ?? const <BoxShadow>[], isEmpty);
     // At rest the bubble carries the neutral hairline and the light is off.
-    expect(decoration.border, isNotNull);
+    final shape = decoration.shape as ContinuousRoundedBorder;
     expect(
-      decoration.border!.top.color,
+      shape.side.color,
       MessagingDesktopMetrics.bubbleRestingBorder(
         theme.extension<LicoThemeColors>()!.line,
         isDark: true,
@@ -172,8 +173,9 @@ void main() {
         matching: find.byType(AnimatedContainer),
       ),
     );
-    final litDecoration = litAnimated.decoration! as BoxDecoration;
-    expect(_alpha8(litDecoration.border!.top.color), 0);
+    final litDecoration = litAnimated.decoration! as ShapeDecoration;
+    final litShape = litDecoration.shape as ContinuousRoundedBorder;
+    expect(_alpha8(litShape.side.color), 0);
     expect(tester.takeException(), isNull);
   });
 }

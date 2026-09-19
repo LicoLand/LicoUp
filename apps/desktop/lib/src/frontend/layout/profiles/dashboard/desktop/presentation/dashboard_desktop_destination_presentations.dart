@@ -94,11 +94,10 @@ final class DashboardDesktopAgentsPresentation
             isDark: colors.isDark,
           ),
         ),
-        child: ClipRRect(
+        child: GlassEdgeLight(
           borderRadius: BorderRadius.circular(radius),
-          child: GlassEdgeLight(
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(radius),
-            sheenExtent: 32,
             child: child,
           ),
         ),

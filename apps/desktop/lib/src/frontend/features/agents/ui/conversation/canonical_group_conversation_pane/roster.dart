@@ -110,9 +110,12 @@ class CanonicalGroupRoster extends StatelessWidget {
                   membershipsByAgentId[target.id];
               final membershipLabel =
                   membership?.principal.displayName.trim() ?? '';
-              final fullLabel = membershipLabel.isEmpty
-                  ? agentConversationTargetDisplayName(target)
-                  : membershipLabel;
+              final fullLabel =
+                  agentProductDisplayName(target.target) ??
+                  agentProductDisplayName(target.id) ??
+                  (membershipLabel.isEmpty
+                      ? agentConversationTargetDisplayName(target)
+                      : membershipLabel);
               final compactLabel = agentConversationTargetCompactDisplayName(
                 target,
               );

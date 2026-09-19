@@ -62,22 +62,23 @@ void main() {
     expect(focusedSurface.focused, isTrue);
     expect(focusedSurface.focusColor, brandGold);
 
-    final focusedPaint = tester.widget<CustomPaint>(
-      find.descendant(
-        of: find.byKey(const Key('apple-popup-select')),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is CustomPaint &&
-              widget.foregroundPainter is ContinuousStrokePainter,
-        ),
-      ),
-    );
-    final stroke = focusedPaint.foregroundPainter! as ContinuousStrokePainter;
+    final ringPainter = tester
+        .widget<CustomPaint>(
+          find.descendant(
+            of: find.byKey(const Key('apple-popup-select')),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is CustomPaint &&
+                  widget.foregroundPainter is ContinuousStrokePainter,
+            ),
+          ),
+        )
+        .foregroundPainter as ContinuousStrokePainter;
     // The focus ring is drawn at full strength: a translucent one-pixel color
     // shift is not a reliable focus signal, so the ring is opaque and wider.
-    expect(stroke.color, brandGold);
-    expect(stroke.width, AppleControlMetrics.searchFocusRingWidth);
-    expect(stroke.color, isNot(kAppleMenuSelectionBlue));
+    expect(ringPainter.color, brandGold);
+    expect(ringPainter.width, AppleControlMetrics.searchFocusRingWidth);
+    expect(ringPainter.color, isNot(kAppleMenuSelectionBlue));
 
     expect(find.text('Beta'), findsOneWidget);
     expect(find.byIcon(Icons.check), findsOneWidget);

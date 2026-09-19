@@ -10,6 +10,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
@@ -51,6 +52,7 @@ final class JourneySession {
     controller = ClientController(
       agentService: FakeAgentService(),
       conversationNativePort: bridge,
+      memoryDiagnosticSink: const NoopClientMemoryDiagnosticSink(),
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     conversation = ConversationFeatureComposition(controller);

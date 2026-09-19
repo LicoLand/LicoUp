@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 const LayoutAgentsPresentation desktopDesktopAgentsPresentation =
@@ -71,11 +72,12 @@ final class DesktopDesktopAgentsPresentation
       ),
       child: DecoratedBox(
         key: key,
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: desktopDesktopSurfaceBlack,
           borderRadius: BorderRadius.circular(_listCardRadius),
-          border: Border.all(color: DesktopDesktopOnBlack.line, width: 0.5),
-          boxShadow: const [
+          stroke: DesktopDesktopOnBlack.line,
+          strokeWidth: 0.5,
+          shadows: const [
             BoxShadow(
               color: Color(0x59000000),
               blurRadius: 18,

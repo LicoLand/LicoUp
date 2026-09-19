@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:licoup/src/contracts/conversation_execution.dart';
 
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/presentation/conversation/canonical_conversation_event_metadata.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -16,35 +17,21 @@ String _iso(int unixMs) => unixMs <= 0
         isUtc: true,
       ).toIso8601String();
 
+/// Current-adapter seats for the group roster. Memberships whose Agent is no
+/// longer packaged, including leftover Kimi Desktop records, stay in the
+/// Canonical store and transcript; they are not synthesized back onto the
+/// roster.
 List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
   ClientConversation conversation,
   List<TargetCandidate> targets,
 ) {
   final resolved = <TargetCandidate>[];
   for (final membership in conversation.activeAgentMemberships) {
-    final agentId = membership.principal.agentId.trim();
-    TargetCandidate? target;
-    for (final candidate in targets) {
-      if (candidate.target == agentId || candidate.id == agentId) {
-        target = candidate;
-        break;
-      }
-    }
-    resolved.add(
-      target ??
-          TargetCandidate(
-            target: agentId,
-            label: membership.principal.displayName.trim().isEmpty
-                ? agentId
-                : membership.principal.displayName.trim(),
-            kind: 'conversation-member',
-            status: TargetCandidateStatus.synthesizedMembership,
-            configured: false,
-            confidence: 1,
-            adapterStatus: 'runtime-unavailable',
-            scanSource: 'canonical-conversation',
-          ),
+    final target = canonicalGroupParticipantTarget(
+      targets,
+      membership.principal.agentId,
     );
+    if (target != null) resolved.add(target);
   }
   return List<TargetCandidate>.unmodifiable(resolved);
 }
@@ -55,40 +42,52 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
   List<String> orderedAgentIds,
 ) {
   if (orderedAgentIds.isEmpty) return const [];
-  final targetByAgentId = {
-    for (final target in targets) target.target: target,
-    for (final target in targets) target.id: target,
-  };
-  final membershipByAgentId = {
-    for (final membership in conversation.activeAgentMemberships)
-      membership.principal.agentId: membership,
-  };
   final resolved = <TargetCandidate>[];
+  final seen = <String>{};
   for (final agentId in orderedAgentIds) {
-    final target = targetByAgentId[agentId];
-    if (target != null) {
-      resolved.add(target);
-    } else {
-      final membership = membershipByAgentId[agentId];
-      if (membership != null) {
-        resolved.add(
-          TargetCandidate(
-            target: agentId,
-            label: membership.principal.displayName.trim().isEmpty
-                ? agentId
-                : membership.principal.displayName.trim(),
-            kind: 'conversation-member',
-            status: TargetCandidateStatus.synthesizedMembership,
-            configured: false,
-            confidence: 1,
-            adapterStatus: 'runtime-unavailable',
-            scanSource: 'canonical-conversation',
-          ),
-        );
-      }
-    }
+    final target = canonicalGroupParticipantTarget(targets, agentId);
+    if (target == null) continue;
+    final key = target.target.trim().isEmpty ? target.id : target.target;
+    if (!seen.add(key)) continue;
+    resolved.add(target);
   }
   return List<TargetCandidate>.unmodifiable(resolved);
+}
+
+/// Live catalog match for a group member. Retired adapters and synthesized
+/// placeholders are omitted so the roster only shows Agents that still have
+/// a current adapter.
+TargetCandidate? canonicalGroupParticipantTarget(
+  List<TargetCandidate> targets,
+  String agentId,
+) {
+  final id = agentId.trim();
+  if (id.isEmpty || !_canonicalGroupRosterShowsAgent(id)) {
+    return null;
+  }
+  for (final candidate in targets) {
+    if ((candidate.target == id || candidate.id == id) &&
+        _canonicalGroupRosterShowsTarget(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+bool _canonicalGroupRosterShowsTarget(TargetCandidate target) {
+  if (target.manual) return true;
+  if (target.status == TargetCandidateStatus.synthesizedMembership) {
+    return false;
+  }
+  return _canonicalGroupRosterShowsAgent(target.target) &&
+      _canonicalGroupRosterShowsAgent(target.id);
+}
+
+/// Kimi Desktop was removed from the adapter catalog. Its product id strips
+/// to `kimi` and is omitted from the roster. Kimi Code stays `kimi-code`,
+/// remains visible, and uses the human-readable name "Kimi Code".
+bool _canonicalGroupRosterShowsAgent(String agentId) {
+  return agentProductId(agentId) != 'kimi';
 }
 
 ClientConversationMembership? canonicalGroupAgentMembership(
