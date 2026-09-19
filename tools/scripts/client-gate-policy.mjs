@@ -68,6 +68,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:secure-mesh-macos-capabilities:self-test",
     "client:verify:secure-mesh-linux-node-matrix:self-test",
     "client:cli:vm:self-test",
+    "client:state:migration:self-test",
     "client:verify:artifact-verification-receipts:self-test",
     "client:verify:secure-mesh-capability-model:self-test",
     "client:verify:secure-mesh-trust-ux:self-test",

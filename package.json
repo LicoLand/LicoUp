@@ -159,6 +159,8 @@
     "client:verify:secure-mesh-e2ee-evidence:authority-proof-self-test": "node tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs --authority-proof-self-test",
     "client:verify:secure-mesh-e2ee-evidence:readiness-self-test": "node tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs --readiness-self-test",
     "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test": "node tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs --leak-scan-self-test",
+    "client:state:migration": "node tools/scripts/client-state-migration.mjs",
+    "client:state:migration:self-test": "node --test tests/contract/client/client-state-migration-diagnostic.test.mjs",
     "client:verify:artifact-verification-receipts": "node tools/scripts/client-artifact-verification-receipts.mjs",
     "client:verify:artifact-verification-receipts:self-test": "node tools/scripts/client-artifact-verification-receipts.mjs --self-test",
     "client:verify:release-artifact-io:self-test": "node tools/scripts/client-release-artifact-io-self-test.mjs",

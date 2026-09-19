@@ -1,7 +1,7 @@
 use super::super::*;
 use super::support::leaf;
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 
 #[test]
 fn pinned_sth_rejects_wrong_key_stale_and_future_views() {

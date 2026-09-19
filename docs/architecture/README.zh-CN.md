@@ -173,7 +173,7 @@ flowchart TB
 | `crates/licoup-agent-runtime/` | Agent Runtime 与 adapter crate（已是 workspace 成员，抽取进行中） |
 | `crates/licoup-platform-bridges/` | 原生平台 ABI 与句柄管理（第 4 层） |
 | `crates/licoup-endpoint-core/` | 端点身份、密钥保管与加密基础 |
-| `crates/licoup-protocol-bindings/` | 协议类型定义 |
+| `crates/licoup-protocol-bindings/` | LicoArc Candidate 固定输入准入（由 LicoArc SDK 验证） |
 | `crates/licoup-client-state/` | 客户端状态管理契约 |
 | `crates/licoup-agent-adapters/` | 智能体适配器 trait 定义 |
 | `crates/lico-catalog-convergence/` | 目录收敛逻辑 |
@@ -352,7 +352,7 @@ crates/
 ├── licoup-workflow/            # 纯工作流编译器与状态转换机
 ├── licoup-agent-runtime/       # L4+L5: 智能体适配器 + settlement 仲裁器
 ├── licoup-endpoint-core/       # 端点身份、密钥派生、加密
-├── licoup-protocol-bindings/   # L2: 线协议类型 + 帧 codec
+├── licoup-protocol-bindings/   # L2: LicoArc Candidate 固定输入准入
 ├── licoup-client-state/        # 客户端状态管理（配额、持久化）
 ├── licoup-platform-bridges/    # 系统桥接（Keychain、WinCred 等）
 ├── licoup-agent-adapters/      # 智能体适配器 trait 定义

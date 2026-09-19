@@ -1,5 +1,5 @@
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::json;
 
 use super::super::{SECURE_MESH_LIFECYCLE_CONTENT_TYPE, mls::prepare_lifecycle_service_action};
