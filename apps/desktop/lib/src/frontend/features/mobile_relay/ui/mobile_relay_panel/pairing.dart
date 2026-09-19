@@ -7,26 +7,26 @@ import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
-import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 
 class MobileRelayPairingWorkspaceCard extends StatelessWidget {
   const MobileRelayPairingWorkspaceCard({
     super.key,
-    required this.projection,
+    required this.inputs,
     required this.intents,
     required this.stationBaseUrlController,
   });
 
-  final MobileRelayProjection projection;
+  final MobileRelayPairingInputs inputs;
   final IntentSink<MobileRelayIntent> intents;
   final TextEditingController stationBaseUrlController;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final inviteText = projection.pairingInvite.trim();
-    final pairingCode = projection.pairingCode.trim();
+    final inviteText = inputs.pairingInvite.trim();
+    final pairingCode = inputs.pairingCode.trim();
 
     return Container(
       key: const Key('pairing-qr-workspace-card'),
@@ -40,15 +40,15 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final info = _MobileRelayPairingInfoPane(
-            projection: projection,
+            inputs: inputs,
             intents: intents,
             stationBaseUrlController: stationBaseUrlController,
             pairingCode: pairingCode,
           );
           final qr = MobileRelayPairingQrFrame(
             inviteText: inviteText,
-            busy: projection.busy,
-            stationConfigured: projection.stationConfigured,
+            busy: inputs.busy,
+            stationConfigured: inputs.stationConfigured,
             onGenerate: () async => intents.send(const CreateRelayPairing()),
           );
           if (constraints.maxWidth < 720) {
@@ -77,13 +77,13 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
 
 class _MobileRelayPairingInfoPane extends StatelessWidget {
   const _MobileRelayPairingInfoPane({
-    required this.projection,
+    required this.inputs,
     required this.intents,
     required this.stationBaseUrlController,
     required this.pairingCode,
   });
 
-  final MobileRelayProjection projection;
+  final MobileRelayPairingInputs inputs;
   final IntentSink<MobileRelayIntent> intents;
   final TextEditingController stationBaseUrlController;
   final String pairingCode;
@@ -92,7 +92,7 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final busy = projection.busy;
+    final busy = inputs.busy;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,15 +120,15 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
         const SizedBox(height: 16),
         MobileRelayPairingInfoRow(
           label: strings.status,
-          value: projection.paired ? strings.paired : strings.waiting,
+          value: inputs.paired ? strings.paired : strings.waiting,
         ),
         MobileRelayPairingInfoRow(
           label: strings.pairingId,
-          value: projection.pairingId,
+          value: inputs.pairingId,
         ),
         MobileRelayPairingInfoRow(
           label: strings.expires,
-          value: projection.pairingExpiresLabel,
+          value: inputs.pairingExpiresLabel,
         ),
         if (pairingCode.isNotEmpty) ...[
           const SizedBox(height: 8),

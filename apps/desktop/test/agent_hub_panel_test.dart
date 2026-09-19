@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'support/bundled_font_loader.dart';
 import 'package:presentation_contract/presentation_contract.dart';
@@ -14,7 +16,9 @@ import 'package:licoup/src/presentation/plugin_management/plugin_management_proj
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'fixtures/plugin_management_presentation_fixture.dart';
 import 'fixtures/skill_hub_binding_fixture.dart';
+import 'fixtures/skill_hub_presentation_fixture.dart';
 
 import 'package:licoup/src/application/features/agent_hub/agent_hub_engine.dart';
 import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
@@ -413,45 +417,52 @@ _HubHarness _harness(
   _AgentHubCatalogOrder? orderRecipes,
   PluginManagementBinding? plugins,
   SkillHubBinding? skills,
+  PluginManagementPresentationFixture? pluginPresentation,
+  SkillHubPresentationFixture? skillPresentation,
   String? presetId,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   final feature = AgentHubRendererBindingFixture(controller);
   addTearDown(controller.dispose);
   addTearDown(feature.dispose);
-  return (
-    MaterialApp(
-      locale: locale,
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: presetId == null
-          ? buildLicoTheme(platformBrightness: Brightness.dark)
-          : buildLicoTheme(presetId: presetId),
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child!,
-        );
-      },
-      home: Scaffold(
-        body: SizedBox(
-          width: 1000,
-          height: 720,
-          child: AgentHubPanel(
-            binding: feature.binding,
-            plugins: plugins,
-            skills: skills,
-            openHomepage: openHomepage ?? (_) async {},
-            onOpenAgent: onOpenAgent,
-            orderEntries: orderRecipes ?? (entries) => entries,
-          ),
+  final overrides = <Override>[
+    ...?pluginPresentation?.overrides,
+    ...?skillPresentation?.overrides,
+  ];
+  final app = MaterialApp(
+    locale: locale,
+    supportedLocales: LicoStrings.supportedLocales,
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
+    theme: presetId == null
+        ? buildLicoTheme(platformBrightness: Brightness.dark)
+        : buildLicoTheme(presetId: presetId),
+    builder: (context, child) {
+      return MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: child!,
+      );
+    },
+    home: Scaffold(
+      body: SizedBox(
+        width: 1000,
+        height: 720,
+        child: AgentHubPanel(
+          binding: feature.binding,
+          plugins: plugins,
+          skills: skills,
+          openHomepage: openHomepage ?? (_) async {},
+          onOpenAgent: onOpenAgent,
+          orderEntries: orderRecipes ?? (entries) => entries,
         ),
       ),
     ),
+  );
+  return (
+    overrides.isEmpty ? app : ProviderScope(overrides: overrides, child: app),
     controller,
   );
 }
@@ -817,9 +828,17 @@ void main() {
       final pluginSource = _MutableProjection(
         pluginProjection(PresentationPhase.ready),
       );
+      final pluginPresentation = PluginManagementPresentationFixture(
+        projection: pluginProjection(PresentationPhase.ready),
+      );
+      final skillPresentation = SkillHubPresentationFixture(
+        projection: skillFixture.binding.projection.current,
+      );
       addTearDown(skillFixture.dispose);
       addTearDown(pluginEffects.dispose);
       addTearDown(pluginSource.close);
+      addTearDown(pluginPresentation.dispose);
+      addTearDown(skillPresentation.dispose);
       final plugins = PluginManagementBinding(
         projection: pluginSource,
         intents: SemanticIntentChannel<PluginManagementIntent>(
@@ -829,7 +848,13 @@ void main() {
       );
       await _pumpHub(
         tester,
-        _harness(engine, plugins: plugins, skills: skillFixture.binding),
+        _harness(
+          engine,
+          plugins: plugins,
+          skills: skillFixture.binding,
+          pluginPresentation: pluginPresentation,
+          skillPresentation: skillPresentation,
+        ),
       );
       await _openDetail(tester, 'codex');
       pluginIntents.clear();
@@ -873,6 +898,9 @@ void main() {
       expect(skillFixture.receivedIntents, isEmpty);
       expect(rootRequests(), beforeRefresh + 1);
       pluginSource.replace(pluginProjection(PresentationPhase.loading));
+      pluginPresentation.publishProjection(
+        pluginProjection(PresentationPhase.loading),
+      );
       await tester.pump();
       expect(tester.widget<LicoPaneRefreshButton>(refresh).refreshing, isTrue);
       expect(tester.widget<LicoPaneRefreshButton>(refresh).onPressed, isNull);
@@ -897,7 +925,11 @@ void main() {
     'narrow large-text detail keeps its selector next to refresh and supports skills without plugins',
     (tester) async {
       final skillFixture = SkillHubBindingFixture(skills: const []);
+      final skillPresentation = SkillHubPresentationFixture(
+        projection: skillFixture.binding.projection.current,
+      );
       addTearDown(skillFixture.dispose);
+      addTearDown(skillPresentation.dispose);
       tester.platformDispatcher.textScaleFactorTestValue = 2;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _pumpHub(
@@ -905,6 +937,7 @@ void main() {
         _harness(
           _FakeHubEngine(),
           skills: skillFixture.binding,
+          skillPresentation: skillPresentation,
           locale: const Locale('zh'),
           presetId: 'lico-soda-light',
         ),
@@ -972,12 +1005,26 @@ void main() {
       intents: SemanticIntentChannel<PluginManagementIntent>((_) {}),
       effects: effects,
     );
+    final pluginPresentation = PluginManagementPresentationFixture(
+      projection: PluginManagementProjection(
+        plugins: const [],
+        workflows: const [],
+        phase: PresentationPhase.loading,
+      ),
+    );
+    final skillPresentation = SkillHubPresentationFixture(
+      projection: skillFixture.binding.projection.current,
+    );
+    addTearDown(pluginPresentation.dispose);
+    addTearDown(skillPresentation.dispose);
     await _pumpHub(
       tester,
       _harness(
         _FakeHubEngine(),
         plugins: plugins,
         skills: skillFixture.binding,
+        pluginPresentation: pluginPresentation,
+        skillPresentation: skillPresentation,
       ),
     );
     await _openDetail(tester, 'codex');
@@ -986,9 +1033,13 @@ void main() {
       matchesGoldenFile('goldens/agent_hub_official_detail.png'),
     );
     await tester.tap(find.byKey(const Key('agent-hub-detail-tab-1')));
+    // Region sources install asynchronously; the second pump delivers the
+    // initial frame.
+    await tester.pump();
     await tester.pump();
     expect(find.byKey(const Key('adapter-plugin-loading')), findsOneWidget);
     await tester.tap(find.byKey(const Key('agent-hub-detail-tab-2')));
+    await tester.pump();
     await tester.pump();
     expect(find.byKey(const Key('skill-card-codex-review')), findsOneWidget);
     expect(find.byKey(const Key('skill-card-cursor-review')), findsNothing);
