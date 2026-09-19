@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::SigningKey;
-use rand::{RngCore, rngs::OsRng};
+use rand_core::{OsRng, RngCore};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 

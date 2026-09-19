@@ -38,7 +38,7 @@ hkdf = "0.12"
 hmac = "0.12"
 icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
 interprocess = "2.4"
-jni = "0.21"
+jni = "0.22"
 libc = "0.2"
 # Fixed LicoArc stable-core SDK for the Candidate integrated in L03 (D22/5.7).
 # The package is not published to any registry and its repository is private, so
@@ -54,13 +54,12 @@ libcrux-sha3 = "=0.0.10"
 libcrux-traits = "=0.0.8"
 log = "0.4"
 mime_guess = "2.0"
-notify = "6.1"
 openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
 openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
 openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
 openmls_rust_crypto = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
 openmls_traits = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
-rand = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
 regex = "1.11"
 rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 semver = "1.0"

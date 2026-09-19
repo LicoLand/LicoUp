@@ -1,5 +1,5 @@
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 
 use crate::core::secure_mesh_mls_product::{
     create_product_group, participant_from_device_identity,
