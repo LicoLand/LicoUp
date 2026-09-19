@@ -18,7 +18,7 @@ use crate::core::secure_mesh_prekey::{
 use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 

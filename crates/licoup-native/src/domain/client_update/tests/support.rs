@@ -15,7 +15,7 @@ pub(super) use super::super::{
 };
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::{Signer, SigningKey};
-pub(super) use rand::rngs::OsRng;
+pub(super) use rand_core::OsRng;
 pub(super) use serde_json::{Value, json};
 pub(super) use std::{
     fs,
