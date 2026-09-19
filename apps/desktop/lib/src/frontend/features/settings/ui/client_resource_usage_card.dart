@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/features/settings/ui/resource_usage_shared.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -9,6 +11,7 @@ import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 class ClientResourceUsageCard extends StatefulWidget {
   const ClientResourceUsageCard({
@@ -51,13 +54,14 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<
+    return AsyncRegion<
       SettingsResourceUsageProjection,
-      SettingsResourceUsageProjection
+      IntentSink<SettingsIntent>
     >(
-      source: widget.binding.resourceUsage,
-      select: _resourceIdentity,
-      builder: _buildSnapshot,
+      source: settingsResourceUsageInputsProvider,
+      actions: widget.binding.intents,
+      loading: (_, _) => const SizedBox.shrink(),
+      data: (context, snapshot, _) => _buildSnapshot(context, snapshot),
     );
   }
 
@@ -176,10 +180,6 @@ class _ClientResourceUsageCardState extends State<ClientResourceUsageCard> {
     return segments;
   }
 }
-
-SettingsResourceUsageProjection _resourceIdentity(
-  SettingsResourceUsageProjection value,
-) => value;
 
 class _MemoryRingBlock extends StatelessWidget {
   const _MemoryRingBlock({

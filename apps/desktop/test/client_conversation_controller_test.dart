@@ -708,6 +708,77 @@ void main() {
       'ownerMembershipId',
     });
   });
+
+  test(
+    'attributes a surfaced failure to the originating conversation',
+    () async {
+      final controller = ClientConversationController(
+        native: _ConversationRunner(),
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      controller.surfaceFailure(
+        'send',
+        'transport_failed',
+        conversationId: 'conversation:direct',
+      );
+      expect(controller.failureConversationId, 'conversation:direct');
+      expect(controller.failureCode, 'transport_failed');
+
+      controller.surfaceFailure('send', 'transport_failed');
+      expect(controller.failureConversationId, 'conversation:group');
+    },
+  );
+
+  test(
+    'an archive failure stays on its target and clears on the next operation',
+    () async {
+      final runner = _ConversationRunner()..failArchiveCode = 'archive_denied';
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(
+        await controller.archiveConversation('conversation:direct'),
+        isFalse,
+      );
+      expect(controller.failureStage, 'archive');
+      expect(controller.failureCode, 'archive_denied');
+      expect(controller.failureConversationId, 'conversation:direct');
+      expect(controller.selectedConversationId, 'conversation:group');
+
+      await controller.setPinned('conversation:group', false);
+      expect(controller.failureCode, isEmpty);
+      expect(controller.failureConversationId, isEmpty);
+    },
+  );
+
+  test('retry refuses to re-author another membership\'s message', () async {
+    final runner = _ConversationRunner()
+      ..includeFailedTurn = true
+      ..eventAuthorMembershipId = 'membership:codex';
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('conversation:group');
+
+    expect(await controller.retryMessage('event:existing'), isFalse);
+    expect(
+      runner.requests.where(
+        (request) => request['action'] == 'conversation.message.post',
+      ),
+      isEmpty,
+    );
+    expect(
+      runner.requests.where(
+        (request) => request['action'] == 'conversation.message.delete',
+      ),
+      isEmpty,
+    );
+  });
 }
 
 final class _ConversationRunner implements ClientConversationNativePort {
@@ -727,6 +798,8 @@ final class _ConversationRunner implements ClientConversationNativePort {
   bool historyCleared = false;
   String failPostCode = '';
   String failDispatchCode = '';
+  String failArchiveCode = '';
+  String eventAuthorMembershipId = 'membership:owner';
   String strategyRevision = '';
   List<Map<String, dynamic>> postTurns = const [];
 
@@ -738,6 +811,12 @@ final class _ConversationRunner implements ClientConversationNativePort {
     final request = command.payload;
     requests.add(request);
     final action = request['action'];
+    if (action == 'conversation.archive' && failArchiveCode.isNotEmpty) {
+      return {
+        'ok': false,
+        'error': {'code': failArchiveCode},
+      };
+    }
     if (action == 'conversation.pin.set') {
       groupPinned = request['pinned'] == true;
     }
@@ -793,7 +872,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
               : messageDeleted || historyCleared
               ? <Map<String, dynamic>>[]
               : [
-                  _event(),
+                  _event(authorMembershipId: eventAuthorMembershipId),
                   if (includeFailedTurn || appendedFailure) _failedTurnEvent(),
                 ],
           'nextCursor': null,
@@ -805,7 +884,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
           malformedPost
               ? <String, dynamic>{}
               : {
-                  'event': _event(),
+                  'event': _event(authorMembershipId: eventAuthorMembershipId),
                   'directTurns': <Map<String, dynamic>>[],
                   'turns': <Map<String, dynamic>>[],
                   'dispatchPending': false,
@@ -950,25 +1029,26 @@ Map<String, dynamic> _membership({
   'joinedAtUnixMs': 1,
 };
 
-Map<String, dynamic> _event() => {
-  'id': 'event:existing',
-  'conversationId': 'conversation:group',
-  'sequence': 1,
-  'authorMembershipId': 'membership:owner',
-  'kind': 'message',
-  'createdAtUnixMs': 10,
-  'finalized': true,
-  'parts': [
+Map<String, dynamic> _event({String authorMembershipId = 'membership:owner'}) =>
     {
-      'id': 'part:text',
-      'eventId': 'event:existing',
-      'ordinal': 0,
-      'kind': 'text',
-      'content': 'hello',
+      'id': 'event:existing',
+      'conversationId': 'conversation:group',
+      'sequence': 1,
+      'authorMembershipId': authorMembershipId,
+      'kind': 'message',
       'createdAtUnixMs': 10,
-    },
-  ],
-};
+      'finalized': true,
+      'parts': [
+        {
+          'id': 'part:text',
+          'eventId': 'event:existing',
+          'ordinal': 0,
+          'kind': 'text',
+          'content': 'hello',
+          'createdAtUnixMs': 10,
+        },
+      ],
+    };
 
 Map<String, dynamic> _failedTurnEvent() => {
   'id': 'event:failed-turn',

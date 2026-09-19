@@ -284,6 +284,23 @@ final class FlutterInteractionAdapter {
       );
       return;
     }
+    if (action == 'roster.toggle') {
+      var finder = target(action);
+      if (finder.hitTestable().evaluate().isEmpty) {
+        // Desktop keeps the roster toggle inside the group menu.
+        await tester.tap(key('canonical-group-menu-button'));
+        await tester.pumpAndSettle();
+        finder = target(action);
+      }
+      expect(
+        finder.hitTestable(),
+        findsOneWidget,
+        reason: 'Visible clickable control: $action',
+      );
+      await tester.tap(finder.hitTestable());
+      await tester.pumpAndSettle();
+      return;
+    }
     final finder = target(action);
     expect(
       finder.hitTestable(),

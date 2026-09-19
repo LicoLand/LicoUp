@@ -284,11 +284,17 @@ final class SurfaceConversationFailure extends ConversationIntent {
   const SurfaceConversationFailure({
     required this.stage,
     required this.reasonCode,
+    this.conversationId = '',
     super.trace,
   });
 
   final String stage;
   final String reasonCode;
+
+  /// The Conversation the failure belongs to. Renderers that know their
+  /// Conversation pass it so the failure never lands on a sibling; empty
+  /// attributes to the Conversation selected when the intent is handled.
+  final String conversationId;
 }
 
 final class EnsureCanonicalAgentMembership extends ConversationIntent {
