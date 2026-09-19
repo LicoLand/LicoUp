@@ -17,6 +17,7 @@ import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_value_builder.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_foundation.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
@@ -219,15 +220,12 @@ final class MessagingSidebarBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
-    return DecoratedBox(
+    return CustomPaint(
       key: const Key('messaging-sidebar-bottom-nav'),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: colors.line,
-            width: MessagingDesktopMetrics.hairline,
-          ),
-        ),
+      painter: ContinuousEdgeHairlinePainter(
+        color: colors.line,
+        edge: AxisDirection.up,
+        width: MessagingDesktopMetrics.hairline,
       ),
       child: Padding(
         padding: const EdgeInsets.all(LicoContentSpacing.compact),

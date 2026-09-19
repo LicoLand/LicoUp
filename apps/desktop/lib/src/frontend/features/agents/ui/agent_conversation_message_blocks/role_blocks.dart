@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/disclosures.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -26,10 +27,10 @@ class AgentConversationUserMessageBlock extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: adapter.userBubble.maxWidth),
         child: DecoratedBox(
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: _bubbleColor(colors, adapter.userBubble.tone),
             borderRadius: BorderRadius.circular(adapter.userBubble.radius),
-            border: Border.all(color: colors.line),
+            stroke: colors.line,
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(
@@ -162,10 +163,10 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: adapter.assistantMaxWidth),
         child: DecoratedBox(
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: colors.surfaceLow,
             borderRadius: BorderRadius.circular(LicoRadius.card),
-            border: Border.all(color: colors.line),
+            stroke: colors.line,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

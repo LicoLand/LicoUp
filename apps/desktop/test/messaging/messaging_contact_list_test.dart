@@ -18,6 +18,7 @@ import 'package:licoup/src/contracts/presentation/dashboard_feature_order.dart';
 import 'package:licoup/src/frontend/shared/dashboard_feature_order_store.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
@@ -67,12 +68,12 @@ void main() {
       findsNothing,
     );
 
-    final decoration = tester.widget<DecoratedBox>(
-      find.descendant(of: search, matching: find.byType(DecoratedBox)),
+    final capsuleGlass = tester.widget<LicoGlass>(
+      find.descendant(of: search, matching: find.byType(LicoGlass)),
     );
     // The search capsule is a stadium: half its token height.
     expect(
-      (decoration.decoration as BoxDecoration).borderRadius,
+      capsuleGlass.borderRadius,
       BorderRadius.circular(MessagingDesktopMetrics.searchFieldHeight / 2),
     );
     final content = tester.widget<Row>(
@@ -232,7 +233,7 @@ void main() {
         matching: find.byKey(const Key('messaging-agent-avatar-well')),
       ),
     );
-    expect((agentWell.decoration as BoxDecoration).color, Colors.black);
+    expect((agentWell.decoration as ShapeDecoration).color, Colors.black);
 
     final groupWell = tester.widget<Container>(
       find.byKey(const Key('messaging-group-avatar-conversation:group')),

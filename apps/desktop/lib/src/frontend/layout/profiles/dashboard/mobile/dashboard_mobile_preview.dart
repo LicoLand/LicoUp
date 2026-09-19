@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 Widget buildDashboardMobilePreview(BuildContext context) {
   return const DashboardMobilePreview();
@@ -25,12 +26,12 @@ final class DashboardMobilePreview extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: 1.68,
           child: DecoratedBox(
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: colors.background,
               borderRadius: BorderRadius.circular(
                 DashboardMobileMetrics.compactRadius,
               ),
-              border: Border.all(color: colors.line, width: 1),
+              stroke: colors.line,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(
@@ -72,36 +73,39 @@ final class _DashboardPreviewRail extends StatelessWidget {
     return SizedBox(
       width: compact ? 27 : 34,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          border: Border(right: BorderSide(color: colors.line, width: 1)),
-        ),
-        child: Column(
-          children: [
-            SizedBox(height: compact ? 9 : 12),
-            for (var index = 0; index < 4; index++) ...[
-              Container(
-                width: compact ? 18 : 23,
-                height: compact ? 18 : 23,
-                decoration: BoxDecoration(
-                  color: index == 0
-                      ? colors.primary.withAlpha(colors.isDark ? 52 : 34)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                alignment: Alignment.center,
-                child: Container(
-                  width: 7,
-                  height: 7,
+        decoration: BoxDecoration(color: colors.surface),
+        child: CustomPaint(
+          foregroundPainter: ContinuousEdgeHairlinePainter(
+            color: colors.line,
+            edge: AxisDirection.right,
+          ),
+          child: Column(
+            children: [
+              SizedBox(height: compact ? 9 : 12),
+              for (var index = 0; index < 4; index++) ...[
+                Container(
+                  width: compact ? 18 : 23,
+                  height: compact ? 18 : 23,
                   decoration: BoxDecoration(
-                    color: index == 0 ? colors.accent : colors.textMuted,
-                    shape: BoxShape.circle,
+                    color: index == 0
+                        ? colors.primary.withAlpha(colors.isDark ? 52 : 34)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: index == 0 ? colors.accent : colors.textMuted,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 3),
+                const SizedBox(height: 3),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -121,29 +125,34 @@ final class _DashboardPreviewConversation extends StatelessWidget {
         SizedBox(
           height: compact ? 26 : 32,
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              border: Border(bottom: BorderSide(color: colors.line, width: 1)),
-            ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: compact ? 12 : 15,
-                    height: compact ? 12 : 15,
-                    decoration: BoxDecoration(
-                      color: colors.primary.withAlpha(colors.isDark ? 52 : 34),
-                      shape: BoxShape.circle,
+            decoration: BoxDecoration(color: colors.surface),
+            child: CustomPaint(
+              foregroundPainter: ContinuousEdgeHairlinePainter(
+                color: colors.line,
+                edge: AxisDirection.down,
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: compact ? 12 : 15,
+                      height: compact ? 12 : 15,
+                      decoration: BoxDecoration(
+                        color: colors.primary.withAlpha(
+                          colors.isDark ? 52 : 34,
+                        ),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: compact ? 44 : 60,
-                    height: 5,
-                    color: colors.text.withAlpha(120),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Container(
+                      width: compact ? 44 : 60,
+                      height: 5,
+                      color: colors.text.withAlpha(120),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -209,9 +218,9 @@ final class _DashboardPreviewConversation extends StatelessWidget {
                 const Spacer(),
                 Container(
                   height: compact ? 21 : 27,
-                  decoration: BoxDecoration(
+                  decoration: continuousHairlineDecoration(
                     color: colors.surface,
-                    border: Border.all(color: colors.line, width: 1),
+                    stroke: colors.line,
                     borderRadius: BorderRadius.circular(
                       DashboardMobileMetrics.controlRadius,
                     ),

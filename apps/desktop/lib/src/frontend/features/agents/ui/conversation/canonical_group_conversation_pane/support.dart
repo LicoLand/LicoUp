@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -37,10 +38,11 @@ class CanonicalGroupFailureCapsule extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 420),
       child: DecoratedBox(
         key: const Key('canonical-group-failure'),
-        decoration: BoxDecoration(
+        decoration: continuousHairlineDecoration(
           color: colors.surfaceRaised,
           borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: colors.error, width: 1.25),
+          stroke: colors.error,
+          strokeWidth: 1.25,
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),

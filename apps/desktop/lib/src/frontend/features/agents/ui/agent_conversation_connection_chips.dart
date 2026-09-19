@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_virtual_machine_destination.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -67,10 +68,10 @@ class OpencodeServeStatusChip extends StatelessWidget {
     return Container(
       key: const Key('opencode-serve-status'),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        stroke: color.withValues(alpha: 0.35),
       ),
       child: Text(
         label,

@@ -14,12 +14,21 @@ final class ClientMemoryDiagnosticLog implements ClientMemoryDiagnosticSink {
   static const String fileName = 'client-memory.jsonl';
 
   final PortableDataRoot _portableData;
-  Future<void> _pendingWrite = Future<void>.value();
+  Future<void>? _pendingWrite;
+
+  /// Waits for writes already accepted by the log to release their files.
+  Future<void> flush() => _pendingWrite ?? Future<void>.value();
 
   @override
   Future<void> record(ClientMemoryDiagnosticRecord record) {
-    final write = _pendingWrite.then((_) => _append(record));
-    _pendingWrite = write.catchError((_) {});
+    final write = (_pendingWrite ?? Future<void>.value()).then(
+      (_) => _append(record),
+    );
+    late final Future<void> settled;
+    settled = write.catchError((_) {}).whenComplete(() {
+      if (identical(_pendingWrite, settled)) _pendingWrite = null;
+    });
+    _pendingWrite = settled;
     return write;
   }
 

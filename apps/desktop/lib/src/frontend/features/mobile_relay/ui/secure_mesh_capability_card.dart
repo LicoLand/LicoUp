@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -54,13 +55,11 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
       duration: containerDuration,
       curve: Curves.easeOutCubic,
       width: double.infinity,
-      decoration: BoxDecoration(
+      decoration: continuousHairlineDecoration(
         color: cardFill,
         borderRadius: BorderRadius.circular(LicoRadius.chip),
-        border: Border.all(
-          color: _focused ? colors.primary : colors.line,
-          width: _focused ? 2 : 1,
-        ),
+        stroke: _focused ? colors.primary : colors.line,
+        strokeWidth: _focused ? 2 : 1,
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -116,7 +117,7 @@ class _WelcomeActionCard extends StatelessWidget {
       opacity: enabled ? 1 : 0.45,
       child: Material(
         color: colors.surfaceLow,
-        shape: RoundedRectangleBorder(
+        shape: ContinuousRoundedBorder(
           borderRadius: BorderRadius.circular(LicoRadius.card),
           side: BorderSide(color: colors.line),
         ),

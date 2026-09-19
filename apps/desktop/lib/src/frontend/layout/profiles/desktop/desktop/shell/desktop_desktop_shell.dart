@@ -24,6 +24,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/deskto
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
@@ -598,19 +599,17 @@ final class _DesktopDockConversationButtonState
               duration: context.motion(LicoMotion.micro),
               width: DesktopDesktopMetrics.dockConversationButtonExtent,
               height: 44,
-              decoration: BoxDecoration(
+              decoration: continuousHairlineDecoration(
                 color: _hovered
                     ? DesktopDesktopOnBlack.hoverOverlay
                     : desktopDesktopSurfaceBlack,
                 borderRadius: BorderRadius.circular(
                   DesktopDesktopMetrics.dockInputRadius,
                 ),
-                border: Border.all(
-                  color: widget.active
-                      ? DesktopDesktopOnBlack.textSecondary
-                      : DesktopDesktopOnBlack.line,
-                  width: 0.5,
-                ),
+                stroke: widget.active
+                    ? DesktopDesktopOnBlack.textSecondary
+                    : DesktopDesktopOnBlack.line,
+                strokeWidth: 0.5,
               ),
               child: Icon(
                 Icons.chat_bubble_outline_rounded,
@@ -661,17 +660,15 @@ final class _DesktopSearchCapsuleState extends State<_DesktopSearchCapsule> {
             duration: context.motion(LicoMotion.micro),
             height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
+            decoration: continuousHairlineDecoration(
               color: desktopDesktopSurfaceBlack,
               borderRadius: BorderRadius.circular(
                 DesktopDesktopMetrics.dockInputRadius,
               ),
-              border: Border.all(
-                color: _hovered
-                    ? DesktopDesktopOnBlack.textMuted
-                    : DesktopDesktopOnBlack.line,
-                width: 0.5,
-              ),
+              stroke: _hovered
+                  ? DesktopDesktopOnBlack.textMuted
+                  : DesktopDesktopOnBlack.line,
+              strokeWidth: 0.5,
             ),
             child: Row(
               children: [

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -48,14 +49,12 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
               child: Ink(
                 width: 220,
                 height: hasQr ? 220 : null,
-                decoration: BoxDecoration(
+                decoration: continuousHairlineDecoration(
                   color: hasQr ? Colors.white : placeholderFill,
                   borderRadius: BorderRadius.circular(LicoRadius.card),
-                  border: Border.all(
-                    color: hasQr
-                        ? colors.line.withAlpha(40)
-                        : const Color(0xFF3A3A40),
-                  ),
+                  stroke: hasQr
+                      ? colors.line.withAlpha(40)
+                      : const Color(0xFF3A3A40),
                 ),
                 child: hasQr
                     ? Padding(

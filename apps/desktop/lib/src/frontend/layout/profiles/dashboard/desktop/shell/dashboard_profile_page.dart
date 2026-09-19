@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 
 /// The Dashboard desktop's local profile page: a quiet card-canvas surface
 /// with the local-user avatar and a few quick actions that reuse existing
@@ -117,12 +118,13 @@ class _DashboardProfileActionRow extends StatelessWidget {
             : Colors.black.withAlpha(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
+          decoration: continuousHairlineDecoration(
             color: colors.isDark
                 ? Colors.white.withAlpha(8)
                 : Colors.black.withAlpha(5),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colors.line.withAlpha(90), width: 0.5),
+            stroke: colors.line.withAlpha(90),
+            strokeWidth: 0.5,
           ),
           child: Row(
             children: [

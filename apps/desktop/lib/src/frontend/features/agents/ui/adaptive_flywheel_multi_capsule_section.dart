@@ -14,6 +14,7 @@ import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -396,7 +397,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
             key: _stadiumKey,
             link: _stadiumLink,
             child: DecoratedBox(
-              decoration: BoxDecoration(
+              decoration: continuousHairlineDecoration(
                 // Recess the stadium shell with a black veil over the dialog wash.
                 color: Color.alphaBlend(
                   ConversationVisualTokens.adaptiveFlywheelStadiumVeil(colors),
@@ -404,9 +405,7 @@ final class _AdaptiveFlywheelMultiCapsuleSectionState
                 ),
                 // Match inner assignment capsules (stadium / full pill).
                 borderRadius: kComposerCapsuleBorderRadius,
-                border: Border.all(
-                  color: colors.line.withAlpha(colors.isDark ? 90 : 130),
-                ),
+                stroke: colors.line.withAlpha(colors.isDark ? 90 : 130),
               ),
               child: ClipRRect(
                 borderRadius: kComposerCapsuleBorderRadius,
