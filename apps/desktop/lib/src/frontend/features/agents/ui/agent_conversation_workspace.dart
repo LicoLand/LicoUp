@@ -33,7 +33,6 @@ import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_column.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
@@ -1167,34 +1166,28 @@ class _EmptyConversation extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
-    return PanelFrame(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.psychology_outlined,
-                color: colors.textMuted,
-                size: 28,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.psychology_outlined, color: colors.textMuted, size: 28),
+            const SizedBox(height: 10),
+            Text(
+              strings.selectAgentToView,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textMuted),
+            ),
+            if (onAddTarget != null) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: onAddTarget,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(strings.addTarget),
               ),
-              const SizedBox(height: 10),
-              Text(
-                strings.selectAgentToView,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.textMuted),
-              ),
-              if (onAddTarget != null) ...[
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: onAddTarget,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: Text(strings.addTarget),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );

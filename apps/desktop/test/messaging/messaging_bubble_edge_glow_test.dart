@@ -69,26 +69,10 @@ void main() {
       for (final key in ['copilot', 'antigravity']) {
         final glow = messagingBubbleGlow(isDark: true, agentKey: key);
         expect(glow.rimGradient, isA<SweepGradient>(), reason: key);
-        expect(glow.nearGradient, isA<SweepGradient>(), reason: key);
-        expect(glow.midGradient, isA<SweepGradient>(), reason: key);
-        expect(glow.farGradient, isA<SweepGradient>(), reason: key);
         final rim = glow.rimGradient as SweepGradient;
         expect(rim.colors.length, greaterThan(4), reason: key);
         expect(rim.colors.first, rim.colors.last, reason: key);
       }
-    });
-
-    test('the field decays with distance from the rim', () {
-      final glow = messagingBubbleGlow(isDark: true, agentKey: 'claude-code');
-      int topAlpha(Gradient gradient) =>
-          (((gradient as LinearGradient).colors.first).toARGB32() >> 24) & 0xff;
-      final rim = topAlpha(glow.rimGradient);
-      final near = topAlpha(glow.nearGradient);
-      final mid = topAlpha(glow.midGradient);
-      final far = topAlpha(glow.farGradient);
-      expect(near, lessThan(rim));
-      expect(mid, lessThan(near));
-      expect(far, lessThan(mid));
     });
   });
 

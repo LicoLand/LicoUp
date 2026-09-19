@@ -1,12 +1,16 @@
 import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_effect.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_view.dart';
+import 'package:licoup/src/projections/monitoring/monitoring_presentation_source.dart';
 import 'package:licoup/src/projections/monitoring/monitoring_projection_producer.dart';
 
 final class MonitoringFeatureComposition {
@@ -20,6 +24,9 @@ final class MonitoringFeatureComposition {
          beginRendererIntent: beginRendererIntent,
        ) {
     _intents.effects = _effects;
+    _usageSource = MonitoringPresentationSource(projection: _projection);
+    usageEntry = presentationProviderEntry(_usageSource);
+    usageActions = MonitoringUsageActions.fromIntents(_intents);
     binding = MonitoringBinding(
       projection: _projection,
       intents: _intents,
@@ -30,12 +37,20 @@ final class MonitoringFeatureComposition {
   final MonitoringProjectionProducer _projection;
   final _MonitoringEffects _effects;
   final _MonitoringIntents _intents;
+  late final MonitoringPresentationSource _usageSource;
+
+  /// F01 Riverpod entry for the usage observation resource.
+  late final PresentationProviderEntry<MonitoringProjection> usageEntry;
+
+  /// Narrow renderer actions with the monitoring scope pinned.
+  late final MonitoringUsageActions usageActions;
   late final MonitoringBinding binding;
   bool _closed = false;
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    await _usageSource.dispose();
     await _projection.close();
     await _effects.close();
   }

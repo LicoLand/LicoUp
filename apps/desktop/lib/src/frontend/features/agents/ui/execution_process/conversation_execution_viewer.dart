@@ -41,9 +41,9 @@ Future<void> showConversationExecutionViewer({
     builder: (dialogContext) => Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      insetPadding: const EdgeInsets.all(12),
+      insetPadding: const EdgeInsets.all(24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1180, maxHeight: 900),
+        constraints: const BoxConstraints(maxWidth: 880, maxHeight: 640),
         child: ConversationExecutionViewer(
           source: source,
           agentIcon: agentIcon,

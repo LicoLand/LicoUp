@@ -3,8 +3,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_section_projection.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -16,8 +17,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_effect.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 class ArchivedConversationsSettingsSection extends StatefulWidget {
   const ArchivedConversationsSettingsSection({
@@ -106,10 +109,11 @@ class _ArchivedConversationsSettingsSectionState
     final strings = LicoStrings.of(context);
     final colors = context.licoColors;
     final presentation = layoutSettingsPresentationOf(context);
-    return ProjectionBuilder<SettingsProjection, ArchivedSettingsSelection>(
-      source: widget.binding.projection,
-      select: ArchivedSettingsSelection.from,
-      builder: (context, projection) {
+    return AsyncRegion<SettingsArchivedInputs, IntentSink<SettingsIntent>>(
+      source: settingsArchivedInputsProvider,
+      actions: widget.binding.intents,
+      loading: (_, _) => const SizedBox.shrink(),
+      data: (context, projection, _) {
         final archived = projection.archivedConversations;
         final query = _searchController.text.trim().toLowerCase();
         final visible = query.isEmpty
