@@ -145,7 +145,6 @@ final class ConversationProjectionProducer {
       composer.publish(_readComposer(_controller), trace: trace);
 
   void _publishAll(TraceContext? trace) {
-    _publishContinuityCompletionNotices();
     projection.publish(_readRoot(_controller), trace: trace);
     nativeCatalog.publish(_readNativeCatalog(_controller), trace: trace);
     canonicalEvents.publish(
@@ -181,48 +180,6 @@ final class ConversationProjectionProducer {
         entry.key: base64Encode(entry.value),
     });
     _publishAll(trace);
-  }
-
-  void _publishContinuityCompletionNotices() {
-    final published = <String>[];
-    for (final notice
-        in _controller.clientConversationController
-            .takeFreshCompletionNotices()) {
-      final id = (notice['notificationId'] ?? '').toString().trim();
-      if (id.isEmpty) continue;
-      final parent = (notice['parentConversationId'] ?? '').toString().trim();
-      final child = (notice['childConversationId'] ?? '').toString().trim();
-      final goalId = (notice['goalId'] ?? '').toString().trim();
-      final cardEventId = (notice['cardEventId'] ?? '').toString().trim();
-      final cardSequence =
-          int.tryParse((notice['cardSequence'] ?? '').toString()) ?? 0;
-      try {
-        _controller.messagingNotificationCenter.publish(
-          id: id,
-          messageChinese: '任务已完成',
-          messageEnglish: 'Task completed',
-          tone: MessagingNotificationTone.success,
-          code: 'continuity-goal-completed',
-          completionTarget: parent.isEmpty
-              ? null
-              : ContinuityCompletionNoticeTarget(
-                  notificationId: id,
-                  parentConversationId: parent,
-                  childConversationId: child,
-                  goalId: goalId,
-                  cardEventId: cardEventId,
-                  cardSequence: cardSequence,
-                ),
-        );
-        published.add(id);
-      } on Object {
-        continue;
-      }
-    }
-    if (published.isNotEmpty) {
-      _controller.clientConversationController
-          .acknowledgePublishedCompletionNotices(published);
-    }
   }
 
   Future<void> _synchronizeAssistantProfile({bool force = false}) async {

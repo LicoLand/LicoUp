@@ -20,12 +20,14 @@ final class ClientConversationController extends ApplicationStateOwner {
     ClientConversationService? service,
     void Function(String conversationId)? onSelectionChanged,
     void Function(ClientConversation conversation)? onSnapshotApplied,
+    bool Function(Map<String, dynamic> notice)? completionNoticePublisher,
     ClientMemoryDiagnosticJournal? memoryJournal,
     Duration? pendingNoticePollInterval,
     Duration? activityEchoInterval,
   }) : _service = service ?? ClientConversationService(native: native),
        _onSelectionChanged = onSelectionChanged,
        _onSnapshotApplied = onSnapshotApplied,
+       _completionNoticePublisher = completionNoticePublisher,
        _memoryJournal = memoryJournal,
        _pendingNoticePollInterval =
            pendingNoticePollInterval ?? defaultPendingNoticePollInterval,
@@ -45,6 +47,7 @@ final class ClientConversationController extends ApplicationStateOwner {
   final ClientConversationService _service;
   final void Function(String conversationId)? _onSelectionChanged;
   final void Function(ClientConversation conversation)? _onSnapshotApplied;
+  final bool Function(Map<String, dynamic> notice)? _completionNoticePublisher;
   final ClientMemoryDiagnosticJournal? _memoryJournal;
   final Duration _pendingNoticePollInterval;
   final Duration _activityEchoInterval;
@@ -217,10 +220,28 @@ final class ClientConversationController extends ApplicationStateOwner {
 
   List<Map<String, dynamic>> get selectedTaskViews => _selectedTaskViews;
 
-  List<Map<String, dynamic>> takeFreshCompletionNotices() {
+  /// Drains freshly polled completion notices to the wired Application-level
+  /// publisher and acknowledges the ones it accepted. Publication is a
+  /// notification side effect owned here, not by any projection producer; an
+  /// unpublished notice stays unacknowledged so the next poll retries it.
+  void _publishFreshCompletionNotices() {
+    final publisher = _completionNoticePublisher;
+    if (publisher == null || _freshCompletionNotices.isEmpty) return;
     final notices = _freshCompletionNotices;
     _freshCompletionNotices = const <Map<String, dynamic>>[];
-    return notices;
+    final published = <String>[];
+    for (final notice in notices) {
+      final id = (notice['notificationId'] ?? '').toString().trim();
+      if (id.isEmpty) continue;
+      try {
+        if (publisher(notice)) published.add(id);
+      } on Object {
+        continue;
+      }
+    }
+    if (published.isNotEmpty) {
+      acknowledgePublishedCompletionNotices(published);
+    }
   }
 
   List<ClientConversationSummary> get groupConversations {
@@ -447,6 +468,7 @@ final class ClientConversationController extends ApplicationStateOwner {
         _queueCompletionNotice(notice);
         queued = queued || _freshCompletionNotices.length > before;
       }
+      _publishFreshCompletionNotices();
       if (queued) _publishChange();
     } on ClientConversationServiceFailure {
       return;
