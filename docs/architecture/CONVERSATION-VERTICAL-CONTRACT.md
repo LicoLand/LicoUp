@@ -633,8 +633,8 @@ Cancel requested
 
 ## L6: Semantic Binding & Flutter Display
 
-**Location**: `apps/desktop/lib/src/presentation/conversation/`,
-`apps/desktop/lib/src/frontend/`, and `apps/desktop/lib/src/display/conversation/`
+**Location**: `apps/desktop/lib/src/presentation/conversation/` and
+`apps/desktop/lib/src/frontend/`
 
 **Responsibility**: Render `UI = f(semantic projections)` through one immutable
 Conversation Binding. Application owns mutable client state; feature-local producers map
