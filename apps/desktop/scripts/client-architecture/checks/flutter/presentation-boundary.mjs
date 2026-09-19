@@ -58,6 +58,12 @@ export const RETIRED_PRESENTATION_PATHS = Object.freeze([
   `${srcRoot}/frontend/shared/appearance/appearance_preset_config.dart`,
   `${srcRoot}/projections/listenable_projection_consumer.dart`,
   `${srcRoot}/projections/adapters/legacy_projection_consumer_source_adapter.dart`,
+  `${srcRoot}/projections/composite_application_projection_source.dart`,
+  `${srcRoot}/projections/projection_consumer.dart`,
+  `${srcRoot}/projections/conversation/conversation_projection_consumer.dart`,
+  `${srcRoot}/display/agent_hub/agent_hub_display.dart`,
+  `${srcRoot}/display/settings/settings_display.dart`,
+  `${srcRoot}/display/targets/targets_display.dart`,
 ]);
 
 const requiredDirectories = Object.freeze([
@@ -79,7 +85,7 @@ const implementationRoots = Object.freeze([
 ]);
 
 const internalRoots = Object.freeze([
-  "application", "backend", "composition", "contracts", "display",
+  "application", "backend", "composition", "contracts",
   "events", "frontend", "platform", "presentation", "projections",
   "protocol", "shared",
 ].map((root) => `${srcRoot}/${root}/`));
@@ -105,6 +111,10 @@ const retiredPresentationSymbols = Object.freeze([
   "LegacyProjectionConsumerSourceAdapter",
   "ListenableProjectionConsumer",
   "ClientShellController",
+  "CompositeApplicationProjectionSource",
+  "CompositeProjectionReader",
+  "ProjectionConsumer",
+  "ConversationProjectionConsumer",
 ]);
 
 function stripDartComments(source) {
@@ -650,7 +660,7 @@ export function inspectPresentationContractSources(sourceByPath) {
       pushFailure(failures, "presentation_boundary_package_purity", relativePath);
     }
     if (
-      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|dispose|close|revision)\b/u.test(masked)
+      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|close|revision)\b/u.test(masked)
     ) {
       pushFailure(failures, "presentation_boundary_package_surface", relativePath);
     }

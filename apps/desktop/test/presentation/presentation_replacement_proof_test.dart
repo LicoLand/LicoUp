@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/composition/client_app_composition.dart';
@@ -62,33 +63,36 @@ void main() {
 
     try {
       await tester.pumpWidget(
-        _testApp(
-          Row(
-            children: [
-              Expanded(
-                child: _DisposalProbe(
-                  onDisposed: () => productionShellDisposals += 1,
-                  child: ClientShell(
-                    binding: composition.binding,
-                    renderer: composition.renderer,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: _DisposalProbe(
-                  onDisposed: () => alternateShellDisposals += 1,
-                  child: ReplacementShell(
-                    binding: composition.binding,
-                    conversation: composition.conversation,
-                    onEffect: (effect) => replacementHandledEffects.add(
-                      effect.runtimeType.toString(),
+        ProviderScope(
+          overrides: composition.presentationOverrides,
+          child: _testApp(
+            Row(
+              children: [
+                Expanded(
+                  child: _DisposalProbe(
+                    onDisposed: () => productionShellDisposals += 1,
+                    child: ClientShell(
+                      binding: composition.binding,
+                      renderer: composition.renderer,
                     ),
-                    onAgentsReset: () => alternateAgentsResets += 1,
-                    onDisposed: () {},
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: _DisposalProbe(
+                    onDisposed: () => alternateShellDisposals += 1,
+                    child: ReplacementShell(
+                      binding: composition.binding,
+                      conversation: composition.conversation,
+                      onEffect: (effect) => replacementHandledEffects.add(
+                        effect.runtimeType.toString(),
+                      ),
+                      onAgentsReset: () => alternateAgentsResets += 1,
+                      onDisposed: () {},
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
