@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
@@ -164,4 +165,121 @@ void main() {
       await active;
     },
   );
+
+  test(
+    'cancelling a pending operation via handle completes with cancelled and skips execution',
+    () async {
+      final queue = StdioRpcOperationQueue();
+      final gate = Completer<void>();
+      final executed = <String>[];
+
+      final inFlight = queue.serialize(() async {
+        executed.add('in-flight');
+        await gate.future;
+      });
+
+      RpcPendingEntryHandle<RpcOp<void>>? cancellableHandle;
+      final cancelledOp = queue.serialize(() async {
+        executed.add('should-not-run');
+      }, onEnqueued: (handle) => cancellableHandle = handle);
+
+      final afterOp = queue.serialize(() async {
+        executed.add('after');
+      });
+
+      expect(cancellableHandle, isNotNull);
+      expect(cancellableHandle!.isPending, isTrue);
+      expect(cancellableHandle!.cancel(), isTrue);
+      expect(cancellableHandle!.isCancelled, isTrue);
+      expect(cancellableHandle!.cancel(), isFalse); // Second cancel is no-op
+
+      await expectLater(
+        cancelledOp,
+        throwsA(
+          isA<LicoClientRpcException>().having(
+            (e) => e.code,
+            'code',
+            'cancelled',
+          ),
+        ),
+      );
+
+      gate.complete();
+      await Future.wait([inFlight, afterOp]);
+
+      expect(executed, ['in-flight', 'after']);
+    },
+  );
+
+  test(
+    'continuous foreground operations yield to background after bounded batch limit',
+    () async {
+      final queue = StdioRpcOperationQueue();
+      final gate = Completer<void>();
+      final executionOrder = <String>[];
+
+      // Hold the queue while we enqueue batch of foreground and one background
+      final inFlight = queue.serialize(() => gate.future);
+
+      // Queue one background operation
+      final bgOp = queue.serialize(() async {
+        executionOrder.add('bg');
+      }, priority: RpcPriorityToken(background: true));
+
+      // Queue 10 foreground operations (batch limit is 8)
+      final fgOps = List.generate(10, (i) {
+        return queue.serialize(() async {
+          executionOrder.add('fg-$i');
+        });
+      });
+
+      gate.complete();
+      await Future.wait([inFlight, bgOp, ...fgOps]);
+
+      // After 8 foreground operations, bounded batch rotation must execute 'bg'
+      // before the remaining foreground operations.
+      expect(executionOrder.sublist(0, 8), [
+        'fg-0',
+        'fg-1',
+        'fg-2',
+        'fg-3',
+        'fg-4',
+        'fg-5',
+        'fg-6',
+        'fg-7',
+      ]);
+      expect(executionOrder[8], 'bg');
+      expect(executionOrder.sublist(9), ['fg-8', 'fg-9']);
+    },
+  );
+
+  test('queue tracks pending payload bytes and count', () async {
+    final queue = StdioRpcOperationQueue();
+    final gate = Completer<void>();
+
+    expect(queue.pendingCount, 0);
+    expect(queue.pendingPayloadBytes, 0);
+
+    final inFlight = queue.serialize(() => gate.future, byteSize: 512);
+    expect(queue.pendingCount, 0); // Already running, not pending
+
+    RpcPendingEntryHandle<RpcOp<void>>? handle;
+    final pending = queue.serialize(
+      () async => 'ok',
+      byteSize: 2048,
+      onEnqueued: (h) => handle = h,
+    );
+
+    expect(queue.pendingCount, 1);
+    expect(queue.pendingPayloadBytes, 2048);
+    expect(handle?.byteSize, 2048);
+    expect(handle?.isPending, isTrue);
+
+    gate.complete();
+    await inFlight;
+    await pending;
+
+    expect(queue.pendingCount, 0);
+    expect(queue.pendingPayloadBytes, 0);
+  });
 }

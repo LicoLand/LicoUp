@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
@@ -17,8 +19,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_effect.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_inputs.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_intent.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 final class AdapterPluginPanel extends StatelessWidget {
@@ -39,66 +43,58 @@ final class AdapterPluginPanel extends StatelessWidget {
       source: binding.effects,
       onEffect: (effect) => _handleEffect(context, effect),
       child:
-          ProjectionBuilder<
-            PluginManagementProjection,
-            PluginManagementProjection
-          >(
-            source: binding.projection,
-            select: (projection) => projection,
-            builder: (context, projection) {
-              final plugins = agentId == null
-                  ? projection.plugins
-                  : projection.plugins
-                        .where((plugin) => plugin.id == agentId)
-                        .toList(growable: false);
-              final loading = projection.phase == PresentationPhase.loading;
-              final strings = LicoStrings.of(context);
-              final body = ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  if (loading)
-                    const LinearProgressIndicator(
-                      key: Key('adapter-plugin-loading'),
-                    ),
-                  if (plugins.isNotEmpty)
-                    _PluginCardGrid(
-                      plugins: plugins,
-                      busy: loading,
-                      binding: binding,
-                    )
-                  else if (!loading)
-                    LicoEmptyState(
-                      icon: Icons.extension_outlined,
-                      title: strings.pluginsNav,
-                      message: strings.isChinese
-                          ? '此 Agent 尚无可用插件。'
-                          : 'No plugins are available for this Agent.',
-                    ),
-                  if (projection.notice != null)
-                    Text(
-                      projection.notice!.reasonCode,
-                      key: const Key('adapter-plugin-error'),
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                ],
-              );
-              if (embedded) return body;
-              return LicoPaneScaffold(
-                key: const Key('adapter-plugin-panel'),
-                titleBarKey: const Key('adapter-plugin-title-bar'),
-                title: strings.pluginManagement,
-                refreshTooltip: strings.refresh,
-                onRefresh: loading
-                    ? null
-                    : () => binding.intents.send(const RefreshPlugins()),
-                refreshing: loading,
-                refreshButtonKey: const Key('adapter-plugin-refresh'),
-                body: body,
-              );
-            },
+          AsyncRegion<PluginCatalogInputs, IntentSink<PluginManagementIntent>>(
+            source: pluginCatalogInputsProvider,
+            actions: binding.intents,
+            loading: (_, _) => const SizedBox.shrink(),
+            data: (context, inputs, _) => _buildCatalog(context, inputs),
           ),
+    );
+  }
+
+  Widget _buildCatalog(BuildContext context, PluginCatalogInputs inputs) {
+    final plugins = agentId == null
+        ? inputs.plugins
+        : inputs.plugins
+              .where((plugin) => plugin.id == agentId)
+              .toList(growable: false);
+    final loading = inputs.phase == PresentationPhase.loading;
+    final strings = LicoStrings.of(context);
+    final body = ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        if (loading)
+          const LinearProgressIndicator(key: Key('adapter-plugin-loading')),
+        if (plugins.isNotEmpty)
+          _PluginCardGrid(plugins: plugins, busy: loading, binding: binding)
+        else if (!loading)
+          LicoEmptyState(
+            icon: Icons.extension_outlined,
+            title: strings.pluginsNav,
+            message: strings.isChinese
+                ? '此 Agent 尚无可用插件。'
+                : 'No plugins are available for this Agent.',
+          ),
+        if (inputs.notice != null)
+          Text(
+            inputs.notice!.reasonCode,
+            key: const Key('adapter-plugin-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+      ],
+    );
+    if (embedded) return body;
+    return LicoPaneScaffold(
+      key: const Key('adapter-plugin-panel'),
+      titleBarKey: const Key('adapter-plugin-title-bar'),
+      title: strings.pluginManagement,
+      refreshTooltip: strings.refresh,
+      onRefresh: loading
+          ? null
+          : () => binding.intents.send(const RefreshPlugins()),
+      refreshing: loading,
+      refreshButtonKey: const Key('adapter-plugin-refresh'),
+      body: body,
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -7,6 +8,9 @@ import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_effect.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_intent.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_view.dart';
+import 'package:licoup/src/projections/agent_hub/agent_hub_presentation_source.dart';
 import 'package:licoup/src/projections/agent_hub/agent_hub_projection_producer.dart';
 
 final class AgentHubFeatureComposition {
@@ -20,6 +24,9 @@ final class AgentHubFeatureComposition {
     );
     _effects = SemanticEffectChannel<AgentHubEffect>();
     _intents = SemanticIntentChannel<AgentHubIntent>(_handleIntent);
+    _catalogSource = AgentHubPresentationSource(projection: _projection);
+    catalogEntry = presentationProviderEntry(_catalogSource);
+    catalogActions = AgentHubCatalogActions.fromIntents(_intents);
     binding = AgentHubBinding(
       projection: _projection,
       intents: _intents,
@@ -32,6 +39,13 @@ final class AgentHubFeatureComposition {
   late final AgentHubProjectionProducer _projection;
   late final SemanticEffectChannel<AgentHubEffect> _effects;
   late final SemanticIntentChannel<AgentHubIntent> _intents;
+  late final AgentHubPresentationSource _catalogSource;
+
+  /// F01 Riverpod entry for the agent hub catalog resource.
+  late final PresentationProviderEntry<AgentHubProjection> catalogEntry;
+
+  /// Narrow renderer actions with the agent hub scope pinned.
+  late final AgentHubCatalogActions catalogActions;
   late final AgentHubBinding binding;
   Future<void>? _disposal;
 
@@ -213,6 +227,7 @@ final class AgentHubFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await _catalogSource.dispose();
     await _projection.dispose();
     await _effects.dispose();
   }

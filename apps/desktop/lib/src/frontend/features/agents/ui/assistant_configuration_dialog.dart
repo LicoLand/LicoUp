@@ -250,18 +250,10 @@ final class _AssistantConfigurationDialogState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        _copy(
-                          '选择 Assistant 使用的 Agent、模型和推理强度。此配置独立于 Adaptive Flywheel。',
-                          'Choose the Agent, model, and reasoning effort used by Assistant. This profile is independent of Adaptive Flywheel.',
-                        ),
-                        style: TextStyle(color: colors.textMuted, fontSize: 12),
-                      ),
                       if (loading) ...[
-                        const SizedBox(height: 12),
                         const LinearProgressIndicator(minHeight: 2),
+                        const SizedBox(height: 12),
                       ],
-                      const SizedBox(height: 16),
                       AgentRuntimeAssignmentCascadeCards(
                         keyPrefix: 'assistant-configuration',
                         showFast: false,

@@ -100,42 +100,24 @@ feature's local treatment cannot silently alter other feature types.
 
 `ContinuousStrokePainter` and `ContinuousRoundedBorder` fill one ring between
 the outer and inner rounded rects, including all four edges and corner arcs.
-Content-layer cards, inputs, chips and themed outlines share that draw. Input
-focus transitions retain this border owner; floating labels remove only the
-intersecting ring, following the same left-to-right and right-to-left gap
-geometry as Material inputs. A
+Content-layer cards, inputs, chips and themed outlines share that draw. A
 content outline must not be assembled from separate line and arc widgets,
 painted as a stroked round rect or circle, or painted twice by a Material
 border and an overlay rim.
 
 Control-layer glass is a different owner. `LicoGlass` paints unclipped
 shadows, then one clip around optional lens displacement, blur, luminosity
-and fill, then the child, then a 0.75 px specular rim in the foreground.
-The clip does not wrap the rim. Both overlay glass and small controls use one
-low-contrast, broad linear light field projected across the actual surface
-width and height, from above-left at rest. Brightness changes gradually along
-straight edges and corner arcs, with a weak edge on the far side. Pointer
-motion changes the light direction without a concentrated angular highlight,
-bright point, closed bright outline or second bevel. The [Apple-Style material reference](https://github.com/Tsdsj/Apple-Style/tree/d0feb3f1819bd992ef78ee4ac667095f21b26a5c/skills/Apple-Style-Liquid-Glass)
-informs this restrained edge treatment.
+and fill, then the child, then a 1 px conic specular rim in the foreground.
+The clip does not wrap the rim. Overlay glass uses a sweep-gradient catch of
+light (lit arc plus a far-edge whisper). Small glass controls (outlined
+buttons, search) keep that light/shadow treatment but enclose the full
+silhouette so the ring never drops out. Neither is a uniform-alpha hairline.
 Opaque glass controls skip backdrop reads so an empty background is not
 refracted into a grey pill. Nested glass on glass is forbidden: ghost header
 icons already inside overlay glass do not receive a second glass surface.
 Search capsules and outlined circular buttons use this glass owner; they do
 not use `ContinuousRoundedBorder` as their material edge. Focus remains a 2 px
-interaction ring, not a material rim. Focus, warning and high-contrast outlines
-paint above the fill so opaque controls cannot hide interaction feedback.
-Interaction and accessibility changes update this chrome without replacing the
-content subtree, preserving editing focus, selection and local widget state.
-Base surfaces paint their structural ring in the foreground without adding
-implicit content padding; feature-owned insets remain unchanged.
-Each lensed slab owns and reuses its shader, releasing it on replacement or
-unmount; only the immutable fragment program is shared. The lens samples inward
-along the rounded silhouette normal, calculated directly without repeated
-distance-field probes. Displacement increases toward the rim within a band
-limited to one quarter of the shorter side and at most 12 px, leaving the face
-undistorted even on short controls. Unsupported renderers retain the
-blur and specular rim without shader displacement.
+interaction ring, not a material rim.
 The sidebar, conversation header and composer must also avoid a second outline
 from an enclosing surface. Visual review includes the straight-to-curve joins,
 all four sidebar corners and the navigation divider. The composer's attachment
@@ -301,12 +283,19 @@ follow the actual composer height. A layout with an external composer clips only
 the measured internal composer, preserving the controls above it. Mobile and
 console layout geometry retain their respective owners.
 
-The group action row uses a bare plus glyph, a separated Assistant name, and a
-pencil control with a fine 13px glyph. The name toggles future Assistant participation; the pencil
-opens the existing Assistant editor in its own centered dialog. An active name
-has a soft purple, orange and gold highlight moving from left to right. Reduced motion renders
-a static active treatment. Inactive names remain readable. The capsule above
-the composer opens Adaptive Flywheel configuration only. Configuration and
+The group action row uses a bare plus glyph, and the capsule row above the
+composer leads with the Assistant identity capsule followed by the Adaptive
+Flywheel capsule — both glass, the same height. The Assistant name opens its
+editor in a centered dialog, and a small purple toggle at the trailing edge
+pauses or resumes future Assistant participation. An active capsule carries the
+purple-and-gold sunset light on its rim and across the name; paused or
+unconfigured capsules rest as plain glass. Reduced motion keeps a static rim.
+Inactive names remain readable. Before the send action, a quiet readout shows
+the active Assistant's selected model in the readable text color with its
+reasoning effort muted behind it; it opens the same editor, hides the effort
+half when no effort is configured, and disappears entirely while the Assistant
+is paused or unconfigured. The Adaptive Flywheel capsule opens its
+configuration only. Configuration and
 message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
 
 桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
@@ -319,10 +308,13 @@ message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#grou
 外置输入框布局只裁掉实测的内部输入区，保留其上方控件。移动端与控制台的布局
 几何仍由各自属主维护。
 
-群聊操作行使用不带圆形底的加号，与 Assistant 名称之间保留间距，名称后放独立
-13px 细铅笔按钮。点击名称切换后续助手参与，点击铅笔在界面中央打开独立助手编辑框。
-激活名称以从左向右的紫、橙、金柔和渐变流光表示状态；减弱动态时使用静态激活样式，关闭时
-文字仍清晰可读。输入框上方胶囊仅打开 Adaptive Flywheel 配置；配置和发送语义
+群聊操作行使用不带圆形底的加号；输入框上方胶囊行先放助手身份胶囊、再放
+Adaptive Flywheel 胶囊，两者同为玻璃材质、同高。点击助手名称打开独立的助手编辑框；
+尾部一枚紫色小开关控制后续助手参与。激活时助手胶囊边框与名称同披紫金晚霞流光，
+暂停或未配置时回到素玻璃；减弱动态时保留静态边框，关闭时文字仍清晰可读。发送按钮
+前方有一处安静的模型展示器：以正文色显示激活助手已选的模型名称，思考强度以弱化色
+跟在其后，点击同样打开助手编辑框；未配置思考强度时不显示后半段，助手暂停或未配置
+时整体消失。Adaptive Flywheel 胶囊仅打开其配置；配置和发送语义
 由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
 
 The product-owned **Local** group is the highest-priority cold-start data
@@ -490,62 +482,6 @@ Other systems combine Flutter's accessibility signal with the persisted
 **Reduce motion / 减少动态效果** setting. A manual preference cannot turn off a
 system request for reduced motion. Theme transitions, shared motion and activity
 indicators consume the effective environment preference.
-
-## Visual reference and style review
-
-The [glass reference board](../assets/design/glass.html) is the accepted material
-and conversation composition reference. Its [dark](../assets/design/glass-dark.png)
-and [light](../assets/design/glass-light.png) images are actual macOS Impeller
-renders of shared Flutter components with synthetic content. The board is a
-component composition, not a screenshot of a live conversation or a promise
-that every layout has the illustrated background. The viewer also offers the
-current production group header and composer in the same scene for comparison.
-
-Before changing component styles, produce a matching review board from real
-components in both themes. Show the current and proposed treatment at the same
-scale, including corners, long edges, focus and surrounding content. Review the
-images before applying the treatment throughout the conversation. Keep the
-accepted images in the project; replace them only when the new visual direction
-is accepted. A reference board complements behavior tests and actual conversation
-review; it does not replace them.
-
-The [capture fixture](../../apps/desktop/integration_test/glass_visual_reference_test.dart)
-reproduces this composition without loading user state or contacting an Agent.
-Capture proposed images into an ignored output directory; the command runs a
-separate synthetic app on the available macOS renderer:
-
-```sh
-mkdir -p build/visual-reference
-cat > build/visual-reference/capture.xcconfig <<'CONFIG'
-PRODUCT_BUNDLE_IDENTIFIER = land.lico.licoup.visual-reference
-CONFIG
-XCODE_XCCONFIG_FILE="$PWD/build/visual-reference/capture.xcconfig" \
-  npm run client:test -- integration_test/glass_visual_reference_test.dart \
-  -d macos --enable-impeller \
-  --dart-define=GLASS_REVIEW_OUTPUT="$PWD/build/visual-reference"
-```
-
-The same run also captures the current production group header and message
-composer in the synthetic scene as `conversation-dark.png` and
-`conversation-light.png`, beside the reference composition in `dark.png` and
-`light.png`. Compare these to the accepted project images before replacing them.
-
-### 视觉参考与样式审阅
-
-[玻璃展示板](../assets/design/glass.html)是已认可的材质与对话构图参考。
-[深色](../assets/design/glass-dark.png)和[浅色](../assets/design/glass-light.png)
-图片来自共享 Flutter 组件的 macOS Impeller 真实渲染，内容均为合成数据。
-展示板展示组件组合，不是实时对话截图，也不要求所有布局使用图中的背景。
-查看器也提供相同场景中的当前生产群组顶部栏和输入框，便于对照。
-
-以后修改组件样式时，先用真实组件制作深浅两套展示图，以相同比例比较现状与
-候选版本，包含圆角、长边、焦点及周围内容。先审阅图片，再将样式应用到整个
-对话界面。已认可的图片长期保留在项目内；只有新的视觉方向获认可后才替换。
-展示图补充行为测试和实际对话验收，不能代替它们。上面的捕获入口使用独立的
-合成应用，不加载用户状态、不联系 Agent；候选图片写入忽略目录。
-同一次运行还在相同场景中捕获当前生产群组顶部栏与消息输入框，输出
-`conversation-dark.png` 与 `conversation-light.png`；参考构图输出为 `dark.png`
-与 `light.png`。替换项目前先与已认可图片对照。
 
 ## Verification
 
