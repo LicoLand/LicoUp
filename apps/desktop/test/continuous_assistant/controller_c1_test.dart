@@ -40,8 +40,10 @@ void main() {
 
   test('close-goal acceptance does not queue or consume a notice', () async {
     final runner = _ContinuityBridgeRunner();
+    final publisher = _RecordingNoticePublisher();
     final controller = ClientConversationController(
       native: runner,
+      completionNoticePublisher: publisher.call,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -57,7 +59,7 @@ void main() {
         'progress': {'goalId': 'goal:one'},
       },
     );
-    expect(controller.takeFreshCompletionNotices(), isEmpty);
+    expect(publisher.published, isEmpty);
     expect(
       runner.requests.where((request) => request['action'] == 'close-goal'),
       hasLength(1),
@@ -117,31 +119,35 @@ void main() {
       final runner = _ContinuityBridgeRunner(
         getNoticeFieldsFor: 'conversation:b',
       );
+      final publisher = _RecordingNoticePublisher();
       final controller = ClientConversationController(
         native: runner,
+        completionNoticePublisher: publisher.call,
         pendingNoticePollInterval: const Duration(hours: 1),
       );
       await controller.initialize();
       await controller.selectConversation('conversation:b');
       expect(controller.selectedConversationId, 'conversation:b');
-      expect(controller.takeFreshCompletionNotices(), isEmpty);
+      expect(publisher.published, isEmpty);
       expect(controller.selectedTaskViews.single['id'], 'task-b');
       controller.dispose();
     },
   );
 
   test(
-    'idle B poll queues A notice without refresh, get, or focus steal',
+    'idle B poll publishes A notice without refresh, get, or focus steal',
     () async {
       final runner = _ContinuityBridgeRunner();
+      final publisher = _RecordingNoticePublisher();
       final controller = ClientConversationController(
         native: runner,
+        completionNoticePublisher: publisher.call,
         pendingNoticePollInterval: const Duration(milliseconds: 20),
       );
       await controller.initialize();
       await controller.selectConversation('conversation:b');
       controller.updateDraft('keep composing');
-      expect(controller.takeFreshCompletionNotices(), isEmpty);
+      expect(publisher.published, isEmpty);
       runner.requests.clear();
       runner.pendingNotices = <Map<String, dynamic>>[
         <String, dynamic>{
@@ -175,18 +181,18 @@ void main() {
       expect(controller.selectedConversationId, 'conversation:b');
       expect(controller.draft, 'keep composing');
       expect(controller.selectedTaskViews.single['id'], 'task-b');
-      final notices = controller.takeFreshCompletionNotices();
-      expect(notices, hasLength(1));
-      expect(notices.single['notificationId'], 'notice:a');
-      expect(controller.takeFreshCompletionNotices(), isEmpty);
+      expect(publisher.published, hasLength(1));
+      expect(publisher.published.single['notificationId'], 'notice:a');
       controller.dispose();
     },
   );
 
   test('failed list retains pending; ack after publish is once-only', () async {
     final runner = _ContinuityBridgeRunner()..failList = true;
+    final publisher = _RecordingNoticePublisher();
     final controller = ClientConversationController(
       native: runner,
+      completionNoticePublisher: publisher.call,
       pendingNoticePollInterval: const Duration(hours: 1),
     );
     await controller.initialize();
@@ -203,20 +209,19 @@ void main() {
     ];
     await controller.selectConversation('conversation:a');
     await controller.selectConversation('conversation:b');
-    expect(controller.takeFreshCompletionNotices(), isEmpty);
+    expect(publisher.published, isEmpty);
     runner.failList = false;
     await controller.selectConversation('conversation:a');
     await controller.selectConversation('conversation:b');
     await Future<void>.delayed(Duration.zero);
-    final notices = controller.takeFreshCompletionNotices();
-    expect(notices.single['notificationId'], 'notice:a');
-    controller.acknowledgePublishedCompletionNotices(['notice:a']);
+    expect(publisher.published.single['notificationId'], 'notice:a');
     await Future<void>.delayed(Duration.zero);
     expect(runner.acked, ['notice:a']);
-    expect(controller.takeFreshCompletionNotices(), isEmpty);
     await controller.selectConversation('conversation:a');
     await controller.selectConversation('conversation:b');
-    expect(controller.takeFreshCompletionNotices(), isEmpty);
+    await Future<void>.delayed(Duration.zero);
+    expect(publisher.published, hasLength(1));
+    expect(runner.acked, ['notice:a']);
     controller.dispose();
   });
 
@@ -271,6 +276,15 @@ void main() {
       controller.dispose();
     },
   );
+}
+
+final class _RecordingNoticePublisher {
+  final List<Map<String, dynamic>> published = <Map<String, dynamic>>[];
+
+  bool call(Map<String, dynamic> notice) {
+    published.add(notice);
+    return true;
+  }
 }
 
 final class _ContinuityBridgeRunner implements ClientConversationNativePort {

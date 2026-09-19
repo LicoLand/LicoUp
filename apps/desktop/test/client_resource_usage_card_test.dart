@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/settings/contracts/agent_resource_usage_gateway.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/projections/settings/settings_resource_usage_projecti
 
 import 'fixtures/agent_usage_panel/usage_panel_fixtures.dart';
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 
 void main() {
   group('formatRssBytes', () {
@@ -37,7 +39,8 @@ void main() {
   testWidgets('renders client and running-agent memory ring segments', (
     tester,
   ) async {
-    final source = SettingsValueProjectionFixture(
+    final presentation = SettingsPresentationFixture();
+    presentation.resourceUsage.publish(
       SettingsResourceUsageProjection(
         supported: true,
         clientRssBytes: 512 * 1024 * 1024,
@@ -45,24 +48,26 @@ void main() {
         agentRssBytes: {'claude-code': 455 * 1024 * 1024},
       ),
     );
+    addTearDown(presentation.dispose);
     final intents = RecordingSettingsIntents();
-    final binding = settingsBindingFixture(
-      resourceUsage: source,
-      intents: intents,
-    );
-    addTearDown(source.dispose);
+    final binding = settingsBindingFixture(intents: intents);
     await tester.pumpWidget(
-      usageTestApp(
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 700,
-          height: 420,
-          child: ClientResourceUsageCard(binding: binding),
+      ProviderScope(
+        overrides: presentation.overrides,
+        child: usageTestApp(
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: SizedBox(
+            width: 700,
+            height: 420,
+            child: ClientResourceUsageCard(binding: binding),
+          ),
         ),
       ),
     );
+    await tester.pump();
+    await tester.pump();
     expect(find.text('LicoUp'), findsOneWidget);
     expect(find.text('512'), findsOneWidget);
     expect(find.text('Claude Code'), findsOneWidget);
@@ -80,21 +85,27 @@ void main() {
   testWidgets('shows an unsupported notice when the source is absent', (
     tester,
   ) async {
-    final source = SettingsValueProjectionFixture(
+    final presentation = SettingsPresentationFixture();
+    presentation.resourceUsage.publish(
       SettingsResourceUsageProjection.unsupported(),
     );
-    final binding = settingsBindingFixture(resourceUsage: source);
-    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+    final binding = settingsBindingFixture();
     await tester.pumpWidget(
-      usageTestApp(
-        theme: buildLicoTheme(),
-        home: SizedBox(
-          width: 700,
-          height: 200,
-          child: ClientResourceUsageCard(binding: binding),
+      ProviderScope(
+        overrides: presentation.overrides,
+        child: usageTestApp(
+          theme: buildLicoTheme(),
+          home: SizedBox(
+            width: 700,
+            height: 200,
+            child: ClientResourceUsageCard(binding: binding),
+          ),
         ),
       ),
     );
+    await tester.pump();
+    await tester.pump();
     expect(
       find.text(
         'Process resource statistics are not supported on this platform.',
@@ -114,6 +125,8 @@ void main() {
       agents: agents,
     );
     addTearDown(source.dispose);
+    final presentation = SettingsPresentationFixture();
+    addTearDown(presentation.dispose);
     final intents = RecordingSettingsIntents(
       onSend: (intent) {
         if (intent is StartSettingsResourceUsage) source.start();
@@ -121,11 +134,14 @@ void main() {
       },
     );
     final binding = settingsBindingFixture(intents: intents);
-    Widget frame(String layout) => usageTestApp(
-      theme: buildLicoTheme(),
-      home: KeyedSubtree(
-        key: ValueKey(layout),
-        child: ClientResourceUsageCard(binding: binding),
+    Widget frame(String layout) => ProviderScope(
+      overrides: presentation.overrides,
+      child: usageTestApp(
+        theme: buildLicoTheme(),
+        home: KeyedSubtree(
+          key: ValueKey(layout),
+          child: ClientResourceUsageCard(binding: binding),
+        ),
       ),
     );
 
