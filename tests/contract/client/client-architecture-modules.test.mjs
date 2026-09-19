@@ -874,6 +874,9 @@ test("SDK-only presentation contract source and pubspec have positive and negati
     [contractPath, "import 'dart:async';\nabstract interface class ProjectionSource<T> {}\n"],
   ])), []);
   assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "abstract interface class PresentationLifecycle { void dispose(); }\n"],
+  ])), []);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
     [contractPath, "import 'package:flutter/widgets.dart';\nfinal class Port {}\n"],
   ])), [["presentation_boundary_package_purity", contractPath]]);
   assert.deepEqual(inspectPresentationContractSources(new Map([

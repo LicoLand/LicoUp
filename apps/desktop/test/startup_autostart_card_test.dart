@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -8,22 +9,24 @@ import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 
 import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
   testWidgets('startup card toggles desktop silent gateway and mcp', (
     tester,
   ) async {
-    final source = SettingsValueProjectionFixture(
-      const SettingsAutostartProjection(
-        phase: SettingsAutostartPhase.ready,
-        supported: true,
-        desktopEnabled: false,
-        desktopSilent: false,
-        gatewayEnabled: false,
-        mcpEnabled: false,
-      ),
+    const initial = SettingsAutostartProjection(
+      phase: SettingsAutostartPhase.ready,
+      supported: true,
+      desktopEnabled: false,
+      desktopSilent: false,
+      gatewayEnabled: false,
+      mcpEnabled: false,
     );
+    final presentation = SettingsPresentationFixture();
+    presentation.autostart.publish(initial);
+    addTearDown(presentation.dispose);
     late final RecordingSettingsIntents intents;
     intents = RecordingSettingsIntents(
       onSend: (intent) {
@@ -32,8 +35,8 @@ void main() {
           :final enabled,
           :final silent,
         )) {
-          final current = source.current;
-          source.publish(
+          final current = presentation.autostart.value;
+          presentation.autostart.publish(
             SettingsAutostartProjection(
               phase: SettingsAutostartPhase.ready,
               supported: true,
@@ -55,26 +58,28 @@ void main() {
         }
       },
     );
-    final binding = settingsBindingFixture(autostart: source, intents: intents);
-    addTearDown(source.dispose);
+    final binding = settingsBindingFixture(intents: intents);
 
     await tester.pumpWidget(
-      MaterialApp(
-        builder: (context, child) =>
-            FixtureLayoutPresentationScope(child: child!),
-        locale: const Locale('zh'),
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StartupAutostartCard(binding: binding),
+      ProviderScope(
+        overrides: presentation.overrides,
+        child: MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StartupAutostartCard(binding: binding),
+            ),
           ),
         ),
       ),

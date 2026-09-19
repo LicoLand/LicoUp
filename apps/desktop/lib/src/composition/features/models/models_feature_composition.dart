@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:presentation_runtime/presentation_runtime.dart';
+
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/models/controller/models_semantic_controller.dart';
 import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
@@ -7,6 +9,9 @@ import 'package:licoup/src/composition/renderer_intent_trace.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/models/models_effect.dart';
 import 'package:licoup/src/presentation/models/models_intent.dart';
+import 'package:licoup/src/presentation/models/models_projection.dart';
+import 'package:licoup/src/presentation/models/models_view.dart';
+import 'package:licoup/src/projections/models/models_presentation_source.dart';
 import 'package:licoup/src/projections/models/models_projection_producer.dart';
 
 final class ModelsFeatureComposition {
@@ -24,6 +29,9 @@ final class ModelsFeatureComposition {
     _projection = ModelsProjectionProducer(_owner);
     _effects = SemanticEffectChannel<ModelsEffect>();
     _intents = SemanticIntentChannel<ModelsIntent>(_handleIntent);
+    _catalogSource = ModelsPresentationSource(projection: _projection);
+    catalogEntry = presentationProviderEntry(_catalogSource);
+    catalogActions = ModelsCatalogActions.fromIntents(_intents);
     binding = ModelsBinding(
       projection: _projection,
       intents: _intents,
@@ -36,6 +44,13 @@ final class ModelsFeatureComposition {
   late final ModelsProjectionProducer _projection;
   late final SemanticEffectChannel<ModelsEffect> _effects;
   late final SemanticIntentChannel<ModelsIntent> _intents;
+  late final ModelsPresentationSource _catalogSource;
+
+  /// F01 Riverpod entry for the model catalog resource.
+  late final PresentationProviderEntry<ModelsProjection> catalogEntry;
+
+  /// Narrow renderer actions with the models scope pinned.
+  late final ModelsCatalogActions catalogActions;
   late final ModelsBinding binding;
   Future<void>? _disposal;
 
@@ -136,6 +151,7 @@ final class ModelsFeatureComposition {
   Future<void> dispose() => _disposal ??= _dispose();
 
   Future<void> _dispose() async {
+    await _catalogSource.dispose();
     await _projection.dispose();
     await _effects.dispose();
     _owner.dispose();
