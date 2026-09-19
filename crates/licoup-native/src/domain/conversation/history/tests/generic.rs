@@ -172,6 +172,68 @@ fn claude_code_adapter_extracts_nested_jsonl_messages() {
 }
 
 #[test]
+fn exact_jsonl_reads_keep_only_the_requested_session_group() {
+    let dir = temp_dir("exact-jsonl-session-filter");
+    let path = dir.join("shared-history.jsonl");
+    let lines = (0..80)
+        .map(|index| {
+            json!({
+                "sessionId": format!("session-{index}"),
+                "role": "user",
+                "content": format!("Prompt {index}")
+            })
+            .to_string()
+        })
+        .collect::<Vec<_>>();
+    fs::write(&path, lines.join("\n")).unwrap();
+
+    let metadata = fs::metadata(&path).unwrap();
+    let sessions = parse_jsonl_sessions(
+        HistoryAdapter::ClaudeCode,
+        &path,
+        "test-history",
+        &metadata,
+        HistoryScanConfig::from_params(&json!({"sessionId": "session-37"})),
+    );
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "session-37");
+    assert_eq!(sessions[0]["messages"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn exact_json_document_reads_only_the_requested_session_item() {
+    let dir = temp_dir("exact-json-session-filter");
+    let sessions = (0..80)
+        .map(|index| {
+            json!({
+                "sessionId": format!("session-{index}"),
+                "messages": [{"role": "user", "content": format!("Prompt {index}")}]
+            })
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        dir.join("shared-history.json"),
+        json!({"sessions": sessions}).to_string(),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "opencode",
+        "root": display_path(&dir),
+        "sessionId": "session-37"
+    }))
+    .unwrap();
+
+    assert_eq!(listed["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["sessions"][0]["nativeSessionId"], "session-37");
+    assert_eq!(
+        listed["sessions"][0]["messages"].as_array().unwrap().len(),
+        1
+    );
+}
+
+#[test]
 fn claude_code_adapter_projects_launch_directory_for_project_grouping() {
     let dir = temp_dir("claude-working-directory");
     fs::write(
