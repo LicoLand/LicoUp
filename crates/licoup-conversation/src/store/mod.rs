@@ -3674,7 +3674,9 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
         Some("3") => {
             migrate_reserved_group_v4(connection)?;
         }
-        Some("4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16") => {}
+        Some(
+            "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16",
+        ) => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
         }
@@ -8165,9 +8167,11 @@ mod tests {
         store
             .with_connection(|connection| {
                 connection
-                    .query_row("SELECT COUNT(*) FROM subagent_dispatch_deliveries", [], |row| {
-                        row.get::<_, i64>(0)
-                    })
+                    .query_row(
+                        "SELECT COUNT(*) FROM subagent_dispatch_deliveries",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
                     .unwrap();
                 Ok(())
             })
