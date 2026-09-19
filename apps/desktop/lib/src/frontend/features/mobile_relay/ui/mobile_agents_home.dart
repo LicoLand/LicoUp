@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_add_agent.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list.dart';
@@ -14,8 +17,10 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 enum _MobileAgentSurface { list, desktopAgents, conversation, configuration }
@@ -79,10 +84,14 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
       source: widget.agents.projection,
       select: (projection) => projection,
       builder: (context, agents) {
-        return ProjectionBuilder<MobileRelayProjection, MobileRelayProjection>(
-          source: widget.relay.projection,
-          select: (projection) => projection,
-          builder: (context, relay) => _buildProjection(context, agents, relay),
+        return AsyncRegion<
+          MobileRelayHomeInputs,
+          IntentSink<MobileRelayIntent>
+        >(
+          source: mobileRelayHomeInputsProvider,
+          actions: widget.relay.intents,
+          loading: (_, _) => const SizedBox.shrink(),
+          data: (context, relay, _) => _buildProjection(context, agents, relay),
         );
       },
     );
@@ -91,7 +100,7 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
   Widget _buildProjection(
     BuildContext context,
     AgentsProjection agents,
-    MobileRelayProjection relay,
+    MobileRelayHomeInputs relay,
   ) {
     _queuePeerScanWhenSelected(agents, relay);
     final targets = agents.targets;
@@ -195,7 +204,7 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
 
   void _queuePeerScanWhenSelected(
     AgentsProjection agents,
-    MobileRelayProjection relay,
+    MobileRelayHomeInputs relay,
   ) {
     final pending = _pendingScanAfterPeerId;
     if (pending.isEmpty || _peerScanQueued) return;
@@ -223,15 +232,15 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
     return null;
   }
 
-  RelayPeerProjection? _activeDesktopDevice(MobileRelayProjection projection) {
+  RelayPeerProjection? _activeDesktopDevice(MobileRelayHomeInputs relay) {
     final selected = _activeDesktopDeviceId.trim();
-    for (final device in projection.peers) {
+    for (final device in relay.peers) {
       if (device.id == selected || device.pairingId == selected) return device;
     }
-    for (final device in projection.peers) {
+    for (final device in relay.peers) {
       if (device.selected) return device;
     }
-    return projection.peers.isEmpty ? null : projection.peers.first;
+    return relay.peers.isEmpty ? null : relay.peers.first;
   }
 
   void _scanAgents() => widget.agents.intents.send(const ScanAgents());

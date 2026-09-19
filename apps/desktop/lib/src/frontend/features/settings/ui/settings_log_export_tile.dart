@@ -4,13 +4,16 @@ import 'dart:async';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
-import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 class SettingsLogExportTile extends StatelessWidget {
   const SettingsLogExportTile({super.key, required this.binding});
@@ -19,14 +22,12 @@ class SettingsLogExportTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      ProjectionBuilder<SettingsProjection, ({String path, bool busy})>(
-        source: binding.projection,
-        select: (projection) => (
-          path: projection.clientLogExportPath,
-          busy: projection.exportingClientLogs,
-        ),
-        builder: (context, projection) =>
-            _buildTile(context, projection.path, projection.busy),
+      AsyncRegion<SettingsLogExportInputs, IntentSink<SettingsIntent>>(
+        source: settingsLogExportInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, _) =>
+            _buildTile(context, inputs.path, inputs.busy),
       );
 
   Widget _buildTile(BuildContext context, String exportPath, bool busy) {

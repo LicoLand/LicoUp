@@ -54,7 +54,8 @@ final class AgentConversationPaneState {
     this.recentSessionsCached = false,
     this.composerFlywheel,
     this.composerLeading,
-    this.composerFieldLeading,
+    this.composerAssistantCapsule,
+    this.composerFieldTrailing,
     this.assistantActive = false,
     bool? composerBusy,
   }) : liveMessages = List.unmodifiable(liveMessages),
@@ -117,9 +118,13 @@ final class AgentConversationPaneState {
   final Widget? composerFlywheel;
   final Widget? composerLeading;
 
-  /// Compact control rendered inside the composer field capsule, left of the
-  /// text input (the group assistant toggle lives there).
-  final Widget? composerFieldLeading;
+  /// Group assistant identity capsule, placed in the capsule row above the
+  /// composer before the flywheel capsule.
+  final Widget? composerAssistantCapsule;
+
+  /// Quiet readout rendered inside the composer before the send action (the
+  /// group assistant model readout lives there).
+  final Widget? composerFieldTrailing;
 
   /// Whether the group assistant lane is active; assistant message headers
   /// render the agent's brand mark while active and the sparkles mark while
