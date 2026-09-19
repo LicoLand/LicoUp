@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:licoup/src/contracts/conversation_execution.dart';
 
+import 'package:licoup/src/presentation/agents/agent_product_identity.dart';
 import 'package:licoup/src/presentation/conversation/canonical_conversation_event_metadata.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
@@ -16,32 +17,45 @@ String _iso(int unixMs) => unixMs <= 0
         isUtc: true,
       ).toIso8601String();
 
-/// Membership identity survives discovery and runtime availability changes.
-/// Only the retired Kimi Desktop adapter is omitted from the roster; its
-/// durable Membership and Events remain untouched.
+/// Current-adapter seats for the group roster. Memberships whose Agent is no
+/// longer packaged, including leftover Kimi Desktop records, stay in the
+/// Canonical store and transcript; they are not synthesized back onto the
+/// roster.
 List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
   ClientConversation conversation,
   List<TargetCandidate> targets,
 ) {
   final resolved = <TargetCandidate>[];
   for (final membership in conversation.activeAgentMemberships) {
+    final target = canonicalGroupParticipantTarget(
+      targets,
+      membership.principal.agentId,
+    );
+    if (target != null) {
+      resolved.add(target);
+      continue;
+    }
     final agentId = membership.principal.agentId.trim();
-    if (agentId.isEmpty || _retiredAdapter(agentId)) continue;
-    final candidate = _matchingTarget(targets, agentId);
+    // Synthesize a seat only for a recognized, current adapter. Retired
+    // adapters and unknown ids keep their Membership and Events in the
+    // Canonical store but never reappear on the roster.
+    if (agentId.isEmpty ||
+        !_canonicalGroupRosterShowsAgent(agentId) ||
+        agentProductDisplayName(agentId) == null) {
+      continue;
+    }
+    final displayName = membership.principal.displayName.trim();
     resolved.add(
-      candidate ??
-          TargetCandidate(
-            target: agentId,
-            label: membership.principal.displayName.trim().isEmpty
-                ? agentId
-                : membership.principal.displayName.trim(),
-            kind: 'conversation-member',
-            status: TargetCandidateStatus.synthesizedMembership,
-            configured: false,
-            confidence: 1,
-            adapterStatus: 'runtime-unavailable',
-            scanSource: 'canonical-conversation',
-          ),
+      TargetCandidate(
+        target: agentId,
+        label: displayName.isEmpty ? agentId : displayName,
+        kind: 'conversation-member',
+        status: TargetCandidateStatus.synthesizedMembership,
+        configured: false,
+        confidence: 1,
+        adapterStatus: 'runtime-unavailable',
+        scanSource: 'canonical-conversation',
+      ),
     );
   }
   return List<TargetCandidate>.unmodifiable(resolved);
@@ -53,55 +67,69 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
   List<String> orderedAgentIds,
 ) {
   if (orderedAgentIds.isEmpty) return const [];
-  final candidates = [
-    ...targets,
-    ...resolveCanonicalGroupParticipantTargets(conversation, targets),
-  ];
-  final byAdapter = <String, TargetCandidate>{};
-  for (final target in candidates) {
-    byAdapter.putIfAbsent(target.target, () => target);
-  }
   final resolved = <TargetCandidate>[];
   final seen = <String>{};
   for (final agentId in orderedAgentIds) {
-    final id = agentId.trim();
-    final target = byAdapter[id];
-    if (target == null ||
-        _retiredAdapter(target.target) ||
-        !seen.add(target.target)) {
-      continue;
-    }
+    final target = canonicalGroupParticipantTarget(targets, agentId);
+    if (target == null) continue;
+    final key = target.target.trim().isEmpty ? target.id : target.target;
+    if (!seen.add(key)) continue;
     resolved.add(target);
   }
   return List<TargetCandidate>.unmodifiable(resolved);
 }
 
+/// Live catalog match for a group member. Retired adapters and synthesized
+/// placeholders are omitted so the roster only shows Agents that still have
+/// a current adapter.
 TargetCandidate? canonicalGroupParticipantTarget(
   List<TargetCandidate> targets,
   String agentId,
 ) {
-  final target = _matchingTarget(targets, agentId.trim());
-  return target == null || _retiredAdapter(target.target) ? null : target;
-}
-
-TargetCandidate? _matchingTarget(List<TargetCandidate> targets, String id) {
-  if (id.isEmpty) return null;
-  for (final target in targets) {
-    if (target.target == id) return target;
+  final id = agentId.trim();
+  if (id.isEmpty || !_canonicalGroupRosterShowsAgent(id)) {
+    return null;
+  }
+  for (final candidate in targets) {
+    if ((candidate.target == id || candidate.id == id) &&
+        _canonicalGroupRosterShowsTarget(candidate)) {
+      return candidate;
+    }
   }
   return null;
 }
 
-bool _retiredAdapter(String id) =>
-    const {'kimi', 'kimi-desktop'}.contains(id.trim().toLowerCase());
+bool _canonicalGroupRosterShowsTarget(TargetCandidate target) {
+  if (target.manual) return true;
+  if (target.status == TargetCandidateStatus.synthesizedMembership) {
+    return false;
+  }
+  return _canonicalGroupRosterShowsAgent(target.target) &&
+      _canonicalGroupRosterShowsAgent(target.id);
+}
+
+/// Kimi Desktop was removed from the adapter catalog. Its product id strips
+/// to `kimi` and is omitted from the roster. Kimi Code stays `kimi-code`,
+/// remains visible, and uses the human-readable name "Kimi Code".
+bool _canonicalGroupRosterShowsAgent(String agentId) {
+  return agentProductId(agentId) != 'kimi';
+}
 
 ClientConversationMembership? canonicalGroupAgentMembership(
   ClientConversation conversation,
   TargetCandidate target,
 ) {
+  // Exact adapter-target matches bind directly; a candidate's record id may
+  // collide with a retired adapter's membership id, so the id fallback skips
+  // retired adapters instead of reviving them.
+  for (final membership in conversation.activeAgentMemberships) {
+    if (membership.principal.agentId == target.target) return membership;
+  }
   for (final membership in conversation.activeAgentMemberships) {
     final agentId = membership.principal.agentId;
-    if (agentId == target.target) return membership;
+    if (agentId == target.id && _canonicalGroupRosterShowsAgent(agentId)) {
+      return membership;
+    }
   }
   return null;
 }
@@ -394,11 +422,6 @@ AgentConversationSession canonicalGroupConversationSession(
   );
 }
 
-/// Resolves a derived [AgentConversationMessage.id] back to the durable Event
-/// identity that message operations (retry/delete) must address.
-///
-/// The derivation above keys a human message's first text flush by the Event
-/// id and later flushes by `<eventId>:text:<n>`. Only identities verified
 /// against the loaded [events] resolve; anything else returns unchanged so
 /// the store layer fails closed instead of acting on a fabricated id.
 String resolveCanonicalGroupSourceEventId(
