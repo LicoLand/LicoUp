@@ -74,11 +74,12 @@ abstract class BaseSurface extends StatelessWidget {
       duration: context.motion(LicoMotion.micro),
       curve: LicoMotion.standard,
       clipBehavior: Clip.none,
-      decoration: ShapeDecoration(
+      decoration: BoxDecoration(
         color: _fill(
           colors,
         ).withValues(alpha: context.appearanceVisuals.surfaceOpacity),
-        shadows: elevation.shadows(colors),
+        borderRadius: borderRadius,
+        boxShadow: elevation.shadows(colors),
         gradient: context.appearanceVisuals.glassFinish
             ? LinearGradient(
                 begin: Alignment.topCenter,
@@ -86,7 +87,6 @@ abstract class BaseSurface extends StatelessWidget {
                 colors: [colors.hoverOverlay, Colors.transparent],
               )
             : null,
-        shape: ContinuousRoundedBorder(borderRadius: borderRadius),
       ),
       child: CustomPaint(
         foregroundPainter: ContinuousStrokePainter(
