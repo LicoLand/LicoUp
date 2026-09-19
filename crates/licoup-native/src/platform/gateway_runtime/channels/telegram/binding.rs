@@ -7,7 +7,7 @@ use crate::platform::file_security::{
 use crate::platform::paths;
 use anyhow::{Result, anyhow, ensure};
 use fs2::FileExt;
-use rand::RngCore;
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -300,7 +300,7 @@ fn now_secs() -> u64 {
 fn generate_pairing_code() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let mut bytes = [0u8; 6];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    OsRng.fill_bytes(&mut bytes);
     bytes
         .iter()
         .map(|byte| ALPHABET[(*byte as usize) % ALPHABET.len()] as char)

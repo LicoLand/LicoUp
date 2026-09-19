@@ -25,47 +25,68 @@ const TEMPORARY_EXCEPTIONS = Object.freeze([]);
 // here with the transitive pin that forces it. This makes the residual
 // duplicates an explicit, reviewed set instead of silent drift.
 //
-// The audit target is DUPLICATE_CRATE_TARGET (≤15). The remaining 23
-// duplicates are all pinned by crypto consumers this repository must not
-// force-break without protocol-semantics review:
-//   - openmls git revision (34222ef6...) -> hpke-rs 0.7.0 -> p256 0.13 /
-//     ed25519-dalek 2 / aes-gcm 0.10 / x25519-dalek 2 (older generation)
-//   - hpke-rs 0.7.0 experimental -> x-wing 0.1.0 -> ml-kem 0.3.2 /
-//     ml-dsa 0.1.1 / sha3 0.12 / x25519-dalek 3 (newer generation)
-//   - libcrux 0.0.10 -> rand 0.10 / chacha20 / sha3 0.11 (newer generation)
-//   - ureq 2.x -> webpki-roots 0.26.11 shim -> webpki-roots 1.x
-//   - jni 0.21 -> thiserror 1 / jni-sys 0.3 shim (0.22 rework requires a
-//     jni::GlobalRef -> refs::Global source migration, tracked separately)
+// The audit target is DUPLICATE_CRATE_TARGET (≤15). The remaining 28 are
+// forced by fixed protocol inputs or by an upstream generation split this
+// repository must not force-break:
+//   - the openmls git revision (34222ef6..., RustCrypto 0.10 / dalek 2
+//     generation: aes-gcm 0.10, chacha20poly1305 0.10, p256 0.13, p384 0.13,
+//     x25519-dalek 2, ed25519-dalek 2, rand_core 0.6, rand_chacha 0.3) sits
+//     against the fixed LicoArc SDK revision (244ce718..., L03.0, RustCrypto
+//     0.11 / dalek 3 generation: aead 0.6, cipher 0.5, poly1305 0.9,
+//     universal-hash 0.6, chacha20poly1305 0.11, ed25519-dalek 3,
+//     x25519-dalek 3). Both revisions are fixed protocol inputs and the pin
+//     cannot move: no upstream openmls revision exists on the 0.11
+//     generation. hpke-rs is capped at 0.7.0 on crates.io, celabshq/libcrux
+//     main still pins aes-gcm 0.10 / chacha20poly1305 0.10 / p256 0.13 /
+//     x25519-dalek 2, and openmls main and v0.9.0 carry the same generations
+//     as the pin. Every remaining RustCrypto/dalek duplicate below is a leaf
+//     of that split.
+//   - sha3 0.11 vs 0.12: x-wing 0.1.0 (newest release) depends on ml-kem
+//     ^0.3 -> sha3 ^0.11 and on sha3 ^0.12 directly, and ml-kem 0.3.2 is the
+//     newest release. This one is an upstream x-wing defect, not a consumer
+//     choice.
+//   - ureq 2.x -> webpki-roots 0.26.11 shim -> webpki-roots 1.x. ureq 3
+//     dropped the custom-rustls-verifier hook that
+//     domain/provider_quota/http.rs depends on, so the migration is deferred
+//     rather than forced.
 const TRACKED_DUPLICATE_GENERATIONS = Object.freeze({
-  bitflags:
-    "1.3.2 via inotify 0.9.6 (notify 6.1.1 Linux file-watching lane, Linux-target-only) vs 2.13.0 (nix, rusqlite 0.40, notify); converging requires a notify 7 source migration",
+  aead: "0.5.2 via aes-gcm 0.10.3 and chacha20poly1305 0.10.1 (openmls rev, direct) vs 0.6.1 via the fixed LicoArc SDK (chacha20poly1305 0.11.0)",
   "block-buffer": "digest 0.10 family (direct sha2 0.10/hkdf 0.12/hmac 0.12, ed25519-dalek 2, p256 via openmls rev) vs digest 0.11 family (x-wing via hpke-rs 0.7)",
+  chacha20: "0.9.1 via chacha20poly1305 0.10.1 (openmls rev, direct) vs 0.10.2 via the fixed LicoArc SDK",
+  chacha20poly1305: "0.10.1 direct licoup-native and openmls rev vs 0.11.0 via the fixed LicoArc SDK",
+  cipher: "0.4.4 via aes/aes-gcm/ctr/chacha20 0.9 (openmls rev, direct) vs 0.5.2 via the fixed LicoArc SDK",
   "const-oid": "der 0.7 (p256 via openmls rev) vs der 0.8 (ml-dsa via openmls_basic_credential)",
   cpufeatures: "sha2 0.10 line vs curve25519-dalek 5/chacha20 0.10/keccak (libcrux 0.0.10 and x-wing via hpke-rs 0.7)",
   "crypto-common": "aead 0.5/aes-gcm 0.10 (openmls rev, chacha20poly1305 0.10) vs digest 0.11 line (libcrux, x-wing)",
   "curve25519-dalek": "ed25519-dalek 2/x25519-dalek 2 (direct, openmls rev) vs x25519-dalek 3 (x-wing via hpke-rs 0.7)",
   der: "ecdsa/p256 0.13 (openmls rev) vs pkcs8 0.11/ml-dsa (openmls_basic_credential)",
   digest: "sha2 0.10/ed25519-dalek 2/p256 family vs sha2 0.11 family (openmls_rust_crypto, x-wing)",
-  getrandom: "rand_core 0.6 (rand 0.8 direct, ed25519-dalek 2, p256) vs rand_core 0.10 (libcrux 0.0.10, x-wing)",
+  ed25519: "2.2.3 via ed25519-dalek 2.2.0 (direct, openmls rev) vs 3.0.0 via the fixed LicoArc SDK",
+  "ed25519-dalek": "2.2.0 direct licoup-native and openmls rev vs 3.0.0 via the fixed LicoArc SDK",
+  getrandom: "rand_core 0.6 (ed25519-dalek 2, x25519-dalek 2, p256 via openmls rev) vs rand_core 0.10 (libcrux 0.0.10, x-wing)",
   hkdf: "0.12 direct + dbus-secret-service 4.1 + elliptic-curve (openmls rev) vs 0.13 (openmls_rust_crypto, ml-kem via hpke-rs)",
   hmac: "0.12 direct vs 0.13 (openmls_rust_crypto, hpke-rs line)",
-  "jni-sys": "jni 0.21 legacy alias shim (0.3.1 -> 0.4.1); requires a jni 0.22 source migration (GlobalRef -> refs::Global)",
+  inout: "0.1.4 via cipher 0.4.4 (openmls rev, direct) vs 0.2.2 via the fixed LicoArc SDK",
   pkcs8: "ed25519-dalek 2/ecdsa 0.16 (openmls rev) vs ml-dsa (openmls_basic_credential)",
-  rand: "0.8 direct (rand_core 0.6) vs 0.10 (libcrux 0.0.10, x-wing); moving direct rand to 0.10 requires a rand API source migration",
-  rand_chacha: "follows rand 0.8/0.10 generations above",
-  rand_core: "0.6 (rand 0.8, ed25519-dalek 2, p256 via openmls rev) vs 0.10 (libcrux 0.0.10, x-wing)",
+  poly1305: "0.8.0 via chacha20poly1305 0.10.1 (openmls rev, direct) vs 0.9.1 via the fixed LicoArc SDK",
+  rand_chacha: "0.3.1 via openmls_rust_crypto (openmls rev) vs 0.10.0 via hpke-rs-rust-crypto 0.7.0 (openmls rev, experimental)",
+  rand_core: "0.6 (ed25519-dalek 2, x25519-dalek 2, p256 via openmls rev) vs 0.10 (libcrux 0.0.10, x-wing)",
   sha2: "0.10 (direct, ed25519-dalek 2, p256, dbus-secret-service) vs 0.11 (openmls_rust_crypto, ml-dsa)",
   sha3: "0.11 (libcrux-sha3 0.0.10 via libcrux-ml-kem) vs 0.12 (x-wing via hpke-rs 0.7)",
   signature: "ed25519-dalek 2/ecdsa (openmls rev) vs ml-dsa/openmls_rust_crypto",
   spki: "ecdsa/ed25519 (openmls rev) vs ml-dsa/pkcs8 0.11",
-  thiserror: "1.0.69 via jni 0.21 only; resolves with the tracked jni 0.22 migration",
-  "thiserror-impl": "mirrors thiserror generation above (jni 0.21)",
+  "universal-hash": "0.5.1 via chacha20poly1305 0.10.1 (openmls rev, direct) vs 0.6.1 via the fixed LicoArc SDK",
   "webpki-roots": "ureq 2.x pinned 0.26.11 alias (normal dep webpki-roots ^1); ureq 3 migration deferred (API + TLS stack change)",
   "x25519-dalek": "2.0.1 direct + hpke-rs-rust-crypto 0.7 vs 3.0.0 via x-wing (hpke-rs 0.7 experimental)",
 });
 
 const DUPLICATE_CRATE_TARGET = 15;
-const DUPLICATE_CRATE_CEILING = 25;
+// The macOS and Linux production graphs now carry the same 28 duplicates,
+// all of them the pinned crypto generations recorded above. That is down from
+// 33: the unused `notify` dependency was dropped (Linux-only `bitflags`), and
+// `jni` 0.21 -> 0.22 (`jni-sys` shim, `thiserror` 1) and the direct `rand` ->
+// `rand_core` substitution (`rand`) each removed a duplicate generation.
+const DUPLICATE_CRATE_CEILING = 28;
 
 function run(command, args) {
   const result = spawnSync(command, args, {

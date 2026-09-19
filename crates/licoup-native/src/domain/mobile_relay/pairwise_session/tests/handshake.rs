@@ -2,7 +2,7 @@ use super::super::handshake::initialize_mobile_relay_pairwise_session;
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
 use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use serde_json::json;
 
 #[test]

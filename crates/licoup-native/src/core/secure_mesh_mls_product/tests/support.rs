@@ -33,7 +33,7 @@ pub(super) use crate::core::secure_mesh_transparency::{
 pub(super) use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 pub(super) use anyhow::Result;
 pub(super) use ed25519_dalek::SigningKey;
-pub(super) use rand::rngs::OsRng;
+pub(super) use rand_core::OsRng;
 pub(super) use rusqlite::{TransactionBehavior, params};
 pub(super) use serde_json::Value;
 pub(super) use std::collections::{BTreeMap, BTreeSet};
