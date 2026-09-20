@@ -268,12 +268,8 @@ final class DeleteCanonicalConversationMessage extends ConversationIntent {
   final String eventId;
 }
 
-final class RefreshCanonicalAssistantThread extends ConversationIntent {
-  const RefreshCanonicalAssistantThread({super.trace});
-}
-
-final class ClearCanonicalConversationHistory extends ConversationIntent {
-  const ClearCanonicalConversationHistory({super.trace});
+final class ArchiveAndReopenConversation extends ConversationIntent {
+  const ArchiveAndReopenConversation({super.trace});
 }
 
 final class RefreshCanonicalAssistantProfile extends ConversationIntent {

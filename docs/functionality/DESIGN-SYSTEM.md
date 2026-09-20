@@ -202,18 +202,38 @@ series are cached by their actual data, grouping and display window. Color
 assignments remain stable across refreshes, windows and source ordering.
 Labels, values and tooltips identify series independently of hue.
 
-Data fills, series swatches and usage bars are fully opaque. The Total usage
-bar is pure white in both themes. Stacked areas have no colored outline:
-each positive run closes at adjacent zero samples, and zero-only intervals
-draw no series area. A day with zero usage contributes no height or colored
-line above another series; rendering never changes the reported usage values.
+Series fills are translucent vertical gradients, strongest at the band's top
+edge and fading toward the baseline, so stacked volume reads as light rather
+than pasted slabs. Stacked bands are smoothed with monotone cubic
+interpolation, so a boundary never overshoots into the band above it. The Total
+usage bar stays pure white in both themes. Every
+band owns a crisp luminous top edge in its own hue — a 1px rounded line over
+a soft same-hue bloom — and that edge, not a shadow or a gap, keeps
+neighbouring bands apart. A day with zero usage contributes no height above
+another series, and zero-only intervals draw no area: each positive run closes
+at its neighboring zero samples. A single-day timeline keeps its stacked bar
+with 2px segment corners, a 1px day gap, the same gradient fill, and the same
+top edge. Rendering never changes the reported usage values.
 
-Agent charts use muted brand hues with balanced brightness for large opaque
-fills. Antigravity, Kimi Code and GitHub Copilot use distinct blue-to-purple
-colors; Kilo Code uses yellow and Claude Code uses orange. Other Agents receive
-fixed, distinct assignments. Light themes deepen these hues for contrast.
-Plot areas, bars, legend swatches and hover rows share the same color authority.
-Legend labels and values use quiet medium weights so the chart retains focus.
+The plot has four horizontal rules, at zero, both thirds and the axis maximum.
+The three upper rules are 0.5px hairlines in `line` at 0.28 alpha; the zero
+baseline is 1px in `lineStrong` at 0.5 alpha. Value labels are compact, medium
+weight and right-aligned in the axis gutter. At most five date labels sit under
+the plot, with the two end labels flush against its edges. Hovering a day draws
+one 0.5px vertical hairline in `text` at 0.35 alpha and, on every visible band
+boundary, a 3.5px dot in that band's hue inside a 1.5px `surface` halo.
+
+Agent charts use saturated, opaque brand hues whose luminance is spread across
+the ring, so stacked fills read as separate bands instead of one pastel mass.
+Antigravity, Kimi Code and GitHub Copilot use distinct blue-to-purple colors;
+Kilo Code uses yellow and Claude Code uses orange. Other Agents receive fixed,
+distinct assignments. Light themes deepen these hues for contrast. Plot areas,
+bars, legend swatches, hover rows and hover markers share the same color
+authority. The legend wraps in usage rank as quiet chips — an 8px dot, the
+Agent name in 12px medium `textSecondary`, its total in 12px semibold `text`
+with tabular figures — without borders or a chip background. The legend ranks
+by total descending; the stack plots ascending totals instead, so the
+lowest-usage series hugs the baseline and the largest closes the top.
 
 Model charts use shades within the model developer's color family. Stronger
 models use deeper shades; for Claude's orange family the order is Fable, Opus,
@@ -231,8 +251,12 @@ downward arrow when open. Its expanded view shows a segmented source-share bar
 and the corresponding numeric usage below. Hovering a source segment exposes
 that source's effort and speed breakdown in the same glass card as the waveform
 hover: header and total above, color swatches and names aligned left, amounts
-aligned right. Missing effort has no placeholder row. A partially known
-breakdown does not change the header total. Unknown attribution stays unknown.
+aligned right. The daily card varies only its header and totals: it leads with
+the date, lists its series, then closes with a Total row under a hairline
+divider in `line`. Card text is 12px, swatches are 7px, amounts use tabular
+figures, padding is 12px and corners are 12px. Missing effort has no placeholder
+row. A partially known breakdown does not change the header total. Unknown
+attribution stays unknown.
 The Rust [model registry](../architecture/MODEL-REGISTRY.md) owns identity;
 native usage owns aggregation, and the renderer owns color and disclosure state.
 
@@ -380,8 +404,10 @@ Nested work and tool-only children remain accessible. Collapsing a card never
 cancels work. A bounded first page is not a content truncation policy.
 
 Message text remains selectable and copyable. An accepted Agent dispatch creates
-its reply bubble before response text arrives. Three metal-like points exchange
-velocity through equal-mass elastic collisions while waiting. The first reply
+its reply bubble before response text arrives. While waiting, the bubble holds a
+small living energy orb: three luminous currents orbit inside a soft sphere at
+distinct integral rates with a breathing core, so the ambient loop never repeats
+a visible pattern. The first reply
 text replaces that waiting treatment immediately; reasoning and tool events do
 not count as reply text. A terminal failure, cancellation, or completion also
 ends the waiting treatment and retains its real outcome.

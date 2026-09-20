@@ -1,10 +1,10 @@
 use super::{
-    Conversation, ConversationClearReport, ConversationDispatch, ConversationEvent,
-    ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID, DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn,
-    DispatchSessionMode, DispatchState, EventKind, EventPage, EventPart, EventPartKind,
-    ImageAttachment, LICOUP_GUIDE_SKILL_ID, Membership, MembershipAccess, Principal, PrincipalKind,
-    PrivateRuntimeBinding, ProfileIntent, ProfileIntentUpdate, ProfileResponsibility,
-    RuntimeBinding, SourceLink, TurnState,
+    Conversation, ConversationArchiveReport, ConversationClearReport, ConversationDispatch,
+    ConversationEvent, ConversationSummary, DEFAULT_LOCAL_AGENT_GROUP_ID,
+    DEFAULT_LOCAL_AGENT_GROUP_TITLE, DirectTurn, DispatchSessionMode, DispatchState, EventKind,
+    EventPage, EventPart, EventPartKind, ImageAttachment, LICOUP_GUIDE_SKILL_ID, Membership,
+    MembershipAccess, Principal, PrincipalKind, PrivateRuntimeBinding, ProfileIntent,
+    ProfileIntentUpdate, ProfileResponsibility, RuntimeBinding, SourceLink, TurnState,
 };
 use anyhow::{Result, anyhow};
 use rusqlite::{
@@ -51,7 +51,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "16";
+pub const CURRENT_SCHEMA_VERSION: &str = "17";
 
 /// Canonical Conversation table and index layout. Shared by the schema
 /// initializer and the synthetic versioned fixtures used by migration tests.
@@ -198,6 +198,11 @@ const CONVERSATION_SCHEMA_TABLES: &str = "
            source_kind TEXT NOT NULL, source_identity TEXT NOT NULL,
            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
            PRIMARY KEY(source_kind, source_identity)
+         );
+         CREATE TABLE IF NOT EXISTS archived_native_sessions (
+           agent_id TEXT NOT NULL, native_session_id TEXT NOT NULL,
+           conversation_id TEXT NOT NULL, archived_at INTEGER NOT NULL,
+           PRIMARY KEY(agent_id, native_session_id)
          );";
 
 #[derive(Clone, Debug)]
@@ -1708,16 +1713,61 @@ impl ConversationStore {
     }
 
     pub fn archive_conversation(&self, id: &str, archived: bool) -> StoreResult<()> {
+        self.archive_conversation_tree(id, archived, false)?;
+        Ok(())
+    }
+
+    /// Archive one Conversation together with everything it actually involves:
+    /// the whole continuity-child subtree is archived recursively, and every
+    /// member native session the conversations used is marked archived so
+    /// browse catalogs stop surfacing it. The agents' own on-disk history is
+    /// never deleted. With `reopen` (groups only) a fresh successor
+    /// Conversation is created in the same transaction: memberships and the
+    /// assistant profile are copied silently (no member joined/left churn), and
+    /// one plain `conversation-reset` notice opens the successor.
+    pub fn archive_conversation_tree(
+        &self,
+        id: &str,
+        archived: bool,
+        reopen: bool,
+    ) -> StoreResult<ConversationArchiveReport> {
         validate_identifier(id, "conversation_id")?;
+        if reopen && !archived {
+            return Err(anyhow!("invalid_request"));
+        }
+        let now = now_ms();
         self.with_connection(|connection| {
-            let changed = connection.execute(
-                "UPDATE conversations SET archived=?2, revision=revision+1, updated_at=?3 WHERE id=?1",
-                params![id, archived as i64, now_ms()],
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ensure_conversation(&transaction, id)?;
+            transaction.execute(
+                "UPDATE conversations SET archived=?2, revision=revision+1, updated_at=?3
+                 WHERE id=?1 AND archived<>?2",
+                params![id, archived as i64, now],
             )?;
-            if changed == 0 {
-                return Err(anyhow!("conversation_not_found"));
+            let mut archived_child_ids = Vec::new();
+            let mut archived_native_sessions = Vec::new();
+            let mut successor_conversation_id = None;
+            if archived {
+                archived_child_ids = archive_continuity_children(&transaction, id, now)?;
+                let mut conversation_ids = vec![id.to_owned()];
+                conversation_ids.extend(archived_child_ids.iter().cloned());
+                archived_native_sessions =
+                    mark_native_sessions_archived(&transaction, &conversation_ids, now)?;
+                if reopen {
+                    successor_conversation_id =
+                        Some(reopen_group_conversation(&transaction, id, now)?);
+                }
+            } else {
+                clear_native_sessions_archived(&transaction, id)?;
             }
-            Ok(())
+            transaction.commit()?;
+            Ok(ConversationArchiveReport {
+                conversation_id: id.to_owned(),
+                archived_child_ids,
+                archived_native_sessions,
+                successor_conversation_id,
+            })
         })
     }
 
@@ -3675,7 +3725,8 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
             migrate_reserved_group_v4(connection)?;
         }
         Some(
-            "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16",
+            "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16"
+            | "17",
         ) => {}
         Some(other) => {
             return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
@@ -3870,6 +3921,14 @@ fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
     )?;
     if version == "15" {
         migrate_subagent_dispatch_deliveries_v16(connection)?;
+    }
+    let version: String = connection.query_row(
+        "SELECT value FROM schema_meta WHERE key='version'",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == "16" {
+        migrate_archived_native_sessions_v17(connection)?;
     }
     Ok(())
 }
@@ -4252,6 +4311,24 @@ fn migrate_subagent_dispatch_deliveries_v16(connection: &mut Connection) -> Stor
            ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
          INSERT INTO schema_meta(key, value) VALUES ('version', '16')
            ON CONFLICT(key) DO UPDATE SET value='16';",
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Archive marks for agent-native sessions are Lico-side visibility records:
+/// the agent's own on-disk history is never deleted, it only stops surfacing
+/// in the client's browse catalogs.
+fn migrate_archived_native_sessions_v17(connection: &mut Connection) -> StoreResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(
+        "CREATE TABLE IF NOT EXISTS archived_native_sessions (
+           agent_id TEXT NOT NULL, native_session_id TEXT NOT NULL,
+           conversation_id TEXT NOT NULL, archived_at INTEGER NOT NULL,
+           PRIMARY KEY(agent_id, native_session_id)
+         );
+         INSERT INTO schema_meta(key, value) VALUES ('version', '17')
+           ON CONFLICT(key) DO UPDATE SET value='17';",
     )?;
     transaction.commit()?;
     Ok(())
@@ -5544,30 +5621,176 @@ fn archive_continuity_children(
     if !table_exists(connection, "continuity_task_relations")? {
         return Ok(Vec::new());
     }
+    // Descend the whole subtree: a group's involved conversations include
+    // grandchildren, not just the direct children.
+    let mut archived = Vec::new();
+    let mut frontier = vec![parent_id.to_owned()];
+    let mut seen = std::collections::HashSet::from([parent_id.to_owned()]);
     let mut statement = connection.prepare(
         "SELECT child_conversation_id FROM continuity_task_relations
          WHERE parent_conversation_id=?1
          ORDER BY card_sequence ASC, goal_id ASC",
     )?;
-    let child_ids = statement
-        .query_map(params![parent_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut archived = Vec::new();
-    for child_id in child_ids {
-        if child_id == parent_id {
-            continue;
-        }
-        let changed = connection.execute(
-            "UPDATE conversations
-             SET archived=1, revision=revision+1, updated_at=?2
-             WHERE id=?1 AND archived=0",
-            params![child_id, now],
-        )?;
-        if changed > 0 {
-            archived.push(child_id);
+    while let Some(current) = frontier.pop() {
+        let child_ids = statement
+            .query_map(params![current], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for child_id in child_ids {
+            if !seen.insert(child_id.clone()) {
+                continue;
+            }
+            let changed = connection.execute(
+                "UPDATE conversations
+                 SET archived=1, revision=revision+1, updated_at=?2
+                 WHERE id=?1 AND archived=0",
+                params![child_id, now],
+            )?;
+            if changed > 0 {
+                archived.push(child_id.clone());
+            }
+            frontier.push(child_id);
         }
     }
     Ok(archived)
+}
+
+/// Mark every native session the given Conversations used as archived, keyed
+/// by (agent, native session). Marks are idempotent and attribute the archive
+/// to the conversation that owns the session, so restoring one conversation
+/// resurfaces exactly its own sessions again.
+fn mark_native_sessions_archived(
+    connection: &impl CountedSqlite,
+    conversation_ids: &[String],
+    now: i64,
+) -> StoreResult<Vec<NativeSessionReference>> {
+    let mut statement = connection.prepare(
+        "SELECT s.membership_id, p.agent_id, s.native_session_id
+         FROM conversation_native_sessions s
+         JOIN memberships m ON m.id=s.membership_id AND m.conversation_id=s.conversation_id
+         JOIN principals p ON p.id=m.principal_id
+         WHERE s.conversation_id=?1 AND p.kind='agent'",
+    )?;
+    let mut marked = Vec::new();
+    for conversation_id in conversation_ids {
+        let references = statement
+            .query_map(params![conversation_id], |row| {
+                Ok(NativeSessionReference {
+                    membership_id: row.get(0)?,
+                    agent_id: row.get(1)?,
+                    native_session_id: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for reference in references {
+            connection.execute(
+                "INSERT INTO archived_native_sessions(agent_id, native_session_id, conversation_id, archived_at)
+                 VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING",
+                params![
+                    reference.agent_id,
+                    reference.native_session_id,
+                    conversation_id,
+                    now
+                ],
+            )?;
+            marked.push(reference);
+        }
+    }
+    Ok(marked)
+}
+
+/// Restore is the inverse of archive for browse visibility: the archived
+/// marks owned by this conversation come back out.
+fn clear_native_sessions_archived(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+) -> StoreResult<()> {
+    connection.execute(
+        "DELETE FROM archived_native_sessions WHERE conversation_id=?1",
+        params![conversation_id],
+    )?;
+    Ok(())
+}
+
+/// Create the fresh successor of an archived group: same title and strategy,
+/// every active membership copied with its profile, and the assistant pointer
+/// preserved. Member copies emit no events — a reopened conversation is not
+/// news — and a single `conversation-reset` notice opens the successor.
+fn reopen_group_conversation(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    now: i64,
+) -> StoreResult<String> {
+    let source: Option<(String, Option<String>, Option<String>)> = connection
+        .query_row(
+            "SELECT title, strategy_revision, assistant_membership_id
+             FROM conversations WHERE id=?1 AND is_group=1",
+            params![conversation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((title, strategy_revision, assistant_membership_id)) = source else {
+        return Err(anyhow!("invalid_request"));
+    };
+    let successor_id = new_id("conversation");
+    connection.execute(
+        "INSERT INTO conversations(
+           id, title, archived, pinned, is_group, strategy_revision, revision, created_at, updated_at
+         ) VALUES (?1, ?2, 0, 0, 1, ?3, 0, ?4, ?4)",
+        params![successor_id, title, strategy_revision, now],
+    )?;
+    let mut membership_statement = connection.prepare(
+        "SELECT id, principal_id, access FROM memberships
+         WHERE conversation_id=?1 AND status='active'
+         ORDER BY joined_at ASC, id ASC",
+    )?;
+    let memberships = membership_statement
+        .query_map(params![conversation_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut successor_assistant = None;
+    for (membership_id, principal_id, access) in memberships {
+        let next_id = new_id("membership");
+        connection.execute(
+            "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
+             VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
+            params![next_id, successor_id, principal_id, access, now],
+        )?;
+        connection.execute(
+            "INSERT INTO membership_profiles(
+               membership_id, revision, responsibility, required_capabilities,
+               preferred_capabilities, skill_references, preferred_model,
+               preferred_reasoning_effort, preferred_environment, updated_at
+             )
+             SELECT ?2, 0, responsibility, required_capabilities,
+                    preferred_capabilities, skill_references, preferred_model,
+                    preferred_reasoning_effort, preferred_environment, ?3
+             FROM membership_profiles WHERE membership_id=?1",
+            params![membership_id, next_id, now],
+        )?;
+        if assistant_membership_id.as_deref() == Some(membership_id.as_str()) {
+            successor_assistant = Some(next_id);
+        }
+    }
+    if let Some(assistant) = successor_assistant {
+        connection.execute(
+            "UPDATE conversations SET assistant_membership_id=?2 WHERE id=?1",
+            params![successor_id, assistant],
+        )?;
+    }
+    append_domain_event(
+        connection,
+        &successor_id,
+        EventKind::ConversationReset,
+        serde_json::json!({"reopenedFromConversationId": conversation_id}),
+        now,
+    )?;
+    bump_revision(connection, &successor_id, now)?;
+    Ok(successor_id)
 }
 
 fn rotate_assistant_membership(
@@ -6383,6 +6606,196 @@ mod tests {
                 .iter()
                 .any(|conversation| conversation.is_group)
         );
+    }
+
+    fn agent_principal(agent_id: &str) -> Principal {
+        Principal {
+            id: format!("agent:{agent_id}"),
+            kind: PrincipalKind::Agent,
+            display_name: agent_id.into(),
+            agent_id: Some(agent_id.into()),
+            created_at_unix_ms: 1,
+        }
+    }
+
+    fn membership_of(conversation: &Conversation, kind: PrincipalKind) -> Membership {
+        conversation
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.kind == kind)
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn archive_tree_cascades_marks_native_sessions_and_reopens_silently() {
+        let root = std::env::temp_dir().join(format!("licoup-archive-tree-{}", Uuid::new_v4()));
+        path_security::ensure_private_dir(&root).unwrap();
+        let store = ConversationStore::open(&root).unwrap();
+
+        let group = store
+            .create_conversation_with_members(
+                "Local",
+                owner(),
+                &[(agent_principal("antigravity"), MembershipAccess::Member)],
+            )
+            .unwrap();
+        let group_agent = membership_of(&group, PrincipalKind::Agent);
+        let group_owner = membership_of(&group, PrincipalKind::Human);
+        store
+            .set_conversation_assistant(
+                &group.id,
+                &group_owner.id,
+                group.revision,
+                Some(&group_agent.id),
+            )
+            .unwrap();
+        let group_scope = store
+            .prepare_runtime_dispatch(
+                "antigravity",
+                "native-group",
+                "Synthetic request",
+                Some(&group.id),
+                Some(&group_agent.id),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .bind_runtime_session(&group_scope, "antigravity", "native-group", None, None)
+            .unwrap();
+
+        let child = store
+            .create_conversation_with_members(
+                "child",
+                owner(),
+                &[(agent_principal("antigravity"), MembershipAccess::Member)],
+            )
+            .unwrap();
+        let child_agent = membership_of(&child, PrincipalKind::Agent);
+        let child_scope = store
+            .prepare_runtime_dispatch(
+                "antigravity",
+                "native-child",
+                "Synthetic request",
+                Some(&child.id),
+                Some(&child_agent.id),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .bind_runtime_session(&child_scope, "antigravity", "native-child", None, None)
+            .unwrap();
+
+        let untouched = store
+            .create_conversation_with_members(
+                "unrelated",
+                owner(),
+                &[(agent_principal("antigravity"), MembershipAccess::Member)],
+            )
+            .unwrap();
+        let untouched_agent = membership_of(&untouched, PrincipalKind::Agent);
+        let untouched_scope = store
+            .prepare_runtime_dispatch(
+                "antigravity",
+                "native-untouched",
+                "Synthetic request",
+                Some(&untouched.id),
+                Some(&untouched_agent.id),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .bind_runtime_session(
+                &untouched_scope,
+                "antigravity",
+                "native-untouched",
+                None,
+                None,
+            )
+            .unwrap();
+
+        let report = store
+            .archive_conversation_tree(&group.id, true, true)
+            .unwrap();
+        assert_eq!(report.conversation_id, group.id);
+        assert!(report.archived_child_ids.is_empty());
+        let marked: Vec<&str> = report
+            .archived_native_sessions
+            .iter()
+            .map(|reference| reference.native_session_id.as_str())
+            .collect();
+        assert_eq!(marked, ["native-group"]);
+        assert!(store.get(&group.id).unwrap().archived);
+        assert!(!store.get(&child.id).unwrap().archived);
+        assert!(!store.get(&untouched.id).unwrap().archived);
+
+        // The successor reopens the group silently: same title and members,
+        // assistant preserved, exactly one plain reset notice, and no member
+        // joined/left churn.
+        let successor_id = report.successor_conversation_id.unwrap();
+        let successor = store.get(&successor_id).unwrap();
+        assert_eq!(successor.title, "Local");
+        assert!(successor.is_group);
+        assert!(!successor.archived);
+        let successor_agent = membership_of(&successor, PrincipalKind::Agent);
+        assert_eq!(
+            successor_agent.principal.agent_id.as_deref(),
+            Some("antigravity")
+        );
+        assert_eq!(
+            successor.assistant_membership_id.as_deref(),
+            Some(successor_agent.id.as_str())
+        );
+        let events = store.event_page(&successor_id, None, 16).unwrap().events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.kind == EventKind::MembershipChanged)
+        );
+
+        // Archived native sessions are readable for catalog filtering; the
+        // unrelated session is not marked.
+        store.checkpoint().unwrap();
+        let marked_ids =
+            ConversationStore::archived_native_session_ids(&root, "antigravity").unwrap();
+        assert_eq!(
+            marked_ids.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["native-group"]
+        );
+
+        // Restore is the inverse for browse visibility: the marks owned by the
+        // restored conversation come back out.
+        store
+            .archive_conversation_tree(&group.id, false, false)
+            .unwrap();
+        assert!(!store.get(&group.id).unwrap().archived);
+        store.checkpoint().unwrap();
+        assert!(
+            ConversationStore::archived_native_session_ids(&root, "antigravity")
+                .unwrap()
+                .is_empty()
+        );
+
+        // Reopen only applies to groups, and never to a restore.
+        let direct = store.create_conversation("direct", owner()).unwrap();
+        assert!(
+            store
+                .archive_conversation_tree(&direct.id, true, true)
+                .is_err()
+        );
+        assert!(
+            store
+                .archive_conversation_tree(&group.id, false, true)
+                .is_err()
+        );
+
+        drop(store);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

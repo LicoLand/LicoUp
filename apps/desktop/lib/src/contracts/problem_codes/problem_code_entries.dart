@@ -19,7 +19,7 @@ import 'package:licoup/src/contracts/problem_codes/problem_code_domain.dart';
 /// - LU-PL 3500-3599 Adapter plugins (11 assigned)
 /// - LU-AR 3600-3699 Conversation archive / snapshots (3 assigned)
 /// - LU-AW 3700-3899 Subagent MCP and Assistant workflow facade (11 assigned)
-/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (339 assigned)
+/// - LU-NA 3900-4699 Native agent driver ProtocolFailure codes (360 assigned)
 /// - LU-CB 4700-4799 Catalog convergence (16 assigned)
 /// - LU-MC 4800-4899 MCP transfer (6 assigned)
 /// - LU-OC 4900-5199 Optional collaboration plugins (64 assigned)
@@ -830,6 +830,63 @@ const Map<String, ProblemCode> problemCodeEntries = {
   'cursor_cli_workspace_unavailable': ProblemCode(
     ProblemDomain.nativeAgent,
     4014,
+  ),
+  'deepseek_harness_absolute_cwd_required': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4245,
+  ),
+  'deepseek_harness_initialize_failed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4246,
+  ),
+  'deepseek_harness_invalid_json': ProblemCode(ProblemDomain.nativeAgent, 4247),
+  'deepseek_harness_jsonrpc_carrier_unavailable': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4248,
+  ),
+  'deepseek_harness_model_required': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4249,
+  ),
+  'deepseek_harness_output_limit_exceeded': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4250,
+  ),
+  'deepseek_harness_private_instructions_unsupported': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4251,
+  ),
+  'deepseek_harness_prompt_failed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4252,
+  ),
+  'deepseek_harness_prompt_rejected': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4253,
+  ),
+  'deepseek_harness_session_config_changed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4254,
+  ),
+  'deepseek_harness_session_mismatch': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4255,
+  ),
+  'deepseek_harness_transport_capacity_exceeded': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4256,
+  ),
+  'deepseek_harness_transport_unavailable': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4257,
+  ),
+  'deepseek_harness_transport_write_failed': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4258,
+  ),
+  'deepseek_harness_turn_incomplete': ProblemCode(
+    ProblemDomain.nativeAgent,
+    4259,
   ),
   'hermes_acp_absolute_cwd_required': ProblemCode(
     ProblemDomain.nativeAgent,

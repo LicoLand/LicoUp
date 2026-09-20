@@ -10,7 +10,7 @@ pub mod authorized_secure_record;
 mod claude_code_driver;
 mod codex_app_server;
 pub(crate) mod codex_runtime_observation;
-mod conversation_lane;
+pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;

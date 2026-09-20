@@ -29,6 +29,7 @@ import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
@@ -420,6 +421,7 @@ _HubHarness _harness(
   PluginManagementPresentationFixture? pluginPresentation,
   SkillHubPresentationFixture? skillPresentation,
   String? presetId,
+  bool reduceMotion = true,
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   final feature = AgentHubRendererBindingFixture(controller);
@@ -442,7 +444,7 @@ _HubHarness _harness(
         : buildLicoTheme(presetId: presetId),
     builder: (context, child) {
       return MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
         child: child!,
       );
     },
@@ -503,6 +505,26 @@ List<String> _cardOrder(WidgetTester tester) {
     });
   return [for (final entry in entries) entry.key];
 }
+
+AgentHubCatalogSnapshot _recipeSnapshot(String id) {
+  return AgentHubCatalogSnapshot(
+    recipes: _recipes().where((recipe) => recipe.id == id).toList(),
+  );
+}
+
+/// The entry animation's opacity for one card. Reduced motion leaves it at 1.
+double _cardOpacity(WidgetTester tester, String id) => tester
+    .widget<FadeTransition>(find.byKey(Key('agent-hub-card-fade-$id')))
+    .opacity
+    .value;
+
+/// The entry animation's vertical offset for one card, as a fraction of its
+/// own height. A settled card sits at 0.
+double _cardSettleOffset(WidgetTester tester, String id) => tester
+    .widget<SlideTransition>(find.byKey(Key('agent-hub-card-settle-$id')))
+    .position
+    .value
+    .dy;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -573,6 +595,47 @@ void main() {
       expect(owner.catalog!.recipes, hasLength(_ids.length));
     },
   );
+
+  test('a first inspection stays pending until the recipe settles', () async {
+    final codex = Completer<AgentHubCatalogSnapshot>();
+    final owner = AgentHubCatalogController(
+      engine: _FakeHubEngine(inspectDelays: {'codex': codex}),
+    );
+    addTearDown(owner.dispose);
+    final refresh = owner.refresh();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(owner.isRecipePending('codex'), isTrue);
+    expect(owner.isRecipePending('cursor'), isFalse);
+
+    codex.complete(const AgentHubCatalogSnapshot(recipes: [], ok: false));
+    await refresh;
+    expect(owner.isRecipePending('codex'), isFalse);
+    expect(owner.isRecipeFailed('codex'), isTrue);
+  });
+
+  test('a persisted recipe stays settled while it is re-inspected', () async {
+    final inspection = Completer<AgentHubCatalogSnapshot>();
+    final owner = AgentHubCatalogController(
+      engine: _FakeHubEngine(
+        seedCache: _snapshot(ownedIds: const {'codex'}),
+        inspectDelays: {for (final id in _ids) id: inspection},
+      ),
+    );
+    addTearDown(owner.dispose);
+    final refresh = owner.refresh();
+    await Future<void>.delayed(Duration.zero);
+
+    // The persisted result is still a fact the grid may render.
+    expect(owner.isRecipeResolving('codex'), isTrue);
+    expect(owner.isRecipePending('codex'), isFalse);
+
+    inspection.complete(const AgentHubCatalogSnapshot(recipes: [], ok: false));
+    await refresh;
+    // A settled-and-failed card is renderable, so it is not pending either.
+    expect(owner.isRecipePending('codex'), isFalse);
+    expect(owner.isRecipeFailed('codex'), isTrue);
+  });
 
   testWidgets('Agent Hub renders native portrait recipe cards', (tester) async {
     await _pumpHub(tester, _harness(_FakeHubEngine()));
@@ -721,21 +784,18 @@ void main() {
       // The warehouse paint is followed by an independent Agent inspection.
       expect(engine.catalogRecipeIds, ['', 'codex']);
       expect(engine.liveRootRequests, 0);
-      expect(
-        find.byKey(const Key('agent-hub-card-loading-codex')),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
-            .onTap,
-        isNull,
-      );
+      // The inspection has not settled, so the card is not in the grid yet and
+      // the pane keeps its loading treatment instead of a locked card.
+      expect(find.byKey(const Key('agent-hub-card-codex')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-loading')), findsOneWidget);
 
       inspection.complete();
       await tester.pump();
       await tester.pump();
 
+      // The settled inspection enters the grid already resolved and enabled.
+      expect(find.byKey(const Key('agent-hub-loading')), findsNothing);
+      expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
       expect(
         find.byKey(const Key('agent-hub-card-loading-codex')),
         findsNothing,
@@ -750,7 +810,7 @@ void main() {
     },
   );
 
-  testWidgets('failed Agent inspections preserve cards from the first paint', (
+  testWidgets('a partial live batch resolves what it can and offers retry', (
     tester,
   ) async {
     final warehouse = _snapshot();
@@ -772,11 +832,202 @@ void main() {
       expect(
         find.byKey(Key('agent-hub-card-$id')),
         findsOneWidget,
-        reason: 'card $id must survive a partial batch',
+        reason: 'card $id settles into the grid',
       );
     }
-    // Order follows the first catalog paint.
+    // Order follows the first catalog paint, not the settlement order.
     expect(_cardOrder(tester), _ids);
+    // The resolved card keeps its install path.
+    expect(
+      tester
+          .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+          .onTap,
+      isNotNull,
+    );
+    // The failed ones are recoverable in place instead of showing dead text.
+    for (final id in _ids.where((id) => id != 'codex')) {
+      expect(
+        find.byKey(Key('agent-hub-retry-$id')),
+        findsOneWidget,
+        reason: 'a failed inspection must offer its own retry',
+      );
+      expect(find.byKey(Key('agent-hub-install-$id')), findsNothing);
+    }
+    expect(find.text('Retry'), findsNWidgets(_ids.length - 1));
+    expect(find.text('Status unavailable'), findsNothing);
+    expect(find.text('状态加载失败'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cards enter the grid only as their own inspection settles', (
+    tester,
+  ) async {
+    final gates = {
+      for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
+    };
+    final engine = _FakeHubEngine(inspectDelays: {...gates});
+    await _pumpHub(tester, _harness(engine));
+
+    // Every inspection is in flight: no card is rendered for any Agent.
+    expect(
+      engine.catalogRecipeIds.where((id) => id.isNotEmpty),
+      unorderedEquals(_ids),
+    );
+    expect(find.byKey(const Key('agent-hub-loading')), findsOneWidget);
+    for (final id in _ids) {
+      expect(find.byKey(Key('agent-hub-card-$id')), findsNothing);
+    }
+
+    gates['codex']!.complete(_recipeSnapshot('codex'));
+    await tester.pump();
+    await tester.pump();
+
+    // Exactly the settled Agent enters, and the pane leaves its loading state.
+    expect(find.byKey(const Key('agent-hub-loading')), findsNothing);
+    expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
+    for (final id in _ids.where((id) => id != 'codex')) {
+      expect(find.byKey(Key('agent-hub-card-$id')), findsNothing);
+    }
+
+    // Settling out of catalog order still lands each card in its own slot.
+    gates['opencode']!.complete(_recipeSnapshot('opencode'));
+    gates['cursor']!.complete(_recipeSnapshot('cursor'));
+    await tester.pump();
+    await tester.pump();
+    expect(_cardOrder(tester), ['codex', 'cursor', 'opencode']);
+
+    for (final id in _ids.where(
+      (id) => !['codex', 'cursor', 'opencode'].contains(id),
+    )) {
+      gates[id]!.complete(_recipeSnapshot(id));
+    }
+    await tester.pump();
+    await tester.pump();
+    expect(_cardOrder(tester), _ids);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cards settling one at a time never reshuffle the grid', (
+    tester,
+  ) async {
+    final calls = <int>[];
+    List<AgentHubEntryProjection> rotatingOrder(
+      List<AgentHubEntryProjection> entries,
+    ) {
+      calls.add(entries.length);
+      if (entries.isEmpty) {
+        return entries;
+      }
+      return entries.reversed.toList();
+    }
+
+    final gates = {
+      for (final id in _ids) id: Completer<AgentHubCatalogSnapshot>(),
+    };
+    final engine = _FakeHubEngine(inspectDelays: {...gates});
+    await _pumpHub(tester, _harness(engine, orderRecipes: rotatingOrder));
+
+    // One order for the whole catalog, pinned before any card has settled.
+    expect(calls, [_ids.length]);
+
+    gates['codex']!.complete(_recipeSnapshot('codex'));
+    await tester.pump();
+    await tester.pump();
+    expect(_cardOrder(tester), ['codex']);
+    expect(calls, [_ids.length], reason: 'a settled card must not reshuffle');
+
+    gates['cursor']!.complete(_recipeSnapshot('cursor'));
+    await tester.pump();
+    await tester.pump();
+    // The second card keeps the order pinned for the full catalog.
+    expect(_cardOrder(tester), ['cursor', 'codex']);
+    expect(calls, [_ids.length], reason: 'a settled card must not reshuffle');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a failed card retries only its own inspection', (tester) async {
+    final failure = Completer<AgentHubCatalogSnapshot>();
+    final engine = _FakeHubEngine(inspectDelays: {'codex': failure});
+    await _pumpHub(tester, _harness(engine));
+
+    expect(find.byKey(const Key('agent-hub-card-codex')), findsNothing);
+    failure.complete(const AgentHubCatalogSnapshot(recipes: [], ok: false));
+    await tester.pump();
+    await tester.pump();
+
+    // The failed inspection enters the grid with its own recovery, and without
+    // the action a resolved card would offer.
+    expect(find.byKey(const Key('agent-hub-card-codex')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-retry-codex')), findsOneWidget);
+    expect(find.byKey(const Key('agent-hub-install-codex')), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+
+    // The retry answers with the live state this time.
+    engine.inspectDelays.remove('codex');
+    engine.catalogRecipeIds.clear();
+    await tester.tap(find.byKey(const Key('agent-hub-retry-codex')));
+    await tester.pump();
+    await tester.pump();
+
+    // One status re-read for that card, and no machine-wide rescan.
+    expect(engine.catalogRecipeIds, ['codex']);
+    expect(engine.actions, isEmpty);
+    expect(find.byKey(const Key('agent-hub-retry-codex')), findsNothing);
+    expect(
+      tester
+          .widget<InkWell>(find.byKey(const Key('agent-hub-install-codex')))
+          .onTap,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a settled card fades and settles into the grid', (tester) async {
+    final gate = Completer<AgentHubCatalogSnapshot>();
+    final engine = _FakeHubEngine(inspectDelays: {'codex': gate});
+    await _pumpHub(tester, _harness(engine, reduceMotion: false));
+
+    // The cards that already settled finish their entry while codex waits.
+    await tester.pump(LicoMotion.medium);
+    expect(_cardOpacity(tester, 'cursor'), 1);
+    expect(find.byKey(const Key('agent-hub-card-fade-codex')), findsNothing);
+
+    gate.complete(_recipeSnapshot('codex'));
+    await tester.pump();
+    await tester.pump();
+
+    // The entering card is transparent and slightly below its slot.
+    expect(_cardOpacity(tester, 'codex'), 0);
+    expect(_cardSettleOffset(tester, 'codex'), greaterThan(0));
+    // A card already on screen keeps its settled state instead of replaying.
+    expect(_cardOpacity(tester, 'cursor'), 1);
+
+    await tester.pump(LicoMotion.medium ~/ 4);
+    final midway = _cardOpacity(tester, 'codex');
+    expect(midway, greaterThan(0));
+    expect(midway, lessThan(1));
+    expect(_cardSettleOffset(tester, 'codex'), greaterThan(0));
+
+    await tester.pump(LicoMotion.medium);
+    expect(_cardOpacity(tester, 'codex'), 1);
+    expect(_cardSettleOffset(tester, 'codex'), 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a settled card is simply in place when animations are off', (
+    tester,
+  ) async {
+    final gate = Completer<AgentHubCatalogSnapshot>();
+    final engine = _FakeHubEngine(inspectDelays: {'codex': gate});
+    await _pumpHub(tester, _harness(engine));
+
+    gate.complete(_recipeSnapshot('codex'));
+    await tester.pump();
+    await tester.pump();
+
+    // Reduced motion: no fade and no offset to settle from.
+    expect(_cardOpacity(tester, 'codex'), 1);
+    expect(_cardSettleOffset(tester, 'codex'), 0);
     expect(tester.takeException(), isNull);
   });
 

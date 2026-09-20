@@ -310,8 +310,6 @@ class _CanonicalGroupConversationPaneState
         initialRevision: revision ?? '',
       );
     }
-    if (!mounted) return;
-    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
   }
 
   Future<void> _openAssistantConfiguration() async {
@@ -324,35 +322,21 @@ class _CanonicalGroupConversationPaneState
     widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
   }
 
-  void _refreshAssistantThread() {
+  void _archiveAndReopen() {
     if (_turnActive || widget.canonical.sending) {
       widget.conversation.intents.send(
         SurfaceConversationFailure(
-          stage: 'assistant-refresh',
-          reasonCode: 'assistant_turn_active',
-          conversationId: widget.canonical.conversationId,
-        ),
-      );
-      return;
-    }
-    widget.conversation.intents.send(const RefreshCanonicalAssistantThread());
-  }
-
-  void _clearHistory() {
-    if (_turnActive || widget.canonical.sending) {
-      widget.conversation.intents.send(
-        SurfaceConversationFailure(
-          stage: 'canonical-clear',
+          stage: 'canonical-archive',
           reasonCode: 'conversation_clear_blocked',
           conversationId: widget.canonical.conversationId,
         ),
       );
       return;
     }
-    unawaited(_confirmAndClearHistory());
+    unawaited(_confirmAndArchive());
   }
 
-  Future<void> _confirmAndClearHistory() async {
+  Future<void> _confirmAndArchive() async {
     final conversation = widget.canonical.conversation;
     if (conversation == null) return;
     final strings = LicoStrings.of(context);
@@ -364,30 +348,24 @@ class _CanonicalGroupConversationPaneState
       builder: (dialogContext) {
         final dialogStrings = LicoStrings.of(dialogContext);
         return AlertDialog(
-          title: Text(dialogStrings.confirmClearCanonicalConversationTitle),
-          content: Text(
-            dialogStrings.confirmClearCanonicalConversationMessage(title),
-          ),
+          title: Text(dialogStrings.archiveGroupConversationTitle),
+          content: Text(dialogStrings.archiveGroupConversationMessage(title)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(dialogStrings.cancel),
             ),
             FilledButton(
-              key: const Key('canonical-group-clear-history-confirm'),
+              key: const Key('canonical-group-archive-confirm'),
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(
-                dialogStrings.confirmClearCanonicalConversationAction,
-              ),
+              child: Text(dialogStrings.archive),
             ),
           ],
         );
       },
     );
     if (confirmed == true && mounted) {
-      widget.conversation.intents.send(
-        const ClearCanonicalConversationHistory(),
-      );
+      widget.conversation.intents.send(const ArchiveAndReopenConversation());
     }
   }
 
@@ -621,10 +599,7 @@ class _CanonicalGroupConversationPaneState
             () => widget.conversation.intents.send(
               AddConversationAttachment(widget.composer.conversationId),
             ),
-        onNewConversation: conversation.assistantMembership == null
-            ? null
-            : _refreshAssistantThread,
-        onClearHistory: _clearHistory,
+        onArchive: _archiveAndReopen,
         onDiscardImages:
             widget.onClearComposerImages ??
             () => widget.conversation.intents.send(
@@ -675,7 +650,7 @@ class _CanonicalGroupConversationPaneState
           ),
         ),
       ),
-      onNewConversation: _refreshAssistantThread,
+      onNewConversation: _archiveAndReopen,
     );
     final pane = AgentConversationActivePane(
       key: const Key('canonical-group-conversation-pane'),

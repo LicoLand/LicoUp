@@ -94,6 +94,23 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+
+    testWidgets('toast text never inherits the fallback decorated style', (
+      tester,
+    ) async {
+      await pumpHostApp(tester, child: contextProbe());
+
+      await showToast(tester, 'plain text');
+
+      final element = tester.element(find.text('plain text'));
+      final inherited = DefaultTextStyle.of(element).style;
+      expect(
+        inherited.decoration == null ||
+            inherited.decoration == TextDecoration.none,
+        isTrue,
+        reason: 'overlay toasts render without an underline',
+      );
+    });
   });
 
   group('stacking', () {

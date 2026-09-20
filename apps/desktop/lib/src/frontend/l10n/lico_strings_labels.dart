@@ -539,17 +539,13 @@ extension LicoStringsLabels on LicoStrings {
       : 'Your Assistant is coordinating $count ${count == 1 ? 'Subagent' : 'Subagents'}';
   String get assistantActionsTooltip =>
       isChinese ? '助手操作' : 'Assistant actions';
-  String get newAssistantConversation =>
-      isChinese ? '新助手对话' : 'New Assistant conversation';
-  String get clearCanonicalConversationHistory =>
-      isChinese ? '重置历史' : 'Reset history';
-  String get confirmClearCanonicalConversationTitle =>
-      isChinese ? '重置这段群聊历史？' : 'Reset this group history?';
-  String confirmClearCanonicalConversationMessage(String title) => isChinese
-      ? '“$title” 的群聊历史会重置。Continuity 子会话会保留并自动归档。之后从新的 Assistant 对话继续。'
-      : '“$title” group history will be reset. Continuity child conversations stay intact and are archived. Later turns continue from a new Assistant conversation.';
-  String get confirmClearCanonicalConversationAction =>
-      isChinese ? '重置' : 'Reset';
+  String get archiveGroupConversationTitle =>
+      isChinese ? '归档这段群聊对话？' : 'Archive this group conversation?';
+  String archiveGroupConversationMessage(String title) => isChinese
+      ? '“$title” 与其真正涉及的对话会一起归档保存，随后开启新的助手对话。'
+      : '“$title” and the conversations it involves will be archived together, then a new Assistant conversation opens.';
+  String get conversationResetNotice =>
+      isChinese ? '已开启新对话' : 'New conversation started';
   String get archivedContinuityChildren =>
       isChinese ? '已归档子会话' : 'Archived children';
   String get discardPendingImages =>

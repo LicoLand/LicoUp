@@ -49,6 +49,23 @@ void main() {
           inInclusiveRange(200, 275),
         );
       }
+      // The blue-to-violet band must spread: neighbours never read as one hue.
+      final bandHues = [
+        for (final label in [
+          'Kimi Code',
+          'DeepSeek Harness',
+          'Antigravity',
+          'GitHub Copilot',
+        ])
+          HSLColor.fromColor(agentUsageSeriesColor(colors, label)).hue,
+      ]..sort();
+      for (var i = 1; i < bandHues.length; i += 1) {
+        expect(
+          bandHues[i] - bandHues[i - 1],
+          greaterThanOrEqualTo(12),
+          reason: 'blue-to-violet neighbours must stay separable',
+        );
+      }
       expect(
         agentUsageSeriesColor(colors, 'new-agent'),
         agentUsageSeriesColor(colors, 'NEW AGENT'),

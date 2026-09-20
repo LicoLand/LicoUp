@@ -586,6 +586,9 @@ _canonicalGroupPartPresentation(ClientConversationEventPart eventPart) {
   required LicoStrings strings,
 }) {
   final membershipEvent = event.kind == ConversationEventKind.membershipChanged;
+  if (event.kind == ConversationEventKind.conversationReset) {
+    return (title: '', detail: strings.conversationResetNotice);
+  }
   final title = membershipEvent
       ? strings.groupConversationMembershipChangeTitle
       : strings.groupConversationAvailabilityChangeTitle;

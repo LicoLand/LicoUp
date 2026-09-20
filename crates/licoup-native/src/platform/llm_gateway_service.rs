@@ -109,6 +109,11 @@ fn authorization_failure_report(error: &anyhow::Error) -> Option<Value> {
         "secure_mesh_keychain_classic_access_requires_user_action" => {
             "secure_mesh_keychain_classic_access_requires_user_action"
         }
+        // Inventoried entries whose protected material is unreadable on this
+        // build (for example an ad hoc local install that cannot see the
+        // shared keychain group) must surface as their own recoverable cause,
+        // not as an opaque authorization failure.
+        "llm_api_key_inventory_inconsistent" => "llm_api_key_inventory_inconsistent",
         _ => return None,
     };
     Some(authorization_report(
@@ -1268,6 +1273,13 @@ mod tests {
         );
         assert!(
             authorization_failure_report(&anyhow!("secure_mesh_authorization_required")).is_none()
+        );
+        let inconsistent =
+            authorization_failure_report(&anyhow!("llm_api_key_inventory_inconsistent")).unwrap();
+        assert_eq!(inconsistent["authorized"], false);
+        assert_eq!(
+            inconsistent["reasonCode"],
+            "llm_api_key_inventory_inconsistent"
         );
     }
 
