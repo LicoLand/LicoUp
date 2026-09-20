@@ -31,6 +31,8 @@ pub(super) fn handle_list(_command: AdmittedCommand) -> Result<CliExecution> {
     let inventory =
         crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(&root)?.list()?;
     let mut result = serde_json::to_value(inventory)?;
+    result["supported"] =
+        json!(crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::platform_supported());
     result["migrationPending"] =
         json!(crate::domain::client_state_migration::gateway_credential_migration_pending(&root)?);
     Ok(CliExecution::Json(result))

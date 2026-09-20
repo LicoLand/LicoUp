@@ -1486,7 +1486,20 @@ fn silent_keychain_roundtrip_probe(backend: MacosKeychainBackend) -> bool {
         security_framework_static!(kSecUseDataProtectionKeychain, sec_key),
         CFBoolean::from(backend == MacosKeychainBackend::DataProtection).into_CFType(),
     ));
-    let query_pair_count = pairs.len();
+    // The production write always carries a SecAccessControl; probing without
+    // one would pass on ad hoc builds that cannot actually persist a protected
+    // item (errSecMissingEntitlement) and misreport the vault as available. A
+    // plain ACL exercises the same boundary without any interactive readback.
+    let Ok(probe_access) =
+        SecAccessControl::create_with_protection(Some(ProtectionMode::AccessibleWhenUnlocked), 0)
+    else {
+        return false;
+    };
+    pairs.push((
+        security_framework_static!(kSecAttrAccessControl, sec_key),
+        probe_access.into_CFType(),
+    ));
+    let query_pair_count = pairs.len() - 1;
     pairs.push((
         security_framework_static!(kSecValueData, sec_key),
         CFData::from_buffer(PROBE_SECRET).into_CFType(),

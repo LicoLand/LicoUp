@@ -262,23 +262,28 @@ class LicoToastHostState extends State<LicoToastHost> {
 
   Widget _buildStack(BuildContext overlayContext) {
     final media = MediaQuery.of(overlayContext);
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + media.padding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final item in _items)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: _LicoToastItemView(
-                  key: ValueKey<int>(item.id),
-                  item: item,
-                  onDismissed: () => _dismissItem(item.id),
+    // The root overlay sits above any route Material; wrap the stack so toast
+    // text and action buttons never inherit the fallback decorated style.
+    return Material(
+      type: MaterialType.transparency,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + media.padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final item in _items)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _LicoToastItemView(
+                    key: ValueKey<int>(item.id),
+                    item: item,
+                    onDismissed: () => _dismissItem(item.id),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

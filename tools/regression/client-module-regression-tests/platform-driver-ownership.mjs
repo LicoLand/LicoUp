@@ -418,6 +418,8 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
       "platform::acp_driver_runtime::tests::stdio_transport::"],
     ["rust.platform.acp-runtime.supervision",
       "platform::acp_driver_runtime::tests::supervision::"],
+    ["rust.platform.acp-runtime.replay",
+      "platform::native_agent_parser::replay::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.acp-runtime."));
@@ -951,6 +953,8 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
       "platform::openclaw_driver::tests::probe::"],
     ["rust.platform.openclaw-driver.execution",
       "platform::openclaw_driver::tests::execution::"],
+    ["rust.platform.openclaw-driver.replay",
+      "platform::native_agent_parser::replay::"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.openclaw-driver."));

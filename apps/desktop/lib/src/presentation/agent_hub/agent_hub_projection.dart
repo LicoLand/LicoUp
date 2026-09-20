@@ -53,6 +53,7 @@ final class AgentHubEntryProjection {
     required this.owned,
     required this.installable,
     required this.busy,
+    this.pending = false,
     this.resolutionFailed = false,
     required this.primaryAction,
     required this.actionStateLabel,
@@ -71,6 +72,10 @@ final class AgentHubEntryProjection {
   final bool owned;
   final bool installable;
   final bool busy;
+
+  /// The first inspection is still in flight and no settled result exists yet,
+  /// so the grid renders no card for this entry.
+  final bool pending;
   final bool resolutionFailed;
   final String primaryAction;
   final String actionStateLabel;
@@ -107,6 +112,7 @@ final class AgentHubEntryProjection {
           other.owned == owned &&
           other.installable == installable &&
           other.busy == busy &&
+          other.pending == pending &&
           other.resolutionFailed == resolutionFailed &&
           other.primaryAction == primaryAction &&
           other.actionStateLabel == actionStateLabel &&
@@ -126,6 +132,7 @@ final class AgentHubEntryProjection {
     owned,
     installable,
     busy,
+    pending,
     resolutionFailed,
     primaryAction,
     actionStateLabel,

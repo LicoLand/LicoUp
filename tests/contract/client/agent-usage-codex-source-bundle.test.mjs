@@ -27,6 +27,7 @@ const productionLeaves = Object.freeze([
   "constants.rs",
   "event_hash.rs",
   "file_collection.rs",
+  "identity_refresh.rs",
   "lineage.rs",
   "models.rs",
   "parser.rs",

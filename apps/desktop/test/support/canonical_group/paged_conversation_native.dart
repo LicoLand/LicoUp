@@ -87,6 +87,18 @@ final class PagedConversationNative implements ClientConversationNativePort {
         events.clear();
         revision += 1;
         result = {};
+      case 'conversation.archive':
+        if (request['reopen'] == true) {
+          events.clear();
+          revision += 1;
+          result = {
+            'conversationId': request['conversationId'],
+            'archivedChildIds': <String>[],
+            'successor': _conversation('successor'),
+          };
+        } else {
+          result = {};
+        }
       case 'conversation.message.delete':
         events.removeWhere((_, event) => event['id'] == request['eventId']);
         revision += 1;

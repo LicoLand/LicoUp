@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
@@ -312,7 +312,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump();
       expect(gateway.attachedHandles, ['dispatch:first']);
-      expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+      expect(find.byType(OrbWaitingIndicator), findsOneWidget);
       final before = tester
           .widget<AgentConversationActivePane>(
             find.byType(AgentConversationActivePane),
@@ -326,7 +326,7 @@ void main() {
       gateway.emitReply('First text from the actual Membership observer');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 40));
-      expect(find.byType(SteelBallWaitingIndicator), findsNothing);
+      expect(find.byType(OrbWaitingIndicator), findsNothing);
       expect(
         find.textContaining('actual Membership observer', findRichText: true),
         findsOneWidget,
@@ -855,28 +855,17 @@ void main() {
         final attachments = find.byKey(
           const Key('canonical-group-action-attachments'),
         );
-        final newConversation = find.byKey(
-          const Key('canonical-group-action-new-conversation'),
-        );
-        final clearHistory = find.byKey(
-          const Key('canonical-group-action-clear-history'),
-        );
+        final archive = find.byKey(const Key('canonical-group-action-archive'));
         expect(attachments, findsOneWidget);
-        expect(newConversation, findsOneWidget);
-        expect(clearHistory, findsOneWidget);
+        expect(archive, findsOneWidget);
         expect(
           find.byKey(const Key('canonical-group-action-discard-images')),
           findsNothing,
         );
-        // Attachments is nearest the button; reset history above it;
-        // new conversation is furthest from the button.
+        // Attachments is nearest the button; archive is above it.
         expect(
           tester.getRect(attachments).bottom,
-          greaterThan(tester.getRect(clearHistory).bottom),
-        );
-        expect(
-          tester.getRect(clearHistory).bottom,
-          greaterThan(tester.getRect(newConversation).bottom),
+          greaterThan(tester.getRect(archive).bottom),
         );
         expect(find.text('Attachments'), findsNothing);
 
@@ -911,7 +900,7 @@ void main() {
     );
   }
 
-  testWidgets('new-conversation action rotates the assistant thread in place', (
+  testWidgets('archive action confirms then archives the group and reopens', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -926,9 +915,6 @@ void main() {
     await controller.selectConversation('conversation:group');
     final originalMembershipId = runner.assistantMembershipId;
     final originalAgentId = runner.assistantAgentId;
-    final originalDisplayName = runner.assistantDisplayName;
-    final originalModel = runner.assistantPreferredModel;
-    final originalEffort = runner.assistantPreferredReasoningEffort;
 
     await tester.pumpWidget(
       _groupApp(
@@ -949,125 +935,15 @@ void main() {
       find.byKey(const Key('canonical-group-assistant-actions-trigger')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('canonical-group-action-new-conversation')),
-    );
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
     await tester.pumpAndSettle();
-
-    final rotation = runner.requests
-        .map((request) => request['action'])
-        .where(
-          (action) =>
-              action == 'conversation.membership.leave' ||
-              action == 'conversation.membership.add' ||
-              action == 'conversation.assistant.set' ||
-              action == 'conversation.profile.update',
-        )
-        .toList(growable: false);
-    expect(rotation, [
-      'conversation.membership.leave',
-      'conversation.membership.add',
-      'conversation.assistant.set',
-      'conversation.profile.update',
-    ]);
-    expect(
-      runner.requests.where(
-        (request) => request['action'] == 'conversation.clear',
-      ),
-      isEmpty,
-    );
-
-    final leave = runner.requests.firstWhere(
-      (request) => request['action'] == 'conversation.membership.leave',
-    );
-    expect(leave['membershipId'], originalMembershipId);
-    final add = runner.requests.firstWhere(
-      (request) => request['action'] == 'conversation.membership.add',
-    );
-    final principal = Map<String, dynamic>.from(add['principal'] as Map);
-    expect(principal['id'], 'agent:$originalAgentId');
-    expect(principal['agentId'], originalAgentId);
-    expect(principal['displayName'], originalDisplayName);
-
-    final rotatedId = runner.assistantMembershipId;
-    expect(rotatedId, isNot(originalMembershipId));
-    final assistantSet = runner.requests.firstWhere(
-      (request) => request['action'] == 'conversation.assistant.set',
-    );
-    expect(assistantSet['membershipId'], rotatedId);
-    final profileUpdate = runner.requests.firstWhere(
-      (request) => request['action'] == 'conversation.profile.update',
-    );
-    expect(profileUpdate['membershipId'], rotatedId);
-    final intent = Map<String, dynamic>.from(profileUpdate['intent'] as Map);
-    expect(intent['preferredModel'], originalModel);
-    expect(intent['preferredReasoningEffort'], originalEffort);
-
-    // The pane never leaves the group: same id, same agent, new Membership.
-    expect(controller.selectedConversationId, 'conversation:group');
-    final reloaded = controller.selectedConversation;
-    expect(reloaded, isNotNull);
-    expect(reloaded!.id, 'conversation:group');
-    expect(reloaded.assistantMembership?.id, rotatedId);
-    expect(reloaded.assistantMembership?.principal.agentId, originalAgentId);
-    expect(controller.failureCode, isEmpty);
-    expect(
-      find.byKey(const Key('canonical-group-conversation-pane')),
-      findsOneWidget,
-    );
-    // Rotating the thread preserves the assistant display name.
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('canonical-group-assistant-control')),
-        matching: find.text(runner.assistantDisplayName),
-      ),
-      findsOneWidget,
-    );
-    controller.dispose();
-  });
-
-  testWidgets('clear-history action confirms then clears Canonical history', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(900, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final runner = _AssistantSurfaceRunner();
-    final controller = ClientConversationController(native: runner);
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    final originalMembershipId = runner.assistantMembershipId;
-
-    await tester.pumpWidget(
-      _groupApp(
-        CanonicalGroupConversationPaneFixture(
-          controller: controller,
-          targets: [_target('codex', 'Codex')],
-          onCopyText: (_) async {},
-          framed: false,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('canonical-group-action-clear-history')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Reset this group history?'), findsOneWidget);
+    expect(find.text('Archive this group conversation?'), findsOneWidget);
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(
       runner.requests.where(
-        (request) => request['action'] == 'conversation.clear',
+        (request) => request['action'] == 'conversation.archive',
       ),
       isEmpty,
     );
@@ -1076,28 +952,45 @@ void main() {
       find.byKey(const Key('canonical-group-assistant-actions-trigger')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('canonical-group-action-clear-history')),
-    );
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('canonical-group-clear-history-confirm')),
-    );
+    await tester.tap(find.byKey(const Key('canonical-group-archive-confirm')));
     await tester.pumpAndSettle();
 
-    final cleared = runner.requests.singleWhere(
-      (request) => request['action'] == 'conversation.clear',
+    final archived = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.archive',
     );
-    expect(cleared['conversationId'], 'conversation:group');
-    expect(cleared['ownerMembershipId'], 'membership:owner');
-    expect(runner.assistantMembershipId, isNot(originalMembershipId));
-    expect(controller.selectedConversationId, 'conversation:group');
-    expect(controller.events, isEmpty);
+    expect(archived['conversationId'], 'conversation:group');
+    expect(archived['archived'], isTrue);
+    expect(archived['reopen'], isTrue);
+    // The unified mechanism never churns memberships on screen.
+    expect(
+      runner.requests.where(
+        (request) =>
+            request['action'] == 'conversation.membership.leave' ||
+            request['action'] == 'conversation.membership.add',
+      ),
+      isEmpty,
+    );
+
+    // The pane lands on the fresh successor: new conversation id, same agent.
+    expect(controller.selectedConversationId, 'conversation:successor');
+    final reopened = controller.selectedConversation;
+    expect(reopened, isNotNull);
+    expect(reopened!.id, 'conversation:successor');
+    expect(reopened.assistantMembership?.principal.agentId, originalAgentId);
+    expect(reopened.assistantMembership?.id, isNot(originalMembershipId));
+    expect(controller.failureCode, isEmpty);
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsOneWidget,
+    );
+    expect(find.text('New conversation started'), findsOneWidget);
     controller.dispose();
   });
 
   testWidgets(
-    'typed slash-new in the group composer runs the same refresh and never posts',
+    'typed slash-new in the group composer runs the same archive flow after confirmation and never posts',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -1136,23 +1029,24 @@ void main() {
         ),
         isEmpty,
       );
-      final rotation = runner.requests
-          .map((request) => request['action'])
-          .where(
-            (action) =>
-                action == 'conversation.membership.leave' ||
-                action == 'conversation.membership.add' ||
-                action == 'conversation.assistant.set' ||
-                action == 'conversation.profile.update',
-          )
-          .toList(growable: false);
-      expect(rotation, [
-        'conversation.membership.leave',
-        'conversation.membership.add',
-        'conversation.assistant.set',
-        'conversation.profile.update',
-      ]);
-      expect(controller.selectedConversationId, 'conversation:group');
+      await tester.tap(
+        find.byKey(const Key('canonical-group-archive-confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      final archived = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.archive',
+      );
+      expect(archived['reopen'], isTrue);
+      expect(
+        runner.requests.where(
+          (request) =>
+              request['action'] == 'conversation.membership.leave' ||
+              request['action'] == 'conversation.membership.add',
+        ),
+        isEmpty,
+      );
+      expect(controller.selectedConversationId, 'conversation:successor');
       expect(
         controller.selectedConversation?.assistantMembership?.principal.agentId,
         originalAgentId,
@@ -1161,7 +1055,7 @@ void main() {
     },
   );
 
-  testWidgets('busy assistant refuses the refresh with assistant_turn_active', (
+  testWidgets('busy assistant refuses the archive flow while a turn is live', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -1211,20 +1105,19 @@ void main() {
       find.byKey(const Key('canonical-group-assistant-actions-trigger')),
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('canonical-group-action-new-conversation')),
-    );
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
     await tester.pump();
 
     expect(
       runner.requests.where(
         (request) =>
             request['action'] == 'conversation.membership.leave' ||
-            request['action'] == 'conversation.membership.add',
+            request['action'] == 'conversation.membership.add' ||
+            request['action'] == 'conversation.archive',
       ),
       isEmpty,
     );
-    expect(controller.failureCode, 'assistant_turn_active');
+    expect(controller.failureCode, 'conversation_clear_blocked');
     expect(find.byKey(const Key('canonical-group-failure')), findsOneWidget);
     expect(runner.assistantMembershipId, 'membership:codex');
     controller.dispose();
@@ -1572,6 +1465,7 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
   bool dispatchPending = false;
   List<Map<String, dynamic>> postTurns = const [];
   int _rotationCount = 0;
+  String successorId = '';
 
   final Map<String, Map<String, dynamic>> _profiles = {
     'membership:codex': {
@@ -1743,6 +1637,27 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
             'assistantMembershipId': assistantMembershipId,
           },
         };
+      case 'conversation.archive':
+        revision += 1;
+        if (request['reopen'] == true) {
+          successorId = 'conversation:successor';
+          return {
+            'ok': true,
+            'result': <String, dynamic>{
+              'conversationId': 'conversation:group',
+              'archivedChildIds': <String>[],
+              'archivedNativeSessions': <Map<String, dynamic>>[],
+              'successor': _successorConversation(),
+            },
+          };
+        }
+        return {
+          'ok': true,
+          'result': <String, dynamic>{
+            'conversationId': 'conversation:group',
+            'archivedChildIds': <String>[],
+          },
+        };
       case 'conversation.profile.update':
         final membershipId = (request['membershipId'] ?? '').toString();
         final profile = _profiles[membershipId];
@@ -1767,36 +1682,56 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
       'ok': true,
       'result': switch (action) {
         'conversation.list' => [
-          {
-            'id': 'conversation:group',
-            'title': 'Lico',
-            'archived': false,
-            'pinned': true,
-            'isGroup': true,
-            'revision': revision,
-            'updatedAtUnixMs': 2,
-            'membershipCount': _activeMemberships.length,
-            'eventCount': 0,
-          },
+          if (successorId.isNotEmpty)
+            {
+              'id': successorId,
+              'title': 'Lico',
+              'archived': false,
+              'pinned': false,
+              'isGroup': true,
+              'revision': 0,
+              'updatedAtUnixMs': 5,
+              'membershipCount': _activeMemberships.length,
+              'eventCount': 1,
+            },
+          if (successorId.isEmpty || request['includeArchived'] == true)
+            {
+              'id': 'conversation:group',
+              'title': 'Lico',
+              'archived': successorId.isNotEmpty,
+              'pinned': true,
+              'isGroup': true,
+              'revision': revision,
+              'updatedAtUnixMs': 2,
+              'membershipCount': _activeMemberships.length,
+              'eventCount': 0,
+            },
         ],
-        'conversation.get' => {
-          'id': 'conversation:group',
-          'title': 'Lico',
-          'archived': false,
-          'pinned': true,
-          'isGroup': true,
-          if (assistantMembershipId.isNotEmpty)
-            'assistantMembershipId': assistantMembershipId,
-          'revision': revision,
-          'createdAtUnixMs': 1,
-          'updatedAtUnixMs': 2,
-          'eventCount': 0,
-          'memberships': _memberships,
-        },
+        'conversation.get' =>
+          (request['conversationId'] ?? '') == successorId
+              ? _successorConversation()
+              : {
+                  'id': 'conversation:group',
+                  'title': 'Lico',
+                  'archived': false,
+                  'pinned': true,
+                  'isGroup': true,
+                  if (assistantMembershipId.isNotEmpty)
+                    'assistantMembershipId': assistantMembershipId,
+                  'revision': revision,
+                  'createdAtUnixMs': 1,
+                  'updatedAtUnixMs': 2,
+                  'eventCount': 0,
+                  'memberships': _memberships,
+                },
         'conversation.events.page' => {
-          'events': historyEvents,
+          'events': (request['conversationId'] ?? '') == successorId
+              ? [_successorResetEvent()]
+              : historyEvents,
           'nextCursor': null,
-          'totalCount': historyEvents.length,
+          'totalCount': (request['conversationId'] ?? '') == successorId
+              ? 1
+              : historyEvents.length,
         },
         'conversation.message.post' => {
           'event': <String, dynamic>{
@@ -1825,6 +1760,52 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
       },
     };
   }
+
+  Map<String, dynamic> _successorConversation() {
+    final successorMemberships = [
+      for (final membership in _memberships)
+        if (membership['status'] == 'active')
+          <String, dynamic>{
+            ...membership,
+            'id': '${membership['id']}-successor',
+            'conversationId': successorId,
+          },
+    ];
+    return <String, dynamic>{
+      'id': successorId,
+      'title': 'Lico',
+      'archived': false,
+      'pinned': false,
+      'isGroup': true,
+      if (assistantMembershipId.isNotEmpty)
+        'assistantMembershipId': '$assistantMembershipId-successor',
+      'revision': 0,
+      'createdAtUnixMs': 5,
+      'updatedAtUnixMs': 5,
+      'eventCount': 1,
+      'memberships': successorMemberships,
+    };
+  }
+
+  Map<String, dynamic> _successorResetEvent() => <String, dynamic>{
+    'id': 'event:successor-reset',
+    'conversationId': successorId,
+    'sequence': 1,
+    'authorMembershipId': null,
+    'kind': 'conversation-reset',
+    'createdAtUnixMs': 5,
+    'finalized': true,
+    'parts': <Map<String, dynamic>>[
+      {
+        'id': 'part:successor-reset',
+        'eventId': 'event:successor-reset',
+        'ordinal': 0,
+        'kind': 'metadata',
+        'content': '{"reopenedFromConversationId":"conversation:group"}',
+        'createdAtUnixMs': 5,
+      },
+    ],
+  };
 }
 
 Map<String, dynamic> _membership({

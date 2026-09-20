@@ -38,6 +38,23 @@ use super::query_filter::{epoch_number_to_rfc3339, session_id, system_time, titl
 use super::session_metadata::{
     extract_conversation_title, meaningful_explicit_title, session_from_messages_with_title,
 };
+
+/// Native sessions the user archived through a Lico conversation are
+/// visibility-filtered here; the record lives in the Canonical store and the
+/// agent's own files are never touched. Read-only and fail-open by design: a
+/// missing or unreadable mark table filters nothing. Unit tests without a
+/// portable data directory override never open the developer's store.
+fn archived_native_sessions(agent_id: &str) -> std::collections::BTreeSet<String> {
+    #[cfg(test)]
+    if crate::platform::paths::portable_data_dir_override_path().is_none() {
+        return Default::default();
+    }
+    let Ok(root) = crate::platform::paths::portable_data_dir_read_only() else {
+        return Default::default();
+    };
+    licoup_conversation::store::ConversationStore::archived_native_session_ids(&root, agent_id)
+        .unwrap_or_default()
+}
 use super::{CONVERSATION_SCHEMA_VERSION, HistoryScanConfig, finalize_history_sessions};
 use crate::domain::conversation::adapter_dispatch::parse_history_file;
 use crate::domain::conversation::history_discovery::{
@@ -117,7 +134,15 @@ pub(crate) fn conversation_list_from_catalog_inner(
     params: &Value,
     scan_config: &HistoryScanConfig,
 ) -> (Value, BrowseWorkCounters) {
-    let catalog = load_session_catalog(adapter, params, SystemTime::now());
+    let mut catalog = load_session_catalog(adapter, params, SystemTime::now());
+    let archived = archived_native_sessions(agent_id);
+    if !archived.is_empty() {
+        // Lico-archived sessions stay on disk under the agent's own history;
+        // they only stop surfacing in browse listings.
+        catalog
+            .sessions
+            .retain(|session| !archived.contains(session.native_session_id.as_str()));
+    }
     let total_sessions = catalog.sessions.len();
     let offset = scan_config.page.offset;
     let end = scan_config
