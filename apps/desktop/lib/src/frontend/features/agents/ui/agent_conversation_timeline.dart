@@ -67,7 +67,8 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
     final failure = message.kind == AgentConversationMessageKind.error;
     final notice =
         message.cardType == 'membership-changed' ||
-        message.cardType == 'availability';
+        message.cardType == 'availability' ||
+        message.cardType == 'conversation-reset';
     if (message.isStructuredEvent && !failure && !notice) continue;
     final identity = message.stableIdentity.trim().isNotEmpty
         ? message.stableIdentity.trim()

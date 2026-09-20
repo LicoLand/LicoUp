@@ -327,8 +327,7 @@ class _Scene extends StatelessWidget {
                                 floatingMatteCapsule: true,
                                 leading: CanonicalGroupAssistantActions(
                                   onPickAttachments: () {},
-                                  onNewConversation: () {},
-                                  onClearHistory: () {},
+                                  onArchive: () {},
                                 ),
                                 fieldTrailing: const AssistantModelReadout(
                                   visible: true,

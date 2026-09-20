@@ -1404,6 +1404,7 @@ mixin AgentConversationSessionController
         agentWorkspaceMobileRuntime ||
         agentWorkspaceDisposed ||
         conversationSessionsByAgent.containsKey(normalized) ||
+        !conversationCatalogWarmCompleted.add(normalized) ||
         !conversationBackgroundRefreshTargets.add(normalized)) {
       return;
     }

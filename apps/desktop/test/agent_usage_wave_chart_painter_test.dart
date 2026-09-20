@@ -45,8 +45,14 @@ void main() {
           );
         }
       }
-      // The isolated positive day remains visible with its actual height.
-      expect(_pixel(withUnusedSeries, 644, 35), upperColor);
+      // The isolated positive day remains visible with its actual height,
+      // now rendered as the translucent gradient fill in the series hue. The
+      // lower-usage series hugs the baseline in the ascending stack order.
+      final positivePixel = _pixel(withUnusedSeries, 644, 190);
+      expect((positivePixel.$1 - upperColor.$1).abs(), lessThanOrEqualTo(6));
+      expect((positivePixel.$2 - upperColor.$2).abs(), lessThanOrEqualTo(6));
+      expect((positivePixel.$3 - upperColor.$3).abs(), lessThanOrEqualTo(6));
+      expect(positivePixel.$4, greaterThan(10));
       expect(
         timeline.snapshots.map((point) => point.values['GitHub Copilot']),
         upper,
@@ -54,18 +60,43 @@ void main() {
     });
 
     test(
-      'stacked and single-day data fills are opaque in $brightness',
+      'stacked and single-day data fills are translucent with a solid top edge in $brightness',
       () async {
         final stacked = await _render(_timeline(const [20, 20]), colors);
         final single = await _render(_timeline(const [20]), colors);
         for (final raster in [stacked, single]) {
+          // Interiors carry the series hue at a translucent alpha. Ascending
+          // stack order: the lower-usage Copilot band hugs the baseline and
+          // Codex closes the top.
+          for (final (x, y, label) in [
+            (394, 35, 'Codex'),
+            (394, 150, 'GitHub Copilot'),
+          ]) {
+            final expected = _rgba(agentUsageSeriesColor(colors, label));
+            final pixel = _pixel(raster, x, y);
+            expect((pixel.$1 - expected.$1).abs(), lessThanOrEqualTo(6));
+            expect((pixel.$2 - expected.$2).abs(), lessThanOrEqualTo(6));
+            expect((pixel.$3 - expected.$3).abs(), lessThanOrEqualTo(6));
+            expect(pixel.$4, greaterThan(10));
+            expect(
+              pixel.$4,
+              lessThan(140),
+              reason: 'interior fills stay translucent at ($x, $y)',
+            );
+          }
+          // The stack's top edge is a crisp line, clearly stronger than any
+          // translucent fill (the fill caps at 0.34 alpha) and any grid
+          // hairline (0.28 alpha); scan above the baseline row only.
+          var strongestEdge = 0;
+          for (var y = 8; y < 202; y += 1) {
+            final pixel = _pixel(raster, 394, y);
+            if (pixel.$4 > strongestEdge) strongestEdge = pixel.$4;
+          }
           expect(
-            _pixel(raster, 394, 35),
-            _rgba(agentUsageSeriesColor(colors, 'GitHub Copilot')),
-          );
-          expect(
-            _pixel(raster, 394, 150),
-            _rgba(agentUsageSeriesColor(colors, 'Codex')),
+            strongestEdge,
+            greaterThan(95),
+            reason:
+                'the band top edge exceeds the gradient fill\'s 0.34-alpha ceiling',
           );
         }
       },
@@ -105,7 +136,12 @@ void main() {
       grouping: AgentUsageChartGrouping.model,
     );
     final raster = await tester.runAsync(() => _render(timeline, colors));
-    expect(_pixel(raster!, 394, 150), _rgba(expected));
+    final plotPixel = _pixel(raster!, 394, 150);
+    final expectedChannels = _rgba(expected);
+    expect((plotPixel.$1 - expectedChannels.$1).abs(), lessThanOrEqualTo(6));
+    expect((plotPixel.$2 - expectedChannels.$2).abs(), lessThanOrEqualTo(6));
+    expect((plotPixel.$3 - expectedChannels.$3).abs(), lessThanOrEqualTo(6));
+    expect(plotPixel.$4, greaterThan(10));
     await tester.pumpWidget(
       MaterialApp(
         theme: theme,

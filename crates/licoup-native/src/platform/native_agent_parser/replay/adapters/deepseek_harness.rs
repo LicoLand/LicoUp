@@ -178,6 +178,7 @@ fn frame_error_json(error: FrameError) -> &'static str {
 fn turn_error_json(error: TurnParseError) -> &'static str {
     match error {
         TurnParseError::Incomplete => "incomplete",
+        TurnParseError::PromptRejected => "prompt_rejected",
         TurnParseError::SessionMismatch => "session_mismatch",
     }
 }

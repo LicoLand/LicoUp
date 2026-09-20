@@ -64,6 +64,7 @@ final class AgentHubFeatureComposition {
         UninstallAgentHubEntry(:final entryId) ||
         VerifyAgentHubEntry(:final entryId) ||
         RetryAgentHubEntryAction(:final entryId) ||
+        RetryAgentHubEntry(:final entryId) ||
         OpenAgentHubHomepage(:final entryId) ||
         OpenAgentHubAgent(:final entryId) => entryId,
         RefreshAgentHub() => '',
@@ -124,6 +125,9 @@ final class AgentHubFeatureComposition {
         await _run(AgentHubLifecycleAction.verify, entryId, trace);
       case RetryAgentHubEntryAction(:final entryId):
         await _run(AgentHubLifecycleAction.rescan, entryId, trace);
+      case RetryAgentHubEntry(:final entryId):
+        // A failed card needs its own status re-read, not a machine rescan.
+        await owner.refreshRecipe(entryId);
       case OpenAgentHubHomepage(:final entryId):
         final entry = _projection.current.entries
             .where((candidate) => candidate.id == entryId)

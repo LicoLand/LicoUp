@@ -69,6 +69,8 @@ final class AgentHubRendererBindingFixture {
         await _run(AgentHubLifecycleAction.verify, entryId, intent: intent);
       case RetryAgentHubEntryAction(:final entryId):
         await _run(AgentHubLifecycleAction.rescan, entryId, intent: intent);
+      case RetryAgentHubEntry(:final entryId):
+        await _owner.refreshRecipe(entryId);
       case OpenAgentHubHomepage(:final entryId):
         final entry = _projection.current.entries
             .where((candidate) => candidate.id == entryId)

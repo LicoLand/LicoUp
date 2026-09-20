@@ -5,6 +5,10 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 enum LlmVaultAuthorizationFailure {
   noCredentials,
   keychainActionRequired,
+
+  /// Inventoried entries exist but their protected material is unreadable on
+  /// this build; deleting and re-adding the entry recovers it.
+  inventoryInconsistent,
   unavailable,
 }
 
@@ -16,6 +20,7 @@ enum LlmVaultAuthorizationFailure {
 final class LlmVaultAuthorization extends ChangeNotifier {
   bool _authorized = false;
   bool _busy = false;
+  bool _vaultSupported = true;
   List<String> _providers = const [];
   List<String> _authorizedCredentialIds = const [];
   List<Map<String, dynamic>> _inventoryEntries = const [];
@@ -27,6 +32,11 @@ final class LlmVaultAuthorization extends ChangeNotifier {
 
   bool get authorized => _authorized;
   bool get busy => _busy;
+
+  /// Whether this build can hold protected keychain items at all. An ad hoc or
+  /// otherwise unentitled build reports false; the management surface must
+  /// present that honestly instead of offering actions that cannot complete.
+  bool get vaultSupported => _vaultSupported;
   List<String> get providers => _providers;
   List<String> get authorizedCredentialIds => _authorizedCredentialIds;
   List<Map<String, dynamic>> get inventoryEntries => _inventoryEntries;
@@ -140,6 +150,8 @@ final class LlmVaultAuthorization extends ChangeNotifier {
           .map((entry) => Map<String, dynamic>.unmodifiable(entry)),
     );
     _inventoryHydrated = true;
+    final supported = inventory['supported'];
+    if (supported is bool) _vaultSupported = supported;
     final migrationPending = inventory['migrationPending'];
     if (migrationPending is bool) _migrationPending = migrationPending;
     notifyListeners();
@@ -201,6 +213,8 @@ final class LlmVaultAuthorization extends ChangeNotifier {
           'no_credentials' => LlmVaultAuthorizationFailure.noCredentials,
           'secure_mesh_keychain_classic_access_requires_user_action' =>
             LlmVaultAuthorizationFailure.keychainActionRequired,
+          'llm_api_key_inventory_inconsistent' =>
+            LlmVaultAuthorizationFailure.inventoryInconsistent,
           _ => LlmVaultAuthorizationFailure.unavailable,
         };
         // A failed attempt grants nothing and does not revoke credentials

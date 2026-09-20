@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:licoup/src/frontend/features/agents/ui/conversation_execution_entry.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 
 import 'package:flutter/material.dart';
@@ -476,7 +476,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             key: Key('conversation-agent-waiting-bubble'),
             width: 70,
             height: 30,
-            child: Center(child: SteelBallWaitingIndicator(active: true)),
+            child: Center(child: OrbWaitingIndicator(active: true)),
           )
         : terminal != null
         ? Text(

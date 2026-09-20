@@ -102,6 +102,7 @@ final class ModelsPanel extends StatelessWidget {
                 belowDivider: LlmGatewayCredentialsCard(
                   credentials: projection.credentials,
                   migrationPending: projection.credentialMigrationPending,
+                  credentialsSupported: projection.credentialsSupported,
                   gatewayRunning: projection.gateway.running,
                   phase: projection.phase,
                   notice: projection.notice,

@@ -32,6 +32,7 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
     required this.phase,
     required this.intents,
     this.migrationPending = false,
+    this.credentialsSupported = true,
     this.notice,
   });
 
@@ -40,10 +41,16 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
   final PresentationPhase phase;
   final IntentSink<ModelsIntent> intents;
   final bool migrationPending;
+
+  /// False when this build cannot hold protected keychain items; management
+  /// actions are then disabled rather than offered and failed.
+  final bool credentialsSupported;
   final PresentationNotice? notice;
 
   bool get _busy =>
       phase == PresentationPhase.loading || phase == PresentationPhase.applying;
+
+  bool get _actionsLocked => _busy || !credentialsSupported;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +90,7 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
                     if (migrationPending)
                       OutlinedButton.icon(
                         key: const ValueKey<String>('credentials-migrate'),
-                        onPressed: _busy
+                        onPressed: _actionsLocked
                             ? null
                             : () => unawaited(_migrate(context)),
                         icon: const Icon(Icons.key_outlined, size: 18),
@@ -91,13 +98,15 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
                       ),
                     FilledButton.tonalIcon(
                       key: const ValueKey<String>('credentials-add'),
-                      onPressed: _busy ? null : () => unawaited(_add(context)),
+                      onPressed: _actionsLocked
+                          ? null
+                          : () => unawaited(_add(context)),
                       icon: const Icon(Icons.add),
                       label: Text(chinese ? '添加' : 'Add'),
                     ),
                     FilledButton.icon(
                       key: const ValueKey<String>('credentials-authorize'),
-                      onPressed: _busy
+                      onPressed: _actionsLocked
                           ? null
                           : () => intents.send(
                               const AuthorizeAllGatewayCredentials(),
@@ -126,12 +135,22 @@ final class LlmGatewayCredentialsCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (!credentialsSupported)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  chinese
+                      ? '当前构建未获得钥匙串保护授权，密钥管理不可用。'
+                      : 'This build lacks keychain-protection authorization; key management is unavailable.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             const SizedBox(height: 16),
             _CredentialsTable(
               credentials: credentials,
               busy: _busy,
               chinese: chinese,
-              canToggleAuthorization: !_busy && gatewayRunning,
+              canToggleAuthorization: !_actionsLocked && gatewayRunning,
               onAuthorizeChanged: (credentialId, enabled) => intents.send(
                 SetGatewayCredentialAuthorized(credentialId, enabled),
               ),
@@ -224,6 +243,10 @@ String? _credentialMessage(String? code, bool chinese) => switch (code) {
     chinese
         ? '系统授权未完成，请重试。'
         : 'System authorization did not complete. Try again.',
+  'llm_api_key_inventory_inconsistent' =>
+    chinese
+        ? '密钥数据在当前构建下不可读取。删除该条目后重新添加即可恢复。'
+        : 'The stored key material is unreadable on this build. Delete the entry and add it again to recover.',
   'credential_keychain_action_required' =>
     chinese
         ? '旧密钥需要钥匙串访问权限。请点击“迁移旧密钥”，按 macOS 提示完成迁移。'

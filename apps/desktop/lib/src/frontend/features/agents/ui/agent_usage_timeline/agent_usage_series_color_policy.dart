@@ -4,34 +4,36 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'agent_usage_timeline_models.dart';
 
 /// Explicit assignments are permanent, so insertion and usage rank do not
-/// recolor existing Agents. Brand hues use muted, opaque chart tones so large
-/// stacked fills remain comfortable beside the neutral application surfaces.
+/// recolor existing Agents. Hues stay in the brand's cool-to-warm ring, with
+/// the blue-to-violet band spread wide enough that neighbours never read as
+/// the same color. Luminance alternates deliberately across the ring so
+/// adjacent ranks differ even at one hue.
 const _agentColors = <String, Color>{
-  'antigravity': Color(0xFF8295CD),
-  'kimi': Color(0xFF6FA3CA),
-  'kimicode': Color(0xFF6FA3CA),
-  'githubcopilot': Color(0xFFA38BCB),
-  'copilot': Color(0xFFA38BCB),
-  'kilocode': Color(0xFFCDC77B),
-  'claudecode': Color(0xFFCD917A),
-  'codex': Color(0xFF76AD9C),
-  'cursor': Color(0xFFBD88A7),
-  'hermesagent': Color(0xFFC48172),
-  'hermes': Color(0xFFC48172),
-  'openclaw': Color(0xFFCD7F87),
-  'opencode': Color(0xFF79ADAF),
-  'piagent': Color(0xFFBB9F72),
-  'pi': Color(0xFFBB9F72),
-  'deepseekharness': Color(0xFF878FD0),
+  'antigravity': Color(0xFF8459F0),
+  'kimi': Color(0xFF3A9AE0),
+  'kimicode': Color(0xFF3A9AE0),
+  'githubcopilot': Color(0xFFB36BE8),
+  'copilot': Color(0xFFB36BE8),
+  'kilocode': Color(0xFFD8C13A),
+  'claudecode': Color(0xFFE1845B),
+  'codex': Color(0xFF2FAE8C),
+  'cursor': Color(0xFFD667A8),
+  'hermesagent': Color(0xFFD96F4E),
+  'hermes': Color(0xFFD96F4E),
+  'openclaw': Color(0xFFE0526B),
+  'opencode': Color(0xFF37A9B5),
+  'piagent': Color(0xFFC2A252),
+  'pi': Color(0xFFC2A252),
+  'deepseekharness': Color(0xFF6366F1),
 };
 
 const _additionalColors = [
-  Color(0xFFC58F9D),
-  Color(0xFF93AA87),
-  Color(0xFFBAA077),
-  Color(0xFF9C92BF),
-  Color(0xFF7AA7B5),
-  Color(0xFFB58DB0),
+  Color(0xFFC4708F),
+  Color(0xFF7FA05A),
+  Color(0xFFB08A45),
+  Color(0xFF8B7BD8),
+  Color(0xFF4E9FC9),
+  Color(0xFFB76BAF),
 ];
 
 Color agentUsageSeriesColor(
