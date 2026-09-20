@@ -163,9 +163,9 @@ void registerAgentUsageTimelineScenarios() {
         ),
       );
       expect(glassFill.color.a, closeTo(0.72, 0.01));
-      expect(glassFill.color.r, closeTo(0x17 / 255, 0.01));
-      expect(glassFill.color.g, closeTo(0x19 / 255, 0.01));
-      expect(glassFill.color.b, closeTo(0x1c / 255, 0.01));
+      expect(glassFill.color.r, closeTo(0x39 / 255, 0.01));
+      expect(glassFill.color.g, closeTo(0x3a / 255, 0.01));
+      expect(glassFill.color.b, closeTo(0x3f / 255, 0.01));
       expect(
         find.descendant(of: tooltip, matching: find.text('Codex')),
         findsOneWidget,

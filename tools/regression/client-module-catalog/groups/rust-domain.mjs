@@ -145,6 +145,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustCrateIntegrationTest("licoup-native", "continuity_qualification", ["test-support"]),
     }),
   defineModule({
+      id: "rust.domain.assistant-continuity-observation",
+      kind: "rust-domain",
+      summary: "Durable continuity observation facts, scoped index, idempotent replay, and stale proofs",
+      inputs: [
+        "crates/licoup-native/tests/continuity_observation.rs",
+      ],
+      command: rustCrateIntegrationTest("licoup-native", "continuity_observation", ["test-support"]),
+    }),
+  defineModule({
       id: "rust.domain.trusted-history-recovery",
       kind: "rust-domain",
       summary: "Provider-authorized retained history with default readable storage, opt-in encryption, and atomic complete recovery",

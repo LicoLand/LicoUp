@@ -108,7 +108,7 @@ void main() {
   );
 
   test(
-    'late pages cannot replace a new selection or resurrect a cleared history',
+    'late pages cannot replace a new selection or resurrect an archived history',
     () async {
       final native = PagedConversationNative();
       final controller = await _selected(native);
@@ -122,10 +122,11 @@ void main() {
       await controller.selectConversation('group');
       expect(controller.events, hasLength(40));
       native.earlierGate = Completer<void>();
-      final beforeClear = controller.loadEarlierEvents();
-      expect(await controller.clearSelectedHistory(), isTrue);
+      final beforeArchive = controller.loadEarlierEvents();
+      expect(await controller.archiveAndReopenSelected(), isTrue);
       native.earlierGate!.complete();
-      await beforeClear;
+      await beforeArchive;
+      expect(controller.selectedConversationId, 'successor');
       expect(controller.events, isEmpty);
       expect(controller.hasEarlierEvents, isFalse);
     },

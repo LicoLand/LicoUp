@@ -73,6 +73,7 @@ final class AgentHubProjectionProducer
             owned: recipe.isOwned,
             installable: recipe.installable,
             busy: controller.isRecipeResolving(recipe.id),
+            pending: controller.isRecipePending(recipe.id),
             resolutionFailed: controller.isRecipeFailed(recipe.id),
             primaryAction: recipe.primaryAction,
             actionStateLabel: recipe.lifecycle,

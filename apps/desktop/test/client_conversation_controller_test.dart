@@ -638,57 +638,67 @@ void main() {
     },
   );
 
-  test('clears group history through the canonical store action', () async {
-    final runner = _ConversationRunner();
-    final controller = ClientConversationController(native: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
+  test(
+    'archives the group and opens its successor through one store action',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
 
-    expect(await controller.clearSelectedHistory(), isTrue);
+      expect(await controller.archiveAndReopenSelected(), isTrue);
 
-    final cleared = runner.requests.singleWhere(
-      (request) => request['action'] == 'conversation.clear',
-    );
-    expect(cleared.keys.toSet(), {
-      'action',
-      'conversationId',
-      'ownerMembershipId',
-    });
-    expect(cleared['conversationId'], 'conversation:group');
-    expect(cleared['ownerMembershipId'], 'membership:owner');
-    expect(controller.events, isEmpty);
-    expect(
-      controller.groupConversations.single.archivedChildren.map(
-        (child) => child.id,
-      ),
-      ['conversation:child'],
-    );
-  });
+      final archived = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.archive',
+      );
+      expect(archived.keys.toSet(), {
+        'action',
+        'conversationId',
+        'archived',
+        'reopen',
+      });
+      expect(archived['conversationId'], 'conversation:group');
+      expect(archived['archived'], isTrue);
+      expect(archived['reopen'], isTrue);
+      expect(controller.selectedConversationId, 'conversation:successor');
+      expect(controller.events, isEmpty);
+      final activeIds = controller.groupConversations.map((group) => group.id);
+      expect(activeIds, contains('conversation:successor'));
+      expect(activeIds, isNot(contains('conversation:group')));
+      expect(
+        controller.archivedConversations.map((entry) => entry.id),
+        contains('conversation:group'),
+      );
+    },
+  );
 
-  test('refuses clear while a group dispatch is still live', () async {
-    final runner = _ConversationRunner()
-      ..postTurns = [
-        {
-          'turnHandle': 'dispatch:live',
-          'conversationId': 'conversation:group',
-          'agent': 'codex',
-        },
-      ]
-      ..dispatchPending = true;
-    final controller = ClientConversationController(native: runner);
-    await controller.initialize();
-    await controller.selectConversation('conversation:group');
-    expect(await controller.postMessage('hello @Codex'), isTrue);
+  test(
+    'refuses archive and reopen while a group dispatch is still live',
+    () async {
+      final runner = _ConversationRunner()
+        ..postTurns = [
+          {
+            'turnHandle': 'dispatch:live',
+            'conversationId': 'conversation:group',
+            'agent': 'codex',
+          },
+        ]
+        ..dispatchPending = true;
+      final controller = ClientConversationController(native: runner);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      expect(await controller.postMessage('hello @Codex'), isTrue);
 
-    expect(await controller.clearSelectedHistory(), isFalse);
-    expect(
-      runner.requests.where(
-        (request) => request['action'] == 'conversation.clear',
-      ),
-      isEmpty,
-    );
-    expect(controller.failureCode, 'conversation_clear_blocked');
-  });
+      expect(await controller.archiveAndReopenSelected(), isFalse);
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.archive',
+        ),
+        isEmpty,
+      );
+      expect(controller.failureCode, 'conversation_clear_blocked');
+    },
+  );
 
   test('deletes a local message through the canonical store action', () async {
     final runner = _ConversationRunner();
@@ -796,6 +806,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
   bool appendedFailure = false;
   bool messageDeleted = false;
   bool historyCleared = false;
+  String successorId = '';
   String failPostCode = '';
   String failDispatchCode = '';
   String failArchiveCode = '';
@@ -822,6 +833,9 @@ final class _ConversationRunner implements ClientConversationNativePort {
     }
     if (action == 'conversation.archive') {
       groupArchived = request['archived'] == true;
+      if (request['reopen'] == true) {
+        successorId = 'conversation:successor';
+      }
     }
     if (action == 'conversation.membership.add') {
       final principal = Map<String, dynamic>.from(request['principal'] as Map);
@@ -867,7 +881,9 @@ final class _ConversationRunner implements ClientConversationNativePort {
           strategyRevision: strategyRevision,
         ),
         'conversation.events.page' => {
-          'events': request['conversationId'] == 'conversation:created'
+          'events':
+              request['conversationId'] == 'conversation:created' ||
+                  request['conversationId'] == successorId
               ? <Map<String, dynamic>>[]
               : messageDeleted || historyCleared
               ? <Map<String, dynamic>>[]
@@ -876,7 +892,9 @@ final class _ConversationRunner implements ClientConversationNativePort {
                   if (includeFailedTurn || appendedFailure) _failedTurnEvent(),
                 ],
           'nextCursor': null,
-          'totalCount': request['conversationId'] == 'conversation:created'
+          'totalCount':
+              request['conversationId'] == 'conversation:created' ||
+                  request['conversationId'] == successorId
               ? 0
               : 1,
         },
@@ -902,10 +920,12 @@ final class _ConversationRunner implements ClientConversationNativePort {
         },
         'conversation.event.append' => _failedTurnEvent(),
         'conversation.message.delete' => <String, dynamic>{},
-        'conversation.clear' => <String, dynamic>{
+        'conversation.clear' => <String, dynamic>{},
+        'conversation.archive' => <String, dynamic>{
           'conversationId': request['conversationId'],
           'archivedChildIds': <String>['conversation:child'],
-          'assistantMembershipId': 'membership:codex-rotated',
+          if (request['reopen'] == true)
+            'successor': _conversation(successorId),
         },
         'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
@@ -916,6 +936,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
   List<Map<String, dynamic>> _conversationList(
     Map<String, dynamic> request,
   ) => [
+    if (successorId.isNotEmpty) _summary(id: successorId, members: 3),
     if (!groupArchived || request['includeArchived'] == true)
       _summary(
         id: requests.any((entry) => entry['action'] == 'conversation.create')

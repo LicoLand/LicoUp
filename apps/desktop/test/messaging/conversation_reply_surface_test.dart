@@ -32,7 +32,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_messa
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final _target = TargetCandidate(
@@ -135,7 +135,7 @@ void main() {
         );
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 80));
-        expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+        expect(find.byType(OrbWaitingIndicator), findsOneWidget);
         expect(find.byType(MessagingAgentAvatar), findsWidgets);
         final avatar = tester.element(find.byType(MessagingMessageGroup).last);
         await _readyAnchors(tester);
@@ -157,7 +157,7 @@ void main() {
           ],
         );
         await tester.pump();
-        expect(find.byType(SteelBallWaitingIndicator), findsNothing);
+        expect(find.byType(OrbWaitingIndicator), findsNothing);
         expect(
           find.textContaining('first streamed sentence', findRichText: true),
           findsOneWidget,
@@ -229,7 +229,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
-      expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+      expect(find.byType(OrbWaitingIndicator), findsOneWidget);
       await _readyAnchors(tester);
       final field = tester.widget<ConversationParticleField>(
         find.byType(ConversationParticleField),
@@ -340,7 +340,7 @@ void main() {
           replies: holder.messagesFor('synthetic'),
         );
         await tester.pump();
-        expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+        expect(find.byType(OrbWaitingIndicator), findsOneWidget);
         final waitingId = holder
             .messagesFor('synthetic')
             .singleWhere((message) => message.waitingForReply)
@@ -365,7 +365,7 @@ void main() {
         );
         state.value = _state(replies: replies);
         await tester.pump();
-        expect(find.byType(SteelBallWaitingIndicator), findsNothing);
+        expect(find.byType(OrbWaitingIndicator), findsNothing);
         expect(
           find.byKey(const Key('conversation-reply-terminal')),
           findsOneWidget,
@@ -492,7 +492,7 @@ void main() {
       expect(find.byType(ConversationExecutionViewer), findsNothing);
       expect(reader.observation.disposed, isTrue);
       expect(returnFocus.hasFocus, isTrue);
-      expect(find.byType(SteelBallWaitingIndicator), findsOneWidget);
+      expect(find.byType(OrbWaitingIndicator), findsOneWidget);
     },
   );
 }

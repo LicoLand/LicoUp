@@ -161,6 +161,11 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   final Set<({String agentId, String sessionId})>
   conversationActiveRefreshTargets = <({String agentId, String sessionId})>{};
   final Set<String> conversationBackgroundRefreshTargets = <String>{};
+
+  /// Agents whose browse catalog warm-up already ran in this app session.
+  /// Sidebar recreation (for example after an archive) must not re-enter the
+  /// conversation-loading flow for the same agent.
+  final Set<String> conversationCatalogWarmCompleted = <String>{};
   final Map<String, int> conversationAppliedRequestSequenceByAgent =
       <String, int>{};
   int conversationRequestSequence = 0;

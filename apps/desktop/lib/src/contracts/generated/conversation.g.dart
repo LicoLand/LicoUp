@@ -91,6 +91,7 @@ enum ConversationEventKind {
   message("message"),
   membershipChanged("membership-changed"),
   availability("availability"),
+  conversationReset("conversation-reset"),
   unknown('');
 
   const ConversationEventKind(this.wireName);

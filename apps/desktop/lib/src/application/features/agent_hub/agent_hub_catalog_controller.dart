@@ -9,17 +9,24 @@ import 'package:licoup/src/contracts/agent_hub.dart';
 /// The Shell and feature panels receive this controller instead of creating
 /// their own engine, so rebuilds and remounts cannot duplicate a native
 /// catalog request. Refreshes are single-flight; a settled failure keeps the
-/// last valid projection while exposing a stable failed flag.
+/// last valid projection while exposing a stable failed flag. Inspections are
+/// tracked per recipe so the panel can tell a card that has a settled fact
+/// from one that is still being inspected for the first time.
 final class AgentHubCatalogController extends ApplicationStateOwner {
   AgentHubCatalogController({required AgentHubEnginePort engine})
     : _engine = engine,
-      _catalog = engine.cachedCatalog;
+      _catalog = engine.cachedCatalog {
+    // A persisted catalog is the last settled per-agent result, so its cards
+    // may render while this session re-inspects them.
+    _settledRecipeIds.addAll(_idsOf(_catalog));
+  }
 
   final AgentHubEnginePort _engine;
   AgentHubCatalogSnapshot? _catalog;
   Future<AgentHubCatalogSnapshot>? _refreshFuture;
   final Set<String> _resolvingRecipeIds = {};
   final Set<String> _failedRecipeIds = {};
+  final Set<String> _settledRecipeIds = {};
   final Map<String, Future<AgentHubCatalogSnapshot>> _recipeLoads = {};
   bool _busy = false;
   bool _failed = false;
@@ -32,6 +39,13 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
 
   bool isRecipeResolving(String recipeId) {
     return _resolvingRecipeIds.contains(recipeId);
+  }
+
+  /// Whether an inspection is in flight for a recipe that has never produced a
+  /// settled result, so the panel has no fact to render for it yet.
+  bool isRecipePending(String recipeId) {
+    return _resolvingRecipeIds.contains(recipeId) &&
+        !_settledRecipeIds.contains(recipeId);
   }
 
   /// One shared catalog refresh. Later calls join the in-flight request.
@@ -172,10 +186,14 @@ final class AgentHubCatalogController extends ApplicationStateOwner {
       _failedRecipeIds.add(id);
       return const AgentHubCatalogSnapshot(recipes: [], ok: false);
     } finally {
+      _settledRecipeIds.add(id);
       _resolvingRecipeIds.remove(id);
       publishChange();
     }
   }
+
+  static Iterable<String> _idsOf(AgentHubCatalogSnapshot? snapshot) =>
+      snapshot?.recipes.map((recipe) => recipe.id) ?? const <String>[];
 
   void _replaceRecipe(AgentHubRecipe recipe) {
     final current = _catalog;

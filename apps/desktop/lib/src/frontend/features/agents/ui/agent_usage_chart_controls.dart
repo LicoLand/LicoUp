@@ -22,6 +22,11 @@ final class AgentUsageChartTooltip extends AgentUsageHoverCard {
   @override
   String get tooltipKeyPrefix => 'usage-wave-tooltip';
 
+  /// The header carries the date alone; the day's total closes the card under
+  /// a divider so the series rows read as the breakdown of it.
+  @override
+  bool get totalBelowDivider => true;
+
   @override
   String headerLabel(BuildContext context) => agentUsageDateKey(snapshot.time);
 
@@ -103,17 +108,26 @@ final class AgentUsageChartLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
+    // Stacking order stays the timeline's so fills stay comparable; only the
+    // legend reads in usage rank.
+    final ranked = [...timeline.series]
+      ..sort((a, b) {
+        final byTotal = timeline
+            .totalFor(b.label)
+            .compareTo(timeline.totalFor(a.label));
+        return byTotal != 0 ? byTotal : a.label.compareTo(b.label);
+      });
     return Wrap(
-      spacing: 16,
+      spacing: 14,
       runSpacing: 8,
       children: [
-        for (final series in timeline.series)
+        for (final series in ranked)
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 7,
-                height: 7,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
                   color: agentUsageSeriesColor(
                     colors,
@@ -124,7 +138,7 @@ final class AgentUsageChartLegend extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 7),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 130),
                 child: Text(
@@ -132,19 +146,20 @@ final class AgentUsageChartLegend extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 11,
+                    color: colors.textSecondary,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Text(
                 formatAgentUsageNumber(timeline.totalFor(series.label)),
                 style: TextStyle(
-                  color: colors.textSecondary,
-                  fontSize: 11,
+                  color: colors.text,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],

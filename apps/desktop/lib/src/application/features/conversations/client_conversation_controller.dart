@@ -13,6 +13,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/contracts/problem_codes/problem_codes.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 final class ClientConversationController extends ApplicationStateOwner {
   ClientConversationController({
@@ -794,110 +795,6 @@ final class ClientConversationController extends ApplicationStateOwner {
     return value is Map ? _objectMap(value) : null;
   }
 
-  /// Rotates the selected group's Assistant Membership onto a fresh backing
-  /// thread while keeping the group, the roster, and the assistant agent
-  /// unchanged: the current assistant Membership leaves, the same principal
-  /// rejoins under a new Membership id, the new Membership is designated
-  /// assistant, and the previous Profile intent is carried over. The next
-  /// dispatch natively starts a fresh session for the rotated Membership.
-  ///
-  /// The rotation refuses while a send is in flight or a dispatch is pending
-  /// (surfaced as `assistant_turn_active`); every step surfaces its failure
-  /// through the conversation banner.
-  Future<bool> refreshSelectedAssistantThread() async {
-    final conversation = _selectedConversation;
-    if (conversation == null || !conversation.group) return false;
-    if (conversation.assistantMembership == null) return false;
-    if (_sending || _dispatchPending || _liveTurns.isNotEmpty) {
-      surfaceFailure('assistant-refresh', 'assistant_turn_active');
-      return false;
-    }
-    await _waitUntilIdle();
-    final selected = _selectedConversation;
-    if (selected == null || !selected.group || selected.id != conversation.id) {
-      return false;
-    }
-    final assistant = selected.assistantMembership;
-    final owner = selected.localOwnerMembership;
-    if (assistant == null || owner == null) return false;
-    final principalKind = assistant.principal.kind.wireName;
-    final principalAccess = assistant.access.wireName;
-    return _guard('assistant-refresh', () async {
-      final conversationId = selected.id;
-      final profile = await membershipProfile(assistant.id);
-      final carriedIntent = profile == null
-          ? null
-          : <String, dynamic>{
-              'requiredCapabilities': _profileStringList(
-                profile['requiredCapabilities'],
-              ),
-              'preferredCapabilities': _profileStringList(
-                profile['preferredCapabilities'],
-              ),
-              'skillReferences': _profileStringList(profile['skillReferences']),
-              'preferredModel': _profileNullableString(
-                profile['preferredModel'],
-              ),
-              'preferredReasoningEffort': _profileNullableString(
-                profile['preferredReasoningEffort'],
-              ),
-              'preferredEnvironment': profile['preferredEnvironment'],
-            };
-      await _service.execute({
-        'action': 'conversation.membership.leave',
-        'conversationId': conversationId,
-        'membershipId': assistant.id,
-      });
-      final added = _objectMap(
-        await _service.execute({
-          'action': 'conversation.membership.add',
-          'conversationId': conversationId,
-          'principal': {
-            'id': assistant.principal.id,
-            'kind': principalKind.isEmpty ? 'agent' : principalKind,
-            'displayName': assistant.principal.displayName.trim().isEmpty
-                ? assistant.principal.agentId
-                : assistant.principal.displayName,
-            if (assistant.principal.agentId.trim().isNotEmpty)
-              'agentId': assistant.principal.agentId,
-          },
-          'access': principalAccess.isEmpty ? 'member' : principalAccess,
-        }),
-      );
-      final rotatedMembershipId = (added['id'] ?? '').toString().trim();
-      if (rotatedMembershipId.isEmpty) {
-        throw const ClientConversationServiceFailure('invalid_response');
-      }
-      await _refreshCatalogWithoutGuard();
-      await _loadSelected();
-      final reloaded = _selectedConversation;
-      if (reloaded == null || reloaded.id != conversationId) {
-        throw const ClientConversationServiceFailure('conversation_not_found');
-      }
-      await _service.execute({
-        'action': 'conversation.assistant.set',
-        'conversationId': conversationId,
-        'ownerMembershipId': owner.id,
-        'expectedRevision': reloaded.revision,
-        'membershipId': rotatedMembershipId,
-      });
-      // A freshly added Agent Membership owns a default Profile at revision 0;
-      // the carried-over intent lands on top of it.
-      if (carriedIntent != null) {
-        await _service.execute({
-          'action': 'conversation.profile.update',
-          'conversationId': conversationId,
-          'membershipId': rotatedMembershipId,
-          'ownerMembershipId': owner.id,
-          'expectedRevision': 0,
-          'intent': carriedIntent,
-        });
-      }
-      await _refreshCatalogWithoutGuard();
-      await _loadSelected();
-    });
-  }
-
   Future<bool> postMessage(
     String text, {
     bool dispatch = true,
@@ -1185,16 +1082,142 @@ final class ClientConversationController extends ApplicationStateOwner {
     final id = conversationId.trim();
     if (id.isEmpty) return false;
     return _guard('archive', conversationId: id, () async {
-      await _service.execute({
-        'action': 'conversation.archive',
-        'conversationId': id,
-        'archived': true,
-      });
+      final response = _objectMap(
+        await _service.execute({
+          'action': 'conversation.archive',
+          'conversationId': id,
+          'archived': true,
+        }),
+      );
+      _applyArchiveReport(response);
       if (_selectedConversationId == id) {
         _clearSelection();
       }
-      await _refreshCatalogWithoutGuard();
+      _reconcileCatalogInBackground();
     });
+  }
+
+  /// Archives the selected group with everything it involves and opens its
+  /// fresh successor: one store transaction archives the conversation, its
+  /// continuity children, and the member native sessions, while the old
+  /// native transports are disconnected off the response path. The foreground
+  /// applies the list change directly and selects the successor; a
+  /// background-priority catalog read reconciles ordering later.
+  Future<bool> archiveAndReopenSelected() async {
+    final conversation = _selectedConversation;
+    if (conversation == null || !conversation.group) return false;
+    if (_sending || _dispatchPending || _liveTurns.isNotEmpty) {
+      surfaceFailure('canonical-archive', 'conversation_clear_blocked');
+      return false;
+    }
+    await _waitUntilIdle();
+    final selected = _selectedConversation;
+    if (selected == null || selected.id != conversation.id || !selected.group) {
+      return false;
+    }
+    return _guard('archive', conversationId: selected.id, () async {
+      final response = _objectMap(
+        await _service.execute({
+          'action': 'conversation.archive',
+          'conversationId': selected.id,
+          'archived': true,
+          'reopen': true,
+        }),
+      );
+      _applyArchiveReport(response);
+      final successorId =
+          _objectMap(response['successor'])['id']?.toString() ?? '';
+      if (successorId.isEmpty) {
+        throw const ClientConversationServiceFailure('invalid_response');
+      }
+      _conversationCache.remove(selected.id);
+      _earlierPageErrors.remove(selected.id);
+      _liveTurns = const [];
+      _dispatchPending = false;
+      _selectedConversationId = successorId;
+      _onSelectionChanged?.call(successorId);
+      await _loadSelected();
+      _reconcileCatalogInBackground();
+    });
+  }
+
+  /// Applies one archive report to the in-memory lists so the foreground
+  /// refreshes immediately: the retired conversations move to the archived
+  /// partition and the successor joins the active list, with no full catalog
+  /// readback on the user's path.
+  void _applyArchiveReport(Map<String, dynamic> response) {
+    final retired = <String>{
+      (response['conversationId'] ?? '').toString(),
+      ...?(response['archivedChildIds'] as List?)?.map((id) => id.toString()),
+    }..removeWhere((id) => id.isEmpty);
+    if (retired.isEmpty) return;
+    for (final id in retired) {
+      // Any in-flight page or snapshot read for a retired conversation must
+      // never land: archiving ends its visible history.
+      _historyGenerations[id] = (_historyGenerations[id] ?? 0) + 1;
+      _conversationCache.remove(id);
+      _earlierPageErrors.remove(id);
+    }
+    final nowArchived = _summaries
+        .where((summary) => retired.contains(summary.id))
+        .map(
+          (summary) => ClientConversationSummary(
+            id: summary.id,
+            title: summary.title,
+            archived: true,
+            pinned: summary.pinned,
+            group: summary.group,
+            revision: summary.revision + 1,
+            updatedAtUnixMs: summary.updatedAtUnixMs,
+            membershipCount: summary.membershipCount,
+            eventCount: summary.eventCount,
+            parentConversationId: summary.parentConversationId,
+            taskGoalId: summary.taskGoalId,
+            listingKind: summary.listingKind,
+          ),
+        )
+        .toList(growable: false);
+    _summaries = _summaries
+        .where((summary) => !retired.contains(summary.id))
+        .toList(growable: false);
+    if (nowArchived.isNotEmpty) {
+      _archivedSummaries = [
+        ...nowArchived,
+        ..._archivedSummaries.where((entry) => !retired.contains(entry.id)),
+      ];
+    }
+    final successor = _objectMap(response['successor']);
+    if (successor.isNotEmpty) {
+      final memberships = successor['memberships'];
+      _summaries = [
+        ClientConversationSummary(
+          id: (successor['id'] ?? '').toString(),
+          title: (successor['title'] ?? '').toString(),
+          archived: false,
+          group: successor['isGroup'] == true,
+          revision: _archiveSummaryInt(successor['revision']),
+          updatedAtUnixMs: _archiveSummaryInt(successor['updatedAtUnixMs']),
+          membershipCount: memberships is List ? memberships.length : 0,
+          eventCount: _archiveSummaryInt(successor['eventCount']),
+        ),
+        ..._summaries,
+      ];
+    }
+    _publishChange();
+  }
+
+  /// Reconciles the catalog after an archive without holding the foreground:
+  /// queued behind background priority so a pending user command always wins.
+  void _reconcileCatalogInBackground() {
+    unawaited(
+      runWithRpcPriorityToken(RpcPriorityToken(background: true), () async {
+        try {
+          await _refreshCatalogWithoutGuard();
+        } catch (_) {
+          // A failed background reconcile self-heals on the next refresh.
+        }
+      }),
+    );
   }
 
   Future<bool> refreshArchived() async {
@@ -1236,54 +1259,6 @@ final class ClientConversationController extends ApplicationStateOwner {
       });
       await _refreshCatalogWithoutGuard();
       if (_selectedConversationId == id) {
-        await _loadSelected();
-      }
-    });
-  }
-
-  Future<bool> clearSelectedHistory() async {
-    final conversation = _selectedConversation;
-    final owner = conversation?.localOwnerMembership;
-    if (conversation == null || owner == null || !conversation.group) {
-      return false;
-    }
-    if (_sending || _dispatchPending || _liveTurns.isNotEmpty) {
-      surfaceFailure('canonical-clear', 'conversation_clear_blocked');
-      return false;
-    }
-    await _waitUntilIdle();
-    final selected = _selectedConversation;
-    if (selected == null ||
-        selected.id != conversation.id ||
-        selected.localOwnerMembership == null) {
-      return false;
-    }
-    return _guard('clear', () async {
-      final conversationId = selected.id;
-      await _service.execute({
-        'action': 'conversation.clear',
-        'conversationId': conversationId,
-        'ownerMembershipId': selected.localOwnerMembership!.id,
-      });
-      _historyGenerations[conversationId] =
-          (_historyGenerations[conversationId] ?? 0) + 1;
-      _conversationCache.remove(conversationId);
-      _earlierPageErrors.remove(conversationId);
-      _liveTurns = const [];
-      _dispatchPending = false;
-      await _refreshCatalogWithoutGuard();
-      if (_selectedConversationId != conversationId &&
-          groupConversations.any(
-            (group) =>
-                group.id == conversationId &&
-                group.archivedChildren.any(
-                  (child) => child.id == _selectedConversationId,
-                ),
-          )) {
-        _selectedConversationId = conversationId;
-        _onSelectionChanged?.call(conversationId);
-      }
-      if (_selectedConversationId == conversationId) {
         await _loadSelected();
       }
     });
@@ -1783,17 +1758,15 @@ List<ClientConversationSummary> _summaryList(Object? value) => value is List
 Map<String, dynamic> _objectMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
 
+int _archiveSummaryInt(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
 List<String> _profileStringList(Object? value) => value is List
     ? value
           .map((entry) => entry.toString().trim())
           .where((entry) => entry.isNotEmpty)
           .toList(growable: false)
     : const <String>[];
-
-String? _profileNullableString(Object? value) {
-  final trimmed = (value ?? '').toString().trim();
-  return trimmed.isEmpty ? null : trimmed;
-}
 
 bool _sameStringList(List<String> left, List<String> right) {
   if (left.length != right.length) return false;
