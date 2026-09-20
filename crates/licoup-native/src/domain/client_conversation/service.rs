@@ -365,14 +365,40 @@ impl ConversationService {
                 Ok(json!({"ok": true, "status": "accepted"}))
             }
             "conversation.archive" => {
-                self.store.archive_conversation(
-                    required_string(object, "conversationId")?,
-                    object
-                        .get("archived")
-                        .and_then(Value::as_bool)
-                        .ok_or_else(|| anyhow!("invalid_request"))?,
-                )?;
-                Ok(json!({"ok": true, "status": "accepted"}))
+                let conversation_id = required_string(object, "conversationId")?;
+                let archived = object
+                    .get("archived")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| anyhow!("invalid_request"))?;
+                let reopen = object
+                    .get("reopen")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let report =
+                    self.store
+                        .archive_conversation_tree(conversation_id, archived, reopen)?;
+                // Disconnecting the archived conversations' native transports
+                // must not hold the response: the foreground refresh returns
+                // immediately and the teardown settles off the lane.
+                if archived && !report.archived_native_sessions.is_empty() {
+                    let sessions = report.archived_native_sessions.clone();
+                    std::thread::spawn(move || {
+                        for session in sessions {
+                            let _ =
+                                crate::platform::conversation_lane::cleanup_conversation(&json!({
+                                    "agent": session.agent_id,
+                                    "nativeSessionId": session.native_session_id,
+                                }));
+                        }
+                    });
+                }
+                let mut value = serde_json::to_value(&report)?;
+                value["ok"] = json!(true);
+                value["status"] = json!("accepted");
+                if let Some(successor_id) = &report.successor_conversation_id {
+                    value["successor"] = serde_json::to_value(self.store.get(successor_id)?)?;
+                }
+                Ok(value)
             }
             "conversation.clear" => {
                 let conversation_id = required_string(object, "conversationId")?;
@@ -2059,7 +2085,7 @@ fn ensure_allowed_fields(action: &str, object: &serde_json::Map<String, Value>) 
     let allowed: &[&str] = match action {
         "conversation.create" => &["action", "title", "owner", "members"],
         "conversation.rename" => &["action", "conversationId", "title"],
-        "conversation.archive" => &["action", "conversationId", "archived"],
+        "conversation.archive" => &["action", "conversationId", "archived", "reopen"],
         "conversation.clear" => &["action", "conversationId", "ownerMembershipId"],
         "conversation.pin.set" => &["action", "conversationId", "pinned"],
         "conversation.strategy.set" => &["action", "conversationId", "strategyRevision"],
@@ -3226,6 +3252,121 @@ mod tests {
                 .unwrap()
                 .events
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn archive_reopen_cascades_children_and_opens_a_silent_successor() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |_| Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable),
+        );
+        let (conversation_id, owner_id, agent_id) = group_fixture(&service);
+        let before = service.store().get(&conversation_id).unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.assistant.set",
+                "conversationId": conversation_id,
+                "ownerMembershipId": owner_id,
+                "expectedRevision": before.revision,
+                "membershipId": agent_id,
+            }))
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": conversation_id,
+                "authorMembershipId": owner_id,
+                "content": "remember this"
+            }))
+            .unwrap();
+        let child = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Child task",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:one",
+                        "kind": "agent",
+                        "displayName": "One",
+                        "agentId": "one"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let child_id = child["id"].as_str().unwrap().to_owned();
+        service
+            .store()
+            .register_continuity_child_link(&conversation_id, &child_id, "goal:archive-child")
+            .unwrap();
+        let grandchild = service
+            .execute(json!({
+                "action": "conversation.create",
+                "title": "Grandchild task",
+                "owner": {"id": "human:local", "kind": "human", "displayName": "You"},
+                "members": [{
+                    "principal": {
+                        "id": "agent:one",
+                        "kind": "agent",
+                        "displayName": "One",
+                        "agentId": "one"
+                    },
+                    "access": "member"
+                }]
+            }))
+            .unwrap();
+        let grandchild_id = grandchild["id"].as_str().unwrap().to_owned();
+        service
+            .store()
+            .register_continuity_child_link(&child_id, &grandchild_id, "goal:archive-grandchild")
+            .unwrap();
+
+        let archived = service
+            .execute(json!({
+                "action": "conversation.archive",
+                "conversationId": conversation_id,
+                "archived": true,
+                "reopen": true,
+            }))
+            .unwrap();
+
+        assert_eq!(archived["ok"], true);
+        assert_eq!(
+            archived["archivedChildIds"],
+            json!([child_id.clone(), grandchild_id.clone()])
+        );
+        assert!(service.store().get(&conversation_id).unwrap().archived);
+        assert!(service.store().get(&child_id).unwrap().archived);
+        assert!(service.store().get(&grandchild_id).unwrap().archived);
+        // Archiving keeps the prior history in place for review and restore.
+        assert!(service.store().get(&conversation_id).unwrap().event_count > 0);
+
+        let successor = archived["successor"].clone();
+        let successor_id = successor["id"].as_str().unwrap().to_owned();
+        assert_ne!(successor_id, conversation_id);
+        assert_eq!(successor["title"], json!("Direct Turn"));
+        assert_eq!(successor["isGroup"], json!(true));
+        assert_eq!(successor["archived"], json!(false));
+        let successor_members = successor["memberships"].as_array().unwrap();
+        assert_eq!(successor_members.len(), 2);
+        let successor_agent = successor_members
+            .iter()
+            .find(|membership| membership["principal"]["kind"] == "agent")
+            .unwrap();
+        assert_eq!(successor["assistantMembershipId"], successor_agent["id"]);
+        let successor_events = service
+            .store()
+            .page_events(&successor_id, None, 20)
+            .unwrap()
+            .events;
+        assert_eq!(successor_events.len(), 1);
+        assert_eq!(successor_events[0].kind, EventKind::ConversationReset);
+        assert!(
+            successor_events
+                .iter()
+                .all(|event| event.kind != EventKind::MembershipChanged)
         );
     }
 

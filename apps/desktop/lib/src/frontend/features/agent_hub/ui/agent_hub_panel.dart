@@ -16,6 +16,7 @@ import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_surface.dart';
 import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
@@ -41,6 +42,7 @@ const double _hubListIconSize = 44;
 const double _hubListIconGlyphSize = 24;
 const double _hubListIconNameGap =
     LicoContentSpacing.compact + LicoContentSpacing.inline;
+const String _hubCardEntryKeyPrefix = 'agent-hub-card-entry-';
 const int _hubListNameMaxLines = 2;
 const double _hubListNameLineHeight = 1.2;
 const double _hubListSummaryFontSize = 12;
@@ -135,6 +137,19 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     return _entries.where((entry) => entry.id == id).firstOrNull;
   }
 
+  static Key _cardEntryKey(String entryId) =>
+      ValueKey<String>('$_hubCardEntryKeyPrefix$entryId');
+
+  static int? _cardEntryIndex(List<AgentHubEntryProjection> entries, Key key) {
+    if (key is! ValueKey<String> ||
+        !key.value.startsWith(_hubCardEntryKeyPrefix)) {
+      return null;
+    }
+    final id = key.value.substring(_hubCardEntryKeyPrefix.length);
+    final index = entries.indexWhere((entry) => entry.id == id);
+    return index < 0 ? null : index;
+  }
+
   List<AgentHubEntryProjection> _orderedProjection(
     AgentHubProjection projection,
   ) {
@@ -165,7 +180,13 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
         _entries.every((entry) => entry.id != _detailEntryId)) {
       _detailEntryId = null;
     }
-    return _entries;
+    // The pinned order covers the full catalog, so a card settling into the
+    // grid never reshuffles the ones already on screen. Only cards whose
+    // inspection has settled are rendered; the rest stay out of the grid.
+    return [
+      for (final entry in _entries)
+        if (!entry.pending) entry,
+    ];
   }
 
   Future<void> _install(AgentHubEntryProjection entry) async {
@@ -212,6 +233,12 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
   void _openAgent(AgentHubEntryProjection entry) {
     if (entry.busy || !entry.present) return;
     widget.binding.intents.send(OpenAgentHubAgent(entry.id));
+  }
+
+  /// Re-runs one card's live inspection after it failed, without asking native
+  /// for a machine-wide rescan.
+  void _retryInspection(String entryId) {
+    widget.binding.intents.send(RetryAgentHubEntry(entryId));
   }
 
   void _visit(AgentHubEntryProjection entry) {
@@ -320,14 +347,11 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
           _AgentHubDetailDestination.skills => strings.skillsNav,
         },
     ];
+    // Cards enter the grid only as their own inspection settles, so an empty
+    // grid while inspections are still in flight keeps the loading treatment.
+    final settling = projection.entries.any((entry) => entry.pending);
     Widget body;
-    if (projection.phase == PresentationPhase.loading && entries.isEmpty) {
-      body = const Center(
-        key: Key('agent-hub-loading'),
-        child: LicoLoadingIndicator(),
-      );
-    } else if (projection.phase == PresentationPhase.failed &&
-        entries.isEmpty) {
+    if (projection.phase == PresentationPhase.failed && entries.isEmpty) {
       body = Center(
         key: const Key('agent-hub-catalog-failed'),
         child: Column(
@@ -381,6 +405,12 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
             ),
         ],
       );
+    } else if (entries.isEmpty &&
+        (projection.phase == PresentationPhase.loading || settling)) {
+      body = const Center(
+        key: Key('agent-hub-loading'),
+        child: LicoLoadingIndicator(),
+      );
     } else {
       body = CustomScrollView(
         slivers: [
@@ -402,23 +432,38 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
             ),
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final entry = entries[index];
-              final resolving = entry.busy;
-              return _AgentHubRecipeCard(
-                recipe: entry,
-                busy: _busyEntryId == entry.id,
-                loading: resolving,
-                installLabel: strings.install,
-                updateLabel: strings.agentHubUpdate,
-                openLabel: strings.agentHubOpen,
-                actions: _actionsFor(entry, resolving),
-                onOpenDetail: () => _openDetail(entry.id),
-                onInstall: () => _install(entry),
-                onUpdate: () => _update(entry.id),
-                onOpen: () => _openAgent(entry),
-              );
-            }, childCount: entries.length),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final entry = entries[index];
+                final resolving = entry.busy;
+                return _HubCardEntry(
+                  key: _cardEntryKey(entry.id),
+                  entryId: entry.id,
+                  child: _AgentHubRecipeCard(
+                    recipe: entry,
+                    busy: _busyEntryId == entry.id,
+                    loading: resolving,
+                    installLabel: strings.install,
+                    updateLabel: strings.agentHubUpdate,
+                    openLabel: strings.agentHubOpen,
+                    retryLabel: strings.retry,
+                    actions: _actionsFor(entry, resolving),
+                    onOpenDetail: () => _openDetail(entry.id),
+                    onInstall: () => _install(entry),
+                    onUpdate: () => _update(entry.id),
+                    onOpen: () => _openAgent(entry),
+                    onRetryInspection: () => _retryInspection(entry.id),
+                  ),
+                );
+              },
+              childCount: entries.length,
+              findChildIndexCallback: (key) {
+                // Cards settle one at a time, so the visible list grows in the
+                // middle. Matching a moved card by key keeps its entry state
+                // instead of replaying the animation for cards already on screen.
+                return _cardEntryIndex(entries, key);
+              },
+            ),
           ),
         ],
       );
@@ -654,6 +699,124 @@ TargetCandidate _brandTarget(AgentHubEntryProjection recipe) {
   );
 }
 
+/// Fades a card in with a tiny upward settle the first time it enters the
+/// grid. Cards already on screen keep their state, so a later inspection of
+/// the same agent never replays the entry.
+final class _HubCardEntry extends StatefulWidget {
+  const _HubCardEntry({super.key, required this.entryId, required this.child});
+
+  final String entryId;
+  final Widget child;
+
+  @override
+  State<_HubCardEntry> createState() => _HubCardEntryState();
+}
+
+final class _HubCardEntryState extends State<_HubCardEntry>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: LicoMotion.medium,
+  );
+  late final CurvedAnimation _entrance = CurvedAnimation(
+    parent: _controller,
+    curve: LicoMotion.decelerate,
+  );
+  late final Animation<Offset> _settle = Tween<Offset>(
+    begin: const Offset(0, 0.04),
+    end: Offset.zero,
+  ).animate(_entrance);
+  bool _entering = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final duration = context.motion(LicoMotion.medium);
+    _controller.duration = duration;
+    if (duration == Duration.zero) {
+      // Reduced motion: the card is simply there, fully settled.
+      _controller.value = 1;
+    } else if (!_entering) {
+      _controller.forward();
+    }
+    _entering = true;
+  }
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      key: Key('agent-hub-card-fade-${widget.entryId}'),
+      opacity: _entrance,
+      child: SlideTransition(
+        key: Key('agent-hub-card-settle-${widget.entryId}'),
+        position: _settle,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The failed-card footer. It replaces the primary action so a card whose
+/// inspection failed offers its own re-inspection instead of dead text.
+final class _HubRetryButton extends StatelessWidget {
+  const _HubRetryButton({
+    required this.recipeId,
+    required this.label,
+    required this.enabled,
+    required this.onRetry,
+  });
+
+  final String recipeId;
+  final String label;
+  final bool enabled;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final textTheme = Theme.of(context).textTheme;
+    final foreground = enabled ? colors.error : colors.textDisabled;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: Key('agent-hub-retry-$recipeId'),
+        onTap: enabled ? onRetry : null,
+        child: SizedBox(
+          height: _hubCardFooterExtent,
+          width: double.infinity,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.refresh, size: _hubChipIconSize, color: foreground),
+                const SizedBox(width: LicoContentSpacing.inline),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.labelSmall?.copyWith(
+                    fontSize: _hubFooterActionFontSize,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                    color: foreground,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 final class _AgentHubRecipeCard extends StatelessWidget {
   const _AgentHubRecipeCard({
     required this.recipe,
@@ -662,11 +825,13 @@ final class _AgentHubRecipeCard extends StatelessWidget {
     required this.installLabel,
     required this.updateLabel,
     required this.openLabel,
+    required this.retryLabel,
     required this.actions,
     required this.onOpenDetail,
     required this.onInstall,
     required this.onUpdate,
     required this.onOpen,
+    required this.onRetryInspection,
   });
 
   final AgentHubEntryProjection recipe;
@@ -675,11 +840,13 @@ final class _AgentHubRecipeCard extends StatelessWidget {
   final String installLabel;
   final String updateLabel;
   final String openLabel;
+  final String retryLabel;
   final _HubCardActions actions;
   final VoidCallback onOpenDetail;
   final VoidCallback onInstall;
   final VoidCallback onUpdate;
   final VoidCallback onOpen;
+  final VoidCallback onRetryInspection;
 
   @override
   Widget build(BuildContext context) {
@@ -776,16 +943,11 @@ final class _AgentHubRecipeCard extends StatelessWidget {
                     ),
             ),
             if (recipe.resolutionFailed)
-              SizedBox(
-                height: _hubCardFooterExtent,
-                child: Center(
-                  child: Text(
-                    LicoStrings.of(context).isChinese
-                        ? '状态加载失败'
-                        : 'Status unavailable',
-                    style: textTheme.labelSmall?.copyWith(color: colors.error),
-                  ),
-                ),
+              _HubRetryButton(
+                recipeId: recipe.id,
+                label: retryLabel,
+                enabled: !recipe.busy && !busy,
+                onRetry: onRetryInspection,
               )
             else
               _HubListPrimaryButton(

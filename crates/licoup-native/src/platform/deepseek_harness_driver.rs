@@ -143,6 +143,12 @@ struct TransportState {
     stdin: ChildStdin,
     receiver: mpsc::Receiver<std::result::Result<ProtocolFrame, FrameError>>,
     next_request_id: u64,
+    /// Session identity admitted by the harness process. The SDK runtime
+    /// records every session durably and refuses to re-admit a recorded
+    /// identity in a later process, so each spawned transport claims its own
+    /// derivation of the caller's session id; continuity holds for exactly
+    /// the transport's lifetime.
+    harness_session_id: String,
     raw_execution: RawExecutionBinding,
     initial_raw_execution: Option<RawExecutionBindingGuard>,
 }
@@ -315,7 +321,8 @@ fn transport_for_session(
         }
         return Ok(transport);
     }
-    let transport = Arc::new(spawn_transport(config, deadline)?);
+    let harness_session_id = process_scoped_session_id(&session_id);
+    let transport = Arc::new(spawn_transport(config, deadline, harness_session_id)?);
     let inserted = registry_insert_if_absent(
         REGISTRY_NAMESPACE,
         session_id,
@@ -350,6 +357,7 @@ fn transport_for_session(
 fn spawn_transport(
     config: &TransportConfig,
     deadline: Option<Instant>,
+    harness_session_id: String,
 ) -> std::result::Result<ManagedTransport, ProtocolFailure> {
     let mut command = Command::new(&config.executable);
     super::user_shell_environment::apply_to_command(&mut command);
@@ -457,6 +465,7 @@ fn spawn_transport(
             stdin,
             receiver,
             next_request_id: 1,
+            harness_session_id,
             raw_execution,
             initial_raw_execution,
         })),
@@ -475,7 +484,7 @@ fn execute_turn(
 > {
     let request_id = format!("prompt-{}", state.next_request_id);
     state.next_request_id = state.next_request_id.saturating_add(1);
-    let request = prompt_request(&request_id, session_id, prompt);
+    let request = prompt_request(&request_id, &state.harness_session_id, prompt);
     write_frame(&mut state.stdin, &request).map_err(|_| {
         failure(
             "deepseek_harness_prompt_failed",
@@ -483,7 +492,7 @@ fn execute_turn(
             "protocol/prompt",
         )
     })?;
-    let mut parser = TurnParser::new(&request_id, session_id);
+    let mut parser = TurnParser::new(&request_id, &state.harness_session_id);
     let mut output_bytes = 0usize;
     loop {
         let frame = next_frame(&state.receiver, deadline).ok_or_else(turn_incomplete)??;
@@ -504,6 +513,13 @@ fn execute_turn(
             Ok(Some(result)) => return Ok(result),
             Ok(None) => {}
             Err(TurnParseError::Incomplete) => return Err(turn_incomplete()),
+            Err(TurnParseError::PromptRejected) => {
+                return Err(failure(
+                    "deepseek_harness_prompt_rejected",
+                    "DeepSeek Harness rejected the prompt before admission.",
+                    "protocol/prompt",
+                ));
+            }
             Err(TurnParseError::SessionMismatch) => {
                 return Err(failure(
                     "deepseek_harness_session_mismatch",
@@ -606,6 +622,13 @@ fn shutdown_transport(transport: &ManagedTransport) -> bool {
 
 fn failure(code: &'static str, message: &'static str, stage: &'static str) -> ProtocolFailure {
     ProtocolFailure::new(code, message, stage)
+}
+/// Derive the session identity a freshly spawned harness process will record.
+/// Keeping the caller's id as the prefix preserves the visible link between a
+/// conversation and its harness session records.
+fn process_scoped_session_id(session_id: &str) -> String {
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    format!("{session_id}-{}", &nonce[..8])
 }
 fn transport_unavailable() -> ProtocolFailure {
     failure(
@@ -725,6 +748,127 @@ mod tests {
                 String::from_utf8(wire).unwrap()
             )
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn process_restart_reclaims_a_durably_recorded_session() {
+        let root = std::env::temp_dir().join(format!("lico-dsh-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let executable = root.join("fake-dsh");
+        let log = root.join("prompts.log");
+        let store = root.join("sessions.store");
+        // Emulates the SDK runtime's durable session store: a session identity
+        // recorded by one process is refused by any later process.
+        let source = format!(
+            r#"#!/bin/sh
+[ "$#" -eq 2 ] && [ "$1" = '--profile' ] && [ "$2" = 'sdk' ] || exit 9
+while IFS= read -r line; do
+ case "$line" in
+  *'"method":"initialize"'*) printf '%s\n' '{{"jsonrpc":"2.0","id":"initialize","result":{{"serverInfo":{{"name":"deepseek-harness-sdk-runtime"}}}}}}' ;;
+  *'"method":"session/prompt"'*) request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); session_id=$(printf '%s' "$line" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p'); if grep -q " ${{session_id}}\$" '{store}' 2>/dev/null && ! grep -q "^$$ ${{session_id}}\$" '{store}'; then printf '{{"jsonrpc":"2.0","id":"%s","error":{{"code":-32603,"message":"session \"%s\" already exists"}}}}\n' "$request_id" "$session_id"; else grep -q "^$$ ${{session_id}}\$" '{store}' 2>/dev/null || printf '%s %s\n' "$$" "$session_id" >> '{store}'; count=$(grep -c '^prompt ' '{log}' 2>/dev/null || true); count=$((count + 1)); id="message-$count"; printf 'prompt %s %s %s\n' "$$" "$session_id" "$count" >> '{log}'; printf '{{"jsonrpc":"2.0","id":"%s","result":{{"messageId":"%s"}}}}\n' "$request_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"agent/inbox/spliced","data":{{"inserted":[{{"id":"%s"}}]}}}}}}}}\n' "$session_id" "$id"; printf '{{"jsonrpc":"2.0","method":"session.event","params":{{"sessionId":"%s","event":{{"type":"assistant/message","data":{{"message":{{"content":[{{"type":"text","text":"turn-%s"}}]}}}}}}}}}}\n' "$session_id" "$count"; printf '{{"jsonrpc":"2.0","method":"session.status","params":{{"sessionId":"%s","status":"idle"}}}}\n' "$session_id"; fi ;;
+  *'"method":"shutdown"'*) exit 0 ;;
+ esac
+done
+"#,
+            store = store.display(),
+            log = log.display(),
+        );
+        fs::write(&executable, source).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let params = json!({"model":"deepseek-test"});
+        let run = |prompt: &str| {
+            execute(
+                executable.to_str().unwrap(),
+                &params,
+                prompt,
+                "restart-session",
+                Some(&root),
+                2_000,
+                None,
+                4096,
+            )
+        };
+        let first = run("one");
+        let second = run("two");
+        assert!(first.ok, "first turn failed: {:?}", first.error);
+        assert!(second.ok, "second turn failed: {:?}", second.error);
+        assert_eq!(first.output, "turn-1");
+        assert_eq!(second.output, "turn-2");
+        assert_eq!(
+            cleanup_session("restart-session"),
+            CleanupDisposition::Accepted
+        );
+        let third = run("three");
+        assert!(third.ok, "restart turn failed: {:?}", third.error);
+        assert_eq!(third.output, "turn-3");
+        let prompts: Vec<Vec<String>> = fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .map(|line| {
+                line.strip_prefix("prompt ")
+                    .unwrap()
+                    .split(' ')
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .collect();
+        assert_eq!(prompts.len(), 3);
+        let first_identity = &prompts[0][1];
+        assert!(first_identity.starts_with("restart-session-"));
+        assert_eq!(prompts[1][0], prompts[0][0], "one transport owns two turns");
+        assert_eq!(&prompts[1][1], first_identity);
+        assert_ne!(prompts[2][0], prompts[0][0], "a restart spawns a process");
+        assert_ne!(&prompts[2][1], first_identity);
+        assert!(prompts[2][1].starts_with("restart-session-"));
+        assert_eq!(
+            cleanup_session("restart-session"),
+            CleanupDisposition::Accepted
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn prompt_rejection_surfaces_its_own_failure_code() {
+        let root = std::env::temp_dir().join(format!("lico-dsh-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let executable = root.join("fake-dsh");
+        let source = r#"#!/bin/sh
+[ "$#" -eq 2 ] && [ "$1" = '--profile' ] && [ "$2" = 'sdk' ] || exit 9
+while IFS= read -r line; do
+ case "$line" in
+  *'"method":"initialize"'*) printf '%s\n' '{"jsonrpc":"2.0","id":"initialize","result":{"serverInfo":{"name":"deepseek-harness-sdk-runtime"}}}' ;;
+  *'"method":"session/prompt"'*) request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); printf '{"jsonrpc":"2.0","id":"%s","error":{"code":-32603,"message":"session already exists"}}\n' "$request_id" ;;
+  *'"method":"shutdown"'*) exit 0 ;;
+ esac
+done
+"#;
+        fs::write(&executable, source).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let result = execute(
+            executable.to_str().unwrap(),
+            &json!({"model":"deepseek-test"}),
+            "one",
+            "rejected-session",
+            Some(&root),
+            2_000,
+            None,
+            4096,
+        );
+        assert!(!result.ok);
+        let error = result.error.unwrap();
+        assert_eq!(error.code, "deepseek_harness_prompt_rejected");
+        assert_eq!(error.stage, "protocol/prompt");
+        assert_eq!(
+            cleanup_session("rejected-session"),
+            CleanupDisposition::SessionUnavailable
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

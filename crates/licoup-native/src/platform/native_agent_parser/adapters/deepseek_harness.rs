@@ -87,6 +87,7 @@ pub(in crate::platform) fn shutdown_request() -> Value {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum TurnParseError {
     Incomplete,
+    PromptRejected,
     SessionMismatch,
 }
 
@@ -133,6 +134,9 @@ impl TurnParser {
         frame: ProtocolFrame,
     ) -> Result<Option<TurnResult>, TurnParseError> {
         if frame.value.get("id").and_then(Value::as_str) == Some(self.request_id.as_str()) {
+            if frame.value.get("error").is_some() {
+                return Err(TurnParseError::PromptRejected);
+            }
             let Some(message_id) = frame
                 .value
                 .pointer("/result/messageId")
@@ -421,6 +425,20 @@ mod tests {
         assert_eq!(
             units,
             ["deepseek-harness:reply:1", "deepseek-harness:reply:2"]
+        );
+    }
+
+    #[test]
+    fn parser_distinguishes_a_prompt_error_from_an_incomplete_turn() {
+        let mut parser = TurnParser::new("prompt-1", "session-1");
+        assert_eq!(
+            parser
+                .ingest(frame(json!({
+                    "id":"prompt-1",
+                    "error":{"code":-32603,"message":"session \"session-1\" already exists"}
+                })))
+                .unwrap_err(),
+            TurnParseError::PromptRejected
         );
     }
 

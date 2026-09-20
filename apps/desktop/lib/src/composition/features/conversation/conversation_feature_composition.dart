@@ -377,19 +377,11 @@ final class _ConversationIntents implements IntentSink<ConversationIntent> {
           trace,
           stage: 'canonical-delete',
         );
-      case RefreshCanonicalAssistantThread():
+      case ArchiveAndReopenConversation():
         _runResult(
-          _controller
-              .clientConversationController
-              .refreshSelectedAssistantThread,
+          _controller.clientConversationController.archiveAndReopenSelected,
           trace,
-          stage: 'assistant-refresh',
-        );
-      case ClearCanonicalConversationHistory():
-        _runResult(
-          _controller.clientConversationController.clearSelectedHistory,
-          trace,
-          stage: 'canonical-clear',
+          stage: 'canonical-archive',
         );
       case RefreshCanonicalAssistantProfile():
         _run(

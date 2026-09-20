@@ -2093,7 +2093,7 @@
         },
         {
           "id": "group-group-1.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员展开 / 清空历史确认框",
+          "label": "群聊 / 群内列表 / 成员展开 / 归档确认框",
           "view": {
             "page": "group",
             "list": "group",
@@ -2198,7 +2198,7 @@
         },
         {
           "id": "group-catalog-1.clear-confirm",
-          "label": "群聊 / 对话总列表 / 成员展开 / 清空历史确认框",
+          "label": "群聊 / 对话总列表 / 成员展开 / 归档确认框",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2303,7 +2303,7 @@
         },
         {
           "id": "group-group-0.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员收起 / 清空历史确认框",
+          "label": "群聊 / 群内列表 / 成员收起 / 归档确认框",
           "view": {
             "page": "group",
             "list": "group",
@@ -2408,7 +2408,7 @@
         },
         {
           "id": "group-catalog-0.clear-confirm",
-          "label": "群聊 / 对话总列表 / 成员收起 / 清空历史确认框",
+          "label": "群聊 / 对话总列表 / 成员收起 / 归档确认框",
           "view": {
             "page": "group",
             "list": "catalog",

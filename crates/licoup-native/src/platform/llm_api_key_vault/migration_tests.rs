@@ -146,6 +146,22 @@ struct Fixture {
 
 impl Fixture {
     fn new(count: usize, protected_inventory: bool, decision: PresenceDecision) -> Self {
+        Self::for_request(
+            count,
+            protected_inventory,
+            decision,
+            gateway_migration_request(),
+            Duration::from_secs(60),
+        )
+    }
+
+    fn for_request(
+        count: usize,
+        protected_inventory: bool,
+        decision: PresenceDecision,
+        request: SecretStoreAuthorizationRequest,
+        operation_offset: Duration,
+    ) -> Self {
         let root = std::env::temp_dir().join(format!(
             "lico-credential-migration-{}",
             uuid::Uuid::new_v4()
@@ -153,7 +169,6 @@ impl Fixture {
         let mut vault = PlatformLlmApiKeyVault::at_state_root(&root).unwrap();
         let keychain = Arc::new(Keychain::default());
         let prompts = Arc::new(AtomicUsize::new(0));
-        let request = gateway_migration_request();
         let batch = SecretStorePresenceBatchRequest::new(
             SecretStorePresenceProvider::MacosKeychain,
             request.key_class(),
@@ -170,7 +185,7 @@ impl Fixture {
             .with_macos_secret_store_access(MacosSecretStoreAccess::new(
                 batch,
                 now,
-                now + Duration::from_secs(60),
+                now + operation_offset,
                 Box::new(Prompt {
                     count: Arc::clone(&prompts),
                     decision,
@@ -340,4 +355,37 @@ fn explicit_migration_cancel_and_conflict_preserve_all_credentials() {
             .iter()
             .any(|(event, _)| matches!(*event, "write" | "legacy-delete"))
     );
+}
+
+#[test]
+fn delete_drops_an_inventory_entry_whose_secret_is_already_gone() {
+    let fixture = Fixture::for_request(
+        2,
+        false,
+        PresenceDecision::Approved,
+        gateway_request(
+            "Authorize LicoUp to delete a model API key",
+            5 + MAX_LLM_API_KEYS,
+        ),
+        Duration::from_secs(15),
+    );
+    // Neither the protected store nor the legacy store holds this secret:
+    // the entry is orphaned and must still be deletable.
+    fixture.keychain.0.lock().unwrap().legacy.clear();
+    let doomed = fixture.inventory.entries[0].credential_id.clone();
+    let survivor = fixture.inventory.entries[1].credential_id.clone();
+    let updated = fixture.vault.delete(&doomed).unwrap();
+    assert!(
+        updated
+            .entries
+            .iter()
+            .all(|entry| entry.credential_id != doomed)
+    );
+    assert!(
+        updated
+            .entries
+            .iter()
+            .any(|entry| entry.credential_id == survivor)
+    );
+    assert_eq!(fixture.vault.list().unwrap(), updated);
 }

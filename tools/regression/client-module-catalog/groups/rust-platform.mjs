@@ -756,6 +756,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::acp_driver_runtime::tests::supervision::"),
     }),
   defineModule({
+      id: "rust.platform.acp-runtime.replay",
+      kind: "rust-platform",
+      summary: "Recorded ACP transcript replay arms for the copilot and kimi-code protocol state machine",
+      inputs: [
+        "crates/licoup-native/src/platform/acp_driver_runtime/replay.rs",
+      ],
+      command: rustLayer("platform::native_agent_parser::replay::"),
+    }),
+  defineModule({
       id: "rust.platform.acp-session-transport",
       kind: "rust-platform",
       summary: "Driver-scoped persistent ACP session pools, approval parking, and control",
@@ -1262,6 +1271,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/openclaw_driver/tests/execution.rs",
       ],
       command: rustLayer("platform::openclaw_driver::tests::execution::"),
+    }),
+  defineModule({
+      id: "rust.platform.openclaw-driver.replay",
+      kind: "rust-platform",
+      summary: "Recorded Gateway ACP transcript replay arm for the openclaw protocol state machine",
+      inputs: [
+        "crates/licoup-native/src/platform/openclaw_driver/replay.rs",
+      ],
+      command: rustLayer("platform::native_agent_parser::replay::"),
     }),
   defineModule({
       id: "rust.platform.pi-driver.composition",
@@ -1852,8 +1870,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/tests/fixtures/fake_lico_agent.rs",
         "crates/licoup-native/tests/fixtures/fake_cursor_agent.rs",
         "crates/licoup-native/src/platform/native_agent_parser/replay/**",
-        "crates/licoup-native/src/platform/acp_driver_runtime/replay.rs",
-        "crates/licoup-native/src/platform/openclaw_driver/replay.rs",
         "crates/licoup-native/resources/agent-conversation-drivers.json",
         "crates/licoup-native/resources/agent-conversation-evidence.json",
         "crates/licoup-native/resources/agent-conversation-readiness.json",

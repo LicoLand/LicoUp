@@ -100,7 +100,7 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
     final visibleSeriesCount = widget.timeline.series.where((series) {
       return (widget.timeline.snapshots[index].values[series.label] ?? 0) > 0;
     }).length;
-    final estimatedHeight = 58.0 + visibleSeriesCount * 26.0;
+    final estimatedHeight = 75.0 + visibleSeriesCount * 22.0;
     final origin = agentUsageTooltipOrigin(
       pointer: pointer,
       screenSize: screenSize,
@@ -111,12 +111,18 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
       left: origin.dx,
       top: origin.dy,
       width: tooltipWidth,
-      child: IgnorePointer(
-        child: AgentUsageChartTooltip(
-          timeline: widget.timeline,
-          snapshot: widget.timeline.snapshots[index],
-          semanticLabel: widget.tooltipSemanticLabel?.call(
-            widget.timeline.snapshots[index].time,
+      // The overlay has no Material ancestor of its own; without this the
+      // card's text falls back to the framework's error style.
+      child: Material(
+        color: Colors.transparent,
+        elevation: 0,
+        child: IgnorePointer(
+          child: AgentUsageChartTooltip(
+            timeline: widget.timeline,
+            snapshot: widget.timeline.snapshots[index],
+            semanticLabel: widget.tooltipSemanticLabel?.call(
+              widget.timeline.snapshots[index].time,
+            ),
           ),
         ),
       ),
@@ -197,7 +203,7 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
                           .copyWith(
                             color: colors.textMuted,
                             fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                           ),
                       timeline: widget.timeline,
                       colors: colors,

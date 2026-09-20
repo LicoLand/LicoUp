@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 
 const _output = String.fromEnvironment('LICO_MOTION_EVIDENCE_DIR');
 const _size = Size(1040, 700);
@@ -128,217 +128,213 @@ setInterval(()=>{if(playing){i=(i+1)%361;show()}},1000/30);
     skip: _output.isEmpty,
   );
 
-  testWidgets(
-    'export particle and steel frames with synthetic anchors',
-    (tester) async {
-      await tester.runAsync(() async {
-        final directory = Directory(_output)..createSync(recursive: true);
-        await (FontLoader('Geist Sans')
-              ..addFont(rootBundle.load('assets/fonts/GeistSans-Regular.ttf')))
-            .load();
-        final markRecorder = ui.PictureRecorder();
-        _mark(
-          Canvas(markRecorder),
-          const Rect.fromLTWH(0, 0, 64, 64),
-          Colors.white,
+  testWidgets('export particle and orb frames with synthetic anchors', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final directory = Directory(_output)..createSync(recursive: true);
+      await (FontLoader(
+        'Geist Sans',
+      )..addFont(rootBundle.load('assets/fonts/GeistSans-Regular.ttf'))).load();
+      final markRecorder = ui.PictureRecorder();
+      _mark(
+        Canvas(markRecorder),
+        const Rect.fromLTWH(0, 0, 64, 64),
+        Colors.white,
+      );
+      final markPicture = markRecorder.endRecording();
+      final mark = await markPicture.toImage(64, 64);
+      final glyph = await ConversationMotionGlyph.fromImage(mark);
+      mark.dispose();
+      markPicture.dispose();
+      final geometry = ConversationParticleGeometry();
+      geometry.assemble(
+        seconds: 9.5,
+        duration: 2,
+        anchors: _anchors,
+        glyph: glyph,
+      );
+      final clock = ValueNotifier<double>(8);
+      final painter = ConversationParticlePainter(
+        geometry: geometry,
+        anchors: _anchors,
+        clock: clock,
+        color: const Color(0xffe1e5e9),
+      );
+      final frameMicros = <int>[];
+      final rasterMicros = <int>[];
+      final frames = <ui.Image>[];
+      final selected = {0, 36, 48, 60, 72, 80, 88, 96};
+      for (var frame = 0; frame <= 96; frame++) {
+        final seconds = frame / 24;
+        clock.value = 8 + seconds;
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        _surface(canvas, seconds, dark: true);
+        final stopwatch = Stopwatch()..start();
+        painter.paint(canvas, _size);
+        stopwatch.stop();
+        frameMicros.add(stopwatch.elapsedMicroseconds);
+        if (seconds >= 1.5 && seconds < 1.75) {
+          _orb(canvas, seconds, dark: true);
+        }
+        final picture = recorder.endRecording();
+        stopwatch
+          ..reset()
+          ..start();
+        final image = await picture.toImage(
+          _size.width.toInt(),
+          _size.height.toInt(),
         );
-        final markPicture = markRecorder.endRecording();
-        final mark = await markPicture.toImage(64, 64);
-        final glyph = await ConversationMotionGlyph.fromImage(mark);
-        mark.dispose();
-        markPicture.dispose();
-        final geometry = ConversationParticleGeometry();
-        geometry.assemble(
-          seconds: 9.5,
-          duration: 2,
-          anchors: _anchors,
-          glyph: glyph,
-        );
-        final clock = ValueNotifier<double>(8);
-        final painter = ConversationParticlePainter(
-          geometry: geometry,
-          anchors: _anchors,
-          clock: clock,
-          color: const Color(0xffe1e5e9),
-        );
-        final frameMicros = <int>[];
-        final rasterMicros = <int>[];
-        final frames = <ui.Image>[];
-        final selected = {0, 36, 48, 60, 72, 80, 88, 96};
-        for (var frame = 0; frame <= 96; frame++) {
-          final seconds = frame / 24;
-          clock.value = 8 + seconds;
-          final recorder = ui.PictureRecorder();
-          final canvas = Canvas(recorder);
-          _surface(canvas, seconds, dark: true);
-          final stopwatch = Stopwatch()..start();
-          painter.paint(canvas, _size);
-          stopwatch.stop();
-          frameMicros.add(stopwatch.elapsedMicroseconds);
-          if (seconds >= 1.5 && seconds < 1.75) {
-            _steel(canvas, seconds, dark: true);
-          }
-          final picture = recorder.endRecording();
-          stopwatch
-            ..reset()
-            ..start();
-          final image = await picture.toImage(
-            _size.width.toInt(),
-            _size.height.toInt(),
-          );
-          stopwatch.stop();
-          rasterMicros.add(stopwatch.elapsedMicroseconds);
-          await _writePng(
-            image,
-            '${directory.path}/frame-${frame.toString().padLeft(3, '0')}.png',
-          );
-          if (selected.contains(frame)) {
-            frames.add(image);
-          } else {
-            image.dispose();
-          }
-          picture.dispose();
-        }
-        final sheetRecorder = ui.PictureRecorder();
-        final sheetCanvas = Canvas(sheetRecorder);
-        for (var i = 0; i < frames.length; i++) {
-          sheetCanvas.drawImageRect(
-            frames[i],
-            Offset.zero & _size,
-            Rect.fromLTWH((i % 2) * 520, (i ~/ 2) * 350, 520, 350),
-            Paint(),
-          );
-        }
-        final sheetPicture = sheetRecorder.endRecording();
-        final sheet = await sheetPicture.toImage(1040, 1400);
-        await _writePng(sheet, '${directory.path}/contact-sheet.png');
-        sheet.dispose();
-        sheetPicture.dispose();
-        for (final image in frames) {
-          image.dispose();
-        }
-
-        // The same geometry, API and canvas painter are also exercised in light.
-        clock.value = 8;
-        final lightRecorder = ui.PictureRecorder();
-        final lightCanvas = Canvas(lightRecorder);
-        _surface(lightCanvas, 0, dark: false);
-        ConversationParticlePainter(
-          geometry: geometry,
-          anchors: _anchors,
-          clock: clock,
-          color: const Color(0xff3e4650),
-        ).paint(lightCanvas, _size);
-        _steel(lightCanvas, 0.4, dark: false);
-        final lightPicture = lightRecorder.endRecording();
-        final lightImage = await lightPicture.toImage(1040, 700);
-        await _writePng(lightImage, '${directory.path}/light.png');
-        lightImage.dispose();
-        lightPicture.dispose();
-
-        final steelFrames = <ui.Image>[];
-        for (var frame = 0; frame <= 48; frame++) {
-          final recorder = ui.PictureRecorder();
-          final canvas = Canvas(recorder)
-            ..drawColor(const Color(0xff090b0d), BlendMode.src);
-          _text(
-            canvas,
-            'ELASTIC MOMENTUM',
-            const Offset(24, 18),
-            const Color(0xff9aa5ad),
-            11,
-          );
-          canvas.save();
-          canvas.translate(20, 49);
-          canvas.scale(2.5);
-          SteelBallWaitingPainter(
-            phase: AlwaysStoppedAnimation(frame / 48),
-            silver: const Color(0xffcbd3db),
-            shadow: const Color(0xff050608),
-            rail: const Color(0xff89939c),
-          ).paint(canvas, const Size(92.5, 50));
-          canvas.restore();
-          final picture = recorder.endRecording();
-          final image = await picture.toImage(280, 180);
-          await _writePng(
-            image,
-            '${directory.path}/steel-${frame.toString().padLeft(3, '0')}.png',
-          );
-          if (frame % 8 == 0 && frame < 48) {
-            steelFrames.add(image);
-          } else {
-            image.dispose();
-          }
-          picture.dispose();
-        }
-        final steelSheetRecorder = ui.PictureRecorder();
-        final steelSheetCanvas = Canvas(steelSheetRecorder);
-        for (var i = 0; i < steelFrames.length; i++) {
-          steelSheetCanvas.drawImage(
-            steelFrames[i],
-            Offset((i % 3) * 280, (i ~/ 3) * 180),
-            Paint(),
-          );
-        }
-        final steelSheetPicture = steelSheetRecorder.endRecording();
-        final steelSheet = await steelSheetPicture.toImage(840, 360);
+        stopwatch.stop();
+        rasterMicros.add(stopwatch.elapsedMicroseconds);
         await _writePng(
-          steelSheet,
-          '${directory.path}/steel-contact-sheet.png',
+          image,
+          '${directory.path}/frame-${frame.toString().padLeft(3, '0')}.png',
         );
-        steelSheet.dispose();
-        steelSheetPicture.dispose();
-        for (final image in steelFrames) {
+        if (selected.contains(frame)) {
+          frames.add(image);
+        } else {
           image.dispose();
         }
+        picture.dispose();
+      }
+      final sheetRecorder = ui.PictureRecorder();
+      final sheetCanvas = Canvas(sheetRecorder);
+      for (var i = 0; i < frames.length; i++) {
+        sheetCanvas.drawImageRect(
+          frames[i],
+          Offset.zero & _size,
+          Rect.fromLTWH((i % 2) * 520, (i ~/ 2) * 350, 520, 350),
+          Paint(),
+        );
+      }
+      final sheetPicture = sheetRecorder.endRecording();
+      final sheet = await sheetPicture.toImage(1040, 1400);
+      await _writePng(sheet, '${directory.path}/contact-sheet.png');
+      sheet.dispose();
+      sheetPicture.dispose();
+      for (final image in frames) {
+        image.dispose();
+      }
 
-        // Warmed, isolated CPU geometry samples supplement full canvas recording.
-        final cpu = <int>[];
-        for (var frame = 0; frame < 420; frame++) {
-          final stopwatch = Stopwatch()..start();
-          geometry.writeFrame(8 + (frame % 84) / 24, _anchors);
-          stopwatch.stop();
-          if (frame >= 120) cpu.add(stopwatch.elapsedMicroseconds);
+      // The same geometry, API and canvas painter are also exercised in light.
+      clock.value = 8;
+      final lightRecorder = ui.PictureRecorder();
+      final lightCanvas = Canvas(lightRecorder);
+      _surface(lightCanvas, 0, dark: false);
+      ConversationParticlePainter(
+        geometry: geometry,
+        anchors: _anchors,
+        clock: clock,
+        color: const Color(0xff3e4650),
+      ).paint(lightCanvas, _size);
+      _orb(lightCanvas, 0.4, dark: false);
+      final lightPicture = lightRecorder.endRecording();
+      final lightImage = await lightPicture.toImage(1040, 700);
+      await _writePng(lightImage, '${directory.path}/light.png');
+      lightImage.dispose();
+      lightPicture.dispose();
+
+      final orbFrames = <ui.Image>[];
+      for (var frame = 0; frame <= 48; frame++) {
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder)
+          ..drawColor(const Color(0xff090b0d), BlendMode.src);
+        _text(
+          canvas,
+          'LIVING ORB',
+          const Offset(24, 18),
+          const Color(0xff9aa5ad),
+          11,
+        );
+        canvas.save();
+        canvas.translate(20, 49);
+        canvas.scale(2.5);
+        OrbWaitingPainter(
+          phase: AlwaysStoppedAnimation(frame / 48),
+          palette: const [
+            Color(0xff4f8a8b),
+            Color(0xff6f6fd0),
+            Color(0xff3f6fae),
+          ],
+          halo: const Color(0xff4f8a8b),
+        ).paint(canvas, const Size(92.5, 50));
+        canvas.restore();
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(280, 180);
+        await _writePng(
+          image,
+          '${directory.path}/orb-${frame.toString().padLeft(3, '0')}.png',
+        );
+        if (frame % 8 == 0 && frame < 48) {
+          orbFrames.add(image);
+        } else {
+          image.dispose();
         }
-        final report = {
-          'scope':
-              'Synthetic headless Flutter debug evidence; not production GPU performance.',
-          'particles': geometry.count,
-          'fps': 24,
-          'frames': 97,
-          'geometry_cpu_us': _summary(cpu),
-          'geometry_and_canvas_recording_us': _summary(frameMicros),
-          'headless_picture_to_image_us': _summary(rasterMicros),
-          'persistent_typed_particle_buffers_bytes':
-              geometry.allocatedBytes + geometry.count * 9 + 48 * 4 + 49 * 4,
-        };
-        File(
-          '${directory.path}/performance.json',
-        ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
-        File('${directory.path}/index.html').writeAsStringSync(
-          '''<!doctype html>
+        picture.dispose();
+      }
+      final orbSheetRecorder = ui.PictureRecorder();
+      final orbSheetCanvas = Canvas(orbSheetRecorder);
+      for (var i = 0; i < orbFrames.length; i++) {
+        orbSheetCanvas.drawImage(
+          orbFrames[i],
+          Offset((i % 3) * 280, (i ~/ 3) * 180),
+          Paint(),
+        );
+      }
+      final orbSheetPicture = orbSheetRecorder.endRecording();
+      final orbSheet = await orbSheetPicture.toImage(840, 360);
+      await _writePng(orbSheet, '${directory.path}/orb-contact-sheet.png');
+      orbSheet.dispose();
+      orbSheetPicture.dispose();
+      for (final image in orbFrames) {
+        image.dispose();
+      }
+
+      // Warmed, isolated CPU geometry samples supplement full canvas recording.
+      final cpu = <int>[];
+      for (var frame = 0; frame < 420; frame++) {
+        final stopwatch = Stopwatch()..start();
+        geometry.writeFrame(8 + (frame % 84) / 24, _anchors);
+        stopwatch.stop();
+        if (frame >= 120) cpu.add(stopwatch.elapsedMicroseconds);
+      }
+      final report = {
+        'scope':
+            'Synthetic headless Flutter debug evidence; not production GPU performance.',
+        'particles': geometry.count,
+        'fps': 24,
+        'frames': 97,
+        'geometry_cpu_us': _summary(cpu),
+        'geometry_and_canvas_recording_us': _summary(frameMicros),
+        'headless_picture_to_image_us': _summary(rasterMicros),
+        'persistent_typed_particle_buffers_bytes':
+            geometry.allocatedBytes + geometry.count * 9 + 48 * 4 + 49 * 4,
+      };
+      File(
+        '${directory.path}/performance.json',
+      ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
+      File('${directory.path}/index.html').writeAsStringSync('''<!doctype html>
 <html lang="en"><meta charset="utf-8"><title>Conversation motion · synthetic evidence</title>
 <style>body{margin:0;background:#090b0d;color:#dde2e7;font:14px system-ui;display:grid;place-items:center}img{width:min(100%,1040px)}nav{display:flex;gap:16px;align-items:center;padding:18px}input{width:520px}button{padding:8px 18px}output{width:80px}</style>
 <img id="frame" src="frame-000.png" alt="Synthetic particle transition frame">
 <nav><button id="play">Pause</button><input id="time" type="range" min="0" max="96" value="0"><output id="label">0.00 s</output></nav>
 <p>Drag to inspect each original Flutter-rendered frame. Idle → send at 1.50 s → first text at 1.75 s → settled at 3.50 s.</p>
-<img id="steel" src="steel-000.png" style="width:280px" alt="Three elastic steel spheres between visible end stops">
+<img id="orb" src="orb-000.png" style="width:280px" alt="A living energy orb for the assistant thinking state">
 <script>
 let i=0,s=0,playing=true;
-const frame=document.querySelector('#frame'),time=document.querySelector('#time'),label=document.querySelector('#label'),play=document.querySelector('#play'),steel=document.querySelector('#steel');
+const frame=document.querySelector('#frame'),time=document.querySelector('#time'),label=document.querySelector('#label'),play=document.querySelector('#play'),orb=document.querySelector('#orb');
 function show(){frame.src='frame-'+String(i).padStart(3,'0')+'.png';time.value=i;label.value=(i/24).toFixed(2)+' s'}
 time.oninput=()=>{i=+time.value;playing=false;play.textContent='Play';show()};
 play.onclick=()=>{playing=!playing;play.textContent=playing?'Pause':'Play'};
 setInterval(()=>{if(playing){i=(i+1)%97;show()}},1000/24);
-setInterval(()=>{if(playing){s=(s+1)%48;steel.src='steel-'+String(s).padStart(3,'0')+'.png'}},1000/30);
-</script></html>''',
-        );
-        clock.dispose();
-        expect(glyph, isNotNull);
-      });
-    },
-    skip: _output.isEmpty,
-  );
+setInterval(()=>{if(playing){s=(s+1)%48;orb.src='orb-'+String(s).padStart(3,'0')+'.png'}},1000/30);
+</script></html>''');
+      clock.dispose();
+      expect(glyph, isNotNull);
+    });
+  }, skip: _output.isEmpty);
 }
 
 Map<String, num> _summary(List<int> samples) {
@@ -474,14 +470,15 @@ void _surface(Canvas canvas, double seconds, {required bool dark}) {
   );
 }
 
-void _steel(Canvas canvas, double seconds, {required bool dark}) {
+void _orb(Canvas canvas, double seconds, {required bool dark}) {
   canvas.save();
   canvas.translate(110, 207);
-  SteelBallWaitingPainter(
+  OrbWaitingPainter(
     phase: AlwaysStoppedAnimation(seconds / 1.6),
-    silver: dark ? const Color(0xffcbd3db) : const Color(0xff6a7784),
-    shadow: dark ? const Color(0xff050608) : const Color(0xff5d6670),
-    rail: dark ? const Color(0xff89939c) : const Color(0xff73808b),
+    palette: dark
+        ? const [Color(0xff4f8a8b), Color(0xff6f6fd0), Color(0xff3f6fae)]
+        : const [Color(0xff0d7f83), Color(0xff5a5ab8), Color(0xff2f5f96)],
+    halo: dark ? const Color(0xff4f8a8b) : const Color(0xff0d7f83),
   ).paint(canvas, const Size(74, 40));
   canvas.restore();
 }
