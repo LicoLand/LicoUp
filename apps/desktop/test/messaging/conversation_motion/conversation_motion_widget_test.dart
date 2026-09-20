@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
-import 'package:licoup/src/frontend/shared/messaging/conversation_motion/steel_ball_waiting_indicator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _anchors = ConversationMotionAnchors(
@@ -108,22 +108,17 @@ void main() {
       await tester.pumpWidget(_app(field, reduced: true));
       expect(tester.binding.transientCallbackCount, 0);
       await tester.pumpWidget(
-        _app(const SteelBallWaitingIndicator(active: true), reduced: true),
+        _app(const OrbWaitingIndicator(active: true), reduced: true),
       );
       expect(tester.binding.transientCallbackCount, 0);
-      await tester.pumpWidget(
-        _app(const SteelBallWaitingIndicator(active: true)),
-      );
+      await tester.pumpWidget(_app(const OrbWaitingIndicator(active: true)));
       expect(tester.binding.transientCallbackCount, greaterThan(0));
-      await tester.pumpWidget(
-        _app(const SteelBallWaitingIndicator(active: false)),
-      );
+      await tester.pumpWidget(_app(const OrbWaitingIndicator(active: false)));
       expect(tester.binding.transientCallbackCount, 0);
       expect(
         find.byWidgetPredicate(
           (widget) =>
-              widget is CustomPaint &&
-              widget.painter is SteelBallWaitingPainter,
+              widget is CustomPaint && widget.painter is OrbWaitingPainter,
         ),
         findsNothing,
       );

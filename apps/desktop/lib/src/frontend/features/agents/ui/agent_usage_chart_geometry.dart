@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-const double agentUsageChartHeight = 178;
+const double agentUsageChartHeight = 232;
 const double agentUsageChartLeftPadding = 44;
 const double agentUsageChartRightPadding = 10;
 const double agentUsageChartTopPadding = 8;
@@ -70,6 +70,9 @@ Offset agentUsageTooltipOrigin({
   return Offset(left, top);
 }
 
+/// At most five date ticks: both ends, the middle, and the two quarter points.
+/// The end ticks keep the axis readable on narrow panels; anything denser than
+/// five dates reads as clutter rather than as a scale.
 List<int> agentUsageAxisLabelCandidates(int count) {
   if (count <= 0) return const [];
   if (count == 1) return const [0];
@@ -84,10 +87,5 @@ List<int> agentUsageAxisLabelCandidates(int count) {
   add(((count - 1) * 0.5).round());
   add(((count - 1) * 0.25).round());
   add(((count - 1) * 0.75).round());
-  if (count <= 8) {
-    for (var index = 0; index < count; index += 1) {
-      add(index);
-    }
-  }
   return List<int>.unmodifiable(ordered);
 }

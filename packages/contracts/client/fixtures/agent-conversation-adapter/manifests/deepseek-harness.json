@@ -14,7 +14,7 @@
     "versionProbe": "fixed initialize handshake against the SDK runtime carrier",
     "capabilityProbe": "initialize response and declared SDK protocol methods",
     "newSessionMethod": "session/prompt with a caller-created session id",
-    "exactResumeMethod": "session/prompt with the same caller-supplied session id",
+    "exactResumeMethod": "session/prompt with the same session id inside the owning SDK process; the durable SDK session store refuses re-admission after a respawn",
     "streamingMethod": "completed session events and status notifications; no live text deltas",
     "historyMethod": "official protocol does not expose a history read method",
     "cleanupMethod": "shutdown followed by supervised process-tree termination",
@@ -55,7 +55,7 @@
     },
     "exactResume": {
       "status": "supported",
-      "method": "session/prompt with the same caller-supplied session id"
+      "method": "process-local session binding; a respawn derives a fresh session identity because the SDK records session ids durably"
     },
     "send": {
       "status": "supported",

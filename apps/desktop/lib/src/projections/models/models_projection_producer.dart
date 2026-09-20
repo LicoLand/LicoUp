@@ -99,6 +99,7 @@ final class ModelsProjectionProducer
           authorization.migrationPending ||
           authorization.failure ==
               LlmVaultAuthorizationFailure.keychainActionRequired,
+      credentialsSupported: authorization.vaultSupported,
       telegram: TelegramProjection(
         stateLabel: owner.telegramState,
         configured: owner.telegramConfigured,

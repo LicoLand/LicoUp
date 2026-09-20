@@ -120,6 +120,28 @@ void main() {
     expect(ProblemCodeCatalog.wire('pi_model_override_failed'), 'LU-NA-4213');
   });
 
+  test(
+    'DeepSeek Harness protocol failures have native-agent problem codes',
+    () {
+      expect(
+        ProblemCodeCatalog.wire('deepseek_harness_turn_incomplete'),
+        'LU-NA-4259',
+      );
+      expect(
+        ProblemCodeCatalog.wire('deepseek_harness_prompt_rejected'),
+        'LU-NA-4253',
+      );
+      expect(
+        ProblemCodeCatalog.wire('deepseek_harness_model_required'),
+        'LU-NA-4249',
+      );
+      expect(
+        ProblemCodeCatalog.isMapped('deepseek_harness_initialize_required'),
+        isFalse,
+      );
+    },
+  );
+
   test('Cursor strict protocol failures have native-agent problem codes', () {
     expect(
       ProblemCodeCatalog.wire('cursor_cli_private_instructions_unsupported'),

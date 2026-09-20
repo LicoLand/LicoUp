@@ -169,9 +169,9 @@ impl PlatformLlmApiKeyVault {
             "llm_api_key_credential_not_found"
         );
         let key = credential_key(credential_id);
-        let rollback_secret = self
-            .read_secret(&session, &key)?
-            .ok_or_else(|| anyhow!("llm_api_key_inventory_inconsistent"))?;
+        // A secret proven absent offers nothing to roll back. Requiring its
+        // presence here would make an orphaned inventory entry undeletable.
+        let rollback_secret = self.read_secret(&session, &key)?;
         self.delete_secret(&session, &key)?;
         inventory
             .entries
@@ -182,7 +182,9 @@ impl PlatformLlmApiKeyVault {
             inventory.entries,
         )?;
         if let Err(error) = self.write_inventory_metadata(&updated) {
-            let _ = self.write_secret(&session, &key, rollback_secret);
+            if let Some(rollback_secret) = rollback_secret {
+                let _ = self.write_secret(&session, &key, rollback_secret);
+            }
             return Err(error);
         }
         self.apply_lease_revocation(GatewayCredentialChange::CredentialDeleted)?;

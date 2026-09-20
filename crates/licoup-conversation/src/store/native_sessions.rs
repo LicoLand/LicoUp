@@ -9,7 +9,7 @@ const TABLE: &str = "CREATE TABLE IF NOT EXISTS conversation_native_sessions (
     PRIMARY KEY (conversation_id, membership_id, native_session_id)
 );";
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeSessionReference {
     pub membership_id: String,
@@ -45,6 +45,41 @@ impl ConversationStore {
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .map_err(Into::into)
         })
+    }
+
+    /// The native sessions Lico archived for one agent. Browse catalogs filter
+    /// these out; the agent's own on-disk history is never deleted. This
+    /// read-only view opens the store by its portable root so history scans in
+    /// helper processes never touch a live writer.
+    pub fn archived_native_session_ids(
+        portable_root: &Path,
+        agent_id: &str,
+    ) -> StoreResult<std::collections::BTreeSet<String>> {
+        let path = portable_root
+            .join("client-state")
+            .join("conversations")
+            .join(DATABASE_FILE);
+        if !path.is_file() {
+            return Ok(Default::default());
+        }
+        let connection = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let version: String = connection.query_row(
+            "SELECT value FROM schema_meta WHERE key='version'",
+            [],
+            |row| row.get(0),
+        )?;
+        if version != CURRENT_SCHEMA_VERSION {
+            return Ok(Default::default());
+        }
+        let mut statement = connection
+            .prepare("SELECT native_session_id FROM archived_native_sessions WHERE agent_id=?1")?;
+        let ids = statement
+            .query_map(params![agent_id], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<std::collections::BTreeSet<_>>>()?;
+        Ok(ids)
     }
 }
 

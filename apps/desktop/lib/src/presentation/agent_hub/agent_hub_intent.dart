@@ -60,6 +60,16 @@ final class RetryAgentHubEntryAction extends AgentHubIntent {
   final String entryId;
 }
 
+/// Re-runs the live inspection for one card whose first inspection failed.
+///
+/// Unlike [RetryAgentHubEntryAction], this only re-reads status; it never
+/// asks native to rescan the machine.
+final class RetryAgentHubEntry extends AgentHubIntent {
+  const RetryAgentHubEntry(this.entryId, {super.trace});
+
+  final String entryId;
+}
+
 final class OpenAgentHubHomepage extends AgentHubIntent {
   const OpenAgentHubHomepage(this.entryId, {super.trace});
 

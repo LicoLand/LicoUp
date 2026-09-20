@@ -274,6 +274,116 @@ fn codex_catalog_leaves_archived_rollouts_out_of_browse_lists() {
 }
 
 #[test]
+fn browse_catalog_omits_lico_archived_native_sessions_but_keeps_exact_reads() {
+    let home = temp_dir("catalog-lico-archived-sessions");
+    let sessions_dir = home.as_ref().join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let archived_id = "019f0000-0000-7000-8000-0000000000aa";
+    let kept_id = "019f0000-0000-7000-8000-0000000000bb";
+    fs::write(
+        sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{archived_id}.jsonl")),
+        codex_rollout_fixture(archived_id, "Archived prompt", "Archived reply"),
+    )
+    .unwrap();
+    fs::write(
+        sessions_dir.join(format!("rollout-2026-08-01T00-01-00-{kept_id}.jsonl")),
+        codex_rollout_fixture(kept_id, "Kept prompt", "Kept reply"),
+    )
+    .unwrap();
+
+    let store_root = home.as_ref().join("portable");
+    fs::create_dir_all(&store_root).unwrap();
+    struct Override(Option<PathBuf>);
+    impl Drop for Override {
+        fn drop(&mut self) {
+            crate::platform::paths::set_portable_data_dir_override(self.0.take());
+        }
+    }
+    let _guard = Override(crate::platform::paths::set_portable_data_dir_override(
+        Some(store_root.clone()),
+    ));
+    {
+        use licoup_conversation::{ConversationStore, MembershipAccess, Principal, PrincipalKind};
+        let store = ConversationStore::open(&store_root).unwrap();
+        let group = store
+            .create_conversation_with_members(
+                "Group",
+                Principal {
+                    id: "human:synthetic".into(),
+                    kind: PrincipalKind::Human,
+                    display_name: "Human".into(),
+                    agent_id: None,
+                    created_at_unix_ms: 1,
+                },
+                &[(
+                    Principal {
+                        id: "agent:codex".into(),
+                        kind: PrincipalKind::Agent,
+                        display_name: "Codex".into(),
+                        agent_id: Some("codex".into()),
+                        created_at_unix_ms: 1,
+                    },
+                    MembershipAccess::Member,
+                )],
+            )
+            .unwrap();
+        let membership = group
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.kind == PrincipalKind::Agent)
+            .unwrap();
+        let scope = store
+            .prepare_runtime_dispatch(
+                "codex",
+                archived_id,
+                "Synthetic request",
+                Some(&group.id),
+                Some(&membership.id),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .bind_runtime_session(&scope, "codex", archived_id, None, None)
+            .unwrap();
+        store
+            .archive_conversation_tree(&group.id, true, false)
+            .unwrap();
+        store.checkpoint().unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(home.as_ref()),
+        "limit": 20
+    }))
+    .unwrap();
+    let ids: Vec<&str> = listed["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|session| session["nativeSessionId"].as_str())
+        .collect();
+    assert_eq!(ids, [kept_id]);
+
+    // Archive is a browse-list visibility decision: an exact read of the same
+    // session still resolves.
+    let exact = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(home.as_ref()),
+        "sessionId": archived_id
+    }))
+    .unwrap();
+    assert!(
+        exact["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|session| session["nativeSessionId"].as_str() == Some(archived_id))
+    );
+}
+
+#[test]
 fn codex_search_still_scans_archived_rollouts_without_a_window() {
     let home = temp_dir("codex-catalog-search-full-scan");
     let archived_dir = home.join(".codex/archived_sessions");

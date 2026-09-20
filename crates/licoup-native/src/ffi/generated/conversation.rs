@@ -54,6 +54,8 @@ pub enum ConversationEventKind {
     MembershipChanged,
     #[serde(rename = "availability")]
     Availability,
+    #[serde(rename = "conversation-reset")]
+    ConversationReset,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

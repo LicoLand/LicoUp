@@ -280,12 +280,13 @@ final class ModelsSemanticController extends ApplicationStateOwner {
   );
 
   _SemanticCommandFailure _credentialAuthorizationFailure() =>
-      _SemanticCommandFailure(
-        _authorization.failure ==
-                LlmVaultAuthorizationFailure.keychainActionRequired
-            ? 'credential_keychain_action_required'
-            : null,
-      );
+      _SemanticCommandFailure(switch (_authorization.failure) {
+        LlmVaultAuthorizationFailure.keychainActionRequired =>
+          'credential_keychain_action_required',
+        LlmVaultAuthorizationFailure.inventoryInconsistent =>
+          'llm_api_key_inventory_inconsistent',
+        _ => null,
+      });
 
   Future<bool> saveTelegramToken(String token, {String? traceId}) async {
     final normalized = token.trim();

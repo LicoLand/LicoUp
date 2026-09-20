@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
+use crate::store::NativeSessionReference;
+
 pub use crate::state_machine::TurnState;
 
 pub const CONVERSATION_SCHEMA_VERSION: &str = "lico.conversation.v1";
@@ -91,6 +93,17 @@ pub struct ConversationClearReport {
     pub archived_child_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assistant_membership_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationArchiveReport {
+    pub conversation_id: String,
+    pub archived_child_ids: Vec<String>,
+    #[serde(default)]
+    pub archived_native_sessions: Vec<NativeSessionReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub successor_conversation_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -253,6 +266,10 @@ pub enum EventKind {
     Message,
     MembershipChanged,
     Availability,
+    /// One plain notice that a fresh conversation continues from an archived
+    /// predecessor. Carries no member churn; the archived Conversation keeps
+    /// the full prior history.
+    ConversationReset,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

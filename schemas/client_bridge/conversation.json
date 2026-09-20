@@ -55,7 +55,8 @@
   "eventKinds": [
     "message",
     "membership-changed",
-    "availability"
+    "availability",
+    "conversation-reset"
   ],
   "eventPartKinds": [
     "text",

@@ -79,7 +79,7 @@ final class FlutterInteractionAdapter {
       'roster.toggle': 'canonical-group-roster-toggle',
       'group.menu': 'canonical-group-menu-button',
       'group.actions': 'canonical-group-assistant-actions-trigger',
-      'group.clear': 'canonical-group-action-clear-history',
+      'group.clear': 'canonical-group-action-archive',
     };
     if (action == 'search.clear') {
       return find.descendant(
@@ -340,7 +340,7 @@ final class FlutterInteractionAdapter {
         'new-group': 'canonical-group-create-dialog',
         'group-actions': 'canonical-group-assistant-actions-menu',
         'group-menu': 'canonical-group-menu-panel',
-        'clear-confirm': 'canonical-group-clear-history-confirm',
+        'clear-confirm': 'canonical-group-archive-confirm',
       };
       if (overlay != null) {
         if (!visible(

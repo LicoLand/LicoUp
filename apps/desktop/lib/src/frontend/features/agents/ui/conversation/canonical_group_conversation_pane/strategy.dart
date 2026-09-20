@@ -99,7 +99,11 @@ final class _GroupStrategyPickerTrigger extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.autorenew, size: 14, color: colors.textMuted),
+                  Icon(
+                    Icons.account_tree_outlined,
+                    size: 14,
+                    color: colors.textMuted,
+                  ),
                   const SizedBox(width: 7),
                   Flexible(
                     child: Text(
@@ -650,7 +654,7 @@ final class _AssistantNameLightState extends State<_AssistantNameLight>
 /// is a plain transparent overlay child (no glass card) of circular
 /// overlay-glass action buttons stacked exactly above the trigger: attachments
 /// nearest the button, discard-pending-images above it while images are
-/// staged, reset history next, and new conversation on top. Hovering a circle
+/// staged, and the archive action on top. Hovering a circle
 /// expands it rightward into a highlighted capsule — the icon stays pinned in
 /// a fixed left slot and the label extends right. Tapping outside dismisses
 /// the menu.
@@ -658,8 +662,7 @@ final class CanonicalGroupAssistantActions extends StatefulWidget {
   const CanonicalGroupAssistantActions({
     super.key,
     this.onPickAttachments,
-    this.onNewConversation,
-    this.onClearHistory,
+    this.onArchive,
     this.onDiscardImages,
     this.showDiscardImages = false,
   });
@@ -667,11 +670,9 @@ final class CanonicalGroupAssistantActions extends StatefulWidget {
   /// Stages picked images into the group composer scope.
   final VoidCallback? onPickAttachments;
 
-  /// Runs the same assistant thread refresh as the slash-new composer command.
-  final VoidCallback? onNewConversation;
-
-  /// Empties Canonical history after confirmation in the group pane.
-  final VoidCallback? onClearHistory;
+  /// Archives the current group with everything it involves and opens a fresh
+  /// assistant conversation after confirmation in the group pane.
+  final VoidCallback? onArchive;
 
   /// Abandons the staged images (scope clear, which also releases the files).
   final VoidCallback? onDiscardImages;
@@ -735,52 +736,47 @@ final class _CanonicalGroupAssistantActionsState
             child: TapRegion(
               groupId: _tapRegionGroup,
               onTapOutside: (_) => _close(),
-              child: Column(
+              // An open action menu claims its own bounds: taps inside it must
+              // never fall through a gap to the composer field beneath.
+              child: GestureDetector(
                 key: const Key('canonical-group-assistant-actions-menu'),
-                mainAxisSize: MainAxisSize.min,
-                verticalDirection: VerticalDirection.up,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _AssistantActionCircle(
-                    actionKey: const Key('canonical-group-action-attachments'),
-                    icon: Icons.image_outlined,
-                    label: strings.attachments,
-                    onTap: () => _runAction(widget.onPickAttachments),
-                  ),
-                  if (widget.showDiscardImages) ...[
-                    const SizedBox(height: 8),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {},
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  verticalDirection: VerticalDirection.up,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     _AssistantActionCircle(
                       actionKey: const Key(
-                        'canonical-group-action-discard-images',
+                        'canonical-group-action-attachments',
                       ),
-                      icon: Icons.delete_outline_rounded,
-                      label: strings.discardPendingImages,
-                      onTap: () => _runAction(widget.onDiscardImages),
+                      icon: Icons.attach_file,
+                      label: strings.attachments,
+                      onTap: () => _runAction(widget.onPickAttachments),
+                    ),
+                    if (widget.showDiscardImages) ...[
+                      const SizedBox(height: 8),
+                      _AssistantActionCircle(
+                        actionKey: const Key(
+                          'canonical-group-action-discard-images',
+                        ),
+                        icon: Icons.delete_outline_rounded,
+                        label: strings.discardPendingImages,
+                        onTap: () => _runAction(widget.onDiscardImages),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    _AssistantActionCircle(
+                      actionKey: const Key('canonical-group-action-archive'),
+                      icon: Icons.archive_outlined,
+                      label: strings.archive,
+                      onTap: widget.onArchive == null
+                          ? null
+                          : () => _runAction(widget.onArchive),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  _AssistantActionCircle(
-                    actionKey: const Key(
-                      'canonical-group-action-clear-history',
-                    ),
-                    icon: Icons.restart_alt,
-                    label: strings.clearCanonicalConversationHistory,
-                    onTap: widget.onClearHistory == null
-                        ? null
-                        : () => _runAction(widget.onClearHistory),
-                  ),
-                  const SizedBox(height: 8),
-                  _AssistantActionCircle(
-                    actionKey: const Key(
-                      'canonical-group-action-new-conversation',
-                    ),
-                    icon: Icons.add_comment_outlined,
-                    label: strings.newAssistantConversation,
-                    onTap: widget.onNewConversation == null
-                        ? null
-                        : () => _runAction(widget.onNewConversation),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

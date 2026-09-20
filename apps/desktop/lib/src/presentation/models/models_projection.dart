@@ -238,6 +238,7 @@ final class ModelsProjection {
     GatewayProjection? gateway,
     Iterable<GatewayCredentialProjection> credentials = const [],
     this.credentialMigrationPending = false,
+    this.credentialsSupported = true,
     TelegramProjection? telegram,
     this.notice,
   }) : providers = immutablePresentationList(providers),
@@ -272,6 +273,10 @@ final class ModelsProjection {
   final GatewayProjection gateway;
   final List<GatewayCredentialProjection> credentials;
   final bool credentialMigrationPending;
+
+  /// False when this build cannot hold protected keychain items (for example
+  /// an ad hoc local build): the vault exists but the actions cannot complete.
+  final bool credentialsSupported;
   final TelegramProjection telegram;
   final PresentationNotice? notice;
 
@@ -286,6 +291,7 @@ final class ModelsProjection {
           other.gateway == gateway &&
           samePresentationList(other.credentials, credentials) &&
           other.credentialMigrationPending == credentialMigrationPending &&
+          other.credentialsSupported == credentialsSupported &&
           other.telegram == telegram &&
           other.notice == notice;
 
@@ -298,6 +304,7 @@ final class ModelsProjection {
     gateway,
     Object.hashAll(credentials),
     credentialMigrationPending,
+    credentialsSupported,
     telegram,
     notice,
   );
