@@ -1,4 +1,23 @@
 // Catalog of published formats, domain frontiers, and migration step graphs.
+//
+// Two graphs live here and they are not the same graph. The *frontier* graph is
+// the one the compiled admission owns: a domain version with one chain of
+// steps, and this tool's ledger has to match it exactly or the admission
+// refuses the root. The *store-format* graph (below, and in
+// `./published-strategy-format.mjs`) is the strategy database's own publication
+// history: shapes that shipped under one and the same domain version because
+// they only added tables. A store-format step is therefore not a frontier step,
+// and the two must not be conflated: the ledger stays valid for the admission
+// while the file moves to the shape the current product publishes.
+
+import {
+  PUBLISHED_STRATEGY_FORMATS,
+  STRATEGY_STORE_EDGES,
+  currentStrategyFormat,
+  strategyFormatForDomainVersion,
+} from "./published-strategy-format.mjs";
+
+export { PUBLISHED_STRATEGY_FORMATS, STRATEGY_STORE_EDGES };
 
 export const FRONTIER_SCHEMA = "v0.0.1:client-state-migration-frontier-1";
 export const LEDGER_SCHEMA = "v0.0.1:client-state-migration-ledger-1";
@@ -104,6 +123,7 @@ export const PUBLISHED_FORMAT_PROFILES = {
     label: "LicoUp 0.0.1-alpha Development Baseline",
     productVersion: "0.0.1-alpha",
     frontierId: "licoup-state-0.2.2",
+    storeFormats: { "adaptive-flywheel": "strategy-store-4" },
     domains: {
       "adaptive-flywheel": 2,
       "agent-tab-order": 1,
@@ -256,6 +276,7 @@ export const PUBLISHED_FORMAT_PROFILES = {
     label: "LicoUp Nightly / Current Baseline",
     productVersion: "0.3.0",
     frontierId: "licoup-state-0.2.2",
+    storeFormats: { "adaptive-flywheel": "strategy-store-4" },
     domains: {
       "adaptive-flywheel": 2,
       "agent-tab-order": 1,
@@ -275,6 +296,7 @@ export const PUBLISHED_FORMAT_PROFILES = {
     label: "LicoUp Latest Profile",
     productVersion: "0.3.0",
     frontierId: "licoup-state-0.2.2",
+    storeFormats: { "adaptive-flywheel": "strategy-store-4" },
     domains: {
       "adaptive-flywheel": 2,
       "agent-tab-order": 1,
@@ -305,6 +327,25 @@ export function resolveTargetProfile(targetNameOrVersion) {
     return PUBLISHED_FORMAT_PROFILES[normalized];
   }
   throw new Error(`Unknown target format or version: "${targetNameOrVersion}". Available targets: ${Object.keys(PUBLISHED_FORMAT_PROFILES).join(", ")}`);
+}
+
+/**
+ * The published store format a profile asks a domain's store to be in.
+ *
+ * A profile that names no store format means the shape its domain version
+ * already published, which is what keeps the older profiles immutable: `v0.3.0`
+ * shipped without the delivery tables, so re-migrating to it must not create
+ * them.
+ */
+export function resolveProfileStoreFormat(profile, domainId) {
+  if (!profile) return null;
+  if (profile.storeFormats && profile.storeFormats[domainId]) {
+    return profile.storeFormats[domainId];
+  }
+  if (domainId !== "adaptive-flywheel") return null;
+  const version = profile.domains ? profile.domains[domainId] : undefined;
+  if (version === undefined) return null;
+  return strategyFormatForDomainVersion(version).formatId;
 }
 
 export function getDomainDefinition(domainId) {

@@ -5,6 +5,7 @@ import { DOMAIN_DEFINITIONS, DOMAIN_MARKER_SCHEMA, LEDGER_SCHEMA } from "./catal
 import { getCodec } from "./codecs/index.mjs";
 import { listPreservations } from "./preservation.mjs";
 import { openJournal } from "./journal.mjs";
+import { DATA_ROOT_REF, redactPublicValue } from "./public-output.mjs";
 
 export function getLedgerPath(dataRoot) {
   return path.join(dataRoot, "client-state", "migrations", "ledger.json");
@@ -83,6 +84,10 @@ export function probeAllDomains(dataRoot) {
       targetSchemaVersion: def.targetSchemaVersion,
       storeVersion: storeProbe.version,
       storePresent: storeProbe.present,
+      // The store's own published shape, where a domain has more than one under
+      // the same domain version. It is not a frontier version and never reaches
+      // the ledger: it says what the file is, not what the admission admits.
+      storeFormat: storeProbe.storeFormat ?? null,
       markerVersion: markerVersion,
       effectiveVersion,
       pendingAuthorization: Boolean(storeProbe.pendingAuthorization),
@@ -98,25 +103,31 @@ export function inspect(dataRoot) {
   const journal = openJournal(dataRoot);
   const preservations = listPreservations(dataRoot);
 
-  return {
-    dataRoot: path.resolve(dataRoot),
-    inspectedAt: new Date().toISOString(),
-    ledger: ledger
-      ? {
-          present: true,
-          highestAdmittedProductVersion: ledger.highestAdmittedProductVersion,
-          frontierId: ledger.frontierId,
-          domainCount: Object.keys(ledger.domains || {}).length,
-        }
-      : {
-          present: false,
-          highestAdmittedProductVersion: "0.0.0",
-          frontierId: null,
-          domainCount: 0,
-        },
-    domains,
-    hasPendingJournal: Boolean(journal && journal.status === "in_progress"),
-    journal: journal || null,
-    preservations,
-  };
+  // The report is a public artifact: it identifies the root with the stable
+  // `<data-root>` ref and carries no machine paths or echoed document values.
+  // The probing above ran against the real root, so nothing is lost on disk.
+  return redactPublicValue(
+    {
+      dataRoot: DATA_ROOT_REF,
+      inspectedAt: new Date().toISOString(),
+      ledger: ledger
+        ? {
+            present: true,
+            highestAdmittedProductVersion: ledger.highestAdmittedProductVersion,
+            frontierId: ledger.frontierId,
+            domainCount: Object.keys(ledger.domains || {}).length,
+          }
+        : {
+            present: false,
+            highestAdmittedProductVersion: "0.0.0",
+            frontierId: null,
+            domainCount: 0,
+          },
+      domains,
+      hasPendingJournal: Boolean(journal && journal.status === "in_progress"),
+      journal: journal || null,
+      preservations,
+    },
+    dataRoot,
+  );
 }
