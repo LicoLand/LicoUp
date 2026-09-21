@@ -36,6 +36,7 @@
 //! [`StatePort`]: licoup_workflow_runtime::ports::StatePort
 
 pub mod deliveries;
+pub mod recovery;
 pub mod schema;
 pub mod transactions;
 

@@ -23,3 +23,4 @@ pub mod node;
 pub mod plan_cache;
 pub mod ports;
 pub mod routing;
+pub mod successor;
