@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
+
+import 'support/prepared_markdown.dart';
 
 /// One message entity in the integration assembly.
 final class TestMessage {
@@ -10,48 +14,93 @@ final class TestMessage {
     required this.id,
     required this.author,
     required this.text,
-    this.isStreaming = false,
+    required this.prepared,
   });
 
   final String id;
   final String author;
+
+  /// The source text the source owner still owns.
   final String text;
-  final bool isStreaming;
+
+  /// The installed prepared body this test renders.
+  final PreparedValue<MessageMarkdownBlock> prepared;
+}
+
+/// Prepares the message body the way a presentation runtime installs it.
+PreparedValue<MessageMarkdownBlock> prepareMessageBody(
+  String messageId,
+  String text, {
+  int version = 1,
+  bool openTail = false,
+}) {
+  final blocks = parseMessageMarkdownBlocks(text);
+  return preparedMarkdownValue(
+    <(String, MessageMarkdownBlock)>[
+      for (var index = 0; index < blocks.length; index++)
+        ('$messageId-b$index', blocks[index]),
+    ],
+    version: version,
+    openTail: openTail,
+    message: messageId,
+  );
 }
 
 class ConversationNotifier extends Notifier<List<TestMessage>> {
   @override
-  List<TestMessage> build() => [
-    const TestMessage(
+  List<TestMessage> build() => <TestMessage>[
+    TestMessage(
       id: 'msg-1',
       author: 'user',
       text: 'Hello, what can you do?',
+      prepared: prepareMessageBody('msg-1', 'Hello, what can you do?'),
     ),
-    const TestMessage(
+    TestMessage(
       id: 'msg-2',
       author: 'assistant',
       text:
-          '# Capabilities\n\nI can help you build Flutter apps.\n\n```dart\nvoid code() {}\n```',
+          '# Capabilities\n\nI can help you build Flutter apps.\n\n'
+          '```dart\nvoid code() {}\n```',
+      prepared: prepareMessageBody(
+        'msg-2',
+        '# Capabilities\n\nI can help you build Flutter apps.\n\n'
+            '```dart\nvoid code() {}\n```',
+      ),
     ),
   ];
 
   void addUserMessage(String text) {
     final newId = 'msg-${state.length + 1}';
-    state = [...state, TestMessage(id: newId, author: 'user', text: text)];
+    state = <TestMessage>[
+      ...state,
+      TestMessage(
+        id: newId,
+        author: 'user',
+        text: text,
+        prepared: prepareMessageBody(newId, text),
+      ),
+    ];
   }
 
+  /// Appends streamed tokens to the source text, then re-prepares the message
+  /// the way the runtime would for a changed open block.
   void appendStreamingTokens(String messageId, String additionalTokens) {
-    state = [
-      for (final m in state)
-        if (m.id == messageId)
+    state = <TestMessage>[
+      for (final message in state)
+        if (message.id == messageId)
           TestMessage(
-            id: m.id,
-            author: m.author,
-            text: '${m.text}$additionalTokens',
-            isStreaming: true,
+            id: message.id,
+            author: message.author,
+            text: '${message.text}$additionalTokens',
+            prepared: prepareMessageBody(
+              message.id,
+              '${message.text}$additionalTokens',
+              version: 2,
+              openTail: true,
+            ),
           )
         else
-          m,
+          message,
     ];
   }
 }
@@ -76,7 +125,7 @@ final sessionStatusProvider =
 
 void main() {
   testWidgets(
-    'F01.4e Assembly: Region, AsyncRegion, CollectionView, StreamingText, and InputField',
+    'Assembly: Region, AsyncRegion, CollectionView, StreamingText, and InputField',
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -109,7 +158,7 @@ void main() {
                     ),
                   ),
 
-                  // 2. Transcript with CollectionView + Region + StreamingText
+                  // 2. Transcript with CollectionView + prepared StreamingText
                   Expanded(
                     child: Consumer(
                       builder: (context, ref, child) {
@@ -142,10 +191,7 @@ void main() {
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      StreamingText(
-                                        document: msg.text,
-                                        isStreaming: msg.isStreaming,
-                                      ),
+                                      StreamingText(prepared: msg.prepared),
                                     ],
                                   ),
                                 ),
