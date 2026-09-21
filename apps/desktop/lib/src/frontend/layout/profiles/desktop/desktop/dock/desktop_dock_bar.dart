@@ -433,19 +433,22 @@ final class DesktopDockIconState extends State<DesktopDockIcon> {
   Widget build(BuildContext context) {
     final colors = context.layoutPalette;
     final duration = context.motion(LicoMotion.micro);
+    // The selected tile carries the same solid bright primary as the
+    // messaging bottom navigation: a translucent wash reads as muddy olive
+    // on the glass strip.
     final fill = widget.active
-        ? colors.primary.withValues(alpha: colors.isDark ? 0.22 : 0.15)
+        ? colors.primary
         : _hovered
         ? DesktopDesktopGlass.hoverFill(isDark: colors.isDark)
         : Colors.transparent;
     final rim = widget.active
-        ? colors.accent.withAlpha(colors.isDark ? 130 : 160)
+        ? Colors.transparent
         : DesktopDesktopGlass.cardBorder(
             colors.line,
             isDark: colors.isDark,
           ).withAlpha(_hovered ? 110 : 0);
     final glyph = widget.active
-        ? colors.accent
+        ? colors.textOnPrimary
         : _hovered
         ? colors.text
         : colors.textSecondary;
