@@ -96,6 +96,7 @@ windows-sys = { version = "0.61", features = [
 nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
 
 [dev-dependencies]
+licoarc.workspace = true
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
