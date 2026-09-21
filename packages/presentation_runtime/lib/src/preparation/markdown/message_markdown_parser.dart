@@ -1,5 +1,8 @@
 import 'dart:collection';
 
+import 'package:presentation_contract/presentation_contract.dart';
+
+import '../../scheduling/preparation_cancellation.dart';
 import 'message_markdown_models.dart';
 
 /// Bounded content-addressed cache for block parses. Streaming reparses the
@@ -72,20 +75,278 @@ MessageMarkdownStreamingParse parseStreamingMessageMarkdownBlocks(String data) {
   return parsed;
 }
 
-MessageMarkdownStreamingParse _parseStreamingMarkdown(String normalized) {
-  final lines = normalized.split('\n');
-  return _streamingSplit(_parseScannedBlocks(lines), lines);
+/// Prepares the style-free inline display of one authored text field.
+///
+/// This is the only inline tokenizer on the client: the runs it returns travel
+/// inside the prepared block payload, so a receiver decodes a display value and
+/// maps styles without reading the raw markup again. It keeps the exact visible
+/// behavior of the block renderer it replaces: code spans, link labels (the
+/// target is not displayed), strong and emphasis with nesting, and literal text
+/// cut at every marker candidate. It adds no syntax the visible rendering did
+/// not already show.
+MessageMarkdownInline prepareMessageMarkdownInline(String text) {
+  final runs = <MessageMarkdownInlineRun>[];
+  _scanMessageMarkdownInline(text, const _InlineFlags(), runs);
+  return MessageMarkdownInline(runs);
 }
 
-MessageMarkdownStreamingParse _streamingSplit(
-  List<_ScannedBlock> scanned,
-  List<String> lines,
+/// Flags accumulated while scanning one nesting level.
+///
+/// The scanner copies this value once per nesting level and builds one run per
+/// literal piece, so a nested marker adds its flag without re-reading anything.
+final class _InlineFlags {
+  const _InlineFlags({
+    this.code = false,
+    this.strong = false,
+    this.emphasis = false,
+    this.link = false,
+  });
+
+  final bool code;
+  final bool strong;
+  final bool emphasis;
+  final bool link;
+
+  _InlineFlags withCode() =>
+      _InlineFlags(code: true, strong: strong, emphasis: emphasis, link: link);
+
+  _InlineFlags withStrong() =>
+      _InlineFlags(code: code, strong: true, emphasis: emphasis, link: link);
+
+  _InlineFlags withEmphasis() =>
+      _InlineFlags(code: code, strong: strong, emphasis: true, link: link);
+
+  _InlineFlags withLink() =>
+      _InlineFlags(code: code, strong: strong, emphasis: emphasis, link: true);
+
+  MessageMarkdownInlineRun run(String text) => MessageMarkdownInlineRun(
+    text,
+    isCode: code,
+    isStrong: strong,
+    isEmphasis: emphasis,
+    isLink: link,
+  );
+}
+
+void _scanMessageMarkdownInline(
+  String text,
+  _InlineFlags flags,
+  List<MessageMarkdownInlineRun> runs,
 ) {
+  var index = 0;
+  while (index < text.length) {
+    if (text.startsWith('`', index)) {
+      final end = text.indexOf('`', index + 1);
+      if (end > index + 1) {
+        runs.add(flags.withCode().run(text.substring(index + 1, end)));
+        index = end + 1;
+        continue;
+      }
+    }
+    if (text.startsWith('[', index)) {
+      final labelEnd = text.indexOf('](', index + 1);
+      if (labelEnd > index + 1) {
+        final urlEnd = text.indexOf(')', labelEnd + 2);
+        if (urlEnd > labelEnd + 2) {
+          runs.add(flags.withLink().run(text.substring(index + 1, labelEnd)));
+          index = urlEnd + 1;
+          continue;
+        }
+      }
+    }
+    final strong =
+        _emphasisMatch(text, index, '**') ?? _emphasisMatch(text, index, '__');
+    if (strong != null) {
+      _scanMessageMarkdownInline(strong.text, flags.withStrong(), runs);
+      index = strong.end;
+      continue;
+    }
+    final emphasis =
+        _emphasisMatch(text, index, '*') ?? _emphasisMatch(text, index, '_');
+    if (emphasis != null) {
+      _scanMessageMarkdownInline(emphasis.text, flags.withEmphasis(), runs);
+      index = emphasis.end;
+      continue;
+    }
+    final next = _nextMarkdownMarker(text, index + 1);
+    runs.add(flags.run(text.substring(index, next)));
+    index = next;
+  }
+}
+
+_EmphasisMatch? _emphasisMatch(String text, int index, String marker) {
+  if (!text.startsWith(marker, index)) return null;
+  if (marker.length == 1 &&
+      index + 1 < text.length &&
+      text.startsWith(marker, index + 1)) {
+    return null;
+  }
+  final end = text.indexOf(marker, index + marker.length);
+  if (end <= index + marker.length) return null;
+  return _EmphasisMatch(
+    text.substring(index + marker.length, end),
+    end + marker.length,
+  );
+}
+
+int _nextMarkdownMarker(String text, int start) {
+  final candidates =
+      <String>['`', '[', '**', '__', '*', '_']
+          .map((marker) => text.indexOf(marker, start))
+          .where((candidate) => candidate >= 0)
+          .toList(growable: false)
+        ..sort();
+  return candidates.isEmpty ? text.length : candidates.first;
+}
+
+final class _EmphasisMatch {
+  const _EmphasisMatch(this.text, this.end);
+
+  final String text;
+  final int end;
+}
+
+/// One block of a message revision plus the source span it was scanned from.
+final class MessageMarkdownBlockSpan {
+  const MessageMarkdownBlockSpan({
+    required this.block,
+    required this.range,
+    required this.isSealed,
+  });
+
+  final MessageMarkdownBlock block;
+
+  /// Half-open offset range of this block inside the original message text.
+  final SourceTextRange range;
+
+  /// True when this block's boundary is settled for this revision.
+  ///
+  /// A code fence without its closing line, a paragraph running to the end of
+  /// the text, and a table that a following row line could still extend are all
+  /// unsealed: their prepared output is not final yet.
+  final bool isSealed;
+
+  @override
+  String toString() =>
+      'MessageMarkdownBlockSpan(${block.type.name}, $range, '
+      'sealed: $isSealed)';
+}
+
+/// Scans one message revision into block spans with offsets into [data].
+///
+/// The scan rules are the same ones [_parseScannedBlocks] applies to the whole
+/// text, so a span can be parsed on its own and still agree with the full
+/// document parse.
+List<MessageMarkdownBlockSpan> scanMessageMarkdownBlockSpans(String data) {
+  final lines = _rawLines(data);
+  // The scan only describes block boundaries: preparing inline runs here would
+  // tokenize every block of every streaming revision for a payload that never
+  // leaves this function.
+  final scanned = _parseScannedBlocks(<String>[
+    for (final line in lines) line.text,
+  ], prepareContent: false);
+  final spans = <MessageMarkdownBlockSpan>[];
+  for (final entry in scanned) {
+    final start = lines[entry.startLine].start;
+    final end = entry.endLineExclusive < lines.length
+        ? lines[entry.endLineExclusive].start
+        : data.length;
+    spans.add(
+      MessageMarkdownBlockSpan(
+        block: entry.block,
+        range: SourceTextRange(start: start, end: end),
+        isSealed: entry.closed && _isSealedBoundary(entry, lines),
+      ),
+    );
+  }
+  return List<MessageMarkdownBlockSpan>.unmodifiable(spans);
+}
+
+/// Parses exactly one block region.
+///
+/// A region that does not scan to exactly one block is an input error the
+/// caller must hear about, not a silently wrong prepared block.
+MessageMarkdownBlock parseMessageMarkdownBlockRegion(String region) {
+  final blocks = parseMessageMarkdownBlocks(region);
+  if (blocks.length != 1) {
+    throw PreparationWorkerException(
+      code: 'markdown.region_not_single_block',
+      detail: 'region scanned to ${blocks.length} blocks',
+    );
+  }
+  return blocks.first;
+}
+
+/// Line content and start offset, so a parse result can be mapped back to the
+/// offsets of the original text even when it uses CR or CRLF terminators.
+final class _RawLine {
+  const _RawLine(this.start, this.text);
+
+  final int start;
+  final String text;
+}
+
+List<_RawLine> _rawLines(String data) {
+  final lines = <_RawLine>[];
+  final buffer = StringBuffer();
+  var start = 0;
+  var index = 0;
+  while (index < data.length) {
+    final unit = data.codeUnitAt(index);
+    if (unit == 0x0A) {
+      lines.add(_RawLine(start, buffer.toString()));
+      buffer.clear();
+      index++;
+      start = index;
+      continue;
+    }
+    if (unit == 0x0D) {
+      lines.add(_RawLine(start, buffer.toString()));
+      buffer.clear();
+      index++;
+      if (index < data.length && data.codeUnitAt(index) == 0x0A) index++;
+      start = index;
+      continue;
+    }
+    buffer.writeCharCode(unit);
+    index++;
+  }
+  lines.add(_RawLine(start, buffer.toString()));
+  return lines;
+}
+
+/// A table stays open while a following line could still be one of its rows.
+bool _isSealedBoundary(_ScannedBlock entry, List<_RawLine> lines) {
+  if (entry.block.type != MessageMarkdownBlockType.table) return true;
+  final next = entry.endLineExclusive;
+  if (next >= lines.length) return false;
+  final line = lines[next].text;
+  if (line.trim().isEmpty) {
+    // The empty element a trailing newline splits into is not a real blank
+    // line, so the table is still the last thing the source has said.
+    return next + 1 < lines.length;
+  }
+  return !_isTableRow(line) && !_isTableSeparator(line);
+}
+
+MessageMarkdownStreamingParse _parseStreamingMarkdown(String normalized) {
+  return _streamingSplit(_parseScannedBlocks(normalized.split('\n')));
+}
+
+/// Splits a parse into the settled prefix and the still-growing remainder.
+///
+/// The within-block split is the one the scan already prepared on each list or
+/// table block: a settled block contributes its whole value, a growing list or
+/// table contributes its settled part plus the prepared remainder, and every
+/// other growing block is its own remainder.
+MessageMarkdownStreamingParse _streamingSplit(List<_ScannedBlock> scanned) {
   if (scanned.isEmpty) {
     return const MessageMarkdownStreamingParse(complete: [], tail: null);
   }
   final last = scanned.last;
-  if (last.closed) {
+  final streaming = last.block.streaming;
+  final settled = last.closed && (streaming == null || streaming.tail == null);
+  if (settled) {
     return MessageMarkdownStreamingParse(
       complete: List<MessageMarkdownBlock>.unmodifiable([
         for (final entry in scanned) entry.block,
@@ -93,56 +354,14 @@ MessageMarkdownStreamingParse _streamingSplit(
       tail: null,
     );
   }
-  final complete = <MessageMarkdownBlock>[
-    for (var index = 0; index < scanned.length - 1; index++)
-      scanned[index].block,
-  ];
-  final MessageMarkdownBlock tail;
-  switch (last.block.type) {
-    case MessageMarkdownBlockType.unorderedList:
-    case MessageMarkdownBlockType.orderedList:
-      final items = last.block.items;
-      if (items.length > 1) {
-        complete.add(
-          last.block.type == MessageMarkdownBlockType.unorderedList
-              ? MessageMarkdownBlock.unorderedList(
-                  items.sublist(0, items.length - 1),
-                )
-              : MessageMarkdownBlock.orderedList(
-                  items.sublist(0, items.length - 1),
-                ),
-        );
-      }
-      tail = MessageMarkdownBlock.paragraph(items.last);
-    case MessageMarkdownBlockType.table:
-      final rows = last.block.rows;
-      if (rows.length > 1) {
-        // Completed rows keep the table frame; the dangling row line streams
-        // as plain tail text until it terminates.
-        complete.add(
-          MessageMarkdownBlock.table(rows.sublist(0, rows.length - 1)),
-        );
-        tail = MessageMarkdownBlock.paragraph(
-          lines[last.endLineExclusive - 1].trim(),
-        );
-      } else {
-        tail = MessageMarkdownBlock.paragraph(
-          lines
-              .sublist(last.startLine, last.endLineExclusive)
-              .map((line) => line.trim())
-              .join('\n'),
-        );
-      }
-    case MessageMarkdownBlockType.paragraph:
-    case MessageMarkdownBlockType.heading:
-    case MessageMarkdownBlockType.code:
-    case MessageMarkdownBlockType.quote:
-    case MessageMarkdownBlockType.warning:
-      tail = last.block;
-  }
+  final settledPart = last.block.settledStreamingPart;
   return MessageMarkdownStreamingParse(
-    complete: List.unmodifiable(complete),
-    tail: tail,
+    complete: List<MessageMarkdownBlock>.unmodifiable([
+      for (var index = 0; index < scanned.length - 1; index++)
+        scanned[index].block,
+      if (settledPart != null) settledPart,
+    ]),
+    tail: streaming?.tail ?? last.block,
   );
 }
 
@@ -161,7 +380,10 @@ List<String> _normalizedLines(String data) {
   return _normalizeMarkdownNewlines(data).split('\n');
 }
 
-List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
+List<_ScannedBlock> _parseScannedBlocks(
+  List<String> lines, {
+  bool prepareContent = true,
+}) {
   final blocks = <_ScannedBlock>[];
   var index = 0;
   while (index < lines.length) {
@@ -198,7 +420,11 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
     if (heading != null) {
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.heading(heading.text, level: heading.level),
+          MessageMarkdownBlock.heading(
+            heading.text,
+            level: heading.level,
+            inline: _preparedInline(heading.text, prepareContent),
+          ),
           // A single trailing newline splits into an empty final element, so
           // a heading on the last line element has not been terminated yet.
           closed: index < lines.length - 1,
@@ -216,9 +442,13 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
         quoteLines.add(lines[index].trim().replaceFirst(RegExp(r'^>\s?'), ''));
         index++;
       }
+      final quoteText = quoteLines.join('\n');
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.quote(quoteLines.join('\n')),
+          MessageMarkdownBlock.quote(
+            quoteText,
+            inline: _preparedInline(quoteText, prepareContent),
+          ),
           closed: index - 1 < lines.length - 1,
           startLine: start,
           endLineExclusive: index,
@@ -230,7 +460,10 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
     if (warning != null) {
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.warning(warning.text),
+          MessageMarkdownBlock.warning(
+            warning.text,
+            inline: _preparedInline(warning.text, prepareContent),
+          ),
           closed: warning.nextIndex - 1 < lines.length - 1,
           startLine: index,
           endLineExclusive: warning.nextIndex,
@@ -241,10 +474,23 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
     }
     final table = _tableAt(lines, index);
     if (table != null) {
+      final closed = table.nextIndex - 1 < lines.length - 1;
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.table(table.rows),
-          closed: table.nextIndex - 1 < lines.length - 1,
+          MessageMarkdownBlock.table(
+            table.rows,
+            cellInline: _preparedCellInline(table.rows, prepareContent),
+            streaming: prepareContent
+                ? _tableStreaming(
+                    rows: table.rows,
+                    lines: lines,
+                    startLine: index,
+                    nextIndex: table.nextIndex,
+                    closed: closed,
+                  )
+                : null,
+          ),
+          closed: closed,
           startLine: index,
           endLineExclusive: table.nextIndex,
         ),
@@ -261,10 +507,18 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
         items.add(item);
         index++;
       }
+      final closed = index - 1 < lines.length - 1;
+      final itemInline = _preparedItemInline(items, prepareContent);
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.unorderedList(items),
-          closed: index - 1 < lines.length - 1,
+          MessageMarkdownBlock.unorderedList(
+            items,
+            itemInline: itemInline,
+            streaming: prepareContent
+                ? _listStreaming(items, itemInline, closed: closed)
+                : null,
+          ),
+          closed: closed,
           startLine: start,
           endLineExclusive: index,
         ),
@@ -280,10 +534,18 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
         items.add(item);
         index++;
       }
+      final closed = index - 1 < lines.length - 1;
+      final itemInline = _preparedItemInline(items, prepareContent);
       blocks.add(
         _ScannedBlock(
-          MessageMarkdownBlock.orderedList(items),
-          closed: index - 1 < lines.length - 1,
+          MessageMarkdownBlock.orderedList(
+            items,
+            itemInline: itemInline,
+            streaming: prepareContent
+                ? _listStreaming(items, itemInline, closed: closed)
+                : null,
+          ),
+          closed: closed,
           startLine: start,
           endLineExclusive: index,
         ),
@@ -316,9 +578,13 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
       paragraph.add(currentTrimmed);
       index++;
     }
+    final paragraphText = paragraph.join('\n');
     blocks.add(
       _ScannedBlock(
-        MessageMarkdownBlock.paragraph(paragraph.join('\n')),
+        MessageMarkdownBlock.paragraph(
+          paragraphText,
+          inline: _preparedInline(paragraphText, prepareContent),
+        ),
         closed: closed,
         startLine: start,
         endLineExclusive: index,
@@ -326,6 +592,90 @@ List<_ScannedBlock> _parseScannedBlocks(List<String> lines) {
     );
   }
   return blocks;
+}
+
+/// Prepared inline display of one authored field, when this scan prepares it.
+MessageMarkdownInline? _preparedInline(String text, bool prepareContent) =>
+    prepareContent ? prepareMessageMarkdownInline(text) : null;
+
+List<MessageMarkdownInline>? _preparedItemInline(
+  List<String> items,
+  bool prepareContent,
+) => prepareContent
+    ? <MessageMarkdownInline>[
+        for (final item in items) prepareMessageMarkdownInline(item),
+      ]
+    : null;
+
+List<List<MessageMarkdownInline>>? _preparedCellInline(
+  List<List<String>> rows,
+  bool prepareContent,
+) => prepareContent
+    ? <List<MessageMarkdownInline>>[
+        for (final row in rows)
+          <MessageMarkdownInline>[
+            for (final cell in row) prepareMessageMarkdownInline(cell),
+          ],
+      ]
+    : null;
+
+/// Prepared streaming split of one list block.
+///
+/// A terminated run settles every item; an unterminated last item stays the
+/// growing remainder, prepared from its own authored text so a renderer never
+/// falls back to the raw source.
+MessageMarkdownBlockStreaming? _listStreaming(
+  List<String> items,
+  List<MessageMarkdownInline>? itemInline, {
+  required bool closed,
+}) {
+  if (items.isEmpty) return null;
+  if (closed) {
+    return MessageMarkdownBlockStreaming(
+      settledCount: items.length,
+      tail: null,
+    );
+  }
+  return MessageMarkdownBlockStreaming(
+    settledCount: items.length - 1,
+    tail: MessageMarkdownBlock.paragraph(
+      items.last,
+      inline: itemInline == null ? null : itemInline.last,
+    ),
+  );
+}
+
+/// Prepared streaming split of one table block.
+///
+/// Completed rows keep the table frame; an unterminated row line streams as the
+/// prepared calm remainder, exactly as the visible rendering showed it before
+/// the split moved into the worker.
+MessageMarkdownBlockStreaming _tableStreaming({
+  required List<List<String>> rows,
+  required List<String> lines,
+  required int startLine,
+  required int nextIndex,
+  required bool closed,
+}) {
+  if (closed) {
+    return MessageMarkdownBlockStreaming(settledCount: rows.length, tail: null);
+  }
+  final String remainder;
+  if (rows.length > 1) {
+    remainder = lines[nextIndex - 1].trim();
+  } else {
+    remainder = lines
+        .sublist(startLine, nextIndex)
+        .map((line) => line.trim())
+        .join('\n');
+  }
+  return MessageMarkdownBlockStreaming(
+    settledCount: rows.length - 1,
+    tail: MessageMarkdownBlock.paragraph(
+      remainder,
+      inline: prepareMessageMarkdownInline(remainder),
+    ),
+  );
 }
 
 /// One parsed block plus the boundary bookkeeping the streaming split needs:
