@@ -27,8 +27,8 @@ abstract final class BuiltInLayoutSpec {
     label: LayoutProfileCopy(english: 'Desktop', chinese: '桌面'),
     description: LayoutProfileCopy(
       english:
-          'Desktop layout: a floating stretchable capsule dock and Launchpad-style glass app store over one spacious main canvas.',
-      chinese: 'Desktop 布局：主画布上方可伸缩的悬浮胶囊 Dock 与 Launchpad 风格玻璃应用商店。',
+          'Desktop layout: a two-pane workspace — features, settings, and apps on the left beside the permanent conversation on the right — over a full-width bottom bar with the navigation icon strip and the composer.',
+      chinese: 'Desktop 布局：双栏工作区——左侧承载功能、设置与应用，右侧固定对话；底部通栏分为导航图标条与对话框。',
     ),
     styleIdentity: 'spacious-card-desktop',
     isDefault: false,

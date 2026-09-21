@@ -30,6 +30,7 @@ final class MessagingSidebarFoundation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final suppression = MessagingTrafficLightSuppression.maybeOf(context);
     return ColoredBox(
       key: const Key('messaging-sidebar-foundation'),
       color: Colors.transparent,
@@ -49,7 +50,10 @@ final class MessagingSidebarFoundation extends StatelessWidget {
                 key: const Key('messaging-sidebar-traffic-light-row'),
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const MessagingTrafficLightAnchor(),
+                  if (suppression == null)
+                    const MessagingTrafficLightAnchor()
+                  else
+                    SizedBox(width: suppression.reservedExtent),
                   const Spacer(),
                   ...?headingActions,
                 ],

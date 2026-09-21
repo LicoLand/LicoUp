@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
-/// Every app the Desktop shell can host. The seven feature apps float above
-/// the main area; 对话 is a fullscreen-exclusive app. 设置 and the 功能 app
-/// store are pinned dock affordances, not catalog apps.
+/// Every app the Desktop shell can host in its left pane. 对话 is not a dock
+/// app: the conversation occupies the right pane permanently, so it never
+/// appears in the icon strip or the features grid. 设置 and the 功能 grid are
+/// pinned strip affordances, not catalog apps.
 enum DesktopAppId {
-  conversation,
   agentHub,
   skillHub,
   pluginManagement,
@@ -17,24 +17,15 @@ enum DesktopAppId {
   modelsChatChannels,
 }
 
-/// The visible floating feature apps in frozen catalog order.
-const List<DesktopAppId> desktopFloatingApps = <DesktopAppId>[
+/// The visible feature apps in frozen catalog order.
+const List<DesktopAppId> desktopFeatureApps = <DesktopAppId>[
   DesktopAppId.agentHub,
   DesktopAppId.monitoring,
   DesktopAppId.modelsGateway,
   DesktopAppId.mobileRelay,
 ];
 
-/// The Launchpad built-in catalog: the visible feature apps plus 对话.
-const List<DesktopAppId> desktopLaunchpadBuiltinApps = <DesktopAppId>[
-  ...desktopFloatingApps,
-  DesktopAppId.conversation,
-];
-
-bool desktopAppIsFloating(DesktopAppId app) => app != DesktopAppId.conversation;
-
 ClientSection desktopAppSection(DesktopAppId app) => switch (app) {
-  DesktopAppId.conversation => ClientSection.agents,
   DesktopAppId.agentHub => ClientSection.agentHub,
   DesktopAppId.skillHub => ClientSection.skillHub,
   DesktopAppId.pluginManagement => ClientSection.pluginManagement,
@@ -53,8 +44,14 @@ int? desktopAppModelsPane(DesktopAppId app) => switch (app) {
   _ => null,
 };
 
+/// The app occupying a models destination, mirrored from
+/// [desktopAppModelsPane] so the strip can highlight the visible one.
+DesktopAppId desktopModelsAppForPane(int pane) => switch (pane) {
+  1 => DesktopAppId.modelsChatChannels,
+  _ => DesktopAppId.modelsGateway,
+};
+
 IconData desktopAppIcon(DesktopAppId app) => switch (app) {
-  DesktopAppId.conversation => Icons.chat_bubble_outline_rounded,
   DesktopAppId.agentHub => Icons.auto_awesome_outlined,
   DesktopAppId.skillHub => Icons.library_books_outlined,
   DesktopAppId.pluginManagement => Icons.extension_outlined,
@@ -65,7 +62,6 @@ IconData desktopAppIcon(DesktopAppId app) => switch (app) {
 };
 
 String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
-  DesktopAppId.conversation => strings.conversationListNav,
   DesktopAppId.agentHub => strings.agentHub,
   DesktopAppId.skillHub => strings.skillsNav,
   DesktopAppId.pluginManagement => strings.pluginsNav,
@@ -75,8 +71,10 @@ String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
   DesktopAppId.modelsChatChannels => strings.chatChannels,
 };
 
+/// Decodes a persisted app name. Unknown names and the retired 对话 entry
+/// both decode to null so old dock layouts drop them silently.
 DesktopAppId? desktopAppByName(String name) {
-  for (final app in desktopLaunchpadBuiltinApps) {
+  for (final app in DesktopAppId.values) {
     if (app.name == name) return app;
   }
   return null;

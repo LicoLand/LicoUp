@@ -24,6 +24,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.d
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -141,34 +142,12 @@ class _CanonicalGroupConversationPaneState
   String _mentionLabel(
     ClientConversationMembership membership,
     TargetCandidate target,
-  ) {
-    final displayName = membership.principal.displayName.trim();
-    if (displayName.isNotEmpty) return displayName;
-    final known =
-        agentProductDisplayName(target.target) ??
-        agentProductDisplayName(target.id);
-    if (known != null) return known;
-    return agentConversationTargetDisplayName(target);
-  }
+  ) => canonicalGroupMentionLabel(membership, target);
 
-  /// Capsule label for the assistant identity: canonical product names first
-  /// ("Codex", "Kimi Code"), otherwise each word capitalized.
   String _assistantCapsuleLabel(
     ClientConversationMembership membership,
     TargetCandidate target,
-  ) {
-    final raw = _mentionLabel(membership, target);
-    final known = agentProductDisplayName(raw);
-    if (known != null) return known;
-    final words = raw
-        .split(RegExp(r'[\s\-_]+'))
-        .where((word) => word.isNotEmpty)
-        .toList();
-    if (words.isEmpty) return raw;
-    return words
-        .map((word) => word[0].toUpperCase() + word.substring(1))
-        .join(' ');
-  }
+  ) => canonicalGroupAssistantCapsuleLabel(membership, target);
 
   TargetCandidate? _assistantTarget(
     ClientConversation conversation,
@@ -212,32 +191,13 @@ class _CanonicalGroupConversationPaneState
       ),
   };
 
-  GroupAssistantStatusLight _assistantStatus(ClientConversation conversation) {
-    if (conversation.assistantMembership == null) {
-      return GroupAssistantStatusLight.unconfigured;
-    }
-    if (!_assistantActive(conversation)) {
-      return GroupAssistantStatusLight.paused;
-    }
-    if ((widget.canonical.notice?.reasonCode ?? '').isNotEmpty) {
-      return GroupAssistantStatusLight.failure;
-    }
-    if (widget.turns.memberships.any(
-      (turn) => turn.phase == PersistentTurnPhase.waiting,
-    )) {
-      return GroupAssistantStatusLight.waiting;
-    }
-    if (widget.canonical.dispatchPending ||
-        widget.turns.memberships.any(
-          (turn) =>
-              (turn.participantRole.trim() != 'assistant' &&
-                  turn.participantAgentId.trim().isNotEmpty) ||
-              turn.phase == PersistentTurnPhase.running,
-        )) {
-      return GroupAssistantStatusLight.working;
-    }
-    return GroupAssistantStatusLight.ready;
-  }
+  GroupAssistantStatusLight _assistantStatus(ClientConversation conversation) =>
+      canonicalGroupAssistantStatus(
+        conversation: conversation,
+        assistantActive: _assistantActive(conversation),
+        canonical: widget.canonical,
+        turns: widget.turns,
+      );
 
   List<AgentConversationMessage> get _timelineMessages {
     final parts = <List<AgentConversationMessage>>[
@@ -495,6 +455,10 @@ class _CanonicalGroupConversationPaneState
     );
     final assistantStatus = _assistantStatus(conversation);
     final assistantTarget = _assistantTarget(conversation, allTargets);
+    // When the host layout hosts the composer capsules itself (the Desktop
+    // expanded composer box), the pane drops its own copies so the pair never
+    // duplicates.
+    final capsulesHosted = LayoutExternalComposerScope.hostsCapsules(context);
     final paneTarget = participantTargets.isNotEmpty
         ? participantTargets.first
         : assistantTarget ??
@@ -559,31 +523,38 @@ class _CanonicalGroupConversationPaneState
       },
       participantRuntimeProfiles: _runtimeProfiles,
       assistantActive: _assistantActive(conversation),
-      composerFlywheel: GroupStrategyPickerCapsule(
-        selectedRevision: conversation.strategyRevision.trim().isEmpty
-            ? null
-            : conversation.strategyRevision.trim(),
-        onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
-      ),
-      composerAssistantCapsule: AssistantToggleButton(
-        active: _assistantActive(conversation),
-        configured: conversation.assistantMembership != null,
-        label: conversation.assistantMembership == null
-            ? strings.assistantNeedsConfigurationStatus
-            : _assistantCapsuleLabel(
-                conversation.assistantMembership!,
-                _assistantTarget(conversation, participantTargets) ??
-                    participantTargets.firstWhere(
-                      (t) =>
-                          t.target ==
-                          conversation.assistantMembership!.principal.agentId,
-                      orElse: () => participantTargets.first,
+      composerFlywheel: capsulesHosted
+          ? null
+          : GroupStrategyPickerCapsule(
+              selectedRevision: conversation.strategyRevision.trim().isEmpty
+                  ? null
+                  : conversation.strategyRevision.trim(),
+              onOpen: (revision) => unawaited(_openAdaptiveFlywheel(revision)),
+            ),
+      composerAssistantCapsule: capsulesHosted
+          ? null
+          : AssistantToggleButton(
+              active: _assistantActive(conversation),
+              configured: conversation.assistantMembership != null,
+              label: conversation.assistantMembership == null
+                  ? strings.assistantNeedsConfigurationStatus
+                  : _assistantCapsuleLabel(
+                      conversation.assistantMembership!,
+                      _assistantTarget(conversation, participantTargets) ??
+                          participantTargets.firstWhere(
+                            (t) =>
+                                t.target ==
+                                conversation
+                                    .assistantMembership!
+                                    .principal
+                                    .agentId,
+                            orElse: () => participantTargets.first,
+                          ),
                     ),
-              ),
-        status: assistantStatus,
-        onTap: () => _toggleAssistant(conversation),
-        onEdit: () => unawaited(_openAssistantConfiguration()),
-      ),
+              status: assistantStatus,
+              onTap: () => _toggleAssistant(conversation),
+              onEdit: () => unawaited(_openAssistantConfiguration()),
+            ),
       composerFieldTrailing: AssistantModelReadout(
         visible:
             _assistantActive(conversation) &&

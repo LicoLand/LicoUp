@@ -80,36 +80,24 @@
       "label": "点击移动配对",
       "gesture": "tap"
     },
-    "window.close.agent-center": {
-      "label": "点击智能体中心窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.agent-center": {
       "label": "点击 Dock 中的智能体中心",
-      "gesture": "tap"
-    },
-    "window.close.model-gateway": {
-      "label": "点击模型网关窗口的关闭按钮",
       "gesture": "tap"
     },
     "dock.model-gateway": {
       "label": "点击 Dock 中的模型网关",
       "gesture": "tap"
     },
-    "window.close.device-pairing": {
-      "label": "点击移动配对窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.device-pairing": {
       "label": "点击 Dock 中的移动配对",
       "gesture": "tap"
     },
-    "window.close.usage": {
-      "label": "点击统计面板窗口的关闭按钮",
-      "gesture": "tap"
-    },
     "dock.usage": {
       "label": "点击 Dock 中的统计面板",
+      "gesture": "tap"
+    },
+    "pane.toggle": {
+      "label": "点击左侧面板展开/收起按钮",
       "gesture": "tap"
     },
     "search.open": {
@@ -1492,14 +1480,14 @@
     },
     {
       "id": "desktop.navigation",
-      "label": "桌面布局：对话与设置",
+      "label": "桌面布局：功能与设置",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "features",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话"
+          "id": "features",
+          "label": "功能"
         },
         {
           "id": "settings",
@@ -1508,22 +1496,22 @@
       ],
       "transitions": [
         {
-          "id": "desktop.navigation.chats.nav.chats",
-          "from_state": "chats",
-          "action": "nav.chats",
-          "to_state": "chats"
+          "id": "desktop.navigation.features.nav.features",
+          "from_state": "features",
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
-          "id": "desktop.navigation.chats.nav.settings",
-          "from_state": "chats",
+          "id": "desktop.navigation.features.nav.settings",
+          "from_state": "features",
           "action": "nav.settings",
           "to_state": "settings"
         },
         {
-          "id": "desktop.navigation.settings.nav.chats",
+          "id": "desktop.navigation.settings.nav.features",
           "from_state": "settings",
-          "action": "nav.chats",
-          "to_state": "chats"
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
           "id": "desktop.navigation.settings.nav.settings",
@@ -1535,301 +1523,180 @@
     },
     {
       "id": "desktop.window.agent-center",
-      "label": "桌面窗口：智能体中心",
+      "label": "桌面布局：智能体中心面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "features",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "features",
+          "label": "功能面板"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "智能体中心窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "智能体中心窗口上打开功能菜单"
+          "id": "app",
+          "label": "智能体中心面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.agent-center.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.agent-center.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.agent-center.menu.feature.agent-center",
-          "from_state": "menu",
+          "id": "desktop.window.agent-center.features.feature.agent-center",
+          "from_state": "features",
           "action": "feature.agent-center",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.agent-center.window.window.close.agent-center",
-          "from_state": "window",
-          "action": "window.close.agent-center",
-          "to_state": "chats"
+          "id": "desktop.window.agent-center.app.nav.features",
+          "from_state": "app",
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
-          "id": "desktop.window.agent-center.window.dock.agent-center",
-          "from_state": "window",
+          "id": "desktop.window.agent-center.app.dock.agent-center",
+          "from_state": "app",
           "action": "dock.agent-center",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.agent-center.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
-        },
-        {
-          "id": "desktop.window.agent-center.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.agent-center.window-menu.feature.agent-center",
-          "from_state": "window-menu",
-          "action": "feature.agent-center",
-          "to_state": "window"
+          "to_state": "app"
         }
       ]
     },
     {
       "id": "desktop.window.model-gateway",
-      "label": "桌面窗口：模型网关",
+      "label": "桌面布局：模型网关面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "features",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "features",
+          "label": "功能面板"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "模型网关窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "模型网关窗口上打开功能菜单"
+          "id": "app",
+          "label": "模型网关面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.model-gateway.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.model-gateway.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.model-gateway.menu.feature.model-gateway",
-          "from_state": "menu",
+          "id": "desktop.window.model-gateway.features.feature.model-gateway",
+          "from_state": "features",
           "action": "feature.model-gateway",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.model-gateway.window.window.close.model-gateway",
-          "from_state": "window",
-          "action": "window.close.model-gateway",
-          "to_state": "chats"
+          "id": "desktop.window.model-gateway.app.nav.features",
+          "from_state": "app",
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
-          "id": "desktop.window.model-gateway.window.dock.model-gateway",
-          "from_state": "window",
+          "id": "desktop.window.model-gateway.app.dock.model-gateway",
+          "from_state": "app",
           "action": "dock.model-gateway",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.model-gateway.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
-        },
-        {
-          "id": "desktop.window.model-gateway.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.model-gateway.window-menu.feature.model-gateway",
-          "from_state": "window-menu",
-          "action": "feature.model-gateway",
-          "to_state": "window"
+          "to_state": "app"
         }
       ]
     },
     {
       "id": "desktop.window.device-pairing",
-      "label": "桌面窗口：移动配对",
+      "label": "桌面布局：移动配对面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "features",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "features",
+          "label": "功能面板"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "移动配对窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "移动配对窗口上打开功能菜单"
+          "id": "app",
+          "label": "移动配对面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.device-pairing.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.device-pairing.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.device-pairing.menu.feature.device-pairing",
-          "from_state": "menu",
+          "id": "desktop.window.device-pairing.features.feature.device-pairing",
+          "from_state": "features",
           "action": "feature.device-pairing",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.device-pairing.window.window.close.device-pairing",
-          "from_state": "window",
-          "action": "window.close.device-pairing",
-          "to_state": "chats"
+          "id": "desktop.window.device-pairing.app.nav.features",
+          "from_state": "app",
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
-          "id": "desktop.window.device-pairing.window.dock.device-pairing",
-          "from_state": "window",
+          "id": "desktop.window.device-pairing.app.dock.device-pairing",
+          "from_state": "app",
           "action": "dock.device-pairing",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.device-pairing.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
-        },
-        {
-          "id": "desktop.window.device-pairing.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.device-pairing.window-menu.feature.device-pairing",
-          "from_state": "window-menu",
-          "action": "feature.device-pairing",
-          "to_state": "window"
+          "to_state": "app"
         }
       ]
     },
     {
       "id": "desktop.window.usage",
-      "label": "桌面窗口：统计面板",
+      "label": "桌面布局：统计面板面板",
       "presentation": "desktop-wide",
-      "initial": "chats",
+      "initial": "features",
       "setup": [],
       "states": [
         {
-          "id": "chats",
-          "label": "对话，窗口未打开"
+          "id": "features",
+          "label": "功能面板"
         },
         {
-          "id": "menu",
-          "label": "功能菜单"
-        },
-        {
-          "id": "window",
-          "label": "统计面板窗口"
-        },
-        {
-          "id": "window-menu",
-          "label": "统计面板窗口上打开功能菜单"
+          "id": "app",
+          "label": "统计面板面板"
         }
       ],
       "transitions": [
         {
-          "id": "desktop.window.usage.chats.nav.features",
-          "from_state": "chats",
-          "action": "nav.features",
-          "to_state": "menu"
-        },
-        {
-          "id": "desktop.window.usage.menu.nav.features",
-          "from_state": "menu",
-          "action": "nav.features",
-          "to_state": "chats"
-        },
-        {
-          "id": "desktop.window.usage.menu.feature.usage",
-          "from_state": "menu",
+          "id": "desktop.window.usage.features.feature.usage",
+          "from_state": "features",
           "action": "feature.usage",
-          "to_state": "window"
+          "to_state": "app"
         },
         {
-          "id": "desktop.window.usage.window.window.close.usage",
-          "from_state": "window",
-          "action": "window.close.usage",
-          "to_state": "chats"
+          "id": "desktop.window.usage.app.nav.features",
+          "from_state": "app",
+          "action": "nav.features",
+          "to_state": "features"
         },
         {
-          "id": "desktop.window.usage.window.dock.usage",
-          "from_state": "window",
+          "id": "desktop.window.usage.app.dock.usage",
+          "from_state": "app",
           "action": "dock.usage",
-          "to_state": "window"
+          "to_state": "app"
+        }
+      ]
+    },
+    {
+      "id": "desktop.pane",
+      "label": "桌面布局：左侧面板展开与收起",
+      "presentation": "desktop-wide",
+      "initial": "open",
+      "setup": [],
+      "states": [
+        {
+          "id": "open",
+          "label": "左侧面板展开"
         },
         {
-          "id": "desktop.window.usage.window.nav.features",
-          "from_state": "window",
-          "action": "nav.features",
-          "to_state": "window-menu"
+          "id": "collapsed",
+          "label": "左侧面板收起，对话列表贴左"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "desktop.pane.open.pane.toggle",
+          "from_state": "open",
+          "action": "pane.toggle",
+          "to_state": "collapsed"
         },
         {
-          "id": "desktop.window.usage.window-menu.nav.features",
-          "from_state": "window-menu",
-          "action": "nav.features",
-          "to_state": "window"
-        },
-        {
-          "id": "desktop.window.usage.window-menu.feature.usage",
-          "from_state": "window-menu",
-          "action": "feature.usage",
-          "to_state": "window"
+          "id": "desktop.pane.collapsed.pane.toggle",
+          "from_state": "collapsed",
+          "action": "pane.toggle",
+          "to_state": "open"
         }
       ]
     },

@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_menu.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -179,51 +180,65 @@ class MessagingConversationHeader extends StatelessWidget {
           MessagingConversationMenu(
             triggerKey: const Key('messaging-conversation-menu-button'),
             panelKey: const Key('messaging-conversation-menu-panel'),
-            childrenBuilder: (close) => [
-              MenuItemButton(
-                key: const Key('messaging-details-toggle'),
-                leadingIcon: const Icon(Icons.info_outline_rounded),
-                onPressed: () {
-                  close();
-                  unawaited(
-                    showDialog<void>(
-                      context: context,
-                      builder: (dialogContext) => Dialog(
-                        child: SizedBox(
-                          width: 340,
-                          height: MediaQuery.sizeOf(dialogContext).height * 0.7,
-                          child: MessagingDetailsPanel(
-                            state: detailsState,
-                            actions: detailsActions,
-                            opencodeServeState: opencodeServeState,
-                            onClose: () => Navigator.of(dialogContext).pop(),
+            childrenBuilder: (close) {
+              final directive = LayoutAgentsDirectiveScope.maybeOf(context);
+              return [
+                if (directive?.onToggleHistoryList != null)
+                  MenuItemButton(
+                    key: const Key('messaging-history-list-toggle'),
+                    leadingIcon: const Icon(Icons.history_rounded),
+                    onPressed: () {
+                      close();
+                      directive!.onToggleHistoryList!();
+                    },
+                    child: Text(strings.historyConversations),
+                  ),
+                MenuItemButton(
+                  key: const Key('messaging-details-toggle'),
+                  leadingIcon: const Icon(Icons.info_outline_rounded),
+                  onPressed: () {
+                    close();
+                    unawaited(
+                      showDialog<void>(
+                        context: context,
+                        builder: (dialogContext) => Dialog(
+                          child: SizedBox(
+                            width: 340,
+                            height:
+                                MediaQuery.sizeOf(dialogContext).height * 0.7,
+                            child: MessagingDetailsPanel(
+                              state: detailsState,
+                              actions: detailsActions,
+                              opencodeServeState: opencodeServeState,
+                              onClose: () => Navigator.of(dialogContext).pop(),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
-                child: Text(strings.details),
-              ),
-              if (sessions != null &&
-                  onSwitchConversation != null &&
-                  onSwitchNewConversation != null) ...[
-                const Divider(height: 1),
-                MessagingConversationSwitcherContent(
-                  sessions: sessions,
-                  selectedSessionId: switcherSelectedSessionId,
-                  runningFor: switcherRunningFor,
-                  onSelectConversation: (id) {
-                    close();
-                    onSwitchConversation!(id);
+                    );
                   },
-                  onNewConversation: () {
-                    close();
-                    onSwitchNewConversation!();
-                  },
+                  child: Text(strings.details),
                 ),
-              ],
-            ],
+                if (sessions != null &&
+                    onSwitchConversation != null &&
+                    onSwitchNewConversation != null) ...[
+                  const Divider(height: 1),
+                  MessagingConversationSwitcherContent(
+                    sessions: sessions,
+                    selectedSessionId: switcherSelectedSessionId,
+                    runningFor: switcherRunningFor,
+                    onSelectConversation: (id) {
+                      close();
+                      onSwitchConversation!(id);
+                    },
+                    onNewConversation: () {
+                      close();
+                      onSwitchNewConversation!();
+                    },
+                  ),
+                ],
+              ];
+            },
           ),
         ],
       ),

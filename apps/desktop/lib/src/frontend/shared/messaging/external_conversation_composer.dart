@@ -11,10 +11,17 @@ final class LayoutExternalComposerScope extends InheritedWidget {
   const LayoutExternalComposerScope({
     super.key,
     required this.hosted,
+    this.hostedCapsules = false,
     required super.child,
   });
 
   final bool hosted;
+
+  /// When true alongside [hosted], the host also owns the composer's
+  /// Assistant and Adaptive Flywheel capsules (the Desktop expanded composer
+  /// box pops them above the field), so the canonical pane suppresses its
+  /// own copies.
+  final bool hostedCapsules;
 
   static bool isHosted(BuildContext context) =>
       context
@@ -22,9 +29,15 @@ final class LayoutExternalComposerScope extends InheritedWidget {
           ?.hosted ??
       false;
 
+  static bool hostsCapsules(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<LayoutExternalComposerScope>()
+          ?.hostedCapsules ??
+      false;
+
   @override
   bool updateShouldNotify(LayoutExternalComposerScope oldWidget) =>
-      oldWidget.hosted != hosted;
+      oldWidget.hosted != hosted || oldWidget.hostedCapsules != hostedCapsules;
 }
 
 /// Hides the workspace's internal composer when the host layout re-parents

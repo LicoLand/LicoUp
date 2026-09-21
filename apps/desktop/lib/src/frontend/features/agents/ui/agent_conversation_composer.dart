@@ -58,6 +58,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.mentionLabels = const {},
     this.leading,
     this.fieldTrailing,
+    this.outerPadding,
   });
 
   final String targetLabel;
@@ -125,6 +126,11 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// Optional quiet readout before the send action (for example the assistant
   /// model readout), placed in the floating toolbar or beside a compact field.
   final Widget? fieldTrailing;
+
+  /// Outer padding around the whole composer. Null keeps the built-in
+  /// insets; hosts that position the composer precisely (the Desktop bottom
+  /// bar) pass an explicit value so the capsule aligns with their grid.
+  final EdgeInsetsGeometry? outerPadding;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -570,16 +576,18 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     );
     final mentionSuggestions = _mentionSuggestions;
     return Padding(
-      padding: mobileClient
-          ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
-          : widget.floatingMatteCapsule
-          ? const EdgeInsets.fromLTRB(
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
-              8,
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
-            )
-          : const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding:
+          widget.outerPadding ??
+          (mobileClient
+              ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+              : widget.floatingMatteCapsule
+              ? const EdgeInsets.fromLTRB(
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  8,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
+                )
+              : const EdgeInsets.fromLTRB(12, 8, 12, 10)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

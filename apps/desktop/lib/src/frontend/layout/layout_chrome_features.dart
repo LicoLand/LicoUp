@@ -10,10 +10,12 @@ import 'package:licoup/src/presentation/chrome/chrome_projection.dart';
 /// bindings and feature-widget factories; consumed through
 /// [LayoutChromeFeaturesScope].
 abstract interface class LayoutChromeFeatures {
-  /// The conversation message composer hosted by the Desktop dock capsule
-  /// while the conversation fullscreen app is active. Feature-owned; reads
-  /// its own projections and sends through the shared conversation intents.
-  Widget buildDockComposer(BuildContext context);
+  /// The conversation message composer hosted by the Desktop bottom bar.
+  /// Feature-owned; reads its own projections and sends through the shared
+  /// conversation intents. When [expanded] is true (the Desktop left pane is
+  /// collapsed), the composer carries the Assistant and Adaptive Flywheel
+  /// capsules above the field.
+  Widget buildDockComposer(BuildContext context, {bool expanded = false});
 
   /// The chrome notification-notices exposure consumed by
   /// [LicoToastNoticesListener] in desktop shells. Replaces the retired

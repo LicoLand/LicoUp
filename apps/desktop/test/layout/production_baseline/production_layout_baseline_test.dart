@@ -5,12 +5,21 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
 import '../../support/bundled_font_loader.dart';
 
 void main() {
   final composition = BuiltInLayoutComposition();
+
+  setUp(() {
+    // The Desktop shell resolves its permanent conversation pane through this
+    // process-wide handoff on its first frame, before the new destination
+    // frame records the current composition's port. Reset between fixtures so
+    // a baseline never renders the previous test's composition.
+    DesktopDestinationContentRegistry.contentPort = null;
+  });
 
   setUpAll(() async {
     await loadBundledVisualFonts();
