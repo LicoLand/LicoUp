@@ -18,6 +18,7 @@
 //!   address one — the domain owner refuses it for every operation that does.
 
 use crate::command::MAX_STABLE_ID_BYTES;
+use crate::failure::RecoveryAction;
 use serde::{Deserialize, Serialize};
 
 /// The largest provider identity accepted, matching the runtime's own bound.
@@ -181,6 +182,14 @@ impl std::fmt::Display for ActorClaimError {
 }
 
 impl std::error::Error for ActorClaimError {}
+
+impl From<ActorClaimError> for crate::failure::ApplicationFailure {
+    /// A structurally unusable claim is refused with the claim's own code and
+    /// stage, so both interfaces report the same reason for the same shape.
+    fn from(error: ActorClaimError) -> Self {
+        Self::permanent(error.code(), error.stage()).with_recovery(RecoveryAction::CorrectRequest)
+    }
+}
 
 fn validate_identifier(value: &str, error: ActorClaimError) -> Result<(), ActorClaimError> {
     if value.is_empty() || value.len() > MAX_STABLE_ID_BYTES || value.contains('\0') {
