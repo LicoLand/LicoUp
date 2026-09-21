@@ -34,10 +34,8 @@ void main() {
     runtime.dispose();
   });
 
-  Widget app(Widget child) => conversationMarkdownTestApp(
-    preparation: preparation,
-    child: child,
-  );
+  Widget app(Widget child) =>
+      conversationMarkdownTestApp(preparation: preparation, child: child);
 
   Widget markdown({
     required String data,
@@ -57,11 +55,7 @@ void main() {
     WidgetTester tester,
     bool Function() ready, {
     String description = 'the expected state',
-  }) => waitForConversationMarkdown(
-    tester,
-    ready,
-    description: description,
-  );
+  }) => waitForConversationMarkdown(tester, ready, description: description);
 
   Future<void> pumpPrepared(WidgetTester tester, String identity) async {
     await waitForPreparedBody(tester, preparation, identity);
@@ -94,42 +88,43 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('a restyle repaints the same prepared value without re-preparing', (
-    tester,
-  ) async {
-    const data = '# Title\n\nbody text\n\n';
-    await tester.pumpWidget(app(markdown(data: data, identity: 'm2')));
-    await pumpPrepared(tester, 'm2');
-    final prepared = preparation.valueFor('m2');
-    expect(prepared, isNotNull);
-    final preparations = preparation.preparationsFor('m2');
+  testWidgets(
+    'a restyle repaints the same prepared value without re-preparing',
+    (tester) async {
+      const data = '# Title\n\nbody text\n\n';
+      await tester.pumpWidget(app(markdown(data: data, identity: 'm2')));
+      await pumpPrepared(tester, 'm2');
+      final prepared = preparation.valueFor('m2');
+      expect(prepared, isNotNull);
+      final preparations = preparation.preparationsFor('m2');
 
-    // Replacing colours and renderer metrics is a pure appearance change: the
-    // business read count must not move.
-    await tester.pumpWidget(
-      app(
-        markdown(
-          data: data,
-          identity: 'm2',
-          foreground: const Color(0xFF00FF00),
-          renderStyle: const MessageMarkdownStyle(
-            bodyFontSize: 17,
-            heading1FontSize: 22,
+      // Replacing colours and renderer metrics is a pure appearance change: the
+      // business read count must not move.
+      await tester.pumpWidget(
+        app(
+          markdown(
+            data: data,
+            identity: 'm2',
+            foreground: const Color(0xFF00FF00),
+            renderStyle: const MessageMarkdownStyle(
+              bodyFontSize: 17,
+              heading1FontSize: 22,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    expect(identical(preparation.valueFor('m2'), prepared), isTrue);
-    expect(preparation.preparationsFor('m2'), preparations);
-    expect(find.text('Title'), findsOneWidget);
-    expect(
-      messageMarkdownSpanFontSize(tester, 'Title'),
-      22,
-      reason: 'the restyled heading renders from the same prepared block',
-    );
-    await finish(tester);
-  });
+      );
+      await tester.pump();
+      expect(identical(preparation.valueFor('m2'), prepared), isTrue);
+      expect(preparation.preparationsFor('m2'), preparations);
+      expect(find.text('Title'), findsOneWidget);
+      expect(
+        messageMarkdownSpanFontSize(tester, 'Title'),
+        22,
+        reason: 'the restyled heading renders from the same prepared block',
+      );
+      await finish(tester);
+    },
+  );
 
   testWidgets('streaming anchors frozen blocks and keeps the tail calm', (
     tester,
@@ -342,7 +337,11 @@ Hidden detail value
           ConversationMarkdownWithdrawal.revoked,
         ),
       );
-      expect(find.text('Title'), findsNothing, reason: 'the prepared value hides');
+      expect(
+        find.text('Title'),
+        findsNothing,
+        reason: 'the prepared value hides',
+      );
       expect(
         find.textContaining('# Title'),
         findsNothing,
@@ -463,22 +462,22 @@ Hidden detail value
     await finish(tester);
   });
 
-  testWidgets('a view outside a presentation container renders its text unparsed', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: markdown(data: '# Title\n\nbody\n\n', identity: 'm6'),
+  testWidgets(
+    'a view outside a presentation container renders its text unparsed',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: markdown(data: '# Title\n\nbody\n\n', identity: 'm6'),
+          ),
         ),
-      ),
-    );
-    await tester.pump();
-    expect(find.textContaining('# Title'), findsOneWidget);
-    expect(find.text('Title'), findsNothing);
-    expect(tester.takeException(), isNull);
-    unawaited(preparation.dispose());
-    runtime.dispose();
-  });
+      );
+      await tester.pump();
+      expect(find.textContaining('# Title'), findsOneWidget);
+      expect(find.text('Title'), findsNothing);
+      expect(tester.takeException(), isNull);
+      unawaited(preparation.dispose());
+      runtime.dispose();
+    },
+  );
 }
-

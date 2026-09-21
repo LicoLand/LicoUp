@@ -33,45 +33,48 @@ void main() {
     name: conversationMarkdownPreparedField,
   );
 
-  test('one revision is decomposed off-thread and installed prepared', () async {
-    const text = '# Title\n\nbody **bold** and `code`\n\n- one\n- two\n';
-    final position = preparation.publish(identity: 'm1', text: text);
-    expect(position, isNotNull);
-    expect(position!.isInitial, isTrue, reason: 'the first revision is v0');
+  test(
+    'one revision is decomposed off-thread and installed prepared',
+    () async {
+      const text = '# Title\n\nbody **bold** and `code`\n\n- one\n- two\n';
+      final position = preparation.publish(identity: 'm1', text: text);
+      expect(position, isNotNull);
+      expect(position!.isInitial, isTrue, reason: 'the first revision is v0');
 
-    final value = await _waitForValue(preparation, 'm1');
-    final reference = parseMessageMarkdownBlocks(text);
-    expect(
-      value.blocks.map((block) => block.value.contentHash).toList(),
-      reference.map((block) => block.contentHash).toList(),
-      reason: 'the prepared blocks equal the full-document reference parse',
-    );
-    expect(value.position, position);
-    expect(
-      preparation.workerFor('m1')?.runsInCallerIsolate,
-      isFalse,
-      reason: 'the scan ran on a real worker isolate',
-    );
-    expect(
-      preparation.workerFor('m1')?.isolateDebugName,
-      startsWith('licoup-preparation'),
-    );
-    expect(preparation.planFor('m1')?.trigger, PreparationTrigger.initial);
-    expect(preparation.failureFor('m1'), isNull);
+      final value = await _waitForValue(preparation, 'm1');
+      final reference = parseMessageMarkdownBlocks(text);
+      expect(
+        value.blocks.map((block) => block.value.contentHash).toList(),
+        reference.map((block) => block.contentHash).toList(),
+        reason: 'the prepared blocks equal the full-document reference parse',
+      );
+      expect(value.position, position);
+      expect(
+        preparation.workerFor('m1')?.runsInCallerIsolate,
+        isFalse,
+        reason: 'the scan ran on a real worker isolate',
+      );
+      expect(
+        preparation.workerFor('m1')?.isolateDebugName,
+        startsWith('licoup-preparation'),
+      );
+      expect(preparation.planFor('m1')?.trigger, PreparationTrigger.initial);
+      expect(preparation.failureFor('m1'), isNull);
 
-    // The install carries the source's consistency group, so the group
-    // identity survives from the source read to the prepared value while its
-    // changed entry names the field the preparation installs.
-    final installed = runtime
-        .preparedDisplay<PreparedValue<MessageMarkdownBlock>>()
-        .current(preparedField('m1'));
-    expect(installed, isNotNull);
-    final group = installed!.request.consistencyGroup;
-    expect(group, isNotNull);
-    expect(group!.position, position);
-    expect(group.id, ConsistencyGroupId('conversation-markdown:m1'));
-    expect(group.affects(preparedField('m1')), isTrue);
-  });
+      // The install carries the source's consistency group, so the group
+      // identity survives from the source read to the prepared value while its
+      // changed entry names the field the preparation installs.
+      final installed = runtime
+          .preparedDisplay<PreparedValue<MessageMarkdownBlock>>()
+          .current(preparedField('m1'));
+      expect(installed, isNotNull);
+      final group = installed!.request.consistencyGroup;
+      expect(group, isNotNull);
+      expect(group!.position, position);
+      expect(group.id, ConsistencyGroupId('conversation-markdown:m1'));
+      expect(group.affects(preparedField('m1')), isTrue);
+    },
+  );
 
   test('an append reuses frozen blocks and parses only what changed', () async {
     const first = '# Title\n\nintro text\n\nalpha\n\n';
@@ -138,10 +141,7 @@ void main() {
     );
     expect(
       preparation.planFor('m4')?.blocksToParse,
-      containsAll(<BlockId>[
-        firstValue.blocks[0].id,
-        firstValue.blocks[1].id,
-      ]),
+      containsAll(<BlockId>[firstValue.blocks[0].id, firstValue.blocks[1].id]),
       reason: 'the definition and the block that cites it re-parse together',
     );
   });
@@ -229,68 +229,77 @@ void main() {
     releaseWatch();
   });
 
-  test('authority withdrawal is recorded and a repeated read never re-enters', () async {
-    preparation.publish(identity: 'rev', text: 'first body\n\n');
-    await _waitForValue(preparation, 'rev');
-    expect(preparation.stateFor('rev'), isA<ConversationMarkdownInstalled>());
-    final preparations = preparation.preparationsFor('rev');
+  test(
+    'authority withdrawal is recorded and a repeated read never re-enters',
+    () async {
+      preparation.publish(identity: 'rev', text: 'first body\n\n');
+      await _waitForValue(preparation, 'rev');
+      expect(preparation.stateFor('rev'), isA<ConversationMarkdownInstalled>());
+      final preparations = preparation.preparationsFor('rev');
 
-    // The application withdraws authority over the body.
-    runtime.revoke(conversationMarkdownFieldGroupFor('rev').resource);
-    expect(
-      preparation.stateFor('rev'),
-      isA<ConversationMarkdownWithdrawn>().having(
-        (state) => state.reason,
-        'reason',
-        ConversationMarkdownWithdrawal.revoked,
-      ),
-    );
-    expect(preparation.valueFor('rev'), isNull);
-    expect(preparation.positionFor('rev'), isNotNull);
+      // The application withdraws authority over the body.
+      runtime.revoke(conversationMarkdownFieldGroupFor('rev').resource);
+      expect(
+        preparation.stateFor('rev'),
+        isA<ConversationMarkdownWithdrawn>().having(
+          (state) => state.reason,
+          'reason',
+          ConversationMarkdownWithdrawal.revoked,
+        ),
+      );
+      expect(preparation.valueFor('rev'), isNull);
+      expect(preparation.positionFor('rev'), isNotNull);
 
-    // Repeating the withdrawn revision is not a new read.
-    preparation.publish(identity: 'rev', text: 'first body\n\n');
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(preparation.stateFor('rev'), isA<ConversationMarkdownWithdrawn>());
-    expect(
-      preparation.preparationsFor('rev'),
-      preparations,
-      reason: 'a repeated read of the withdrawn revision never re-enters',
-    );
+      // Repeating the withdrawn revision is not a new read.
+      preparation.publish(identity: 'rev', text: 'first body\n\n');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(preparation.stateFor('rev'), isA<ConversationMarkdownWithdrawn>());
+      expect(
+        preparation.preparationsFor('rev'),
+        preparations,
+        reason: 'a repeated read of the withdrawn revision never re-enters',
+      );
 
-    // A later controlled revision opens a fresh incarnation.
-    preparation.publish(identity: 'rev', text: 'second body\n\n');
-    final fresh = await _waitForValue(preparation, 'rev');
-    expect(preparation.stateFor('rev'), isA<ConversationMarkdownInstalled>());
-    expect(fresh.blocks.single.value.text, 'second body');
-    expect(
-      runtime.current(conversationMarkdownFieldGroupFor('rev')),
-      isNotNull,
-      reason: 'the fresh incarnation is admitted',
-    );
-  });
+      // A later controlled revision opens a fresh incarnation.
+      preparation.publish(identity: 'rev', text: 'second body\n\n');
+      final fresh = await _waitForValue(preparation, 'rev');
+      expect(preparation.stateFor('rev'), isA<ConversationMarkdownInstalled>());
+      expect(fresh.blocks.single.value.text, 'second body');
+      expect(
+        runtime.current(conversationMarkdownFieldGroupFor('rev')),
+        isNotNull,
+        reason: 'the fresh incarnation is admitted',
+      );
+    },
+  );
 
-  test('a cache retire reports its own reason and allows a fresh read', () async {
-    preparation.publish(identity: 'cache', text: 'cached body\n\n');
-    await _waitForValue(preparation, 'cache');
+  test(
+    'a cache retire reports its own reason and allows a fresh read',
+    () async {
+      preparation.publish(identity: 'cache', text: 'cached body\n\n');
+      await _waitForValue(preparation, 'cache');
 
-    preparation.retire('cache');
-    expect(
-      preparation.stateFor('cache'),
-      isA<ConversationMarkdownWithdrawn>().having(
-        (state) => state.reason,
-        'reason',
-        ConversationMarkdownWithdrawal.retired,
-      ),
-    );
+      preparation.retire('cache');
+      expect(
+        preparation.stateFor('cache'),
+        isA<ConversationMarkdownWithdrawn>().having(
+          (state) => state.reason,
+          'reason',
+          ConversationMarkdownWithdrawal.retired,
+        ),
+      );
 
-    // A retired body is a bounded-cache decision, not withdrawn authority: the
-    // same text is a legitimate fresh read.
-    preparation.publish(identity: 'cache', text: 'cached body\n\n');
-    final value = await _waitForValue(preparation, 'cache');
-    expect(preparation.stateFor('cache'), isA<ConversationMarkdownInstalled>());
-    expect(value.blocks.single.value.text, 'cached body');
-  });
+      // A retired body is a bounded-cache decision, not withdrawn authority: the
+      // same text is a legitimate fresh read.
+      preparation.publish(identity: 'cache', text: 'cached body\n\n');
+      final value = await _waitForValue(preparation, 'cache');
+      expect(
+        preparation.stateFor('cache'),
+        isA<ConversationMarkdownInstalled>(),
+      );
+      expect(value.blocks.single.value.text, 'cached body');
+    },
+  );
 
   test('a release stops the pipeline and its workers', () async {
     preparation.publish(identity: 'm7', text: 'body\n\n');

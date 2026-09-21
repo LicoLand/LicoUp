@@ -44,9 +44,7 @@ Widget conversationMarkdownTestApp({
   required Widget child,
   Brightness brightness = Brightness.dark,
 }) => ProviderScope(
-  overrides: [
-    conversationMarkdownPortProvider.overrideWithValue(preparation),
-  ],
+  overrides: [conversationMarkdownPortProvider.overrideWithValue(preparation)],
   child: MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: buildLicoTheme(platformBrightness: brightness),
@@ -101,14 +99,10 @@ Future<void> waitForPreparedBody(
   ConversationMarkdownPreparation preparation,
   String identity, {
   PreparedValue<MessageMarkdownBlock>? differentFrom,
-}) => waitForConversationMarkdown(
-  tester,
-  () {
-    final value = preparation.valueFor(identity);
-    return value != null && !identical(value, differentFrom);
-  },
-  description: 'a prepared value for $identity',
-);
+}) => waitForConversationMarkdown(tester, () {
+  final value = preparation.valueFor(identity);
+  return value != null && !identical(value, differentFrom);
+}, description: 'a prepared value for $identity');
 
 /// Releases the pipeline and drains its workers inside the test body.
 ///

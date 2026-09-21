@@ -35,19 +35,22 @@ final class ConversationMarkdownUnavailable
 }
 
 /// Preparation is configured; no value is installed for this body yet.
-final class ConversationMarkdownPreparing extends ConversationMarkdownBodyState {
+final class ConversationMarkdownPreparing
+    extends ConversationMarkdownBodyState {
   const ConversationMarkdownPreparing();
 }
 
 /// The prepared value of this body is installed and visible.
-final class ConversationMarkdownInstalled extends ConversationMarkdownBodyState {
+final class ConversationMarkdownInstalled
+    extends ConversationMarkdownBodyState {
   const ConversationMarkdownInstalled(this.value);
 
   final PreparedValue<MessageMarkdownBlock> value;
 }
 
 /// Nothing is visible for this body because it was withdrawn.
-final class ConversationMarkdownWithdrawn extends ConversationMarkdownBodyState {
+final class ConversationMarkdownWithdrawn
+    extends ConversationMarkdownBodyState {
   const ConversationMarkdownWithdrawn(this.reason);
 
   final ConversationMarkdownWithdrawal reason;
@@ -92,7 +95,8 @@ abstract interface class ConversationMarkdownPort {
 /// A view renders the text it already holds, unparsed: no preparation is
 /// available, and nothing is parsed on the rendering path. Wiring the real
 /// owner is a composition decision, not a view decision.
-final class DisabledConversationMarkdownPort implements ConversationMarkdownPort {
+final class DisabledConversationMarkdownPort
+    implements ConversationMarkdownPort {
   const DisabledConversationMarkdownPort();
 
   @override

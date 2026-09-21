@@ -507,7 +507,9 @@ final class ConversationMarkdownPreparation
   }
 
   void _enforceRetention() {
-    final live = _bodies.values.where((body) => body.withdrawn == null).toList();
+    final live = _bodies.values
+        .where((body) => body.withdrawn == null)
+        .toList();
     if (live.length <= maxRetainedBodies) return;
     final candidates = live.where((body) => body.listeners.isEmpty).toList()
       ..sort(
