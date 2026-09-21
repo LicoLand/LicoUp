@@ -1064,7 +1064,61 @@ void main() {
       );
     },
   );
+
+  testWidgets('fixedHeight pins the compact capsule and centers its content', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const _ComposerTestApp(
+        child: SizedBox(
+          width: 420,
+          child: RuntimeMessageComposer(
+            targetLabel: 'Fixture Agent',
+            initialDraft: '',
+            busy: false,
+            enabled: true,
+            modelOptions: [],
+            selectedModel: '',
+            reasoningEffortOptions: [],
+            selectedReasoningEffort: '',
+            onModelChanged: _noopModel,
+            onReasoningEffortChanged: _noopModel,
+            onDraftChanged: _noopModel,
+            onSend: _sendTrue,
+            outerPadding: EdgeInsets.zero,
+            fixedHeight: 64,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.getRect(
+      find.byKey(const Key('agent-conversation-composer-field')),
+    );
+    expect(field.height, 64);
+    final input = tester.getRect(find.byType(TextField));
+    expect((input.top + input.bottom) / 2, closeTo(field.center.dy, 4));
+    final send = tester.getRect(
+      find.byKey(const Key('agent-conversation-composer-send')),
+    );
+    expect((send.top + send.bottom) / 2, closeTo(field.center.dy, 2));
+
+    // Long drafts scroll inside the pinned capsule instead of growing it.
+    await tester.enterText(find.byType(TextField), 'first\nsecond\nthird');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getRect(find.byKey(const Key('agent-conversation-composer-field')))
+          .height,
+      64,
+    );
+  });
 }
+
+void _noopModel(String _) {}
+
+Future<bool> _sendTrue(String _) async => true;
 
 Color contextPrimaryColor(WidgetTester tester) => Theme.of(
   tester.element(find.byKey(const Key('agent-conversation-mention-codex'))),

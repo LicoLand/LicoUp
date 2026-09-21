@@ -105,15 +105,18 @@ final class DesktopDesktopAgentsPresentation
   );
 }
 
-/// Desktop settings presentation: the layout's left pane is plain content
-/// with no Desktop-owned sidebar, so the shared SettingsPanel hosts its own
-/// section index and renders with Desktop-owned insets.
+/// Desktop settings presentation: the Desktop settings surface carries no
+/// section index at all — the layout's left pane is already the navigation
+/// slot, and a second rail inside settings is redundant chrome. Reporting
+/// `indexHostedByNavigation` keeps the shared panel from rendering its own
+/// rail, so the sections read as one continuous content page (scroll-spy
+/// still publishes the shared section tab channel).
 final class DesktopDesktopSettingsPresentation
     implements LayoutSettingsPresentation {
   const DesktopDesktopSettingsPresentation();
 
   @override
-  bool get indexHostedByNavigation => false;
+  bool get indexHostedByNavigation => true;
 
   @override
   EdgeInsetsGeometry get contentPadding => EdgeInsets.zero;

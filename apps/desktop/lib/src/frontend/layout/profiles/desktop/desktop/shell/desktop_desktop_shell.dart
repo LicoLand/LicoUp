@@ -123,7 +123,6 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   );
   double _listExtentRaw = 0;
   bool _listExtentHydrated = false;
-  bool _settingsIndexSeeded = false;
 
   @override
   void initState() {
@@ -271,6 +270,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
 
   void _openSettings() {
     _dismissOverlays();
+    Tooltip.dismissAllToolTips();
     setState(() {
       _leftContent = const _LeftSettings();
       _leftCollapsed = false;
@@ -285,6 +285,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
 
   void _openFeaturesGrid() {
     _dismissOverlays();
+    Tooltip.dismissAllToolTips();
     setState(() {
       _leftContent = const _LeftGrid();
       _leftCollapsed = false;
@@ -293,6 +294,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
 
   void _launchApp(DesktopAppId app) {
     _dismissOverlays();
+    Tooltip.dismissAllToolTips();
     _noteLaunched(app);
     if (_dock.ready) _dock.openApp(app);
     _writeModelsPane(app);
@@ -308,6 +310,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
 
   void _closeApp(DesktopAppId app) {
     _dismissOverlays();
+    Tooltip.dismissAllToolTips();
     _dock.closeApp(app);
   }
 
@@ -367,37 +370,15 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   }
 
   void _hydrateListExtent() {
-    if (!_listExtentHydrated) {
-      _listExtentHydrated = true;
-      final stored = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
-        ClientSection.agents,
-        LayoutStateChannels.agentsSidebar,
-      );
-      if (stored is LayoutPaneExtentState) {
-        _listExtent = _snapListExtent(stored.extent, 960);
-        _listExtentRaw = _listExtent;
-      }
-    }
-    if (!_settingsIndexSeeded) {
-      _settingsIndexSeeded = true;
-      // The shared settings index rail defaults to its narrowest width, which
-      // wraps section labels at the Desktop pane's typical extent; seed the
-      // Desktop-owned channel once with a width that fits them. The user's
-      // own drags (persisted in the same channel) always win.
-      final state = LayoutScope.maybeOf(context)?.state;
-      final existing = state?.readIfDeclaredFor(
-        ClientSection.settings,
-        LayoutStateChannels.settingsIndex,
-      );
-      if (state != null && existing == null) {
-        state.writeIfDeclaredFor(
-          ClientSection.settings,
-          LayoutStateChannels.settingsIndex,
-          LayoutPaneExtentState(
-            DesktopDesktopMetrics.settingsIndexDefaultExtent,
-          ),
-        );
-      }
+    if (_listExtentHydrated) return;
+    _listExtentHydrated = true;
+    final stored = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+      ClientSection.agents,
+      LayoutStateChannels.agentsSidebar,
+    );
+    if (stored is LayoutPaneExtentState) {
+      _listExtent = _snapListExtent(stored.extent, 960);
+      _listExtentRaw = _listExtent;
     }
   }
 
@@ -465,9 +446,8 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
               DesktopDesktopMetrics.conversationMinExtent,
         )
         .toDouble();
-    final baseLeft = _leftExtent
-        .clamp(DesktopDesktopMetrics.leftPaneMinExtent, maxLeft)
-        .toDouble();
+    final leftMin = math.min(DesktopDesktopMetrics.leftPaneMinExtent, maxLeft);
+    final baseLeft = _leftExtent.clamp(leftMin, maxLeft).toDouble();
     // The conversation list shares its width floor with the detail: never
     // wider than what leaves the detail its minimum extent.
     final maxListExtent = math

@@ -35,6 +35,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
@@ -561,7 +562,11 @@ final class _DockConversationComposerState
       defaultModel: defaultModel,
       defaultReasoningEffort: defaultReasoningEffort,
       showRuntimeSettings: false,
-      floatingMatteCapsule: true,
+      // Resting (left pane open): a compact single-row capsule pinned to the
+      // icon strip's height. Expanded (left collapsed): the floating capsule
+      // grows upward with its lines.
+      floatingMatteCapsule: widget.expanded,
+      fixedHeight: widget.expanded ? null : DesktopDesktopMetrics.dockBarHeight,
       // The Desktop bottom bar positions the composer; the capsule must sit
       // flush on the bar's grid.
       outerPadding: EdgeInsets.zero,
