@@ -126,12 +126,6 @@ abstract final class DesktopDesktopMetrics {
   static const double featuresColumnGap = 12;
   static const double featuresRowGap = 18;
 
-  /// Default width of the settings section index rail inside the left pane;
-  /// the shared panel's own minimum (120) wraps section labels at Desktop
-  /// pane widths. Persisted through the Desktop-owned settingsIndex channel;
-  /// user drags always win.
-  static const double settingsIndexDefaultExtent = 168;
-
   /// Traffic-light anchor band height reported to the window chrome.
   static const double trafficLightAnchorExtent = 28;
 }

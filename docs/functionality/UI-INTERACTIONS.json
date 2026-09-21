@@ -41,31 +41,31 @@
       "gesture": "tap"
     },
     "settings.general": {
-      "label": "点击设置目录中的通用",
+      "label": "前往设置：通用",
       "gesture": "tap"
     },
     "settings.appearance": {
-      "label": "点击设置目录中的外观",
+      "label": "前往设置：外观",
       "gesture": "tap"
     },
     "settings.updates": {
-      "label": "点击设置目录中的更新",
+      "label": "前往设置：更新",
       "gesture": "tap"
     },
     "settings.startup": {
-      "label": "点击设置目录中的启动",
+      "label": "前往设置：启动",
       "gesture": "tap"
     },
     "settings.storage": {
-      "label": "点击设置目录中的存储",
+      "label": "前往设置：存储",
       "gesture": "tap"
     },
     "settings.diagnostics": {
-      "label": "点击设置目录中的诊断",
+      "label": "前往设置：诊断",
       "gesture": "tap"
     },
     "settings.archived-conversations": {
-      "label": "点击设置目录中的已归档对话",
+      "label": "前往设置：已归档对话",
       "gesture": "tap"
     },
     "nav.open-menu": {

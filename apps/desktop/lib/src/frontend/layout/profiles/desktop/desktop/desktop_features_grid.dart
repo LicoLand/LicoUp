@@ -127,64 +127,63 @@ final class _DesktopFeatureGridTileState
     return Semantics(
       button: true,
       label: label,
-      child: Tooltip(
-        message: label,
-        waitDuration: LicoMotion.tooltipWait,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: duration,
-                  curve: LicoMotion.standard,
-                  width: DesktopDesktopMetrics.featuresIconExtent,
-                  height: DesktopDesktopMetrics.featuresIconExtent,
-                  decoration: continuousHairlineDecoration(
-                    color: fill,
-                    borderRadius: BorderRadius.circular(
-                      DesktopDesktopMetrics.featuresIconRadius,
-                    ),
-                    stroke: rim,
-                    strokeWidth: 0.5,
+      // No Tooltip: the label is already visible under the tile, and a hover
+      // tooltip survives the pane swap — an offstage (kept-alive) tile never
+      // receives the exit event that would dismiss it.
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: duration,
+                curve: LicoMotion.standard,
+                width: DesktopDesktopMetrics.featuresIconExtent,
+                height: DesktopDesktopMetrics.featuresIconExtent,
+                decoration: continuousHairlineDecoration(
+                  color: fill,
+                  borderRadius: BorderRadius.circular(
+                    DesktopDesktopMetrics.featuresIconRadius,
                   ),
-                  child: Center(
-                    child: TweenAnimationBuilder<Color?>(
-                      tween: ColorTween(
-                        end: _hovered ? colors.text : colors.textSecondary,
-                      ),
-                      duration: duration,
-                      curve: LicoMotion.standard,
-                      builder: (context, color, _) => Icon(
-                        desktopAppIcon(widget.app),
-                        size: 26,
-                        color: color,
-                      ),
+                  stroke: rim,
+                  strokeWidth: 0.5,
+                ),
+                child: Center(
+                  child: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(
+                      end: _hovered ? colors.text : colors.textSecondary,
+                    ),
+                    duration: duration,
+                    curve: LicoMotion.standard,
+                    builder: (context, color, _) => Icon(
+                      desktopAppIcon(widget.app),
+                      size: 26,
+                      color: color,
                     ),
                   ),
                 ),
-                const SizedBox(height: 7),
-                SizedBox(
-                  width: 76,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colors.text,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
+              ),
+              const SizedBox(height: 7),
+              SizedBox(
+                width: 76,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colors.text,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

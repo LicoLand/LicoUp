@@ -64,6 +64,11 @@ final class FlutterInteractionAdapter {
         action == 'conversation.scroll-down') {
       return visible(key('canonical-group-conversation-pane'));
     }
+    if (desktop && action.startsWith('settings.')) {
+      // The Desktop settings surface has no index rail: section navigation is
+      // a scroll inside the continuous content page.
+      return visible(key('settings-content-scroll'));
+    }
     if (action == 'list.refresh') return visible(listScroll);
     return visible(target(action));
   }
@@ -101,10 +106,7 @@ final class FlutterInteractionAdapter {
       );
     }
     if (action.startsWith('settings.')) {
-      final prefix = desktop
-          ? 'settings-index-item-'
-          : 'messaging-sidebar-settings-';
-      return key('$prefix${action.substring(9)}');
+      return key('messaging-sidebar-settings-${action.substring(9)}');
     }
     if (action.startsWith('feature.')) {
       final feature = action.substring(8);
@@ -293,6 +295,75 @@ final class FlutterInteractionAdapter {
       );
       await tester.tap(finder.hitTestable());
       await tester.pumpAndSettle();
+      return;
+    }
+    if (desktop && action.startsWith('settings.')) {
+      // Scroll the continuous settings page until the section content is on
+      // screen. The page is a lazy ListView, so an off-screen heading may not
+      // exist in the tree: the drag direction comes from the section order,
+      // not from a possibly-unrendered target position.
+      final section = action.substring(9);
+      final heading = headings[section]!;
+      final sectionIds = headings.keys.toList(growable: false);
+      final targetIndex = sectionIds.indexOf(section);
+      final content = key('settings-content-scroll');
+      final targetFinder = find.descendant(
+        of: content,
+        matching: find.text(heading),
+      );
+      int firstVisibleSection() {
+        for (var index = 0; index < sectionIds.length; index++) {
+          if (visible(
+            find.descendant(
+              of: content,
+              matching: find.text(headings[sectionIds[index]]!),
+            ),
+          )) {
+            return index;
+          }
+        }
+        return -1;
+      }
+
+      // Direction stabilizes on the last visible section heading; when none
+      // is on screen the previous direction holds.
+      var upward = targetIndex == 0;
+      final scrollableFinder = find.descendant(
+        of: content,
+        matching: find.byType(Scrollable),
+      );
+      double? offsetOf() => scrollableFinder.evaluate().isEmpty
+          ? null
+          : tester
+                .state<ScrollableState>(scrollableFinder.first)
+                .position
+                .pixels;
+      for (var attempt = 0; attempt < 60; attempt++) {
+        if (visible(targetFinder)) return;
+        final anchor = firstVisibleSection();
+        if (anchor >= 0) upward = targetIndex < anchor;
+        await tester.timedDrag(
+          content,
+          Offset(0, upward ? 220 : -220),
+          const Duration(milliseconds: 300),
+        );
+        await tester.pump(const Duration(milliseconds: 60));
+        // Halt any residual fling so the next drag starts from rest;
+        // otherwise momentum accumulates across drags and the scroll
+        // overshoots the target section by viewports every attempt.
+        if (offsetOf() case final current?) {
+          tester
+              .state<ScrollableState>(scrollableFinder.first)
+              .position
+              .jumpTo(current);
+        }
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      expect(
+        visible(targetFinder),
+        isTrue,
+        reason: 'Settings section scrolled into view: $heading',
+      );
       return;
     }
     final finder = target(action);

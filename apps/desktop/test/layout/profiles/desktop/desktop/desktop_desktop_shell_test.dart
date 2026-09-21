@@ -1,7 +1,9 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
@@ -221,5 +223,35 @@ void main() {
     );
     expect(left.width, greaterThan(0));
     expect(find.byKey(const Key('desktop-settings-app')), findsOneWidget);
+  });
+
+  testWidgets('launching an app dismisses the hovered dock tooltip instead '
+      'of leaving it over the opened pane', (tester) async {
+    dockModel.openApp(DesktopAppId.monitoring);
+    await pumpShell(tester);
+
+    // Hover the dock entry until its tooltip is showing.
+    final entry = find.byKey(const Key('desktop-dock-entry-app:monitoring'));
+    final hover = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await hover.moveTo(tester.getCenter(entry));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final label = desktopAppLabel(
+      LicoStrings.of(tester.element(entry)),
+      DesktopAppId.monitoring,
+    );
+    expect(
+      find.ancestor(of: find.text(label), matching: find.byType(Tooltip)),
+      findsWidgets,
+    );
+
+    await tester.tap(entry);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.ancestor(of: find.text(label), matching: find.byType(Tooltip)),
+      findsNothing,
+    );
+    await hover.removePointer();
   });
 }
