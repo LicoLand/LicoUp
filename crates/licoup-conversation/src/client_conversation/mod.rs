@@ -104,6 +104,11 @@ pub struct ConversationArchiveReport {
     pub archived_native_sessions: Vec<NativeSessionReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub successor_conversation_id: Option<String>,
+    /// True when the reserved default local group was reset in place instead
+    /// of archived: the same Conversation stays active and pinned with one
+    /// `conversation-reset` notice, and no successor is created.
+    #[serde(default)]
+    pub reset_in_place: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

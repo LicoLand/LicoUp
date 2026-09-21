@@ -3371,6 +3371,56 @@ mod tests {
     }
 
     #[test]
+    fn archiving_the_default_local_group_resets_it_in_place() {
+        let service = ConversationService::from_store_with_runtime(
+            ConversationStore::open_in_memory().unwrap(),
+            |_| Err(crate::platform::runtime_adapters::RuntimeAdapterError::ExecutableUnavailable),
+        );
+        let local = service.store().ensure_default_local_group().unwrap();
+        let owner_id = local
+            .memberships
+            .iter()
+            .find(|membership| membership.principal.kind == PrincipalKind::Human)
+            .map(|membership| membership.id.clone())
+            .unwrap();
+        service
+            .execute(json!({
+                "action": "conversation.message.post",
+                "conversationId": local.id,
+                "authorMembershipId": owner_id,
+                "content": "remember this"
+            }))
+            .unwrap();
+
+        let archived = service
+            .execute(json!({
+                "action": "conversation.archive",
+                "conversationId": local.id,
+                "archived": true,
+                "reopen": true,
+            }))
+            .unwrap();
+
+        assert_eq!(archived["ok"], true);
+        assert_eq!(archived["resetInPlace"], true);
+        assert!(archived.get("successor").is_none());
+
+        // The same reserved Conversation stays active and pinned with one
+        // reset notice; no archived original or reopened copy can duplicate
+        // it, and the next service open finds nothing to resurrect.
+        let reset = service.store().get(&local.id).unwrap();
+        assert!(!reset.archived);
+        assert!(reset.pinned);
+        let events = service
+            .store()
+            .page_events(&local.id, None, 20)
+            .unwrap()
+            .events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+    }
+
+    #[test]
     fn clear_refuses_unfinalized_or_active_group_work() {
         let service = ConversationService::from_store_with_runtime(
             ConversationStore::open_in_memory().unwrap(),

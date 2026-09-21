@@ -989,6 +989,66 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('archiving the reserved default group resets it in place', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final runner = _AssistantSurfaceRunner();
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('lico-group-default');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
+    await tester.pumpAndSettle();
+    expect(find.text('Archive this group conversation?'), findsOneWidget);
+    // The reserved default group resets in place, so the confirmation copy
+    // says the history clears rather than a new conversation opens.
+    expect(
+      find.textContaining('resets to a fresh conversation'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('canonical-group-archive-confirm')));
+    await tester.pumpAndSettle();
+
+    final archived = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.archive',
+    );
+    expect(archived['conversationId'], 'lico-group-default');
+    expect(archived['archived'], isTrue);
+    expect(archived['reopen'], isTrue);
+    expect(runner.successorId, isEmpty);
+    // The same group stays selected and on screen; nothing duplicates it.
+    expect(controller.selectedConversationId, 'lico-group-default');
+    expect(controller.failureCode, isEmpty);
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsOneWidget,
+    );
+    controller.dispose();
+  });
+
   testWidgets(
     'typed slash-new in the group composer runs the same archive flow after confirmation and never posts',
     (tester) async {
@@ -1639,12 +1699,26 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         };
       case 'conversation.archive':
         revision += 1;
+        final archiveTarget = (request['conversationId'] ?? '').toString();
+        // The native store resets the reserved default local group in place
+        // instead of archiving it; this double mirrors that contract.
+        if (archiveTarget == 'lico-group-default') {
+          return {
+            'ok': true,
+            'result': <String, dynamic>{
+              'conversationId': archiveTarget,
+              'archivedChildIds': <String>[],
+              'archivedNativeSessions': <Map<String, dynamic>>[],
+              'resetInPlace': true,
+            },
+          };
+        }
         if (request['reopen'] == true) {
           successorId = 'conversation:successor';
           return {
             'ok': true,
             'result': <String, dynamic>{
-              'conversationId': 'conversation:group',
+              'conversationId': archiveTarget,
               'archivedChildIds': <String>[],
               'archivedNativeSessions': <Map<String, dynamic>>[],
               'successor': _successorConversation(),
@@ -1654,7 +1728,7 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         return {
           'ok': true,
           'result': <String, dynamic>{
-            'conversationId': 'conversation:group',
+            'conversationId': archiveTarget,
             'archivedChildIds': <String>[],
           },
         };
@@ -1711,7 +1785,10 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
           (request['conversationId'] ?? '') == successorId
               ? _successorConversation()
               : {
-                  'id': 'conversation:group',
+                  'id':
+                      (request['conversationId'] ?? '') == 'lico-group-default'
+                      ? 'lico-group-default'
+                      : 'conversation:group',
                   'title': 'Lico',
                   'archived': false,
                   'pinned': true,

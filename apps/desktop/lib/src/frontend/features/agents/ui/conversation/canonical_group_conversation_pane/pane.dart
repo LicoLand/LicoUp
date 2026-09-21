@@ -307,9 +307,15 @@ class _CanonicalGroupConversationPaneState
       context: context,
       builder: (dialogContext) {
         final dialogStrings = LicoStrings.of(dialogContext);
+        final isReservedDefaultGroup =
+            conversation.id == ClientConversation.defaultLocalAgentGroupId;
         return AlertDialog(
           title: Text(dialogStrings.archiveGroupConversationTitle),
-          content: Text(dialogStrings.archiveGroupConversationMessage(title)),
+          content: Text(
+            isReservedDefaultGroup
+                ? dialogStrings.archiveDefaultGroupConversationMessage(title)
+                : dialogStrings.archiveGroupConversationMessage(title),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
