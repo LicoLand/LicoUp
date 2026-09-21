@@ -578,6 +578,7 @@ class _SettingsIndexSidebarState extends State<_SettingsIndexSidebar> {
                 children: [
                   for (final section in widget.sections)
                     _IndexItem(
+                      key: Key('settings-index-item-${section.id}'),
                       icon: section.icon,
                       label: section.label,
                       selected: widget.selectedId == section.id,
@@ -595,6 +596,7 @@ class _SettingsIndexSidebarState extends State<_SettingsIndexSidebar> {
 
 class _IndexItem extends StatefulWidget {
   const _IndexItem({
+    super.key,
     required this.icon,
     required this.label,
     required this.selected,

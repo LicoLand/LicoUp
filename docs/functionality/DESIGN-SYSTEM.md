@@ -140,6 +140,26 @@ do not perform backdrop blur; translucent conversation overlays retain their
 explicit glass treatment. Content-layer rims use uniform alpha around the
 entire shape. Glass rims do not.
 
+## Layout profiles
+
+Each layout profile owns its shell geometry independently; a change to one
+profile's chrome never moves another profile's surfaces.
+
+The Desktop profile is a two-pane workspace: the left pane hosts one content
+surface at a time (the features grid, Settings, or a single app), the
+conversation occupies the right pane permanently, and the pane split is
+user-draggable. Along the bottom runs the Dock bar at 100% of the interface
+width, split into the left navigation icon strip and the right conversation
+composer with no divider between them. Dock 栏图标必须垂直居中：the active
+dot overlays the icon tile and never participates in layout, so a selected
+icon never shifts off center. Dock 栏默认占据界面 100% 宽度。Collapsing the
+left pane runs one morph: the conversation list takes the top-left at a width
+snapped to a whole number of icon slots, the icon strip locks to that same
+width, and the composer expands upward with the Assistant and Adaptive
+Flywheel capsules at its top-left. The macOS traffic-light cluster has
+exactly one anchor reporter in this profile — the shell's top chrome row —
+and every embedded sidebar suppresses its own.
+
 ## Navigation and feature pages
 
 The feature navigation exposes Agent Center, Statistics, Model Gateway and

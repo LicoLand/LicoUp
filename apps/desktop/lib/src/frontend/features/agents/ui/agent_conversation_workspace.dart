@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -26,6 +27,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conve
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
@@ -87,6 +89,7 @@ class _AgentConversationWorkspaceState
   bool _showAgentDetailInsideGroupList = false;
   String? _observedConversationSelection;
   String _warmedBrowseCatalogSignature = '';
+  bool _localGroupAutoSelected = false;
   final List<({String agentId, String groupId})> _conversationListHistory = [];
 
   ({String agentId, String groupId}) get _conversationListLocation =>
@@ -192,6 +195,41 @@ class _AgentConversationWorkspaceState
     } else if (agentId.isEmpty) {
       _applyConversationListLocation((agentId: '', groupId: ''));
     }
+  }
+
+  /// Layout-directed default: shells that always show a conversation (the
+  /// Desktop split workspace) ask the workspace to open the pinned Local
+  /// group once whenever it settles with nothing selected. A restored or
+  /// user-driven selection always wins; the request fires at most once per
+  /// mount so an explicit deselect (welcome page) is never overridden.
+  void _selectLocalGroupWhenIdle(
+    ConversationProjection root,
+    CanonicalConversationProjection canonical,
+    AgentsProjection agents,
+  ) {
+    if (_localGroupAutoSelected || _showWelcome) return;
+    final hasSelection =
+        root.authority == ConversationAuthority.canonicalConversation
+        ? canonical.conversationId.trim().isNotEmpty
+        : agents.selectedAgentId.trim().isNotEmpty;
+    if (hasSelection) {
+      _localGroupAutoSelected = true;
+      return;
+    }
+    String? localGroupId;
+    for (final group in canonical.groupConversations) {
+      if (group.id == ClientConversation.defaultLocalAgentGroupId) {
+        localGroupId = group.id;
+        break;
+      }
+    }
+    final selectedId = localGroupId;
+    if (selectedId == null) return;
+    _localGroupAutoSelected = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.conversation.intents.send(SelectCanonicalConversation(selectedId));
+    });
   }
 
   void _showAgentConversationList(String agentId) {
@@ -490,6 +528,11 @@ class _AgentConversationWorkspaceState
   ) {
     _syncConversationListWithSelection(agents, root, native, canonical);
     _scheduleAgentBrowseCatalogWarm(agents);
+    final directive = LayoutAgentsDirectiveScope.maybeOf(context);
+    if (directive != null && directive.selectLocalGroupWhenIdle) {
+      _selectLocalGroupWhenIdle(root, canonical, agents);
+    }
+    final sidebarCollapsed = directive?.sidebarCollapsed ?? _sidebarCollapsed;
     final presentation = layoutAgentsPresentationOf(context);
     final selectedTarget = _selectedTarget(agents);
     final selectedSession = _selectedSession(native);
@@ -599,7 +642,7 @@ class _AgentConversationWorkspaceState
           final framedDetail = presentation.frameDetail(
             context,
             key: const Key('agents-workspace-detail-pane'),
-            sidebarCollapsed: _sidebarCollapsed,
+            sidebarCollapsed: sidebarCollapsed,
             child: decoratedDetail,
           );
           final hosted = MessagingSidebarGeometryScope.maybeOf(context) != null;
@@ -610,12 +653,12 @@ class _AgentConversationWorkspaceState
                 ? MessagingSidebarColumn(
                     sidebar: sidebar,
                     detail: framedDetail,
-                    sidebarCollapsed: _sidebarCollapsed,
+                    sidebarCollapsed: sidebarCollapsed,
                   )
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (!_sidebarCollapsed)
+                      if (!sidebarCollapsed)
                         presentation.frameSidebar(
                           context,
                           key: const Key('agents-workspace-sidebar-card'),
@@ -627,7 +670,7 @@ class _AgentConversationWorkspaceState
                             'agents-workspace-split-divider',
                           ),
                           width: agentsSidebarDividerWidth,
-                          enabled: !_sidebarCollapsed,
+                          enabled: !sidebarCollapsed,
                           onDragDelta: (delta) {
                             setState(() {
                               _sidebarWidth = (width + delta)

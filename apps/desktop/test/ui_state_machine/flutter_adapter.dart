@@ -80,6 +80,7 @@ final class FlutterInteractionAdapter {
       'group.menu': 'canonical-group-menu-button',
       'group.actions': 'canonical-group-assistant-actions-trigger',
       'group.clear': 'canonical-group-action-archive',
+      'pane.toggle': 'desktop-chrome-toggle',
     };
     if (action == 'search.clear') {
       return find.descendant(
@@ -101,7 +102,7 @@ final class FlutterInteractionAdapter {
     }
     if (action.startsWith('settings.')) {
       final prefix = desktop
-          ? 'desktop-settings-section-'
+          ? 'settings-index-item-'
           : 'messaging-sidebar-settings-';
       return key('$prefix${action.substring(9)}');
     }
@@ -113,9 +114,6 @@ final class FlutterInteractionAdapter {
             : 'messaging-sidebar-list-${featureRows[feature]}',
       );
     }
-    if (action.startsWith('window.close.')) {
-      return key('desktop-floating-card-close-${apps[action.substring(13)]}');
-    }
     if (action.startsWith('dock.')) {
       return key('desktop-dock-entry-app:${apps[action.substring(5)]}');
     }
@@ -126,11 +124,7 @@ final class FlutterInteractionAdapter {
         return key('$profile-mobile-$size-navigation-${sections[name]}');
       }
       if (desktop) {
-        return key(
-          name == 'chats'
-              ? 'desktop-dock-input-conversation'
-              : 'desktop-dock-pin-$name',
-        );
+        return key('desktop-dock-pin-$name');
       }
       return key(
         'messaging-sidebar-nav-${name == 'chats' ? 'conversations' : name}',
@@ -392,17 +386,28 @@ final class FlutterInteractionAdapter {
     }
     if (machine.id.startsWith('desktop.window.')) {
       final feature = machine.id.substring('desktop.window.'.length);
-      final card = key('desktop-floating-card-${apps[feature]}');
-      final menu = key('desktop-launchpad');
+      // The left pane keeps visited destinations mounted offstage, so assert
+      // by hit-testable visibility, not by tree presence. The open app's dock
+      // entry must be visible too: the strip's width animation clips a fresh
+      // entry for a few frames after launch.
       return switch (state) {
-        'chats' =>
-          card.evaluate().isEmpty &&
-              menu.evaluate().isEmpty &&
-              pageVisible('chats'),
-        'menu' => visible(menu) && card.evaluate().isEmpty,
-        'window' =>
-          menu.evaluate().isEmpty && visible(card) && featureVisible(feature),
-        'window-menu' => visible(menu) && card.evaluate().isNotEmpty,
+        'features' => visible(key('desktop-launchpad')),
+        'app' =>
+          featureVisible(feature) &&
+              visible(key('desktop-dock-entry-app:${apps[feature]}')),
+        _ => false,
+      };
+    }
+    if (machine.id == 'desktop.pane') {
+      final viewportWidth = tester
+          .getSize(key('desktop-left-pane-viewport'))
+          .width;
+      final listVisible =
+          visible(key('messaging-conversation-list')) ||
+          visible(key('messaging-contact-list'));
+      return switch (state) {
+        'open' => viewportWidth > 0 && !listVisible,
+        'collapsed' => viewportWidth == 0 && listVisible,
         _ => false,
       };
     }
@@ -432,7 +437,10 @@ final class FlutterInteractionAdapter {
       if (page == 'settings') return visible(key('settings-content-scroll'));
       if (page == 'chats') {
         return visible(key('agent-conversation-composer-field')) ||
-            visible(key('desktop-dock-input-composer'));
+            (desktop && visible(key('desktop-dock-composer')));
+      }
+      if (desktop && page == 'features') {
+        return visible(key('desktop-launchpad'));
       }
       return featureVisible(page);
     }

@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_menu.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
@@ -123,21 +124,34 @@ class CanonicalGroupConversationHeader extends StatelessWidget {
           MessagingConversationMenu(
             triggerKey: const Key('canonical-group-menu-button'),
             panelKey: const Key('canonical-group-menu-panel'),
-            childrenBuilder: (close) => [
-              MenuItemButton(
-                key: const Key('canonical-group-roster-toggle'),
-                leadingIcon: const Icon(Icons.groups_2_outlined),
-                onPressed: () {
-                  close();
-                  onToggleRoster();
-                },
-                child: Text(
-                  rosterVisible
-                      ? strings.collapseAgentsSidebar
-                      : strings.expandAgentsSidebar,
+            childrenBuilder: (close) {
+              final directive = LayoutAgentsDirectiveScope.maybeOf(context);
+              return [
+                if (directive?.onToggleHistoryList != null)
+                  MenuItemButton(
+                    key: const Key('canonical-group-history-toggle'),
+                    leadingIcon: const Icon(Icons.history_rounded),
+                    onPressed: () {
+                      close();
+                      directive!.onToggleHistoryList!();
+                    },
+                    child: Text(strings.historyConversations),
+                  ),
+                MenuItemButton(
+                  key: const Key('canonical-group-roster-toggle'),
+                  leadingIcon: const Icon(Icons.groups_2_outlined),
+                  onPressed: () {
+                    close();
+                    onToggleRoster();
+                  },
+                  child: Text(
+                    rosterVisible
+                        ? strings.collapseAgentsSidebar
+                        : strings.expandAgentsSidebar,
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
           ),
         ],
       ),

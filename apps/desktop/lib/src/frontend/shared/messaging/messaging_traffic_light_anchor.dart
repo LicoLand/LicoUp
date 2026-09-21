@@ -17,7 +17,6 @@ final class MessagingTrafficLightAnchor extends StatefulWidget {
     this.width = MessagingDesktopMetrics.trafficLightAnchorExtent,
     this.height = MessagingDesktopMetrics.trafficLightRowExtent,
   });
-
   final double width;
   final double height;
 
@@ -77,4 +76,29 @@ final class _MessagingTrafficLightAnchorState
       ),
     );
   }
+}
+
+/// Opt-in suppression for shells that mount their own traffic-light anchor
+/// over the sidebar's top row (the Desktop split workspace). While
+/// suppressed, the sidebar foundation renders no [MessagingTrafficLightAnchor]
+/// — so exactly one reporter feeds the window chrome and the two anchors can
+/// never fight over the native cluster — and reserves [reservedExtent] so the
+/// row's actions never slide under the shell's overlay.
+final class MessagingTrafficLightSuppression extends InheritedWidget {
+  const MessagingTrafficLightSuppression({
+    super.key,
+    this.reservedExtent = MessagingDesktopMetrics.trafficLightAnchorExtent,
+    required super.child,
+  });
+
+  final double reservedExtent;
+
+  static MessagingTrafficLightSuppression? maybeOf(
+    BuildContext context,
+  ) => context
+      .dependOnInheritedWidgetOfExactType<MessagingTrafficLightSuppression>();
+
+  @override
+  bool updateShouldNotify(MessagingTrafficLightSuppression oldWidget) =>
+      oldWidget.reservedExtent != reservedExtent;
 }

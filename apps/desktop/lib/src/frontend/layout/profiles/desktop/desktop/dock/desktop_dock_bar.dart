@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
@@ -12,30 +14,6 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 /// Drag payloads for dock interactions.
 sealed class DesktopDockDragData {
   const DesktopDockDragData();
-}
-
-/// Computes the dock bar's outer width for a window [maxWidth] (already
-/// clamped to the bar's own max) and the current [entryCount]. Shared by the
-/// bar and the shell's floating input row so the two stay aligned as the bar
-/// stretches.
-double desktopDockBarWidth({
-  required double maxWidth,
-  required int entryCount,
-}) {
-  const entrySlot =
-      DesktopDesktopMetrics.dockIconExtent + DesktopDesktopMetrics.dockIconGap;
-  const fixedExtent =
-      DesktopDesktopMetrics.dockIconExtent * 2 +
-      DesktopDesktopMetrics.dockIconGap * 3 +
-      1 +
-      DesktopDesktopMetrics.dockInputSlotExtent +
-      8;
-  final contentExtent =
-      fixedExtent +
-      entryCount * entrySlot +
-      (entryCount == 0 ? 0 : DesktopDesktopMetrics.dockDropZoneExtent);
-  final minWidth = DesktopDesktopMetrics.dockBarMinWidth.clamp(0.0, maxWidth);
-  return contentExtent.clamp(minWidth, maxWidth);
 }
 
 /// An entry-level drag (reorder through gaps, merge onto another entry).
@@ -54,21 +32,29 @@ final class DesktopDockFolderChildDrag extends DesktopDockDragData {
   final DesktopAppId app;
 }
 
-/// The floating capsule dock bar: pinned 设置 and 功能 icons leftmost, the
-/// persisted entry strip (apps and folders) with drag reorder and
-/// drop-onto-icon folder creation, and a reserved slot on the right for the
-/// contextual input capsule (the shell floats the input above that slot so a
-/// multiline composer can grow upward past the bar's clip).
+/// The full-width Desktop bottom bar: two rounded boxes on the shared glass
+/// recipe. The left box is the navigation icon strip — a filled glass
+/// container with no border stroke, icons shown directly inside, every icon
+/// vertically centered (its active dot overlays the tile and never
+/// participates in layout). The right box is the conversation composer,
+/// supplied by the shell. As icons come and go the strip's width animates
+/// and the composer stretches or shrinks in response; no vertical divider
+/// separates the two boxes.
 final class DesktopDockBar extends StatelessWidget {
   const DesktopDockBar({
     super.key,
     required this.entries,
     required this.openApps,
-    required this.activeApp,
+    required this.selectedApp,
     required this.settingsActive,
-    required this.appStoreOpen,
+    required this.featuresActive,
+    required this.collapsed,
+    required this.collapsedStripExtent,
+    this.stripWidthDuration = const Duration(milliseconds: 240),
+    required this.recencyApps,
+    required this.composer,
     required this.onOpenSettings,
-    required this.onToggleAppStore,
+    required this.onOpenFeatures,
     required this.onLaunchApp,
     required this.onCloseApp,
     required this.onMoveEntry,
@@ -79,11 +65,26 @@ final class DesktopDockBar extends StatelessWidget {
 
   final List<DesktopDockEntry> entries;
   final Set<DesktopAppId> openApps;
-  final DesktopAppId? activeApp;
+  final DesktopAppId? selectedApp;
   final bool settingsActive;
-  final bool appStoreOpen;
+  final bool featuresActive;
+
+  /// Left-pane-collapsed presentation: the strip locks to the snapped width
+  /// shared with the conversation list above it and shows the pinned icons
+  /// plus the most recently used apps.
+  final bool collapsed;
+  final double collapsedStripExtent;
+
+  /// Width-change animation for the strip; zero while the list edge is being
+  /// dragged so the strip tracks the drag exactly.
+  final Duration stripWidthDuration;
+  final List<DesktopAppId> recencyApps;
+
+  /// The conversation composer box; the bar stretches it horizontally.
+  final Widget composer;
+
   final VoidCallback onOpenSettings;
-  final VoidCallback onToggleAppStore;
+  final VoidCallback onOpenFeatures;
   final ValueChanged<DesktopAppId> onLaunchApp;
   final ValueChanged<DesktopAppId> onCloseApp;
   final void Function(String storageId, int targetIndex) onMoveEntry;
@@ -93,120 +94,197 @@ final class DesktopDockBar extends StatelessWidget {
   final void Function(String folderId, DesktopAppId app, int insertIndex)
   onExtractFromFolder;
 
+  /// The strip's hugging width for [entryCount] dock entries: two pinned
+  /// icons, the entry tiles, and the drop gaps between them.
+  static double stripContentExtent(int entryCount) {
+    const pins =
+        DesktopDesktopMetrics.dockIconExtent * 2 +
+        DesktopDesktopMetrics.dockIconGap * 2;
+    if (entryCount == 0) {
+      return DesktopDesktopMetrics.dockBoxPaddingH * 2 + pins;
+    }
+    return DesktopDesktopMetrics.dockBoxPaddingH * 2 +
+        pins +
+        DesktopDesktopMetrics.dockIconGap +
+        entryCount *
+            (DesktopDesktopMetrics.dockIconExtent +
+                DesktopDesktopMetrics.dockIconGap) -
+        DesktopDesktopMetrics.dockIconGap +
+        (entryCount + 1) * (DesktopDesktopMetrics.dockDropZoneExtent / 2);
+  }
+
+  /// The composer never shrinks below this width; the strip yields the rest.
+  static const double composerMinExtent = 280;
+
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final media = MediaQuery.of(context);
-    final maxBarWidth =
-        (media.size.width - DesktopDesktopMetrics.dockBarSideInset * 2).clamp(
-          0.0,
-          DesktopDesktopMetrics.dockBarMaxWidth,
-        );
-    final barWidth = desktopDockBarWidth(
-      maxWidth: maxBarWidth,
-      entryCount: entries.length,
-    );
-
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          DesktopDesktopMetrics.dockBarSideInset,
-          0,
-          DesktopDesktopMetrics.dockBarSideInset,
-          DesktopDesktopMetrics.dockBarBottomInset,
-        ),
-        child: Semantics(
-          container: true,
-          label: 'Dock',
-          child: Container(
-            key: const Key('desktop-dock-bar'),
-            width: barWidth,
-            height: DesktopDesktopMetrics.dockBarHeight,
-            decoration: continuousHairlineDecoration(
-              color: desktopDesktopSurfaceBlack,
-              borderRadius: BorderRadius.circular(
-                DesktopDesktopMetrics.dockBarRadius,
+    final colors = context.layoutPalette;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxStrip = math
+            .max(
+              DesktopDesktopMetrics.dockIconSlotsExtent(
+                DesktopDesktopMetrics.dockMinIconSlots,
               ),
-              stroke: DesktopDesktopOnBlack.line,
-              strokeWidth: 0.5,
-              shadows: const [
-                BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 26,
-                  offset: Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: DesktopDesktopMetrics.dockIconGap + 2),
-                DesktopDockIcon(
-                  key: const Key('desktop-dock-pin-settings'),
-                  icon: Icons.settings_outlined,
-                  label: strings.settings,
-                  active: settingsActive,
-                  onTap: onOpenSettings,
-                ),
-                const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
-                DesktopDockIcon(
-                  key: const Key('desktop-dock-pin-features'),
-                  icon: Icons.grid_view_rounded,
-                  label: strings.features,
-                  active: appStoreOpen,
-                  tooltip: DesktopDesktopCopy.openAppStoreTooltip(strings),
-                  onTap: onToggleAppStore,
-                ),
-                const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
-                Container(
-                  width: 0.5,
-                  height: 30,
-                  color: DesktopDesktopOnBlack.line,
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    key: const Key('desktop-dock-entries-strip'),
-                    scrollDirection: Axis.horizontal,
-                    physics: const ClampingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        _DesktopDockGapTarget(
-                          key: const Key('desktop-dock-gap-0'),
-                          onAcceptEntry: (storageId) =>
-                              onMoveEntry(storageId, 0),
-                          onAcceptFolderChild: (folderId, app) =>
-                              onExtractFromFolder(folderId, app, 0),
-                        ),
-                        for (
-                          var index = 0;
-                          index < entries.length;
-                          index++
-                        ) ...[
-                          _buildEntry(context, entries[index]),
-                          _DesktopDockGapTarget(
-                            key: Key('desktop-dock-gap-${index + 1}'),
-                            onAcceptEntry: (storageId) =>
-                                onMoveEntry(storageId, index + 1),
-                            onAcceptFolderChild: (folderId, app) =>
-                                onExtractFromFolder(folderId, app, index + 1),
-                          ),
-                        ],
-                      ],
-                    ),
+              constraints.maxWidth -
+                  DesktopDesktopMetrics.regionGap -
+                  composerMinExtent,
+            )
+            .toDouble();
+        final stripWidth = collapsed
+            ? collapsedStripExtent.clamp(0.0, constraints.maxWidth).toDouble()
+            : math.min(stripContentExtent(entries.length), maxStrip);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            DesktopDesktopMetrics.windowInset,
+            0,
+            DesktopDesktopMetrics.windowInset,
+            DesktopDesktopMetrics.regionGap,
+          ),
+          child: Row(
+            key: const Key('desktop-dock-bar'),
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AnimatedContainer(
+                duration: stripWidthDuration,
+                curve: LicoMotion.emphasized,
+                width: stripWidth,
+                height: DesktopDesktopMetrics.dockBarHeight,
+                decoration: continuousHairlineDecoration(
+                  color: DesktopDesktopGlass.cardFill(isDark: colors.isDark),
+                  borderRadius: BorderRadius.circular(
+                    DesktopDesktopMetrics.dockBarRadius,
+                  ),
+                  shadows: DesktopDesktopGlass.cardShadows(
+                    isDark: colors.isDark,
                   ),
                 ),
-                const SizedBox(width: 6),
-                // Reserved slot for the contextual input row; the shell
-                // floats the actual input above it as a separate layer so a
-                // growing composer escapes the bar's clip.
-                const SizedBox(
-                  width: DesktopDesktopMetrics.dockInputSlotExtent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    DesktopDesktopMetrics.dockBarRadius,
+                  ),
+                  child: Semantics(
+                    container: true,
+                    label: 'Dock',
+                    child: collapsed
+                        ? _buildCollapsedStrip(context, strings)
+                        : _buildFullStrip(context, strings),
+                  ),
                 ),
-              ],
+              ),
+              const SizedBox(width: DesktopDesktopMetrics.regionGap),
+              Expanded(child: composer),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPins(BuildContext context, LicoStrings strings) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DesktopDockIcon(
+          key: const Key('desktop-dock-pin-settings'),
+          icon: Icons.settings_outlined,
+          label: strings.settings,
+          active: settingsActive,
+          onTap: onOpenSettings,
+        ),
+        const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
+        DesktopDockIcon(
+          key: const Key('desktop-dock-pin-features'),
+          icon: Icons.grid_view_rounded,
+          label: strings.features,
+          active: featuresActive,
+          tooltip: DesktopDesktopCopy.openAppStoreTooltip(strings),
+          onTap: onOpenFeatures,
+        ),
+      ],
+    );
+  }
+
+  /// The full strip: pinned icons plus the persisted entries with drag
+  /// reorder and drop-onto-icon folder creation.
+  Widget _buildFullStrip(BuildContext context, LicoStrings strings) {
+    return Row(
+      children: [
+        const SizedBox(width: DesktopDesktopMetrics.dockBoxPaddingH),
+        _buildPins(context, strings),
+        if (entries.isNotEmpty) ...[
+          const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const Key('desktop-dock-entries-strip'),
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: Row(
+                children: [
+                  _DesktopDockGapTarget(
+                    key: const Key('desktop-dock-gap-0'),
+                    onAcceptEntry: (storageId) => onMoveEntry(storageId, 0),
+                    onAcceptFolderChild: (folderId, app) =>
+                        onExtractFromFolder(folderId, app, 0),
+                  ),
+                  for (var index = 0; index < entries.length; index++) ...[
+                    _buildEntry(context, entries[index]),
+                    _DesktopDockGapTarget(
+                      key: Key('desktop-dock-gap-${index + 1}'),
+                      onAcceptEntry: (storageId) =>
+                          onMoveEntry(storageId, index + 1),
+                      onAcceptFolderChild: (folderId, app) =>
+                          onExtractFromFolder(folderId, app, index + 1),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        ] else
+          const Spacer(),
+        const SizedBox(width: DesktopDesktopMetrics.dockBoxPaddingH),
+      ],
+    );
+  }
+
+  /// The collapsed strip: pinned icons plus the most recently used open apps,
+  /// in recency order, so the pinned minimum (设置, 功能, last app) is always
+  /// what survives the narrowest snap.
+  Widget _buildCollapsedStrip(BuildContext context, LicoStrings strings) {
+    return Row(
+      children: [
+        const SizedBox(width: DesktopDesktopMetrics.dockBoxPaddingH),
+        _buildPins(context, strings),
+        if (recencyApps.isNotEmpty) ...[
+          const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const Key('desktop-dock-entries-strip'),
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: Row(
+                children: [
+                  for (final app in recencyApps) ...[
+                    DesktopDockIcon(
+                      key: Key('desktop-dock-entry-app:${app.name}'),
+                      icon: desktopAppIcon(app),
+                      label: desktopAppLabel(strings, app),
+                      active: openApps.contains(app) || selectedApp == app,
+                      onTap: () => onLaunchApp(app),
+                      onSecondaryTap: () => onCloseApp(app),
+                    ),
+                    const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ] else
+          const Spacer(),
+        const SizedBox(width: DesktopDesktopMetrics.dockBoxPaddingH),
+      ],
     );
   }
 
@@ -262,7 +340,7 @@ final class DesktopDockBar extends StatelessWidget {
               child: DesktopDockIcon(
                 icon: desktopAppIcon(app),
                 label: label,
-                active: openApps.contains(app) || activeApp == app,
+                active: openApps.contains(app) || selectedApp == app,
                 onTap: () => onLaunchApp(app),
                 onSecondaryTap: () => onCloseApp(app),
               ),
@@ -321,7 +399,11 @@ final class DesktopDockBar extends StatelessWidget {
   }
 }
 
-/// One dock icon: a rounded-square glass tile with an active dot below.
+/// One dock icon: a rounded-square glass tile, vertically centered in the
+/// bar. The active dot overlays the tile's bottom edge and never
+/// participates in layout, so the tile's center never shifts. Hover and
+/// selection animate one color value per surface with the same timing, so a
+/// hover pass reads as a single uniform color change.
 final class DesktopDockIcon extends StatefulWidget {
   const DesktopDockIcon({
     super.key,
@@ -349,6 +431,24 @@ final class DesktopDockIconState extends State<DesktopDockIcon> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
+    final duration = context.motion(LicoMotion.micro);
+    final fill = widget.active
+        ? colors.primary.withValues(alpha: colors.isDark ? 0.22 : 0.15)
+        : _hovered
+        ? DesktopDesktopGlass.hoverFill(isDark: colors.isDark)
+        : Colors.transparent;
+    final rim = widget.active
+        ? colors.accent.withAlpha(colors.isDark ? 130 : 160)
+        : DesktopDesktopGlass.cardBorder(
+            colors.line,
+            isDark: colors.isDark,
+          ).withAlpha(_hovered ? 110 : 0);
+    final glyph = widget.active
+        ? colors.accent
+        : _hovered
+        ? colors.text
+        : colors.textSecondary;
     return Semantics(
       button: true,
       selected: widget.active,
@@ -364,44 +464,60 @@ final class DesktopDockIconState extends State<DesktopDockIcon> {
             behavior: HitTestBehavior.opaque,
             onTap: widget.onTap,
             onSecondaryTap: widget.onSecondaryTap,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: context.motion(LicoMotion.micro),
-                  width: DesktopDesktopMetrics.dockIconExtent,
-                  height: DesktopDesktopMetrics.dockIconExtent,
-                  decoration: continuousHairlineDecoration(
-                    color: _hovered
-                        ? DesktopDesktopOnBlack.hoverOverlay
-                        : desktopDesktopSurfaceBlack,
-                    borderRadius: BorderRadius.circular(
-                      DesktopDesktopMetrics.dockIconRadius,
+            child: SizedBox.square(
+              dimension: DesktopDesktopMetrics.dockIconExtent,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: AnimatedContainer(
+                      duration: duration,
+                      curve: LicoMotion.standard,
+                      decoration: continuousHairlineDecoration(
+                        color: fill,
+                        borderRadius: BorderRadius.circular(
+                          DesktopDesktopMetrics.dockIconRadius,
+                        ),
+                        stroke: rim,
+                        strokeWidth: 0.5,
+                      ),
+                      child: Center(
+                        child: TweenAnimationBuilder<Color?>(
+                          tween: ColorTween(end: glyph),
+                          duration: duration,
+                          curve: LicoMotion.standard,
+                          builder: (context, color, _) => Icon(
+                            widget.icon,
+                            size: DesktopDesktopMetrics.dockIconGlyphSize,
+                            color: color,
+                          ),
+                        ),
+                      ),
                     ),
-                    stroke: DesktopDesktopOnBlack.line,
-                    strokeWidth: 0.5,
                   ),
-                  child: Icon(
-                    widget.icon,
-                    size: DesktopDesktopMetrics.dockIconGlyphSize,
-                    color: _hovered || widget.active
-                        ? DesktopDesktopOnBlack.text
-                        : DesktopDesktopOnBlack.textSecondary,
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: -7,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: duration,
+                          curve: LicoMotion.standard,
+                          width: DesktopDesktopMetrics.dockActiveDotDiameter,
+                          height: DesktopDesktopMetrics.dockActiveDotDiameter,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: widget.active
+                                ? colors.textSecondary
+                                : Colors.transparent,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                AnimatedContainer(
-                  duration: context.motion(LicoMotion.micro),
-                  width: DesktopDesktopMetrics.dockActiveDotDiameter,
-                  height: DesktopDesktopMetrics.dockActiveDotDiameter,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: widget.active
-                        ? DesktopDesktopOnBlack.textSecondary
-                        : Colors.transparent,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -425,6 +541,7 @@ final class DesktopDockFolderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
     return Semantics(
       button: true,
       label: label,
@@ -436,46 +553,36 @@ final class DesktopDockFolderIcon extends StatelessWidget {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onTap,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: DesktopDesktopMetrics.dockIconExtent,
-                  height: DesktopDesktopMetrics.dockIconExtent,
-                  padding: const EdgeInsets.all(7),
-                  decoration: continuousHairlineDecoration(
-                    color: desktopDesktopSurfaceBlack,
-                    borderRadius: BorderRadius.circular(
-                      DesktopDesktopMetrics.dockIconRadius,
-                    ),
-                    stroke: DesktopDesktopOnBlack.line,
-                    strokeWidth: 0.5,
+            child: SizedBox.square(
+              dimension: DesktopDesktopMetrics.dockIconExtent,
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: continuousHairlineDecoration(
+                  color: DesktopDesktopGlass.controlFill(isDark: colors.isDark),
+                  borderRadius: BorderRadius.circular(
+                    DesktopDesktopMetrics.dockIconRadius,
                   ),
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 3,
-                    crossAxisSpacing: 3,
-                    children: [
-                      for (final app in children.take(4))
-                        Icon(
-                          desktopAppIcon(app),
-                          size: 12,
-                          color: DesktopDesktopOnBlack.textSecondary,
-                        ),
-                    ],
+                  stroke: DesktopDesktopGlass.cardBorder(
+                    colors.line,
+                    isDark: colors.isDark,
                   ),
+                  strokeWidth: 0.5,
                 ),
-                const SizedBox(height: 3),
-                Container(
-                  width: DesktopDesktopMetrics.dockActiveDotDiameter,
-                  height: DesktopDesktopMetrics.dockActiveDotDiameter,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.transparent,
-                  ),
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 3,
+                  crossAxisSpacing: 3,
+                  children: [
+                    for (final app in children.take(4))
+                      Icon(
+                        desktopAppIcon(app),
+                        size: 12,
+                        color: colors.textSecondary,
+                      ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -533,9 +640,9 @@ final class _DesktopDockGapTarget extends StatelessWidget {
   }
 }
 
-/// The folder open view: a pure black panel floating above the dock listing
-/// the folder's apps. Launching an app or tapping outside dismisses;
-/// dragging a child onto a dock gap extracts it from the folder.
+/// The folder open view: a glass panel floating above the dock listing the
+/// folder's apps. Launching an app or tapping outside dismisses; dragging a
+/// child onto a dock gap extracts it from the folder.
 final class DesktopDockFolderView extends StatelessWidget {
   const DesktopDockFolderView({
     super.key,
@@ -566,17 +673,14 @@ final class DesktopDockFolderView extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 320),
             padding: const EdgeInsets.all(16),
             decoration: continuousHairlineDecoration(
-              color: desktopDesktopSurfaceBlack,
+              color: DesktopDesktopGlass.cardFill(isDark: colors.isDark),
               borderRadius: BorderRadius.circular(20),
-              stroke: DesktopDesktopOnBlack.line,
+              stroke: DesktopDesktopGlass.cardBorder(
+                colors.line,
+                isDark: colors.isDark,
+              ),
               strokeWidth: 0.5,
-              shadows: const [
-                BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 24,
-                  offset: Offset(0, 8),
-                ),
-              ],
+              shadows: DesktopDesktopGlass.cardShadows(isDark: colors.isDark),
             ),
             child: Wrap(
               spacing: 10,

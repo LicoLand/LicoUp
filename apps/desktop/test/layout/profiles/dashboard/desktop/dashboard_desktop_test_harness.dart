@@ -224,7 +224,8 @@ final class _FixtureChromeFeatures implements LayoutChromeFeatures {
   ValueNotifier<bool>? get auxChromePanelOpen => null;
 
   @override
-  Widget buildDockComposer(BuildContext context) => const SizedBox.shrink();
+  Widget buildDockComposer(BuildContext context, {bool expanded = false}) =>
+      const SizedBox.shrink();
 
   @override
   ValueListenable<LicoToastNoticesSnapshot> get notificationNotices =>

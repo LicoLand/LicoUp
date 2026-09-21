@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/client_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -11,6 +14,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
 final class GroupStrategyProjection {
   const GroupStrategyProjection({
@@ -22,6 +26,74 @@ final class GroupStrategyProjection {
   final String revision;
   final Set<String> agentIds;
   final Map<String, AgentParticipantRuntimeProfile> runtimeProfiles;
+}
+
+/// The mention label the group dispatch parser recognizes for a membership:
+/// the membership display name first, then the canonical product name.
+String canonicalGroupMentionLabel(
+  ClientConversationMembership membership,
+  TargetCandidate target,
+) {
+  final displayName = membership.principal.displayName.trim();
+  if (displayName.isNotEmpty) return displayName;
+  final known =
+      agentProductDisplayName(target.target) ??
+      agentProductDisplayName(target.id);
+  if (known != null) return known;
+  return agentConversationTargetDisplayName(target);
+}
+
+/// Capsule label for the assistant identity: canonical product names first
+/// ("Codex", "Kimi Code"), otherwise each word capitalized.
+String canonicalGroupAssistantCapsuleLabel(
+  ClientConversationMembership membership,
+  TargetCandidate target,
+) {
+  final raw = canonicalGroupMentionLabel(membership, target);
+  final known = agentProductDisplayName(raw);
+  if (known != null) return known;
+  final words = raw
+      .split(RegExp(r'[\s\-_]+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return raw;
+  return words
+      .map((word) => word[0].toUpperCase() + word.substring(1))
+      .join(' ');
+}
+
+/// The assistant status light derivation, shared by the in-pane capsule and
+/// host-owned composer capsules (the Desktop expanded composer box).
+GroupAssistantStatusLight canonicalGroupAssistantStatus({
+  required ClientConversation conversation,
+  required bool assistantActive,
+  required CanonicalConversationProjection canonical,
+  required PersistentTurnProjection turns,
+}) {
+  if (conversation.assistantMembership == null) {
+    return GroupAssistantStatusLight.unconfigured;
+  }
+  if (!assistantActive) {
+    return GroupAssistantStatusLight.paused;
+  }
+  if ((canonical.notice?.reasonCode ?? '').isNotEmpty) {
+    return GroupAssistantStatusLight.failure;
+  }
+  if (turns.memberships.any(
+    (turn) => turn.phase == PersistentTurnPhase.waiting,
+  )) {
+    return GroupAssistantStatusLight.waiting;
+  }
+  if (canonical.dispatchPending ||
+      turns.memberships.any(
+        (turn) =>
+            (turn.participantRole.trim() != 'assistant' &&
+                turn.participantAgentId.trim().isNotEmpty) ||
+            turn.phase == PersistentTurnPhase.running,
+      )) {
+    return GroupAssistantStatusLight.working;
+  }
+  return GroupAssistantStatusLight.ready;
 }
 
 /// Assistant readiness projected into name color and accessible status.

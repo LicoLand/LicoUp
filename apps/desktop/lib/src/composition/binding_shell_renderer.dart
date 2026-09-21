@@ -19,6 +19,11 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
+import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/assistant_configuration_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/projection.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_pairing_channels.dart';
@@ -215,8 +220,12 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
   final ValueNotifier<bool> auxChromePanelOpen;
 
   @override
-  Widget buildDockComposer(BuildContext context) =>
-      _DockConversationComposer(agents: agents, conversation: conversation);
+  Widget buildDockComposer(BuildContext context, {bool expanded = false}) =>
+      _DockConversationComposer(
+        agents: agents,
+        conversation: conversation,
+        expanded: expanded,
+      );
 
   @override
   void activateOperationNotice(ChromeOperationNotificationProjection notice) {
@@ -289,18 +298,59 @@ final class _ChromeNoticesListenable
   }
 }
 
-/// The conversation composer re-parented into the Desktop dock capsule. Sends
+/// The conversation composer re-parented into the Desktop bottom bar. Sends
 /// through the same conversation intents as the in-workspace composer; the
 /// Desktop shell hides the workspace's internal composer while this is
-/// hosted. Mounts nothing when no conversation can accept input.
-final class _DockConversationComposer extends StatelessWidget {
+/// hosted. When [expanded] is true (the left pane is collapsed), the
+/// composer carries the Assistant and Adaptive Flywheel capsules in a row
+/// that pops in above the field, and the canonical pane suppresses its own
+/// copies through `LayoutExternalComposerScope.hostedCapsules`.
+final class _DockConversationComposer extends StatefulWidget {
   const _DockConversationComposer({
     required this.agents,
     required this.conversation,
+    required this.expanded,
   });
 
   final AgentsBinding agents;
   final ConversationBinding conversation;
+  final bool expanded;
+
+  @override
+  State<_DockConversationComposer> createState() =>
+      _DockConversationComposerState();
+}
+
+final class _DockConversationComposerState
+    extends State<_DockConversationComposer> {
+  /// Session-scoped assistant participation, mirroring the in-pane capsule's
+  /// per-conversation toggle so the docked composer's sends honor it.
+  final Map<String, bool> _assistantActiveByConversation = <String, bool>{};
+
+  ConversationBinding get conversation => widget.conversation;
+  AgentsBinding get agents => widget.agents;
+
+  bool _assistantActive(ClientConversation conversation) =>
+      _assistantActiveByConversation[conversation.id] ??
+      conversation.assistantMembership != null;
+
+  void _toggleAssistant(ClientConversation conversation) {
+    setState(() {
+      _assistantActiveByConversation[conversation.id] = !_assistantActive(
+        conversation,
+      );
+    });
+  }
+
+  Future<void> _openAssistantConfiguration() async {
+    await showAssistantConfigurationDialog(
+      context,
+      conversation: widget.conversation,
+      agents: widget.agents,
+    );
+    if (!mounted) return;
+    widget.conversation.intents.send(const RefreshCanonicalAssistantProfile());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -484,7 +534,7 @@ final class _DockConversationComposer extends StatelessWidget {
       mentionLabels = const <String, String>{};
     }
 
-    return RuntimeMessageComposer(
+    final composerWidget = RuntimeMessageComposer(
       // Same keying rule as the in-workspace composer: a conversation switch
       // starts a fresh composer state seeded from that conversation's draft.
       key: ValueKey<String>('dock-composer-${composer.conversationId}'),
@@ -512,6 +562,9 @@ final class _DockConversationComposer extends StatelessWidget {
       defaultReasoningEffort: defaultReasoningEffort,
       showRuntimeSettings: false,
       floatingMatteCapsule: true,
+      // The Desktop bottom bar positions the composer; the capsule must sit
+      // flush on the bar's grid.
+      outerPadding: EdgeInsets.zero,
       onPasteImage: attachments.acceptsImages
           ? () async {
               conversation.intents.send(
@@ -522,6 +575,36 @@ final class _DockConversationComposer extends StatelessWidget {
           : null,
       mentionTargets: mentionTargets,
       mentionLabels: mentionLabels,
+    );
+    final group = canonicalConversation;
+    if (!widget.expanded || group == null) {
+      return composerWidget;
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DockComposerCapsuleRow(
+          key: ValueKey<String>('dock-composer-capsules-${group.id}'),
+          conversation: group,
+          canonical: canonical,
+          turns: turns,
+          agentsProjection: agentsProjection,
+          assistantActive: _assistantActive(group),
+          onToggleAssistant: () => _toggleAssistant(group),
+          onEditAssistant: () => unawaited(_openAssistantConfiguration()),
+          onOpenFlywheel: (revision) => unawaited(
+            showAdaptiveFlywheelDialog(
+              context,
+              conversation: widget.conversation,
+              agents: widget.agents,
+              initialRevision: revision ?? '',
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        composerWidget,
+      ],
     );
   }
 
@@ -550,9 +633,108 @@ final class _DockConversationComposer extends StatelessWidget {
             membership.id,
         ],
         dispatchCanonical: conversation.assistantMembership != null,
+        suppressAssistant: !_assistantActive(conversation),
       ),
     );
     return true;
+  }
+}
+
+/// The expanded dock composer's capsule row: the Assistant identity capsule
+/// and the Adaptive Flywheel capsule, popping in above the field with a short
+/// rise-and-fade when the row appears.
+final class _DockComposerCapsuleRow extends StatelessWidget {
+  const _DockComposerCapsuleRow({
+    super.key,
+    required this.conversation,
+    required this.canonical,
+    required this.turns,
+    required this.agentsProjection,
+    required this.assistantActive,
+    required this.onToggleAssistant,
+    required this.onEditAssistant,
+    required this.onOpenFlywheel,
+  });
+
+  final ClientConversation conversation;
+  final CanonicalConversationProjection canonical;
+  final PersistentTurnProjection turns;
+  final AgentsProjection agentsProjection;
+  final bool assistantActive;
+  final VoidCallback onToggleAssistant;
+  final VoidCallback onEditAssistant;
+  final ValueChanged<String?> onOpenFlywheel;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final allTargets = agentsProjection.targetDetails;
+    final participantTargets = resolveCanonicalGroupParticipantTargets(
+      conversation,
+      allTargets,
+    );
+    final membership = conversation.assistantMembership;
+    TargetCandidate? assistantTarget;
+    if (membership != null) {
+      for (final target
+          in participantTargets.isEmpty ? allTargets : participantTargets) {
+        if (target.target == membership.principal.agentId) {
+          assistantTarget = target;
+          break;
+        }
+      }
+    }
+    final assistantLabel = membership == null
+        ? strings.assistantNeedsConfigurationStatus
+        : canonicalGroupAssistantCapsuleLabel(
+            membership,
+            assistantTarget ??
+                TargetCandidate(
+                  target: membership.principal.agentId,
+                  label: membership.principal.displayName,
+                  kind: 'agent',
+                  status: TargetCandidateStatus.unavailable,
+                  configured: false,
+                  confidence: 0,
+                  adapterStatus: 'runtime-unavailable',
+                ),
+          );
+    final status = canonicalGroupAssistantStatus(
+      conversation: conversation,
+      assistantActive: assistantActive,
+      canonical: canonical,
+      turns: turns,
+    );
+    final revision = conversation.strategyRevision.trim();
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: LicoMotion.medium,
+      curve: LicoMotion.decelerate,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, 6 * (1 - t)),
+          child: child,
+        ),
+      ),
+      child: Row(
+        children: [
+          AssistantToggleButton(
+            active: assistantActive,
+            configured: membership != null,
+            label: assistantLabel,
+            status: status,
+            onTap: onToggleAssistant,
+            onEdit: onEditAssistant,
+          ),
+          const SizedBox(width: 8),
+          GroupStrategyPickerCapsule(
+            selectedRevision: revision.isEmpty ? null : revision,
+            onOpen: onOpenFlywheel,
+          ),
+        ],
+      ),
+    );
   }
 }
 
