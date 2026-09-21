@@ -20,6 +20,7 @@ pub(crate) mod conversation_lane;
 mod copilot_driver;
 mod cursor_driver;
 mod deepseek_harness_driver;
+pub mod diagnostics;
 pub mod extension_host;
 pub mod extension_packages;
 pub mod package_registration_release;
