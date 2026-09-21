@@ -18,3 +18,4 @@ mod fence;
 mod fixture;
 mod lease;
 mod non_reentrancy;
+mod workset;

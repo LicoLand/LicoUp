@@ -141,6 +141,7 @@ pub struct Probe {
     pub returns: Vec<String>,
     pub commits_entered: Vec<String>,
     pub steers: Vec<(String, String)>,
+    pub cancels: Vec<(String, String)>,
 }
 
 impl Probe {
@@ -150,6 +151,10 @@ impl Probe {
 
     pub fn returned(&self, command_id: &str) -> bool {
         self.returns.iter().any(|id| id == command_id)
+    }
+
+    pub fn cancel_asked(&self, command_id: &str) -> bool {
+        self.cancels.iter().any(|(_, id)| id == command_id)
     }
 }
 
@@ -161,6 +166,16 @@ pub type AdapterHook = Arc<dyn Fn(&str, &str) + Send + Sync>;
 #[derive(Clone, Debug)]
 struct Cmd {
     id: String,
+    /// The state and visit the command runs in, as the machine emitted them.
+    state_id: String,
+    state_visit: u64,
+    kind: CommandKind,
+    /// The workset item this command runs, when it is one of a visit's items.
+    ///
+    /// The machine gives every ready item of a workset its own command over the
+    /// same `state_id`/`state_visit`, so this is what tells two live effects of
+    /// one visit apart.
+    item_id: Option<String>,
     predecessors: Vec<String>,
     status: CommandStatus,
     attempt_token: String,
@@ -200,6 +215,7 @@ impl State {
             returns: self.returns.clone(),
             commits_entered: self.commits_entered.clone(),
             steers: self.steers.clone(),
+            cancels: self.cancels.clone(),
         }
     }
 
@@ -222,16 +238,16 @@ impl State {
             .expect("fixture_command_declared");
         RunCommand {
             id: command.id.clone(),
-            state_id: format!("node-{}", command.id),
-            state_visit: 1,
-            kind: CommandKind::Actor,
+            state_id: command.state_id.clone(),
+            state_visit: command.state_visit,
+            kind: command.kind,
             status: command.status,
             attempt: 1,
             attempt_token: command.attempt_token.clone(),
             binding_id: None,
             runtime_id: None,
             entry: None,
-            item_id: None,
+            item_id: command.item_id.clone(),
             session_policy: Default::default(),
             binding_ordinal: 0,
             resume_session_id: None,
@@ -300,13 +316,62 @@ impl Fixture {
     }
 
     /// Declare one command, claimable once every predecessor has settled.
+    ///
+    /// One command of one ordinary node: its own state and one visit.
     pub fn declare(&self, command_id: &str, predecessors: &[&str]) {
+        self.declare_command(
+            command_id,
+            &format!("node-{command_id}"),
+            1,
+            CommandKind::Actor,
+            None,
+            predecessors,
+        );
+    }
+
+    /// Declare one item of a workset visit, as the machine emits it.
+    ///
+    /// Several items of one visit share `state_id` and `state_visit` and differ
+    /// by their `item_id` and their command id. Readiness is the declared
+    /// predecessor list, as in [`Self::declare`]; a workset item's real
+    /// predecessor in the DAG is the command of the item it waits for.
+    pub fn declare_item(
+        &self,
+        command_id: &str,
+        state_id: &str,
+        state_visit: u64,
+        item_id: &str,
+        predecessors: &[&str],
+    ) {
+        self.declare_command(
+            command_id,
+            state_id,
+            state_visit,
+            CommandKind::WorksetItem,
+            Some(item_id),
+            predecessors,
+        );
+    }
+
+    fn declare_command(
+        &self,
+        command_id: &str,
+        state_id: &str,
+        state_visit: u64,
+        kind: CommandKind,
+        item_id: Option<&str>,
+        predecessors: &[&str],
+    ) {
         let mut state = self.lock();
         state.declarations.push(command_id.to_owned());
         state.commands.insert(
             command_id.to_owned(),
             Cmd {
                 id: command_id.to_owned(),
+                state_id: state_id.to_owned(),
+                state_visit,
+                kind,
+                item_id: item_id.map(str::to_owned),
                 predecessors: predecessors.iter().map(|id| (*id).to_owned()).collect(),
                 status: CommandStatus::Pending,
                 attempt_token: format!("token-{command_id}"),
