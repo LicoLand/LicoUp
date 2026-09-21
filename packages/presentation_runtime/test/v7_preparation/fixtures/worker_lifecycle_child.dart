@@ -31,10 +31,7 @@ Future<void> main(List<String> args) async {
   );
   final results = await Future.wait<Object?>(<Future<Object?>>[
     for (var job = 0; job < 3; job++)
-      pool.execute(
-        operation: 'echo',
-        payload: <String, Object?>{'job': job},
-      ),
+      pool.execute(operation: 'echo', payload: <String, Object?>{'job': job}),
   ]);
   final identities = pool.identities;
   final stats = pool.workerStats;

@@ -55,8 +55,10 @@ void main() {
         packageConfig: packageConfigUri,
       );
 
-      final exited = await exitSignal.future
-          .timeout(const Duration(seconds: 90), onTimeout: () => _neverExited);
+      final exited = await exitSignal.future.timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => _neverExited,
+      );
       if (exited == _neverExited) {
         isolate.kill(priority: Isolate.immediate);
       }

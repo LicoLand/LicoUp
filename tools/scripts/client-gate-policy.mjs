@@ -1,5 +1,14 @@
 const freezeLane = (scripts) => Object.freeze([...scripts]);
 
+// The Dart/Flutter packages that ship outside the desktop app. Their
+// pubspec files are dependency inputs, and their sources belong to the
+// Flutter/Dart lane even though they are not under apps/desktop.
+export const PRESENTATION_DART_PACKAGES = Object.freeze([
+  "packages/presentation_contract",
+  "packages/presentation_runtime",
+  "packages/presentation_flutter",
+]);
+
 export const CLIENT_GATE_SCHEMA_VERSION = "licomesh.client-gate-policy.v1";
 
 export const CLIENT_GATE_LANES = Object.freeze({
@@ -31,6 +40,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:format:check",
     "client:analyze",
     "client:test",
+    "client:packages:verify",
   ]),
   rust: freezeLane([
     "client:native:fmt:check",
@@ -117,6 +127,10 @@ const DEPENDENCY_PATHS = new Set([
   "Cargo.lock",
   "apps/desktop/pubspec.yaml",
   "apps/desktop/pubspec.lock",
+  ...PRESENTATION_DART_PACKAGES.flatMap((directory) => [
+    `${directory}/pubspec.yaml`,
+    `${directory}/pubspec.lock`,
+  ]),
 ]);
 
 function normalizePath(value) {
@@ -137,6 +151,11 @@ function normalizePath(value) {
 }
 
 function isFlutterPath(file) {
+  if (
+    PRESENTATION_DART_PACKAGES.some((directory) => file.startsWith(`${directory}/`))
+  ) {
+    return true;
+  }
   return (
     file.startsWith("apps/desktop/lib/") ||
     file.startsWith("apps/desktop/test/") ||
