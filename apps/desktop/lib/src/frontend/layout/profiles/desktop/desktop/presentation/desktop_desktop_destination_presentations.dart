@@ -11,24 +11,24 @@ const LayoutAgentsPresentation desktopDesktopAgentsPresentation =
 const LayoutSettingsPresentation desktopDesktopSettingsPresentation =
     DesktopDesktopSettingsPresentation();
 
-/// Desktop 对话 fullscreen: transparent canvas over the clear window veil so
-/// the conversation surface and the floating capsule dock read as one screen;
-/// the conversation list floats in a nested glass card.
+/// Desktop conversation presentation: a transparent canvas over the clear
+/// window veil so the conversation surface and the bottom composer box read
+/// as one screen; the conversation list floats as a glass card flush with
+/// the region's left edge so it aligns with the icon strip below it.
 final class DesktopDesktopAgentsPresentation
     implements LayoutAgentsPresentation {
   const DesktopDesktopAgentsPresentation();
-
-  static const double _listCardInset = 8;
-  static const double _listCardRadius = 14;
 
   @override
   Color canvasColor(LayoutPalette palette) => Colors.transparent;
 
   @override
-  double get sidebarOuterHorizontalExtent => _listCardInset;
+  double get sidebarOuterHorizontalExtent => 0;
 
+  // The visible detail keeps a left gap when the list is open (frameDetail);
+  // the split math accounts for it through this extent.
   @override
-  double get detailOuterHorizontalExtent => 0;
+  double get detailOuterHorizontalExtent => DesktopDesktopMetrics.regionGap;
 
   @override
   EdgeInsetsGeometry get expandedSidebarControlPadding => EdgeInsets.zero;
@@ -45,8 +45,8 @@ final class DesktopDesktopAgentsPresentation
   @override
   bool get showConversationSidebarControl => false;
 
-  // The Desktop dock already carries 设置/功能 plus the 对话 button, so the
-  // fullscreen-exclusive conversation app renders no Dashboard nav row.
+  // The Desktop bottom bar already carries 设置/功能 and the permanent
+  // conversation pane, so the conversation list renders no Dashboard nav row.
   @override
   bool get showSidebarBottomNav => false;
 
@@ -63,32 +63,22 @@ final class DesktopDesktopAgentsPresentation
     required Key key,
     required Widget child,
   }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        _listCardInset,
-        _listCardInset,
-        0,
-        _listCardInset,
+    final colors = context.layoutPalette;
+    return DecoratedBox(
+      key: key,
+      decoration: continuousHairlineDecoration(
+        color: DesktopDesktopGlass.cardFill(isDark: colors.isDark),
+        borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+        stroke: DesktopDesktopGlass.cardBorder(
+          colors.line,
+          isDark: colors.isDark,
+        ),
+        strokeWidth: 0.5,
+        shadows: DesktopDesktopGlass.cardShadows(isDark: colors.isDark),
       ),
-      child: DecoratedBox(
-        key: key,
-        decoration: continuousHairlineDecoration(
-          color: desktopDesktopSurfaceBlack,
-          borderRadius: BorderRadius.circular(_listCardRadius),
-          stroke: DesktopDesktopOnBlack.line,
-          strokeWidth: 0.5,
-          shadows: const [
-            BoxShadow(
-              color: Color(0x59000000),
-              blurRadius: 18,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(_listCardRadius),
-          child: child,
-        ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+        child: child,
       ),
     );
   }
@@ -99,12 +89,28 @@ final class DesktopDesktopAgentsPresentation
     required Key key,
     required bool sidebarCollapsed,
     required Widget child,
-  }) => KeyedSubtree(key: key, child: child);
+  }) => KeyedSubtree(
+    key: key,
+    // With the list visible, the detail shifts right by the same gap the
+    // bottom bar puts between the icon strip and the composer box, so the
+    // composer lands exactly under the conversation content.
+    child: sidebarCollapsed
+        ? child
+        : Padding(
+            padding: const EdgeInsets.only(
+              left: DesktopDesktopMetrics.regionGap,
+            ),
+            child: child,
+          ),
+  );
 }
 
-/// Desktop settings copy presentation: the settings section index is hosted
-/// by the copy's own left navigation card, so the shared SettingsPanel
-/// renders its content full width with Desktop-owned insets.
+/// Desktop settings presentation: the Desktop settings surface carries no
+/// section index at all — the layout's left pane is already the navigation
+/// slot, and a second rail inside settings is redundant chrome. Reporting
+/// `indexHostedByNavigation` keeps the shared panel from rendering its own
+/// rail, so the sections read as one continuous content page (scroll-spy
+/// still publishes the shared section tab channel).
 final class DesktopDesktopSettingsPresentation
     implements LayoutSettingsPresentation {
   const DesktopDesktopSettingsPresentation();

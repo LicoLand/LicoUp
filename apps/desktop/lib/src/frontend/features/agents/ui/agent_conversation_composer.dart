@@ -58,6 +58,8 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.mentionLabels = const {},
     this.leading,
     this.fieldTrailing,
+    this.outerPadding,
+    this.fixedHeight,
   });
 
   final String targetLabel;
@@ -125,6 +127,17 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// Optional quiet readout before the send action (for example the assistant
   /// model readout), placed in the floating toolbar or beside a compact field.
   final Widget? fieldTrailing;
+
+  /// Outer padding around the whole composer. Null keeps the built-in
+  /// insets; hosts that position the composer precisely (the Desktop bottom
+  /// bar) pass an explicit value so the capsule aligns with their grid.
+  final EdgeInsetsGeometry? outerPadding;
+
+  /// Pins the compact (non-floating) capsule to this height and centers its
+  /// content vertically, ignoring the text's intrinsic growth. The Desktop
+  /// bottom bar uses this so the composer matches the icon strip's height in
+  /// its resting state; the floating capsule keeps owning multiline growth.
+  final double? fixedHeight;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -510,7 +523,9 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             padding: const EdgeInsets.all(LicoRadius.composerInset),
             child: IntrinsicHeight(
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: widget.fixedHeight != null
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.end,
                 children: [
                   Expanded(
                     child: SizedBox(
@@ -525,10 +540,12 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
                     ),
                   ),
                   if (widget.fieldTrailing != null)
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: widget.fieldTrailing!,
-                    ),
+                    widget.fixedHeight != null
+                        ? widget.fieldTrailing!
+                        : Align(
+                            alignment: Alignment.bottomCenter,
+                            child: widget.fieldTrailing!,
+                          ),
                   const SizedBox(width: LicoContentSpacing.compact),
                   send,
                 ],
@@ -556,7 +573,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             drawRim: !activity,
             child: fieldBody,
           );
-    final field = SizeChangedLayoutNotifier(
+    final fieldNotifying = SizeChangedLayoutNotifier(
       key: const Key('agent-conversation-composer-field'),
       child: ConversationMotionComposerOutline(
         borderRadius: radius,
@@ -568,18 +585,24 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
         ),
       ),
     );
+    final fixedHeight = widget.fixedHeight;
+    final field = fixedHeight != null && !floating
+        ? SizedBox(height: fixedHeight, child: fieldNotifying)
+        : fieldNotifying;
     final mentionSuggestions = _mentionSuggestions;
     return Padding(
-      padding: mobileClient
-          ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
-          : widget.floatingMatteCapsule
-          ? const EdgeInsets.fromLTRB(
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
-              8,
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
-              MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
-            )
-          : const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding:
+          widget.outerPadding ??
+          (mobileClient
+              ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+              : widget.floatingMatteCapsule
+              ? const EdgeInsets.fromLTRB(
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  8,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
+                )
+              : const EdgeInsets.fromLTRB(12, 8, 12, 10)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1725,6 +1725,13 @@ impl ConversationStore {
     /// Conversation is created in the same transaction: memberships and the
     /// assistant profile are copied silently (no member joined/left churn), and
     /// one plain `conversation-reset` notice opens the successor.
+    /// The reserved default local group can never stay archived — startup
+    /// normalization always restores it — so an archive request resets it in
+    /// place instead: children and member native sessions are archived the
+    /// same way, the visible Event history is cleared (refusing in-flight work
+    /// like `conversation.clear`), the Assistant membership rotates, and one
+    /// `conversation-reset` notice reopens the same active, pinned
+    /// Conversation. No successor is created, so no duplicate can survive.
     pub fn archive_conversation_tree(
         &self,
         id: &str,
@@ -1740,6 +1747,18 @@ impl ConversationStore {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             ensure_conversation(&transaction, id)?;
+            if archived && id == DEFAULT_LOCAL_AGENT_GROUP_ID {
+                let (archived_child_ids, archived_native_sessions) =
+                    reset_reserved_default_group(&transaction, id, now)?;
+                transaction.commit()?;
+                return Ok(ConversationArchiveReport {
+                    conversation_id: id.to_owned(),
+                    archived_child_ids,
+                    archived_native_sessions,
+                    successor_conversation_id: None,
+                    reset_in_place: true,
+                });
+            }
             transaction.execute(
                 "UPDATE conversations SET archived=?2, revision=revision+1, updated_at=?3
                  WHERE id=?1 AND archived<>?2",
@@ -1767,6 +1786,7 @@ impl ConversationStore {
                 archived_child_ids,
                 archived_native_sessions,
                 successor_conversation_id,
+                reset_in_place: false,
             })
         })
     }
@@ -1795,41 +1815,7 @@ impl ConversationStore {
             if !is_group {
                 return Err(anyhow!("invalid_request"));
             }
-            let blocked: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM events
-                   WHERE conversation_id=?1 AND finalized=0
-                 ) OR EXISTS(
-                   SELECT 1 FROM direct_turns
-                   WHERE conversation_id=?1
-                     AND state IN ('pending','claimed','running','waiting-for-human')
-                 ) OR EXISTS(
-                   SELECT 1 FROM conversation_dispatches
-                   WHERE conversation_id=?1
-                     AND state IN ('accepted','running','cancel-requested')
-                 )",
-                params![conversation_id],
-                |row| row.get(0),
-            )?;
-            if blocked {
-                return Err(anyhow!("conversation_clear_blocked"));
-            }
-            if table_exists(&transaction, "subagent_dispatch_claims")? {
-                let subagent_active: bool = transaction.query_row(
-                    "SELECT EXISTS(
-                       SELECT 1 FROM subagent_dispatch_claims
-                       WHERE conversation_id=?1
-                         AND state IN (
-                           'claimed','running','cancel-requested','reconciliation-required'
-                         )
-                     )",
-                    params![conversation_id],
-                    |row| row.get(0),
-                )?;
-                if subagent_active {
-                    return Err(anyhow!("conversation_clear_blocked"));
-                }
-            }
+            refuse_in_flight_group_work(&transaction, conversation_id)?;
             let archived_child_ids =
                 archive_continuity_children(&transaction, conversation_id, now)?;
             delete_conversation_events(&transaction, conversation_id)?;
@@ -5711,6 +5697,91 @@ fn clear_native_sessions_archived(
     Ok(())
 }
 
+/// Refuse a destructive group write while any work is still in flight:
+/// unfinalized Events, active Direct Turns, running dispatches, or claimed
+/// subagent dispatches would lose their settlement records.
+fn refuse_in_flight_group_work(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+) -> StoreResult<()> {
+    let blocked: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM events
+           WHERE conversation_id=?1 AND finalized=0
+         ) OR EXISTS(
+           SELECT 1 FROM direct_turns
+           WHERE conversation_id=?1
+             AND state IN ('pending','claimed','running','waiting-for-human')
+         ) OR EXISTS(
+           SELECT 1 FROM conversation_dispatches
+           WHERE conversation_id=?1
+             AND state IN ('accepted','running','cancel-requested')
+         )",
+        params![conversation_id],
+        |row| row.get(0),
+    )?;
+    if blocked {
+        return Err(anyhow!("conversation_clear_blocked"));
+    }
+    if table_exists(connection, "subagent_dispatch_claims")? {
+        let subagent_active: bool = connection.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM subagent_dispatch_claims
+               WHERE conversation_id=?1
+                 AND state IN (
+                   'claimed','running','cancel-requested','reconciliation-required'
+                 )
+             )",
+            params![conversation_id],
+            |row| row.get(0),
+        )?;
+        if subagent_active {
+            return Err(anyhow!("conversation_clear_blocked"));
+        }
+    }
+    Ok(())
+}
+
+/// Reset the reserved default local group in place: its continuity children
+/// and member native sessions are archived exactly like a group archive, the
+/// visible Event history is deleted, the Assistant membership rotates with
+/// its Profile preserved, and one `conversation-reset` notice reopens the
+/// same Conversation — still active, pinned, and grouped. The reserved group
+/// can never stay archived, so this replaces both archive and reopen for it;
+/// a successor copy would survive as a permanent duplicate.
+fn reset_reserved_default_group(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    now: i64,
+) -> StoreResult<(Vec<String>, Vec<NativeSessionReference>)> {
+    refuse_in_flight_group_work(connection, conversation_id)?;
+    let archived_child_ids = archive_continuity_children(connection, conversation_id, now)?;
+    let mut conversation_ids = vec![conversation_id.to_owned()];
+    conversation_ids.extend(archived_child_ids.iter().cloned());
+    let archived_native_sessions =
+        mark_native_sessions_archived(connection, &conversation_ids, now)?;
+    delete_conversation_events(connection, conversation_id)?;
+    rotate_assistant_membership(connection, conversation_id, now)?;
+    connection.execute(
+        "UPDATE conversations
+         SET archived=0, pinned=1, is_group=1,
+             title=CASE
+               WHEN trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default')
+               THEN ?2 ELSE title END
+         WHERE id=?1",
+        params![conversation_id, DEFAULT_LOCAL_AGENT_GROUP_TITLE],
+    )?;
+    append_domain_event(
+        connection,
+        conversation_id,
+        EventKind::ConversationReset,
+        serde_json::json!({"resetInPlace": true}),
+        now,
+    )?;
+    bump_revision(connection, conversation_id, now)?;
+    Ok((archived_child_ids, archived_native_sessions))
+}
+
 /// Create the fresh successor of an archived group: same title and strategy,
 /// every active membership copied with its profile, and the assistant pointer
 /// preserved. Member copies emit no events — a reopened conversation is not
@@ -6793,6 +6864,67 @@ mod tests {
                 .archive_conversation_tree(&group.id, false, true)
                 .is_err()
         );
+
+        drop(store);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archiving_the_default_local_group_resets_it_in_place() {
+        let root = std::env::temp_dir().join(format!("licoup-reset-default-{}", Uuid::new_v4()));
+        path_security::ensure_private_dir(&root).unwrap();
+        let store = ConversationStore::open(&root).unwrap();
+        let local = store.ensure_default_local_group().unwrap();
+        assert_eq!(local.id, DEFAULT_LOCAL_AGENT_GROUP_ID);
+        let owner_membership = membership_of(&local, PrincipalKind::Human);
+        store
+            .post_message_with_mentions(
+                &local.id,
+                Some(&owner_membership.id),
+                "remember this",
+                None,
+                &[],
+            )
+            .unwrap();
+        let report = store
+            .archive_conversation_tree(&local.id, true, true)
+            .unwrap();
+
+        assert!(report.reset_in_place);
+        assert!(report.successor_conversation_id.is_none());
+        let reset = store.get(&local.id).unwrap();
+        assert!(!reset.archived);
+        assert!(reset.pinned);
+        assert!(reset.is_group);
+        // The visible history is cleared and one plain reset notice reopens
+        // the same reserved Conversation.
+        let events = store.event_page(&local.id, None, 16).unwrap().events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+        // The active list still holds exactly one default group: itself.
+        assert_eq!(
+            store
+                .list(false)
+                .unwrap()
+                .iter()
+                .filter(|conversation| conversation.id == DEFAULT_LOCAL_AGENT_GROUP_ID)
+                .count(),
+            1
+        );
+
+        // A plain archive request resets the reserved group the same way.
+        store
+            .post_message_with_mentions(&local.id, Some(&owner_membership.id), "again", None, &[])
+            .unwrap();
+        let second = store
+            .archive_conversation_tree(&local.id, true, false)
+            .unwrap();
+        assert!(second.reset_in_place);
+        assert!(second.successor_conversation_id.is_none());
+        let events = store.event_page(&local.id, None, 16).unwrap().events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+        assert!(!store.get(&local.id).unwrap().archived);
 
         drop(store);
         let _ = std::fs::remove_dir_all(&root);

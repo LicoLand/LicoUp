@@ -2,13 +2,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
 import 'desktop_desktop_test_harness.dart';
 
@@ -19,466 +17,241 @@ void main() {
   setUp(() {
     harness = DesktopDesktopHarness();
     dockModel = buildDesktopTestDockModel();
+    if (!dockModel.ready) {
+      dockModel.debugSeed(const []);
+    }
   });
 
   Future<void> pumpShell(
     WidgetTester tester, {
     ClientSection activeDestination = ClientSection.agents,
-  }) async {
-    if (!dockModel.ready) {
-      dockModel.debugSeed(const []);
-    }
-    await pumpDesktopShell(
-      tester,
-      harness: harness,
-      dockModel: dockModel,
-      activeDestination: activeDestination,
-    );
-  }
-
-  testWidgets('main area and floating capsule bar render as one screen', (
+    Size size = const Size(1280, 800),
+  }) => pumpDesktopShell(
     tester,
-  ) async {
-    await pumpShell(tester);
-
-    expect(find.byKey(const Key('desktop-main-area')), findsOneWidget);
-    final veil = tester.widget<ColoredBox>(
-      find.byKey(const Key('desktop-window-veil')),
-    );
-    expect(veil.color, MessagingDesktopMetrics.surfaceGlassTint(isDark: true));
-    expect(find.byKey(const Key('desktop-dock-bar')), findsOneWidget);
-    expect(find.byKey(const Key('desktop-dock-input')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('desktop-desktop-shell')),
-      findsOneWidget,
-    );
-    // The toast host and notices listener mount near the shell root.
-    expect(find.byType(LicoToastHost), findsOneWidget);
-    expect(find.byType(LicoToastNoticesListener), findsOneWidget);
-  });
-
-  testWidgets('设置 and 功能 are pinned leftmost in order', (tester) async {
-    await pumpShell(tester);
-
-    final settings = tester.getTopLeft(
-      find.byKey(const Key('desktop-dock-pin-settings')),
-    );
-    final features = tester.getTopLeft(
-      find.byKey(const Key('desktop-dock-pin-features')),
-    );
-    expect(settings.dx, lessThan(features.dx));
-
-    dockModel.openApp(DesktopAppId.monitoring);
-    await tester.pump();
-    final entry = tester.getTopLeft(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-    );
-    expect(entry.dx, greaterThan(features.dx));
-  });
-
-  testWidgets('opening 统计面板 from the app store adds its dock icon', (
-    tester,
-  ) async {
-    await pumpShell(tester);
-
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    expect(find.byKey(const Key('desktop-launchpad')), findsOneWidget);
-    expect(
-      find.byKey(const Key('desktop-launchpad-plugin-slot')),
-      findsOneWidget,
-    );
-    for (final app in desktopLaunchpadBuiltinApps) {
-      expect(
-        find.byKey(Key('desktop-launchpad-app-${app.name}')),
-        findsOneWidget,
-      );
-    }
-
-    await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
-    await tester.pump();
-
-    expect(find.byKey(const Key('desktop-launchpad')), findsNothing);
-    expect(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-      findsOneWidget,
-    );
-    expect(dockModel.isOpen(DesktopAppId.monitoring), isTrue);
-    expect(
-      find.byKey(const Key('desktop-floating-card-monitoring')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('desktop-fake-content-monitoring')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('floating apps render one Z-level above the main area', (
-    tester,
-  ) async {
-    await pumpShell(tester);
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
-    await tester.pump();
-
-    final stack = tester.widget<Stack>(
-      find.byKey(const Key('desktop-desktop-z-stack')),
-    );
-    final mainIndex = stack.children.indexWhere(
-      (child) =>
-          child is Positioned &&
-          child.child.key == const Key('desktop-main-area'),
-    );
-    final cardIndex = stack.children.indexWhere(
-      (child) =>
-          child.key ==
-          const ValueKey<String>('desktop-floating-card-monitoring'),
-    );
-    final barIndex = stack.children.indexWhere(
-      (child) =>
-          child is Positioned &&
-          find
-              .descendant(
-                of: find.byWidget(child),
-                matching: find.byKey(const Key('desktop-dock-bar')),
-              )
-              .evaluate()
-              .isNotEmpty,
-    );
-    expect(mainIndex, greaterThanOrEqualTo(0));
-    expect(cardIndex, greaterThan(mainIndex));
-    expect(barIndex, greaterThan(cardIndex));
-  });
-
-  testWidgets('closing an app removes its dock icon and card', (tester) async {
-    await pumpShell(tester);
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
-    await tester.pump();
-
-    await tester.tap(
-      find.byKey(const Key('desktop-floating-card-close-monitoring')),
-    );
-    await tester.pump();
-
-    expect(
-      find.byKey(const Key('desktop-floating-card-monitoring')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-      findsNothing,
-    );
-    expect(dockModel.isOpen(DesktopAppId.monitoring), isFalse);
-  });
-
-  testWidgets(
-    'floating card drag clamps while accumulating so reverse drags move at once',
-    (tester) async {
-      await pumpShell(tester);
-      await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('desktop-launchpad-app-monitoring')),
-      );
-      await tester.pump();
-
-      final card = find.byKey(const Key('desktop-floating-card-monitoring'));
-      final header = find.byKey(
-        const Key('desktop-floating-card-header-monitoring'),
-      );
-
-      final gesture = await tester.startGesture(tester.getCenter(header));
-      for (var i = 0; i < 20; i++) {
-        await gesture.moveBy(const Offset(0, 40));
-        await tester.pump();
-      }
-      final clampedTop = tester.getRect(card).top;
-
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
-      expect(tester.getRect(card).top, lessThan(clampedTop));
-      await gesture.up();
-    },
+    harness: harness,
+    dockModel: dockModel,
+    activeDestination: activeDestination,
+    size: size,
   );
 
-  testWidgets('right-clicking a dock entry closes the app', (tester) async {
-    await pumpShell(tester);
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
-    await tester.pump();
-    expect(dockModel.isOpen(DesktopAppId.monitoring), isTrue);
-
-    await tester.tap(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-      buttons: kSecondaryButton,
-    );
-    await tester.pump();
-
-    expect(dockModel.isOpen(DesktopAppId.monitoring), isFalse);
-    expect(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-      findsNothing,
-    );
-  });
-
-  testWidgets('dock icons reorder by long-press drag across gap targets', (
-    tester,
-  ) async {
-    dockModel.debugSeed(const []);
-    dockModel
-      ..openApp(DesktopAppId.monitoring)
-      ..openApp(DesktopAppId.modelsGateway);
-    await pumpShell(tester);
-
-    expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
-      'app:monitoring',
-      'app:modelsGateway',
-      'app:conversation',
-    ]);
-
-    final start = tester.getCenter(
-      find.byKey(const Key('desktop-dock-entry-app:modelsGateway')),
-    );
-    final gap = tester.getCenter(find.byKey(const Key('desktop-dock-gap-0')));
-    final gesture = await tester.startGesture(
-      start,
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
-    await gesture.moveTo(gap);
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.up();
-    await tester.pump();
-
-    expect(dockModel.entries.map((entry) => entry.storageId).toList(), [
-      'app:modelsGateway',
-      'app:monitoring',
-      'app:conversation',
-    ]);
-  });
-
-  testWidgets('dropping one icon on another creates an openable folder', (
-    tester,
-  ) async {
-    dockModel.debugSeed(const []);
-    dockModel
-      ..openApp(DesktopAppId.monitoring)
-      ..openApp(DesktopAppId.modelsGateway);
-    await pumpShell(tester);
-
-    final start = tester.getCenter(
-      find.byKey(const Key('desktop-dock-entry-app:modelsGateway')),
-    );
-    final target = tester.getCenter(
-      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
-    );
-    final gesture = await tester.startGesture(
-      start,
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
-    await gesture.moveTo(target);
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.up();
-    await tester.pump();
-
-    expect(dockModel.entries, hasLength(2));
-    final folder = dockModel.entries.first as DesktopDockFolderEntry;
-    expect(folder.children, [
-      DesktopAppId.monitoring,
-      DesktopAppId.modelsGateway,
-    ]);
-    expect(
-      (dockModel.entries.last as DesktopDockAppEntry).app,
-      DesktopAppId.conversation,
-    );
-    expect(
-      find.byKey(Key('desktop-dock-entry-${folder.storageId}')),
-      findsOneWidget,
-    );
-
-    // The folder opens to show its contained icons; tapping one launches it.
-    await tester.tap(find.byKey(Key('desktop-dock-entry-${folder.storageId}')));
-    await tester.pump();
-    expect(find.byKey(const Key('desktop-folder-popup')), findsOneWidget);
-    expect(
-      find.byKey(const Key('desktop-folder-child-monitoring')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('desktop-folder-child-modelsGateway')),
-      findsOneWidget,
-    );
-
-    await tester.tap(
-      find.byKey(const Key('desktop-folder-child-modelsGateway')),
-    );
-    await tester.pump();
-    expect(find.byKey(const Key('desktop-folder-popup')), findsNothing);
-    expect(
-      find.byKey(const Key('desktop-floating-card-modelsGateway')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('the capsule bar stretches with the entry count', (tester) async {
-    await pumpShell(tester);
-    // One auto-added 对话 entry: 485 fixed + one entry slot + drop zone.
-    expect(
-      tester.getSize(find.byKey(const Key('desktop-dock-bar'))).width,
-      485 + 52 + 14,
-    );
-
-    for (final app in desktopFloatingApps) {
-      dockModel.openApp(app);
-    }
-    await tester.pump();
-    // Fixed chrome plus visible app slots and trailing drop zone.
-    expect(
-      tester.getSize(find.byKey(const Key('desktop-dock-bar'))).width,
-      485 + (desktopFloatingApps.length + 1) * 52 + 14,
-    );
-  });
-
-  testWidgets('对话 button left of the input activates the conversation app', (
-    tester,
-  ) async {
-    await pumpShell(tester, activeDestination: ClientSection.settings);
-    expect(
-      find.byKey(const Key('desktop-dock-input-conversation')),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.byKey(const Key('desktop-dock-input-conversation')));
-    await tester.pump();
-    expect(harness.selections, [ClientSection.agents]);
-  });
-
-  testWidgets('capsule input is a composer on 对话 and search otherwise', (
+  testWidgets('shell mounts the split workspace with the bottom bar', (
     tester,
   ) async {
     await pumpShell(tester);
-    expect(
-      find.byKey(const Key('desktop-dock-input-composer')),
-      findsOneWidget,
-    );
+
+    expect(find.byKey(const Key('desktop-desktop-shell')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-window-veil')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-main-area')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-left-pane')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-conversation-pane')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-dock-bar')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-dock-pin-settings')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-dock-pin-features')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-dock-composer')), findsOneWidget);
     expect(find.byKey(const Key('fixture-dock-composer')), findsOneWidget);
-    expect(find.byKey(const Key('desktop-dock-input-search')), findsNothing);
+    expect(find.byKey(const Key('desktop-chrome-toggle')), findsOneWidget);
+    expect(
+      find.byKey(const Key('desktop-main-traffic-light-anchor')),
+      findsOneWidget,
+    );
+    // Default: the features grid on the left, the conversation on the right.
+    expect(find.byKey(const Key('desktop-features-grid')), findsOneWidget);
+    expect(
+      find.byKey(const Key('desktop-fake-content-agents')),
+      findsOneWidget,
+    );
+  });
 
+  testWidgets('dock bar spans the full window width', (tester) async {
+    await pumpShell(tester);
+
+    final bar = tester.getRect(find.byKey(const Key('desktop-dock-bar')));
+    expect(bar.left, DesktopDesktopMetrics.windowInset);
+    expect(1280 - bar.right, DesktopDesktopMetrics.windowInset);
+  });
+
+  testWidgets('dock icons stay vertically centered with the active dot '
+      'overlaid', (tester) async {
+    dockModel.openApp(DesktopAppId.monitoring);
+    await pumpShell(tester);
+
+    final strip = tester.getRect(find.byKey(const Key('desktop-dock-bar')));
+    final icon = tester.getRect(
+      find.byKey(const Key('desktop-dock-pin-settings')),
+    );
+    // The 44pt tile is centered in the 64pt strip; the active dot overlays
+    // the tile's bottom edge instead of pushing the tile up.
+    expect(
+      (icon.top + icon.bottom) / 2,
+      moreOrLessEquals(
+        strip.top + DesktopDesktopMetrics.dockBarHeight / 2,
+        epsilon: 0.5,
+      ),
+    );
+    expect(icon.height, DesktopDesktopMetrics.dockIconExtent);
+  });
+
+  testWidgets('settings pin opens settings in the left pane', (tester) async {
+    await pumpShell(tester);
     await tester.tap(find.byKey(const Key('desktop-dock-pin-settings')));
     await tester.pump();
     expect(harness.selections, [ClientSection.settings]);
-  });
 
-  testWidgets('search capsule opens the global search palette', (tester) async {
+    // The host delivers the settings destination; the left pane shows it.
     await pumpShell(tester, activeDestination: ClientSection.settings);
-    expect(find.byKey(const Key('desktop-dock-input-search')), findsOneWidget);
-    expect(find.byKey(const Key('desktop-dock-input-composer')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('desktop-dock-input-search')));
-    await tester.pump();
-    expect(harness.searchOpens, 1);
-  });
-
-  testWidgets('对话 entry appears in the dock while conversation is active', (
-    tester,
-  ) async {
-    await pumpShell(tester);
-    expect(dockModel.isOpen(DesktopAppId.conversation), isTrue);
-    expect(
-      find.byKey(const Key('desktop-dock-entry-app:conversation')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('launchpad 对话 launches the conversation fullscreen app', (
-    tester,
-  ) async {
-    await pumpShell(tester, activeDestination: ClientSection.settings);
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('desktop-launchpad-app-conversation')),
-    );
-    await tester.pump();
-    expect(harness.selections, [ClientSection.agents]);
-  });
-
-  testWidgets('settings opens fullscreen with its own left card and lights', (
-    tester,
-  ) async {
-    await pumpShell(tester, activeDestination: ClientSection.settings);
-
     expect(find.byKey(const Key('desktop-settings-app')), findsOneWidget);
-    expect(find.byKey(const Key('desktop-settings-nav-card')), findsOneWidget);
-    expect(
-      find.byKey(const Key('desktop-settings-traffic-light-row')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('desktop-settings-section-list')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('desktop-settings-main')), findsOneWidget);
     expect(
       find.byKey(const Key('desktop-fake-content-settings')),
       findsOneWidget,
     );
-    // The main-area anchor yields to the settings card anchor.
+    // The conversation stays mounted on the right.
     expect(
-      find.byKey(const Key('desktop-main-traffic-light-anchor')),
-      findsNothing,
+      find.byKey(const Key('desktop-fake-content-agents')),
+      findsOneWidget,
     );
-
-    final card = tester.getTopLeft(
-      find.byKey(const Key('desktop-settings-nav-card')),
-    );
-    final lights = tester.getTopLeft(
-      find.byKey(const Key('desktop-settings-traffic-light-row')),
-    );
-    final main = tester.getTopLeft(
-      find.byKey(const Key('desktop-settings-main')),
-    );
-    expect(lights.dx, lessThan(main.dx));
-    expect(lights.dy - card.dy, lessThan(20));
   });
 
-  testWidgets('settings section rows drive the shared section channel', (
+  testWidgets('features pin shows the grid and launching an app opens it in '
+      'the left pane', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const Key('desktop-launchpad-app-monitoring')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(dockModel.isOpen(DesktopAppId.monitoring), isTrue);
+    expect(harness.selections, [ClientSection.monitoring]);
+
+    await pumpShell(tester, activeDestination: ClientSection.monitoring);
+    expect(
+      find.byKey(const Key('desktop-fake-content-monitoring')),
+      findsOneWidget,
+    );
+    // The dock entry exists and the strip shows it.
+    expect(
+      find.byKey(const Key('desktop-dock-entry-app:monitoring')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('collapse toggle hides the left pane and locks the strip to '
+      'the snapped list width', (tester) async {
+    dockModel.openApp(DesktopAppId.monitoring);
+    await pumpShell(tester);
+
+    final openStrip = tester.getSize(find.byKey(const Key('desktop-dock-bar')));
+    expect(openStrip.width, greaterThan(0));
+
+    await tester.tap(find.byKey(const Key('desktop-chrome-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    // Left pane viewport collapsed to zero width; the content stays mounted.
+    final viewport = tester.getRect(
+      find.byKey(const Key('desktop-left-pane-viewport')),
+    );
+    expect(viewport.width, 0);
+    expect(find.byKey(const Key('desktop-left-pane')), findsOneWidget);
+
+    // The icon strip locks to the snapped 4-slot width, matching the
+    // conversation list extent token grid.
+    final stripBox = tester.getRect(
+      find.descendant(
+        of: find.byKey(const Key('desktop-dock-bar')),
+        matching: find.byKey(const Key('desktop-dock-pin-features')),
+      ),
+    );
+    expect(stripBox.left, DesktopDesktopMetrics.windowInset + 10 + 44 + 8);
+  });
+
+  testWidgets('collapsed icon strip locks to the snapped 4-slot extent', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const Key('desktop-chrome-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    // The composer box starts exactly one region gap after the strip; the
+    // strip's width is therefore the snapped 4-slot extent (220).
+    final snapped = DesktopDesktopMetrics.dockIconSlotsExtent(
+      DesktopDesktopMetrics.dockMinIconSlots,
+    );
+    final composerLeft = tester
+        .getRect(find.byKey(const Key('desktop-dock-composer')))
+        .left;
+    expect(
+      composerLeft -
+          DesktopDesktopMetrics.windowInset -
+          DesktopDesktopMetrics.regionGap,
+      moreOrLessEquals(snapped, epsilon: 0.5),
+    );
+    expect(snapped, 220);
+  });
+
+  testWidgets('split handle drags the left pane width', (tester) async {
+    await pumpShell(tester);
+
+    final before = tester.getRect(find.byKey(const Key('desktop-left-pane')));
+    await tester.drag(
+      find.byKey(const Key('desktop-split-handle')),
+      const Offset(80, 0),
+    );
+    await tester.pump();
+    final after = tester.getRect(find.byKey(const Key('desktop-left-pane')));
+    expect(after.width, greaterThan(before.width));
+  });
+
+  testWidgets('reopening settings after collapse expands the pane again', (
     tester,
   ) async {
     await pumpShell(tester, activeDestination: ClientSection.settings);
+    await tester.tap(find.byKey(const Key('desktop-chrome-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.byKey(const Key('desktop-settings-section-storage')));
+    await tester.tap(find.byKey(const Key('desktop-dock-pin-settings')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
 
-    final tab = harness.scopedState?.readIfDeclared(
-      LayoutStateChannels.settingsSection,
+    final left = tester.getRect(
+      find.byKey(const Key('desktop-left-pane-viewport')),
     );
-    expect(tab, isA<LayoutTabState>());
-    expect((tab! as LayoutTabState).index, 4);
+    expect(left.width, greaterThan(0));
+    expect(find.byKey(const Key('desktop-settings-app')), findsOneWidget);
   });
 
-  testWidgets('mobile pairing opens from the feature catalog', (tester) async {
+  testWidgets('launching an app dismisses the hovered dock tooltip instead '
+      'of leaving it over the opened pane', (tester) async {
+    dockModel.openApp(DesktopAppId.monitoring);
     await pumpShell(tester);
-    await tester.tap(find.byKey(const Key('desktop-dock-pin-features')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('desktop-launchpad-app-mobileRelay')),
-    );
-    await tester.pump();
 
-    expect(
-      find.byKey(const Key('desktop-floating-card-mobileRelay')),
-      findsOneWidget,
+    // Hover the dock entry until its tooltip is showing.
+    final entry = find.byKey(const Key('desktop-dock-entry-app:monitoring'));
+    final hover = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await hover.moveTo(tester.getCenter(entry));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final label = desktopAppLabel(
+      LicoStrings.of(tester.element(entry)),
+      DesktopAppId.monitoring,
     );
     expect(
-      find.byKey(const Key('desktop-fake-content-mobileRelay')),
-      findsOneWidget,
+      find.ancestor(of: find.text(label), matching: find.byType(Tooltip)),
+      findsWidgets,
     );
+
+    await tester.tap(entry);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.ancestor(of: find.text(label), matching: find.byType(Tooltip)),
+      findsNothing,
+    );
+    await hover.removePointer();
   });
 }

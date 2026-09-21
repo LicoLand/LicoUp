@@ -8,28 +8,41 @@ import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_app_catalog.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_desktop_copy.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_destination_content.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_features_grid.dart';
+import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/destinations/desktop_desktop_destination_builders.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_bar.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/dock/desktop_dock_model.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_floating_card.dart';
-import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/overlay/desktop_launchpad.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/shell/desktop_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/desktop_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
 import 'package:licoup/src/frontend/shared/messaging/external_conversation_composer.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_column.dart';
+import 'package:licoup/src/frontend/shared/messaging/messaging_traffic_light_anchor.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 
-/// Desktop shell builders: one huge main area with a floating stretchable
-/// capsule dock below.
+/// Desktop shell: a two-pane workspace on the clear window veil. The left
+/// pane hosts one content at a time (the 功能 grid, 设置, or an app); the
+/// conversation occupies the right pane permanently. The full-width bottom
+/// bar splits into the navigation icon strip (aligned under the left pane)
+/// and the conversation composer (aligned under the conversation). The top
+/// chrome row carries the traffic-light anchor — the only anchor reporter in
+/// this profile — and the left-pane collapse toggle.
+///
+/// Collapsing the left pane runs one morph: the pane slides out to the left,
+/// the conversation list grows in at the snapped icon-grid width, the icon
+/// strip locks to that same width, and the composer box expands upward with
+/// its Assistant / Adaptive Flywheel capsules popping in at its top-left.
 Widget buildDesktopDesktopMediumShell(
   BuildContext context,
   LayoutShellBuildContext data,
@@ -40,11 +53,24 @@ Widget buildDesktopDesktopExpandedShell(
   LayoutShellBuildContext data,
 ) => DesktopDesktopShell(data: data);
 
-/// Which fullscreen-exclusive app the main area currently hosts. Any other
-/// active destination (for example one restored from another profile's
-/// current-view state) is hosted as a plain fullscreen surface until the
-/// user drives the dock.
-enum DesktopFullscreenApp { conversation, settings, hosted }
+/// What the left pane currently hosts.
+sealed class _LeftContent {
+  const _LeftContent();
+}
+
+final class _LeftGrid extends _LeftContent {
+  const _LeftGrid();
+}
+
+final class _LeftSettings extends _LeftContent {
+  const _LeftSettings();
+}
+
+final class _LeftApp extends _LeftContent {
+  const _LeftApp(this.app);
+
+  final DesktopAppId app;
+}
 
 final class DesktopDesktopShell extends StatefulWidget {
   const DesktopDesktopShell({super.key, required this.data, this.dockModel});
@@ -61,13 +87,42 @@ final class DesktopDesktopShell extends StatefulWidget {
 final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   late DesktopDockModel _dock;
   late bool _ownsDock;
-  final List<DesktopAppId> _floatingStack = <DesktopAppId>[];
-  final Map<DesktopAppId, Rect> _floatingRects = <DesktopAppId, Rect>{};
-  BoxConstraints? _lastConstraints;
-  bool _restoredFloating = false;
-  bool _launchpadOpen = false;
+
+  _LeftContent _leftContent = const _LeftGrid();
+  bool _leftCollapsed = false;
+  double _leftExtent = DesktopDesktopMetrics.leftPaneDefaultExtent;
+  bool _leftDragging = false;
+
+  /// Visited left destinations stay mounted in offstage slots, so switching
+  /// never remounts a pane: no initState re-runs and each pane keeps its
+  /// scroll and selection state.
+  final Map<ClientSection, Widget> _destinationSlots =
+      <ClientSection, Widget>{};
+
+  /// The permanent conversation surface: the host-built agents destination
+  /// once visited, otherwise the port-built embed.
+  Widget? _conversationBase;
+
+  /// Most-recently-launched open apps first; feeds the collapsed strip so the
+  /// pinned minimum (设置 / 功能 / last app) always survives the narrowest
+  /// snap. Session-scoped; the dock order itself stays user-owned.
+  List<DesktopAppId> _recency = <DesktopAppId>[];
+
+  bool _historyOpen = false;
   String? _openFolderId;
-  int _cascadeCounter = 0;
+
+  /// While the conversation list edge is being dragged, the icon strip tracks
+  /// it without animation; the debounce restores animated width changes.
+  bool _listDragging = false;
+  Timer? _listDragDebounce;
+
+  /// Conversation-list extent in icon-grid slots. The raw drag position is
+  /// tracked separately so snapping can hold until the next slot boundary.
+  double _listExtent = DesktopDesktopMetrics.dockIconSlotsExtent(
+    DesktopDesktopMetrics.dockMinIconSlots,
+  );
+  double _listExtentRaw = 0;
+  bool _listExtentHydrated = false;
 
   @override
   void initState() {
@@ -76,11 +131,22 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     _ownsDock = widget.dockModel == null;
     _dock.addListener(_handleDockChanged);
     if (_dock.ready) {
-      _restoreFloating();
+      _seedRecency();
     } else {
       unawaited(_dock.load());
     }
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_destinationSynced) {
+      _destinationSynced = true;
+      _syncLeftContentFromDestination(widget.data.activeDestination);
+    }
+  }
+
+  bool _destinationSynced = false;
 
   @override
   void didUpdateWidget(DesktopDesktopShell oldWidget) {
@@ -91,45 +157,67 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
       if (_ownsDock) _dock.dispose();
       _dock = next;
       _ownsDock = false;
-      _restoredFloating = false;
       _dock.addListener(_handleDockChanged);
       if (_dock.ready) {
-        _restoreFloating();
+        _seedRecency();
       } else {
         unawaited(_dock.load());
       }
+    }
+    if (oldWidget.data.activeDestination != widget.data.activeDestination) {
+      _syncLeftContentFromDestination(widget.data.activeDestination);
     }
   }
 
   @override
   void dispose() {
+    _listDragDebounce?.cancel();
     _dock.removeListener(_handleDockChanged);
     if (_ownsDock) _dock.dispose();
     super.dispose();
   }
 
-  DesktopFullscreenApp get _fullscreenApp =>
-      switch (widget.data.activeDestination) {
-        ClientSection.settings => DesktopFullscreenApp.settings,
-        ClientSection.agents => DesktopFullscreenApp.conversation,
-        _ => DesktopFullscreenApp.hosted,
-      };
+  /// External navigation (restores, shortcuts, other features) drives the
+  /// left pane: settings and app sections claim it (expanding the pane when
+  /// collapsed); the conversation never does — it is permanent on the right.
+  void _syncLeftContentFromDestination(ClientSection destination) {
+    switch (destination) {
+      case ClientSection.settings:
+        _leftContent = const _LeftSettings();
+        _leftCollapsed = false;
+      case ClientSection.agents:
+        break;
+      case final section:
+        _leftContent = _LeftApp(_appForSection(section));
+        _leftCollapsed = false;
+    }
+  }
+
+  DesktopAppId _appForSection(ClientSection section) {
+    if (section == ClientSection.models) {
+      final pane = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+        ClientSection.models,
+        LayoutStateChannels.communicationSection,
+      );
+      if (pane is LayoutTabState) return desktopModelsAppForPane(pane.index);
+      return DesktopAppId.modelsGateway;
+    }
+    for (final app in DesktopAppId.values) {
+      if (desktopAppSection(app) == section) return app;
+    }
+    return DesktopAppId.monitoring;
+  }
 
   void _handleDockChanged() {
     if (!mounted) return;
-    if (!_restoredFloating && _dock.ready) {
-      _restoreFloating();
+    if (_recency.isEmpty && _dock.ready) {
+      _seedRecency();
     }
-    final openApps = _dock.openApps;
-    final removed = <DesktopAppId>[];
-    for (final app in _floatingStack) {
-      if (!openApps.contains(app)) removed.add(app);
-    }
-    if (removed.isNotEmpty) {
-      for (final app in removed) {
-        _floatingStack.remove(app);
-        _floatingRects.remove(app);
-      }
+    setState(() {
+      _recency = [
+        for (final app in _recency)
+          if (_dock.isOpen(app)) app,
+      ];
       if (_openFolderId != null &&
           !_dock.entries.any(
             (entry) =>
@@ -137,122 +225,37 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
           )) {
         _openFolderId = null;
       }
-    }
-    setState(() {});
+      final visibleApp = switch (_leftContent) {
+        _LeftApp(app: final app) => app,
+        _ => null,
+      };
+      if (visibleApp != null && !_dock.isOpen(visibleApp)) {
+        _leftContent = const _LeftGrid();
+      }
+    });
   }
 
-  void _restoreFloating() {
-    _restoredFloating = true;
+  void _seedRecency() {
+    // Entries append on launch, so the reverse dock order approximates
+    // recency until the user launches apps in this session.
+    final apps = <DesktopAppId>[];
     for (final entry in _dock.entries) {
       switch (entry) {
         case DesktopDockAppEntry(app: final app):
-          _restoreApp(app);
+          apps.insert(0, app);
         case DesktopDockFolderEntry(children: final children):
-          for (final app in children) {
-            _restoreApp(app);
+          for (final app in children.reversed) {
+            apps.remove(app);
+            apps.insert(0, app);
           }
       }
     }
+    _recency = apps;
   }
 
-  void _restoreApp(DesktopAppId app) {
-    if (!desktopAppIsFloating(app) || _floatingStack.contains(app)) return;
-    _floatingStack.add(app);
-    _floatingRects[app] = _nextCascadeRect();
-  }
-
-  Rect _nextCascadeRect() {
-    final step =
-        (_cascadeCounter++ % 6) * DesktopDesktopMetrics.floatingCardCascadeStep;
-    return Rect.fromLTWH(
-      120 + step,
-      88 + step,
-      DesktopDesktopMetrics.floatingCardWidth,
-      DesktopDesktopMetrics.floatingCardHeight,
-    );
-  }
-
-  Rect _clampedRect(Rect rect, BoxConstraints constraints) {
-    final width = math.min(rect.width, constraints.maxWidth - 48);
-    final height = math.min(
-      rect.height,
-      constraints.maxHeight - DesktopDesktopMetrics.mainAreaBottomInset - 24,
-    );
-    final left = rect.left
-        .clamp(12.0, math.max(12.0, constraints.maxWidth - width - 12))
-        .toDouble();
-    final top = rect.top
-        .clamp(
-          12.0,
-          math.max(
-            12.0,
-            constraints.maxHeight -
-                height -
-                DesktopDesktopMetrics.mainAreaBottomInset,
-          ),
-        )
-        .toDouble();
-    return Rect.fromLTWH(left, top, width, height);
-  }
-
-  void _moveApp(DesktopAppId app, Offset delta) {
-    final rect = _floatingRects[app];
-    if (rect == null) return;
-    // Clamp while accumulating: an unclamped store would let the rect drift
-    // past the render clamp and swallow that much reverse drag before the
-    // card visibly moves again.
-    var next = rect.shift(delta);
-    final constraints = _lastConstraints;
-    if (constraints != null) {
-      next = _clampedRect(next, constraints);
-    }
-    setState(() => _floatingRects[app] = next);
-  }
-
-  void _openSettings() {
-    _dismissOverlays();
-    if (widget.data.activeDestination != ClientSection.settings) {
-      widget.data.onSelectDestination(ClientSection.settings);
-    }
-  }
-
-  void _openConversation() {
-    _dismissOverlays();
-    if (_dock.ready) _dock.openApp(DesktopAppId.conversation);
-    if (widget.data.activeDestination != ClientSection.agents) {
-      widget.data.onSelectDestination(ClientSection.agents);
-    }
-  }
-
-  void _launchApp(DesktopAppId app) {
-    _dismissOverlays();
-    if (app == DesktopAppId.conversation) {
-      _openConversation();
-      return;
-    }
-    _writeModelsPane(app);
-    if (_dock.ready) _dock.openApp(app);
-    setState(() => _raiseInStack(app));
-  }
-
-  void _raiseApp(DesktopAppId app) {
-    _writeModelsPane(app);
-    setState(() => _raiseInStack(app));
-  }
-
-  void _raiseInStack(DesktopAppId app) {
-    _floatingStack.remove(app);
-    _floatingStack.add(app);
-    _floatingRects.putIfAbsent(app, _nextCascadeRect);
-  }
-
-  void _closeApp(DesktopAppId app) {
-    if (app == DesktopAppId.conversation &&
-        _fullscreenApp == DesktopFullscreenApp.conversation) {
-      return;
-    }
-    _dismissOverlays();
-    _dock.closeApp(app);
+  void _noteLaunched(DesktopAppId app) {
+    _recency.remove(app);
+    _recency.insert(0, app);
   }
 
   void _writeModelsPane(DesktopAppId app) {
@@ -265,26 +268,118 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     );
   }
 
-  void _dismissOverlays() {
-    if (!_launchpadOpen && _openFolderId == null) return;
+  void _openSettings() {
+    _dismissOverlays();
+    Tooltip.dismissAllToolTips();
     setState(() {
-      _launchpadOpen = false;
-      _openFolderId = null;
+      _leftContent = const _LeftSettings();
+      _leftCollapsed = false;
+      if (_leftExtent < DesktopDesktopMetrics.leftPaneDefaultExtent) {
+        _leftExtent = DesktopDesktopMetrics.leftPaneDefaultExtent;
+      }
+    });
+    if (widget.data.activeDestination != ClientSection.settings) {
+      widget.data.onSelectDestination(ClientSection.settings);
+    }
+  }
+
+  void _openFeaturesGrid() {
+    _dismissOverlays();
+    Tooltip.dismissAllToolTips();
+    setState(() {
+      _leftContent = const _LeftGrid();
+      _leftCollapsed = false;
     });
   }
 
-  void _toggleAppStore() {
+  void _launchApp(DesktopAppId app) {
+    _dismissOverlays();
+    Tooltip.dismissAllToolTips();
+    _noteLaunched(app);
+    if (_dock.ready) _dock.openApp(app);
+    _writeModelsPane(app);
     setState(() {
-      _launchpadOpen = !_launchpadOpen;
-      _openFolderId = null;
+      _leftContent = _LeftApp(app);
+      _leftCollapsed = false;
     });
+    final section = desktopAppSection(app);
+    if (widget.data.activeDestination != section) {
+      widget.data.onSelectDestination(section);
+    }
+  }
+
+  void _closeApp(DesktopAppId app) {
+    _dismissOverlays();
+    Tooltip.dismissAllToolTips();
+    _dock.closeApp(app);
+  }
+
+  void _dismissOverlays() {
+    if (_openFolderId == null) return;
+    setState(() => _openFolderId = null);
   }
 
   void _openFolder(String folderId) {
-    setState(() {
-      _openFolderId = _openFolderId == folderId ? null : folderId;
-      _launchpadOpen = false;
+    setState(() => _openFolderId = _openFolderId == folderId ? null : folderId);
+  }
+
+  void _toggleLeftPane() {
+    _dismissOverlays();
+    setState(() => _leftCollapsed = !_leftCollapsed);
+  }
+
+  void _toggleHistoryList() {
+    setState(() => _historyOpen = !_historyOpen);
+  }
+
+  /// Snap a raw list extent to the icon-slot grid shared with the icon strip.
+  double _snapListExtent(double raw, double maxExtent) {
+    final slots =
+        ((raw -
+                    DesktopDesktopMetrics.dockBoxPaddingH * 2 +
+                    DesktopDesktopMetrics.dockIconGap) /
+                DesktopDesktopMetrics.dockIconSlot)
+            .round()
+            .clamp(DesktopDesktopMetrics.dockMinIconSlots, 64);
+    return DesktopDesktopMetrics.dockIconSlotsExtent(slots)
+        .clamp(
+          DesktopDesktopMetrics.dockIconSlotsExtent(
+            DesktopDesktopMetrics.dockMinIconSlots,
+          ),
+          maxExtent,
+        )
+        .toDouble();
+  }
+
+  void _resizeConversationList(double delta, double maxExtent) {
+    _listExtentRaw =
+        (_listExtentRaw == 0 ? _listExtent : _listExtentRaw) + delta;
+    final snapped = _snapListExtent(_listExtentRaw, maxExtent);
+    if (snapped == _listExtent) return;
+    _listDragging = true;
+    _listDragDebounce?.cancel();
+    _listDragDebounce = Timer(const Duration(milliseconds: 180), () {
+      if (mounted) setState(() => _listDragging = false);
     });
+    setState(() => _listExtent = snapped);
+    LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
+      ClientSection.agents,
+      LayoutStateChannels.agentsSidebar,
+      LayoutPaneExtentState(_listExtent),
+    );
+  }
+
+  void _hydrateListExtent() {
+    if (_listExtentHydrated) return;
+    _listExtentHydrated = true;
+    final stored = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+      ClientSection.agents,
+      LayoutStateChannels.agentsSidebar,
+    );
+    if (stored is LayoutPaneExtentState) {
+      _listExtent = _snapListExtent(stored.extent, 960);
+      _listExtentRaw = _listExtent;
+    }
   }
 
   @override
@@ -297,17 +392,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     if (data.environment.surface != LayoutRuntimeSurface.desktop) {
       return ColoredBox(color: context.layoutPalette.background);
     }
-    // Keep the 对话 entry present while the conversation fullscreen app is
-    // active, matching macOS Dock running-app semantics.
-    if (_fullscreenApp == DesktopFullscreenApp.conversation &&
-        _dock.ready &&
-        !_dock.isOpen(DesktopAppId.conversation)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_dock.isOpen(DesktopAppId.conversation)) {
-          _dock.openApp(DesktopAppId.conversation);
-        }
-      });
-    }
+    _hydrateListExtent();
 
     final content = Semantics(
       key: const ValueKey<String>('desktop-desktop-shell'),
@@ -324,7 +409,7 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
             child: ConversationMotionHost(
               child: LayoutBuilder(
                 builder: (context, constraints) =>
-                    _buildZStack(context, constraints),
+                    _buildWorkspace(context, constraints),
               ),
             ),
           ),
@@ -343,21 +428,62 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     );
   }
 
-  Widget _buildZStack(BuildContext context, BoxConstraints constraints) {
-    _lastConstraints = constraints;
+  Widget _buildWorkspace(BuildContext context, BoxConstraints constraints) {
+    final colors = context.layoutPalette;
+    final width = constraints.maxWidth;
     final entries = _dock.entries;
-    final maxBarWidth =
-        (constraints.maxWidth - DesktopDesktopMetrics.dockBarSideInset * 2)
-            .clamp(0.0, DesktopDesktopMetrics.dockBarMaxWidth);
-    final barWidth = desktopDockBarWidth(
-      maxWidth: maxBarWidth,
-      entryCount: entries.length,
-    );
-    final fullscreenApp = _fullscreenApp;
-    final composerMode = fullscreenApp == DesktopFullscreenApp.conversation;
-    final inputBottomInset =
-        DesktopDesktopMetrics.dockBarBottomInset +
-        (composerMode ? 3 : (DesktopDesktopMetrics.dockBarHeight - 44) / 2);
+    final activeDestination = widget.data.activeDestination;
+    if (activeDestination != ClientSection.agents) {
+      _destinationSlots[activeDestination] = widget.data.destination;
+    }
+
+    final maxLeft = math
+        .max(
+          0,
+          width -
+              DesktopDesktopMetrics.windowInset * 2 -
+              DesktopDesktopMetrics.regionGap -
+              DesktopDesktopMetrics.conversationMinExtent,
+        )
+        .toDouble();
+    final leftMin = math.min(DesktopDesktopMetrics.leftPaneMinExtent, maxLeft);
+    final baseLeft = _leftExtent.clamp(leftMin, maxLeft).toDouble();
+    // The conversation list shares its width floor with the detail: never
+    // wider than what leaves the detail its minimum extent.
+    final maxListExtent = math
+        .max(
+          DesktopDesktopMetrics.dockIconSlotsExtent(
+            DesktopDesktopMetrics.dockMinIconSlots,
+          ),
+          width -
+              DesktopDesktopMetrics.windowInset * 2 -
+              8 -
+              360 -
+              DesktopDesktopMetrics.regionGap,
+        )
+        .toDouble();
+    final listExtent = math.min(_listExtent, maxListExtent);
+    final historyShift = _historyOpen && !_leftCollapsed ? listExtent : 0.0;
+    final openLeft = (baseLeft - historyShift)
+        .clamp(math.min(240, maxLeft), maxLeft)
+        .toDouble();
+    final leftWidth = _leftCollapsed ? 0.0 : openLeft;
+
+    final visibleApp = switch (_leftContent) {
+      _LeftApp(app: final app) => app,
+      _ => null,
+    };
+    final wantedSection = switch (_leftContent) {
+      _LeftGrid() => null,
+      _LeftSettings() => ClientSection.settings,
+      _LeftApp(app: final app) => desktopAppSection(app),
+    };
+    // A locally requested destination arrives with the next host rebuild;
+    // until its slot exists the grid keeps the pane from flashing empty.
+    final visibleSection =
+        wantedSection != null && _destinationSlots.containsKey(wantedSection)
+        ? wantedSection
+        : null;
 
     final folderEntry = _openFolderId == null
         ? null
@@ -370,49 +496,129 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
       key: const Key('desktop-desktop-z-stack'),
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: ColoredBox(
-            key: const Key('desktop-window-veil'),
-            color: MessagingDesktopMetrics.surfaceGlassTint(
-              isDark: context.layoutPalette.isDark,
-            ),
+        ColoredBox(
+          key: const Key('desktop-window-veil'),
+          color: DesktopDesktopGlass.veil(isDark: colors.isDark),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(
+            top: DesktopDesktopMetrics.windowInset,
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesktopDesktopMetrics.windowInset,
+                  ),
+                  child: Row(
+                    key: const Key('desktop-main-area'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AnimatedContainer(
+                        key: const Key('desktop-left-pane-viewport'),
+                        duration: _leftDragging
+                            ? Duration.zero
+                            : context.motion(LicoMotion.medium),
+                        curve: LicoMotion.emphasized,
+                        width: leftWidth,
+                        // The pane keeps its last open width while shrinking so
+                        // the collapse reads as a slide-out, not a relayout;
+                        // ClipRect hides the overflow. Content stays mounted
+                        // (and keeps its state) at width 0.
+                        child: ClipRect(
+                          child: OverflowBox(
+                            alignment: Alignment.topLeft,
+                            minWidth: 0,
+                            maxWidth: openLeft,
+                            child: SizedBox(
+                              width: openLeft,
+                              child: _buildLeftPane(context, visibleSection),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (leftWidth > 0)
+                        SizedBox(
+                          width: DesktopDesktopMetrics.splitHandleExtent,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeLeftRight,
+                            child: GestureDetector(
+                              key: const Key('desktop-split-handle'),
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragStart: (_) =>
+                                  setState(() => _leftDragging = true),
+                              onHorizontalDragUpdate: (details) {
+                                final next = (_leftExtent + details.delta.dx)
+                                    .clamp(
+                                      DesktopDesktopMetrics.leftPaneMinExtent,
+                                      maxLeft,
+                                    )
+                                    .toDouble();
+                                if (next != _leftExtent) {
+                                  setState(() => _leftExtent = next);
+                                }
+                              },
+                              onHorizontalDragEnd: (_) =>
+                                  setState(() => _leftDragging = false),
+                              onHorizontalDragCancel: () =>
+                                  setState(() => _leftDragging = false),
+                            ),
+                          ),
+                        )
+                      else
+                        const SizedBox(
+                          width: DesktopDesktopMetrics.splitHandleExtent,
+                        ),
+                      Expanded(
+                        child: _buildConversationPane(
+                          context,
+                          listExtent: listExtent,
+                          listVisible: _leftCollapsed || _historyOpen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: DesktopDesktopMetrics.regionGap),
+              _buildBottomBar(
+                context,
+                entries: entries,
+                visibleApp: visibleApp,
+                listExtent: listExtent,
+              ),
+            ],
           ),
         ),
-        Positioned.fill(child: _buildMainArea(context)),
-        if (fullscreenApp != DesktopFullscreenApp.settings)
-          const Positioned(
-            left: 10,
-            top: 8,
-            child: DesktopTrafficLightAnchor(
-              key: Key('desktop-main-traffic-light-anchor'),
-            ),
+        Positioned(
+          left: DesktopDesktopMetrics.windowInset + 8,
+          top:
+              DesktopDesktopMetrics.windowInset +
+              (DesktopDesktopMetrics.chromeRowExtent -
+                      DesktopDesktopMetrics.trafficLightAnchorExtent) /
+                  2,
+          child: Row(
+            key: const Key('desktop-chrome-row'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const DesktopTrafficLightAnchor(
+                key: Key('desktop-main-traffic-light-anchor'),
+                width: 96,
+                height: DesktopDesktopMetrics.trafficLightAnchorExtent,
+              ),
+              const SizedBox(width: 8),
+              _DesktopCollapseToggle(
+                key: const Key('desktop-chrome-toggle'),
+                collapsed: _leftCollapsed,
+                onTap: _toggleLeftPane,
+              ),
+            ],
           ),
-        for (final app in _floatingStack)
-          DesktopFloatingCard(
-            key: ValueKey<String>('desktop-floating-card-${app.name}'),
-            app: app,
-            rect: _clampedRect(_floatingRects[app]!, constraints),
-            onClose: () => _closeApp(app),
-            onRaise: () => _raiseApp(app),
-            onMove: (delta) => _moveApp(app, delta),
-            child: _buildFloatingContent(context, app),
-          ),
-        if (_launchpadOpen)
-          Positioned.fill(
-            child: DesktopLaunchpad(
-              onLaunchApp: _launchApp,
-              onDismiss: () => setState(() => _launchpadOpen = false),
-            ),
-          ),
+        ),
         if (folderEntry != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom:
-                DesktopDesktopMetrics.dockBarBottomInset +
-                DesktopDesktopMetrics.dockBarHeight +
-                10,
+          Positioned.fill(
             child: DesktopDockFolderView(
               folderId: folderEntry.id,
               children: folderEntry.children,
@@ -420,169 +626,229 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
               onDismiss: () => setState(() => _openFolderId = null),
             ),
           ),
-        Positioned.fill(
-          child: DesktopDockBar(
-            entries: entries,
-            openApps: _dock.openApps,
-            activeApp: composerMode ? DesktopAppId.conversation : null,
-            settingsActive: fullscreenApp == DesktopFullscreenApp.settings,
-            appStoreOpen: _launchpadOpen,
-            onOpenSettings: _openSettings,
-            onToggleAppStore: _toggleAppStore,
-            onLaunchApp: _launchApp,
-            onCloseApp: _closeApp,
-            onMoveEntry: (storageId, index) =>
-                _dock.moveEntry(storageId, index),
-            onMergeEntries: (dragged, target) =>
-                _dock.mergeEntries(dragged, target),
-            onOpenFolder: _openFolder,
-            onExtractFromFolder: (folderId, app, index) =>
-                _dock.extractFromFolder(folderId, app, insertIndex: index),
-          ),
-        ),
-        Positioned(
-          right:
-              (constraints.maxWidth - barWidth) / 2 +
-              DesktopDesktopMetrics.dockIconGap,
-          bottom: inputBottomInset,
-          child: KeyedSubtree(
-            key: const Key('desktop-dock-input'),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _DesktopDockConversationButton(
-                  active: composerMode,
-                  onTap: _openConversation,
-                ),
-                const SizedBox(width: DesktopDesktopMetrics.dockIconGap),
-                SizedBox(
-                  width: DesktopDesktopMetrics.dockInputWidth,
-                  child: _buildInput(context, composerMode: composerMode),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
 
-  Widget _buildMainArea(BuildContext context) {
-    final data = widget.data;
+  Widget _buildLeftPane(BuildContext context, ClientSection? visibleSection) {
     final colors = context.layoutPalette;
-    final fullscreenApp = _fullscreenApp;
-    final tint = switch (fullscreenApp) {
-      DesktopFullscreenApp.conversation => Colors.transparent,
-      DesktopFullscreenApp.settings => colors.surfaceLow.withValues(
-        alpha: colors.isDark ? 0.20 : 0.28,
-      ),
-      DesktopFullscreenApp.hosted => colors.surfaceLow.withValues(
-        alpha: colors.isDark ? 0.16 : 0.22,
-      ),
-    };
-    Widget content = KeyedSubtree(
-      key: const Key('desktop-main-area-content'),
-      child: data.destination,
-    );
-    if (fullscreenApp == DesktopFullscreenApp.conversation) {
-      content = LayoutExternalComposerScope(hosted: true, child: content);
-    }
-    return ColoredBox(
-      key: const Key('desktop-main-area'),
-      color: tint,
-      child: Padding(
-        padding: const EdgeInsets.only(
-          bottom: DesktopDesktopMetrics.mainAreaBottomInset,
+    return Container(
+      key: const Key('desktop-left-pane'),
+      decoration: continuousHairlineDecoration(
+        color: DesktopDesktopGlass.cardFill(isDark: colors.isDark),
+        borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+        stroke: DesktopDesktopGlass.cardBorder(
+          colors.line,
+          isDark: colors.isDark,
         ),
-        child: content,
+        strokeWidth: 0.5,
+        shadows: DesktopDesktopGlass.cardShadows(isDark: colors.isDark),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+        child: Column(
+          children: [
+            const SizedBox(height: DesktopDesktopMetrics.chromeRowExtent),
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Offstage(
+                    offstage: visibleSection != null,
+                    child: TickerMode(
+                      enabled: visibleSection == null,
+                      child: DesktopFeaturesGrid(
+                        key: const Key('desktop-features-grid'),
+                        onLaunchApp: _launchApp,
+                      ),
+                    ),
+                  ),
+                  for (final section in _destinationSlots.keys)
+                    Offstage(
+                      offstage: visibleSection != section,
+                      child: TickerMode(
+                        enabled: visibleSection == section,
+                        child: KeyedSubtree(
+                          key: ValueKey<String>(
+                            'desktop-left-slot-${section.name}',
+                          ),
+                          child: _destinationSlots[section]!,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildFloatingContent(BuildContext context, DesktopAppId app) {
-    final port = DesktopDestinationContentRegistry.contentPort;
-    final section = desktopAppSection(app);
-    final fallback = ColoredBox(
-      key: ValueKey<String>('desktop-floating-missing-${app.name}'),
-      color: context.layoutPalette.surface,
-    );
-    if (port == null) return fallback;
-    Widget content = Builder(
-      builder: (innerContext) => port.buildDestination(innerContext, section),
-    );
-    if (section == ClientSection.models) {
-      // Pin the models pane per card: the shared ModelsPanel resolves its
-      // pane from the models destination namespace, and two floating models
-      // cards would otherwise re-target each other through the one retained
-      // pane channel.
-      final scope = LayoutScope.maybeOf(context);
-      final paneIndex = desktopAppModelsPane(app);
-      if (scope != null && paneIndex != null) {
-        content = LayoutScope(
-          profileId: scope.profileId,
-          environment: scope.environment,
-          restorationNamespace: scope.restorationNamespace,
-          tokens: scope.tokens,
-          state: LayoutScopedState(
-            profileId: scope.state.profileId,
-            surface: scope.state.surface,
-            destination: ClientSection.models,
-            store: _PinnedModelsPaneStatePort(scope.state.statePort, paneIndex),
-          ),
-          child: content,
-        );
-      }
+  Widget _buildConversationPane(
+    BuildContext context, {
+    required double listExtent,
+    required bool listVisible,
+  }) {
+    final hostScope = LayoutScope.maybeOf(context);
+    Widget base = _resolveConversationBase(context);
+    if (hostScope != null) {
+      // Re-scope the embedded workspace to the agents namespace so its layout
+      // channels resolve the same no matter which destination is active.
+      base = LayoutScope(
+        profileId: hostScope.profileId,
+        environment: hostScope.environment,
+        restorationNamespace: hostScope.restorationNamespace,
+        tokens: hostScope.tokens,
+        state: LayoutScopedState(
+          profileId: hostScope.state.profileId,
+          surface: hostScope.state.surface,
+          destination: ClientSection.agents,
+          store: hostScope.state.statePort,
+        ),
+        child: base,
+      );
     }
-    return KeyedSubtree(
-      key: ValueKey<String>('desktop-floating-content-${app.name}'),
-      child: content,
+    return ClipRRect(
+      key: const Key('desktop-conversation-pane'),
+      borderRadius: BorderRadius.circular(DesktopDesktopMetrics.paneRadius),
+      child: LayoutAgentsDirectiveScope(
+        directive: LayoutAgentsDirective(
+          sidebarCollapsed: !listVisible,
+          selectLocalGroupWhenIdle: true,
+          historyListOpen: _historyOpen,
+          onToggleHistoryList: _leftCollapsed ? null : _toggleHistoryList,
+        ),
+        child: LayoutExternalComposerScope(
+          hosted: true,
+          hostedCapsules: _leftCollapsed,
+          child: MessagingTrafficLightSuppression(
+            reservedExtent: DesktopDesktopMetrics.chromeLeadingExtent,
+            child: MessagingSidebarGeometryScope(
+              width: listExtent,
+              onResize: _resizeConversationList,
+              child: base,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildInput(BuildContext context, {required bool composerMode}) {
-    if (composerMode) {
-      final features = LayoutChromeFeaturesScope.maybeOf(context);
-      if (features != null) {
-        return KeyedSubtree(
-          key: const Key('desktop-dock-input-composer'),
-          child: features.buildDockComposer(context),
-        );
-      }
+  Widget _resolveConversationBase(BuildContext context) {
+    if (widget.data.activeDestination == ClientSection.agents) {
+      _conversationBase = widget.data.destination;
     }
-    return _DesktopSearchCapsule(
-      onTap: () => unawaited(widget.data.chrome.openGlobalSearch(context)),
+    final cached = _conversationBase;
+    if (cached != null) return cached;
+    final port = DesktopDestinationContentRegistry.contentPort;
+    if (port == null) {
+      return ColoredBox(
+        key: const Key('desktop-conversation-unready'),
+        color: Colors.transparent,
+      );
+    }
+    final hostScope = LayoutScope.maybeOf(context);
+    if (hostScope == null) {
+      return const ColoredBox(
+        key: Key('desktop-conversation-unready'),
+        color: Colors.transparent,
+      );
+    }
+    _conversationBase = buildDesktopAgentsDestination(
+      context,
+      LayoutDestinationBuildContext(
+        environment: widget.data.environment,
+        destination: ClientSection.agents,
+        content: port,
+        state: hostScope.state,
+      ),
+    );
+    return _conversationBase!;
+  }
+
+  Widget _buildBottomBar(
+    BuildContext context, {
+    required List<DesktopDockEntry> entries,
+    required DesktopAppId? visibleApp,
+    required double listExtent,
+  }) {
+    final features = LayoutChromeFeaturesScope.maybeOf(context);
+    final composer = features == null
+        ? const SizedBox.shrink()
+        : KeyedSubtree(
+            key: const Key('desktop-dock-composer'),
+            child: features.buildDockComposer(
+              context,
+              expanded: _leftCollapsed,
+            ),
+          );
+    final bar = DesktopDockBar(
+      entries: entries,
+      openApps: _dock.openApps,
+      selectedApp: _leftCollapsed ? null : visibleApp,
+      settingsActive: !_leftCollapsed && _leftContent is _LeftSettings,
+      featuresActive: !_leftCollapsed && _leftContent is _LeftGrid,
+      collapsed: _leftCollapsed,
+      collapsedStripExtent: listExtent,
+      stripWidthDuration: _listDragging
+          ? Duration.zero
+          : context.motion(LicoMotion.medium),
+      recencyApps: _recency,
+      composer: composer,
+      onOpenSettings: _openSettings,
+      onOpenFeatures: _openFeaturesGrid,
+      onLaunchApp: _launchApp,
+      onCloseApp: _closeApp,
+      onMoveEntry: (storageId, index) => _dock.moveEntry(storageId, index),
+      onMergeEntries: (dragged, target) => _dock.mergeEntries(dragged, target),
+      onOpenFolder: _openFolder,
+      onExtractFromFolder: (folderId, app, index) =>
+          _dock.extractFromFolder(folderId, app, insertIndex: index),
+    );
+    final barDuration = context.motion(LicoMotion.medium);
+    // A zero-duration AnimatedSize re-dirties itself synchronously when its
+    // child's height changes mid-layout (reduce motion); instant sizing needs
+    // no wrapper at all.
+    if (barDuration == Duration.zero) return bar;
+    return AnimatedSize(
+      duration: barDuration,
+      curve: LicoMotion.emphasized,
+      alignment: Alignment.bottomCenter,
+      child: bar,
     );
   }
 }
 
-/// The 对话 button pinned at the left of the input slot: activates the
-/// conversation fullscreen app (and with it the composer input state).
-final class _DesktopDockConversationButton extends StatefulWidget {
-  const _DesktopDockConversationButton({
-    required this.active,
+/// The chrome-row toggle that collapses or expands the left pane.
+final class _DesktopCollapseToggle extends StatefulWidget {
+  const _DesktopCollapseToggle({
+    super.key,
+    required this.collapsed,
     required this.onTap,
   });
 
-  final bool active;
+  final bool collapsed;
   final VoidCallback onTap;
 
   @override
-  State<_DesktopDockConversationButton> createState() =>
-      _DesktopDockConversationButtonState();
+  State<_DesktopCollapseToggle> createState() => _DesktopCollapseToggleState();
 }
 
-final class _DesktopDockConversationButtonState
-    extends State<_DesktopDockConversationButton> {
+final class _DesktopCollapseToggleState extends State<_DesktopCollapseToggle> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
-    final label = strings.conversationListNav;
-    final highlighted = widget.active || _hovered;
+    final label = widget.collapsed
+        ? DesktopDesktopCopy.expandLeftPaneTooltip(strings)
+        : DesktopDesktopCopy.collapseLeftPaneTooltip(strings);
+    final duration = context.motion(LicoMotion.micro);
     return Semantics(
       button: true,
-      selected: widget.active,
+      toggled: widget.collapsed,
       label: label,
       child: Tooltip(
         message: label,
@@ -595,155 +861,27 @@ final class _DesktopDockConversationButtonState
             behavior: HitTestBehavior.opaque,
             onTap: widget.onTap,
             child: AnimatedContainer(
-              key: const Key('desktop-dock-input-conversation'),
-              duration: context.motion(LicoMotion.micro),
-              width: DesktopDesktopMetrics.dockConversationButtonExtent,
-              height: 44,
-              decoration: continuousHairlineDecoration(
+              duration: duration,
+              curve: LicoMotion.standard,
+              width: DesktopDesktopMetrics.collapseToggleExtent,
+              height: DesktopDesktopMetrics.collapseToggleExtent,
+              decoration: BoxDecoration(
                 color: _hovered
-                    ? DesktopDesktopOnBlack.hoverOverlay
-                    : desktopDesktopSurfaceBlack,
-                borderRadius: BorderRadius.circular(
-                  DesktopDesktopMetrics.dockInputRadius,
-                ),
-                stroke: widget.active
-                    ? DesktopDesktopOnBlack.textSecondary
-                    : DesktopDesktopOnBlack.line,
-                strokeWidth: 0.5,
+                    ? DesktopDesktopGlass.hoverFill(isDark: colors.isDark)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 17,
-                color: highlighted
-                    ? DesktopDesktopOnBlack.text
-                    : DesktopDesktopOnBlack.textSecondary,
+                widget.collapsed
+                    ? Icons.keyboard_double_arrow_right_rounded
+                    : Icons.keyboard_double_arrow_left_rounded,
+                size: 18,
+                color: _hovered ? colors.text : colors.textSecondary,
               ),
             ),
           ),
         ),
       ),
     );
-  }
-}
-
-/// The search/command visual state of the contextual input: a quiet rounded
-/// rectangle on the same pure black surface as the bar that opens the global
-/// search palette.
-final class _DesktopSearchCapsule extends StatefulWidget {
-  const _DesktopSearchCapsule({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  State<_DesktopSearchCapsule> createState() => _DesktopSearchCapsuleState();
-}
-
-final class _DesktopSearchCapsuleState extends State<_DesktopSearchCapsule> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    final hint = DesktopDesktopCopy.dockSearchHint(strings);
-    return Semantics(
-      button: true,
-      label: hint,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            key: const Key('desktop-dock-input-search'),
-            duration: context.motion(LicoMotion.micro),
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: continuousHairlineDecoration(
-              color: desktopDesktopSurfaceBlack,
-              borderRadius: BorderRadius.circular(
-                DesktopDesktopMetrics.dockInputRadius,
-              ),
-              stroke: _hovered
-                  ? DesktopDesktopOnBlack.textMuted
-                  : DesktopDesktopOnBlack.line,
-              strokeWidth: 0.5,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.search_rounded,
-                  size: 17,
-                  color: _hovered
-                      ? DesktopDesktopOnBlack.text
-                      : DesktopDesktopOnBlack.textMuted,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    hint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: DesktopDesktopOnBlack.textMuted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Pins the retained models pane channel to one app's pane so two floating
-/// models cards never re-target each other through the single shared channel.
-final class _PinnedModelsPaneStatePort implements LayoutStatePort {
-  const _PinnedModelsPaneStatePort(this._inner, this._paneIndex);
-
-  final LayoutStatePort _inner;
-  final int _paneIndex;
-
-  bool _isPaneNamespace(LayoutStateNamespace namespace) =>
-      namespace.destination == ClientSection.models &&
-      namespace.surfaceId == LayoutStateChannels.communicationSection.id;
-
-  @override
-  Object get catalogIdentity => _inner.catalogIdentity;
-
-  @override
-  Stream<void> get changes => _inner.changes;
-
-  @override
-  bool declares(LayoutStateNamespace namespace) => _inner.declares(namespace);
-
-  @override
-  LayoutPresentationStateValue? read(LayoutStateNamespace namespace) =>
-      _isPaneNamespace(namespace)
-      ? LayoutTabState(_paneIndex)
-      : _inner.read(namespace);
-
-  @override
-  void write(
-    LayoutStateNamespace namespace,
-    LayoutPresentationStateValue value,
-  ) {
-    if (_isPaneNamespace(namespace)) {
-      return;
-    }
-    _inner.write(namespace, value);
-  }
-
-  @override
-  void remove(LayoutStateNamespace namespace) {
-    if (_isPaneNamespace(namespace)) {
-      return;
-    }
-    _inner.remove(namespace);
   }
 }

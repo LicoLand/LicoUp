@@ -112,7 +112,7 @@ final class DesktopDesktopFixtureChromeFeatures
   ValueNotifier<bool>? get auxChromePanelOpen => null;
 
   @override
-  Widget buildDockComposer(BuildContext context) {
+  Widget buildDockComposer(BuildContext context, {bool expanded = false}) {
     harness.dockComposerBuilds += 1;
     return const SizedBox(
       key: Key('fixture-dock-composer'),

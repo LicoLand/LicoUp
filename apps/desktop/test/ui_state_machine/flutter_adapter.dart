@@ -64,6 +64,11 @@ final class FlutterInteractionAdapter {
         action == 'conversation.scroll-down') {
       return visible(key('canonical-group-conversation-pane'));
     }
+    if (desktop && action.startsWith('settings.')) {
+      // The Desktop settings surface has no index rail: section navigation is
+      // a scroll inside the continuous content page.
+      return visible(key('settings-content-scroll'));
+    }
     if (action == 'list.refresh') return visible(listScroll);
     return visible(target(action));
   }
@@ -80,6 +85,7 @@ final class FlutterInteractionAdapter {
       'group.menu': 'canonical-group-menu-button',
       'group.actions': 'canonical-group-assistant-actions-trigger',
       'group.clear': 'canonical-group-action-archive',
+      'pane.toggle': 'desktop-chrome-toggle',
     };
     if (action == 'search.clear') {
       return find.descendant(
@@ -100,10 +106,7 @@ final class FlutterInteractionAdapter {
       );
     }
     if (action.startsWith('settings.')) {
-      final prefix = desktop
-          ? 'desktop-settings-section-'
-          : 'messaging-sidebar-settings-';
-      return key('$prefix${action.substring(9)}');
+      return key('messaging-sidebar-settings-${action.substring(9)}');
     }
     if (action.startsWith('feature.')) {
       final feature = action.substring(8);
@@ -112,9 +115,6 @@ final class FlutterInteractionAdapter {
             ? 'desktop-launchpad-app-${apps[feature]}'
             : 'messaging-sidebar-list-${featureRows[feature]}',
       );
-    }
-    if (action.startsWith('window.close.')) {
-      return key('desktop-floating-card-close-${apps[action.substring(13)]}');
     }
     if (action.startsWith('dock.')) {
       return key('desktop-dock-entry-app:${apps[action.substring(5)]}');
@@ -126,11 +126,7 @@ final class FlutterInteractionAdapter {
         return key('$profile-mobile-$size-navigation-${sections[name]}');
       }
       if (desktop) {
-        return key(
-          name == 'chats'
-              ? 'desktop-dock-input-conversation'
-              : 'desktop-dock-pin-$name',
-        );
+        return key('desktop-dock-pin-$name');
       }
       return key(
         'messaging-sidebar-nav-${name == 'chats' ? 'conversations' : name}',
@@ -301,6 +297,75 @@ final class FlutterInteractionAdapter {
       await tester.pumpAndSettle();
       return;
     }
+    if (desktop && action.startsWith('settings.')) {
+      // Scroll the continuous settings page until the section content is on
+      // screen. The page is a lazy ListView, so an off-screen heading may not
+      // exist in the tree: the drag direction comes from the section order,
+      // not from a possibly-unrendered target position.
+      final section = action.substring(9);
+      final heading = headings[section]!;
+      final sectionIds = headings.keys.toList(growable: false);
+      final targetIndex = sectionIds.indexOf(section);
+      final content = key('settings-content-scroll');
+      final targetFinder = find.descendant(
+        of: content,
+        matching: find.text(heading),
+      );
+      int firstVisibleSection() {
+        for (var index = 0; index < sectionIds.length; index++) {
+          if (visible(
+            find.descendant(
+              of: content,
+              matching: find.text(headings[sectionIds[index]]!),
+            ),
+          )) {
+            return index;
+          }
+        }
+        return -1;
+      }
+
+      // Direction stabilizes on the last visible section heading; when none
+      // is on screen the previous direction holds.
+      var upward = targetIndex == 0;
+      final scrollableFinder = find.descendant(
+        of: content,
+        matching: find.byType(Scrollable),
+      );
+      double? offsetOf() => scrollableFinder.evaluate().isEmpty
+          ? null
+          : tester
+                .state<ScrollableState>(scrollableFinder.first)
+                .position
+                .pixels;
+      for (var attempt = 0; attempt < 60; attempt++) {
+        if (visible(targetFinder)) return;
+        final anchor = firstVisibleSection();
+        if (anchor >= 0) upward = targetIndex < anchor;
+        await tester.timedDrag(
+          content,
+          Offset(0, upward ? 220 : -220),
+          const Duration(milliseconds: 300),
+        );
+        await tester.pump(const Duration(milliseconds: 60));
+        // Halt any residual fling so the next drag starts from rest;
+        // otherwise momentum accumulates across drags and the scroll
+        // overshoots the target section by viewports every attempt.
+        if (offsetOf() case final current?) {
+          tester
+              .state<ScrollableState>(scrollableFinder.first)
+              .position
+              .jumpTo(current);
+        }
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      expect(
+        visible(targetFinder),
+        isTrue,
+        reason: 'Settings section scrolled into view: $heading',
+      );
+      return;
+    }
     final finder = target(action);
     expect(
       finder.hitTestable(),
@@ -392,17 +457,28 @@ final class FlutterInteractionAdapter {
     }
     if (machine.id.startsWith('desktop.window.')) {
       final feature = machine.id.substring('desktop.window.'.length);
-      final card = key('desktop-floating-card-${apps[feature]}');
-      final menu = key('desktop-launchpad');
+      // The left pane keeps visited destinations mounted offstage, so assert
+      // by hit-testable visibility, not by tree presence. The open app's dock
+      // entry must be visible too: the strip's width animation clips a fresh
+      // entry for a few frames after launch.
       return switch (state) {
-        'chats' =>
-          card.evaluate().isEmpty &&
-              menu.evaluate().isEmpty &&
-              pageVisible('chats'),
-        'menu' => visible(menu) && card.evaluate().isEmpty,
-        'window' =>
-          menu.evaluate().isEmpty && visible(card) && featureVisible(feature),
-        'window-menu' => visible(menu) && card.evaluate().isNotEmpty,
+        'features' => visible(key('desktop-launchpad')),
+        'app' =>
+          featureVisible(feature) &&
+              visible(key('desktop-dock-entry-app:${apps[feature]}')),
+        _ => false,
+      };
+    }
+    if (machine.id == 'desktop.pane') {
+      final viewportWidth = tester
+          .getSize(key('desktop-left-pane-viewport'))
+          .width;
+      final listVisible =
+          visible(key('messaging-conversation-list')) ||
+          visible(key('messaging-contact-list'));
+      return switch (state) {
+        'open' => viewportWidth > 0 && !listVisible,
+        'collapsed' => viewportWidth == 0 && listVisible,
         _ => false,
       };
     }
@@ -432,7 +508,10 @@ final class FlutterInteractionAdapter {
       if (page == 'settings') return visible(key('settings-content-scroll'));
       if (page == 'chats') {
         return visible(key('agent-conversation-composer-field')) ||
-            visible(key('desktop-dock-input-composer'));
+            (desktop && visible(key('desktop-dock-composer')));
+      }
+      if (desktop && page == 'features') {
+        return visible(key('desktop-launchpad'));
       }
       return featureVisible(page);
     }

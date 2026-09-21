@@ -13,7 +13,7 @@ const LayoutComponentKit desktopDesktopComponentKit =
     DesktopDesktopComponentKit();
 
 /// Desktop-owned control recipes: generous radii and glass-tinted tonal fills
-/// matching the floating capsule dock and Launchpad glass surfaces.
+/// matching the split workspace's glass panes and bottom bar.
 final class DesktopDesktopComponentKit implements LayoutComponentKit {
   const DesktopDesktopComponentKit();
 
