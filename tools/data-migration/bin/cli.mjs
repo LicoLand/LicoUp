@@ -7,6 +7,7 @@ import { plan } from "../lib/plan.mjs";
 import { convert } from "../lib/convert.mjs";
 import { resume } from "../lib/resume.mjs";
 import { buildPackageArtifact } from "../lib/package-manifest.mjs";
+import { publicError, redactPublicText, redactPublicValue } from "../lib/public-output.mjs";
 
 function readOptionValue(argv, i, flag) {
   const value = argv[i + 1];
@@ -23,8 +24,8 @@ LicoUp Data Migration CLI (licoup-migrate)
 Usage:
   licoup-migrate inspect [--data-root <path>] [--format json|text]
   licoup-migrate plan    [--data-root <path>] [--target <version|profile>] [--format json|text]
-  licoup-migrate convert [--data-root <path>] [--target <version|profile>] [--dry-run] [--format json|text]
-  licoup-migrate resume  [--data-root <path>] [--format json|text]
+  licoup-migrate convert [--data-root <path>] [--target <version|profile>] [--writers-stopped] [--dry-run] [--format json|text]
+  licoup-migrate resume  [--data-root <path>] [--writers-stopped] [--format json|text]
   licoup-migrate package [--out-dir <path>]
   licoup-migrate --help | -h
   licoup-migrate --version | -v
@@ -39,8 +40,15 @@ Commands:
 Options:
   --data-root <path>     Path to the client data root (defaults to LICO_DATA_ROOT or current directory).
   --target <profile>     Target version or format profile (e.g. v0.1.0, v0.2.0, v0.3.0, latest).
+  --writers-stopped      Operator's statement that every client and older writer is stopped.
+                         Required for convert and resume; plan/inspect/--dry-run are read-only.
   --dry-run              Plan and validate without mutating stores on disk.
   --format <json|text>   Output formatting (default: text).
+
+The tool's lock excludes other runs of this tool; it cannot constrain a program that
+never heard of it. A real conversion therefore needs --writers-stopped, and domains
+whose move belongs to the client's own owner (canonical-conversation, typed strategy
+store phases) are reported as pending native admission for the client's startup.
 `);
 }
 
@@ -50,6 +58,7 @@ function parseArgs(argv) {
     dataRoot: process.env.LICO_DATA_ROOT || null,
     target: "latest",
     dryRun: false,
+    writersStopped: false,
     format: "text",
     outDir: null,
   };
@@ -63,6 +72,8 @@ function parseArgs(argv) {
       args.version = true;
     } else if (arg === "--dry-run") {
       args.dryRun = true;
+    } else if (arg === "--writers-stopped") {
+      args.writersStopped = true;
     } else if (arg === "--data-root") {
       args.dataRoot = readOptionValue(argv, i, arg); i++;
     } else if (arg === "--target") {
@@ -129,7 +140,8 @@ function formatTextPlan(result) {
   } else {
     lines.push(`Planned Steps (${result.steps.length}):`);
     for (const s of result.steps) {
-      lines.push(`  [${s.direction.toUpperCase()}] ${s.domainId}: v${s.fromVersion} -> v${s.toVersion} (${s.stepId})`);
+      const owner = s.deferredTo ? ` [owner: ${s.deferredTo}]` : "";
+      lines.push(`  [${s.direction.toUpperCase()}] ${s.domainId}: v${s.fromVersion} -> v${s.toVersion} (${s.stepId})${owner}`);
     }
   }
 
@@ -172,6 +184,14 @@ function formatTextConvert(result) {
     }
   }
 
+  if (result.pendingNativeAdmissionDomains && result.pendingNativeAdmissionDomains.length > 0) {
+    lines.push("");
+    lines.push(`Pending Native Admission (${result.pendingNativeAdmissionDomains.length}):`);
+    for (const d of result.pendingNativeAdmissionDomains) {
+      lines.push(`  * ${d}: the client's own owner completes this at startup; store left untouched`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -181,7 +201,8 @@ function main() {
   try {
     args = parseArgs(argv);
   } catch (err) {
-    console.error(`Error: ${err.message}. Run 'licoup-migrate --help' for usage.`);
+    // The bad option token may be user input; the public boundary keeps it out.
+    console.error(`Error: ${redactPublicText(err.message, process.cwd())}. Run 'licoup-migrate --help' for usage.`);
     process.exit(1);
   }
 
@@ -196,13 +217,20 @@ function main() {
     process.exit(0);
   }
 
+  // Every data command runs against the real root; only what is emitted is
+  // projected (stable refs and symbolic codes instead of machine paths).
+  let activeRoot = null;
+  const emitJson = (value) =>
+    console.log(JSON.stringify(redactPublicValue(value, activeRoot), null, 2));
+
   try {
     switch (args.command) {
       case "inspect": {
         const root = resolveDataRoot(args.dataRoot);
+        activeRoot = root;
         const result = inspect(root);
         if (args.format === "json") {
-          console.log(JSON.stringify(result, null, 2));
+          emitJson(result);
         } else {
           console.log(formatTextInspect(result));
         }
@@ -210,9 +238,10 @@ function main() {
       }
       case "plan": {
         const root = resolveDataRoot(args.dataRoot);
+        activeRoot = root;
         const result = plan(root, args.target);
         if (args.format === "json") {
-          console.log(JSON.stringify(result, null, 2));
+          emitJson(result);
         } else {
           console.log(formatTextPlan(result));
         }
@@ -220,9 +249,13 @@ function main() {
       }
       case "convert": {
         const root = resolveDataRoot(args.dataRoot);
-        const result = convert(root, args.target, { dryRun: args.dryRun });
+        activeRoot = root;
+        const result = convert(root, args.target, {
+          dryRun: args.dryRun,
+          writersStopped: args.writersStopped,
+        });
         if (args.format === "json") {
-          console.log(JSON.stringify(result, null, 2));
+          emitJson(result);
         } else {
           console.log(formatTextConvert(result));
         }
@@ -230,9 +263,10 @@ function main() {
       }
       case "resume": {
         const root = resolveDataRoot(args.dataRoot);
-        const result = resume(root);
+        activeRoot = root;
+        const result = resume(root, { writersStopped: args.writersStopped });
         if (args.format === "json") {
-          console.log(JSON.stringify(result, null, 2));
+          emitJson(result);
         } else {
           console.log(`Resume result: ${result.status}`);
           if (result.resumedSteps) {
@@ -245,6 +279,11 @@ function main() {
               console.log(`  * ${d}: pending authorization (platform credential custody bridge)`);
             }
           }
+          if (result.pendingNativeAdmissionDomains) {
+            for (const d of result.pendingNativeAdmissionDomains) {
+              console.log(`  * ${d}: pending native admission (the client's own owner completes this)`);
+            }
+          }
         }
         break;
       }
@@ -253,8 +292,10 @@ function main() {
         if (args.format === "json") {
           console.log(JSON.stringify(result.manifest, null, 2));
         } else {
-          console.log(`Package built: ${result.tarballPath}`);
-          console.log(`Manifest:     ${result.manifestPath}`);
+          // Relative artifact refs: the operator chose the out dir, and a
+          // published report does not describe this machine.
+          console.log(`Package built: ${path.basename(result.tarballPath)}`);
+          console.log(`Manifest:     ${path.basename(result.manifestPath)}`);
         }
         break;
       }
@@ -263,10 +304,14 @@ function main() {
         process.exit(1);
     }
   } catch (err) {
+    // A failure is published as a symbolic code plus a redacted message: the
+    // domain and step ids the tool already knows, never a stack, a machine
+    // path, or a value echoed out of the input.
+    const failure = publicError(err, activeRoot);
     if (args.format === "json") {
-      console.error(JSON.stringify({ error: err.message, stack: err.stack }));
+      console.error(JSON.stringify(failure, null, 2));
     } else {
-      console.error(`Error: ${err.message}`);
+      console.error(`Error: ${failure.message}`);
     }
     process.exit(1);
   }

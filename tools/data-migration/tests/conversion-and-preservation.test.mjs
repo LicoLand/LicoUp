@@ -47,7 +47,7 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     writeJsonAtomicSync(settingsFile, { notifications: true });
 
     // 2. Convert to v0.3.0 (forward upgrade)
-    const forwardResult = convert(root, "v0.3.0");
+    const forwardResult = convert(root, "v0.3.0", { writersStopped: true });
     assert.equal(forwardResult.status, "success");
     assert.equal(forwardResult.targetVersion, "0.3.0");
     assert.ok(forwardResult.convertedSteps.length > 0);
@@ -66,18 +66,30 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     const updatedSettings = readJsonSync(settingsFile);
     assert.equal(updatedSettings.schemaVersion, "v0.0.1:schema:definition-1");
 
-    // Conversation store converted to SQLite
+    // The canonical Conversation store belongs to the client's own owner. The
+    // tool plans the step but does not fabricate a database: the domain is
+    // reported as pending native admission and the legacy sources stay for the
+    // owner's import.
+    assert.ok(
+      forwardResult.pendingNativeAdmissionDomains.includes("canonical-conversation"),
+      "the Conversation store transition must be reported as pending native admission",
+    );
     const convDb = path.join(stateDir, "conversations", "conversations.sqlite3");
     const convMarker = path.join(stateDir, "conversations", "migration-v5.complete");
-    assert.ok(fs.existsSync(convDb), "SQLite database must exist");
-    assert.ok(fs.existsSync(convMarker), "Migration v5 completion marker must exist");
-    assert.equal(fs.existsSync(projFile), false, "Legacy projection file must be cleaned up");
+    assert.equal(fs.existsSync(convDb), false, "the tool must not fabricate a Conversation database");
+    assert.equal(fs.existsSync(convMarker), false, "the tool must not write the owner's completion marker");
+    assert.ok(fs.existsSync(projFile), "the owner's legacy projection source must be left in place");
 
     // Verify ledger
     const ledgerPath = path.join(stateDir, "migrations", "ledger.json");
     const ledger = readJsonSync(ledgerPath);
     assert.equal(ledger.highestAdmittedProductVersion, "0.3.0");
     assert.equal(ledger.frontierId, "licoup-state-0.2.2");
+    assert.equal(
+      ledger.domains["canonical-conversation"].schemaVersion,
+      0,
+      "a step the native owner still owes must not be recorded as completed",
+    );
 
     // 3. Mutate v0.3.0 store with extra feature to test preservation during downgrade
     updatedTab.customDisplayMetadata = { color: "#ff8800", pinned: true };
@@ -88,7 +100,7 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     writeJsonAtomicSync(wsFile, { schemaVersion: 1, name: "test-workspace" });
 
     // 4. Downgrade to v0.1.0
-    const reverseResult = convert(root, "v0.1.0");
+    const reverseResult = convert(root, "v0.1.0", { writersStopped: true });
     assert.equal(reverseResult.status, "success");
     assert.equal(reverseResult.targetVersion, "0.1.0");
 
@@ -106,12 +118,13 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     const downgradedSettings = readJsonSync(settingsFile);
     assert.equal(downgradedSettings.schemaVersion, undefined);
 
-    // Legacy projection recreated from SQLite
-    assert.ok(fs.existsSync(projFile), "Legacy projection must be restored");
+    // The legacy projection the owner never converted is still present, so the
+    // downgraded v0.1.0 root finds the legacy source it expects.
+    assert.ok(fs.existsSync(projFile), "Legacy projection must remain available");
     const restoredProj = readJsonSync(projFile);
     assert.ok(restoredProj.sessionsByAgent);
 
-    // Completion marker removed so v0.1.0 client can admit legacy state
+    // No fabricated completion marker exists for a store the tool never wrote
     assert.equal(fs.existsSync(convMarker), false);
 
     // Verify preservation recorded extra tab metadata
@@ -126,7 +139,7 @@ test("full bidirectional conversion with preservation and round-trip restore", (
     assert.equal(downgradedLedger.highestAdmittedProductVersion, "0.1.0");
 
     // 5. Upgrade back to v0.3.0 (round-trip test)
-    const roundTripResult = convert(root, "v0.3.0");
+    const roundTripResult = convert(root, "v0.3.0", { writersStopped: true });
     assert.equal(roundTripResult.status, "success");
 
     const roundTripTab = readJsonSync(tabFile);
