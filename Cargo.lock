@@ -2139,6 +2139,7 @@ dependencies = [
  "libcrux-sha3",
  "libcrux-traits",
  "lico-catalog-convergence",
+ "licoarc-rust",
  "licoup-agent-adapters",
  "licoup-agent-runtime",
  "licoup-application",

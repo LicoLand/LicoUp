@@ -1,6 +1,7 @@
 mod command_sync;
 mod config;
 mod endpoint_trust;
+pub mod endpoint_v7_transport;
 mod key_transparency;
 mod pairing;
 mod pairwise_session;

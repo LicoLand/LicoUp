@@ -5,6 +5,7 @@
 //! closures, and the stable FFI-facing re-export.
 
 mod migration;
+pub mod peer_ingress;
 mod profile_snapshot;
 pub(crate) mod projection_delta;
 mod service;
