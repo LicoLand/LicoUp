@@ -154,17 +154,33 @@ final class RpcOperationPendingQueue<T> {
     return entry;
   }
 
-  /// Removes and returns the next runnable item according to foreground priority
-  /// and bounded batch rotation.
-  T takeNext() {
+  /// Removes and returns the next runnable entry whose lane [eligible] accepts,
+  /// together with the lane it was taken from. Uses the same foreground
+  /// preference and bounded batch rotation as [takeNext]; returns null when only
+  /// ineligible work remains, so a caller can refuse to occupy capacity that a
+  /// lane it must not starve still needs.
+  ({T run, bool isBackground})? takeNextEligible(
+    bool Function(bool isBackground) eligible,
+  ) {
     if (isEmpty) {
-      throw StateError('No pending operations in RpcOperationPendingQueue');
+      return null;
+    }
+    final foregroundEligible = eligible(false);
+    final backgroundEligible = eligible(true);
+    if (!foregroundEligible && !backgroundEligible) {
+      return null;
     }
 
     _PendingEntry<T> entry;
     if (_foreground.isNotEmpty && _background.isNotEmpty) {
-      if (_consecutiveForegroundBatch < foregroundBatchLimit) {
-        _consecutiveForegroundBatch += 1;
+      final preferForeground =
+          _consecutiveForegroundBatch < foregroundBatchLimit;
+      final takeForeground =
+          (preferForeground && foregroundEligible) || !backgroundEligible;
+      if (takeForeground) {
+        if (preferForeground) {
+          _consecutiveForegroundBatch += 1;
+        }
         entry = _foreground.first;
         entry.unlink();
         _foregroundCount -= 1;
@@ -176,11 +192,17 @@ final class RpcOperationPendingQueue<T> {
         _backgroundCount -= 1;
       }
     } else if (_foreground.isNotEmpty) {
+      if (!foregroundEligible) {
+        return null;
+      }
       _consecutiveForegroundBatch = 0;
       entry = _foreground.first;
       entry.unlink();
       _foregroundCount -= 1;
     } else {
+      if (!backgroundEligible) {
+        return null;
+      }
       _consecutiveForegroundBatch = 0;
       entry = _background.first;
       entry.unlink();
@@ -190,8 +212,12 @@ final class RpcOperationPendingQueue<T> {
     entry._isPending = false;
     _totalPayloadBytes -= entry.byteSize;
     entry.priority?.removeListener(entry._tokenListener);
-    return entry.run;
+    return (run: entry.run, isBackground: entry.isBackground);
   }
+
+  /// Removes and returns the next runnable item according to foreground priority
+  /// and bounded batch rotation.
+  T takeNext() => takeNextEligible((_) => true)!.run;
 
   void clear() {
     while (_foreground.isNotEmpty) {
