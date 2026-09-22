@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://licoland.com/schemas/extensions/manifest.schema.json",
+  "title": "LicoUp extension package manifest",
+  "description": "What a package says about itself before the host runs anything. It carries no artifact digest and no signature: those are produced from the bytes by packaging and by the update mechanism. `requires` is the install closure; `optionalRequires` enables extra capability only when the user already has it, and never installs anything by itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "displayName",
+    "hostProtocol",
+    "profiles",
+    "runtime",
+    "activation",
+    "requires",
+    "optionalRequires",
+    "permissions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "licoup.extension-package.v1"
+    },
+    "id": {
+      "$ref": "#/$defs/namespacedName",
+      "description": "The namespaced package identity, for example `org.licoland.adapter.generic`."
+    },
+    "version": {
+      "$ref": "#/$defs/semver",
+      "description": "The package's own version. Each package version is independent of the SDK version, the host ABI, the data schemas and the renderer profile."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "hostProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major", "minimumMinor"],
+      "description": "The host wire protocol range this package needs. A different major refuses this package and nothing else.",
+      "properties": {
+        "major": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimumMinor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The narrow profiles this package serves. A profile id this host does not publish is preserved and refused for its own operations only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "major"],
+        "properties": {
+          "id": {
+            "description": "One of the published profiles, or an id a newer host published. An id this host does not know is preserved, refuses nothing, and grants nothing.",
+            "anyOf": [
+              {
+                "$ref": "#/$defs/publishedProfile"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            ]
+          },
+          "major": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "capabilities": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/namespacedName"
+            }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "description": "How the package is carried. A `user:` runtime reference names an interpreter or tool the user installed, which the host reuses and never removes.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "entry"],
+          "properties": {
+            "mode": {
+              "const": "process"
+            },
+            "entry": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "runtimeRef": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "descriptor"],
+          "properties": {
+            "mode": {
+              "const": "declarative"
+            },
+            "descriptor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "endpointRef"],
+          "properties": {
+            "mode": {
+              "const": "service"
+            },
+            "endpointRef": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          }
+        }
+      ]
+    },
+    "activation": {
+      "enum": ["on-demand", "explicit"],
+      "description": "`on-demand` starts the package when a call needs it; `explicit` starts it only when the user asks, and is the conservative default when the field is absent."
+    },
+    "requires": {
+      "type": "array",
+      "description": "Installed together with this package. This decides the install closure and nothing else; it does not enter a development task graph.",
+      "items": {
+        "$ref": "#/$defs/dependency"
+      }
+    },
+    "optionalRequires": {
+      "type": "array",
+      "description": "Enabled when already present. Never installed on this package's account, and never a reason to refuse the package.",
+      "items": {
+        "$ref": "#/$defs/dependency"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "description": "What the package asks for. A request is not a grant and there is no field here for one; the host decides, and a first install or a widened scope needs the user's consent.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability", "scope"],
+        "properties": {
+          "capability": {
+            "$ref": "#/$defs/namespacedName"
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      }
+    },
+    "contributions": {
+      "type": "array",
+      "description": "Interface contributions, each described by a `licoup.ui-contribution.v1` resource.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id", "definition"],
+        "properties": {
+          "kind": {
+            "enum": ["settings", "command", "navigation", "metric-panel", "resource-view"]
+          },
+          "id": {
+            "$ref": "#/$defs/namespacedName"
+          },
+          "definition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "The package's own namespaced attributes. A host that does not understand one preserves it and never rules on it.",
+      "propertyNames": {
+        "$ref": "#/$defs/namespacedName"
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "namespacedName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+(?:[./-][A-Za-z0-9_-]+)*$",
+      "maxLength": 160
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$",
+      "maxLength": 64
+    },
+    "publishedProfile": {
+      "type": "string",
+      "enum": ["agent-execution", "model-provider", "usage-metric", "package-deployment", "declarative-ui"]
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageId", "range"],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/namespacedName"
+        },
+        "range": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    }
+  }
+}

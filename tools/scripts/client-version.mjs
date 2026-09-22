@@ -15,6 +15,7 @@ export const cargoWorkspaceVersionPackages = Object.freeze([
   "licoup-client-state",
   "licoup-conversation",
   "licoup-endpoint-core",
+  "licoup-extension-contracts",
   "licoup-native",
   "licoup-platform-bridges",
   "licoup-protocol-bindings",

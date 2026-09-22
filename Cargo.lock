@@ -2099,6 +2099,17 @@ name = "licoup-endpoint-core"
 version = "0.3.0"
 
 [[package]]
+name = "licoup-extension-contracts"
+version = "0.3.0"
+dependencies = [
+ "licoup-application",
+ "regex",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "licoup-mcp"
 version = "0.2.1"
 dependencies = [
