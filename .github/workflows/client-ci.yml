@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - nightly
+      - "feature/**"
+      - "chore/**"
   push:
     branches:
       - macos-nightly-release-candidate
