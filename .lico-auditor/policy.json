@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
+      "path": "crates/licoup-extension-contracts/samples/echo-agent/manifest.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-extension-contracts/samples/echo-agent/wire_fixture.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/deployment.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/graph-resource.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/manifest.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/provider.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/ui.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/usage.schema.json",
+      "kind": "config-object"
+    },
+    {
       "path": "docs/functionality/ui-interactions.json",
       "kind": "config-object"
     },
