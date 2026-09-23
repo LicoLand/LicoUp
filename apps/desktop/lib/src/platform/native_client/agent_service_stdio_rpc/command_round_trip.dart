@@ -18,6 +18,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
   bool recreateIfDeadBeforeWrite = false,
+  bool control = false,
 }) async {
   var attemptedRecreate = false;
 
@@ -45,7 +46,10 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
     }
     late Future<StdioRpcFrame> responseFuture;
     try {
-      responseFuture = session.expectFrame(requestId: requestId);
+      responseFuture = session.expectFrame(
+        requestId: requestId,
+        control: control,
+      );
       // A failed write abandons this expectation before the normal await site.
       // Mark the future observed immediately so that completion during teardown
       // cannot escape as an uncaught asynchronous transport error.
