@@ -8,6 +8,7 @@ members = [
     "crates/licoup-agent-adapters",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
+    "crates/licoup-extension-contracts",
     "crates/licoup-workflow",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
