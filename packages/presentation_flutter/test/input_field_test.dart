@@ -175,4 +175,220 @@ void main() {
 
     expect(submitCalled, isFalse);
   });
+
+  testWidgets('controlled value echoes locally and reports editing changes', (
+    tester,
+  ) async {
+    final reported = <TextEditingValue>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(
+            value: const TextEditingValue(text: 'draft'),
+            onValueChanged: reported.add,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('draft'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'drafted');
+    await tester.pump();
+
+    // Local echo is immediate, and the owner receives the full editing value.
+    expect(find.text('drafted'), findsOneWidget);
+    expect(reported.last.text, 'drafted');
+  });
+
+  testWidgets('unchanged controlled value never clobbers local echo', (
+    tester,
+  ) async {
+    const value = TextEditingValue(text: 'business value');
+
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(value: value, onValueChanged: (_) {});
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'typed locally');
+    await tester.pump();
+
+    // A rebuild that repeats the same value is not a business reset: the
+    // keystroke stays visible and is never replaced by the stale value.
+    rebuild(() {});
+    await tester.pump();
+
+    expect(find.text('typed locally'), findsOneWidget);
+    expect(find.text('business value'), findsNothing);
+  });
+
+  testWidgets('a changed controlled value replaces the local text', (
+    tester,
+  ) async {
+    var value = const TextEditingValue(text: 'first');
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(value: value, onValueChanged: (_) {});
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'local draft');
+    await tester.pump();
+    expect(find.text('local draft'), findsOneWidget);
+
+    rebuild(() {
+      value = const TextEditingValue(text: 'installed by owner');
+    });
+    await tester.pump();
+
+    expect(find.text('installed by owner'), findsOneWidget);
+    expect(find.text('local draft'), findsNothing);
+  });
+
+  testWidgets('a controlled field leaves clearing to its owner', (
+    tester,
+  ) async {
+    var value = const TextEditingValue(text: 'send me');
+    String? submitted;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return InputField(
+                value: value,
+                onSubmit: (text) => submitted = text,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(submitted, 'send me');
+    // Local echo survives the submit until the owner decides the outcome.
+    expect(find.text('send me'), findsOneWidget);
+
+    rebuild(() {
+      value = TextEditingValue.empty;
+    });
+    await tester.pump();
+
+    expect(find.text('send me'), findsNothing);
+  });
+
+  testWidgets('duplicate submit paths do not send the same press twice', (
+    tester,
+  ) async {
+    var submits = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(clearOnSubmit: false, onSubmit: (_) => submits++),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'only once');
+    await tester.pump();
+
+    // The key handler and the platform submit action can both fire for one
+    // physical Enter; the field must dispatch a single business submit.
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(submits, 1);
+  });
+
+  testWidgets('the platform submit action sends the message', (tester) async {
+    String? submitted;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: InputField(onSubmit: (text) => submitted = text)),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'from the send action');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(submitted, 'from the send action');
+  });
+
+  testWidgets('the platform send action sends the committed composition', (
+    tester,
+  ) async {
+    var submits = 0;
+    String? submitted;
+    final controller = TextEditingController();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InputField(
+            controller: controller,
+            onSubmit: (text) {
+              submits++;
+              submitted = text;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    // The IME is composing a candidate. The send action belongs to the key
+    // handler path, which refuses to submit mid-composition.
+    controller.value = const TextEditingValue(
+      text: 'nihao',
+      composing: TextRange(start: 0, end: 5),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(submits, 0);
+
+    // The platform commits the candidate, then the user sends.
+    controller.value = const TextEditingValue(text: '你好');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(submits, 1);
+    expect(submitted, '你好');
+  });
 }
