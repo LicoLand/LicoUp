@@ -3,7 +3,7 @@
 //!
 //! # Architecture & Governance
 //!
-//! In accordance with `docs/plans/Plan.md` T07.2, D09, and D21:
+//! Policy suggestions remain separate from effect authority:
 //! - Connects observation, cost, context, and strategy into existing workflow callbacks.
 //! - The Assistant receives usable facts and actionable suggestions via callbacks.
 //! - Strategy versions (from T06.1) feed selection without granting execution permission.
@@ -19,6 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use licoup_workflow::{PendingCallback, RunCommand, RunSnapshot, StrategyRunStatus};
@@ -289,6 +290,13 @@ pub struct AdoptedPlanningDefaultSeam {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScopedRevocationSeam {
+    pub changed: bool,
+    pub restored: Option<AdoptedPlanningDefaultSeam>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StrategyVersionSeam {
     pub version_id: String,
     pub revision: String,
@@ -326,8 +334,9 @@ pub trait EvolutionStrategyPort: Send + Sync {
 }
 
 pub struct DefaultEvolutionStrategyPort {
-    defaults: RwLock<BTreeMap<PlanningScopeSeam, AdoptedPlanningDefaultSeam>>,
+    defaults: RwLock<BTreeMap<PlanningScopeSeam, Vec<AdoptedPlanningDefaultSeam>>>,
     revocations: RwLock<BTreeSet<String>>,
+    revision: AtomicU64,
 }
 
 impl DefaultEvolutionStrategyPort {
@@ -335,19 +344,78 @@ impl DefaultEvolutionStrategyPort {
         Self {
             defaults: RwLock::new(BTreeMap::new()),
             revocations: RwLock::new(BTreeSet::new()),
+            revision: AtomicU64::new(0),
         }
     }
 
     /// Adopt a revocable default strategy per D21.
     pub fn adopt_default(&self, default: AdoptedPlanningDefaultSeam) {
         let mut guard = self.defaults.write().unwrap_or_else(|p| p.into_inner());
-        guard.insert(default.scope.clone(), default);
+        let history = guard.entry(default.scope.clone()).or_default();
+        if history.last() != Some(&default) {
+            history.push(default);
+            self.revision.fetch_add(1, Ordering::AcqRel);
+        }
     }
 
     /// Revoke an adopted strategy default per D21.
     pub fn revoke_strategy(&self, source_id: &str) {
         let mut guard = self.revocations.write().unwrap_or_else(|p| p.into_inner());
-        guard.insert(source_id.to_owned());
+        if guard.insert(source_id.to_owned()) {
+            self.revision.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    pub fn current_default(&self, scope: &PlanningScopeSeam) -> Option<AdoptedPlanningDefaultSeam> {
+        let defaults = self.defaults.read().unwrap_or_else(|p| p.into_inner());
+        let revocations = self.revocations.read().unwrap_or_else(|p| p.into_inner());
+        defaults.get(scope).and_then(|history| {
+            history
+                .iter()
+                .rev()
+                .find(|adopted| !revocations.contains(&adopted.source.source_id))
+                .cloned()
+        })
+    }
+
+    /// Withdraw the latest matching adoption in one scope, without globally
+    /// revoking its source or changing any already admitted work.
+    pub fn revoke_default(
+        &self,
+        scope: &PlanningScopeSeam,
+        source_id: &str,
+    ) -> ScopedRevocationSeam {
+        let mut defaults = self.defaults.write().unwrap_or_else(|p| p.into_inner());
+        let changed = defaults.get_mut(scope).is_some_and(|history| {
+            if let Some(index) = history
+                .iter()
+                .rposition(|entry| entry.source.source_id == source_id)
+            {
+                history.remove(index);
+                true
+            } else {
+                false
+            }
+        });
+        if changed {
+            self.revision.fetch_add(1, Ordering::AcqRel);
+        }
+        // Keep the same defaults -> revocations order as current_default, and
+        // compute the receipt while the state is locked rather than re-entering
+        // current_default under a write guard.
+        let revocations = self.revocations.read().unwrap_or_else(|p| p.into_inner());
+        let restored = defaults.get(scope).and_then(|history| {
+            history
+                .iter()
+                .rev()
+                .find(|adopted| !revocations.contains(&adopted.source.source_id))
+                .cloned()
+        });
+        ScopedRevocationSeam { changed, restored }
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision.load(Ordering::Acquire)
     }
 }
 
@@ -380,27 +448,21 @@ impl EvolutionStrategyPort for DefaultEvolutionStrategyPort {
             }
         }
 
-        let defaults_guard = self.defaults.read().unwrap_or_else(|p| p.into_inner());
-        let revocations_guard = self.revocations.read().unwrap_or_else(|p| p.into_inner());
-
-        if let Some(adopted) = defaults_guard.get(scope) {
-            // Check revocation
-            if !revocations_guard.contains(&adopted.source.source_id) {
-                // Must select only from caller's candidate set
-                if candidates.contains(&adopted.selected_option) {
-                    return Some(StrategySuggestion {
-                        candidate: adopted.selected_option.clone(),
-                        ranking_basis: "adopted-default-comparable-outcome".to_owned(),
-                        source: Some(adopted.source.clone()),
-                        scope: Some(scope.clone()),
-                        is_default: true,
-                        has_execution_permission: false, // Invariant: no execution permission granted
-                        rationale: format!(
-                            "Adopted default from source '{}' rev '{}'",
-                            adopted.source.source_id, adopted.source.revision
-                        ),
-                    });
-                }
+        if let Some(adopted) = self.current_default(scope) {
+            // Must select only from caller's candidate set
+            if candidates.contains(&adopted.selected_option) {
+                return Some(StrategySuggestion {
+                    candidate: adopted.selected_option.clone(),
+                    ranking_basis: "adopted-default-comparable-outcome".to_owned(),
+                    source: Some(adopted.source.clone()),
+                    scope: Some(scope.clone()),
+                    is_default: true,
+                    has_execution_permission: false, // Invariant: no execution permission granted
+                    rationale: format!(
+                        "Adopted default from source '{}' rev '{}'",
+                        adopted.source.source_id, adopted.source.revision
+                    ),
+                });
             }
         }
 
