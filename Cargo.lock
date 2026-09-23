@@ -2212,6 +2212,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-workflow-runtime"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-workflow",
+ "serde",
+]
+
+[[package]]
+name = "licoup-workflow-store"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-workflow",
+ "licoup-workflow-runtime",
+ "rusqlite",
+ "serde_json",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

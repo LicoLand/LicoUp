@@ -16,10 +16,11 @@ use super::StrategyStore;
 use licoup_workflow::machine::fallback_reason;
 use licoup_workflow::{
     ActorSlot, BindingKind, CallbackDecisionKind, CommandStatus, CompiledWorkflow, FailureClass,
-    GraphState, GraphStateKind, GuardExpression, MAX_ACTIVE_EFFECTS, ReducerEvent, RetryPolicy,
-    RunCommand, RunSnapshot, RuntimeKind, RuntimeRequirement, StrategyRunStatus, Transition,
-    TransitionEvent, TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition, WorkflowLimits,
-    WorkflowMetadata, WorksetTemplate, compile_workflow, reduce,
+    GraphState, GraphStateKind, GuardExpression, InputPlan, MAX_ACTIVE_EFFECTS, ReducerEvent,
+    RetryPolicy, RunCommand, RunSnapshot, RuntimeKind, RuntimeRequirement, SHARED_CONTEXT_RESOURCE,
+    SHARED_WORKSETS_RESOURCE, SharedResourceDecl, StrategyRunStatus, Transition, TransitionEvent,
+    TransitionMode, WORKFLOW_SCHEMA_VERSION, WorkflowDefinition, WorkflowLimits, WorkflowMetadata,
+    WorksetTemplate, compile_workflow, reduce,
 };
 
 fn state(id: &str, kind: GraphStateKind) -> GraphState {
@@ -1987,8 +1988,52 @@ fn equivalent_concurrent_outcome_orders_reach_one_canonical_snapshot() {
         {"id": "c"}
     ]}});
 
+    /// The run's declared causal inputs.
+    ///
+    /// The items accumulate their results into `worksetResults`, a resource
+    /// dedicated to that bag and declared `accumulate`: a key whose declared
+    /// meaning is "the set of contributions from this visit's members" merges
+    /// by canonical set union, which is the only merge of concurrent producers
+    /// that is commutative, idempotent and content preserving. `worksets` and
+    /// `context` keep the scalar `keyUnion` default, so two writers that
+    /// disagree about one value are still refused rather than unioned — the
+    /// refusal asserted below.
+    fn input_plan() -> InputPlan {
+        InputPlan {
+            resources: vec![
+                SharedResourceDecl::key_union(SHARED_CONTEXT_RESOURCE),
+                SharedResourceDecl::key_union(SHARED_WORKSETS_RESOURCE),
+                SharedResourceDecl::accumulate("worksetResults"),
+            ],
+            ..InputPlan::default()
+        }
+    }
+
+    /// One item's result: its own context key, and its contribution to the
+    /// run's accumulating results bag.
+    fn item_output(item_id: &str) -> Value {
+        let mut context = serde_json::Map::new();
+        context.insert(format!("item-{item_id}"), json!(item_id));
+        json!({
+            "context": serde_json::Value::Object(context),
+            "shared": {"worksetResults": {"tasks": [item_id]}},
+        })
+    }
+
+    fn declared_run(workflow: &CompiledWorkflow, input: Value) -> (RunSnapshot, Vec<RunCommand>) {
+        let declared = reduce(
+            workflow,
+            &RunSnapshot::empty("conformance-run", "revision", "semantics"),
+            ReducerEvent::InputPlanDeclared { plan: input_plan() },
+        )
+        .unwrap()
+        .snapshot;
+        let output = reduce(workflow, &declared, ReducerEvent::Start { input }).unwrap();
+        (output.snapshot, output.emitted_commands)
+    }
+
     fn drive(workflow: &CompiledWorkflow, input: Value, outcomes: &[(&str, bool)]) -> RunSnapshot {
-        let (mut snapshot, commands) = start_run(workflow, input);
+        let (mut snapshot, commands) = declared_run(workflow, input);
         for command in &commands {
             snapshot = fence(&snapshot, workflow, command);
         }
@@ -2001,10 +2046,7 @@ fn equivalent_concurrent_outcome_orders_reach_one_canonical_snapshot() {
                     ReducerEvent::CommandSucceeded {
                         command_id: command.id.clone(),
                         attempt_token: command.attempt_token.clone(),
-                        output: json!({
-                            "context": {"winner": item_id},
-                            "worksets": {"results": [item_id]},
-                        }),
+                        output: item_output(item_id),
                     },
                 )
             } else {
@@ -2044,6 +2086,57 @@ fn equivalent_concurrent_outcome_orders_reach_one_canonical_snapshot() {
         assert_eq!(snapshot.status, StrategyRunStatus::Completed);
         assert!(!snapshot.merge_sources.is_empty());
     }
+
+    // The same three items disagreeing on ONE context key is the case C02
+    // requires to be an explicit error rather than a last-writer-wins pick. The
+    // refusal must be as order-independent as the merge above: every
+    // permutation reaches the same typed conflict, so a caller never sees the
+    // outcome depend on timing. Everything else about these items is unchanged
+    // from the successful run, so the conflict is the only difference.
+    fn drive_conflicting(
+        workflow: &CompiledWorkflow,
+        input: Value,
+        outcomes: &[(&str, bool)],
+    ) -> Option<String> {
+        let (mut snapshot, commands) = declared_run(workflow, input);
+        for command in &commands {
+            snapshot = fence(&snapshot, workflow, command);
+        }
+        for (item_id, _) in outcomes {
+            let command = find_item(&commands, item_id).clone();
+            let mut output = item_output(item_id);
+            output["context"] = json!({"winner": item_id});
+            match reduce(
+                workflow,
+                &snapshot,
+                ReducerEvent::CommandSucceeded {
+                    command_id: command.id.clone(),
+                    attempt_token: command.attempt_token.clone(),
+                    output,
+                },
+            ) {
+                Ok(output) => snapshot = output.snapshot,
+                Err(error) => return Some(error.to_string()),
+            }
+        }
+        None
+    }
+
+    let mut refusals = std::collections::BTreeSet::new();
+    for order in &permutations {
+        let refusal = drive_conflicting(&workflow, input.clone(), order)
+            .expect("conflicting concurrent writes must be refused");
+        assert!(
+            refusal.contains("strategy_shared_write_conflict"),
+            "conflicting content must name the typed conflict, got {refusal}"
+        );
+        refusals.insert(refusal);
+    }
+    assert_eq!(
+        refusals.len(),
+        1,
+        "the conflict refusal must not depend on completion order: {refusals:?}"
+    );
 
     let failure_orders = [
         [("b", false), ("a", true), ("c", true)],

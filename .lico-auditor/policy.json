@@ -272,6 +272,14 @@
     {
       "path": "tests/fixtures/continuous-assistant/adoption/live-admission-facts.json",
       "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-workflow/tests/v7_compile/fixtures/legacy_runs.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-workflow/tests/v7_compile/fixtures/legacy_workflow.json",
+      "kind": "config-object"
     }
   ],
   "publicReferenceDomains": [

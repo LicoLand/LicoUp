@@ -9,6 +9,8 @@ members = [
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
     "crates/licoup-workflow",
+    "crates/licoup-workflow-runtime",
+    "crates/licoup-workflow-store",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
     "crates/licoup-native",

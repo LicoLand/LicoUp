@@ -5,9 +5,11 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{
-    CallbackDecisionKind, CompiledWorkflow, FailureClass, FallbackReceipt, GraphStateKind,
-    MAX_WORKSET_ITEMS, PendingCallback, SessionPolicy, StrategyRunStatus, TransitionEvent,
-    TransitionMode,
+    CallbackDecisionKind, CompiledWorkflow, ContributionOrder, FailureClass, FallbackReceipt,
+    GraphStateKind, INPUT_ADAPTER_VERSION, InputBinding, InputPlan, MAX_WORKSET_ITEMS, MergePolicy,
+    PendingCallback, PredecessorInput, ResultRef, SHARED_CONTEXT_RESOURCE,
+    SHARED_WORKSETS_RESOURCE, SessionPolicy, SharedResourceRef, SharedWriter, StrategyRunStatus,
+    TransitionEvent, TransitionMode,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -69,6 +71,200 @@ pub struct RunCommand {
     pub failure_code: Option<String>,
 }
 
+/// One value one writer published into a shared resource.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedEntry {
+    /// How many writes to *this key* have been accepted. A per-key revision is
+    /// the only one that can be stored beside a value without making arrival
+    /// order observable: a resource-wide write index stored per key would
+    /// differ between two runs that accepted the same contributions in a
+    /// different order, even though every value and every merge was identical.
+    pub revision: u64,
+    pub value: Value,
+    /// The effects the stored value is made of. A scalar value has exactly the
+    /// writer that put it there; an accumulated collection has every member
+    /// that contributed to it, because no single one of them owns the merged
+    /// value and naming the last arrival would make the provenance depend on
+    /// completion order. A key with no writer was declared by the run itself.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub writers: BTreeSet<SharedWriter>,
+}
+
+/// One shared resource's versioned contents.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedResourceState {
+    /// Monotone across every accepted write to this resource, and the token a
+    /// compare-and-swap checks. It counts accepted contributions, so two runs
+    /// that accepted the same ones agree on it.
+    pub revision: u64,
+    pub keys: BTreeMap<String, SharedEntry>,
+}
+
+/// A predecessor's arrival at a join, bound to the exact visit that arrived.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinArrival {
+    pub node_visit: u64,
+    pub result: ResultRef,
+    /// The ordinal this arrival was recorded at, so a node that declares its
+    /// business order sensitive can name the order it actually observed.
+    pub arrival_ordinal: u64,
+}
+
+/// An arrival the join refused to count, and why. Never dropped in silence: a
+/// stale arrival is a durable fact about the run, not an implementation detail.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleJoinArrival {
+    pub predecessor: String,
+    pub node_visit: u64,
+    pub superseded_by: u64,
+}
+
+/// One join's arrivals, kept per visit rather than per node.
+///
+/// The set of names that have arrived is not enough to decide a join: a visit-1
+/// arrival and a visit-2 arrival of the same predecessor are different
+/// contributions, and a join that consumes both as one round is a join whose
+/// input never existed as a single instant of the run.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinLedger {
+    /// The latest arrival per declared predecessor.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub arrivals: BTreeMap<String, JoinArrival>,
+    /// The visit epoch the join last fired at. A repeated arrival can never
+    /// fire the same epoch twice.
+    pub consumed_epoch: u64,
+    /// Arrivals refused because a newer visit of the same predecessor had
+    /// already contributed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stale: Vec<StaleJoinArrival>,
+    /// How many arrivals this join has seen, across epochs.
+    pub arrival_count: u64,
+}
+
+impl JoinLedger {
+    fn ordinal(&self) -> u64 {
+        self.arrival_count.saturating_add(1)
+    }
+}
+
+/// One node visit, as a fact.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisitFact {
+    pub node_id: String,
+    pub node_visit: u64,
+}
+
+/// One shared write this step accepted.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedWriteReceipt {
+    pub resource_id: String,
+    pub key: String,
+    pub revision: u64,
+    pub writer: String,
+    /// True when the write re-delivered the value already stored, so nothing
+    /// changed. Duplicates are idempotent; a differing value is refused before
+    /// this receipt exists.
+    pub duplicate: bool,
+}
+
+/// One join that fired, and the epoch it fired at.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinSatisfaction {
+    pub node_id: String,
+    pub epoch: u64,
+    pub arrivals: Vec<PredecessorInput>,
+}
+
+/// One join-ledger change this step made.
+///
+/// An arrival is causal state even when the join does not fire: it is the
+/// contribution a later arrival completes. A store that persisted only entered
+/// visits would lose it, and the join would never close after a restore, so
+/// every accepted or refused arrival is reported. A refused arrival carries no
+/// ordinal because the ledger recorded none for it.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinArrivalReceipt {
+    pub node_id: String,
+    pub predecessor: String,
+    pub node_visit: u64,
+    /// The ordinal the ledger recorded this arrival at, or 0 when refused.
+    pub arrival_ordinal: u64,
+    /// True when this arrival is the predecessor's contribution for its visit;
+    /// false when a newer visit had already contributed and this one is kept as
+    /// a superseded fact.
+    pub accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<u64>,
+}
+
+/// What one reducer step changed.
+///
+/// The delta is what a store persists incrementally, so it is built from the
+/// facts the machine actually produced rather than recomputed from the two
+/// snapshots: a consumer that applied only the delta must hold exactly the
+/// snapshot the step returned, and the differential test checks that claim
+/// against an independent diff instead of trusting it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReducerDelta {
+    pub run_id: String,
+    pub sequence: u64,
+    pub applied: bool,
+    pub status_before: StrategyRunStatus,
+    pub status_after: StrategyRunStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entered: Vec<VisitFact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<InputBinding>,
+    /// Results this step made final, in completion order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub results: Vec<ResultRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joins_satisfied: Vec<JoinSatisfaction>,
+    /// Join arrivals this step recorded or refused. An arrival is causal state
+    /// even before the join fires, so a consumer that applies only the delta
+    /// must receive it here rather than re-deriving it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub join_arrivals: Vec<JoinArrivalReceipt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_writes: Vec<SharedWriteReceipt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub settled_commands: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emitted_commands: Vec<String>,
+}
+
+impl Default for ReducerDelta {
+    fn default() -> Self {
+        Self {
+            run_id: String::new(),
+            sequence: 0,
+            applied: false,
+            // A step that changed nothing starts and ends at the same status;
+            // the machine fills both in from the snapshot it was handed.
+            status_before: StrategyRunStatus::Pending,
+            status_after: StrategyRunStatus::Pending,
+            entered: Vec::new(),
+            bindings: Vec::new(),
+            results: Vec::new(),
+            joins_satisfied: Vec::new(),
+            join_arrivals: Vec::new(),
+            shared_writes: Vec::new(),
+            settled_commands: Vec::new(),
+            emitted_commands: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSnapshot {
@@ -81,7 +277,19 @@ pub struct RunSnapshot {
     pub active_states: BTreeSet<String>,
     pub completed_states: BTreeSet<String>,
     pub state_visits: BTreeMap<String, u64>,
-    pub join_arrivals: BTreeMap<String, BTreeSet<String>>,
+    /// Per-visit arrivals, so an old visit of a predecessor can never satisfy a
+    /// new join round.
+    pub join_arrivals: BTreeMap<String, JoinLedger>,
+    /// The run's declared causal input plan.
+    #[serde(default)]
+    pub input_plan: InputPlan,
+    /// Versioned shared state. Reading it without naming a revision is not
+    /// expressible: the only readers are bindings, and a binding records one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub shared: BTreeMap<String, SharedResourceState>,
+    /// The exact binding every entered node visit received.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub bindings: BTreeMap<String, InputBinding>,
     #[serde(default)]
     pub actor_sessions: BTreeMap<String, String>,
     #[serde(default)]
@@ -129,6 +337,9 @@ impl RunSnapshot {
             completed_states: BTreeSet::new(),
             state_visits: BTreeMap::new(),
             join_arrivals: BTreeMap::new(),
+            input_plan: InputPlan::default(),
+            shared: BTreeMap::new(),
+            bindings: BTreeMap::new(),
             actor_sessions: BTreeMap::new(),
             slot_ordinals: BTreeMap::new(),
             slot_candidate_counts: BTreeMap::new(),
@@ -149,6 +360,13 @@ impl RunSnapshot {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ReducerEvent {
+    /// The run's declared causal input plan, before anything runs. A run that
+    /// never declares one keeps the safe default; a plan that declares an
+    /// adapter version this build does not project is refused, so a stored
+    /// version can never be silently read as a different one.
+    InputPlanDeclared {
+        plan: InputPlan,
+    },
     Start {
         input: Value,
     },
@@ -227,6 +445,8 @@ pub struct ReducerOutput {
     pub snapshot: RunSnapshot,
     pub emitted_commands: Vec<RunCommand>,
     pub applied: bool,
+    /// What this step changed, for a consumer that persists incrementally.
+    pub delta: ReducerDelta,
 }
 
 /// One deterministic actor-command input for a state: the run input wrapped
@@ -265,13 +485,43 @@ pub fn reduce(
         emitted: Vec::new(),
         automatic: VecDeque::new(),
         applied: true,
+        delta: ReducerDelta {
+            run_id: previous.run_id.clone(),
+            sequence: previous.sequence,
+            status_before: previous.status,
+            status_after: previous.status,
+            ..ReducerDelta::default()
+        },
     };
+    // A run bound to an input projection this build does not implement is not
+    // advanced under a different one: its bindings would name an adapter that
+    // never produced them.
+    ensure!(
+        previous.input_plan.input_adapter_version == INPUT_ADAPTER_VERSION,
+        "strategy_input_adapter_mismatch"
+    );
     machine.snapshot.sequence = machine
         .snapshot
         .sequence
         .checked_add(1)
         .ok_or_else(|| anyhow!("strategy_event_sequence_overflow"))?;
+    machine.delta.sequence = machine.snapshot.sequence;
     match event {
+        ReducerEvent::InputPlanDeclared { plan } => {
+            ensure!(
+                previous.status == StrategyRunStatus::Pending && previous.sequence == 0,
+                "strategy_input_plan_too_late"
+            );
+            ensure!(
+                plan.input_adapter_version == INPUT_ADAPTER_VERSION,
+                "strategy_input_adapter_mismatch"
+            );
+            machine.snapshot.input_plan = plan;
+            // Declaring the plan is not a run step: it happens before the run
+            // exists, so it does not consume the sequence that `Start` guards.
+            machine.snapshot.sequence = previous.sequence;
+            machine.delta.sequence = previous.sequence;
+        }
         ReducerEvent::Start { input } => {
             ensure!(
                 previous.status == StrategyRunStatus::Pending && previous.sequence == 0,
@@ -413,10 +663,28 @@ pub fn reduce(
     if !machine.applied {
         machine.snapshot.sequence = previous.sequence;
     }
+    machine.delta.applied = machine.applied;
+    machine.delta.status_after = machine.snapshot.status;
+    machine.delta.emitted_commands = machine
+        .emitted
+        .iter()
+        .map(|command| command.id.clone())
+        .collect();
+    if !machine.applied {
+        // A replayed event changes nothing, so its delta claims nothing.
+        machine.delta.entered.clear();
+        machine.delta.bindings.clear();
+        machine.delta.results.clear();
+        machine.delta.joins_satisfied.clear();
+        machine.delta.shared_writes.clear();
+        machine.delta.settled_commands.clear();
+        machine.delta.emitted_commands.clear();
+    }
     Ok(ReducerOutput {
         snapshot: machine.snapshot,
         emitted_commands: machine.emitted,
         applied: machine.applied,
+        delta: machine.delta,
     })
 }
 
@@ -426,6 +694,7 @@ struct Machine<'a> {
     emitted: Vec<RunCommand>,
     automatic: VecDeque<(String, TransitionEvent, Value)>,
     applied: bool,
+    delta: ReducerDelta,
 }
 
 impl Machine<'_> {
@@ -435,38 +704,46 @@ impl Machine<'_> {
             .state(state_id)
             .ok_or_else(|| anyhow!("strategy_state_unknown"))?
             .clone();
+        let mut arrivals = Vec::new();
         if state.kind == GraphStateKind::Join {
-            if let Some(predecessor) = predecessor {
-                self.snapshot
-                    .join_arrivals
-                    .entry(state.id.clone())
-                    .or_default()
-                    .insert(predecessor.to_owned());
-            }
-            if self.snapshot.join_arrivals.get(&state.id)
-                != Some(self.workflow.predecessors(&state.id))
-            {
+            if let Some(epoch) = self.record_join_arrival(&state.id, predecessor)? {
+                arrivals = self.join_arrivals_at(&state.id, epoch);
+                self.delta.joins_satisfied.push(JoinSatisfaction {
+                    node_id: state.id.clone(),
+                    epoch,
+                    arrivals: arrivals.clone(),
+                });
+            } else {
+                // No epoch has every declared predecessor yet. Waiting is the
+                // honest outcome: firing here would mean consuming a
+                // contribution from a visit of another round.
                 self.snapshot.status = StrategyRunStatus::Waiting;
+                self.snapshot.diagnostic_code = Some("strategy_join_waiting".into());
                 return Ok(());
             }
-            self.snapshot.join_arrivals.remove(&state.id);
         }
         self.snapshot.completed_states.remove(&state.id);
         self.snapshot.active_states.insert(state.id.clone());
-        *self
+        let visit = self
             .snapshot
             .state_visits
             .entry(state.id.clone())
-            .or_default() += 1;
+            .or_default();
+        *visit = visit.saturating_add(1);
+        let visit = *visit;
+        let binding = self.record_binding(&state.id, visit, predecessor, arrivals)?;
+        self.delta.entered.push(VisitFact {
+            node_id: state.id.clone(),
+            node_visit: visit,
+        });
+        self.delta.bindings.push(binding);
         self.snapshot.status = StrategyRunStatus::Running;
         self.snapshot.diagnostic_code = None;
         match state.kind {
             GraphStateKind::Pass | GraphStateKind::Choice | GraphStateKind::Join => {
-                self.automatic.push_back((
-                    state.id,
-                    TransitionEvent::Complete,
-                    self.snapshot.input.clone(),
-                ));
+                let input = self.projected_input(&state.id, visit)?;
+                self.automatic
+                    .push_back((state.id, TransitionEvent::Complete, input));
             }
             GraphStateKind::Fork => self.complete_fork(&state.id)?,
             GraphStateKind::Authorization => {
@@ -474,24 +751,19 @@ impl Machine<'_> {
                 self.snapshot.status = StrategyRunStatus::AuthorizationRequired;
             }
             GraphStateKind::Actor => {
-                let input = self.effect_input(&state.id, self.snapshot.input.clone())?;
+                let input = self.projected_input(&state.id, visit)?;
+                let input = self.effect_input(&state.id, input)?;
                 self.emit_command(&state.id, CommandKind::Actor, None, input)?;
             }
             GraphStateKind::Script => {
-                self.emit_command(
-                    &state.id,
-                    CommandKind::Script,
-                    None,
-                    self.snapshot.input.clone(),
-                )?;
+                let input = self.projected_input(&state.id, visit)?;
+                self.emit_command(&state.id, CommandKind::Script, None, input)?;
             }
             GraphStateKind::Workset => {
                 if self.schedule_workset(&state.id)? {
-                    self.automatic.push_back((
-                        state.id,
-                        TransitionEvent::Success,
-                        self.snapshot.input.clone(),
-                    ));
+                    let input = self.projected_input(&state.id, visit)?;
+                    self.automatic
+                        .push_back((state.id, TransitionEvent::Success, input));
                 }
             }
             GraphStateKind::Succeed => {
@@ -509,6 +781,579 @@ impl Machine<'_> {
             }
         }
         Ok(())
+    }
+
+    /// Record one arrival at a join and return the epoch it completes, if any.
+    ///
+    /// A join is decided per visit epoch, not per name: the round that fires is
+    /// the one where every declared predecessor contributed a result from the
+    /// same visit value. An arrival from an older visit of a predecessor that
+    /// has already contributed a newer one is refused and kept as a durable
+    /// fact, so a stale contribution can neither satisfy a new round nor vanish
+    /// without a trace.
+    fn record_join_arrival(
+        &mut self,
+        join_id: &str,
+        predecessor: Option<&str>,
+    ) -> Result<Option<u64>> {
+        if let Some(predecessor) = predecessor {
+            ensure!(
+                self.workflow.predecessors(join_id).contains(predecessor),
+                "strategy_join_predecessor_undeclared"
+            );
+            let visit = self
+                .snapshot
+                .state_visits
+                .get(predecessor)
+                .copied()
+                .unwrap_or(0);
+            ensure!(visit > 0, "strategy_join_predecessor_unvisited");
+            let result = self.result_ref_for(predecessor, visit)?;
+            let ordinal = self
+                .snapshot
+                .join_arrivals
+                .get(join_id)
+                .map_or(1, JoinLedger::ordinal);
+            let receipt = {
+                let ledger = self
+                    .snapshot
+                    .join_arrivals
+                    .entry(join_id.to_owned())
+                    .or_default();
+                match ledger.arrivals.get(predecessor) {
+                    Some(existing) if existing.node_visit == visit => {
+                        // The same visit contributed twice. Equal content is the
+                        // same contribution; differing content is a conflict.
+                        ensure!(
+                            existing.result.digest == result.digest,
+                            "strategy_input_conflict"
+                        );
+                        None
+                    }
+                    Some(existing) if existing.node_visit > visit => {
+                        ledger.stale.push(StaleJoinArrival {
+                            predecessor: predecessor.to_owned(),
+                            node_visit: visit,
+                            superseded_by: existing.node_visit,
+                        });
+                        Some(JoinArrivalReceipt {
+                            node_id: join_id.to_owned(),
+                            predecessor: predecessor.to_owned(),
+                            node_visit: visit,
+                            arrival_ordinal: 0,
+                            accepted: false,
+                            superseded_by: Some(existing.node_visit),
+                        })
+                    }
+                    superseded => {
+                        let superseded_by = superseded.map(|arrival| arrival.node_visit);
+                        if let Some(superseded) = superseded {
+                            ledger.stale.push(StaleJoinArrival {
+                                predecessor: predecessor.to_owned(),
+                                node_visit: superseded.node_visit,
+                                superseded_by: visit,
+                            });
+                        }
+                        ledger.arrival_count = ledger.arrival_count.saturating_add(1);
+                        ledger.arrivals.insert(
+                            predecessor.to_owned(),
+                            JoinArrival {
+                                node_visit: visit,
+                                result,
+                                arrival_ordinal: ordinal,
+                            },
+                        );
+                        Some(JoinArrivalReceipt {
+                            node_id: join_id.to_owned(),
+                            predecessor: predecessor.to_owned(),
+                            node_visit: visit,
+                            arrival_ordinal: ordinal,
+                            accepted: true,
+                            superseded_by,
+                        })
+                    }
+                }
+            };
+            if let Some(receipt) = receipt {
+                self.delta.join_arrivals.push(receipt);
+            }
+        }
+        let Some(epoch) = self.join_epoch(join_id) else {
+            return Ok(None);
+        };
+        // The epoch is consumed here, before the join is entered: a second
+        // arrival carrying the same contributions is a duplicate, and a
+        // duplicate re-delivers a result rather than opening a new round.
+        if let Some(ledger) = self.snapshot.join_arrivals.get_mut(join_id) {
+            ledger.consumed_epoch = epoch;
+        }
+        Ok(Some(epoch))
+    }
+
+    /// The visit epoch a join can fire at: the newest arrival visit such that
+    /// every declared predecessor arrived at exactly that visit, and no round
+    /// has consumed it yet.
+    fn join_epoch(&self, join_id: &str) -> Option<u64> {
+        let declared = self.workflow.predecessors(join_id);
+        if declared.is_empty() {
+            return None;
+        }
+        let ledger = self.snapshot.join_arrivals.get(join_id)?;
+        let epoch = ledger
+            .arrivals
+            .values()
+            .map(|arrival| arrival.node_visit)
+            .max()?;
+        if epoch <= ledger.consumed_epoch {
+            return None;
+        }
+        declared
+            .iter()
+            .all(|predecessor| {
+                ledger
+                    .arrivals
+                    .get(predecessor)
+                    .is_some_and(|arrival| arrival.node_visit == epoch)
+            })
+            .then_some(epoch)
+    }
+
+    /// The contributions of one epoch, in the definition's declared order.
+    fn join_arrivals_at(&self, join_id: &str, epoch: u64) -> Vec<PredecessorInput> {
+        let Some(ledger) = self.snapshot.join_arrivals.get(join_id) else {
+            return Vec::new();
+        };
+        self.workflow
+            .predecessors(join_id)
+            .iter()
+            .filter_map(|predecessor| {
+                ledger
+                    .arrivals
+                    .get(predecessor)
+                    .filter(|arrival| arrival.node_visit == epoch)
+                    .map(|arrival| PredecessorInput {
+                        node_id: predecessor.clone(),
+                        node_visit: arrival.node_visit,
+                        result: arrival.result.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    /// The identity of one node visit's result.
+    ///
+    /// A visit that produced effects is identified by them, sorted, so a
+    /// re-delivered result has the same identity and a differing one does not.
+    /// A visit that produced no result is identified by the visit and by why:
+    /// an automatic state reached this visit, or an effect state reached it and
+    /// settled nothing that succeeded. Those are different facts, and a
+    /// successor that binds one may not mistake it for the other.
+    fn result_ref_for(&self, node_id: &str, visit: u64) -> Result<ResultRef> {
+        let mut commands = self
+            .snapshot
+            .commands
+            .values()
+            .filter(|command| {
+                command.state_id == node_id
+                    && command.state_visit == visit
+                    && command.status == CommandStatus::Succeeded
+            })
+            .collect::<Vec<_>>();
+        let settled_without_result = self.snapshot.commands.values().any(|command| {
+            command.state_id == node_id
+                && command.state_visit == visit
+                && matches!(
+                    command.status,
+                    CommandStatus::Failed
+                        | CommandStatus::Retryable
+                        | CommandStatus::InDoubt
+                        | CommandStatus::Cancelled
+                )
+        });
+        commands.sort_by(|left, right| {
+            left.item_id
+                .cmp(&right.item_id)
+                .then(left.id.cmp(&right.id))
+        });
+        let mut material = format!("{}\0{}\0{}\0", self.snapshot.run_id, node_id, visit);
+        if commands.is_empty() {
+            material.push_str(if settled_without_result {
+                "effect-without-result"
+            } else {
+                "state"
+            });
+        } else {
+            for command in &commands {
+                material.push_str(command.item_id.as_deref().unwrap_or(""));
+                material.push('\0');
+                material.push_str(command.output_digest.as_deref().unwrap_or(""));
+                material.push('\0');
+            }
+        }
+        Ok(ResultRef {
+            run_id: self.snapshot.run_id.clone(),
+            node_id: node_id.to_owned(),
+            node_visit: visit,
+            digest: sha256_hex(material.as_bytes()),
+            producers: commands
+                .into_iter()
+                .map(|command| command.id.clone())
+                .collect(),
+        })
+    }
+
+    /// Bind one node visit to exactly the inputs it may read, and keep the
+    /// binding. This is the whole of a node's causal input: declared
+    /// predecessor results, shared revisions observed at this instant, and the
+    /// adapter that projected them.
+    fn record_binding(
+        &mut self,
+        state_id: &str,
+        visit: u64,
+        predecessor: Option<&str>,
+        arrivals: Vec<PredecessorInput>,
+    ) -> Result<InputBinding> {
+        let predecessors = if arrivals.is_empty() {
+            match predecessor {
+                Some(predecessor) => {
+                    let predecessor_visit = self
+                        .snapshot
+                        .state_visits
+                        .get(predecessor)
+                        .copied()
+                        .unwrap_or(0);
+                    ensure!(
+                        predecessor_visit > 0,
+                        "strategy_input_predecessor_unvisited"
+                    );
+                    vec![PredecessorInput {
+                        node_id: predecessor.to_owned(),
+                        node_visit: predecessor_visit,
+                        result: self.result_ref_for(predecessor, predecessor_visit)?,
+                    }]
+                }
+                None => Vec::new(),
+            }
+        } else {
+            arrivals
+        };
+        let plan = self.snapshot.input_plan.clone();
+        let shared = if plan.reads_shared_state(state_id) {
+            plan.resources
+                .iter()
+                .map(|declaration| {
+                    let state = self.snapshot.shared.get(&declaration.id);
+                    SharedResourceRef {
+                        resource_id: declaration.id.clone(),
+                        revision: state.map_or(0, |state| state.revision),
+                        keys: state
+                            .map(|state| {
+                                state
+                                    .keys
+                                    .iter()
+                                    .map(|(key, entry)| (key.clone(), entry.revision))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let arrival_order = match plan.contribution_order(state_id) {
+            ContributionOrder::Declaration => Vec::new(),
+            ContributionOrder::Arrival => {
+                let ledger = self.snapshot.join_arrivals.get(state_id);
+                let mut ordered = predecessors
+                    .iter()
+                    .map(|contribution| {
+                        let ordinal = ledger
+                            .and_then(|ledger| ledger.arrivals.get(&contribution.node_id))
+                            .filter(|arrival| arrival.node_visit == contribution.node_visit)
+                            .map_or(0, |arrival| arrival.arrival_ordinal);
+                        (ordinal, contribution.node_id.clone())
+                    })
+                    .collect::<Vec<_>>();
+                ordered.sort();
+                ordered.into_iter().map(|(_, node_id)| node_id).collect()
+            }
+        };
+        let binding = InputBinding {
+            run_id: self.snapshot.run_id.clone(),
+            node_id: state_id.to_owned(),
+            node_visit: visit,
+            predecessors,
+            shared,
+            input_adapter_version: INPUT_ADAPTER_VERSION,
+            arrival_order,
+        };
+        self.snapshot
+            .bindings
+            .insert(InputBinding::key(state_id, visit), binding.clone());
+        Ok(binding)
+    }
+
+    /// The input one bound node visit receives: the run's own input, the
+    /// declared predecessor result references, and the shared resources at the
+    /// revisions the binding recorded. Nothing else can reach it.
+    fn projected_input(&self, state_id: &str, visit: u64) -> Result<Value> {
+        self.projection(state_id, visit, &BTreeSet::new())
+    }
+
+    /// The projection a completing node hands its outgoing transition.
+    ///
+    /// A writer sees its own writes: the keys this node just wrote are visible,
+    /// whatever their new revision. Every other key stays at the revision the
+    /// node's binding recorded, so a concurrent branch cannot change which edge
+    /// this node takes.
+    fn completion_input(
+        &self,
+        state_id: &str,
+        visit: u64,
+        own_writes: &BTreeSet<(String, String)>,
+    ) -> Result<Value> {
+        self.projection(state_id, visit, own_writes)
+    }
+
+    /// The input one bound node visit receives: the run's own input, the
+    /// declared predecessor result references, and every shared key the binding
+    /// observed at the revision it observed it. Nothing else can reach it.
+    fn projection(
+        &self,
+        state_id: &str,
+        visit: u64,
+        own_writes: &BTreeSet<(String, String)>,
+    ) -> Result<Value> {
+        let binding = self.binding(state_id, visit)?;
+        let mut input = match self.snapshot.input.clone() {
+            Value::Object(object) => object,
+            other => {
+                let mut object = serde_json::Map::new();
+                object.insert("input".to_owned(), other);
+                object
+            }
+        };
+        if !binding.predecessors.is_empty() {
+            let mut predecessors = serde_json::Map::new();
+            for contribution in &binding.predecessors {
+                predecessors.insert(
+                    contribution.node_id.clone(),
+                    serde_json::to_value(&contribution.result)?,
+                );
+            }
+            input.insert("predecessors".to_owned(), Value::Object(predecessors));
+        }
+        for reference in &binding.shared {
+            let Some(state) = self.snapshot.shared.get(&reference.resource_id) else {
+                continue;
+            };
+            let mut keys = input
+                .get(&reference.resource_id)
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            for (key, entry) in &state.keys {
+                let observed = reference.keys.get(key).copied().unwrap_or(0);
+                if entry.revision <= observed
+                    || own_writes.contains(&(reference.resource_id.clone(), key.clone()))
+                {
+                    keys.insert(key.clone(), entry.value.clone());
+                }
+            }
+            input.insert(reference.resource_id.clone(), Value::Object(keys));
+        }
+        Ok(Value::Object(input))
+    }
+
+    fn binding(&self, state_id: &str, visit: u64) -> Result<InputBinding> {
+        self.snapshot
+            .bindings
+            .get(&InputBinding::key(state_id, visit))
+            .cloned()
+            .ok_or_else(|| anyhow!("strategy_input_binding_missing"))
+    }
+
+    /// Apply one settled effect's shared writes under the run's declared merge
+    /// policy, and return the (resource, key) pairs that changed.
+    ///
+    /// Every write is validated before any is applied, so a refused write
+    /// leaves the shared state exactly as it was. A write to a resource the
+    /// writer did not read at a recorded revision is refused: that is the
+    /// undeclared global write this contract removes, not a merge policy.
+    fn apply_shared_writes(
+        &mut self,
+        command_id: &str,
+        state_id: &str,
+        visit: u64,
+        output: &Value,
+    ) -> Result<BTreeSet<(String, String)>> {
+        let Some(output) = output.as_object() else {
+            return Ok(BTreeSet::new());
+        };
+        let mut candidates = Vec::<(String, serde_json::Map<String, Value>)>::new();
+        for (namespace, resource_id) in [
+            ("context", SHARED_CONTEXT_RESOURCE),
+            ("worksets", SHARED_WORKSETS_RESOURCE),
+        ] {
+            if let Some(values) = output.get(namespace).and_then(Value::as_object) {
+                candidates.push((resource_id.to_owned(), values.clone()));
+            }
+        }
+        if let Some(named) = output.get("shared").and_then(Value::as_object) {
+            for (resource_id, values) in named {
+                candidates.push((
+                    resource_id.clone(),
+                    values.as_object().cloned().unwrap_or_default(),
+                ));
+            }
+        }
+        if candidates.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let binding = self.binding(state_id, visit)?;
+        let plan = self.snapshot.input_plan.clone();
+        let writer = SharedWriter {
+            run_id: self.snapshot.run_id.clone(),
+            node_id: state_id.to_owned(),
+            node_visit: visit,
+            command_id: command_id.to_owned(),
+        };
+        let mut accepted = Vec::<(MergePolicy, String, Vec<(String, Value)>)>::new();
+        for (resource_id, values) in &candidates {
+            let declaration = plan
+                .resource(resource_id)
+                .ok_or_else(|| anyhow!("strategy_shared_resource_undeclared"))?;
+            let observed = binding
+                .shared_revision(resource_id)
+                .ok_or_else(|| anyhow!("strategy_shared_write_unread"))?;
+            let state = self.snapshot.shared.get(resource_id);
+            let current = state.map_or(0, |state| state.revision);
+            match declaration.merge {
+                MergePolicy::Exclusive => {
+                    ensure!(
+                        declaration.writer.as_deref() == Some(state_id),
+                        "strategy_shared_write_conflict"
+                    );
+                }
+                MergePolicy::Cas => {
+                    ensure!(observed == current, "strategy_shared_write_conflict");
+                }
+                // Accumulation is per key and commutative, so it needs no
+                // whole-resource revision check: two members filling different
+                // keys, or the same key with different contributions, both
+                // reach one canonical value either way.
+                MergePolicy::KeyUnion | MergePolicy::Accumulate => {}
+            }
+            let mut keys = Vec::new();
+            for (key, value) in values {
+                let stored = state.and_then(|state| state.keys.get(key));
+                let merged = match declaration.merge {
+                    MergePolicy::Accumulate => {
+                        match accumulate(stored.map(|entry| &entry.value), value) {
+                            Some(merged) => merged,
+                            None => return Err(anyhow!("strategy_shared_write_conflict")),
+                        }
+                    }
+                    _ => value.clone(),
+                };
+                match stored {
+                    // Re-delivering a value already stored is the same write,
+                    // not a second one; so is accumulating a contribution the
+                    // collection already holds.
+                    Some(entry) if entry.value == merged => continue,
+                    Some(_) => {
+                        ensure!(
+                            declaration.merge != MergePolicy::KeyUnion,
+                            "strategy_shared_write_conflict"
+                        );
+                        keys.push((key.clone(), merged));
+                    }
+                    None => keys.push((key.clone(), merged)),
+                }
+            }
+            accepted.push((declaration.merge, resource_id.clone(), keys));
+        }
+        let mut touched = BTreeSet::new();
+        for (merge, resource_id, keys) in accepted {
+            let state = self.snapshot.shared.entry(resource_id.clone()).or_default();
+            if keys.is_empty() {
+                // Nothing to change: the effect re-delivered what was already
+                // stored, so the receipt says so and the revision stands.
+                self.delta.shared_writes.push(SharedWriteReceipt {
+                    resource_id,
+                    key: String::new(),
+                    revision: state.revision,
+                    writer: command_id.to_owned(),
+                    duplicate: true,
+                });
+                continue;
+            }
+            state.revision = state.revision.saturating_add(1);
+            for (key, value) in keys {
+                // The key's own revision counts the writes accepted for it, so
+                // two runs that accepted the same contributions agree on it
+                // whatever order they arrived in.
+                let revision = state
+                    .keys
+                    .get(&key)
+                    .map_or(1, |entry| entry.revision.saturating_add(1));
+                let writers = match merge {
+                    // The merged value belongs to every member that contributed
+                    // to it, and to nobody else.
+                    MergePolicy::Accumulate => state
+                        .keys
+                        .get(&key)
+                        .map(|entry| entry.writers.clone())
+                        .unwrap_or_default(),
+                    // A scalar value belongs to the writer that put it there.
+                    _ => BTreeSet::new(),
+                }
+                .into_iter()
+                .chain(std::iter::once(writer.clone()))
+                .collect();
+                state.keys.insert(
+                    key.clone(),
+                    SharedEntry {
+                        revision,
+                        value,
+                        writers,
+                    },
+                );
+                // The legacy provenance map keeps one string per key. For a
+                // shared key that string is the whole contributor set in a
+                // canonical order, never the last arrival: a stored fact that
+                // names only the last writer of a merged value would differ
+                // between two runs that accepted the same contributions in a
+                // different order. Session keys still map to the single command
+                // that established the session, which is what their readers
+                // compare.
+                let contributors = state
+                    .keys
+                    .get(&key)
+                    .map(|entry| {
+                        entry
+                            .writers
+                            .iter()
+                            .map(|writer| writer.command_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    })
+                    .unwrap_or_default();
+                self.snapshot
+                    .merge_sources
+                    .insert(format!("{resource_id}\0{key}"), contributors);
+                touched.insert((resource_id.clone(), key.clone()));
+                self.delta.shared_writes.push(SharedWriteReceipt {
+                    resource_id: resource_id.clone(),
+                    key,
+                    revision,
+                    writer: command_id.to_owned(),
+                    duplicate: false,
+                });
+            }
+        }
+        Ok(touched)
     }
 
     fn drain_automatic(&mut self) -> Result<()> {
@@ -550,6 +1395,14 @@ impl Machine<'_> {
     ) -> Result<()> {
         self.snapshot.active_states.remove(state_id);
         self.snapshot.completed_states.insert(state_id.to_owned());
+        // The node visit's result is final now, and it is what a successor
+        // binds to. Recording it here is what makes a successor boundary
+        // reference resolvable without replaying the effect.
+        if let Some(visit) = self.snapshot.state_visits.get(state_id).copied() {
+            self.delta
+                .results
+                .push(self.result_ref_for(state_id, visit)?);
+        }
         let transition = self
             .workflow
             .select_transition(state_id, event, payload)?
@@ -628,10 +1481,18 @@ impl Machine<'_> {
     fn schedule_workset(&mut self, state_id: &str) -> Result<bool> {
         let state = self.workflow.state(state_id).unwrap();
         let workset_id = state.workset.as_deref().unwrap();
-        let items = self
+        // Items come from the projection this node's binding named, not from a
+        // live run-wide bag: a later write by an unrelated branch cannot change
+        // which items this visit scheduled.
+        let visit = self
             .snapshot
-            .input
-            .get("worksets")
+            .state_visits
+            .get(state_id)
+            .copied()
+            .unwrap_or(0);
+        let items = self
+            .projected_input(state_id, visit)?
+            .get(SHARED_WORKSETS_RESOURCE)
             .and_then(|value| value.get(workset_id))
             .and_then(Value::as_array)
             .cloned()
@@ -977,13 +1838,8 @@ impl Machine<'_> {
             })
             .map(|command| command.id.clone())
             .collect::<BTreeSet<_>>();
-        for command in self.snapshot.commands.values_mut() {
-            if command.state_id == state_id
-                && command.state_visit == visit
-                && cancel.contains(&command.id)
-            {
-                command.status = CommandStatus::Cancelled;
-            }
+        for command_id in &cancel {
+            self.set_command_status(command_id, CommandStatus::Cancelled);
         }
         if self.visit_unsettled(state_id, visit) {
             self.refresh_workset_status(state_id);
@@ -1125,11 +1981,7 @@ impl Machine<'_> {
                 .then(left.reason.cmp(&right.reason))
                 .then(left.attempts.cmp(&right.attempts))
         });
-        self.snapshot
-            .commands
-            .get_mut(failed_command_id)
-            .expect("fallback source command exists")
-            .status = CommandStatus::Cancelled;
+        self.set_command_status(failed_command_id, CommandStatus::Cancelled);
         self.emit_fallback_command(&state_id, kind, item_id, next_ordinal, input)?;
         if kind == CommandKind::WorksetItem {
             self.refresh_workset_status(&state_id);
@@ -1205,6 +2057,30 @@ impl Machine<'_> {
         Ok(())
     }
 
+    /// Move one command to a new status, once, recording the move.
+    ///
+    /// Every status change in the machine goes through here, so the delta's
+    /// settled set is a record of what happened rather than a diff of two
+    /// snapshots. A consumer that applies only the delta therefore has no way
+    /// to learn about a transition the machine forgot to mention.
+    fn set_command_status(&mut self, command_id: &str, next: CommandStatus) {
+        let Some(command) = self.snapshot.commands.get_mut(command_id) else {
+            return;
+        };
+        if command.status == next {
+            return;
+        }
+        command.status = next;
+        if !self
+            .delta
+            .settled_commands
+            .iter()
+            .any(|settled| settled == command_id)
+        {
+            self.delta.settled_commands.push(command_id.to_owned());
+        }
+    }
+
     fn transition_command(
         &mut self,
         command_id: &str,
@@ -1222,7 +2098,7 @@ impl Machine<'_> {
             "strategy_callback_stale"
         );
         ensure!(command.status == expected, "strategy_callback_conflict");
-        command.status = next;
+        self.set_command_status(command_id, next);
         Ok(())
     }
 
@@ -1233,7 +2109,7 @@ impl Machine<'_> {
         output: Value,
     ) -> Result<()> {
         let output_digest = sha256_hex(&serde_json::to_vec(&output)?);
-        let (state_id, binding_id, binding_ordinal, session_policy, duplicate) = {
+        let (state_id, state_visit, binding_id, binding_ordinal, session_policy, duplicate) = {
             let command = self
                 .snapshot
                 .commands
@@ -1252,6 +2128,7 @@ impl Machine<'_> {
                 );
                 (
                     command.state_id.clone(),
+                    command.state_visit,
                     command.binding_id.clone(),
                     command.binding_ordinal,
                     command.session_policy,
@@ -1265,10 +2142,10 @@ impl Machine<'_> {
                     ),
                     "strategy_callback_conflict"
                 );
-                command.status = CommandStatus::Succeeded;
                 command.output_digest = Some(output_digest);
                 (
                     command.state_id.clone(),
+                    command.state_visit,
                     command.binding_id.clone(),
                     command.binding_ordinal,
                     command.session_policy,
@@ -1280,12 +2157,8 @@ impl Machine<'_> {
             self.applied = false;
             return Ok(());
         }
-        merge_run_context(
-            &mut self.snapshot.input,
-            &output,
-            command_id,
-            &mut self.snapshot.merge_sources,
-        )?;
+        self.set_command_status(command_id, CommandStatus::Succeeded);
+        let own_writes = self.apply_shared_writes(command_id, &state_id, state_visit, &output)?;
         if session_policy != SessionPolicy::New
             && let (Some(binding_id), Some(session_id)) = (
                 binding_id,
@@ -1326,7 +2199,7 @@ impl Machine<'_> {
         };
         if satisfied {
             let payload = if is_workset {
-                self.snapshot.input.clone()
+                self.completion_input(&state_id, state_visit, &own_writes)?
             } else {
                 output
             };
@@ -1382,20 +2255,21 @@ impl Machine<'_> {
                 current.item_id.as_deref(),
                 self.workflow.definition.limits.max_attempts,
             );
-        let command = self
-            .snapshot
-            .commands
-            .get_mut(command_id)
-            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
-        command.status = if retryable {
+        let terminal = if retryable {
             CommandStatus::Retryable
         } else if class == FailureClass::InDoubt {
             CommandStatus::InDoubt
         } else {
             CommandStatus::Failed
         };
+        let command = self
+            .snapshot
+            .commands
+            .get_mut(command_id)
+            .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
         command.failure_class = Some(class);
         command.failure_code = Some(code.to_owned());
+        self.set_command_status(command_id, terminal);
         let state_id = current.state_id;
         let command_kind = current.kind;
         self.snapshot.diagnostic_code = Some(code.to_owned());
@@ -1529,13 +2403,16 @@ impl Machine<'_> {
             .commands
             .get_mut(command_id)
             .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
-        command.status = if class == FailureClass::InDoubt {
-            CommandStatus::InDoubt
-        } else {
-            CommandStatus::Failed
-        };
         command.failure_class = Some(class);
         command.failure_code = Some(code.to_owned());
+        self.set_command_status(
+            command_id,
+            if class == FailureClass::InDoubt {
+                CommandStatus::InDoubt
+            } else {
+                CommandStatus::Failed
+            },
+        );
         self.snapshot.pending_callbacks.clear();
         self.cancel_unstarted_assistant_commands();
         self.snapshot.status = if class == FailureClass::InDoubt {
@@ -1567,15 +2444,24 @@ impl Machine<'_> {
         }
         self.cancel_unstarted_assistant_commands();
         self.snapshot.pending_callbacks.clear();
-        for command in self.snapshot.commands.values_mut().filter(|command| {
-            matches!(
-                command.status,
-                CommandStatus::Claimed | CommandStatus::Running
-            )
-        }) {
-            command.status = CommandStatus::InDoubt;
-            command.failure_class = Some(FailureClass::InDoubt);
-            command.failure_code = Some(code.to_owned());
+        let started = self
+            .snapshot
+            .commands
+            .iter()
+            .filter(|(_, command)| {
+                matches!(
+                    command.status,
+                    CommandStatus::Claimed | CommandStatus::Running
+                )
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for command_id in started {
+            if let Some(command) = self.snapshot.commands.get_mut(&command_id) {
+                command.failure_class = Some(FailureClass::InDoubt);
+                command.failure_code = Some(code.to_owned());
+            }
+            self.set_command_status(&command_id, CommandStatus::InDoubt);
         }
         self.snapshot.status = StrategyRunStatus::CancelInDoubt;
         self.snapshot.diagnostic_code = Some(code.to_owned());
@@ -1583,13 +2469,22 @@ impl Machine<'_> {
     }
 
     fn cancel_unstarted_assistant_commands(&mut self) {
-        for command in self.snapshot.commands.values_mut().filter(|command| {
-            matches!(
-                command.status,
-                CommandStatus::Pending | CommandStatus::Retryable | CommandStatus::CancelRequested
-            )
-        }) {
-            command.status = CommandStatus::Cancelled;
+        let unstarted = self
+            .snapshot
+            .commands
+            .iter()
+            .filter(|(_, command)| {
+                matches!(
+                    command.status,
+                    CommandStatus::Pending
+                        | CommandStatus::Retryable
+                        | CommandStatus::CancelRequested
+                )
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for command_id in unstarted {
+            self.set_command_status(&command_id, CommandStatus::Cancelled);
         }
     }
 
@@ -1652,11 +2547,7 @@ impl Machine<'_> {
             old.binding_id.as_deref(),
             old.item_id.as_deref(),
         )?;
-        self.snapshot
-            .commands
-            .get_mut(command_id)
-            .expect("retry source command exists")
-            .status = CommandStatus::Cancelled;
+        self.set_command_status(command_id, CommandStatus::Cancelled);
         self.snapshot.commands.insert(new_id, command.clone());
         if old.kind == CommandKind::WorksetItem {
             self.refresh_workset_status(&old.state_id);
@@ -1678,13 +2569,19 @@ impl Machine<'_> {
         }
         self.snapshot.pending_callbacks.clear();
         let mut in_flight = false;
-        for command in self.snapshot.commands.values_mut() {
-            match command.status {
+        let cancellable = self
+            .snapshot
+            .commands
+            .iter()
+            .map(|(id, command)| (id.clone(), command.status))
+            .collect::<Vec<_>>();
+        for (command_id, status) in cancellable {
+            match status {
                 CommandStatus::Pending | CommandStatus::Claimed | CommandStatus::Retryable => {
-                    command.status = CommandStatus::Cancelled;
+                    self.set_command_status(&command_id, CommandStatus::Cancelled);
                 }
                 CommandStatus::Running | CommandStatus::CancelRequested => {
-                    command.status = CommandStatus::CancelRequested;
+                    self.set_command_status(&command_id, CommandStatus::CancelRequested);
                     in_flight = true;
                 }
                 _ => {}
@@ -1727,6 +2624,35 @@ impl Machine<'_> {
         self.snapshot.diagnostic_code = Some("cancellation_outcome_unknown".into());
         Ok(())
     }
+}
+
+/// Merge one collection key with an incoming contribution.
+///
+/// The union is canonical: elements are deduplicated and ordered by their own
+/// canonical encoding, so the result depends on the two sets and on nothing
+/// else. That is what makes an accumulating bag safe to fill from concurrent
+/// members — the completion order is not observable in the merged value, a
+/// re-delivered contribution is not counted twice, and a scalar write into a
+/// collection key is refused instead of being coerced into one.
+fn accumulate(stored: Option<&Value>, incoming: &Value) -> Option<Value> {
+    let incoming = incoming.as_array()?;
+    let mut elements = BTreeMap::<String, Value>::new();
+    if let Some(stored) = stored {
+        for element in stored.as_array()? {
+            elements.insert(canonical(element), element.clone());
+        }
+    }
+    for element in incoming {
+        elements.insert(canonical(element), element.clone());
+    }
+    Some(Value::Array(elements.into_values().collect::<Vec<_>>()))
+}
+
+/// The canonical encoding of one JSON value: its identity in a merged
+/// collection. Object keys are ordered by the encoding itself rather than by
+/// insertion, so two equal values always produce one element.
+fn canonical(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_default()
 }
 
 fn pending_authorization(snapshot: &RunSnapshot) -> Result<String> {
@@ -1911,65 +2837,6 @@ fn fallback_reason_base(
         return None;
     }
     Some(reason)
-}
-
-fn merge_run_context(
-    input: &mut Value,
-    output: &Value,
-    command_id: &str,
-    merge_sources: &mut BTreeMap<String, String>,
-) -> Result<()> {
-    let Some(output) = output.as_object() else {
-        return Ok(());
-    };
-    if !input.is_object() {
-        *input = Value::Object(Default::default());
-    }
-    let Some(target) = input.as_object_mut() else {
-        return Ok(());
-    };
-    if let Some(worksets) = output.get("worksets").and_then(Value::as_object) {
-        let destination = target
-            .entry("worksets".to_owned())
-            .or_insert_with(|| Value::Object(Default::default()));
-        if !destination.is_object() {
-            *destination = Value::Object(Default::default());
-        }
-        if let Some(destination) = destination.as_object_mut() {
-            stable_merge_object(destination, worksets, "worksets", command_id, merge_sources);
-        }
-    }
-    if let Some(context) = output.get("context").and_then(Value::as_object) {
-        let destination = target
-            .entry("context".to_owned())
-            .or_insert_with(|| Value::Object(Default::default()));
-        if !destination.is_object() {
-            *destination = Value::Object(Default::default());
-        }
-        if let Some(destination) = destination.as_object_mut() {
-            stable_merge_object(destination, context, "context", command_id, merge_sources);
-        }
-    }
-    Ok(())
-}
-
-fn stable_merge_object(
-    target: &mut serde_json::Map<String, Value>,
-    incoming: &serde_json::Map<String, Value>,
-    namespace: &str,
-    command_id: &str,
-    merge_sources: &mut BTreeMap<String, String>,
-) {
-    for (key, value) in incoming {
-        let source_key = format!("{namespace}\0{key}");
-        if merge_sources
-            .get(&source_key)
-            .is_none_or(|source| command_id > source.as_str())
-        {
-            target.insert(key.clone(), value.clone());
-            merge_sources.insert(source_key, command_id.to_owned());
-        }
-    }
 }
 
 const fn default_state_visit() -> u64 {
@@ -2527,16 +3394,39 @@ mod tests {
             },
         )
         .unwrap();
+        // The writes landed in versioned shared resources, each naming its
+        // writer, rather than in one silently merged run-wide bag.
+        let worksets = &planned.snapshot.shared["worksets"];
+        assert_eq!(worksets.revision, 1);
+        assert_eq!(worksets.keys["tasks"].value[0]["id"], "from-actor");
         assert_eq!(
-            planned.snapshot.input["worksets"]["tasks"][0]["id"],
-            "from-actor"
+            worksets.keys["tasks"]
+                .writers
+                .iter()
+                .map(|writer| writer.node_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["plan"]
         );
-        assert_eq!(planned.snapshot.input["context"]["note"], "keep");
+        assert_eq!(
+            planned.snapshot.shared["context"].keys["note"].value,
+            "keep"
+        );
+        assert_eq!(
+            planned.snapshot.merge_sources["worksets\0tasks"],
+            command.id
+        );
         assert_eq!(planned.emitted_commands.len(), 1);
         assert_eq!(
             planned.emitted_commands[0].item_id.as_deref(),
             Some("from-actor")
         );
+        // The scheduled workset read that resource at the revision it bound,
+        // and the item it scheduled is the one the writer published.
+        let binding = &planned.snapshot.bindings[&InputBinding::key("tasks", 1)];
+        assert_eq!(binding.shared_revision("worksets"), Some(1));
+        assert_eq!(binding.predecessors.len(), 1);
+        assert_eq!(binding.predecessors[0].node_id, "plan");
+        assert_eq!(binding.predecessors[0].node_visit, 1);
     }
 
     #[test]
@@ -2900,8 +3790,23 @@ mod tests {
         assert_eq!(pending.transition_id, "review");
         assert_eq!(pending.event, TransitionEvent::Success);
         assert_eq!(pending.target, "done");
-        // The completed effect already merged its output into the run input.
-        assert_eq!(parked.snapshot.input["context"]["note"], "ready");
+        // The completed effect's write is durable and attributable: the
+        // context resource moved to revision 1, the key names the node visit
+        // that wrote it, and the run input itself was never mutated.
+        assert_eq!(parked.snapshot.shared["context"].revision, 1);
+        assert_eq!(
+            parked.snapshot.shared["context"].keys["note"].value,
+            "ready"
+        );
+        assert_eq!(
+            parked.snapshot.shared["context"].keys["note"]
+                .writers
+                .iter()
+                .map(|writer| (writer.node_id.as_str(), writer.node_visit))
+                .collect::<Vec<_>>(),
+            vec![("work", 1)]
+        );
+        assert!(parked.snapshot.input.get("context").is_none());
         // A duplicate settlement stays idempotent and never double-parks.
         let duplicate = reduce(
             &workflow,

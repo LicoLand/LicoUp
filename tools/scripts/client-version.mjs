@@ -19,6 +19,8 @@ export const cargoWorkspaceVersionPackages = Object.freeze([
   "licoup-platform-bridges",
   "licoup-protocol-bindings",
   "licoup-workflow",
+  "licoup-workflow-runtime",
+  "licoup-workflow-store",
   "trybuild",
 ]);
 
