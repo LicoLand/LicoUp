@@ -2199,6 +2199,7 @@ name = "licoup-protocol-bindings"
 version = "0.3.0"
 dependencies = [
  "licoarc-rust",
+ "serde_json",
 ]
 
 [[package]]
