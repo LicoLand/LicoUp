@@ -486,6 +486,19 @@ impl ApplicationCommand {
             .map_err(|_| ApplicationFailure::invalid_request("command"))
     }
 
+    /// Decode a command from the JSON text a machine interface received.
+    ///
+    /// Malformed JSON and a well-formed payload of the wrong shape are two
+    /// different failures, because the caller has to do two different things:
+    /// the first is [`ApplicationFailure::invalid_json`] with the
+    /// `provide_valid_json` recovery, and the second names the field that is
+    /// wrong. Neither turns every other cause into a format error.
+    pub fn decode_text(text: &str) -> Result<Self, ApplicationFailure> {
+        let value: Value =
+            serde_json::from_str(text).map_err(|_| ApplicationFailure::invalid_json("command"))?;
+        Self::decode(&value)
+    }
+
     pub fn encode(&self) -> Result<Value, ApplicationFailure> {
         serde_json::to_value(self).map_err(|_| ApplicationFailure::invalid_request("command"))
     }
@@ -539,7 +552,7 @@ impl ApplicationCommand {
     }
 }
 
-fn stable_id(field: &'static str, value: &str) -> Result<(), ApplicationFailure> {
+pub(crate) fn stable_id(field: &'static str, value: &str) -> Result<(), ApplicationFailure> {
     bounded_non_empty(field, value, MAX_STABLE_ID_BYTES)
 }
 
