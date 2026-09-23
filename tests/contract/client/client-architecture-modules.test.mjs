@@ -882,6 +882,18 @@ test("SDK-only presentation contract source and pubspec have positive and negati
   assert.deepEqual(inspectPresentationContractSources(new Map([
     [contractPath, "final class Port { void close() {} }\n"],
   ])), [["presentation_boundary_package_surface", contractPath]]);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "final class SyntaxConfig { const SyntaxConfig(this.revision); final String revision; }\n"],
+  ])), []);
+  for (const source of [
+    "final class SyntaxConfig { int revision = 0; }\n",
+    "final class Port { final int revision; }\n",
+    "final class SyntaxConfig { final String revision; void close() {} }\n",
+    "final class SyntaxConfig { final String revision; }\nfinal revision = 0;\n",
+  ]) {
+    assert.deepEqual(inspectPresentationContractSources(new Map([[contractPath, source]])),
+      [["presentation_boundary_package_surface", contractPath]]);
+  }
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\n"), []);
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\ndependencies:\n"), [
     "presentation_boundary_package_dependency_surface",

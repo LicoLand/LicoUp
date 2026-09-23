@@ -1,5 +1,6 @@
 library presentation_contract;
 
+
 import 'dart:async';
 
 /// Stable ownership scope for a presentation resource.
@@ -173,6 +174,197 @@ final class SourcePosition {
 /// Names used by source adapters and preparation code for the same position.
 typedef SourceCursor = SourcePosition;
 typedef SourceStamp = SourcePosition;
+
+/// Half-open `[start, end)` offset range inside one source revision.
+///
+/// The numbers are meaningless without the [SourceTextReference] that carries
+/// them: the same offsets address different text in another revision.
+final class SourceTextRange {
+  const SourceTextRange({required this.start, required this.end})
+    : assert(start >= 0, 'start must not be negative'),
+      assert(end >= start, 'end must not precede start');
+
+  final int start;
+  final int end;
+
+  int get length => end - start;
+
+  bool get isEmpty => end <= start;
+
+  bool containsOffset(int offset) => offset >= start && offset < end;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceTextRange && other.start == start && other.end == end;
+
+  @override
+  int get hashCode => Object.hash(start, end);
+
+  @override
+  String toString() => 'SourceTextRange($start..$end)';
+}
+
+/// Citation of the original source text a prepared value was built from.
+///
+/// Display code can keep the full text, copy it, or anchor selection to it
+/// without re-parsing, because the reference says which resource revision the
+/// offsets belong to and whether they are still meaningful.
+final class SourceTextReference {
+  const SourceTextReference({
+    required this.resource,
+    required this.position,
+    required this.range,
+  });
+
+  final ResourceKey resource;
+  final SourcePosition position;
+  final SourceTextRange range;
+
+  /// Offsets resolve only inside the epoch that issued them.
+  ///
+  /// Replacing a source opens a new [SourceEpoch]. References from the old
+  /// epoch stay invalid in it even when the new text looks similar.
+  bool isValidIn(SourcePosition other) => position.epoch == other.epoch;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceTextReference &&
+          other.resource == resource &&
+          other.position == position &&
+          other.range == range;
+
+  @override
+  int get hashCode => Object.hash(resource, position, range);
+
+  @override
+  String toString() => '$resource@$position$range';
+}
+
+/// Stable identity of one block inside one [SourceEpoch].
+///
+/// A block keeps its identity while the source keeps treating it as the same
+/// block, even as its text grows and its [BlockVersion] advances. A replaced
+/// source issues a new epoch, so old block identities do not carry over.
+final class BlockId {
+  const BlockId(this.value);
+
+  final String value;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is BlockId && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => 'BlockId($value)';
+}
+
+/// Version of one block's text inside one [SourceEpoch].
+final class BlockVersion {
+  const BlockVersion(this.value);
+
+  final int value;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is BlockVersion && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => 'BlockVersion($value)';
+}
+
+/// Reference to one block, in this resource or in another one.
+///
+/// A link definition, a footnote, or an interleaved message can make one
+/// block's prepared output depend on a block elsewhere, so the reference
+/// carries the resource as well as the [BlockId].
+final class BlockReference {
+  const BlockReference({required this.resource, required this.blockId});
+
+  final ResourceKey resource;
+  final BlockId blockId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BlockReference &&
+          other.resource == resource &&
+          other.blockId == blockId;
+
+  @override
+  int get hashCode => Object.hash(resource, blockId);
+
+  @override
+  String toString() => '$resource#$blockId';
+}
+
+/// One block of a source revision and what its text depends on.
+final class SourceBlock {
+  factory SourceBlock({
+    required BlockId id,
+    required BlockVersion version,
+    required SourceTextReference text,
+    bool isSealed = false,
+    Iterable<BlockReference> references = const <BlockReference>[],
+  }) => SourceBlock._(
+    id: id,
+    version: version,
+    text: text,
+    isSealed: isSealed,
+    references: Set<BlockReference>.unmodifiable(references),
+  );
+
+  const SourceBlock._({
+    required this.id,
+    required this.version,
+    required this.text,
+    required this.isSealed,
+    required this.references,
+  });
+
+  final BlockId id;
+  final BlockVersion version;
+  final SourceTextReference text;
+
+  /// True once the source observed this block's final boundary.
+  ///
+  /// An open fence or a table continuation that may still grow is not sealed,
+  /// so its prepared output cannot be treated as final yet.
+  final bool isSealed;
+
+  /// Blocks whose text this block's prepared output depends on.
+  ///
+  /// A sealed block with an unresolved reference can still change, so the
+  /// dependency stays declared after the block's own text stops growing.
+  final Set<BlockReference> references;
+
+  bool referencesBlock(BlockReference reference) =>
+      references.contains(reference);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceBlock &&
+          other.id == id &&
+          other.version == version &&
+          other.text == text &&
+          other.isSealed == isSealed &&
+          _sameSet(other.references, references);
+
+  @override
+  int get hashCode =>
+      Object.hash(id, version, text, isSealed, _setHash(references));
+
+  @override
+  String toString() => '$id@$version${isSealed ? '' : ' (open)'}';
+}
 
 /// Identity of one atomic group of source changes.
 final class ConsistencyGroupId {
@@ -387,6 +579,70 @@ final class RequestGeneration {
 
 typedef PresentationRequestGeneration = RequestGeneration;
 
+/// Declared extent of one preparation attempt.
+enum PreparationScope {
+  /// Only the blocks the source reported as changed.
+  incremental,
+
+  /// The whole content revision, executed away from the rendering path.
+  global,
+}
+
+/// Why one preparation attempt had to run.
+enum PreparationTrigger {
+  initial,
+  blocksChanged,
+  blockDependencyChanged,
+  sourceReplaced,
+  parserConfigChanged,
+  cacheEvicted,
+}
+
+/// Recorded reason for one preparation attempt.
+///
+/// A global attempt is recorded rather than silent. It explains why the whole
+/// revision was recomputed, and the runtime runs it off the rendering path
+/// instead of inside a build.
+final class PreparationCause {
+  factory PreparationCause({
+    required PreparationTrigger trigger,
+    required PreparationScope scope,
+    Set<BlockId> changed = const <BlockId>{},
+  }) => PreparationCause._(
+    trigger: trigger,
+    scope: scope,
+    changed: Set<BlockId>.unmodifiable(changed),
+  );
+
+  const PreparationCause._({
+    required this.trigger,
+    required this.scope,
+    required this.changed,
+  });
+
+  final PreparationTrigger trigger;
+  final PreparationScope scope;
+
+  /// Blocks the source reported as changed for this attempt.
+  final Set<BlockId> changed;
+
+  bool get isGlobal => scope == PreparationScope.global;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparationCause &&
+          other.trigger == trigger &&
+          other.scope == scope &&
+          _sameSet(other.changed, changed);
+
+  @override
+  int get hashCode => Object.hash(trigger, scope, _setHash(changed));
+
+  @override
+  String toString() => 'PreparationCause($trigger, $scope)';
+}
+
 /// Identity carried into an asynchronous presentation preparation.
 final class PreparationRequest<T> {
   const PreparationRequest({
@@ -394,22 +650,28 @@ final class PreparationRequest<T> {
     required this.source,
     required this.generation,
     this.consistencyGroup,
+    this.cause,
   });
 
   factory PreparationRequest.fromSnapshot({
     required ResourceSnapshot<T> snapshot,
     required RequestGeneration generation,
+    PreparationCause? cause,
   }) => PreparationRequest<T>(
     resource: snapshot.fieldGroup,
     source: snapshot.position,
     generation: generation,
     consistencyGroup: snapshot.consistencyGroup,
+    cause: cause,
   );
 
   final ResourceFieldGroup<T> resource;
   final SourcePosition source;
   final RequestGeneration generation;
   final ConsistencyGroup? consistencyGroup;
+
+  /// Why this attempt runs, when the caller knows the reason.
+  final PreparationCause? cause;
 
   ResourceKey get resourceKey => resource.resource;
 
@@ -426,11 +688,12 @@ final class PreparationRequest<T> {
           other.resource == resource &&
           other.source == source &&
           other.generation == generation &&
-          other.consistencyGroup == consistencyGroup;
+          other.consistencyGroup == consistencyGroup &&
+          other.cause == cause;
 
   @override
   int get hashCode =>
-      Object.hash(resource, source, generation, consistencyGroup);
+      Object.hash(resource, source, generation, consistencyGroup, cause);
 }
 
 /// Pure result value from an asynchronous preparation step.
@@ -444,6 +707,378 @@ final class PreparedResource<T> {
 }
 
 typedef PreparationResult<T> = PreparedResource<T>;
+
+/// Identity of the parser implementation and its output semantics.
+///
+/// A parser change that can produce different output for the same content must
+/// publish a new version; one that cannot must not.
+final class ParserVersion {
+  const ParserVersion(this.value);
+
+  final String value;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is ParserVersion && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => 'ParserVersion($value)';
+}
+
+/// Semantic parser configuration.
+///
+/// Only settings that can change prepared output belong here. Colours, fonts,
+/// density, and other renderer styling have no field in this type, so a
+/// restyle cannot invalidate a prepared value, while a changed [revision] or
+/// [features] set can.
+final class SyntaxConfig {
+  factory SyntaxConfig({
+    required String revision,
+    Iterable<String> features = const <String>[],
+  }) => SyntaxConfig._(
+    revision: revision,
+    features: Set<String>.unmodifiable(features),
+  );
+
+  const SyntaxConfig._({required this.revision, required this.features});
+
+  /// Opaque revision of the semantic configuration the parser was given.
+  final String revision;
+
+  /// Semantic features enabled for this configuration, such as `tables`.
+  final Set<String> features;
+
+  bool enables(String feature) => features.contains(feature);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SyntaxConfig &&
+          other.revision == revision &&
+          _sameSet(other.features, features);
+
+  @override
+  int get hashCode => Object.hash(revision, _setHash(features));
+
+  @override
+  String toString() => 'SyntaxConfig($revision)';
+}
+
+/// Exactly which source content one preparation covers.
+///
+/// Content is a subset, not a whole document: an incremental attempt over
+/// three changed blocks covers three blocks. Two attempts over different
+/// subsets at the same source position are different preparations.
+final class ContentRevision {
+  factory ContentRevision({
+    required ResourceKey resource,
+    required SourcePosition position,
+    required Iterable<SourceBlock> blocks,
+  }) {
+    final ordered = List<SourceBlock>.unmodifiable(blocks);
+    final byId = <BlockId, SourceBlock>{};
+    for (final block in ordered) {
+      if (byId.containsKey(block.id)) {
+        throw ArgumentError.value(
+          block.id.value,
+          'blocks',
+          'duplicate block id in one content revision',
+        );
+      }
+      if (block.text.resource != resource) {
+        throw ArgumentError.value(
+          block.id.value,
+          'blocks',
+          'block text belongs to another resource',
+        );
+      }
+      if (!block.text.isValidIn(position)) {
+        throw ArgumentError.value(
+          block.id.value,
+          'blocks',
+          'block text belongs to another source epoch',
+        );
+      }
+      byId[block.id] = block;
+    }
+    return ContentRevision._(
+      resource: resource,
+      position: position,
+      blocks: ordered,
+      byId: Map<BlockId, SourceBlock>.unmodifiable(byId),
+    );
+  }
+
+  ContentRevision._({
+    required this.resource,
+    required this.position,
+    required this.blocks,
+    required Map<BlockId, SourceBlock> byId,
+  }) : _byId = byId;
+
+  final ResourceKey resource;
+  final SourcePosition position;
+
+  /// Covered blocks in source order.
+  final List<SourceBlock> blocks;
+
+  final Map<BlockId, SourceBlock> _byId;
+
+  late final List<BlockId> blockIds = List<BlockId>.unmodifiable(
+    blocks.map((block) => block.id),
+  );
+
+  SourceBlock? block(BlockId id) => _byId[id];
+
+  bool covers(BlockId id) => _byId.containsKey(id);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContentRevision &&
+          other.resource == resource &&
+          other.position == position &&
+          _sameList(other.blocks, blocks);
+
+  @override
+  int get hashCode => Object.hash(resource, position, Object.hashAll(blocks));
+
+  @override
+  String toString() => '$resource@$position[${blocks.length} blocks]';
+}
+
+/// Identity of one preparation: parser, semantic configuration, and content.
+///
+/// Two preparations with the same key produce the same prepared value, so the
+/// key is the reuse identity a worker can trust. It carries no renderer input.
+final class PreparationKey {
+  const PreparationKey({
+    required this.parserVersion,
+    required this.syntaxConfig,
+    required this.content,
+  });
+
+  final ParserVersion parserVersion;
+  final SyntaxConfig syntaxConfig;
+  final ContentRevision content;
+
+  /// True when [previous] cannot be reused instead of preparing again.
+  bool requiresRePreparation(PreparationKey? previous) => previous != this;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparationKey &&
+          other.parserVersion == parserVersion &&
+          other.syntaxConfig == syntaxConfig &&
+          other.content == content;
+
+  @override
+  int get hashCode => Object.hash(parserVersion, syntaxConfig, content);
+
+  @override
+  String toString() => '$parserVersion/$syntaxConfig/$content';
+}
+
+/// One plain input a prepared value was computed from.
+///
+/// A preparation that reads another field group (a filter, a selected id, a
+/// locale) declares it here, so a later change to that input invalidates the
+/// prepared value without re-parsing the source.
+final class PreparedInputReference {
+  const PreparedInputReference({
+    required this.resource,
+    required this.name,
+    this.position,
+  });
+
+  final ResourceKey resource;
+  final String name;
+
+  /// Position of the input when it was read, when the reader knows it.
+  final SourcePosition? position;
+
+  bool matches<T>(ResourceFieldGroup<T> group) =>
+      resource == group.resource && name == group.name;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparedInputReference &&
+          other.resource == resource &&
+          other.name == name &&
+          other.position == position;
+
+  @override
+  int get hashCode => Object.hash(resource, name, position);
+
+  @override
+  String toString() => '$resource#$name';
+}
+
+/// One prepared block: its source identity plus the prepared payload.
+final class PreparedBlock<T> {
+  const PreparedBlock({required this.block, required this.value});
+
+  final SourceBlock block;
+
+  /// Prepared output for this block, in whatever compact form the preparation
+  /// produced. Consumers render it without normalizing or tokenizing the
+  /// source text again.
+  final T value;
+
+  BlockId get id => block.id;
+
+  BlockVersion get version => block.version;
+
+  SourceTextReference get text => block.text;
+
+  bool get isSealed => block.isSealed;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparedBlock<T> && other.block == block && other.value == value;
+
+  @override
+  int get hashCode => Object.hash(block, value);
+
+  @override
+  String toString() => 'PreparedBlock($id@$version)';
+}
+
+/// Immutable prepared output for one [PreparationKey].
+///
+/// [immutablePrefix] holds prepared blocks that will not change under the key:
+/// their own text is sealed and every transitive dependency is sealed and
+/// present here. [mutableTail] holds everything a later source version may
+/// still change. A consumer can therefore reuse the prefix and re-render only
+/// the tail, and recomputing the tail does not invalidate the prefix.
+final class PreparedValue<T> {
+  factory PreparedValue({
+    required PreparationKey key,
+    required Iterable<PreparedBlock<T>> immutablePrefix,
+    required Iterable<PreparedBlock<T>> mutableTail,
+    Iterable<PreparedInputReference> referencedInputs =
+        const <PreparedInputReference>[],
+  }) {
+    final prefix = List<PreparedBlock<T>>.unmodifiable(immutablePrefix);
+    final tail = List<PreparedBlock<T>>.unmodifiable(mutableTail);
+
+    // Prefix and tail are subsets, not runs: an open block may sit between two
+    // frozen ones, so the covered blocks are ordered by the content revision.
+    final covered = key.content.blocks;
+    final order = <BlockId, int>{
+      for (var index = 0; index < covered.length; index++)
+        covered[index].id: index,
+    };
+    final blocks = List<PreparedBlock<T>>.unmodifiable(
+      <PreparedBlock<T>>[...prefix, ...tail]..sort(
+        (left, right) =>
+            (order[left.id] ?? -1).compareTo(order[right.id] ?? -1),
+      ),
+    );
+    _checkPreparedBlocks<T>(key, prefix, blocks);
+    return PreparedValue._(
+      key: key,
+      immutablePrefix: prefix,
+      mutableTail: tail,
+      blocks: blocks,
+      referencedInputs: Set<PreparedInputReference>.unmodifiable(
+        referencedInputs,
+      ),
+    );
+  }
+
+  /// Freezes every block that cannot change any more under [key].
+  ///
+  /// A block is frozen when it is sealed and every transitive dependency is
+  /// sealed and covered by this same value. Everything else stays in the
+  /// mutable tail, so an unresolved cross-block or cross-message reference
+  /// keeps its dependent block out of the immutable prefix.
+  factory PreparedValue.fromBlocks({
+    required PreparationKey key,
+    required Iterable<PreparedBlock<T>> blocks,
+    Iterable<PreparedInputReference> referencedInputs =
+        const <PreparedInputReference>[],
+  }) {
+    final ordered = List<PreparedBlock<T>>.unmodifiable(blocks);
+    final stableIds = _stableBlockIds(key.content);
+    final prefix = <PreparedBlock<T>>[];
+    final tail = <PreparedBlock<T>>[];
+    for (final block in ordered) {
+      (stableIds.contains(block.id) ? prefix : tail).add(block);
+    }
+    return PreparedValue<T>(
+      key: key,
+      immutablePrefix: prefix,
+      mutableTail: tail,
+      referencedInputs: referencedInputs,
+    );
+  }
+
+  const PreparedValue._({
+    required this.key,
+    required this.immutablePrefix,
+    required this.mutableTail,
+    required this.blocks,
+    required this.referencedInputs,
+  });
+
+  final PreparationKey key;
+  final List<PreparedBlock<T>> immutablePrefix;
+  final List<PreparedBlock<T>> mutableTail;
+
+  /// Plain inputs this preparation read.
+  final Set<PreparedInputReference> referencedInputs;
+
+  /// Every covered block, in source order, prefix and tail included.
+  final List<PreparedBlock<T>> blocks;
+
+  ContentRevision get content => key.content;
+
+  ResourceKey get resource => key.content.resource;
+
+  SourcePosition get position => key.content.position;
+
+  /// Blocks this value covers, in source order.
+  List<BlockId> get blockIds => key.content.blockIds;
+
+  bool get isComplete => mutableTail.isEmpty;
+
+  /// True when this value was prepared for [request]'s resource and position.
+  bool matches(PreparationRequest<Object?> request) =>
+      resource == request.resourceKey && position == request.source;
+
+  bool dependsOn(BlockReference reference) =>
+      blocks.any((block) => block.block.referencesBlock(reference));
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparedValue<T> &&
+          other.key == key &&
+          _sameList(other.blocks, blocks) &&
+          _sameList(other.immutablePrefix, immutablePrefix) &&
+          _sameList(other.mutableTail, mutableTail) &&
+          _sameSet(other.referencedInputs, referencedInputs);
+
+  @override
+  int get hashCode => Object.hash(
+    key,
+    Object.hashAll(blocks),
+    Object.hashAll(immutablePrefix),
+    Object.hashAll(mutableTail),
+    _setHash(referencedInputs),
+  );
+
+  @override
+  String toString() =>
+      'PreparedValue($key, ${immutablePrefix.length}+${mutableTail.length})';
+}
 
 /// The only lifecycle statuses that can make a prepared result ineligible.
 enum PreparationStatus { active, revoked, disposed }
@@ -477,6 +1112,118 @@ final class PreparationAcceptance<T> {
 /// identity, until this port accepts and installs it atomically.
 abstract interface class PresentationInstaller<T> {
   bool install(PreparedResource<T> result, PreparationAcceptance<T> acceptance);
+}
+
+/// Result of offering one member to a consistency group install.
+enum GroupInstallOutcome {
+  /// Accepted and staged; the group is not complete yet.
+  staged,
+
+  /// Accepted as the last missing member; the group is now installed.
+  installed,
+
+  /// Refused; nothing was staged or installed.
+  rejected,
+}
+
+/// Atomic install gate for one consistency group.
+///
+/// Members are offered as their preparation finishes. Nothing becomes visible
+/// until every changed field group has a member at the group's own position,
+/// so a view never mixes two versions of one group. A group that is still
+/// loading blocks only itself: [pending] is the local loading state, and a
+/// group at another position installs through its own gate.
+///
+/// [revoke] and [dispose] take effect immediately, for members that were
+/// already staged and for members that arrive later. Neither waits for the
+/// group to complete, and a revoked or disposed gate hands out nothing.
+final class ConsistencyGroupInstall<T> {
+  ConsistencyGroupInstall(this.group);
+
+  final ConsistencyGroup group;
+
+  final Map<ResourceFieldGroup<T>, PreparedResource<T>> _members =
+      <ResourceFieldGroup<T>, PreparedResource<T>>{};
+  final Map<ResourceFieldGroup<T>, PreparedResource<T>> _installed =
+      <ResourceFieldGroup<T>, PreparedResource<T>>{};
+  PreparationStatus _status = PreparationStatus.active;
+
+  ConsistencyGroupId get groupId => group.id;
+
+  SourcePosition get position => group.position;
+
+  PreparationStatus get status => _status;
+
+  bool get isActive => _status == PreparationStatus.active;
+
+  bool get isRevoked => _status == PreparationStatus.revoked;
+
+  bool get isDisposed => _status == PreparationStatus.disposed;
+
+  bool get isInstalled => _installed.isNotEmpty;
+
+  /// Members accepted at [position] so far, by field group.
+  Map<ResourceFieldGroup<T>, PreparedResource<T>> get staged =>
+      Map<ResourceFieldGroup<T>, PreparedResource<T>>.unmodifiable(_members);
+
+  /// The installed group, empty until the group completes.
+  Map<ResourceFieldGroup<T>, PreparedResource<T>> get installed =>
+      Map<ResourceFieldGroup<T>, PreparedResource<T>>.unmodifiable(_installed);
+
+  /// Changed field groups with no member yet: local loading, not a global one.
+  Set<ChangedFieldGroup> get pending {
+    if (!isActive) return const <ChangedFieldGroup>{};
+    return Set<ChangedFieldGroup>.unmodifiable(
+      group.changed.where((changed) => !_members.keys.any(changed.matches)),
+    );
+  }
+
+  /// True once every changed field group has a member from this position.
+  bool get isComplete => isActive && _members.isNotEmpty && pending.isEmpty;
+
+  void revoke() {
+    _status = PreparationStatus.revoked;
+    _members.clear();
+    _installed.clear();
+  }
+
+  void dispose() {
+    _status = PreparationStatus.disposed;
+    _members.clear();
+    _installed.clear();
+  }
+
+  /// Offers one member of this group.
+  ///
+  /// The result is staged only when it carries this group, this position, one
+  /// of the changed field groups, and an acceptance that still allows it.
+  GroupInstallOutcome offer(
+    PreparedResource<T> result,
+    PreparationAcceptance<T> acceptance,
+  ) {
+    if (!isActive || isInstalled) return GroupInstallOutcome.rejected;
+    if (!acceptance.canInstall(result)) return GroupInstallOutcome.rejected;
+    final request = result.request;
+    if (request.consistencyGroup != group) return GroupInstallOutcome.rejected;
+    if (request.source != group.position) return GroupInstallOutcome.rejected;
+    if (!group.affects(request.resource)) return GroupInstallOutcome.rejected;
+
+    final members = <ResourceFieldGroup<T>, PreparedResource<T>>{
+      ..._members,
+      request.resource: result,
+    };
+    _members
+      ..clear()
+      ..addAll(members);
+    if (group.changed.any((changed) => !members.keys.any(changed.matches))) {
+      return GroupInstallOutcome.staged;
+    }
+
+    _installed
+      ..clear()
+      ..addAll(members);
+    return GroupInstallOutcome.installed;
+  }
 }
 
 /// Presentation-only lifecycle controls.
@@ -540,6 +1287,117 @@ extension PresentationActionsSend<Action> on PresentationActions<Action> {
   FutureOr<void> send(Action action) => dispatch(action);
 }
 
+/// Host-compiled primitives a declarative contribution may bind to.
+///
+/// A contribution declares at most one primitive. When the running shell does
+/// not provide it, the contribution is locally unavailable: the resource it
+/// would have read keeps its identity, position, and consistency groups, so no
+/// other feature re-reads or re-merges anything.
+enum DeclarativePrimitive { form, table, chart, text, progress, command }
+
+/// Ordinary data input for one third-party declarative contribution.
+///
+/// A contribution author declares plain immutable [inputs] plus typed
+/// [actions]. Nothing here requires a component DSL, a provider, or a Flutter
+/// dependency, and the host binds the value to a primitive it compiled rather
+/// than to code the contribution supplies.
+final class DeclarativeInput<Inputs, Action> {
+  const DeclarativeInput({
+    required this.contributionId,
+    required this.primitive,
+    required this.resource,
+    required this.inputs,
+    required this.actions,
+    this.position,
+  });
+
+  /// Stable identity of the declaring contribution, not of one instance.
+  final String contributionId;
+
+  final DeclarativePrimitive primitive;
+
+  final ResourceKey resource;
+
+  /// Plain immutable application value; the contract never interprets it.
+  final Inputs inputs;
+
+  final PresentationActions<Action> actions;
+
+  /// Prepared position the inputs came from, when the author knows it.
+  final SourcePosition? position;
+
+  ActionOrigin get origin => actions.origin;
+
+  bool isSupportedBy(Iterable<DeclarativePrimitive> availablePrimitives) =>
+      availablePrimitives.contains(primitive);
+
+  /// Null while the shell provides [primitive]; otherwise the local reason.
+  DeclarativeUnavailable? unavailableGiven(
+    Iterable<DeclarativePrimitive> availablePrimitives,
+  ) => isSupportedBy(availablePrimitives)
+      ? null
+      : DeclarativeUnavailable(
+          contributionId: contributionId,
+          primitive: primitive,
+          resource: resource,
+        );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeclarativeInput<Inputs, Action> &&
+          other.contributionId == contributionId &&
+          other.primitive == primitive &&
+          other.resource == resource &&
+          other.inputs == inputs &&
+          other.actions == actions &&
+          other.position == position;
+
+  @override
+  int get hashCode => Object.hash(
+    contributionId,
+    primitive,
+    resource,
+    inputs,
+    actions,
+    position,
+  );
+
+  @override
+  String toString() => 'DeclarativeInput($contributionId, ${primitive.name})';
+}
+
+/// A contribution whose primitive the running shell does not provide.
+///
+/// This is a local result: the contribution shows its own unavailable state
+/// while the prepared data it would have read stays untouched.
+final class DeclarativeUnavailable {
+  const DeclarativeUnavailable({
+    required this.contributionId,
+    required this.primitive,
+    this.resource,
+  });
+
+  final String contributionId;
+  final DeclarativePrimitive primitive;
+  final ResourceKey? resource;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeclarativeUnavailable &&
+          other.contributionId == contributionId &&
+          other.primitive == primitive &&
+          other.resource == resource;
+
+  @override
+  int get hashCode => Object.hash(contributionId, primitive, resource);
+
+  @override
+  String toString() =>
+      'DeclarativeUnavailable($contributionId, ${primitive.name})';
+}
+
 /// Read-only projected state exposed to an existing renderer.
 ///
 /// This pre-F01 source shape remains available while features migrate to
@@ -591,6 +1449,81 @@ final class TraceContext {
 
   @override
   int get hashCode => traceId.hashCode;
+}
+
+void _checkPreparedBlocks<T>(
+  PreparationKey key,
+  List<PreparedBlock<T>> prefix,
+  List<PreparedBlock<T>> blocks,
+) {
+  final covered = key.content.blocks;
+  if (covered.length != blocks.length) {
+    throw ArgumentError.value(
+      blocks.length,
+      'blocks',
+      'a prepared value must cover exactly key.content.blocks '
+          '(${covered.length} covered)',
+    );
+  }
+
+  for (var index = 0; index < blocks.length; index++) {
+    final prepared = blocks[index];
+    if (prepared.block != covered[index]) {
+      throw ArgumentError.value(
+        prepared.block.id.value,
+        'blocks',
+        'prepared block does not match key.content.blocks at index $index',
+      );
+    }
+  }
+
+  final stableIds = _stableBlockIds(key.content);
+  for (final prepared in prefix) {
+    if (!stableIds.contains(prepared.id)) {
+      throw ArgumentError.value(
+        prepared.block.id.value,
+        'immutablePrefix',
+        'an unsealed block or unresolved dependency cannot be immutable',
+      );
+    }
+  }
+}
+
+Set<BlockId> _stableBlockIds(ContentRevision content) {
+  final dependents = <BlockId, List<BlockId>>{};
+  final unstable = <BlockId>{};
+  for (final block in content.blocks) {
+    if (!block.isSealed) unstable.add(block.id);
+    for (final reference in block.references) {
+      if (reference.resource != content.resource ||
+          !content.covers(reference.blockId)) {
+        unstable.add(block.id);
+      } else {
+        (dependents[reference.blockId] ??= <BlockId>[]).add(block.id);
+      }
+    }
+  }
+
+  // Propagate instability backwards once per block/edge. This also handles
+  // cycles without recursive traversal or repeated whole-document scans.
+  final pending = unstable.toList();
+  for (var index = 0; index < pending.length; index++) {
+    for (final dependent in dependents[pending[index]] ?? const <BlockId>[]) {
+      if (unstable.add(dependent)) pending.add(dependent);
+    }
+  }
+  return <BlockId>{
+    for (final block in content.blocks)
+      if (!unstable.contains(block.id)) block.id,
+  };
+}
+
+bool _sameList<T>(List<T> left, List<T> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 bool _sameSet<T>(Set<T> left, Set<T> right) {
