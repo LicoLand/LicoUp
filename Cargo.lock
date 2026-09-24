@@ -2156,6 +2156,7 @@ dependencies = [
  "licoup-client-state",
  "licoup-conversation",
  "licoup-endpoint-core",
+ "licoup-extension-contracts",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
  "licoup-workflow",
