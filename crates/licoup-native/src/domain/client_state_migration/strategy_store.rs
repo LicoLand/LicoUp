@@ -49,9 +49,9 @@ pub(super) struct PublishedTable {
 /// restated here because the conversion has to perform the move itself: the
 /// store adds these tables when *it* opens the file, which is a second writer
 /// silently changing a format on every open. The migration is the explicit,
-/// locked, journalled path to the same shape, and
-/// `tools/data-migration/tests/notice-outbox-ddl-parity.test.mjs` holds the two
-/// definitions equal, column by column.
+/// locked, journalled path to the same shape, and the store keeps reading the
+/// columns it lists in `deliveries/mod.rs`, so the two definitions have to
+/// stay equal column by column.
 pub(super) const NOTICE_OUTBOX_TABLES: &[PublishedTable] = &[
     PublishedTable {
         name: "workflow_notice_intents",

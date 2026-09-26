@@ -2,10 +2,6 @@ import { closeSync, constants, lstatSync, openSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import {
-  CURRENT_SQLITE_SCHEMA_VERSION as CONVERSATION_SCHEMA_VERSION,
-} from "../../data-migration/lib/codecs/canonical-conversation.mjs";
-
 import { MigrationStateError } from "./errors.mjs";
 import {
   asText,
@@ -41,6 +37,9 @@ const CLIENT_STATE_COLLECTIONS = Object.freeze([
   "local-server-assembly-transaction",
   "mcp-install-transactions",
 ]);
+// The conversation store's own `CURRENT_SCHEMA_VERSION` in
+// `crates/licoup-conversation/src/store/mod.rs`.
+const CONVERSATION_SCHEMA_VERSION = "18";
 const CONVERSATION_COMPLETION_MARKER = "schema=v5\nstatus=complete\n";
 const ADAPTIVE_FLYWHEEL_SCHEMA_VERSIONS = Object.freeze({ "3": 2, "2": 1 });
 const MOBILE_RELAY_SCHEMA_VERSION = 2;

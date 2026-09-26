@@ -581,13 +581,14 @@
     "id": "data-migration",
     "guide": "docs/modules/data-migration.md",
     "testRoots": [
-      "tools/data-migration/tests"
+      "crates/licoup-migrate/tests"
     ],
     "regressionModules": [
-      "migration.operator-toolchain"
+      "migration.client-state-diagnostic",
+      "rust.crate.migrate"
     ],
     "sourceRoots": [
-      "tools/data-migration",
+      "crates/licoup-migrate",
       "crates/licoup-native/src/domain/client_state_migration",
       "crates/licoup-native/tests/migration",
       "tests/contract/client/client-state-migration-diagnostic.test.mjs"

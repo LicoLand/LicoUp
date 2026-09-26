@@ -182,6 +182,15 @@ export const RUST_CRATE_MODULES = Object.freeze([
     ], 10 * 60_000),
   }),
   defineModule({
+    id: "rust.crate.migrate",
+    kind: "rust-crate",
+    summary: "Standalone migration tool over the client's own migration frontier and store-owner facts",
+    inputs: [
+      "crates/licoup-migrate/**",
+    ],
+    command: crateTests("licoup-migrate"),
+  }),
+  defineModule({
     id: "rust.crate.protocol-bindings",
     kind: "rust-crate",
     summary: "Endpoint protocol revision, admission, and inbound message bindings",

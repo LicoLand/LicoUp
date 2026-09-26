@@ -34,7 +34,10 @@ The migration tool is a standalone Rust program packaged and distributed as a
 binary; it does not require a Node.js runtime on the user's machine. It is not
 kept alongside a second implementation, and it must not depend on the client
 checkout to run. Extend that program and the durable owner when this workflow
-needs missing capability; do not establish a second schema authority. At present the CLI accepts
+needs missing capability; do not establish a second schema authority. A
+conversion, a resume and an export each require the operator's
+`--writers-stopped` statement before they open the root, and a run that leaves a
+domain owed exits non-zero instead of reporting a completed migration. At present the CLI accepts
 `--data-root`, but canonical Conversation conversion is delegated to native admission;
 the CLI alone does not execute the complete rehearsal. Real-client acceptance remains
 the separate phase defined in [Closure](../CLOSURE.md).
@@ -64,10 +67,12 @@ archive must not create another development-format compatibility chain.
 The migration CLI exposes the two commands this boundary requires:
 
 ```sh
-licoup-migrate export --archive <path>.zip|.tar.gz [--data-root <path>] [--writers-stopped]
+licoup-migrate export --data-root <path> --archive <path>.zip|.tar.gz [--writers-stopped]
 licoup-migrate import --archive <path> --target-root <empty directory>
 ```
 
+`export` names the data root it captures; `import` names none, because its only
+input is the archive and its destination is the empty `--target-root`.
 `export` refuses without `--writers-stopped` and publishes nothing on refusal.
 `import` requires an empty destination, verifies the archive manifest and every
 member before publishing, and never replaces the active root. Both route to the
@@ -94,7 +99,7 @@ then run this module's command and the affected consumer commands.
 Run `npm run verify:data-migration` from the repository root. Discover narrower registered
 suites with `npm run client:regression:list`; test contents remain the authority.
 
-Test directories: `tools/data-migration/tests/`.
+Test directories: `crates/licoup-migrate/tests/`.
 Keep new tests in the owning directory, grouped by behavior, not release milestone.
 
 Read [Closure](../CLOSURE.md) when finishing the change.

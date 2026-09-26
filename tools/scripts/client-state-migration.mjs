@@ -4,8 +4,8 @@
 // migration. Startup migration stays exclusively with the Rust admission in
 // `crates/licoup-native/src/domain/client_state_migration.rs`; this tool reads
 // the same ledger, probes the same durable shapes and never replaces it.
-// The independently distributed migration package planned for
-// `tools/data-migration/` is a different artifact with its own release.
+// Conversion of a whole data root belongs to the standalone `licoup-migrate`
+// tool, which is a different artifact with its own release.
 
 import { runClientStateMigrationCli } from "./client-state-migration/cli.mjs";
 

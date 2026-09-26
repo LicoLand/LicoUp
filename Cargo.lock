@@ -2126,6 +2126,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-migrate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "licoup-native",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-native"
 version = "0.3.0"
 dependencies = [

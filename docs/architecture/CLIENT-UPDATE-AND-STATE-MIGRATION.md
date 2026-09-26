@@ -3,7 +3,7 @@
 Updated: 2026-09-25
 
 [简体中文](CLIENT-UPDATE-AND-STATE-MIGRATION.zh-CN.md) ·
-[Architecture](README.md) · [Data migration CLI](../../tools/data-migration/README.md)
+[Architecture](README.md) · [Data migration](../modules/data-migration.md)
 
 LicoUp has one application identity, installed name, and data root. `nightly`
 and `stable` are release tracks of that identity, not side-by-side applications
@@ -11,25 +11,29 @@ or packaging transports. `direct` and `app-store` are packaging transport values
 
 ## Independent migration CLI
 
-The implemented Node.js package under `tools/data-migration/` provides
-`inspect`, `plan`, `convert`, `resume`, and `package`. It probes the actual
-stores and selects the registered conversion path for the requested published
-target. `inspect`, `plan`, and `convert --dry-run` are read-only.
+The standalone Rust program in `crates/licoup-migrate/` provides `inspect`,
+`plan`, `convert`, `resume`, `export`, and `import`. It builds and runs as one
+binary and needs no Node.js runtime. It probes the actual stores and selects the
+registered conversion path for the requested published target. `inspect` and
+`plan` are read-only.
 
-`convert` and `resume` require `--writers-stopped`. The tool lock excludes only
-other runs of this tool; it cannot stop an older client or another writer that
-does not participate in that lock. Each domain commits and verifies its own
-postcondition before its marker and journal advance. Recovery resumes from the
-physical stores without repeating committed steps; the tool does not claim one
-transaction across every database, file, and platform credential store.
+`convert`, `resume`, and `export` require `--writers-stopped`. The tool lock
+excludes only other runs of this tool; it cannot stop an older client or another
+writer that does not participate in that lock. Each domain commits and verifies
+its own postcondition before its marker and journal advance. Recovery resumes
+from the physical stores without repeating committed steps; the tool does not
+claim one transaction across every database, file, and platform credential
+store. A run that leaves a domain owed reports that domain and exits non-zero
+instead of presenting the move as finished.
 
-Unsupported shapes and unsafe downgrades fail before mutation. Implemented
-preservation records keep data that a supported older shape cannot express and
-merge it back on a supported re-upgrade. Canonical Conversation moves and typed
-workflow-store moves that require their owning domain are reported as pending
-native admission. Protected credential custody is reported as pending platform
-authorization and is never fabricated by the tool. The package README owns the
-current profile table, conversion graph, command syntax, and exact limitations.
+Unsupported shapes and unsafe downgrades fail before mutation. Preservation
+records keep data that a supported older shape cannot express and merge it back
+on a supported re-upgrade. Canonical Conversation moves and typed workflow-store
+moves that require their owning domain are reported as pending native admission.
+Protected credential custody is reported as pending platform authorization and is
+never fabricated by the tool. The tool's own crate and the
+[data migration guide](../modules/data-migration.md) own its current profile
+table, conversion graph, command syntax, and exact limitations.
 
 ## Client update selection
 

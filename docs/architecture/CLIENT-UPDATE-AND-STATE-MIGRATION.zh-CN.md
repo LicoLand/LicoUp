@@ -3,27 +3,28 @@
 Updated: 2026-09-25
 
 [English](CLIENT-UPDATE-AND-STATE-MIGRATION.md) ·
-[架构](README.zh-CN.md) · [数据迁移 CLI](../../tools/data-migration/README.md)
+[架构](README.zh-CN.md) · [数据迁移](../modules/data-migration.md)
 
 LicoUp 只有一个应用身份、安装名称和数据根目录。`nightly` 与 `stable` 是同一身份的
 发布轨道，不是并行安装的应用或打包传输；`direct` 与 `app-store` 是打包传输值。
 
 ## 独立迁移 CLI
 
-`tools/data-migration/` 下已实现的 Node.js 包提供 `inspect`、`plan`、`convert`、
-`resume` 和 `package`。它探测实际存储，按指定的已发布目标选择登记的转换路径。
-`inspect`、`plan` 和 `convert --dry-run` 只读。
+`crates/licoup-migrate/` 中独立的 Rust 程序提供 `inspect`、`plan`、`convert`、
+`resume`、`export` 和 `import`。它构建为单一二进制运行，不需要 Node.js 运行时。
+它探测实际存储，按指定的已发布目标选择登记的转换路径。`inspect` 与 `plan` 只读。
 
-`convert` 与 `resume` 要求 `--writers-stopped`。工具锁只能排除该工具的其它实例，
-不能停止不参与这把锁的旧客户端或其它 writer。每个域先提交并验证自己的后置条件，
-再推进 marker 与 journal。恢复按实际存储继续，不重复已提交步骤；工具不宣称跨所有
-数据库、文件与平台凭据库的一次全局事务。
+`convert`、`resume` 与 `export` 要求 `--writers-stopped`。工具锁只能排除该工具的
+其它实例，不能停止不参与这把锁的旧客户端或其它 writer。每个域先提交并验证自己的
+后置条件，再推进 marker 与 journal。恢复按实际存储继续，不重复已提交步骤；工具不
+宣称跨所有数据库、文件与平台凭据库的一次全局事务。仍有域未完成的运行会报告该域并以
+非零状态退出，而不会把这次迁移呈现为已完成。
 
-不支持的形状与不安全的降级会在修改前失败。已实现的保全记录保存受支持旧格式无法
-表达的数据，并在受支持的再次升级中合并恢复。需要所属领域执行的 Canonical
-Conversation 与类型化工作流存储迁移会报告为等待原生准入；受保护凭据托管会报告为
-等待平台授权，工具不会伪造其完成状态。当前 Profile 表、转换图、命令语法及准确限制
-以该包 README 为准。
+不支持的形状与不安全的降级会在修改前失败。保全记录保存受支持旧格式无法表达的数据，
+并在受支持的再次升级中合并恢复。需要所属领域执行的 Canonical Conversation 与类型化
+工作流存储迁移会报告为等待原生准入；受保护凭据托管会报告为等待平台授权，工具不会
+伪造其完成状态。当前 Profile 表、转换图、命令语法及准确限制以该工具的 crate 和
+[数据迁移指南](../modules/data-migration.md) 为准。
 
 ## 客户端更新选择
 

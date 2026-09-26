@@ -12,7 +12,6 @@ import {
   loadEmbeddedFrontier,
   planSteps,
 } from "../../../tools/scripts/client-state-migration/frontier.mjs";
-import { CURRENT_SQLITE_SCHEMA_VERSION } from "../../../tools/data-migration/lib/codecs/canonical-conversation.mjs";
 import { DURABLE_SHAPES } from "../../../tools/scripts/client-state-migration/probe.mjs";
 import { evaluateMigrationState } from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
@@ -27,6 +26,18 @@ const CLIENT_STATE_MIGRATION =
   "crates/licoup-native/src/platform/client_state/migration.rs";
 const CONVERSATION_STORE = "crates/licoup-conversation/src/store/mod.rs";
 const BACKSLASH = String.fromCharCode(92);
+
+/**
+ * The conversation store's own current schema version, read from the owner that
+ * defines it so a fixture never restates it. The last test asserts the same
+ * value through the diagnostic's mirrored constant.
+ */
+function conversationSchemaVersion() {
+  const source = fs.readFileSync(path.join(repoRoot, CONVERSATION_STORE), "utf8");
+  const match = source.match(/pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u);
+  assert.ok(match, "the conversation store schema version moved");
+  return match[1];
+}
 
 function tempRoot(label) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `licoup-migration-${label}-`));
@@ -136,7 +147,7 @@ function seedAdmittedRoot(root, frontier) {
   const database = new DatabaseSync(path.join(conversations, "conversations.sqlite3"));
   database.exec(
     "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      `INSERT INTO schema_meta(key,value) VALUES ('version','${CURRENT_SQLITE_SCHEMA_VERSION}');`,
+      `INSERT INTO schema_meta(key,value) VALUES ('version','${conversationSchemaVersion()}');`,
   );
   database.close();
   fs.writeFileSync(
@@ -894,7 +905,10 @@ test("every mirrored durable shape and constant still matches the Rust admission
     /pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u,
   );
   assert.ok(currentSchema, "the conversation store schema version moved");
-  assert.equal(CURRENT_SQLITE_SCHEMA_VERSION, currentSchema[1]);
+  assert.ok(
+    probe.includes(`const CONVERSATION_SCHEMA_VERSION = "${currentSchema[1]}";`),
+    "the diagnostic's conversation schema version must mirror the conversation store",
+  );
 
   const collections = policy
     .slice(

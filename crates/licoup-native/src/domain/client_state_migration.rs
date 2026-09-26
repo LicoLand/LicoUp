@@ -692,7 +692,11 @@ pub fn domain_state_projection(data_root: &Path) -> Result<Vec<DomainStateProjec
     let mut states = Vec::with_capacity(frontier.domains.len());
     for domain in &frontier.domains {
         let marker = load_domain_marker(&marker_root, domain)?;
-        let store_version = probe_authoritative_store(data_root, &domain.domain_id)
+        // The store prober addresses the root from the marker directory, so it is
+        // handed the marker root and derives the portable root itself. Handing it the
+        // data root instead makes every probe read three levels above the stores, which
+        // reports version 0 for a domain the owner has already converted.
+        let store_version = probe_authoritative_store(&marker_root, &domain.domain_id)
             .map(|probe| probe.version)
             .unwrap_or(0);
         let marker_schema_version = marker.as_ref().map(|marker| marker.authoritative_schema_version);
