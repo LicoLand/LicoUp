@@ -18,7 +18,8 @@ test("OpenCode serve is a thin facade plus one target policy leaf", async () => 
   const facade = await read(facadePath);
   const policy = await read(`${root}/policy.rs`);
   assert.match(facade, /local_service::serve::ensure\(policy::SPEC/u);
-  assert.match(facade, /local_service::sse::watch_data/u);
+  assert.match(facade, /local_service::sse::watch_frames/u);
+  assert.match(facade, /local_service::sse::frame_belongs_to_session/u);
   assert.match(facade, /adapters::opencode/u);
   assert.match(policy, /default_port: DEFAULT_PORT/u);
   assert.match(policy, /default_executable: "opencode"/u);

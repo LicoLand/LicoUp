@@ -1,0 +1,37 @@
+{
+  "machines": [
+    {
+      "id": "conversation.archive-job",
+      "rust_module": "conversation_archive_job",
+      "states": [
+        { "id": "queued" },
+        { "id": "scanning" },
+        { "id": "archiving" },
+        { "id": "verifying" },
+        { "id": "retry_scheduled", "rust_name": "RetryScheduled" },
+        { "id": "completed" },
+        { "id": "failed" },
+        { "id": "cancelled" }
+      ],
+      "events": ["begin-archive", "begin-verification", "schedule-retry", "complete", "fail", "cancel"],
+      "initial": "queued",
+      "terminal": ["completed", "failed", "cancelled"],
+      "transitions": [
+        { "from_state": "queued", "event": "begin-archive", "to_state": "archiving" },
+        { "from_state": "retry_scheduled", "event": "begin-archive", "to_state": "archiving" },
+        { "from_state": "archiving", "event": "begin-archive", "to_state": "archiving" },
+        { "from_state": "archiving", "event": "begin-verification", "to_state": "verifying" },
+        { "from_state": "archiving", "event": "schedule-retry", "to_state": "retry_scheduled" },
+        { "from_state": "verifying", "event": "schedule-retry", "to_state": "retry_scheduled" },
+        { "from_state": "archiving", "event": "fail", "to_state": "failed" },
+        { "from_state": "verifying", "event": "fail", "to_state": "failed" },
+        { "from_state": "verifying", "event": "complete", "to_state": "completed" },
+        { "from_state": "queued", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "scanning", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "archiving", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "verifying", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "retry_scheduled", "event": "cancel", "to_state": "cancelled" }
+      ]
+    }
+  ]
+}

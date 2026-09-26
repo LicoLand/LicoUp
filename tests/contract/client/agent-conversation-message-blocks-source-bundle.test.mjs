@@ -79,7 +79,7 @@ test("disclosures own content splitting and collapsed detail surfaces", async ()
     "_RecommendedPluginsDisclosure",
     "_MessageDetailsDisclosure",
     "recommendedPluginsCount(widget.blocks)",
-    "buildAgentConversationEventDetails",
+    "display.metadataBlocks.join('\\n\\n')",
     "class _DisclosureSurface",
   ]) {
     assert.ok(source.includes(token), `missing disclosure token: ${token}`);

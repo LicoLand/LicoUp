@@ -1,0 +1,68 @@
+{
+  "machines": [
+    {
+      "id": "security.mlkem-braid",
+      "rust_module": "security_mlkem_braid",
+      "states": [
+        { "id": "keys-unsampled", "rust_name": "KeysUnsampled" },
+        { "id": "keys-sampled", "rust_name": "KeysSampled" },
+        { "id": "header-sent", "rust_name": "HeaderSent" },
+        { "id": "ct1-received", "rust_name": "Ct1Received" },
+        { "id": "ek-sent-ct1-received", "rust_name": "EkSentCt1Received" },
+        { "id": "no-header-received", "rust_name": "NoHeaderReceived" },
+        { "id": "header-received", "rust_name": "HeaderReceived" },
+        { "id": "ct1-sampled", "rust_name": "Ct1Sampled" },
+        { "id": "ek-received-ct1-sampled", "rust_name": "EkReceivedCt1Sampled" },
+        { "id": "ct1-acknowledged", "rust_name": "Ct1Acknowledged" },
+        { "id": "ct2-sampled", "rust_name": "Ct2Sampled" },
+        { "id": "poisoned", "rust_name": "Poisoned" }
+      ],
+      "events": [
+        "initialize-responder",
+        "sample-keys",
+        "receive-ct1-start",
+        "receive-ct1-complete",
+        "receive-ct2-start",
+        "complete-decapsulation",
+        "receive-header",
+        "sample-ct1",
+        "acknowledge-ct1",
+        "complete-ack-encapsulation",
+        "receive-ek",
+        "complete-acknowledged-encapsulation",
+        "complete-early-ek-encapsulation",
+        "advance-epoch",
+        "fail"
+      ],
+      "initial": "keys-unsampled",
+      "terminal": ["poisoned"],
+      "transitions": [
+        { "from_state": "keys-unsampled", "event": "initialize-responder", "to_state": "no-header-received" },
+        { "from_state": "keys-unsampled", "event": "sample-keys", "to_state": "keys-sampled" },
+        { "from_state": "keys-sampled", "event": "receive-ct1-start", "to_state": "header-sent" },
+        { "from_state": "header-sent", "event": "receive-ct1-complete", "to_state": "ct1-received" },
+        { "from_state": "ct1-received", "event": "receive-ct2-start", "to_state": "ek-sent-ct1-received" },
+        { "from_state": "ek-sent-ct1-received", "event": "complete-decapsulation", "to_state": "no-header-received" },
+        { "from_state": "no-header-received", "event": "receive-header", "to_state": "header-received" },
+        { "from_state": "header-received", "event": "sample-ct1", "to_state": "ct1-sampled" },
+        { "from_state": "ct1-sampled", "event": "acknowledge-ct1", "to_state": "ct1-acknowledged" },
+        { "from_state": "ct1-sampled", "event": "complete-ack-encapsulation", "to_state": "ct2-sampled" },
+        { "from_state": "ct1-sampled", "event": "receive-ek", "to_state": "ek-received-ct1-sampled" },
+        { "from_state": "ct1-acknowledged", "event": "complete-acknowledged-encapsulation", "to_state": "ct2-sampled" },
+        { "from_state": "ek-received-ct1-sampled", "event": "complete-early-ek-encapsulation", "to_state": "ct2-sampled" },
+        { "from_state": "ct2-sampled", "event": "advance-epoch", "to_state": "keys-unsampled" },
+        { "from_state": "keys-unsampled", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "keys-sampled", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "header-sent", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ct1-received", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ek-sent-ct1-received", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "no-header-received", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "header-received", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ct1-sampled", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ek-received-ct1-sampled", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ct1-acknowledged", "event": "fail", "to_state": "poisoned" },
+        { "from_state": "ct2-sampled", "event": "fail", "to_state": "poisoned" }
+      ]
+    }
+  ]
+}

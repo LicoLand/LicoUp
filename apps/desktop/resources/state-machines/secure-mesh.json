@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "dart": {
+    "output": "apps/desktop/lib/src/application/features/mobile_relay/controller/generated/secure_mesh_state_machines.g.dart",
+    "imports": [
+      "package:licoup/src/contracts/generated/secure_mesh.g.dart"
+    ]
+  },
+  "machines": [
+    {
+      "id": "secure-mesh.file-sync",
+      "initial": "drafting",
+      "states": [
+        { "id": "drafting" },
+        { "id": "evaluating" },
+        {
+          "id": "awaiting-confirmation",
+          "dart_name": "awaitingConfirmation"
+        },
+        { "id": "confirmed" },
+        { "id": "rejected" },
+        { "id": "failed" }
+      ],
+      "events": [
+        "begin-evaluation",
+        "policy-accepted",
+        "confirm",
+        "reject",
+        "fail"
+      ],
+      "terminal": [],
+      "transitions": [
+        {
+          "from_state": "drafting",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "evaluating",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "awaiting-confirmation",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "confirmed",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "rejected",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "failed",
+          "event": "begin-evaluation",
+          "to_state": "evaluating"
+        },
+        {
+          "from_state": "evaluating",
+          "event": "policy-accepted",
+          "to_state": "awaiting-confirmation"
+        },
+        {
+          "from_state": "evaluating",
+          "event": "fail",
+          "to_state": "failed"
+        },
+        {
+          "from_state": "awaiting-confirmation",
+          "event": "confirm",
+          "to_state": "confirmed"
+        },
+        {
+          "from_state": "awaiting-confirmation",
+          "event": "reject",
+          "to_state": "rejected"
+        },
+        {
+          "from_state": "awaiting-confirmation",
+          "event": "fail",
+          "to_state": "failed"
+        }
+      ],
+      "dart": {
+        "emit_state_enum": false,
+        "state_enum": "SecureMeshFileSyncStatus",
+        "event_enum": "SecureMeshFileSyncEvent",
+        "transition_function": "transitionSecureMeshFileSyncStatus",
+        "state_from_id_function": "secureMeshFileSyncStatusFromId"
+      }
+    },
+    {
+      "id": "secure-mesh.approval",
+      "initial": "pending",
+      "states": [
+        { "id": "pending" },
+        { "id": "resolved" },
+        { "id": "expired" },
+        { "id": "failed" }
+      ],
+      "events": ["resolve"],
+      "terminal": ["resolved", "expired", "failed"],
+      "transitions": [
+        {
+          "from_state": "pending",
+          "event": "resolve",
+          "to_state": "resolved"
+        }
+      ],
+      "dart": {
+        "emit_state_enum": false,
+        "state_enum": "SecureMeshApprovalStatus",
+        "event_enum": "SecureMeshApprovalEvent",
+        "transition_function": "transitionSecureMeshApprovalStatus",
+        "state_from_id_function": "secureMeshApprovalStatusFromId"
+      }
+    }
+  ]
+}

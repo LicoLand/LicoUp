@@ -2,6 +2,7 @@ use super::runtime::successful_agent_dispatch;
 use super::*;
 use crate::core::secure_mesh_crypto::{ContentKey, SecureMeshContentContext};
 use crate::core::secure_mesh_response::{open_command_result, seal_command_result};
+use crate::state_machines::security_command_replay_execution::State as ReplayState;
 use serde_json::json;
 
 #[test]
@@ -274,6 +275,95 @@ fn secure_mesh_command_completed_outcome_is_reused_without_duplicate_execution()
     assert_eq!(executor.calls, 1);
     assert_eq!(second, first);
     assert_eq!(second["execution"]["outcome"], "result");
+}
+
+#[test]
+fn secure_mesh_command_memory_ledger_records_generated_execution_phases() {
+    let payload = SecureCommandPayload::from_value(&command_fixture()).unwrap();
+    let context = SecureCommandEvaluationContext::from_value(&context_fixture()).unwrap();
+    let outcome = json!({"accepted": true, "result": "fixture"});
+    let mut ledger = SecureCommandReplayLedger::default();
+
+    assert!(matches!(
+        ledger.record_execution(&payload, context.now).unwrap(),
+        SecureCommandReplayRecordStatus::Fresh
+    ));
+    assert_eq!(
+        ledger.phase_for_command(&payload.command_id),
+        Some(ReplayState::Reserved)
+    );
+    assert!(matches!(
+        ledger.prior_execution(&payload).unwrap(),
+        SecureCommandPriorExecution::Reserved
+    ));
+
+    ledger.record_completed_outcome(&payload, &outcome).unwrap();
+    assert_eq!(
+        ledger.phase_for_command(&payload.command_id),
+        Some(ReplayState::Completed)
+    );
+    assert!(matches!(
+        ledger.prior_execution(&payload).unwrap(),
+        SecureCommandPriorExecution::Completed(cached) if cached == outcome
+    ));
+
+    assert!(
+        ledger
+            .record_completed_outcome(&payload, &json!({"result": "replacement"}))
+            .is_err()
+    );
+    assert_eq!(
+        ledger.phase_for_command(&payload.command_id),
+        Some(ReplayState::Completed)
+    );
+    assert!(matches!(
+        ledger.prior_execution(&payload).unwrap(),
+        SecureCommandPriorExecution::Completed(cached) if cached == outcome
+    ));
+}
+
+#[test]
+fn secure_mesh_command_memory_ledger_prunes_record_and_idempotency_index_together() {
+    let first = SecureCommandPayload::from_value(&command_fixture()).unwrap();
+    let second = SecureCommandPayload::from_value(&command_fixture_with(
+        "cmd-b",
+        "idem-b",
+        json!({"message": "second"}),
+    ))
+    .unwrap();
+    let reused_idempotency = SecureCommandPayload::from_value(&command_fixture_with(
+        "cmd-c",
+        "idem-a",
+        json!({"message": "hello"}),
+    ))
+    .unwrap();
+    let context = SecureCommandEvaluationContext::from_value(&context_fixture()).unwrap();
+    let mut ledger = SecureCommandReplayLedger::with_max_entries(1).unwrap();
+
+    assert!(matches!(
+        ledger.record_execution(&first, context.now).unwrap(),
+        SecureCommandReplayRecordStatus::Fresh
+    ));
+    assert!(matches!(
+        ledger.record_execution(&second, context.now).unwrap(),
+        SecureCommandReplayRecordStatus::Fresh
+    ));
+    assert_eq!(ledger.phase_for_command(&first.command_id), None);
+    assert!(matches!(
+        ledger.prior_execution(&first).unwrap(),
+        SecureCommandPriorExecution::Missing
+    ));
+
+    assert!(matches!(
+        ledger
+            .record_execution(&reused_idempotency, context.now)
+            .unwrap(),
+        SecureCommandReplayRecordStatus::Fresh
+    ));
+    assert_eq!(
+        ledger.phase_for_command(&reused_idempotency.command_id),
+        Some(ReplayState::Reserved)
+    );
 }
 
 #[test]

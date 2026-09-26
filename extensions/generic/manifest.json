@@ -1,0 +1,37 @@
+{
+  "schema": "licoup.extension-package.v1",
+  "id": "dev.example.carrier.generic",
+  "version": "1.0.0",
+  "displayName": "Generic CLI carrier",
+  "hostProtocol": {
+    "major": 1,
+    "minimumMinor": 0
+  },
+  "profiles": [
+    {
+      "id": "agent-execution",
+      "major": 1,
+      "capabilities": [
+        "dev.example.carrier/generic"
+      ]
+    }
+  ],
+  "runtime": {
+    "mode": "process",
+    "entry": "generic_carrier.py",
+    "runtimeRef": "user:python3"
+  },
+  "activation": "on-demand",
+  "requires": [
+    {
+      "packageId": "org.licoland.core",
+      "range": "^0.3"
+    }
+  ],
+  "optionalRequires": [],
+  "permissions": [],
+  "contributions": [],
+  "extensions": {
+    "dev.example.carrier/purpose": "Shared carrier: carries an ordinary CLI named by descriptor.json as an Agent. Not a vendor bundle; the wrapped program is the user's explicit launch target."
+  }
+}

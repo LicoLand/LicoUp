@@ -1,5 +1,7 @@
 # Generated Contracts
 
+Updated: 2026-08-08
+
 Source of truth: `packages/contracts/client/'.
 
 Do not hand-write DTOs. All Dart-side contract types MUST be generated from the

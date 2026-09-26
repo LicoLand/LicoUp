@@ -11,6 +11,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 
+use crate::state_machines::workflow_adapter_execution::{
+    self, Event as AdapterExecutionEvent, State as AdapterExecutionPhase,
+};
+
 /// Invocations dispatched to a node adapter.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +85,104 @@ pub enum AdapterExecutionStatus {
     Completed { output: Value },
     Failed { error: String, retryable: bool },
     Cancelled { acknowledged: bool },
+}
+
+impl AdapterExecutionStatus {
+    fn into_event(self) -> (AdapterExecutionEvent, AdapterExecutionPayload) {
+        match self {
+            Self::Running => (AdapterExecutionEvent::Resume, AdapterExecutionPayload::None),
+            Self::Suspended => (AdapterExecutionEvent::Pause, AdapterExecutionPayload::None),
+            Self::Completed { output } => (
+                AdapterExecutionEvent::Complete,
+                AdapterExecutionPayload::Completed { output },
+            ),
+            Self::Failed { error, retryable } => (
+                AdapterExecutionEvent::Fail,
+                AdapterExecutionPayload::Failed { error, retryable },
+            ),
+            Self::Cancelled { acknowledged } => (
+                AdapterExecutionEvent::Cancel,
+                AdapterExecutionPayload::Cancelled { acknowledged },
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum AdapterExecutionPayload {
+    None,
+    Completed { output: Value },
+    Failed { error: String, retryable: bool },
+    Cancelled { acknowledged: bool },
+}
+
+#[derive(Clone, Debug)]
+struct AdapterExecutionRecord {
+    phase: AdapterExecutionPhase,
+    payload: AdapterExecutionPayload,
+}
+
+impl AdapterExecutionRecord {
+    fn running() -> Self {
+        Self {
+            phase: workflow_adapter_execution::INITIAL,
+            payload: AdapterExecutionPayload::None,
+        }
+    }
+
+    fn apply(
+        &mut self,
+        event: AdapterExecutionEvent,
+        payload: AdapterExecutionPayload,
+    ) -> Result<(), AdapterError> {
+        let next_phase =
+            workflow_adapter_execution::transition(self.phase, event).ok_or_else(|| {
+                AdapterError::BackendError("adapter_execution_transition_conflict".into())
+            })?;
+        Self::project(next_phase, &payload)?;
+        self.phase = next_phase;
+        self.payload = payload;
+        Ok(())
+    }
+
+    fn public_status(&self) -> Result<AdapterExecutionStatus, AdapterError> {
+        Self::project(self.phase, &self.payload)
+    }
+
+    fn project(
+        phase: AdapterExecutionPhase,
+        payload: &AdapterExecutionPayload,
+    ) -> Result<AdapterExecutionStatus, AdapterError> {
+        match (phase, payload) {
+            (AdapterExecutionPhase::Running, AdapterExecutionPayload::None) => {
+                Ok(AdapterExecutionStatus::Running)
+            }
+            (AdapterExecutionPhase::Suspended, AdapterExecutionPayload::None) => {
+                Ok(AdapterExecutionStatus::Suspended)
+            }
+            (AdapterExecutionPhase::Completed, AdapterExecutionPayload::Completed { output }) => {
+                Ok(AdapterExecutionStatus::Completed {
+                    output: output.clone(),
+                })
+            }
+            (
+                AdapterExecutionPhase::Failed,
+                AdapterExecutionPayload::Failed { error, retryable },
+            ) => Ok(AdapterExecutionStatus::Failed {
+                error: error.clone(),
+                retryable: *retryable,
+            }),
+            (
+                AdapterExecutionPhase::Cancelled,
+                AdapterExecutionPayload::Cancelled { acknowledged },
+            ) => Ok(AdapterExecutionStatus::Cancelled {
+                acknowledged: *acknowledged,
+            }),
+            _ => Err(AdapterError::BackendError(
+                "adapter_execution_payload_mismatch".into(),
+            )),
+        }
+    }
 }
 
 /// Adapter error kinds.
@@ -217,7 +319,7 @@ pub struct SyntheticCapabilityAdapter {
     forced_steer_outcome: Option<SteerOutcome>,
     forced_pause_outcome: Option<PauseOutcome>,
     forced_cancel_outcome: Option<CancelOutcome>,
-    invocations: Arc<Mutex<BTreeMap<String, (NodeInvocation, AdapterExecutionStatus)>>>,
+    invocations: Arc<Mutex<BTreeMap<String, (NodeInvocation, AdapterExecutionRecord)>>>,
 }
 
 impl SyntheticCapabilityAdapter {
@@ -273,7 +375,10 @@ impl SyntheticCapabilityAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some((_, entry)) = map.get_mut(invocation_id) {
-            *entry = status;
+            let (event, payload) = status.into_event();
+            entry
+                .apply(event, payload)
+                .expect("synthetic adapter status follows the declarative machine");
         }
     }
 }
@@ -306,7 +411,7 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         map.insert(
             invocation.invocation_id.clone(),
-            (invocation.clone(), AdapterExecutionStatus::Running),
+            (invocation.clone(), AdapterExecutionRecord::running()),
         );
         Ok(())
     }
@@ -351,7 +456,7 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
             return Ok(forced.clone());
         }
         if self.can_inflight_pause {
-            *status = AdapterExecutionStatus::Suspended;
+            status.apply(AdapterExecutionEvent::Pause, AdapterExecutionPayload::None)?;
             Ok(PauseOutcome::SuspendedInFlight)
         } else if self.capabilities.contains(&NodeCapability::Pause) {
             Ok(PauseOutcome::DrainToSafeBoundary)
@@ -371,8 +476,8 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
         if !self.capabilities.contains(&NodeCapability::Resume) {
             return Ok(ResumeOutcome::Unsupported);
         }
-        if *status == AdapterExecutionStatus::Suspended {
-            *status = AdapterExecutionStatus::Running;
+        if status.phase == AdapterExecutionPhase::Suspended {
+            status.apply(AdapterExecutionEvent::Resume, AdapterExecutionPayload::None)?;
             Ok(ResumeOutcome::Resumed)
         } else {
             Ok(ResumeOutcome::NotPaused)
@@ -391,7 +496,10 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
             return Ok(forced.clone());
         }
         if self.can_cooperative_cancel {
-            *status = AdapterExecutionStatus::Cancelled { acknowledged: true };
+            status.apply(
+                AdapterExecutionEvent::Cancel,
+                AdapterExecutionPayload::Cancelled { acknowledged: true },
+            )?;
             Ok(CancelOutcome::Acknowledged)
         } else {
             Ok(CancelOutcome::Draining)
@@ -404,7 +512,8 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         map.get(invocation_id)
-            .map(|(_, status)| status.clone())
+            .map(|(_, status)| status.public_status())
+            .transpose()?
             .ok_or_else(|| AdapterError::InvocationNotFound(invocation_id.to_string()))
     }
 }
@@ -415,7 +524,7 @@ impl NodeCapabilityAdapter for SyntheticCapabilityAdapter {
 pub struct CooperativeDrainAdapter {
     identity: String,
     capabilities: BTreeSet<NodeCapability>,
-    invocations: Arc<Mutex<BTreeMap<String, (NodeInvocation, AdapterExecutionStatus)>>>,
+    invocations: Arc<Mutex<BTreeMap<String, (NodeInvocation, AdapterExecutionRecord)>>>,
 }
 
 impl CooperativeDrainAdapter {
@@ -441,7 +550,12 @@ impl CooperativeDrainAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some((_, status)) = map.get_mut(invocation_id) {
-            *status = AdapterExecutionStatus::Completed { output };
+            status
+                .apply(
+                    AdapterExecutionEvent::Complete,
+                    AdapterExecutionPayload::Completed { output },
+                )
+                .expect("cooperative completion follows the declarative machine");
         }
     }
 }
@@ -474,7 +588,7 @@ impl NodeCapabilityAdapter for CooperativeDrainAdapter {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         map.insert(
             invocation.invocation_id.clone(),
-            (invocation.clone(), AdapterExecutionStatus::Running),
+            (invocation.clone(), AdapterExecutionRecord::running()),
         );
         Ok(())
     }
@@ -529,7 +643,10 @@ impl NodeCapabilityAdapter for CooperativeDrainAdapter {
         let (_, status) = map
             .get_mut(invocation_id)
             .ok_or_else(|| AdapterError::InvocationNotFound(invocation_id.to_string()))?;
-        *status = AdapterExecutionStatus::Cancelled { acknowledged: true };
+        status.apply(
+            AdapterExecutionEvent::Cancel,
+            AdapterExecutionPayload::Cancelled { acknowledged: true },
+        )?;
         Ok(CancelOutcome::Acknowledged)
     }
 
@@ -539,7 +656,8 @@ impl NodeCapabilityAdapter for CooperativeDrainAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         map.get(invocation_id)
-            .map(|(_, status)| status.clone())
+            .map(|(_, status)| status.public_status())
+            .transpose()?
             .ok_or_else(|| AdapterError::InvocationNotFound(invocation_id.to_string()))
     }
 }
@@ -642,6 +760,39 @@ mod tests {
         no_pause_adapter.start_invocation(&inv).unwrap();
         let p_res3 = no_pause_adapter.pause_invocation("inv-2").unwrap();
         assert_eq!(p_res3, PauseOutcome::Unsupported);
+    }
+
+    #[test]
+    fn adapter_execution_record_uses_machine_target_and_preserves_valid_state_on_rejection() {
+        let mut record = AdapterExecutionRecord::running();
+        record
+            .apply(
+                AdapterExecutionEvent::Complete,
+                AdapterExecutionPayload::Completed {
+                    output: json!({"result": "done"}),
+                },
+            )
+            .unwrap();
+        assert_eq!(record.phase, AdapterExecutionPhase::Completed);
+        assert_eq!(
+            record.public_status().unwrap(),
+            AdapterExecutionStatus::Completed {
+                output: json!({"result": "done"})
+            }
+        );
+
+        assert!(
+            record
+                .apply(AdapterExecutionEvent::Pause, AdapterExecutionPayload::None,)
+                .is_err()
+        );
+        assert_eq!(record.phase, AdapterExecutionPhase::Completed);
+        assert_eq!(
+            record.public_status().unwrap(),
+            AdapterExecutionStatus::Completed {
+                output: json!({"result": "done"})
+            }
+        );
     }
 
     #[test]

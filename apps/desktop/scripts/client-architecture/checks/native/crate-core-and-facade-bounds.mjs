@@ -194,6 +194,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/platform/antigravity_driver/tests.rs", "isolated process environment fixture"],
     ["crates/licoup-native/src/platform/client_autostart.rs", "launchd user identity"],
     ["crates/licoup-native/src/platform/cursor_driver/tests.rs", "isolated process environment fixtures"],
+    ["crates/licoup-native/src/platform/extension_host/isolation/limits.rs", "hard POSIX resource ceilings in the child before exec"],
+    ["crates/licoup-native/src/platform/extension_packages/managed.rs", "descriptor-relative package reclamation with owned directory streams and no symlink traversal"],
     ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/credentials.rs", "isolated credential environment fixture"],
     ["crates/licoup-native/src/platform/lico_agent_driver/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/platform/llm_gateway_autostart.rs", "launchd user identity"],

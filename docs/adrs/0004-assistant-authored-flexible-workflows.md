@@ -1,15 +1,11 @@
 # ADR 0004: Assistant-authored flexible workflows
 
-- `context` — ADR 0003 established a persistent, endpoint-local Profile
-  for every Agent member of a group conversation but deliberately left its
-  concrete fields and usage to a follow-up. The client also ships a fixed
-  delivery generation (`delivery_plan`, `delivery_scheduler`,
-  `delivery_state`, `lico_delivery_*`) that sequences Designer/Worker/Reviewer
-  roles and private Plan state. That generation is not the product-owned
-  Adaptive Flywheel Graph runtime, duplicates workflow lifecycle concepts, and
-  must be retired so one Assistant Membership can own a user goal through
-  direct work or a bounded temporary Graph without a second execution
-  authority.
+Updated: 2026-09-25
+
+- `context` — Every Agent Membership has an endpoint-local Profile intent.
+  One designated Assistant Membership owns user dialogue directly or through
+  a bounded temporary Adaptive Flywheel Graph. The product has no second fixed
+  delivery scheduler or role-sequencing authority.
 - `decision` —
   - One visible active Agent Membership may be designated as the long-lived
     Assistant of a Conversation. The designation is explicit, stored on the
@@ -31,8 +27,7 @@
   - The designated Assistant references the product-owned `licoup-guide`
     software-use Skill at `crates/licoup-native/resources/licoup-guide/SKILL.md`.
     It shares guidance with provider registration; registration remains an
-    explicitly approved operation. Development processes and third-party
-    planning Skills are maintained outside the client.
+    explicitly approved operation.
   - Candidate discovery hard-filters Membership, Authority, privacy/location,
     readiness, model, Skill, environment and capability constraints, then
     applies one stable lexicographic order. No weighted score, second route
@@ -87,12 +82,6 @@
     show the model and reasoning effort from the selected workflow binding;
     the Assistant bubble omits those execution details because its Profile is
     independently editable.
-  - The fixed delivery generation is removed in one cutover: `delivery_plan`,
-    `delivery_scheduler`, `delivery_state`, `delivery_routes`, `lico_delivery_*`
-    and fixed Designer/Worker/Reviewer sequencing leave the source, tests,
-    module catalog, MCP surface and formal documentation with no compatibility
-    read, dual write, fallback command or public schema. Direct Membership
-    delegation (`lico_subagent_*`) and topology-neutral Graph execution remain.
 - `rationale` —
   - A long-lived Assistant is the single accountable owner of a user goal;
     delegating to a temporary Graph is one tool it may use, not a new role.
@@ -100,13 +89,7 @@
     receipts explainable; copying would create drift and a second authority.
   - Bounding the Graph to the existing compiler/reducer preserves the tested
     effect gate and makes "no effect before preflight" locally provable.
-  - Removing the delivery generation entirely avoids a compatibility tax and
-    a second workflow lifecycle; the Adaptive Flywheel Graph already covers
-    durable execution.
 - `alternatives` —
-  - Reuse the delivery scheduler as the temporary-Graph runtime: rejected
-    because it carries fixed-role sequencing, private Plan state and a second
-    route catalog that the Assistant boundary explicitly forbids.
   - Store derived Profile facts in the Profile row: rejected because the
     owners can change and a copied fact would become stale authority.
   - Auto-designate an Assistant for existing multi-Agent groups: rejected
@@ -121,8 +104,4 @@
   - Profile snapshots and route receipts are deterministic and privacy-safe
     projections; they contain no prompt body, credential, absolute path,
     machine identity or backend runtime data.
-  - Assistant workflow tools replace `lico_delivery_*` completely; delivery
-    tests, catalog entries and documents are removed in the same cutover.
-  - The Assistant/Profile/workflow boundary is frozen before implementation
-    branches begin; later changes are follow-up decisions.
 - `status` — implemented and verified, 2026-08-23.

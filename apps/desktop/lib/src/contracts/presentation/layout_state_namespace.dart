@@ -39,6 +39,10 @@ abstract final class LayoutStateChannels {
     'communication-section',
     LayoutStateValueKind.tab,
   );
+  static const featureSection = LayoutStateChannel(
+    'feature-section',
+    LayoutStateValueKind.tab,
+  );
 }
 
 /// A bounded presentation-state address declared by a profile manifest.

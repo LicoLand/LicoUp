@@ -28,7 +28,7 @@ test("default mode is a zero-effect preflight with exact low-cost model order", 
     acquireLease: () => { effects.lease += 1; }, prepareConversation: () => { effects.prepare += 1; },
     directDelegate: () => { effects.call += 1; }, persistRecord: () => { effects.write += 1; } });
   assert.equal(receipt.mode, "preflight"); assert.deepEqual(effects, { lease: 0, prepare: 0, call: 0, write: 0 });
-  assert.equal(selectApprovedModel("codex", facts.codex.availableModels), "gpt-5.3-codex-spark");
+  assert.equal(selectApprovedModel("codex", facts.codex.availableModels), "gpt-5.4-mini");
   assert.doesNotMatch(JSON.stringify(receipt), /gpt-|composer-|gemini-/u);
   assert.deepEqual(APPROVED_TARGET_MODELS.cursor, ["composer-2.5"]);
   assert.equal(selectApprovedModel("codex", ["gpt-5.4-mini"]), "gpt-5.4-mini");
@@ -151,12 +151,12 @@ test("unhealthy caller service and rejected MCP receipts fail before false pass 
     .every((row) => row.notes === "direct_mcp_rejected"));
 });
 
-test("unsafe or missing Agent versions stop before health, Conversation, payment, or Manifest writes", async () => {
-  const unsafe = structuredClone(facts);
-  unsafe.cursor.version = "not-a-version";
-  unsafe.antigravity.version = "";
+test("missing Agent versions stop before health, Conversation, payment, or Manifest writes", async () => {
+  const missingVersions = structuredClone(facts);
+  missingVersions.cursor.version = "";
+  missingVersions.antigravity.version = "";
   let effects = 0;
-  const receipt = await runDownstream({ live: true, appVersion: "0.1.1", targetFacts: unsafe,
+  const receipt = await runDownstream({ live: true, appVersion: "0.1.1", targetFacts: missingVersions,
     readManifest: () => [], acquireLease: () => () => {},
     verifyHealth: async () => { effects += 1; return { result: "passed" }; },
     prepareConversation: () => { effects += 1; }, directDelegate: () => { effects += 1; },

@@ -249,7 +249,16 @@ void main() {
     ];
 
     expect(bindings, hasLength(13));
-    expect(ClientSection.values, hasLength(8));
+    expect(ClientSection.values.toSet(), <ClientSection>{
+      ClientSection.agents,
+      ClientSection.monitoring,
+      ClientSection.skillHub,
+      ClientSection.pluginManagement,
+      ClientSection.mobileRelay,
+      ClientSection.models,
+      ClientSection.settings,
+      ClientSection.agentHub,
+    });
   });
 
   test('projection collections are immutable snapshots', () {

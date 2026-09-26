@@ -15,7 +15,8 @@ const requiredFutureModules = [
   "subagents-mcp",
   "gateway-sidecar",
   "lico-agent-sidecar",
-  "codex-plugin"
+  "codex-plugin",
+  "user-skills"
 ];
 const allFutureModules = [...requiredFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";

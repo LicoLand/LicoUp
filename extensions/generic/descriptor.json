@@ -1,0 +1,18 @@
+{
+  "schema": "licoup.generic-adapter.v1",
+  "id": "dev.example.agent.echo-cli",
+  "displayName": "Echo CLI adapter",
+  "command": [
+    "python3",
+    "-B",
+    "echo_cli.py"
+  ],
+  "input": "stdin-text",
+  "output": "stdout-lines",
+  "terminal": "exit-code",
+  "cancel": "terminate",
+  "capabilities": [
+    "dev.example.agent/stream"
+  ],
+  "cwd": "."
+}

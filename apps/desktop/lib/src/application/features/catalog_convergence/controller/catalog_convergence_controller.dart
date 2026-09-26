@@ -1,18 +1,12 @@
 import 'dart:async';
 
+import 'package:licoup/src/application/generated/state_machines.g.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
+export 'package:licoup/src/application/generated/state_machines.g.dart'
+    show CatalogConvergencePhase;
 
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
-
-enum CatalogConvergencePhase {
-  disabled,
-  idle,
-  reconciling,
-  ready,
-  blocked,
-  failed,
-}
 
 /// Desktop composition for the native convergence authority.
 ///
@@ -26,7 +20,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
   final CatalogConvergenceGateway _gateway;
   final Map<String, Future<void>> _inFlight = {};
   CatalogConvergenceStatus _status = CatalogConvergenceStatus.empty();
-  CatalogConvergencePhase _phase = CatalogConvergencePhase.disabled;
+  CatalogConvergencePhase _phase = catalogConvergencePhaseInitial;
   String _reasonCode = 'catalog_not_configured';
   bool _disposed = false;
 
@@ -39,14 +33,16 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
     if (_disposed) return;
     try {
       _status = await _gateway.status();
-      _phase = _status.partitionCount == 0
-          ? CatalogConvergencePhase.disabled
-          : CatalogConvergencePhase.blocked;
+      _transition(
+        _status.partitionCount == 0
+            ? CatalogConvergenceEvent.notConfigured
+            : CatalogConvergenceEvent.reconciliationRequired,
+      );
       _reasonCode = _status.partitionCount == 0
           ? 'catalog_not_configured'
           : 'catalog_reconciliation_required';
     } catch (_) {
-      _phase = CatalogConvergencePhase.failed;
+      _transition(CatalogConvergenceEvent.statusFailed);
       _reasonCode = 'catalog_status_failed';
     }
     _notify();
@@ -58,7 +54,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
   }) async {
     final keys = _validatedKeys(partitionKeys);
     if (keys.isEmpty || _disposed) return false;
-    _phase = CatalogConvergencePhase.reconciling;
+    _transition(CatalogConvergenceEvent.reconcile);
     _reasonCode = 'catalog_reconciling';
     _notify();
     try {
@@ -69,7 +65,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
       await _reloadStatus();
       return _phase == CatalogConvergencePhase.ready;
     } catch (_) {
-      _phase = CatalogConvergencePhase.blocked;
+      _transition(CatalogConvergenceEvent.block);
       _reasonCode = 'catalog_reconciliation_failed';
       await _reloadStatus(preserveFailure: true);
       return false;
@@ -81,7 +77,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
     required CatalogAuthenticatedPull pull,
   }) async {
     if (_disposed) return false;
-    _phase = CatalogConvergencePhase.reconciling;
+    _transition(CatalogConvergenceEvent.reconcile);
     _reasonCode = 'catalog_reconciling';
     _notify();
     try {
@@ -92,7 +88,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
       await _reloadStatus();
       return _phase == CatalogConvergencePhase.ready;
     } catch (_) {
-      _phase = CatalogConvergencePhase.blocked;
+      _transition(CatalogConvergenceEvent.block);
       _reasonCode = 'catalog_reconciliation_failed';
       await _reloadStatus(preserveFailure: true);
       return false;
@@ -106,7 +102,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
       await _gateway.observeUi(key);
       await _reloadStatus();
     } else {
-      _phase = CatalogConvergencePhase.blocked;
+      _transition(CatalogConvergenceEvent.block);
       _reasonCode = result.reasonCode;
       _notify();
     }
@@ -116,7 +112,7 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
   Future<void> disable() async {
     await _gateway.purge();
     _status = CatalogConvergenceStatus.empty();
-    _phase = CatalogConvergencePhase.disabled;
+    _transition(CatalogConvergenceEvent.disable);
     _reasonCode = 'catalog_disabled';
     _notify();
   }
@@ -146,15 +142,17 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
     try {
       _status = await _gateway.status();
       if (!preserveFailure) {
-        _phase = _status.discoveryBlocked
-            ? CatalogConvergencePhase.blocked
-            : CatalogConvergencePhase.ready;
+        _transition(
+          _status.discoveryBlocked
+              ? CatalogConvergenceEvent.reconciliationRequired
+              : CatalogConvergenceEvent.current,
+        );
         _reasonCode = _status.discoveryBlocked
             ? 'catalog_reconciliation_required'
             : 'catalog_current';
       }
     } catch (_) {
-      _phase = CatalogConvergencePhase.failed;
+      _transition(CatalogConvergenceEvent.statusFailed);
       _reasonCode = 'catalog_status_failed';
     }
     _notify();
@@ -170,6 +168,10 @@ final class CatalogConvergenceController extends ApplicationStateOwner {
       throw const FormatException('catalog_partition_capacity');
     }
     return keys;
+  }
+
+  void _transition(CatalogConvergenceEvent event) {
+    _phase = transitionCatalogConvergencePhase(_phase, event)!;
   }
 
   void _notify() {

@@ -167,7 +167,7 @@ pub(crate) fn apply_local_assembly(
             return Err(error);
         }
     };
-    super::transaction::advance(store, super::transaction::ApplyPhase::ArtifactWritten)?;
+    super::transaction::advance(store, super::transaction::ApplyEvent::WriteArtifact)?;
     if simulate_commit_failure(params) {
         staged_tree.remove_if_still_bound();
         super::transaction::clear(store)?;
@@ -200,7 +200,7 @@ pub(crate) fn apply_local_assembly(
         );
         return Err(error);
     }
-    super::transaction::advance(store, super::transaction::ApplyPhase::ProjectionWritten)?;
+    super::transaction::advance(store, super::transaction::ApplyEvent::WriteProjection)?;
     if let Err(error) = crate::domain::collaboration_plugin::lifecycle::replace_authority(
         store,
         authority_state,
@@ -226,7 +226,7 @@ pub(crate) fn apply_local_assembly(
             Err(_) => return Err(error),
         }
     }
-    super::transaction::advance(store, super::transaction::ApplyPhase::AuthorityCommitted)?;
+    super::transaction::advance(store, super::transaction::ApplyEvent::CommitAuthority)?;
     staged_tree.sync_and_validate_binding()?;
     super::transaction::clear(store)?;
     Ok(record)
@@ -287,7 +287,7 @@ fn record_from_plan(
 pub(crate) fn record_projection(record: &LocalAssemblyRecord) -> Value {
     json!({
         "deploymentId": record.deployment_id,
-        "status": record.lifecycle.as_str(),
+        "status": super::model::lifecycle_status(record.lifecycle),
         "sourceUrl": record.source_url,
         "serverVersion": record.server_version,
         "packageDigestSha256": record.package_digest_sha256,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/search/search_feature_composition.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -16,6 +17,7 @@ import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/client_controller/support/no_entry_hook_client_controller.dart';
+import 'support/presentation_source_overrides.dart';
 
 void main() {
   testWidgets('palette ranks hits and groups them under their agent', (
@@ -351,30 +353,33 @@ Future<void> _pumpPalette(
   );
   addTearDown(composition.close);
   await tester.pumpWidget(
-    MaterialApp(
-      locale: const Locale('zh'),
-      supportedLocales: LicoStrings.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => SizedBox(
-            width: 900,
-            height: 640,
-            child: Center(
-              child: FilledButton(
-                key: const Key('open-agent-conversation-search'),
-                onPressed: () => unawaited(
-                  showAgentConversationSearchPalette(
-                    context,
-                    composition.binding,
-                  ).whenComplete(onClose ?? () {}),
+    ProviderScope(
+      overrides: composition.providerOverrides,
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => SizedBox(
+              width: 900,
+              height: 640,
+              child: Center(
+                child: FilledButton(
+                  key: const Key('open-agent-conversation-search'),
+                  onPressed: () => unawaited(
+                    showAgentConversationSearchPalette(
+                      context,
+                      composition.binding,
+                    ).whenComplete(onClose ?? () {}),
+                  ),
+                  child: const Text('Open search'),
                 ),
-                child: const Text('Open search'),
               ),
             ),
           ),
@@ -384,4 +389,10 @@ Future<void> _pumpPalette(
   );
   await tester.tap(find.byKey(const Key('open-agent-conversation-search')));
   await tester.pumpAndSettle();
+  // The palette reads the search region from the runtime source; wait for the
+  // first admitted frame before the test types into the field.
+  await pumpUntilVisible(
+    tester,
+    find.byKey(const Key('agent-conversation-search-field')),
+  );
 }

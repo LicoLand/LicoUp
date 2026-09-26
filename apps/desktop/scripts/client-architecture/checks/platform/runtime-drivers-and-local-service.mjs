@@ -103,7 +103,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "transport::"
   ]) {
     assert(
-      !claudeCodeFoundationSource.includes(dependency),
+      !new RegExp(`\\b${dependency}`, "u").test(claudeCodeFoundationSource),
       `Claude Code result, error, and parameter foundations must not depend on ${dependency}`
     );
   }

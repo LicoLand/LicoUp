@@ -8,6 +8,9 @@ use crate::core::acp::{
 use serde_json::{Value, json};
 use std::path::Path;
 
+pub(in crate::platform) use crate::state_machines::hermes_protocol::State as ProtocolPhase;
+use crate::state_machines::hermes_protocol::{self as protocol_machine, Event as ProtocolEvent};
+
 pub(in crate::platform) const INITIALIZE_REQUEST_ID: i64 = 1;
 pub(in crate::platform) const SESSION_REQUEST_ID: i64 = 2;
 pub(in crate::platform) const MODEL_REQUEST_ID: i64 = 3;
@@ -41,15 +44,6 @@ pub(in crate::platform) struct ParsedProtocolFrame {
     pub(in crate::platform) effects: Vec<ProtocolEffect>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ProtocolPhase {
-    AwaitInitialize,
-    AwaitSession,
-    AwaitModel,
-    AwaitPrompt,
-    Finished,
-}
-
 #[derive(Debug)]
 pub(in crate::platform) struct SessionProtocol {
     pub(in crate::platform) config: ProtocolConfig,
@@ -70,7 +64,7 @@ impl SessionProtocol {
         };
         Self {
             config,
-            phase: ProtocolPhase::AwaitInitialize,
+            phase: protocol_machine::INITIAL,
             session_id: None,
             output: String::new(),
             events: Vec::new(),
@@ -81,8 +75,18 @@ impl SessionProtocol {
 
     pub(in crate::platform) fn new_ready(config: ProtocolConfig) -> Self {
         let mut protocol = Self::new(config);
-        protocol.phase = ProtocolPhase::AwaitSession;
+        protocol.advance(ProtocolEvent::TransportReady);
         protocol
+    }
+
+    fn advance(&mut self, event: ProtocolEvent) {
+        self.phase = protocol_machine::transition(self.phase, event).unwrap_or_else(|| {
+            panic!(
+                "invalid Hermes protocol transition: {} + {}",
+                self.phase.as_str(),
+                event.as_str()
+            )
+        });
     }
 
     pub(in crate::platform) fn initial_request(&self) -> Result<Value, ProtocolFailure> {
@@ -146,7 +150,7 @@ impl SessionProtocol {
             match crate::platform::native_agent_parser::adapters::hermes::decode_frame(line) {
                 Ok(message) => message,
                 Err(error) => {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return ParsedProtocolFrame {
                         effects: vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                             error,
@@ -243,7 +247,7 @@ impl SessionProtocol {
         let response = match acp::validate_initialize_response(message, INITIALIZE_REQUEST_ID) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                     "hermes_acp_initialize_failed",
                     "Hermes ACP initialization failed.",
@@ -251,7 +255,7 @@ impl SessionProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                     error,
                     acp::INITIALIZE_METHOD,
@@ -259,14 +263,14 @@ impl SessionProtocol {
             }
         };
         if !response.capabilities.load_session {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "hermes_acp_capability_mismatch",
                 "Hermes ACP does not expose the required conversation lifecycle.",
                 "initialize/capabilities",
             ))];
         }
-        self.phase = ProtocolPhase::AwaitSession;
+        self.advance(ProtocolEvent::Initialized);
         let request = self.session_request();
         self.request_effect(request)
     }
@@ -294,7 +298,7 @@ impl SessionProtocol {
         match request {
             Ok(request) => vec![ProtocolEffect::Send(request)],
             Err(mut failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 failure.session_id = self.session_id.clone();
                 vec![ProtocolEffect::Fail(failure)]
             }
@@ -310,19 +314,20 @@ impl SessionProtocol {
         } else {
             AcpSessionMethod::New
         };
+        let method_name = method.method_name();
         let response = match acp::validate_session_response(message, SESSION_REQUEST_ID, method) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     "hermes_acp_session_open_failed",
                     "Hermes ACP could not open the requested conversation.",
-                    method.method_name(),
+                    method_name,
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
-                let mut failure = ProtocolFailure::from_acp(error, method.method_name());
+                self.advance(ProtocolEvent::Fail);
+                let mut failure = ProtocolFailure::from_acp(error, method_name);
                 failure.session_id = self
                     .config
                     .is_resume()
@@ -336,7 +341,7 @@ impl SessionProtocol {
                 .as_deref()
                 .is_some_and(|returned| returned != self.config.requested_session_id)
             {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     "hermes_acp_session_mismatch",
                     "Hermes ACP returned a different conversation than the one requested.",
@@ -348,7 +353,7 @@ impl SessionProtocol {
             response.session_id.unwrap_or_default()
         };
         if session_id.is_empty() {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "hermes_acp_session_id_missing",
                 "Hermes ACP did not return a native conversation identifier.",
@@ -358,10 +363,10 @@ impl SessionProtocol {
         self.session_id = Some(session_id);
         self.capture_effective_controls(message.get("result"));
         if self.config.model.is_some() {
-            self.phase = ProtocolPhase::AwaitModel;
+            self.advance(ProtocolEvent::SessionModel);
             vec![ProtocolEffect::Send(self.model_request())]
         } else {
-            self.phase = ProtocolPhase::AwaitPrompt;
+            self.advance(ProtocolEvent::SessionPrompt);
             let request = self.prompt_request();
             self.request_effect(request)
         }
@@ -384,7 +389,7 @@ impl SessionProtocol {
         message: &Value,
     ) -> Vec<ProtocolEffect> {
         if crate::platform::native_agent_parser::adapters::hermes::response_is_error(message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.failure_with_ids(
                 "hermes_acp_model_override_failed",
                 "Hermes ACP could not apply the requested model.",
@@ -392,7 +397,7 @@ impl SessionProtocol {
             ))];
         }
         self.effective.model = self.config.model.clone();
-        self.phase = ProtocolPhase::AwaitPrompt;
+        self.advance(ProtocolEvent::ModelReady);
         let request = self.prompt_request();
         self.request_effect(request)
     }
@@ -420,7 +425,7 @@ impl SessionProtocol {
             ) {
                 Ok(stop_reason) => stop_reason,
                 Err(error) if error.is_remote_error() => {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "hermes_acp_prompt_failed",
                         "Hermes ACP could not complete the requested turn.",
@@ -428,14 +433,14 @@ impl SessionProtocol {
                     ))];
                 }
                 Err(error) => {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     let mut failure = ProtocolFailure::from_acp(error, acp::SESSION_PROMPT_METHOD);
                     failure.session_id = self.session_id.clone();
                     return vec![ProtocolEffect::Fail(failure)];
                 }
             };
         let stop_reason = stop_reason.as_str().to_owned();
-        self.phase = ProtocolPhase::Finished;
+        self.advance(ProtocolEvent::PromptCompleted);
         if let Some(mut failure) = self.interaction_failure.take() {
             failure.turn_status = Some(stop_reason);
             return vec![ProtocolEffect::Fail(failure)];
@@ -487,7 +492,7 @@ impl SessionProtocol {
             return Vec::new();
         }
         let Some(expected_session_id) = self.session_id.as_deref() else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.failure_with_ids(
                 acp::AcpError::SessionMismatch.code(),
                 "Hermes ACP sent an update before establishing its conversation.",
@@ -500,7 +505,7 @@ impl SessionProtocol {
         ) {
             Ok(update) => update,
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 let mut failure = ProtocolFailure::from_acp(error, acp::SESSION_UPDATE_METHOD);
                 failure.session_id = self.session_id.clone();
                 failure.turn_id = Some(self.config.turn_id.clone());

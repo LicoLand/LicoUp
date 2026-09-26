@@ -1,5 +1,7 @@
 # 原生 CLI
 
+Updated: 2026-09-25
+
 | 参考 | 权威文档 |
 | --- | --- |
 | 英文规范 | [NATIVE-CLI.md](NATIVE-CLI.md) |
@@ -62,7 +64,7 @@ attach、活跃 turn 查询、会话动作、目录观察和策略执行均保�
 
 本地 `agent.conversation.execution` 流查看一轮精确 dispatch。
 记录归属、游标与观察契约由
-[本地执行过程查看](CONVERSATION-DOMAIN.zh-CN.md#13-本地执行过程查看) 定义。
+[本地执行过程查看](CONVERSATION-DOMAIN.zh-CN.md#本地执行过程查看) 定义。
 
 ## 独立 MCP 进程
 
@@ -88,9 +90,5 @@ MCP 进程。开发时 `start` 与 `reload` 可通过 `--binary` 明确指定 MC
 | 本地 Subagents 与 MCP 生命周期命令 | `crates/licoup-native/src/ffi/commands/subagents.rs` |
 | 本地 Subagents 调用与调用者准入 | `crates/licoup-native/src/domain/subagents/local.rs` |
 
-## 自定义操作属性
-
-已接受的自定义边界扩展原有 native catalog 与工具合同。属性具有命名空间、类型、
-默认值及能力版本边界，不能覆盖 actor、授权、幂等身份或 canonical 状态。
-未知或无效工具输入返回类型化准入错误；Agent 普通文本即使像 JSON 也保留原文。
-本节约束后续目录扩展，不代表已增加自定义命令。
+当前目录是封闭合同。未知或无效工具输入返回类型化准入错误；Agent 普通文本即使像
+JSON 也保留原文。CLI 没有通用的自定义操作属性命令。

@@ -2,8 +2,10 @@ import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
@@ -12,6 +14,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_providers.dart';
 
 class MobileWidgetsPage extends StatefulWidget {
   const MobileWidgetsPage({super.key, required this.binding});
@@ -39,82 +42,89 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<MonitoringProjection, MonitoringProjection>(
-      source: widget.binding.projection,
-      select: (projection) => projection,
-      builder: (context, projection) {
-        final colors = context.licoColors;
-        final strings = LicoStrings.of(context);
-        final report = projection.report;
-        final busy = projection.refreshing;
-        return RefreshIndicator(
-          onRefresh: () async =>
-              widget.binding.intents.send(const RefreshMonitoring()),
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          strings.widgets,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.text,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                          ),
+    return AsyncRegion<MonitoringProjection, IntentSink<MonitoringIntent>>(
+      source: monitoringUsageProjectionProvider,
+      actions: widget.binding.intents,
+      data: (context, value, _) => _buildPage(context, value),
+    );
+  }
+
+  Widget _buildPage(BuildContext context, MonitoringProjection projection) {
+    {
+      final colors = context.licoColors;
+      final strings = LicoStrings.of(context);
+      final report = projection.report;
+      final busy = projection.refreshing;
+      return RefreshIndicator(
+        onRefresh: () async =>
+            widget.binding.intents.send(const RefreshMonitoring()),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        strings.widgets,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      IconButton(
-                        key: const Key('mobile-widgets-refresh-usage'),
-                        tooltip: strings.refreshUsage,
-                        onPressed: busy
-                            ? null
-                            : () => widget.binding.intents.send(
-                                const RefreshMonitoring(),
+                    ),
+                    IconButton(
+                      key: const Key('mobile-widgets-refresh-usage'),
+                      tooltip: strings.refreshUsage,
+                      onPressed: busy
+                          ? null
+                          : () => widget.binding.intents.send(
+                              const RefreshMonitoring(),
+                            ),
+                      icon: busy
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: LicoLoadingIndicator(
+                                strokeWidth: 2,
+                                color: colors.textMuted,
                               ),
-                        icon: busy
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: LicoLoadingIndicator(
-                                  strokeWidth: 2,
-                                  color: colors.textMuted,
-                                ),
-                              )
-                            : const Icon(Icons.sync_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                sliver: SliverList.list(
-                  children: [
-                    _TokenUsageOverviewCard(report: report, busy: busy),
-                    const SizedBox(height: 10),
-                    _TokenUsageAgentCard(report: report),
+                            )
+                          : const Icon(Icons.sync_rounded),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
-        );
-      },
-    );
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+              sliver: SliverList.list(
+                children: [
+                  _TokenUsageOverviewCard(report: report, busy: busy),
+                  const SizedBox(height: 10),
+                  _TokenUsageAgentCard(report: report),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void _queueUsageRefresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || widget.binding.projection.current.refreshing) {
-        return;
-      }
+      if (!mounted) return;
+      final projection = ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(monitoringUsageProjectionProvider).value;
+      if (projection != null && projection.refreshing) return;
       widget.binding.intents.send(const StartAutomaticMonitoring());
     });
   }

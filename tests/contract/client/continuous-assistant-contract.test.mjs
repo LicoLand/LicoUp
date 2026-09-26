@@ -165,6 +165,7 @@ test("generator --check is byte-stable across a second generate", () => {
     "schemas/client_bridge/state.json",
     "schemas/client_bridge/secure_mesh.json",
     "schemas/client_bridge/strategy.json",
+    "apps/desktop/resources/state-machines/secure-mesh.json",
     generatorPath,
     "tools/templates/client_bridge",
     "package.json",

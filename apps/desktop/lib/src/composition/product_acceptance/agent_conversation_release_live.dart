@@ -10,6 +10,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/composition/client_app_composition.dart';
+import 'package:licoup/src/composition/product_acceptance/conversation_reply_visibility.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/generated/conversation.g.dart'
@@ -166,7 +167,10 @@ Future<void> _run(ClientController controller) async {
     await _submitComposer(firstPrompt);
     final firstTurnDeadline = DateTime.now().add(const Duration(minutes: 5));
     await _waitFor(
-      () => firstProgressive || controller.lastError.isNotEmpty,
+      () {
+        observeFirst();
+        return firstProgressive || controller.lastError.isNotEmpty;
+      },
       reasonCode: 'release_ui_first_stream_timeout',
       timeout: _remainingUntil(firstTurnDeadline),
     );
@@ -204,7 +208,10 @@ Future<void> _run(ClientController controller) async {
     await _submitComposer(secondPrompt);
     final secondTurnDeadline = DateTime.now().add(const Duration(minutes: 5));
     await _waitFor(
-      () => secondProgressive || controller.lastError.isNotEmpty,
+      () {
+        observeSecond();
+        return secondProgressive || controller.lastError.isNotEmpty;
+      },
       reasonCode: 'release_ui_second_stream_timeout',
       timeout: _remainingUntil(secondTurnDeadline),
     );
@@ -533,14 +540,13 @@ TargetCandidate _acceptanceEnabledCandidate(TargetCandidate source) {
 }
 
 bool _hasProgressiveAssistant(ClientController controller, String agentId) {
+  final root = WidgetsBinding.instance.rootElement;
+  if (root == null) return false;
   final scopeKeys = controller.conversationLiveScopeKeysForAgent(agentId);
   for (final scopeKey in scopeKeys) {
     final messages =
         controller.liveConversationMessagesByScope[scopeKey] ?? const [];
-    if (messages.any(
-      (message) =>
-          message.role == 'assistant' && message.text.trim().isNotEmpty,
-    )) {
+    if (hasVisibleConversationReply(root, messages)) {
       return true;
     }
   }

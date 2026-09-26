@@ -1,5 +1,7 @@
 # LicoUp 本机 LLM Gateway
 
+Updated: 2026-09-14
+
 [English（规范版本）](llm-gateway.md)
 
 LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于

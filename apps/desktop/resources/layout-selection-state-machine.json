@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "dart": {
+    "output": "apps/desktop/lib/src/application/features/layout/generated/layout_selection_state_machine.g.dart",
+    "imports": [
+      "package:licoup/src/contracts/presentation/layout_selection_status.dart"
+    ]
+  },
+  "machines": [
+    {
+      "id": "layout.selection",
+      "states": [
+        { "id": "loading" },
+        { "id": "stable" },
+        { "id": "committing" },
+        { "id": "error" }
+      ],
+      "events": ["reload", "succeed", "fail", "begin-commit", "stabilize", "reject"],
+      "initial": "loading",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "loading", "event": "reload", "to_state": "loading" },
+        { "from_state": "loading", "event": "succeed", "to_state": "stable" },
+        { "from_state": "loading", "event": "fail", "to_state": "error" },
+        { "from_state": "stable", "event": "begin-commit", "to_state": "committing" },
+        { "from_state": "error", "event": "begin-commit", "to_state": "committing" },
+        { "from_state": "committing", "event": "succeed", "to_state": "stable" },
+        { "from_state": "committing", "event": "fail", "to_state": "error" },
+        { "from_state": "stable", "event": "stabilize", "to_state": "stable" },
+        { "from_state": "error", "event": "stabilize", "to_state": "stable" },
+        { "from_state": "stable", "event": "reject", "to_state": "error" },
+        { "from_state": "error", "event": "reject", "to_state": "error" }
+      ],
+      "dart": {
+        "state_enum": "LayoutSelectionStatus",
+        "event_enum": "LayoutSelectionEvent",
+        "transition_function": "transitionLayoutSelectionStatus",
+        "state_from_id_function": "layoutSelectionStatusFromId",
+        "emit_state_enum": false
+      }
+    }
+  ]
+}

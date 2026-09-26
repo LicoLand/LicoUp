@@ -25,7 +25,10 @@ licoup-platform-bridges = { path = "../licoup-platform-bridges" }
 licoup-agent-adapters = { path = "../licoup-agent-adapters" }
 licoup-agent-runtime = { path = "../licoup-agent-runtime" }
 licoup-application = { path = "../licoup-application" }
+licoup-extension-contracts = { path = "../licoup-extension-contracts" }
 licoup-workflow = { path = "../licoup-workflow" }
+licoup-workflow-runtime = { path = "../licoup-workflow-runtime" }
+licoup-workflow-store = { path = "../licoup-workflow-store" }
 licoup-conversation = { path = "../licoup-conversation" }
 anyhow.workspace = true
 thiserror.workspace = true
@@ -96,6 +99,7 @@ windows-sys = { version = "0.61", features = [
 nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
 
 [dev-dependencies]
+licoarc.workspace = true
 licoup-conversation = { path = "../licoup-conversation", features = ["test-counters"] }
 trybuild = { path = "../trybuild" }
 criterion = "0.5"
@@ -103,6 +107,9 @@ rand_chacha = "0.3"
 # Bench-only async runtime: production target builds without tokio; benches
 # drive the async backend lanes under criterion.
 tokio = { version = "1", features = ["rt", "sync", "macros"] }
+
+[build-dependencies]
+licoup-state-machine-codegen = { path = "../licoup-state-machine-codegen" }
 
 [[bench]]
 name = "native_backend"
@@ -140,3 +147,10 @@ required-features = ["test-support"]
 name = "continuity_native"
 path = "tests/continuity_native.rs"
 required-features = ["test-support"]
+
+# V7-X2: real untrusted-extension process isolation. The suite lives outside the
+# crate so the isolation contract is read from the repository root; wiring the
+# target is a root-manifest change (see the task's interface note).
+[[test]]
+name = "v7_extension_isolation"
+path = "../../tests/integration/v7_extension_isolation/main.rs"

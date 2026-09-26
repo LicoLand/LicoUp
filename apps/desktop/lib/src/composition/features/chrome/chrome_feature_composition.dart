@@ -8,6 +8,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
 import 'package:licoup/src/presentation/chrome/chrome_effect.dart';
 import 'package:licoup/src/presentation/chrome/chrome_intent.dart';
+import 'package:licoup/src/projections/chrome/chrome_presentation_source.dart';
 import 'package:licoup/src/projections/chrome/chrome_projection_producer.dart';
 
 final class ChromeFeatureComposition {
@@ -21,6 +22,7 @@ final class ChromeFeatureComposition {
          beginRendererIntent: beginRendererIntent,
        ) {
     _intents.effects = _effects;
+    _source = ChromePresentationSource(projection: _projection);
     binding = ChromeBinding(
       projection: _projection,
       intents: _intents,
@@ -29,9 +31,15 @@ final class ChromeFeatureComposition {
   }
 
   final ChromeProjectionProducer _projection;
+  late final ChromePresentationSource _source;
   final _ChromeEffects _effects;
   final _ChromeIntents _intents;
   late final ChromeBinding binding;
+
+  /// The runtime-backed chrome source the composition root installs for the
+  /// renderer's chrome exposure. The producer stays the application-facing
+  /// owner; this adapter only adds resource identity and versions.
+  ChromePresentationSource get source => _source;
   bool _closed = false;
 
   Future<void> close() async {

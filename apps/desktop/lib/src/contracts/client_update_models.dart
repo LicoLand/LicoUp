@@ -1,3 +1,7 @@
+import 'package:licoup/src/contracts/generated/client_update_state_machine.g.dart';
+export 'package:licoup/src/contracts/generated/client_update_state_machine.g.dart'
+    show ClientUpdatePhase;
+
 /// Public GitHub repository the signed client-update path already uses.
 const kClientUpdateGithubRepo = 'LicoLand/LicoUp';
 
@@ -25,22 +29,6 @@ String clientUpdatePublicSourceAddress({
       ? kClientUpdateGithubRepo
       : repo.trim();
   return 'https://github.com/$normalized/releases';
-}
-
-/// Client update status projection for Settings UI (public metadata only).
-enum ClientUpdatePhase {
-  idle,
-  checking,
-  upToDate,
-  unavailable,
-  updateAvailable,
-  downloading,
-  downloaded,
-  verifying,
-  verified,
-  applyPlanned,
-  applied,
-  failed,
 }
 
 enum ReleaseTrack {
@@ -104,7 +92,7 @@ final class ClientUpdateStatus {
     ReleaseTrack targetReleaseTrack = ReleaseTrack.nightly,
   }) {
     return ClientUpdateStatus(
-      phase: ClientUpdatePhase.idle,
+      phase: clientUpdatePhaseInitial,
       runningVersion: runningVersion,
       runningReleaseTrack: runningReleaseTrack,
       targetReleaseTrack: targetReleaseTrack,
@@ -130,7 +118,7 @@ final class ClientUpdateStatus {
         'applyPlanned' => ClientUpdatePhase.applyPlanned,
         'applied' => ClientUpdatePhase.applied,
         'failed' => ClientUpdatePhase.failed,
-        _ => ClientUpdatePhase.idle,
+        _ => clientUpdatePhaseInitial,
       },
       runningVersion: (json['runningVersion'] as String?)?.trim() ?? '',
       runningReleaseTrack: ReleaseTrack.parse(json['runningReleaseTrack']),

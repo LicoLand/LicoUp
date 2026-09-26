@@ -21,9 +21,13 @@ class AgentConversationMessageContent extends StatelessWidget {
     required this.renderStyle,
     this.images = const [],
     this.isStreaming = false,
+    this.identity = '',
   });
 
   final String data;
+
+  /// Stable identity supplied by the message owner, independent of body text.
+  final String identity;
   final Color foreground;
   final Color accent;
   final Color codeBackground;
@@ -50,6 +54,7 @@ class AgentConversationMessageContent extends StatelessWidget {
     final hasImages = images.isNotEmpty;
     if (!hasBody && !hasDetails && !hasRecommendedPlugins && !hasImages) {
       return MessageMarkdown(
+        identity: identity.isEmpty ? '' : '$identity/body',
         data: '',
         foreground: foreground,
         accent: accent,
@@ -65,6 +70,7 @@ class AgentConversationMessageContent extends StatelessWidget {
       children: [
         if (hasBody)
           MessageMarkdown(
+            identity: identity.isEmpty ? '' : '$identity/body',
             data: display.body,
             foreground: foreground,
             accent: accent,
@@ -77,6 +83,7 @@ class AgentConversationMessageContent extends StatelessWidget {
         if (hasRecommendedPlugins) ...[
           if (hasBody) SizedBox(height: renderStyle.blockSpacing),
           _RecommendedPluginsDisclosure(
+            identity: identity.isEmpty ? '' : '$identity/plugins',
             blocks: display.recommendedPluginsBlocks,
             codeBackground: codeBackground,
             blockBackground: blockBackground,
@@ -87,6 +94,7 @@ class AgentConversationMessageContent extends StatelessWidget {
           if (hasBody || hasRecommendedPlugins)
             SizedBox(height: renderStyle.blockSpacing),
           _MessageDetailsDisclosure(
+            identity: identity.isEmpty ? '' : '$identity/details',
             details: display.metadataBlocks.join('\n\n'),
             detailsCount: display.metadataBlocks.length,
             codeBackground: codeBackground,
@@ -102,6 +110,14 @@ class AgentConversationMessageContent extends StatelessWidget {
       ],
     );
   }
+}
+
+String agentConversationMarkdownIdentity(AgentConversationMessage message) {
+  final id = message.stableIdentity.isNotEmpty
+      ? message.stableIdentity
+      : message.id;
+  if (id.isEmpty) return '';
+  return 'message:${message.participantAgentId}:${message.childSessionId}:$id';
 }
 
 Color agentConversationMessageForeground(LicoThemeColors colors, String role) {
@@ -123,6 +139,7 @@ Color agentConversationToneColor(LicoThemeColors colors, String tone) {
 
 class _MessageDetailsDisclosure extends StatefulWidget {
   const _MessageDetailsDisclosure({
+    required this.identity,
     required this.details,
     required this.detailsCount,
     required this.codeBackground,
@@ -130,6 +147,7 @@ class _MessageDetailsDisclosure extends StatefulWidget {
     required this.renderStyle,
   });
 
+  final String identity;
   final String details;
   final int detailsCount;
   final Color codeBackground;
@@ -156,6 +174,7 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
       onToggle: () => setState(() => _expanded = !_expanded),
       title: '$title$countSuffix',
       child: MessageMarkdown(
+        identity: widget.identity,
         data: widget.details,
         foreground: colors.textMuted,
         accent: colors.accent,
@@ -170,12 +189,14 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
 
 class _RecommendedPluginsDisclosure extends StatefulWidget {
   const _RecommendedPluginsDisclosure({
+    required this.identity,
     required this.blocks,
     required this.codeBackground,
     required this.blockBackground,
     required this.renderStyle,
   });
 
+  final String identity;
   final List<String> blocks;
   final Color codeBackground;
   final Color blockBackground;
@@ -206,6 +227,7 @@ class _RecommendedPluginsDisclosureState
         color: colors.textMuted,
       ),
       child: MessageMarkdown(
+        identity: widget.identity,
         data: widget.blocks.join('\n\n'),
         foreground: colors.text,
         accent: colors.accent,

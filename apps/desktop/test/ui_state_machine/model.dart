@@ -22,7 +22,7 @@ final class UiInteractionModel {
     var directory = Directory.current;
     while (true) {
       final file = File(
-        '${directory.path}/docs/functionality/UI-INTERACTIONS.json',
+        '${directory.path}/apps/desktop/test/ui_state_machine/model.json',
       );
       if (file.existsSync()) {
         return UiInteractionModel(

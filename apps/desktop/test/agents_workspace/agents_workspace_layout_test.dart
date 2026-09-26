@@ -3,6 +3,7 @@ import 'package:licoup/src/frontend/shared/messaging/conversation_motion/convers
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 
 import 'support/agents_workspace_test_harness.dart';
+import '../support/presentation_source_overrides.dart';
 
 void registerAgentsWorkspaceLayoutScenarios() {
   testWidgets('agent workspace does not overflow in a narrow app window', (
@@ -122,6 +123,11 @@ void registerAgentsWorkspaceLayoutScenarios() {
     );
 
     await tester.pump();
+    // The relay approval region installs one frame after the agents region.
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('agents-workspace-shell')),
+    );
 
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
@@ -255,6 +261,10 @@ void registerAgentsWorkspaceLayoutScenarios() {
         ),
       );
       await tester.pump();
+      await pumpUntilVisible(
+        tester,
+        find.byKey(const Key('agents-workspace-shell')),
+      );
 
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
@@ -401,6 +411,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     );
 
     await tester.pump();
+    await pumpUntilVisible(tester, find.text('选择一个智能体查看历史并对话'));
 
     expect(find.text('选择一个智能体查看历史并对话'), findsOneWidget);
     expect(find.text('添加目标'), findsNothing);
@@ -457,6 +468,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     );
 
     await tester.pump();
+    await pumpUntilVisible(tester, find.text('Codex'));
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('添加目标'), findsNothing);
   });

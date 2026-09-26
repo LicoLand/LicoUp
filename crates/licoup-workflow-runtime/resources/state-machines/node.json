@@ -1,0 +1,16 @@
+{
+  "machines": [
+    {
+      "id": "workflow.node-effect",
+      "states": [{ "id": "claimed" }, { "id": "started" }, { "id": "settled" }],
+      "events": ["start", "settle"],
+      "initial": "claimed",
+      "terminal": ["settled"],
+      "transitions": [
+        { "from_state": "claimed", "event": "start", "to_state": "started" },
+        { "from_state": "claimed", "event": "settle", "to_state": "settled" },
+        { "from_state": "started", "event": "settle", "to_state": "settled" }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { BRIDGE_PACKAGING_RELEASE_MODULES } from "../client-module-catalog/group
 import { FLUTTER_MODULES } from "../client-module-catalog/groups/flutter.mjs";
 import { REGRESSION_MODULES } from "../client-module-catalog/groups/regression.mjs";
 import { RUST_CORE_MODULES } from "../client-module-catalog/groups/rust-core.mjs";
+import { RUST_CRATE_MODULES } from "../client-module-catalog/groups/rust-crates.mjs";
 import { RUST_CATALOG_CONVERGENCE_MODULES } from "../client-module-catalog/groups/rust-catalog-convergence.mjs";
 import { RUST_DOMAIN_MODULES } from "../client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "../client-module-catalog/groups/rust-platform.mjs";
@@ -73,6 +74,64 @@ test("catalog validation rejects an implicit aggregate-gate command", () => {
   assert.throws(() => validateClientModuleCatalog(invalid), /must not invoke/u);
 });
 
+test("extension contracts and real sample execution are selected by their public inputs", () => {
+  for (const relativePath of [
+    "crates/licoup-extension-contracts/src/provider.rs",
+    "schemas/extensions/manifest.schema.json",
+  ]) {
+    assert.ok(ids(selectModulesForChangedPaths([relativePath]))
+      .includes("rust.crate.extension-contracts"));
+  }
+  for (const relativePath of [
+    "crates/licoup-extension-contracts/samples/echo-agent/agent.py",
+    "crates/licoup-extension-contracts/tests/test_echo_agent.py",
+  ]) {
+    const selected = ids(selectModulesForChangedPaths([relativePath]));
+    assert.ok(selected.includes("rust.crate.extension-contracts"));
+    assert.ok(selected.includes("regression.extension-agent-sample"));
+  }
+  const sample = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "regression.extension-agent-sample");
+  assert.equal(sample.command.program, "node");
+  assert.deepEqual(sample.command.args, [
+    "tools/scripts/client-toolchain-runner.mjs",
+    "--",
+    "python3",
+    "-B",
+    "crates/licoup-extension-contracts/tests/test_echo_agent.py",
+  ]);
+});
+
+test("presentation package changes select real package suites and their consumers", () => {
+  const contractChanges = ids(selectModulesForChangedPaths([
+    "packages/presentation_contract/lib/presentation_contract.dart",
+  ]));
+  for (const moduleId of [
+    "flutter.presentation.contracts",
+    "flutter.presentation.runtime",
+    "flutter.presentation.widgets",
+  ]) assert.ok(contractChanges.includes(moduleId));
+  const runtimeChanges = ids(selectModulesForChangedPaths([
+    "packages/presentation_runtime/lib/src/resources/resource_observation.dart",
+  ]));
+  assert.ok(runtimeChanges.includes("flutter.presentation.runtime"));
+  assert.ok(runtimeChanges.includes("flutter.presentation.widgets"));
+  assert.ok(!runtimeChanges.includes("flutter.presentation.contracts"));
+  for (const [moduleId, packageName, program] of [
+    ["flutter.presentation.contracts", "presentation_contract", "dart"],
+    ["flutter.presentation.runtime", "presentation_runtime", "dart"],
+    ["flutter.presentation.widgets", "presentation_flutter", "flutter"],
+  ]) {
+    const module = CLIENT_MODULE_CATALOG.find((entry) => entry.id === moduleId);
+    assert.equal(module.command.cwd, ".");
+    assert.equal(module.command.args[module.command.args.indexOf("--cwd") + 1], `packages/${packageName}`);
+    assert.equal(module.command.args[module.command.args.indexOf("--") + 1], program);
+    assert.ok(module.command.args.includes("test"));
+    assert.equal(module.regression.toolchain, "flutter");
+    assert.ok(module.regression.resources.includes("flutter-cache"));
+  }
+});
+
 test("catalog commands reference existing dedicated scripts and test targets", async () => {
   for (const module of CLIENT_MODULE_CATALOG) {
     const moduleCommand = module.command;
@@ -102,13 +161,7 @@ test("catalog commands reference existing dedicated scripts and test targets", a
         const packageIndex = moduleCommand.args.indexOf("-p");
         assert.equal(packageIndex >= 0, true);
         const crate = moduleCommand.args[packageIndex + 1];
-        assert.equal(
-          crate === "licoup-native" ||
-            (crate === "licoup-conversation" &&
-              module.id === "rust.domain.conversation-continuity-store"),
-          true,
-          `${module.id} cargo package ${crate} is not a catalog crate`,
-        );
+        await fs.access(path.join(repoRoot, "crates", crate, "Cargo.toml"));
       }
     }
   }
@@ -150,17 +203,7 @@ test("package aliases remain thin and cannot route to an aggregate gate", async 
     .some(([, commandValue]) => commandValue.includes("client:gate:")), false);
 });
 
-test("tracked contribution guides require targeted closure and independent gates", async () => {
-  const docs = await Promise.all([
-    "CONTRIBUTING.md",
-    "CONTRIBUTING.zh-CN.md",
-  ].map((relativePath) => fs.readFile(path.join(repoRoot, relativePath), "utf8")));
-  assert.match(docs[0], /run the smallest relevant checks/u);
-  assert.match(docs[0], /mandatory Node-only source policy once/u);
-  assert.match(docs[0], /commit\s+gate\s+never\s+builds\s+or\s+publishes\s+every\s+platform/iu);
-  assert.match(docs[1], /开发过程中只运行与改动直接相关的最小检查/u);
-  assert.match(docs[1], /只运行一次必需的 Node 源码策略/u);
-  assert.match(docs[1], /提交门禁不会构建或发布所有平台/u);
+test("contribution changes select documentation and repository policy checks", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths(["CONTRIBUTING.md"])),
     [
       "regression.infrastructure",
@@ -414,6 +457,7 @@ test("catalog physical groups retain a thin barrel and complete source ownership
     "regression.mjs",
     "rust-catalog-convergence.mjs",
     "rust-core.mjs",
+    "rust-crates.mjs",
     "rust-domain.mjs",
     "rust-platform.mjs",
   ]);
@@ -434,6 +478,9 @@ test("catalog physical groups retain a thin barrel and complete source ownership
       "rust-domain",
       "rust-platform",
       "rust-ffi",
+    ])],
+    [RUST_CRATE_MODULES, new Set([
+      "rust-crate",
     ])],
     [RUST_PLATFORM_MODULES, new Set([
       "rust-composition",

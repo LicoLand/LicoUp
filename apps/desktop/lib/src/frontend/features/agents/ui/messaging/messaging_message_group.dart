@@ -497,6 +497,7 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
             ),
           )
         : AgentConversationMessageContent(
+            identity: agentConversationMarkdownIdentity(widget.message),
             data: widget.message.text,
             foreground: agentConversationMessageForeground(
               colors,

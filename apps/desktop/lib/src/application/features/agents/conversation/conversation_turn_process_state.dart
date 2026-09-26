@@ -1,27 +1,8 @@
+import 'package:licoup/src/application/generated/state_machines.g.dart';
 import 'package:licoup/src/contracts/conversation_execution.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-
-/// Ordered lifecycle stages of an in-flight turn. `failed` is terminal: once
-/// reached, no later event may move the card again.
-enum ConversationTurnProcessStage {
-  submitted('submitted'),
-  accepted('accepted'),
-  processing('processing'),
-  responding('responding'),
-  completed('completed'),
-  failed('failed');
-
-  const ConversationTurnProcessStage(this.id);
-
-  final String id;
-
-  static ConversationTurnProcessStage? of(String stage) {
-    for (final candidate in values) {
-      if (candidate.id == stage.trim().toLowerCase()) return candidate;
-    }
-    return null;
-  }
-}
+export 'package:licoup/src/application/generated/state_machines.g.dart'
+    show ConversationTurnProcessStage;
 
 /// One streamed participant reply on the turn blackboard. The turn's own
 /// participant (main agent) is projected first; peer replies (orchestration
@@ -86,7 +67,7 @@ final class ConversationTurnProcessState {
   ConversationExecutionReference? executionReference;
   String? _firstPrimaryReplyKey;
 
-  ConversationTurnProcessStage _stage = ConversationTurnProcessStage.submitted;
+  ConversationTurnProcessStage _stage = conversationTurnProcessStageInitial;
   final List<String> _observedStages = [];
   final List<AgentConversationMessage> _evidence = [];
   final Map<String, _ConversationReply> _repliesByParticipant =
@@ -130,13 +111,17 @@ final class ConversationTurnProcessState {
   List<AgentConversationMessage> get evidence =>
       List<AgentConversationMessage>.unmodifiable(_evidence);
 
-  String get replyText => _repliesByParticipant[_primaryReplyKey]?.text ?? '';
+  String get replyText =>
+      _repliesByParticipant[_firstPrimaryReplyKey ?? _primaryReplyKey]?.text ??
+      '';
 
   String replyTextFor(String participantKey) =>
       _repliesByParticipant[participantKey]?.text ?? '';
 
   String get replyCreatedAt =>
-      _repliesByParticipant[_primaryReplyKey]?.createdAt ?? '';
+      _repliesByParticipant[_firstPrimaryReplyKey ?? _primaryReplyKey]
+          ?.createdAt ??
+      '';
 
   AgentConversationMessage? get runtimeUpdate => _runtimeUpdate;
 
@@ -185,7 +170,7 @@ final class ConversationTurnProcessState {
     final messages = <AgentConversationMessage>[
       if (includeUser) _userMessageFor(),
       if (_observedStages.isNotEmpty ||
-          _stage == ConversationTurnProcessStage.failed)
+          conversationTurnProcessStageIsTerminal(_stage))
         _lifecycleMessageFor(),
     ];
     final update = _runtimeUpdate;
@@ -197,7 +182,7 @@ final class ConversationTurnProcessState {
     if (visibleReplies.isEmpty &&
         _observedStages.isNotEmpty &&
         _stage != ConversationTurnProcessStage.completed &&
-        _stage != ConversationTurnProcessStage.failed) {
+        !conversationTurnProcessStageIsTerminal(_stage)) {
       messages.add(_waitingMessageFor());
     }
     for (final reply in visibleReplies) {
@@ -237,7 +222,7 @@ final class ConversationTurnProcessState {
 
   AgentConversationMessage _lifecycleMessageFor() {
     final key = [
-      _stage.id,
+      conversationTurnProcessStageId(_stage),
       _observedStages.join(','),
       executionReference?.conversationId ?? '',
       executionReference?.membershipId ?? '',
@@ -250,12 +235,12 @@ final class ConversationTurnProcessState {
     if (cached != null && _lifecycleMessageKey == key) return cached;
     final message = AgentConversationMessage(
       id: '$turnId-lifecycle',
-      role: _stage == ConversationTurnProcessStage.failed ? 'error' : 'event',
-      text: _stage.id,
+      role: conversationTurnProcessStageIsTerminal(_stage) ? 'error' : 'event',
+      text: conversationTurnProcessStageId(_stage),
       createdAt: _createdAt,
       layer: AgentConversationSemanticLayer.execution,
       cardType: 'lifecycle',
-      cardTitle: 'lifecycle.${_stage.id}',
+      cardTitle: 'lifecycle.${conversationTurnProcessStageId(_stage)}',
       cardSubtitle: _observedStages.join(','),
       stableIdentity: '$turnId-lifecycle',
       executionReference: executionReference,
@@ -271,8 +256,7 @@ final class ConversationTurnProcessState {
   AgentConversationMessage _replyMessageFor(
     ConversationParticipantReply reply,
   ) {
-    final primary =
-        isPrimaryReplyKey(reply.key) || reply.key == _firstPrimaryReplyKey;
+    final primary = reply.key == (_firstPrimaryReplyKey ?? _primaryReplyKey);
     final participantIdentityBase = primary
         ? '$turnId-assistant'
         : '$turnId-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
@@ -396,17 +380,17 @@ final class ConversationTurnProcessState {
   /// Render one Rust-owned lifecycle transition. Regressions are no-ops and
   /// `failed` is terminal; Flutter never invents missing predecessor stages.
   void advanceStage(String stage) {
-    if (_stage == ConversationTurnProcessStage.failed) return;
-    if (stage.trim().toLowerCase() == ConversationTurnProcessStage.failed.id) {
-      _stage = ConversationTurnProcessStage.failed;
-      _markProjectionDirty();
-      return;
-    }
-    final next = ConversationTurnProcessStage.of(stage);
-    if (next == null || next.index < _stage.index) return;
-    final changed = _recordObservedStage(next);
+    final event = conversationTurnProcessEventFromId(stage);
+    if (event == null) return;
+    final next = transitionConversationTurnProcessStage(_stage, event);
+    if (next == null) return;
+    final changed = conversationTurnProcessStageIsTerminal(next)
+        ? false
+        : _recordObservedStage(next);
     _stage = next;
-    if (changed) _markProjectionDirty();
+    if (changed || conversationTurnProcessStageIsTerminal(next)) {
+      _markProjectionDirty();
+    }
   }
 
   void recordParticipant({
@@ -504,10 +488,11 @@ final class ConversationTurnProcessState {
   }
 
   bool _recordObservedStage(ConversationTurnProcessStage stage) {
-    if (_observedStages.contains(stage.id)) {
+    final id = conversationTurnProcessStageId(stage);
+    if (_observedStages.contains(id)) {
       return false;
     }
-    _observedStages.add(stage.id);
+    _observedStages.add(id);
     return true;
   }
 }

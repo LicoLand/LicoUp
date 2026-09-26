@@ -187,9 +187,9 @@ fn codex_jsonl_groups_by_native_session_id() {
 #[test]
 fn codex_exact_session_readback_parses_only_the_bound_rollout() {
     let home = temp_dir("codex-exact-readback");
-    let sessions = home.join(".codex").join("sessions").join("2026/07/14");
+    let sessions = home.join(".codex").join("sessions").join("2000/01/01");
     fs::create_dir_all(&sessions).unwrap();
-    let session_id = "019e8d1d-fb25-7d82-b849-80a87fbe407d";
+    let session_id = "00000000-0000-4000-8000-000000000001";
     for index in 0..64 {
         fs::write(
             sessions.join(format!("rollout-unrelated-{index:03}.jsonl")),
@@ -198,13 +198,13 @@ fn codex_exact_session_readback_parses_only_the_bound_rollout() {
         .unwrap();
     }
     fs::write(
-        sessions.join(format!("rollout-2026-07-14T00-00-00-{session_id}.jsonl")),
+        sessions.join(format!("rollout-2000-01-01T00-00-00-{session_id}.jsonl")),
         [
             format!(
-                r#"{{"timestamp":"2026-07-14T00:00:00Z","type":"session_meta","payload":{{"id":"{session_id}","cwd":"/workspace/project"}}}}"#
+                r#"{{"timestamp":"2000-01-01T00:00:00Z","type":"session_meta","payload":{{"id":"{session_id}","cwd":"/workspace/project"}}}}"#
             ),
-            r#"{"timestamp":"2026-07-14T00:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Exact readback prompt"}]}}"#.to_string(),
-            r#"{"timestamp":"2026-07-14T00:00:02Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Exact readback reply"}]}}"#.to_string(),
+            r#"{"timestamp":"2000-01-01T00:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Exact readback prompt"}]}}"#.to_string(),
+            r#"{"timestamp":"2000-01-01T00:00:02Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Exact readback reply"}]}}"#.to_string(),
         ]
         .join("\n"),
     )
@@ -238,17 +238,17 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let rollout =
-        sessions.join("rollout-2026-06-03T18-53-32-019e8d1d-fb25-7d82-b849-80a87fbe407d.jsonl");
+        sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-000000000001.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-06-03T10:53:36.044Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d","cwd":"/workspace/projects/pact","originator":"codex","cli_version":"1.2.3"}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:43.745Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Continue Pact archive work"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Archive implementation answer"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:52.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Checked the archive plan at /workspace/projects/pact with authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789"}],"text":"Private chain of thought"}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:55.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-1","arguments":"{\"cmd\":\"rg Pact /workspace/projects/pact\",\"access_token\":\"secret-value\"}"}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:56.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"{\"path\":\"/workspace/projects/pact\",\"access_token\":\"secret-value\",\"ok\":true}"}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:57.000Z","type":"event_msg","payload":{"type":"turn_aborted","reason":"Command failed in /workspace/projects/pact with authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001","cwd":"/workspace/fixture-project","originator":"codex","cli_version":"1.2.3"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Read the synthetic fixture"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Synthetic fixture response"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:04.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Checked the synthetic fixture at /workspace/fixture-project with authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789"}],"text":"Private chain of thought"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:05.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-1","arguments":"{\"cmd\":\"rg fixture /workspace/fixture-project\",\"access_token\":\"secret-value\"}"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:06.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"{\"path\":\"/workspace/fixture-project\",\"access_token\":\"secret-value\",\"ok\":true}"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:07.000Z","type":"event_msg","payload":{"type":"turn_aborted","reason":"Command failed in /workspace/fixture-project with authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789"}}"#,
         ]
         .join("\n"),
     )
@@ -267,20 +267,20 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     assert_eq!(session["adapterId"], "codex");
     assert_eq!(
         session["nativeSessionId"],
-        "019e8d1d-fb25-7d82-b849-80a87fbe407d"
+        "00000000-0000-4000-8000-000000000001"
     );
-    assert_eq!(session["workingDirectory"], "/workspace/projects/pact");
+    assert_eq!(session["workingDirectory"], "/workspace/fixture-project");
     let messages = session["messages"].as_array().unwrap();
     assert!(!messages.iter().any(|message| {
         message["text"]
             .as_str()
             .unwrap_or_default()
-            .contains("/workspace/projects/pact")
+            .contains("/workspace/fixture-project")
     }));
     assert!(
         messages
             .iter()
-            .any(|message| message["text"] == "Continue Pact archive work")
+            .any(|message| message["text"] == "Read the synthetic fixture")
     );
     assert!(messages.iter().any(|message| message["role"] == "agent"));
     let reasoning = messages
@@ -295,7 +295,7 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     assert_eq!(reasoning["text"], "Private chain of thought");
     assert_eq!(
         reasoning["cardSubtitle"],
-        "Checked the archive plan at [local path hidden] with authorization: [redacted] [redacted]"
+        "Checked the synthetic fixture at [local path hidden] with authorization: [redacted] [redacted]"
     );
     let tool_call = messages
         .iter()
@@ -305,7 +305,7 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     assert_eq!(tool_call["cardTitle"], "exec_command");
     assert_eq!(
         tool_call["text"],
-        "access_token: [redacted]\ncmd: rg Pact [local path hidden]"
+        "access_token: [redacted]\ncmd: rg fixture [local path hidden]"
     );
     let tool_result = messages
         .iter()
@@ -329,7 +329,7 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
         message["text"]
             .as_str()
             .unwrap_or_default()
-            .contains("/workspace/projects/pact")
+            .contains("/workspace/fixture-project")
     }));
 }
 
@@ -339,14 +339,14 @@ fn codex_adapter_skips_background_context_prompt_messages() {
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let rollout =
-        sessions.join("rollout-2026-06-03T18-53-32-019e8d1d-fb25-7d82-b849-80a87fbe407d.jsonl");
+        sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-000000000001.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-06-03T10:53:36.044Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d","cwd":"/workspace/projects/pact"}}"#,
-            r##"{"timestamp":"2026-06-03T10:53:43.745Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n\n<INSTRUCTIONS>\n1. Background repo rule.\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>fixture-workspace</cwd>\n</environment_context>"}]}}"##,
-            r#"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Show only the user request"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Only the request is shown"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001","cwd":"/workspace/fixture-project"}}"#,
+            r##"{"timestamp":"2000-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n\n<INSTRUCTIONS>\n1. Background repo rule.\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>fixture-workspace</cwd>\n</environment_context>"}]}}"##,
+            r#"{"timestamp":"2000-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Show only the user request"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Only the request is shown"}]}}"#,
         ]
         .join("\n"),
     )
@@ -379,13 +379,13 @@ fn codex_adapter_skips_apps_instructions_prompt_messages() {
     let dir = temp_dir("codex-apps-instructions-context");
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
-    let rollout = sessions.join("rollout-2026-06-03T18-53-32-019e8d1d-fb25-7d82-b849-apps.jsonl");
+    let rollout = sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-apps.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-06-03T10:53:43.745Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<apps_instructions>\n# Apps (Connectors)\nApps can be explicitly triggered.\n</appsinstructions>"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"真正的用户问题"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"真正的回答"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<apps_instructions>\n# Apps (Connectors)\nApps can be explicitly triggered.\n</appsinstructions>"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"真正的用户问题"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"真正的回答"}]}}"#,
         ]
         .join("\n"),
     )
@@ -416,13 +416,13 @@ fn codex_adapter_extracts_real_user_request_from_app_wrapper() {
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let rollout =
-        sessions.join("rollout-2026-06-03T18-53-32-019e8d1d-fb25-7d82-b849-80a87fbe407d.jsonl");
+        sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-000000000001.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-06-03T10:53:36.044Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d"}}"#,
-            r##"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n\n## codex-clipboard.png: fixture/codex-clipboard.png\n\n## My request:\n对话需要支持 Markdown 渲染\n<image name=[Image #1] path=\"fixture/codex-clipboard.png\">\nprivate image metadata\n</image>"}]}}"##,
-            r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Markdown rendered"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001"}}"#,
+            r##"{"timestamp":"2000-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n\n## synthetic-image.png: fixture/synthetic-image.png\n\n## My request:\n请读取合成图片\n<image name=[Image #1] path=\"fixture/synthetic-image.png\">\nsynthetic image metadata\n</image>"}]}}"##,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Synthetic image response"}]}}"#,
         ]
         .join("\n"),
     )
@@ -440,17 +440,17 @@ fn codex_adapter_extracts_real_user_request_from_app_wrapper() {
         .iter()
         .find(|message| message["role"] == "user")
         .expect("user message");
-    assert_eq!(user_message["text"], "对话需要支持 Markdown 渲染");
+    assert_eq!(user_message["text"], "请读取合成图片");
     assert_eq!(user_message["images"][0]["mediaType"], "image/png");
     assert_eq!(
         user_message["images"][0]["path"],
-        "fixture/codex-clipboard.png"
+        "fixture/synthetic-image.png"
     );
     assert!(!messages.iter().any(|message| {
         let text = message["text"].as_str().unwrap_or_default();
         text.contains("Files mentioned")
-            || text.contains("codex-clipboard")
+            || text.contains("synthetic-image")
             || text.contains("<image")
-            || text.contains("private image metadata")
+            || text.contains("synthetic image metadata")
     }));
 }

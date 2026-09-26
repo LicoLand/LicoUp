@@ -1,10 +1,12 @@
 use super::super::{
     evaluate_approval_request_json, list_approval_inbox_json, resolve_approval_response_json,
 };
+use super::support::{approval_test_guard, insert_expired_pending};
 use serde_json::json;
 
 #[test]
 fn first_valid_response_wins_and_duplicate_is_rejected() {
+    let _test_guard = approval_test_guard();
     let request = json!({
         "pendingOperationId": "op-cas-1",
         "requesterAgentId": "hermes",
@@ -43,7 +45,28 @@ fn first_valid_response_wins_and_duplicate_is_rejected() {
 }
 
 #[test]
+fn repeated_expired_response_keeps_the_stable_expired_projection() {
+    let _test_guard = approval_test_guard();
+    let operation_id = "op-response-expired-repeat";
+    let nonce = "nonce-response-expired-repeat";
+    insert_expired_pending(operation_id, nonce);
+    let response = json!({
+        "pendingOperationId": operation_id,
+        "decision": "allow",
+        "respondingEndpointId": "synthetic-origin",
+        "responseNonce": nonce,
+    });
+
+    let first = resolve_approval_response_json(&response).unwrap();
+    let second = resolve_approval_response_json(&response).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(second["code"], "secure_mesh_approval_expired");
+    assert_eq!(second["request"]["status"]["state"], "expired");
+}
+
+#[test]
 fn expired_and_untrusted_endpoint_fail_closed() {
+    let _test_guard = approval_test_guard();
     let request = json!({
         "pendingOperationId": "op-exp-1",
         "requesterAgentId": "openclaw",
@@ -86,6 +109,7 @@ fn expired_and_untrusted_endpoint_fail_closed() {
 
 #[test]
 fn multi_client_resolve_cas_converges_first_valid_response() {
+    let _test_guard = approval_test_guard();
     let request = json!({
         "pendingOperationId": "op-cas-multi-1",
         "requesterAgentId": "hermes",

@@ -49,11 +49,6 @@ const textExtensions = new Set([
   ".cmake",
   ".txt"
 ]);
-const serverScriptsPath = "tools/" + "server" + "-scripts";
-const retiredClientNamePattern = new RegExp(
-  "\\b" + "future" + "(?:[_ -]?" + "client" + ")\\b",
-  "gi",
-);
 const forbiddenPathParts = [
   ".agents",
   ".claude",
@@ -73,45 +68,13 @@ const forbiddenPathParts = [
   "docs/plan",
   "scripts/local",
   "skills",
-  "tools/local",
-  serverScriptsPath
+  "tools/local"
 ];
-const windowsSeparatorPattern = String.raw`[\x2f\x5c]`;
-const windowsHomePathPattern = new RegExp(
-  `[A-Za-z]:${windowsSeparatorPattern}Users${windowsSeparatorPattern}[A-Za-z0-9._ -]+`,
-  "g",
-);
+// Content privacy findings belong to the public Lico-Auditor command.
+// This gate owns executable client boundaries, not prose-intent classification.
 const forbiddenContent = [
-  { pattern: retiredClientNamePattern, reasonCode: "RETIRED_CLIENT_NAME" },
-  { pattern: /\/Users\/[A-Za-z0-9._-]+/g, reasonCode: "FORBIDDEN_MACOS_HOME_PATH" },
-  {
-    pattern: /\/home\/(?!linuxbrew\/\.linuxbrew(?:[/\s`'"),;:\]}>!?]|$))[A-Za-z0-9._-]+/g,
-    reasonCode: "FORBIDDEN_LINUX_HOME_PATH"
-  },
-  { pattern: windowsHomePathPattern, reasonCode: "FORBIDDEN_WINDOWS_HOME_PATH" },
-  { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g, reasonCode: "FORBIDDEN_PRIVATE_KEY" },
-  {
-    pattern: new RegExp(serverScriptsPath.replace("/", "\\/"), "g"),
-    reasonCode: "FORBIDDEN_SERVER_SCRIPT_PATH"
-  },
-  { pattern: /\bserver:[A-Za-z0-9_-][A-Za-z0-9:_-]*/g, reasonCode: "FORBIDDEN_SERVER_NPM_SCRIPT" },
-  {
-    pattern: /\b(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY)\s*=\s*['"]?[A-Za-z0-9_./+=:-]{12,}/g,
-    reasonCode: "FORBIDDEN_SECRET_ASSIGNMENT"
-  }
+  { pattern: /\bserver:[A-Za-z0-9_-][A-Za-z0-9:_-]*/g, reasonCode: "FORBIDDEN_SERVER_NPM_SCRIPT" }
 ];
-const forbiddenPublicDocumentContent = [
-  {
-    pattern: /\b(?:commercial(?:ization)?|monetization|pricing|revenue|profit)\b/giu,
-    reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
-  },
-  {
-    pattern: /(?:商业化?|盈利|营收)/gu,
-    reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
-  }
-];
-const allowedContentPaths = new Set();
-const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterTopLevelDirs = REQUIRED_FLUTTER_TOP_LEVEL_DIRS;
 const allowedFlutterTopLevelDirs = new Set(requiredFlutterTopLevelDirs);
@@ -243,11 +206,6 @@ async function scanPublicFiles() {
       continue;
     }
     const entryName = path.basename(relativePath);
-    retiredClientNamePattern.lastIndex = 0;
-    if (retiredClientNamePattern.test(entryName)) {
-      addFailure("RETIRED_CLIENT_PATH", relativePath, entryName);
-      continue;
-    }
     if (forbiddenPathParts.some((part) => relativePath === part || relativePath.startsWith(`${part}/`))) {
       addFailure("GENERATED_PATH_PRESENT", relativePath, relativePath);
       continue;
@@ -274,24 +232,13 @@ async function scanPublicFiles() {
     checkedFiles.push(relativePath);
     const source = await readFile(absolutePath, "utf8");
     for (const { pattern, reasonCode } of forbiddenContent) {
-      if (allowedContentPaths.has(relativePath)) {
-        continue;
-      }
       pattern.lastIndex = 0;
       const match = pattern.exec(source);
       if (match) {
         addFailure(reasonCode, relativePath, match[0]);
       }
     }
-    if (extension === ".md") {
-      for (const { pattern, reasonCode } of forbiddenPublicDocumentContent) {
-        pattern.lastIndex = 0;
-        const match = pattern.exec(source);
-        if (match) {
-          addFailure(reasonCode, relativePath, match[0]);
-        }
-      }
-    }
+
   }
 }
 
@@ -598,21 +545,9 @@ if (!workspaceCargoToml.includes('license = "AGPL-3.0-or-later"')) {
   addFailure("CARGO_WORKSPACE_LICENSE_INVALID", "Cargo.toml", workspaceCargoToml);
 }
 
-for (const check of retiredStatePolicyChecks) {
-  const source = await readFile(path.join(repoRoot, check.path), "utf8");
-  if (!source.includes(check.token)) {
-    addFailure("RETIRED_STATE_RESET_POLICY_MISSING", check.path, check.token);
-  }
-}
-
 const report = {
   ok: failures.length === 0,
   checkedFiles: checkedFiles.length,
-  retiredNameState: {
-    strategy: "direct-reset",
-    migrationSupported: false,
-    policyChecks: retiredStatePolicyChecks.length
-  },
   clientBoundary: clientBoundarySummary,
   failures
 };

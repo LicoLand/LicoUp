@@ -25,6 +25,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use crate::state_machines::cursor_update::{self, Event, State};
+
 /// Poll cadence inside the turn consume loop.
 pub(super) const UPDATE_WATCH_INTERVAL: Duration = Duration::from_secs(1);
 /// A lock older than this with no update process and no staging dir is stale.
@@ -80,17 +82,15 @@ pub(super) struct ProcessLine {
 
 pub(super) struct AgentUpdateWatcher {
     root: PathBuf,
-    state: WatchState,
+    state: State,
+    context: Option<UpdateContext>,
     process_reader: Box<dyn FnMut() -> Vec<ProcessLine>>,
 }
 
 #[derive(Debug)]
-enum WatchState {
-    Idle,
-    Updating {
-        version: Option<String>,
-        last_phase: Option<UpdatePhase>,
-    },
+struct UpdateContext {
+    version: Option<String>,
+    last_phase: Option<UpdatePhase>,
 }
 
 /// One observation snapshot used by the state machine.
@@ -112,7 +112,8 @@ impl AgentUpdateWatcher {
     ) -> Self {
         Self {
             root,
-            state: WatchState::Idle,
+            state: cursor_update::INITIAL,
+            context: None,
             process_reader: Box::new(process_reader),
         }
     }
@@ -124,7 +125,7 @@ impl AgentUpdateWatcher {
         let staging = staging_version(&self.root);
         // The process scan is the expensive part; run it once per poll, and
         // only when a lock or staging signal is present (or already updating).
-        let updating_locked = matches!(self.state, WatchState::Updating { .. });
+        let updating_locked = self.state == State::Updating;
         let update_process = if lock_modified.is_some() || staging.is_some() || updating_locked {
             update_processes(&mut self.process_reader, root_pid)
         } else {
@@ -142,11 +143,9 @@ impl AgentUpdateWatcher {
             update_process,
         };
 
-        // Take the state out so transitions can freely build the next one
-        // without holding borrows across `self.state` assignment.
-        let state = std::mem::replace(&mut self.state, WatchState::Idle);
-        let (next_state, change) = match state {
-            WatchState::Idle => {
+        let state = self.state;
+        let (event, next_context, change) = match state {
+            State::Idle => {
                 // A staging directory is supporting phase/version evidence,
                 // not start authority. Interrupted installs may leave one
                 // behind indefinitely, so require a live lock or updater.
@@ -154,32 +153,41 @@ impl AgentUpdateWatcher {
                 if starting {
                     let (version, phase) = observe_phase(&observation);
                     (
-                        WatchState::Updating {
+                        Event::Start,
+                        Some(UpdateContext {
                             version: version.clone(),
                             last_phase: Some(phase),
-                        },
+                        }),
                         Some(UpdateChange::Started { version, phase }),
                     )
                 } else if observation.lock_modified.is_some() {
                     // Stale lock with no update activity: silent
                     // vendor-sanctioned cleanup (no spurious card).
                     let _ = std::fs::remove_file(&lock_path);
-                    (WatchState::Idle, None)
+                    (Event::RemainIdle, None, None)
                 } else {
-                    (WatchState::Idle, None)
+                    (Event::RemainIdle, None, None)
                 }
             }
-            WatchState::Updating {
-                version,
-                last_phase,
-            } => {
+            State::Updating => {
+                let UpdateContext {
+                    version,
+                    last_phase,
+                } = self
+                    .context
+                    .take()
+                    .expect("updating state must carry update context");
                 let no_activity = observation.lock_modified.is_none()
                     && observation.staging.is_none()
                     && observation.update_process.is_none();
                 if no_activity {
                     // Lock and staging gone: the install finished (the CLI may
                     // re-exec, so the process tree is not the ground truth).
-                    (WatchState::Idle, Some(UpdateChange::Completed { version }))
+                    (
+                        Event::Complete,
+                        None,
+                        Some(UpdateChange::Completed { version }),
+                    )
                 } else if !observation.lock_fresh && observation.update_process.is_none() {
                     // A staging directory can survive an interrupted install.
                     // Without a fresh lock or updater process it is residue,
@@ -189,7 +197,8 @@ impl AgentUpdateWatcher {
                     }
                     let version = observation.staging.or(version);
                     (
-                        WatchState::Idle,
+                        Event::Interrupt,
+                        None,
                         Some(UpdateChange::Interrupted { version }),
                     )
                 } else if observation.lock_modified.is_some()
@@ -206,17 +215,19 @@ impl AgentUpdateWatcher {
                             phase,
                         });
                         (
-                            WatchState::Updating {
+                            Event::Continue,
+                            Some(UpdateContext {
                                 version,
                                 last_phase: Some(phase),
-                            },
+                            }),
                             change,
                         )
                     } else {
                         // Stale lock with no activity: interrupted; remove it.
                         let _ = std::fs::remove_file(&lock_path);
                         (
-                            WatchState::Idle,
+                            Event::Interrupt,
+                            None,
                             Some(UpdateChange::Interrupted { version }),
                         )
                     }
@@ -229,16 +240,19 @@ impl AgentUpdateWatcher {
                         phase,
                     });
                     (
-                        WatchState::Updating {
+                        Event::Continue,
+                        Some(UpdateContext {
                             version,
                             last_phase: Some(phase),
-                        },
+                        }),
                         change,
                     )
                 }
             }
         };
-        self.state = next_state;
+        self.state = cursor_update::transition(state, event)
+            .expect("cursor update observation must resolve to a configured transition");
+        self.context = next_context;
         change
     }
 }

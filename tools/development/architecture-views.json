@@ -1,0 +1,203 @@
+[
+  {
+    "id": "presentation",
+    "title": {
+      "en": "Presentation components",
+      "zh": "界面与显示"
+    },
+    "components": [
+      {
+        "manifest": "packages/presentation_flutter/pubspec.yaml",
+        "title": {
+          "en": "Flutter renderer",
+          "zh": "界面渲染"
+        }
+      },
+      {
+        "manifest": "packages/presentation_runtime/pubspec.yaml",
+        "title": {
+          "en": "Presentation runtime",
+          "zh": "显示运行时"
+        }
+      },
+      {
+        "manifest": "packages/presentation_contract/pubspec.yaml",
+        "title": {
+          "en": "Presentation contracts",
+          "zh": "显示契约"
+        }
+      }
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": {
+      "en": "Workflow components",
+      "zh": "工作流核心"
+    },
+    "components": [
+      {
+        "manifest": "crates/licoup-native/Cargo.toml",
+        "title": {
+          "en": "Native composition host",
+          "zh": "原生主机"
+        }
+      },
+      {
+        "manifest": "crates/licoup-workflow-store/Cargo.toml",
+        "title": {
+          "en": "Workflow persistence",
+          "zh": "工作流存储"
+        }
+      },
+      {
+        "manifest": "crates/licoup-workflow-runtime/Cargo.toml",
+        "title": {
+          "en": "Workflow execution",
+          "zh": "工作流执行"
+        }
+      },
+      {
+        "manifest": "crates/licoup-workflow/Cargo.toml",
+        "title": {
+          "en": "Workflow definitions",
+          "zh": "工作流定义"
+        }
+      }
+    ]
+  },
+  {
+    "id": "agents",
+    "title": {
+      "en": "Agent execution components",
+      "zh": "智能体执行"
+    },
+    "components": [
+      {
+        "manifest": "crates/licoup-native/Cargo.toml",
+        "title": {
+          "en": "Native composition host",
+          "zh": "原生主机"
+        }
+      },
+      {
+        "manifest": "crates/licoup-agent-adapters/Cargo.toml",
+        "title": {
+          "en": "Agent adapters",
+          "zh": "智能体适配"
+        }
+      },
+      {
+        "manifest": "crates/licoup-agent-runtime/Cargo.toml",
+        "title": {
+          "en": "Agent runtime",
+          "zh": "智能体运行时"
+        }
+      },
+      {
+        "manifest": "crates/licoup-application/Cargo.toml",
+        "title": {
+          "en": "Application contracts",
+          "zh": "应用契约"
+        }
+      }
+    ]
+  },
+  {
+    "id": "conversation",
+    "title": {
+      "en": "Conversation and local state",
+      "zh": "会话与本地数据"
+    },
+    "components": [
+      {
+        "manifest": "crates/licoup-native/Cargo.toml",
+        "title": {
+          "en": "Native composition host",
+          "zh": "原生主机"
+        }
+      },
+      {
+        "manifest": "crates/licoup-conversation/Cargo.toml",
+        "title": {
+          "en": "Conversation repository",
+          "zh": "会话仓库"
+        }
+      },
+      {
+        "manifest": "crates/licoup-client-state/Cargo.toml",
+        "title": {
+          "en": "Client state",
+          "zh": "客户端状态"
+        }
+      }
+    ]
+  },
+  {
+    "id": "endpoint",
+    "title": {
+      "en": "Endpoint and platform components",
+      "zh": "端点与系统"
+    },
+    "components": [
+      {
+        "manifest": "crates/licoup-native/Cargo.toml",
+        "title": {
+          "en": "Native composition host",
+          "zh": "原生主机"
+        }
+      },
+      {
+        "manifest": "crates/licoup-endpoint-core/Cargo.toml",
+        "title": {
+          "en": "Endpoint core",
+          "zh": "端点核心"
+        }
+      },
+      {
+        "manifest": "crates/licoup-platform-bridges/Cargo.toml",
+        "title": {
+          "en": "Platform bridges",
+          "zh": "系统桥接"
+        }
+      }
+    ]
+  },
+  {
+    "id": "contracts",
+    "title": {
+      "en": "Contracts and catalogs",
+      "zh": "协议、扩展与目录"
+    },
+    "components": [
+      {
+        "manifest": "crates/licoup-native/Cargo.toml",
+        "title": {
+          "en": "Native composition host",
+          "zh": "原生主机"
+        }
+      },
+      {
+        "manifest": "crates/licoup-protocol-bindings/Cargo.toml",
+        "title": {
+          "en": "Protocol bindings",
+          "zh": "协议绑定"
+        }
+      },
+      {
+        "manifest": "crates/licoup-extension-contracts/Cargo.toml",
+        "title": {
+          "en": "Extension contracts",
+          "zh": "扩展契约"
+        }
+      },
+      {
+        "manifest": "crates/lico-catalog-convergence/Cargo.toml",
+        "title": {
+          "en": "Catalog convergence",
+          "zh": "目录聚合"
+        }
+      }
+    ]
+  }
+]

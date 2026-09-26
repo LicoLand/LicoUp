@@ -44,6 +44,18 @@ pub struct ZipEntryInfo {
     pub directory: bool,
 }
 
+/// The extractor's own defaults, exposed so callers reuse one policy rather than
+/// inventing their own bounds.
+pub fn default_zip_extraction_limits() -> ZipExtractionLimits {
+    ZipExtractionLimits {
+        max_archive_bytes: DEFAULT_MAX_TOTAL_BYTES,
+        max_total_bytes: DEFAULT_MAX_TOTAL_BYTES,
+        max_file_bytes: DEFAULT_MAX_TOTAL_BYTES,
+        max_entries: DEFAULT_MAX_ENTRIES,
+        max_depth: DEFAULT_MAX_DEPTH,
+    }
+}
+
 /// Extract a ZIP from memory below one no-follow destination root.
 ///
 /// All names must be UTF-8 POSIX-relative paths. Duplicate normalized names,

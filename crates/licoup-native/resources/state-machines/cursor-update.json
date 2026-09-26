@@ -1,0 +1,22 @@
+{
+  "machines": [
+    {
+      "id": "cursor-update",
+      "rust_module": "cursor_update",
+      "states": [
+        { "id": "idle", "rust_name": "Idle" },
+        { "id": "updating", "rust_name": "Updating" }
+      ],
+      "events": ["start", "remain-idle", "continue", "complete", "interrupt"],
+      "initial": "idle",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "idle", "event": "start", "to_state": "updating" },
+        { "from_state": "idle", "event": "remain-idle", "to_state": "idle" },
+        { "from_state": "updating", "event": "continue", "to_state": "updating" },
+        { "from_state": "updating", "event": "complete", "to_state": "idle" },
+        { "from_state": "updating", "event": "interrupt", "to_state": "idle" }
+      ]
+    }
+  ]
+}

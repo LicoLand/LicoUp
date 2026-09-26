@@ -1,5 +1,7 @@
 # LicoUp Gateway Runtime
 
+Updated: 2026-08-13
+
 [English（规范版本）](gateway-runtime.md) · 简体中文（本地化）
 
 Gateway Runtime 是单一本机进程（`lico-gateway`），包含两层：

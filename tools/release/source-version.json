@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "versionSources": [
+    {
+      "path": "package.json",
+      "pointer": "/version"
+    },
+    {
+      "path": "tools/client-version.json",
+      "pointer": "/productVersion"
+    }
+  ],
+  "changelog": "CHANGELOG.md",
+  "tagPrefix": "v"
+}

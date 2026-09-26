@@ -1,0 +1,87 @@
+{
+  "machines": [
+    {
+      "id": "collaboration.assembly-apply",
+      "rust_module": "collaboration_assembly_apply",
+      "states": [
+        { "id": "prepared" },
+        { "id": "artifact-written" },
+        { "id": "projection-written" },
+        { "id": "authority-committed" }
+      ],
+      "events": ["write-artifact", "write-projection", "commit-authority"],
+      "initial": "prepared",
+      "terminal": ["authority-committed"],
+      "transitions": [
+        { "from_state": "prepared", "event": "write-artifact", "to_state": "artifact-written" },
+        { "from_state": "artifact-written", "event": "write-projection", "to_state": "projection-written" },
+        { "from_state": "projection-written", "event": "commit-authority", "to_state": "authority-committed" }
+      ]
+    },
+    {
+      "id": "collaboration.mcp-install",
+      "rust_module": "collaboration_mcp_install",
+      "states": [
+        { "id": "prepared" },
+        { "id": "files-committed" },
+        { "id": "authority-committed" },
+        { "id": "rolling-back" }
+      ],
+      "events": ["commit-files", "commit-authority", "begin-rollback"],
+      "initial": "prepared",
+      "terminal": ["authority-committed", "rolling-back"],
+      "transitions": [
+        { "from_state": "prepared", "event": "commit-files", "to_state": "files-committed" },
+        { "from_state": "prepared", "event": "begin-rollback", "to_state": "rolling-back" },
+        { "from_state": "files-committed", "event": "commit-authority", "to_state": "authority-committed" },
+        { "from_state": "files-committed", "event": "begin-rollback", "to_state": "rolling-back" }
+      ]
+    },
+    {
+      "id": "collaboration.local-server",
+      "rust_module": "collaboration_local_server",
+      "states": [
+        { "id": "stopped" },
+        { "id": "starting" },
+        { "id": "running" },
+        { "id": "stopping" },
+        { "id": "quarantined" }
+      ],
+      "events": [
+        "start",
+        "runtime-ready",
+        "request-stop",
+        "runtime-stopped",
+        "quarantine",
+        "restore-starting",
+        "restore-running",
+        "restore-stopping",
+        "restore-quarantined"
+      ],
+      "initial": "stopped",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "stopped", "event": "start", "to_state": "starting" },
+        { "from_state": "starting", "event": "runtime-ready", "to_state": "running" },
+        { "from_state": "starting", "event": "request-stop", "to_state": "stopping" },
+        { "from_state": "running", "event": "request-stop", "to_state": "stopping" },
+        { "from_state": "stopping", "event": "request-stop", "to_state": "stopping" },
+        { "from_state": "quarantined", "event": "request-stop", "to_state": "stopping" },
+        { "from_state": "stopped", "event": "runtime-stopped", "to_state": "stopped" },
+        { "from_state": "starting", "event": "runtime-stopped", "to_state": "stopped" },
+        { "from_state": "running", "event": "runtime-stopped", "to_state": "stopped" },
+        { "from_state": "stopping", "event": "runtime-stopped", "to_state": "stopped" },
+        { "from_state": "quarantined", "event": "runtime-stopped", "to_state": "stopped" },
+        { "from_state": "stopped", "event": "quarantine", "to_state": "quarantined" },
+        { "from_state": "starting", "event": "quarantine", "to_state": "quarantined" },
+        { "from_state": "running", "event": "quarantine", "to_state": "quarantined" },
+        { "from_state": "stopping", "event": "quarantine", "to_state": "quarantined" },
+        { "from_state": "quarantined", "event": "quarantine", "to_state": "quarantined" },
+        { "from_state": "stopping", "event": "restore-starting", "to_state": "starting" },
+        { "from_state": "stopping", "event": "restore-running", "to_state": "running" },
+        { "from_state": "stopping", "event": "restore-stopping", "to_state": "stopping" },
+        { "from_state": "stopping", "event": "restore-quarantined", "to_state": "quarantined" }
+      ]
+    }
+  ]
+}

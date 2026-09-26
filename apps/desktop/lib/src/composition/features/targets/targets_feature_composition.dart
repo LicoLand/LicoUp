@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
+import 'package:licoup/src/presentation/targets/targets_providers.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/semantic_feature_channel.dart';
@@ -69,6 +71,10 @@ final class TargetsFeatureComposition {
 
   /// F01 Riverpod entry for the target catalog resource.
   late final PresentationProviderEntry<TargetsProjection> catalogEntry;
+
+  List<Override> get providerOverrides => <Override>[
+    targetsCatalogSourceProvider.overrideWithValue(_catalogSource),
+  ];
 
   /// Narrow renderer actions with the targets scope pinned.
   late final TargetsCatalogActions catalogActions;

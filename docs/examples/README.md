@@ -1,5 +1,7 @@
 # Examples
 
+Updated: 2026-08-08
+
 [Documentation](../README.md)
 
 - [CLI workflow examples](CLI-WORKFLOWS.md)

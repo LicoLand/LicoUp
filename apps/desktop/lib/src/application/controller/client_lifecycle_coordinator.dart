@@ -1,8 +1,9 @@
 import 'dart:async';
 
+import 'package:licoup/src/application/generated/state_machines.g.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
-
-enum ClientLifecyclePhase { idle, initializing, ready, failed, disposed }
+export 'package:licoup/src/application/generated/state_machines.g.dart'
+    show ClientLifecyclePhase;
 
 final class ClientLifecycleProjection {
   const ClientLifecycleProjection._(this.phase);
@@ -38,9 +39,9 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
   static final RegExp _stableId = RegExp(r'^[a-z][a-z0-9._-]{0,63}$');
 
   final ClientLifecycleReportSink _onReport;
-  ClientLifecyclePhase _phase = ClientLifecyclePhase.idle;
+  ClientLifecyclePhase _phase = clientLifecyclePhaseInitial;
   ClientLifecycleProjection _projection = const ClientLifecycleProjection._(
-    ClientLifecyclePhase.idle,
+    clientLifecyclePhaseInitial,
   );
   Future<void>? _initializeFuture;
   String _lastFailureStepId = '';
@@ -92,7 +93,7 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
     required bool runBackgroundSteps,
     required ClientBootstrapStep? finalStep,
   }) async {
-    if (!_transition(ClientLifecyclePhase.initializing, stepId: 'initialize')) {
+    if (!_transition(ClientLifecycleEvent.initialize, stepId: 'initialize')) {
       return;
     }
     _lastFailureStepId = '';
@@ -117,11 +118,17 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
         await finalStep.action();
         if (!_isCurrent(generation)) return;
       }
-      _transition(ClientLifecyclePhase.ready, stepId: 'initialize_complete');
+      _transition(
+        ClientLifecycleEvent.initializationSucceeded,
+        stepId: 'initialize_complete',
+      );
     } catch (_) {
       if (!_isCurrent(generation)) return;
       _lastFailureStepId = _safeStepId(activeStepId);
-      _transition(ClientLifecyclePhase.failed, stepId: _lastFailureStepId);
+      _transition(
+        ClientLifecycleEvent.initializationFailed,
+        stepId: _lastFailureStepId,
+      );
       _report(
         ClientLifecycleReport(
           code: 'client_initialize_failed',
@@ -151,8 +158,9 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
   bool _isCurrent(int generation) =>
       _phase != ClientLifecyclePhase.disposed && generation == _generation;
 
-  bool _transition(ClientLifecyclePhase next, {required String stepId}) {
-    if (!_legalTransitions[_phase]!.contains(next)) {
+  bool _transition(ClientLifecycleEvent event, {required String stepId}) {
+    final next = transitionClientLifecyclePhase(_phase, event);
+    if (next == null) {
       _report(
         ClientLifecycleReport(
           code: 'client_lifecycle_transition_invalid',
@@ -171,32 +179,14 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
     _onReport(report);
   }
 
-  static const Map<ClientLifecyclePhase, Set<ClientLifecyclePhase>>
-  _legalTransitions = {
-    ClientLifecyclePhase.idle: {
-      ClientLifecyclePhase.initializing,
-      ClientLifecyclePhase.disposed,
-    },
-    ClientLifecyclePhase.initializing: {
-      ClientLifecyclePhase.ready,
-      ClientLifecyclePhase.failed,
-      ClientLifecyclePhase.disposed,
-    },
-    ClientLifecyclePhase.ready: {ClientLifecyclePhase.disposed},
-    ClientLifecyclePhase.failed: {
-      ClientLifecyclePhase.initializing,
-      ClientLifecyclePhase.disposed,
-    },
-    ClientLifecyclePhase.disposed: {},
-  };
-
   ClientLifecycleReport transitionForTesting(
     ClientLifecyclePhase next, {
     required String stepId,
   }) {
     final safeStepId = _safeStepId(stepId);
-    if (_legalTransitions[_phase]!.contains(next)) {
-      _transition(next, stepId: safeStepId);
+    final event = clientLifecycleEventForTransition(_phase, next);
+    if (event != null) {
+      _transition(event, stepId: safeStepId);
       return ClientLifecycleReport(
         code: 'client_lifecycle_transition_applied',
         stepId: safeStepId,
@@ -221,7 +211,7 @@ final class ClientLifecycleCoordinator extends ApplicationStateOwner {
   void dispose() {
     if (_phase == ClientLifecyclePhase.disposed) return;
     _generation += 1;
-    _transition(ClientLifecyclePhase.disposed, stepId: 'dispose');
+    _transition(ClientLifecycleEvent.dispose, stepId: 'dispose');
     super.dispose();
   }
 }

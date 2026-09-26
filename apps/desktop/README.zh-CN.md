@@ -1,5 +1,7 @@
 # LicoUp Desktop Client
 
+Updated: 2026-09-25
+
 [English (normative)](README.md) · 简体中文本地化
 
 LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
@@ -27,12 +29,10 @@ LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
 
 ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。
 
-`Mobile Relay` 当前执行[正在退役的端点保护预览](../../docs/STATUS.zh-CN.md)，
-并通过已实现的候选 `licoarc.relay.v1` 外层 adapter 承载。该预览不是 Lico Arc
-Profile，也不承诺未来兼容。稳定客户端将执行一条固定 Lico Arc Protocol Line
-的线上可观测 Pairwise Protection、Generic Message、Reliable Exchange、协商与
-Transport Profile 语义，同时继续拥有自己的私钥、Provider 配置、明文、历史、
-备份、信任决定、审批和本地效果。
+`Mobile Relay` 当前执行[端点保护预览](../../docs/STATUS.zh-CN.md)，并通过已实现的
+候选 `licoarc.relay.v1` 外层 adapter 承载。该预览不是 Lico Arc Profile 或稳定
+兼容合同。LicoUp 继续拥有自己的私钥、Provider 配置、明文、历史、备份、信任决定、
+审批和本地效果。
 
 当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、DeepSeek Harness、
 Copilot、Hermes、Kilo Code、Kimi Code、Lico Agent、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或

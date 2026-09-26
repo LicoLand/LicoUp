@@ -50,20 +50,6 @@
     "forbidden_secret_material",
     "native_operation_failed"
   ],
-  "fileStatuses": [
-    "drafting",
-    "evaluating",
-    "awaiting_confirmation",
-    "confirmed",
-    "rejected",
-    "failed"
-  ],
-  "approvalStatuses": [
-    "pending",
-    "resolved",
-    "expired",
-    "failed"
-  ],
   "approvalDecisions": [
     "allow",
     "deny",

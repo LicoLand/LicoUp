@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/composition/client_app_composition.dart';
+import 'src/composition/project_collaboration_root.dart';
 import 'src/frontend/binding/projection_builder.dart';
 import 'src/frontend/binding/projection_telemetry_scope.dart';
 import 'src/frontend/environment/environment_projection_adapter.dart';
@@ -169,9 +170,11 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
                   _composition.binding,
                   _composition.renderer,
                 ) ??
-                ClientShell(
-                  binding: _composition.binding,
-                  renderer: _composition.renderer,
+                ProjectCollaborationRoot(
+                  child: ClientShell(
+                    binding: _composition.binding,
+                    renderer: _composition.renderer,
+                  ),
                 ),
           ),
         );

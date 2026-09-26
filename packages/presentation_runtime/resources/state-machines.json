@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "dart": {
+    "output": "packages/presentation_runtime/lib/src/generated/state_machines.g.dart"
+  },
+  "machines": [
+    {
+      "id": "presentation.source-connection",
+      "initial": "idle",
+      "states": [
+        { "id": "idle" },
+        { "id": "open" },
+        { "id": "disconnected" }
+      ],
+      "events": ["release", "opened", "lost"],
+      "terminal": [],
+      "transitions": [
+        { "from_state": "idle", "event": "release", "to_state": "idle" },
+        { "from_state": "idle", "event": "opened", "to_state": "open" },
+        { "from_state": "idle", "event": "lost", "to_state": "disconnected" },
+        { "from_state": "open", "event": "release", "to_state": "idle" },
+        { "from_state": "open", "event": "lost", "to_state": "disconnected" },
+        { "from_state": "disconnected", "event": "release", "to_state": "idle" },
+        { "from_state": "disconnected", "event": "lost", "to_state": "disconnected" }
+      ],
+      "dart": {
+        "state_enum": "SourceConnectionState",
+        "event_enum": "SourceConnectionEvent",
+        "transition_function": "transitionSourceConnectionState",
+        "state_from_id_function": "sourceConnectionStateFromId"
+      }
+    }
+  ]
+}

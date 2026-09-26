@@ -44,9 +44,10 @@ void main() {
   test('state namespaces are profile-qualified and business-scoped', () {
     final namespaces = dashboardDesktopBundle.stateNamespaces;
 
-    expect(namespaces, hasLength(6));
+    expect(namespaces, hasLength(7));
     expect(namespaces.map((value) => value.destination).toSet(), {
       ClientSection.agents,
+      ClientSection.agentHub,
       ClientSection.settings,
       ClientSection.models,
     });
@@ -54,6 +55,13 @@ void main() {
       expect(namespace.profileId, LayoutProfileId.parse('dashboard'));
       expect(namespace.surface, LayoutRuntimeSurface.desktop);
     }
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.agentHub)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {LayoutStateChannels.featureSection.id},
+    );
     expect(
       namespaces
           .where((value) => value.destination == ClientSection.agents)

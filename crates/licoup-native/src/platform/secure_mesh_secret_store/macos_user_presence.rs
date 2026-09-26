@@ -44,6 +44,9 @@ use crate::core::secure_mesh_secret_store::{
     SecretStorePresenceProvider, SecretStorePresencePurpose, SecretStorePresenceScope,
     derive_presence_binding_digest, digest_matches,
 };
+use crate::state_machines::security_macos_presence_batch::{
+    self, Event as BatchSlotEvent, State as BatchSlotState,
+};
 
 macro_rules! security_framework_static {
     ($value:expr, $wrapper:ident) => {{
@@ -421,21 +424,45 @@ struct ReadyBatch {
     authorization_context: Arc<MacosAuthorizationContext>,
 }
 
-enum BatchSlotState {
-    Pending,
-    Ready(ReadyBatch),
-    Failed(&'static str),
+struct BatchSlotValue {
+    state: BatchSlotState,
+    ready: Option<ReadyBatch>,
+    failure: Option<&'static str>,
+}
+
+impl BatchSlotValue {
+    fn pending() -> Self {
+        Self {
+            state: security_macos_presence_batch::INITIAL,
+            ready: None,
+            failure: None,
+        }
+    }
+
+    fn approve(&mut self, ready: ReadyBatch) -> Result<()> {
+        self.state = security_macos_presence_batch::transition(self.state, BatchSlotEvent::Approve)
+            .ok_or_else(|| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+        self.ready = Some(ready);
+        Ok(())
+    }
+
+    fn fail(&mut self, code: &'static str) -> Result<()> {
+        self.state = security_macos_presence_batch::transition(self.state, BatchSlotEvent::Fail)
+            .ok_or_else(|| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+        self.failure = Some(code);
+        Ok(())
+    }
 }
 
 struct BatchSlot {
-    state: Mutex<BatchSlotState>,
+    state: Mutex<BatchSlotValue>,
     ready: Condvar,
 }
 
 impl BatchSlot {
     fn pending() -> Self {
         Self {
-            state: Mutex::new(BatchSlotState::Pending),
+            state: Mutex::new(BatchSlotValue::pending()),
             ready: Condvar::new(),
         }
     }
@@ -474,13 +501,16 @@ impl MacosPresenceBatchCoordinator {
                 let Ok(state) = slot.state.lock() else {
                     return false;
                 };
-                match &*state {
-                    BatchSlotState::Ready(ready) => {
+                match state.state {
+                    BatchSlotState::Ready => {
+                        let Some(ready) = state.ready.as_ref() else {
+                            return false;
+                        };
                         ready.authorization_context.is_active()
                             && ready.batch.expires_at().is_none_or(|expiry| now < expiry)
                     }
                     BatchSlotState::Pending => true,
-                    BatchSlotState::Failed(_) => false,
+                    BatchSlotState::Failed => false,
                 }
             });
             if let Some(slot) = batches.get(&request_digest) {
@@ -547,13 +577,13 @@ impl MacosPresenceBatchCoordinator {
             .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
         match completed {
             Ok(ready) => {
-                *state = BatchSlotState::Ready(ready.clone());
+                state.approve(ready.clone())?;
                 slot.ready.notify_all();
                 Ok(MacosApprovedPresenceBatch(ready))
             }
             Err(error) => {
                 let code = stable_presence_error_code(&error);
-                *state = BatchSlotState::Failed(code);
+                state.fail(code)?;
                 slot.ready.notify_all();
                 drop(state);
                 if let Ok(mut batches) = self.batches.lock()
@@ -575,17 +605,27 @@ fn wait_for_ready_batch(slot: &BatchSlot) -> Result<MacosApprovedPresenceBatch> 
         .lock()
         .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
     loop {
-        match &*state {
+        match state.state {
             BatchSlotState::Pending => {
                 state = slot
                     .ready
                     .wait(state)
                     .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
             }
-            BatchSlotState::Ready(ready) => {
+            BatchSlotState::Ready => {
+                let ready = state
+                    .ready
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
                 return Ok(MacosApprovedPresenceBatch(ready.clone()));
             }
-            BatchSlotState::Failed(code) => return Err(anyhow!(*code)),
+            BatchSlotState::Failed => {
+                return Err(anyhow!(
+                    state
+                        .failure
+                        .unwrap_or("secure_mesh_presence_coordinator_unavailable")
+                ));
+            }
         }
     }
 }

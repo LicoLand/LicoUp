@@ -4,15 +4,16 @@ use super::argv::{ArgvKind, ArgvRunner, ProcessArgvRunner, validate_program_args
 use super::capabilities::capabilities_from_params;
 use super::confirmation::{self, install_argv_for};
 use super::contract::{
-    HubEvent, InstallChannel, InstallOwnership, LIFECYCLE_APPLYING, LIFECYCLE_AVAILABLE,
-    LIFECYCLE_CONFIRMED, LIFECYCLE_FAILED, LIFECYCLE_NEEDS_LOGIN, LIFECYCLE_PLANNED,
-    LIFECYCLE_RESCANNING, LIFECYCLE_VERIFYING, OWNERSHIP_EXTERNAL, OWNERSHIP_OWNED,
-    PlatformInstallCapabilities,
+    HubEvent, InstallChannel, InstallOwnership, LIFECYCLE_AVAILABLE, LIFECYCLE_NEEDS_LOGIN,
+    OWNERSHIP_EXTERNAL, OWNERSHIP_OWNED, PlatformInstallCapabilities,
 };
 use super::ownership::{self, store_from_params};
 use super::recipes::{self, agent_recipe};
 use super::selector;
 use crate::platform::client_state::ClientStateStore;
+use crate::state_machines::agent_hub_operation::{
+    self as operation_machine, Event as LifecycleEvent, State as LifecycleState,
+};
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -112,7 +113,7 @@ pub fn plan_with(ctx: &HubContext, params: &Value) -> Result<Value> {
     let confirmation = confirmation::token(&operation, &agent_id, selected);
     Ok(json!({
         "ok": true,
-        "status": LIFECYCLE_PLANNED,
+        "status": operation_machine::INITIAL.as_str(),
         "operation": operation,
         "agentId": agent_id,
         "adaptation": agent.adaptation,
@@ -143,13 +144,16 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         .unwrap_or_default()
         .to_string();
     confirmation::require(params, &confirmation)?;
+    let mut lifecycle = LifecycleTrace::new();
+    lifecycle.advance(LifecycleEvent::Confirm)?;
     if params.get("cancel").and_then(Value::as_bool) == Some(true) {
+        lifecycle.advance(LifecycleEvent::Cancel)?;
         return Ok(json!({
             "ok": true,
-            "status": "cancelled",
+            "status": lifecycle.state().as_str(),
             "operation": planned["operation"],
             "agentId": planned["agentId"],
-            "events": events(&["planned", "confirmed", "cancelled"])
+            "events": lifecycle.events()
         }));
     }
     let operation = planned
@@ -174,20 +178,20 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
     let program = argv[0].clone();
     let args = argv[1..].to_vec();
     validate_program_args(&program, &args, ArgvKind::Lifecycle)?;
-    let mut lifecycle = vec![LIFECYCLE_PLANNED, LIFECYCLE_CONFIRMED, LIFECYCLE_APPLYING];
+    lifecycle.advance(LifecycleEvent::Apply)?;
     let outcome = ctx.runner.run(&program, &args)?;
     if outcome.status != 0 {
-        lifecycle.push(LIFECYCLE_FAILED);
+        lifecycle.advance(LifecycleEvent::Fail)?;
         return Ok(json!({
             "ok": false,
-            "status": LIFECYCLE_FAILED,
+            "status": lifecycle.state().as_str(),
             "operation": operation,
             "agentId": agent_id,
-            "events": events(&lifecycle),
+            "events": lifecycle.events(),
             "runner": super::argv::outcome_json(&outcome)
         }));
     }
-    lifecycle.push(LIFECYCLE_VERIFYING);
+    lifecycle.advance(LifecycleEvent::Verify)?;
     let registry = recipes::registry()?;
     let agent = agent_recipe(registry, &agent_id)?;
     let channel_id = planned["selectedChannel"]["id"]
@@ -198,17 +202,17 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         let verify = substitute_argv(&channel.verify_argv, params);
         let _ = ctx.runner.run(&verify[0], &verify[1..])?;
     }
-    lifecycle.push(LIFECYCLE_RESCANNING);
+    lifecycle.advance(LifecycleEvent::Rescan)?;
     if operation == "uninstall" {
         ownership::remove(&ctx.store, &agent_id)?;
-        lifecycle.push(LIFECYCLE_AVAILABLE);
+        lifecycle.advance(LifecycleEvent::MarkAvailable)?;
         return Ok(json!({
             "ok": true,
             "status": "uninstalled",
             "operation": operation,
             "agentId": agent_id,
             "ownership": "none",
-            "events": events(&lifecycle)
+            "events": lifecycle.events()
         }));
     }
     ownership::save(
@@ -227,12 +231,13 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
             },
         },
     )?;
-    let status = if agent.requires_login {
-        LIFECYCLE_NEEDS_LOGIN
+    let completion = if agent.requires_login {
+        LifecycleEvent::RequireLogin
     } else {
-        LIFECYCLE_AVAILABLE
+        LifecycleEvent::MarkAvailable
     };
-    lifecycle.push(status);
+    lifecycle.advance(completion)?;
+    let status = lifecycle.state().as_str();
     Ok(json!({
         "ok": true,
         "status": status,
@@ -241,7 +246,7 @@ pub fn apply_with(ctx: &HubContext, params: &Value) -> Result<Value> {
         "ownership": OWNERSHIP_OWNED,
         "channelId": channel.id,
         "channelKind": channel.kind,
-        "events": events(&lifecycle)
+        "events": lifecycle.events()
     }))
 }
 
@@ -354,12 +359,43 @@ fn fact_present(item: &Value) -> bool {
             })
 }
 
-fn events(phases: &[&str]) -> Vec<HubEvent> {
-    phases
-        .iter()
-        .map(|phase| HubEvent {
-            phase: (*phase).to_string(),
-            code: (*phase).to_string(),
-        })
-        .collect()
+struct LifecycleTrace {
+    state: LifecycleState,
+    phases: Vec<LifecycleState>,
+}
+
+impl LifecycleTrace {
+    fn new() -> Self {
+        Self {
+            state: operation_machine::INITIAL,
+            phases: vec![operation_machine::INITIAL],
+        }
+    }
+
+    fn advance(&mut self, event: LifecycleEvent) -> Result<()> {
+        let next = operation_machine::transition(self.state, event).ok_or_else(|| {
+            anyhow!(
+                "invalid_agent_hub_lifecycle_transition:{}:{}",
+                self.state.as_str(),
+                event.as_str()
+            )
+        })?;
+        self.state = next;
+        self.phases.push(next);
+        Ok(())
+    }
+
+    fn state(&self) -> LifecycleState {
+        self.state
+    }
+
+    fn events(&self) -> Vec<HubEvent> {
+        self.phases
+            .iter()
+            .map(|phase| HubEvent {
+                phase: phase.as_str().to_string(),
+                code: phase.as_str().to_string(),
+            })
+            .collect()
+    }
 }

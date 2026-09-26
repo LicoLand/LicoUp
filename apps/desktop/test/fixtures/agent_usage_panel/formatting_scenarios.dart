@@ -27,6 +27,7 @@ void registerAgentUsageFormattingScenarios() {
 
     await tester.pumpWidget(
       usageTestApp(
+        overrides: monitoring.providerOverrides,
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -124,6 +125,7 @@ void registerAgentUsageFormattingScenarios() {
     await tester.pump();
     await tester.pumpWidget(
       usageTestApp(
+        overrides: monitoring.providerOverrides,
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),

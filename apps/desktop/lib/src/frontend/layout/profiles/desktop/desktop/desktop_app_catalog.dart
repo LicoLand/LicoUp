@@ -15,10 +15,12 @@ enum DesktopAppId {
   modelsGateway,
   mobileRelay,
   modelsChatChannels,
+  projectCollaboration,
 }
 
 /// The visible feature apps in frozen catalog order.
 const List<DesktopAppId> desktopFeatureApps = <DesktopAppId>[
+  DesktopAppId.projectCollaboration,
   DesktopAppId.agentHub,
   DesktopAppId.monitoring,
   DesktopAppId.modelsGateway,
@@ -33,6 +35,7 @@ ClientSection desktopAppSection(DesktopAppId app) => switch (app) {
   DesktopAppId.modelsGateway => ClientSection.models,
   DesktopAppId.mobileRelay => ClientSection.mobileRelay,
   DesktopAppId.modelsChatChannels => ClientSection.models,
+  DesktopAppId.projectCollaboration => ClientSection.agentHub,
 };
 
 /// The models-destination pane this app selects, when it targets one. Both
@@ -59,6 +62,7 @@ IconData desktopAppIcon(DesktopAppId app) => switch (app) {
   DesktopAppId.modelsGateway => Icons.key_outlined,
   DesktopAppId.mobileRelay => Icons.qr_code_2_rounded,
   DesktopAppId.modelsChatChannels => Icons.forum_outlined,
+  DesktopAppId.projectCollaboration => Icons.account_tree_outlined,
 };
 
 String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
@@ -69,6 +73,7 @@ String desktopAppLabel(LicoStrings strings, DesktopAppId app) => switch (app) {
   DesktopAppId.modelsGateway => strings.modelGateway,
   DesktopAppId.mobileRelay => strings.mobilePairing,
   DesktopAppId.modelsChatChannels => strings.chatChannels,
+  DesktopAppId.projectCollaboration => strings.projectCollaboration,
 };
 
 /// Decodes a persisted app name. Unknown names and the retired 对话 entry

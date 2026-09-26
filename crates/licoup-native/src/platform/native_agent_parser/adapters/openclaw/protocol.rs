@@ -11,6 +11,9 @@ use super::params::ProtocolConfig;
 use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation};
 use serde_json::{Value, json};
 
+pub(super) use crate::state_machines::openclaw_protocol::State as ProtocolPhase;
+use crate::state_machines::openclaw_protocol::{self as protocol_machine, Event as ProtocolEvent};
+
 #[derive(Clone, Debug)]
 pub(super) struct ProtocolOutcome {
     pub(super) output: String,
@@ -32,15 +35,6 @@ pub(super) struct ParsedProtocolFrame {
     pub(super) effects: Vec<ProtocolEffect>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ProtocolPhase {
-    AwaitInitialize,
-    AwaitSession,
-    AwaitMode,
-    AwaitPrompt,
-    Finished,
-}
-
 #[derive(Debug)]
 pub(super) struct OpenClawProtocol {
     pub(super) config: ProtocolConfig,
@@ -52,6 +46,16 @@ pub(super) struct OpenClawProtocol {
 }
 
 impl OpenClawProtocol {
+    fn advance(&mut self, event: ProtocolEvent) {
+        self.phase = protocol_machine::transition(self.phase, event).unwrap_or_else(|| {
+            panic!(
+                "invalid OpenClaw protocol transition: {} + {}",
+                self.phase.as_str(),
+                event.as_str()
+            )
+        });
+    }
+
     pub(super) fn new(config: ProtocolConfig) -> Self {
         let effective = EffectiveSettings {
             cwd: Some(config.cwd.clone()),
@@ -61,7 +65,7 @@ impl OpenClawProtocol {
         let binding = SessionBinding::new(&config);
         Self {
             config,
-            phase: ProtocolPhase::AwaitInitialize,
+            phase: protocol_machine::INITIAL,
             binding,
             output: String::new(),
             events: Vec::new(),
@@ -80,7 +84,7 @@ impl OpenClawProtocol {
 
     pub(super) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         if let Some(effects) = self.handle_server_request(&message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return effects;
         }
         if message.get("method").is_some() {
@@ -109,7 +113,7 @@ impl OpenClawProtocol {
         let message = match super::codec::decode_message(line) {
             Ok(message) => message,
             Err(super::codec::DecodeFailure::TooLarge) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return ParsedProtocolFrame {
                     effects: vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "openclaw_acp_output_limit",
@@ -119,7 +123,7 @@ impl OpenClawProtocol {
                 };
             }
             Err(super::codec::DecodeFailure::Invalid) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return ParsedProtocolFrame {
                     effects: vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "openclaw_acp_invalid_json",
@@ -167,7 +171,7 @@ impl OpenClawProtocol {
         let response = match acp::validate_initialize_response(message, INITIALIZE_REQUEST_ID) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                     "openclaw_acp_initialize_failed",
                     "OpenClaw ACP initialization failed.",
@@ -175,7 +179,7 @@ impl OpenClawProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                     error,
                     acp::INITIALIZE_METHOD,
@@ -183,14 +187,14 @@ impl OpenClawProtocol {
             }
         };
         if !response.capabilities.load_session {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "openclaw_acp_capability_mismatch",
                 "OpenClaw ACP does not expose the required conversation lifecycle.",
                 "initialize/capabilities",
             ))];
         }
-        self.phase = ProtocolPhase::AwaitSession;
+        self.advance(ProtocolEvent::Initialized);
         let request = session_request(&self.config);
         self.request_effect(request)
     }
@@ -199,7 +203,7 @@ impl OpenClawProtocol {
         match request {
             Ok(request) => vec![ProtocolEffect::Send(request)],
             Err(mut failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 failure.session_id = self.binding.failure_session_id(&self.config);
                 vec![ProtocolEffect::Fail(failure)]
             }
@@ -208,39 +212,39 @@ impl OpenClawProtocol {
 
     fn handle_session_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         let method = session_method(&self.config);
+        let method_name = method.method_name();
         let response = match acp::validate_session_response(message, SESSION_REQUEST_ID, method) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     "openclaw_acp_session_open_failed",
                     "OpenClaw ACP could not open the requested conversation.",
-                    method.method_name(),
+                    method_name,
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
-                let mut failure = ProtocolFailure::from_acp(error, method.method_name());
+                self.advance(ProtocolEvent::Fail);
+                let mut failure = ProtocolFailure::from_acp(error, method_name);
                 failure.session_id = self.binding.failure_session_id(&self.config);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         };
-        if let Err(mut failure) = self.binding.reconcile_open_response(
-            &self.config,
-            response.session_id,
-            method.method_name(),
-        ) {
-            self.phase = ProtocolPhase::Finished;
+        if let Err(mut failure) =
+            self.binding
+                .reconcile_open_response(&self.config, response.session_id, method_name)
+        {
+            self.advance(ProtocolEvent::Fail);
             failure.session_id = self.binding.failure_session_id(&self.config);
             failure.turn_id = Some(self.config.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
         self.capture_effective_controls(message.get("result"));
         if self.config.reasoning_effort.is_some() {
-            self.phase = ProtocolPhase::AwaitMode;
+            self.advance(ProtocolEvent::SessionMode);
             vec![ProtocolEffect::Send(self.mode_request())]
         } else {
-            self.phase = ProtocolPhase::AwaitPrompt;
+            self.advance(ProtocolEvent::SessionPrompt);
             let request = self.prompt_request();
             self.request_effect(request)
         }
@@ -260,14 +264,14 @@ impl OpenClawProtocol {
 
     fn handle_mode_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.failure_with_ids(
                 "openclaw_acp_thought_level_failed",
                 "OpenClaw ACP could not apply the requested thought level.",
                 "session/set_mode",
             ))];
         }
-        self.phase = ProtocolPhase::AwaitPrompt;
+        self.advance(ProtocolEvent::ModeReady);
         let request = self.prompt_request();
         self.request_effect(request)
     }
@@ -288,7 +292,7 @@ impl OpenClawProtocol {
         let response = match acp::validate_prompt_response(message, PROMPT_REQUEST_ID) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     "openclaw_acp_prompt_failed",
                     "OpenClaw ACP could not complete the requested turn.",
@@ -296,14 +300,14 @@ impl OpenClawProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 let mut failure = ProtocolFailure::from_acp(error, acp::SESSION_PROMPT_METHOD);
                 failure.session_id = self.binding.failure_session_id(&self.config);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         };
         let stop_reason = response.stop_reason.as_str().to_owned();
-        self.phase = ProtocolPhase::Finished;
+        self.advance(ProtocolEvent::PromptCompleted);
         if !matches!(
             stop_reason.as_str(),
             "end_turn" | "max_tokens" | "max_turn_requests"
@@ -347,7 +351,7 @@ impl OpenClawProtocol {
             .expected_protocol_id(&self.config)
             .map(str::to_string);
         if expected_session_id.is_none() && self.phase != ProtocolPhase::AwaitSession {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.failure_with_ids(
                 acp::AcpError::SessionMismatch.code(),
                 "OpenClaw ACP sent an update before establishing its conversation.",
@@ -357,7 +361,7 @@ impl OpenClawProtocol {
         let update = match acp::validate_session_update(&message, expected_session_id.as_deref()) {
             Ok(update) => update,
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 let mut failure = ProtocolFailure::from_acp(error, acp::SESSION_UPDATE_METHOD);
                 failure.session_id = self.binding.failure_session_id(&self.config);
                 failure.turn_id = Some(self.config.turn_id.clone());
@@ -368,7 +372,7 @@ impl OpenClawProtocol {
             if expected_session_id.is_none()
                 && update.kind != acp::AcpSessionUpdateKind::SessionInfoUpdate
             {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     acp::AcpError::SessionMismatch.code(),
                     "OpenClaw ACP sent output before identifying its conversation.",

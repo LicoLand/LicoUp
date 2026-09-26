@@ -1,5 +1,7 @@
 # macOS direct-distribution compliance
 
+Updated: 2026-09-25
+
 [简体中文](MACOS-DIRECT-DISTRIBUTION.zh-CN.md)
 
 This document covers only direct distribution outside the Mac App Store. The
@@ -19,7 +21,7 @@ and submission model is a different product boundary.
 | Accurately disclose privacy behavior and bundled SDK practices | `PrivacyInfo.xcprivacy` and the bilingual privacy policy are inserted only into the macOS app/DMG release path. The manifest declares no tracking or project-operated collection and records the evidenced File Timestamp, System Boot Time, and User Defaults required-reason API uses | Implemented; must be re-audited when dependencies or data flows change |
 | Protect users from changed or substituted update code | A macOS update must match the installed app's exact Developer ID designated requirement and team and pass code-signing, Hardened Runtime, timestamp, stapled-ticket, and Gatekeeper checks before replacement; the replacement script repeats the checks | Implemented; real update proof pending |
 | Take responsibility for distributed code and dependencies | LicoUp no longer downloads, installs, updates, rolls back, or synchronizes skills. It only discovers local skills and can move a selected local directory to the system Trash. The release bundles the AGPL license, project notice, Flutter/Dart notices, and a target-filtered inventory plus available license texts from the locked Rust dependency graph | Implemented for skills and bundled notices |
-| Keep protected credentials out of source and remote publication jobs | Signing and notarization inputs are local-only, secret-like files are rejected by repository gates and Rulesets, and the old GitHub/local-identity macOS archive and install entry points are disabled | Implemented |
+| Keep protected credentials out of source and remote publication jobs | Signing and notarization inputs are local-only; the repository scan reports certificate- and key-shaped candidates for contextual review without treating their format as proof of disclosure | Implemented |
 
 ## Direct distribution versus the Mac App Store
 

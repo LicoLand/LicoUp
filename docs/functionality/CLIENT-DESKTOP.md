@@ -1,11 +1,11 @@
 # LicoUp Client Functionality
 
-## Metadata
+Updated: 2026-09-25
 
-- Last updated: 2026-07-30
-- Status: Implemented capability overview
-- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, and the current retiring endpoint-protection Preview.
-- Staleness check: Reconciled with `PRODUCT.md`, `docs/STATUS.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, current endpoint-protection Preview contracts, and module-scoped regression catalog on 2026-07-30.
+This overview covers the current desktop and mobile clients, Rust native host,
+ACP and MCP boundaries, platform adapters, local-Agent workflows, and the
+endpoint-protection Preview. Source, schemas, registries, and module checks own
+the executable details.
 
 ## Product Boundary
 
@@ -64,7 +64,7 @@ requires a separate direct approval for each file.
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
 | Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
 | Platform adapters | Own OS discovery, secure storage, authorization, paths, process launch, and packaging behind platform-neutral ports. |
-| [Endpoint-protection Preview](../STATUS.md) | Owns the current LicoUp implementation, private-key/Provider custody, user trust and approval, and local effects. This retiring implementation is not a Lico Arc Profile and has no future compatibility promise. |
+| [Endpoint-protection Preview](../STATUS.md) | Owns the current LicoUp implementation, private-key/Provider custody, user trust and approval, and local effects. This implementation is not a Lico Arc Profile or stable compatibility contract. |
 | Lico Arc Protocol Line | Owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. LicoUp executes one pinned line; it does not redefine one. |
 
 The architecture gate rejects cross-layer reverse dependencies, duplicate protocol
@@ -166,7 +166,7 @@ guest filesystem access, and local MCP server descriptors are not forwarded
 into the VM.
 
 The local execution viewer follows the exact-dispatch contract in
-[Local execution inspection](../architecture/CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+[Local execution inspection](../architecture/CONVERSATION-DOMAIN.md#local-execution-inspection).
 Its presentation and first-reply waiting behavior are owned by the
 [design system](DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).
 
@@ -325,8 +325,7 @@ expired payload, modified ciphertext, unapproved local effect, and plaintext rel
 attempts fail closed.
 
 Those current mechanisms form a LicoUp preview implementation, not a Lico Arc
-Profile or future compatibility contract. They are to be retired directly when
-a complete pinned Lico Arc Protocol Line replaces them. Lico Arc owns the
+Profile or stable compatibility contract. Lico Arc owns the
 observable Pairwise Protection, Generic Message, Reliable Exchange,
 negotiation, and Transport Profile contract; LicoUp retains private keys,
 Provider configuration, plaintext, history, backups, user trust, approval,
@@ -343,6 +342,76 @@ physical-device acceptance, release, or hosted operation.
 Regression: pairwise/group codec vectors, cross-platform bridge tests, trust and
 revocation UX, wrong-recipient/tamper/replay controls, opaque-relay conformance,
 message/result round trips, and physical-device verification when authorized.
+
+## Scenario S-07 — Native Project Collaboration
+
+The desktop client renders multi-project collaboration as native swimlanes over a
+versioned, bounded graph resource (`licoup.ui.graph-resource.v1`), not as a
+dashboard skin and not as a rendered image. A `resource-view` contribution
+mounts only through the renderer the shell compiles for its declared format; an
+unknown format keeps its place in the catalog, is refused locally, and leaves
+every other contribution untouched. The document carries stable
+project/lane/node/gate identities, typed edges, the plan/run revision, source
+position, and per unit the three separate dimensions of command execution, work
+acceptance and observation freshness, the dependency-ready and startable flags
+with their native reasons, and opaque action, result and evidence references. It
+carries no script, widget tree, secret, or raw source text, and the renderer
+never reads a runtime, a store or a controller.
+
+Layout is a pure function of topology and expansion, computed in a preparation
+worker isolate, cancelled at a chunk boundary when a newer topology supersedes
+it, and stable across status churn: a status-only revision recomputes the
+affected entries and small totals and runs no layout. Virtualization limits what
+is painted, never what is counted: every project and lane keeps its complete goal
+totals while about a hundred units are in the visible window, and only the
+project rows, lane rows and cards inside the viewport are built. Each card draws
+only its own outgoing links, so painting a lane never walks the whole document.
+
+One shared gate keeps one semantic identity, one count and one run however many
+reference anchors are drawn for it; selecting any anchor speaks about the gate.
+Readiness and startability stay distinct: a unit that is dependency-ready but
+cannot start names the native reason, and only the nodes a blocker really affects
+are highlighted, derived from typed edges and declared inputs. Filters, role
+selection, collapse, selection, pan, zoom and lane reordering change the drawing
+and record nothing: no such interaction dispatches an action or mutates
+execution. Insertions are previewed first and committed only at exactly the
+revision the preview described; a stale commit is refused. Pause, cancel and
+takeover requests are shown as waiting until the native owner's own receipt
+arrives, and a refusal is displayed with its reason instead of an optimistic
+state. Withdrawal of authority clears labels, counts and anchors at once and
+leaves a local unavailable state; the surface comes back only through an
+application re-read of the same source in a fresh incarnation, which also starts
+a fresh interface state.
+
+The surface follows the interface design system: content cards use the shared
+radius and spacing steps, board rows and lanes separate with dividers instead of
+nested bordered boxes, selection is a filled interaction surface with a focus
+ring, a blocked unit carries a bar and a named reason rather than relying on
+colour, exact values use the mono face, and every label follows the interface
+language through a host-supplied string bundle (the package owns English
+defaults; the application supplies Chinese and English). Internal codes are
+never shown as user text: a withdrawn source, a refused action and a blocker all
+read as sentences, while the plan revision stays a value.
+
+The `project-collaboration-wide` flow in the
+[UI interaction configuration](../../apps/desktop/test/ui_state_machine/model.json)
+owns the reproducible interaction checks. Its profile mode records build/raster
+frames and local response times against the synthetic frozen-scale fixture.
+Machine-specific results remain local reports and do not establish a public
+performance claim.
+
+Review images of this surface are produced from the real page, the real theme
+and synthetic data by
+`apps/desktop/test/project_collaboration/project_collaboration_visual_evidence_test.dart`.
+The scenes cover the wide and narrow board, a selected unit, the insert preview
+and the unavailable state across the dark and light surfaces. Nothing here uses
+golden files: the run writes PNGs only when
+`LICO_PROJECT_COLLABORATION_EVIDENCE_DIR` is set, so a picture can never replace
+an assertion or hide a difference. The fixture producer supplies a synthetic
+action owner for this test. A product composition without a native owner refuses every action with
+`project_collaboration_unavailable` instead of answering it. Real Agent work,
+cross-repository execution, installation, and native production data remain
+outside this scenario.
 
 ## Regression Closure
 

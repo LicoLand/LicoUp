@@ -1,12 +1,21 @@
 use super::*;
+use crate::state_machines::security_command_replay_execution::{
+    self, Event as ReplayEvent, State as ReplayState,
+};
 
 #[derive(Default)]
 pub struct SecureCommandReplayLedger {
-    command_ids: BTreeMap<String, String>,
-    idempotency_fingerprints: BTreeMap<String, String>,
-    completed_outcomes: BTreeMap<String, Value>,
+    records: BTreeMap<String, InMemoryReplayRecord>,
+    idempotency_command_ids: BTreeMap<String, String>,
     insertion_order: VecDeque<String>,
     max_entries: usize,
+}
+
+struct InMemoryReplayRecord {
+    idempotency_key: String,
+    fingerprint: String,
+    phase: ReplayState,
+    completed_outcome: Option<Value>,
 }
 
 impl SecureCommandReplayLedger {
@@ -16,9 +25,8 @@ impl SecureCommandReplayLedger {
             "secure mesh command replay ledger max entries must be positive"
         );
         Ok(Self {
-            command_ids: BTreeMap::new(),
-            idempotency_fingerprints: BTreeMap::new(),
-            completed_outcomes: BTreeMap::new(),
+            records: BTreeMap::new(),
+            idempotency_command_ids: BTreeMap::new(),
             insertion_order: VecDeque::new(),
             max_entries,
         })
@@ -33,21 +41,26 @@ impl SecureCommandReplayLedger {
     }
 
     fn prune_to_limit(&mut self) {
-        while self.command_ids.len() > self.effective_max_entries() {
+        while self.records.len() > self.effective_max_entries() {
             let Some(old_command_id) = self.insertion_order.pop_front() else {
                 break;
             };
-            if let Some(old_idempotency_key) = self.command_ids.remove(&old_command_id) {
-                self.idempotency_fingerprints.remove(&old_idempotency_key);
+            if let Some(old_record) = self.records.remove(&old_command_id) {
+                self.idempotency_command_ids
+                    .remove(&old_record.idempotency_key);
             }
-            self.completed_outcomes.remove(&old_command_id);
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn phase_for_command(&self, command_id: &str) -> Option<ReplayState> {
+        self.records.get(command_id).map(|record| record.phase)
     }
 }
 
 impl SecureCommandReplayStore for SecureCommandReplayLedger {
     fn has_command_id(&self, command_id: &str) -> Result<bool> {
-        Ok(self.command_ids.contains_key(command_id))
+        Ok(self.records.contains_key(command_id))
     }
 
     fn record_execution(
@@ -55,48 +68,66 @@ impl SecureCommandReplayStore for SecureCommandReplayLedger {
         payload: &SecureCommandPayload,
         _now: OffsetDateTime,
     ) -> Result<SecureCommandReplayRecordStatus> {
-        if self.command_ids.contains_key(&payload.command_id) {
+        if self.records.contains_key(&payload.command_id) {
             return Ok(SecureCommandReplayRecordStatus::CommandReplay);
         }
         let fingerprint = payload.idempotency_fingerprint()?;
-        if let Some(existing) = self.idempotency_fingerprints.get(&payload.idempotency_key) {
-            if existing == &fingerprint {
+        if let Some(existing_command_id) =
+            self.idempotency_command_ids.get(&payload.idempotency_key)
+        {
+            let existing = self.records.get(existing_command_id).ok_or_else(|| {
+                anyhow!("secure mesh command idempotency index references a missing execution")
+            })?;
+            if existing.fingerprint == fingerprint {
                 return Ok(SecureCommandReplayRecordStatus::IdempotentReplay);
             }
             return Ok(SecureCommandReplayRecordStatus::IdempotencyConflict);
         }
-        self.command_ids
-            .insert(payload.command_id.clone(), payload.idempotency_key.clone());
-        self.idempotency_fingerprints
-            .insert(payload.idempotency_key.clone(), fingerprint);
+        let reserved = security_command_replay_execution::transition(
+            security_command_replay_execution::INITIAL,
+            ReplayEvent::Reserve,
+        )
+        .ok_or_else(|| anyhow!("secure mesh command reservation transition is not configured"))?;
+        self.records.insert(
+            payload.command_id.clone(),
+            InMemoryReplayRecord {
+                idempotency_key: payload.idempotency_key.clone(),
+                fingerprint,
+                phase: reserved,
+                completed_outcome: None,
+            },
+        );
+        self.idempotency_command_ids
+            .insert(payload.idempotency_key.clone(), payload.command_id.clone());
         self.insertion_order.push_back(payload.command_id.clone());
         self.prune_to_limit();
         Ok(SecureCommandReplayRecordStatus::Fresh)
     }
 
     fn entry_count(&self) -> Result<usize> {
-        Ok(self.command_ids.len())
+        Ok(self.records.len())
     }
 
     fn prior_execution(
         &self,
         payload: &SecureCommandPayload,
     ) -> Result<SecureCommandPriorExecution> {
-        let Some(idempotency_key) = self.command_ids.get(&payload.command_id) else {
+        let Some(record) = self.records.get(&payload.command_id) else {
             return Ok(SecureCommandPriorExecution::Missing);
         };
         let fingerprint = payload.idempotency_fingerprint()?;
-        if idempotency_key != &payload.idempotency_key
-            || self.idempotency_fingerprints.get(idempotency_key) != Some(&fingerprint)
-        {
+        if record.idempotency_key != payload.idempotency_key || record.fingerprint != fingerprint {
             return Ok(SecureCommandPriorExecution::Conflict);
         }
-        Ok(self
-            .completed_outcomes
-            .get(&payload.command_id)
-            .cloned()
-            .map(SecureCommandPriorExecution::Completed)
-            .unwrap_or(SecureCommandPriorExecution::Reserved))
+        match (record.phase, record.completed_outcome.as_ref()) {
+            (ReplayState::Reserved, None) => Ok(SecureCommandPriorExecution::Reserved),
+            (ReplayState::Completed, Some(outcome)) => {
+                Ok(SecureCommandPriorExecution::Completed(outcome.clone()))
+            }
+            _ => Err(anyhow!(
+                "secure mesh command execution ledger state is invalid"
+            )),
+        }
     }
 
     fn record_completed_outcome(
@@ -104,15 +135,23 @@ impl SecureCommandReplayStore for SecureCommandReplayLedger {
         payload: &SecureCommandPayload,
         outcome: &Value,
     ) -> Result<()> {
+        let fingerprint = payload.idempotency_fingerprint()?;
+        let record = self.records.get_mut(&payload.command_id).ok_or_else(|| {
+            anyhow!("secure mesh command completion does not match a reserved execution")
+        })?;
         ensure!(
-            matches!(
-                self.prior_execution(payload)?,
-                SecureCommandPriorExecution::Reserved
-            ),
+            record.idempotency_key == payload.idempotency_key
+                && record.fingerprint == fingerprint
+                && record.completed_outcome.is_none(),
             "secure mesh command completion does not match a reserved execution"
         );
-        self.completed_outcomes
-            .insert(payload.command_id.clone(), outcome.clone());
+        let completed =
+            security_command_replay_execution::transition(record.phase, ReplayEvent::Complete)
+                .ok_or_else(|| {
+                    anyhow!("secure mesh command completion does not match a reserved execution")
+                })?;
+        record.phase = completed;
+        record.completed_outcome = Some(outcome.clone());
         Ok(())
     }
 }
@@ -158,14 +197,14 @@ impl SecureCommandSqliteReplayLedger {
                 "DROP TABLE secure_mesh_command_replay; PRAGMA user_version = 0; VACUUM;",
             )?;
         }
-        self.connection.execute_batch(
+        let schema = format!(
             r#"
             CREATE TABLE IF NOT EXISTS secure_mesh_command_replay (
                 command_id TEXT PRIMARY KEY,
                 idempotency_key TEXT NOT NULL UNIQUE,
                 fingerprint TEXT NOT NULL,
                 execution_state TEXT NOT NULL CHECK (
-                    execution_state IN ('reserved', 'completed')
+                    execution_state IN ('{}', '{}')
                 ),
                 outcome_json TEXT,
                 recorded_at_unix INTEGER NOT NULL
@@ -174,7 +213,10 @@ impl SecureCommandSqliteReplayLedger {
                 ON secure_mesh_command_replay(recorded_at_unix, command_id);
             PRAGMA user_version = 2;
             "#,
-        )?;
+            ReplayState::Reserved.as_str(),
+            ReplayState::Completed.as_str(),
+        );
+        self.connection.execute_batch(&schema)?;
         Ok(())
     }
 
@@ -246,12 +288,20 @@ impl SecureCommandReplayStore for SecureCommandSqliteReplayLedger {
                 execution_state,
                 outcome_json,
                 recorded_at_unix
-            ) VALUES (?1, ?2, ?3, 'reserved', NULL, ?4)
+            ) VALUES (?1, ?2, ?3, ?4, NULL, ?5)
             "#,
             params![
                 payload.command_id,
                 payload.idempotency_key,
                 fingerprint,
+                security_command_replay_execution::transition(
+                    security_command_replay_execution::INITIAL,
+                    ReplayEvent::Reserve,
+                )
+                .ok_or_else(|| anyhow!(
+                    "secure mesh command reservation transition is not configured"
+                ))?
+                .as_str(),
                 now.unix_timestamp()
             ],
         )?;
@@ -299,12 +349,14 @@ impl SecureCommandReplayStore for SecureCommandSqliteReplayLedger {
         {
             return Ok(SecureCommandPriorExecution::Conflict);
         }
-        match (state.as_str(), outcome_json) {
-            ("reserved", None) => Ok(SecureCommandPriorExecution::Reserved),
-            ("completed", Some(outcome)) => Ok(SecureCommandPriorExecution::Completed(
-                serde_json::from_str(&outcome)
-                    .context("secure mesh command cached outcome is invalid")?,
-            )),
+        match (ReplayState::from_name(&state), outcome_json) {
+            (Some(ReplayState::Reserved), None) => Ok(SecureCommandPriorExecution::Reserved),
+            (Some(ReplayState::Completed), Some(outcome)) => {
+                Ok(SecureCommandPriorExecution::Completed(
+                    serde_json::from_str(&outcome)
+                        .context("secure mesh command cached outcome is invalid")?,
+                ))
+            }
             _ => Err(anyhow!(
                 "secure mesh command execution ledger state is invalid"
             )),
@@ -321,21 +373,28 @@ impl SecureCommandReplayStore for SecureCommandSqliteReplayLedger {
             encoded.len() <= MAX_COMMAND_BODY_BYTES.saturating_add(64 * 1024),
             "secure mesh command cached outcome is too large"
         );
+        let completed = security_command_replay_execution::transition(
+            ReplayState::Reserved,
+            ReplayEvent::Complete,
+        )
+        .ok_or_else(|| anyhow!("secure mesh command completion transition is not configured"))?;
         let changed = self.connection.execute(
             r#"
             UPDATE secure_mesh_command_replay
-            SET execution_state = 'completed', outcome_json = ?1
-            WHERE command_id = ?2
-              AND idempotency_key = ?3
-              AND fingerprint = ?4
-              AND execution_state = 'reserved'
+            SET execution_state = ?1, outcome_json = ?2
+            WHERE command_id = ?3
+              AND idempotency_key = ?4
+              AND fingerprint = ?5
+              AND execution_state = ?6
               AND outcome_json IS NULL
             "#,
             params![
+                completed.as_str(),
                 encoded,
                 payload.command_id,
                 payload.idempotency_key,
                 payload.idempotency_fingerprint()?,
+                ReplayState::Reserved.as_str(),
             ],
         )?;
         ensure!(

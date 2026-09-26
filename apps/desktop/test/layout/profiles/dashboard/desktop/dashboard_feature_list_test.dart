@@ -156,6 +156,7 @@ void main() {
       'mobilePairing',
       'agentHub',
       'statsPanel',
+      'projectCollaboration',
     ]);
 
     // A remount restores the reordered list from the store.
@@ -218,4 +219,22 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'project collaboration is reachable without rewriting saved order',
+    (tester) async {
+      final selections = <ClientSection>[];
+      final store = _RecordingOrderStore(DashboardFeatureOrder.defaultOrder);
+      await _pumpFeatureList(tester, store: store, selections: selections);
+      final entry = find.byKey(
+        const Key('messaging-sidebar-list-projectCollaboration'),
+      );
+      expect(entry, findsOneWidget);
+      expect(store.lastSaved, isNull);
+      await tester.tap(entry);
+      await tester.pump();
+      expect(selections, [ClientSection.agentHub]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

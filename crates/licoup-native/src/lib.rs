@@ -9,4 +9,8 @@ pub mod domain;
 pub mod ffi;
 pub mod platform;
 
+pub(crate) mod state_machines {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}
+
 pub use core::licoarc_relay;

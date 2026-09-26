@@ -18,6 +18,8 @@ use super::generated::{
 };
 use serde_json::Value;
 
+use super::lifecycle::is_terminal;
+
 fn failure(code: ContinuityFailureCode, stage: ContinuityFailureStage) -> ContinuityFailure {
     let recovery = match code {
         ContinuityFailureCode::StaleRevision | ContinuityFailureCode::DesignationChanged => {
@@ -165,12 +167,7 @@ pub fn admit_idempotency(previous: &Value, current: &Value) -> Result<(), Contin
 }
 
 pub fn admit_goal_progress(progress: &ContinuityGoalProgress) -> Result<(), ContinuityFailure> {
-    let terminal = matches!(
-        progress.lifecycle,
-        ContinuityGoalLifecycle::Achieved
-            | ContinuityGoalLifecycle::Cancelled
-            | ContinuityGoalLifecycle::Superseded
-    );
+    let terminal = is_terminal(progress.lifecycle);
     if terminal && progress.control != ContinuityGoalControl::Enabled {
         return Err(failure(
             ContinuityFailureCode::InvalidRequest,
@@ -194,15 +191,6 @@ pub fn admit_goal_progress(progress: &ContinuityGoalProgress) -> Result<(), Cont
         ));
     }
     Ok(())
-}
-
-fn is_terminal(lifecycle: ContinuityGoalLifecycle) -> bool {
-    matches!(
-        lifecycle,
-        ContinuityGoalLifecycle::Achieved
-            | ContinuityGoalLifecycle::Cancelled
-            | ContinuityGoalLifecycle::Superseded
-    )
 }
 
 fn granted_span_covers(

@@ -1,0 +1,37 @@
+{
+  "schema": "licoup.extension-package.v1",
+  "id": "dev.example.agent.sdk-native",
+  "version": "1.0.0",
+  "displayName": "SDK sample: native executable Agent",
+  "hostProtocol": {
+    "major": 1,
+    "minimumMinor": 0
+  },
+  "profiles": [
+    {
+      "id": "agent-execution",
+      "major": 1,
+      "capabilities": [
+        "dev.example.agent/stream"
+      ]
+    }
+  ],
+  "runtime": {
+    "mode": "process",
+    "entry": "agent"
+  },
+  "activation": "on-demand",
+  "requires": [
+    {
+      "packageId": "org.licoland.core",
+      "range": "^0.3"
+    }
+  ],
+  "optionalRequires": [],
+  "permissions": [],
+  "contributions": [],
+  "extensions": {
+    "dev.example.agent/purpose": "SDK sample: a compiled Agent with no runtime dependency, implementing the same minimal method set as the Python sample.",
+    "dev.example.agent/build": "cc -std=c11 -O2 -Wall -Wextra -o agent agent.c"
+  }
+}

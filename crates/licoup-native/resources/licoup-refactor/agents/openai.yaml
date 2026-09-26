@@ -1,0 +1,6 @@
+interface:
+  display_name: "Refactor a large module"
+  short_description: "Split large modules while preserving behavior"
+  default_prompt: "Use $licoup-refactor to split the selected module by responsibility."
+policy:
+  allow_implicit_invocation: false

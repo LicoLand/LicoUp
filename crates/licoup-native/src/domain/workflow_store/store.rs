@@ -12,16 +12,23 @@ use super::{
     StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic, StrategyProjection,
 };
 use crate::domain::workflow_runtime::ASSISTANT_TEMPORARY_DEFINITION_PREFIX;
+use crate::domain::workflow_runtime::host_drive::compiled_definition;
+#[cfg(test)]
+use licoup_workflow::compile_workflow;
 use licoup_workflow::{
     BindingKind, CommandStatus, FailureClass, GraphState, GraphStateKind, ReducerEvent, RunCommand,
     RunSnapshot, StrategyRunStatus, Transition, TransitionEvent, TransitionMode,
-    WorkflowDefinition, compile_workflow, reduce,
+    WorkflowDefinition, reduce,
 };
 
 const DATABASE_FILE: &str = "strategies.sqlite3";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LeaseRecovery {
+    /// The legacy expired-lease sweep. The production drive recovers through
+    /// `licoup-workflow-store` now; this stays for the store's own conformance
+    /// model, which drives the old surface directly.
+    #[allow(dead_code)]
     Standard,
     AbandonedHost,
 }
@@ -127,6 +134,17 @@ impl StrategyStore {
         operation(&mut connection)
     }
 
+    /// Lower a revision's plan before any write transaction opens.
+    ///
+    /// A cold lowering inside an IMMEDIATE transaction would hold the database
+    /// writer for the whole compile. The plan is prepared from a read path, so
+    /// the transaction itself only ever sees a cache hit.
+    fn warm_plan_for_revision(&self, revision_digest: &str) -> Result<()> {
+        let definition = self.definition_by_revision(revision_digest)?;
+        let _ = compiled_definition(&definition.workflow)?;
+        Ok(())
+    }
+
     pub(crate) fn register_definition(
         &self,
         revision_digest: &str,
@@ -135,7 +153,7 @@ impl StrategyStore {
         asset_count: usize,
         imported_at_unix_ms: i64,
     ) -> Result<StrategyDefinition> {
-        let compiled = compile_workflow(workflow.clone())?;
+        let compiled = compiled_definition(&workflow)?;
         let workflow_json = serde_json::to_string(compiled.definition())?;
         self.with_connection(|connection| {
             let transaction =
@@ -490,6 +508,8 @@ impl StrategyStore {
         route_receipt: Option<Value>,
     ) -> Result<RunSnapshot> {
         validate_opaque_id(idempotency_key, "strategy_idempotency_key_invalid")?;
+        let prepared_definition = self.definition_by_revision(revision_digest)?;
+        let compiled = compiled_definition(&prepared_definition.workflow)?;
         if let Some(conversation_id) = conversation_id {
             validate_opaque_id(conversation_id, "strategy_conversation_id_invalid")?;
         }
@@ -544,7 +564,10 @@ impl StrategyStore {
             );
             let slot_candidate_counts = slot_candidate_counts(&definition.bindings);
             let semantics_digest = definition.summary.semantics_digest.clone();
-            let compiled = compile_workflow(definition.workflow)?;
+            ensure!(
+                definition.summary.semantics_digest == prepared_definition.summary.semantics_digest,
+                "strategy_definition_changed_before_start"
+            );
             let run_id = format!("run-{}", Uuid::new_v4());
             let empty = RunSnapshot::empty(&run_id, revision_digest, &semantics_digest);
             let event = ReducerEvent::Start { input };
@@ -614,7 +637,7 @@ impl StrategyStore {
                 .starts_with(ASSISTANT_TEMPORARY_DEFINITION_PREFIX),
             "graph_identity_rejected"
         );
-        let compiled = compile_workflow(workflow.clone())?;
+        let compiled = compiled_definition(&workflow)?;
         let workflow_json = serde_json::to_string(compiled.definition())?;
         let mut expected_bindings = bindings.to_vec();
         expected_bindings.sort_by(|left, right| {
@@ -834,12 +857,21 @@ impl StrategyStore {
         run_id: &str,
         event: ReducerEvent,
     ) -> Result<Option<super::CommittedTransition>> {
+        let prepared = self.run(run_id)?;
+        let definition = self.definition_by_revision(&prepared.definition_digest)?;
+        // Retain the actual plan across the transaction boundary. Warming a
+        // cache and looking it up again under the writer is insufficient: an
+        // intervening eviction would move a cold lowering back into the lock.
+        let compiled = compiled_definition(&definition.workflow)?;
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             let previous = load_run(&transaction, run_id)?;
-            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
+            ensure!(
+                previous.definition_digest == prepared.definition_digest
+                    && previous.semantics_digest == prepared.semantics_digest,
+                "strategy_definition_changed_before_commit"
+            );
             let output = reduce(&compiled, &previous, event.clone())?;
             if output.applied {
                 let now = now_ms();
@@ -879,6 +911,13 @@ impl StrategyStore {
         })
     }
 
+    /// The legacy claim surface.
+    ///
+    /// The production drive claims through `licoup-workflow-store` now, so
+    /// nothing in the host calls this. It stays because the store's conformance
+    /// model drives it as the frozen semantics of the old path; deleting it is
+    /// part of removing that model, not part of wiring the new owner.
+    #[allow(dead_code)]
     pub(crate) fn claim_next_command(
         &self,
         run_id: &str,
@@ -886,6 +925,9 @@ impl StrategyStore {
         lease_until_unix_ms: i64,
     ) -> Result<Option<RunCommand>> {
         validate_opaque_id(claimant, "strategy_claimant_invalid")?;
+        let prepared = self.run(run_id)?;
+        let definition = self.definition_by_revision(&prepared.definition_digest)?;
+        let compiled = compiled_definition(&definition.workflow)?;
         let now = now_ms();
         ensure!(lease_until_unix_ms > now, "strategy_lease_invalid");
         self.with_connection(|connection| {
@@ -911,8 +953,11 @@ impl StrategyStore {
                 transaction.commit()?;
                 return Ok(None);
             }
-            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
+            ensure!(
+                previous.definition_digest == prepared.definition_digest
+                    && previous.semantics_digest == prepared.semantics_digest,
+                "strategy_definition_changed_before_claim"
+            );
             let run_active: i64 = transaction.query_row(
                 "SELECT COUNT(*) FROM strategy_commands
                  WHERE run_id=?1 AND status IN ('claimed', 'running') AND lease_until>?2",
@@ -979,6 +1024,8 @@ impl StrategyStore {
         })
     }
 
+    /// The legacy renewal surface; see [`Self::claim_next_command`].
+    #[allow(dead_code)]
     pub(crate) fn renew_command_lease(
         &self,
         command_id: &str,
@@ -1079,6 +1126,10 @@ impl StrategyStore {
     /// cannot act on a stale pre-lock observation. Claimed-before-start work
     /// is retried in the same transaction, while expired running work is
     /// retained as in-doubt and is never blindly retried.
+    ///
+    /// The drive recovers through the workflow store's recovery assembly; this
+    /// remains the conformance model's entry into the old surface.
+    #[allow(dead_code)]
     pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
         let Some(command_id) = self.next_expired_leased_command_id(run_id)? else {
             return Ok(false);
@@ -1087,9 +1138,11 @@ impl StrategyStore {
         Ok(true)
     }
 
-    /// Drop still-valid leases left by a previous host process and retry the
-    /// commands. Expired-running recovery stays InDoubt; only this path treats
-    /// a running effect as Transient `host_runtime_lost`.
+    /// Drop still-valid leases left by a previous host process and recover the
+    /// commands. A lost host is not evidence that an already-started effect did
+    /// not run, so recovery here never re-dispatches started work; it lands in
+    /// the same in-doubt reconciliation as an expired lease and keeps
+    /// `host_runtime_lost` as the distinct reason.
     pub(crate) fn reclaim_abandoned_host_commands(&self, run_id: &str) -> Result<()> {
         let command_ids = self.release_live_host_leases(run_id)?;
         for command_id in command_ids {
@@ -1098,6 +1151,7 @@ impl StrategyStore {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn next_expired_leased_command_id(&self, run_id: &str) -> Result<Option<String>> {
         self.with_connection(|connection| {
             connection
@@ -1147,6 +1201,9 @@ impl StrategyStore {
         command_id: &str,
         recovery: LeaseRecovery,
     ) -> Result<()> {
+        let prepared = self.run(run_id)?;
+        let definition = self.definition_by_revision(&prepared.definition_digest)?;
+        let compiled = compiled_definition(&definition.workflow)?;
         self.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1180,14 +1237,25 @@ impl StrategyStore {
                 }),
                 "strategy_recovery_state_conflict"
             );
-            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
-            let compiled = compile_workflow(workflow)?;
+            ensure!(
+                previous.definition_digest == prepared.definition_digest
+                    && previous.semantics_digest == prepared.semantics_digest,
+                "strategy_definition_changed_before_recovery"
+            );
             let (class, code) = match (command.status, recovery) {
+                // `Claimed` means `CommandStarted` was never committed. The
+                // drive loop commits that marker before it invokes the effect,
+                // so the effect provably did not run and re-dispatch is safe.
                 (CommandStatus::Claimed, _) => {
                     (FailureClass::Transient, "lease_expired_before_start")
                 }
+                // `Running` means the marker was committed, so an effect may
+                // already exist in the outside world. An expired lease and a
+                // lost host are both absence of evidence, not evidence of
+                // absence: the outcome stays in doubt and is reconciled rather
+                // than retried. Only the reason stays distinct.
                 (CommandStatus::Running, LeaseRecovery::AbandonedHost) => {
-                    (FailureClass::Transient, "host_runtime_lost")
+                    (FailureClass::InDoubt, "host_runtime_lost")
                 }
                 _ => (FailureClass::InDoubt, "effect_outcome_unknown"),
             };
@@ -1307,8 +1375,9 @@ impl StrategyStore {
 
     pub fn projection_for_run(&self, run_id: &str) -> Result<StrategyProjection> {
         let snapshot = self.run(run_id)?;
+        self.warm_plan_for_revision(&snapshot.definition_digest)?;
         let definition = self.definition_by_revision(&snapshot.definition_digest)?;
-        let compiled = compile_workflow(definition.workflow.clone())?;
+        let compiled = compiled_definition(&definition.workflow)?;
         let neighbors = snapshot
             .active_states
             .iter()
@@ -1749,7 +1818,7 @@ fn migrate_legacy_workflow_definitions(connection: &Connection) -> Result<()> {
         let Some(workflow) = normalize_legacy_workflow(workflow) else {
             continue;
         };
-        let compiled = compile_workflow(workflow)?;
+        let compiled = compiled_definition(&workflow)?;
         let canonical = serde_json::to_string(compiled.definition())?;
         connection.execute(
             "UPDATE strategy_definitions
@@ -2061,18 +2130,6 @@ fn authorization_digest(
     )
 }
 
-fn workflow_for_revision(connection: &Connection, revision: &str) -> Result<WorkflowDefinition> {
-    let value: String = connection
-        .query_row(
-            "SELECT workflow_json FROM strategy_definitions WHERE revision_digest=?1",
-            params![revision],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or_else(|| anyhow!("strategy_definition_not_found"))?;
-    serde_json::from_str(&value).map_err(Into::into)
-}
-
 fn load_run(connection: &Connection, run_id: &str) -> Result<RunSnapshot> {
     let value: Option<String> = connection
         .query_row(
@@ -2250,11 +2307,61 @@ fn make_path_writable(path: &Path, mut permissions: fs::Permissions) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::workflow_runtime::host_drive::plan_cache;
     use licoup_workflow::{
         ActorSlot, GraphState, GraphStateKind, RetryPolicy, Transition, TransitionEvent,
         TransitionMode, WorkflowLimits, WorkflowMetadata,
     };
     use serde_json::json;
+
+    /// The production compile entry lowers each definition once per process.
+    #[test]
+    fn a_definition_is_lowered_once_and_every_later_load_reuses_it() {
+        let workflow = workflow();
+        let before = plan_cache().stats();
+        let first = compiled_definition(&workflow).unwrap();
+        let second = compiled_definition(&workflow).unwrap();
+        let after = plan_cache().stats();
+        assert!(
+            after.compilations >= before.compilations + 1,
+            "the first load lowers"
+        );
+        assert!(
+            after.reuses >= before.reuses + 1,
+            "the second load is served from the cache"
+        );
+        assert!(
+            std::sync::Arc::ptr_eq(&first, &second),
+            "the same definition reuses one lowering"
+        );
+    }
+
+    /// A key from another semantics line is refused, never served.
+    ///
+    /// The cache lowers with the one compiler this binary contains. A key that
+    /// names a different lowering identity must not be filed under — or served
+    /// from — the index this build's lowering produced.
+    #[test]
+    fn a_plan_key_from_another_lowering_identity_is_refused() {
+        use licoup_workflow::compile::{
+            CompilerSemantics, DefinitionRevision, EngineSemantics, PlanKey,
+        };
+        use licoup_workflow_runtime::plan_cache::PlanCacheError;
+        let workflow = workflow();
+        let foreign = PlanKey::new(
+            DefinitionRevision::of(&workflow).unwrap(),
+            CompilerSemantics::version(0).expect("a nameable earlier version"),
+            EngineSemantics::CURRENT,
+            licoup_workflow::compile::LoweringCapabilities::none(),
+        );
+        let error = plan_cache().plan(&foreign, || {
+            unreachable!("a foreign key must not be lowered")
+        });
+        assert!(
+            matches!(error, Err(PlanCacheError::NotLowerable { .. })),
+            "a foreign identity is refused by name: {error:?}"
+        );
+    }
 
     fn workflow() -> WorkflowDefinition {
         WorkflowDefinition {
@@ -3025,7 +3132,7 @@ mod tests {
     }
 
     #[test]
-    fn abandoned_running_effect_is_retried_when_this_host_becomes_driver() {
+    fn abandoned_running_effect_stays_in_doubt_instead_of_being_retried() {
         let store = StrategyStore::open_in_memory().unwrap();
         let revision = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
         store
@@ -3063,21 +3170,317 @@ mod tests {
 
         store.reclaim_abandoned_host_commands(&run.run_id).unwrap();
         let recovered = store.run(&run.run_id).unwrap();
+        // The effect may already have run outside this process, so the outcome
+        // is reconciled rather than re-dispatched.
         assert_eq!(
             recovered.commands[&claimed.id].status,
-            CommandStatus::Cancelled
+            CommandStatus::InDoubt
         );
+        assert_eq!(
+            recovered.commands[&claimed.id].failure_class,
+            Some(FailureClass::InDoubt)
+        );
+        // The reason stays distinct from a plain expired lease.
         assert_eq!(
             recovered.commands[&claimed.id].failure_code.as_deref(),
             Some("host_runtime_lost")
         );
         assert!(
+            !recovered
+                .commands
+                .values()
+                .any(|command| command.attempt == 2)
+        );
+        assert_eq!(recovered.status, StrategyRunStatus::CancelInDoubt);
+    }
+
+    // --- V7-H1 process-exit window (acceptance case A02) -------------------
+    //
+    // A host that dies leaves nothing behind but `strategies.sqlite3`, so a
+    // closed-and-reopened store on a real file is the faithful model of the
+    // replacement host. Each case names what the dead host had already
+    // committed and what the new host is therefore allowed to do.
+
+    /// A non-idempotent external effect: every dispatch of a started command
+    /// stands for one irreversible side effect, so "at most once" becomes a
+    /// numeric assertion instead of a prose claim.
+    #[derive(Default)]
+    struct EffectLedger {
+        dispatches: u32,
+    }
+
+    /// Claim and start every command the run currently offers, in the same
+    /// order `drive_run` uses: claim, commit `CommandStarted`, and only then
+    /// invoke the effect. Recording the dispatch *after* the marker is durable
+    /// is what makes "returned by this helper" equivalent to "definitely
+    /// already dispatched to the outside world".
+    fn dispatch_ready(
+        store: &StrategyStore,
+        run_id: &str,
+        claimant: &str,
+        ledger: &mut EffectLedger,
+    ) -> Vec<RunCommand> {
+        let mut started = Vec::new();
+        while let Some(command) = store
+            .claim_next_command(run_id, claimant, now_ms() + 60_000)
+            .unwrap()
+        {
+            store
+                .apply_event(
+                    run_id,
+                    ReducerEvent::CommandStarted {
+                        command_id: command.id.clone(),
+                        attempt_token: command.attempt_token.clone(),
+                    },
+                )
+                .unwrap();
+            ledger.dispatches = ledger.dispatches.saturating_add(1);
+            started.push(command);
+        }
+        started
+    }
+
+    fn seed_bound_run(store: &StrategyStore, revision: &str, idempotency_key: &str) -> RunSnapshot {
+        store
+            .register_definition(revision, &digest('f'), &workflow(), 1, 1)
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        store
+            .start_run(revision, json!({}), idempotency_key, None, None)
+            .unwrap()
+    }
+
+    fn exit_window_root(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("lico-strategy-{label}-{}", Uuid::new_v4()))
+    }
+
+    #[test]
+    fn exit_before_start_still_re_dispatches_because_the_effect_never_ran() {
+        // `Claimed` means `CommandStarted` was never committed, and the drive
+        // loop commits that marker before it invokes anything. The effect
+        // provably did not run, so recovery is still allowed to retry — the
+        // safety patch must not have taken this away.
+        let root = exit_window_root("exit-window-claimed");
+        let revision = digest('1');
+        let run_id;
+        {
+            let host_a = StrategyStore::open(&root).unwrap();
+            let run = seed_bound_run(&host_a, &revision, "exit-window-claimed");
+            run_id = run.run_id.clone();
+            host_a
+                .claim_next_command(&run_id, "host-a", now_ms() + 60_000)
+                .unwrap()
+                .expect("the run offers one claimable effect");
+            // Host dies with the lease still valid; nothing finished or
+            // released it.
+        }
+
+        let host_b = StrategyStore::open(&root).unwrap();
+        host_b.reclaim_abandoned_host_commands(&run_id).unwrap();
+        let recovered = host_b.run(&run_id).unwrap();
+        assert!(
             recovered
                 .commands
                 .values()
-                .any(|command| command.attempt == 2 && command.status == CommandStatus::Pending)
+                .any(|command| command.attempt == 2 && command.status == CommandStatus::Pending),
+            "an unstarted effect must still be retried after a host restart"
         );
         assert_eq!(recovered.status, StrategyRunStatus::Running);
+        remove_directory_tree(&root);
+    }
+
+    #[test]
+    fn exit_after_start_with_a_live_lease_keeps_the_effect_in_doubt() {
+        let root = exit_window_root("exit-window-live-lease");
+        let revision = digest('2');
+        let mut ledger = EffectLedger::default();
+        let run_id;
+        let effect_id;
+        {
+            let host_a = StrategyStore::open(&root).unwrap();
+            let run = seed_bound_run(&host_a, &revision, "exit-window-live-lease");
+            run_id = run.run_id.clone();
+            let started = dispatch_ready(&host_a, &run_id, "host-a", &mut ledger);
+            assert_eq!(started.len(), 1);
+            effect_id = started[0].id.clone();
+            // Host dies after the effect was invoked and before its outcome
+            // was committed. The lease is still valid because nothing had time
+            // to expire it.
+        }
+        assert_eq!(ledger.dispatches, 1);
+
+        let host_b = StrategyStore::open(&root).unwrap();
+        host_b.reclaim_abandoned_host_commands(&run_id).unwrap();
+        let recovered = host_b.run(&run_id).unwrap();
+        let effect = &recovered.commands[&effect_id];
+        assert_eq!(effect.status, CommandStatus::InDoubt);
+        assert_eq!(effect.failure_class, Some(FailureClass::InDoubt));
+        assert_eq!(
+            effect.attempt, 1,
+            "a started effect must not gain an attempt"
+        );
+        // Losing the host stays a distinct reason even though the class is now
+        // in-doubt rather than transient.
+        assert_eq!(effect.failure_code.as_deref(), Some("host_runtime_lost"));
+        assert!(
+            !recovered
+                .commands
+                .values()
+                .any(|command| command.attempt == 2)
+        );
+        assert_eq!(recovered.status, StrategyRunStatus::CancelInDoubt);
+        remove_directory_tree(&root);
+    }
+
+    #[test]
+    fn exit_after_start_with_an_expired_lease_keeps_the_effect_in_doubt() {
+        // The same window reached through the other recovery trigger: the host
+        // died long enough ago that the lease already lapsed.
+        let root = exit_window_root("exit-window-expired-lease");
+        let revision = digest('3');
+        let mut ledger = EffectLedger::default();
+        let run_id;
+        let effect_id;
+        {
+            let host_a = StrategyStore::open(&root).unwrap();
+            let run = seed_bound_run(&host_a, &revision, "exit-window-expired-lease");
+            run_id = run.run_id.clone();
+            let started = dispatch_ready(&host_a, &run_id, "host-a", &mut ledger);
+            effect_id = started[0].id.clone();
+            let connection = Connection::open(host_a.db_path()).unwrap();
+            connection
+                .execute(
+                    "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
+                    params![effect_id.as_str()],
+                )
+                .unwrap();
+        }
+        assert_eq!(ledger.dispatches, 1);
+
+        let host_b = StrategyStore::open(&root).unwrap();
+        assert!(host_b.recover_next_expired_command(&run_id).unwrap());
+        assert!(!host_b.recover_next_expired_command(&run_id).unwrap());
+        let recovered = host_b.run(&run_id).unwrap();
+        let effect = &recovered.commands[&effect_id];
+        assert_eq!(effect.status, CommandStatus::InDoubt);
+        assert_eq!(
+            effect.failure_code.as_deref(),
+            Some("effect_outcome_unknown")
+        );
+        assert!(
+            !recovered
+                .commands
+                .values()
+                .any(|command| command.attempt == 2)
+        );
+        remove_directory_tree(&root);
+    }
+
+    #[test]
+    fn exit_after_commit_preserves_the_settled_effect() {
+        // A host that died after committing the outcome leaves settled work
+        // behind. Recovery must not disturb it.
+        let root = exit_window_root("exit-window-committed");
+        let revision = digest('4');
+        let mut ledger = EffectLedger::default();
+        let run_id;
+        let effect_id;
+        {
+            let host_a = StrategyStore::open(&root).unwrap();
+            let run = seed_bound_run(&host_a, &revision, "exit-window-committed");
+            run_id = run.run_id.clone();
+            let started = dispatch_ready(&host_a, &run_id, "host-a", &mut ledger);
+            let command = &started[0];
+            effect_id = command.id.clone();
+            host_a
+                .apply_event(
+                    &run_id,
+                    ReducerEvent::CommandSucceeded {
+                        command_id: command.id.clone(),
+                        attempt_token: command.attempt_token.clone(),
+                        output: json!({"text": "done"}),
+                    },
+                )
+                .unwrap();
+        }
+
+        let host_b = StrategyStore::open(&root).unwrap();
+        host_b.reclaim_abandoned_host_commands(&run_id).unwrap();
+        let recovered = host_b.run(&run_id).unwrap();
+        let effect = &recovered.commands[&effect_id];
+        assert_eq!(effect.status, CommandStatus::Succeeded);
+        assert_eq!(effect.attempt, 1);
+        assert_eq!(effect.failure_class, None);
+        assert!(
+            !recovered
+                .commands
+                .values()
+                .any(|command| command.attempt > 1),
+            "a settled effect must not be re-issued by a later host"
+        );
+        remove_directory_tree(&root);
+    }
+
+    #[test]
+    fn a_started_non_idempotent_effect_is_dispatched_at_most_once_across_a_host_restart() {
+        // The end-to-end claim for A02 in one number: whatever recovery path
+        // the replacement host takes, the external counter never reaches 2.
+        let root = exit_window_root("exit-window-at-most-once");
+        let revision = digest('5');
+        let mut ledger = EffectLedger::default();
+        let run_id;
+        let effect_id;
+        {
+            let host_a = StrategyStore::open(&root).unwrap();
+            let run = seed_bound_run(&host_a, &revision, "exit-window-at-most-once");
+            run_id = run.run_id.clone();
+            let started = dispatch_ready(&host_a, &run_id, "host-a", &mut ledger);
+            effect_id = started[0].id.clone();
+            // The host dies between invoking the effect and recording what
+            // became of it. Whether the effect ran is now unknowable locally.
+        }
+        assert_eq!(ledger.dispatches, 1);
+
+        // The replacement host adopts the run exactly as `drive_run` does, and
+        // then keeps driving it.
+        let host_b = StrategyStore::open(&root).unwrap();
+        host_b.reclaim_abandoned_host_commands(&run_id).unwrap();
+        host_b.recover_next_expired_command(&run_id).unwrap();
+        let recovered = host_b.run(&run_id).unwrap();
+        assert_eq!(
+            recovered.status,
+            StrategyRunStatus::CancelInDoubt,
+            "recovery must not park the run in a state that offers new work"
+        );
+
+        // The discriminating assertion is the total: re-dispatching a started
+        // effect is exactly what would push this to two. `replayed` being empty
+        // is the *consequence* of the run offering nothing further, not an
+        // independent proof — it is asserted so that a future change which
+        // re-arms the run fails here rather than silently below.
+        let mut replay = EffectLedger::default();
+        let replayed = dispatch_ready(&host_b, &run_id, "host-b", &mut replay);
+        assert!(
+            replayed.is_empty(),
+            "a run holding a started effect must offer nothing to dispatch"
+        );
+        assert_eq!(
+            ledger.dispatches + replay.dispatches,
+            1,
+            "a non-idempotent effect must be dispatched at most once"
+        );
+
+        let effect = &recovered.commands[&effect_id];
+        assert_eq!(effect.status, CommandStatus::InDoubt);
+        assert_eq!(effect.attempt, 1);
+        assert_eq!(effect.failure_code.as_deref(), Some("host_runtime_lost"));
+        remove_directory_tree(&root);
     }
 
     #[test]

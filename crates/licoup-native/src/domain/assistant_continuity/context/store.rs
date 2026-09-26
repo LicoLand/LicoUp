@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use licoup_conversation::continuity::{
     ContinuityAgreement, ContinuityCommitBasis, ContinuityFailure, ContinuityFailureCode,
-    ContinuityFailureStage, ContinuityMatter, ContinuityParentContextGrant,
-    ContinuityParentGrantStatus, ContinuityReadPort, ContinuityTaskConversationRelation,
-    ContinuityUtf8ByteSpan, admit_page_limit,
+    ContinuityFailureStage, ContinuityMatter, ContinuityParentContextGrant, ContinuityReadPort,
+    ContinuityTaskConversationRelation, ContinuityUtf8ByteSpan, admit_page_limit,
+    revoke_parent_grant_status,
 };
 
 use super::super::cognition::{ContextRecord, continuity_failure};
@@ -138,7 +138,9 @@ impl FrozenContextStore {
     pub fn revoke_grant(&self, grant_id: &str) {
         for grant in &mut lock(&self.inner).grants {
             if grant.grant_id == grant_id {
-                grant.status = ContinuityParentGrantStatus::Revoked;
+                if let Some(next) = revoke_parent_grant_status(grant.status) {
+                    grant.status = next;
+                }
                 for source in &mut grant.source_refs {
                     source.validity =
                         licoup_conversation::continuity::ContinuitySourceValidity::Revoked;
@@ -342,5 +344,65 @@ impl ContinuityReadPort for FrozenContextStore {
             .cloned()
             .collect();
         Ok(page(&items, after, limit, |grant| grant.grant_id.as_str()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use licoup_conversation::continuity::{
+        ContinuityParentGrantStatus, ContinuitySourceOwnerKind, ContinuitySourceRef,
+        ContinuitySourceValidity, ContinuityVisibilityScope,
+    };
+
+    #[test]
+    fn repeated_revocation_invalidates_sources_without_reopening_terminal_grants() {
+        for (status, expected) in [
+            (
+                ContinuityParentGrantStatus::Admitted,
+                ContinuityParentGrantStatus::Revoked,
+            ),
+            (
+                ContinuityParentGrantStatus::Revoked,
+                ContinuityParentGrantStatus::Revoked,
+            ),
+            (
+                ContinuityParentGrantStatus::Exhausted,
+                ContinuityParentGrantStatus::Exhausted,
+            ),
+        ] {
+            let store = FrozenContextStore::new();
+            store.insert_grant(ContinuityParentContextGrant {
+                grant_id: "grant:fixture".into(),
+                source_conversation_id: "conversation:parent".into(),
+                recipient_conversation_id: "conversation:child".into(),
+                recipient_membership_id: "membership:assistant".into(),
+                source_refs: vec![ContinuitySourceRef {
+                    owner_kind: ContinuitySourceOwnerKind::Event,
+                    opaque_id: "event:fixture".into(),
+                    part_id: None,
+                    span: None,
+                    source_revision: 1,
+                    digest: format!("sha256:{}", "ab".repeat(32)),
+                    visibility_scope: ContinuityVisibilityScope::Conversation,
+                    validity: ContinuitySourceValidity::Current,
+                }],
+                authorized_scopes: vec![ContinuityVisibilityScope::Conversation],
+                status,
+                request_id: "request:fixture".into(),
+                revocation_generation: 0,
+            });
+            for _ in 0..2 {
+                store.revoke_grant("grant:fixture");
+                let grants = store
+                    .list_parent_grants("conversation:child", "membership:assistant", None, 1)
+                    .unwrap();
+                assert_eq!(grants[0].status, expected);
+                assert_eq!(
+                    grants[0].source_refs[0].validity,
+                    ContinuitySourceValidity::Revoked
+                );
+            }
+        }
     }
 }

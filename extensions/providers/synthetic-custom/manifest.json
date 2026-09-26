@@ -1,0 +1,24 @@
+{
+  "schema": "licoup.extension-package.v1",
+  "id": "synthetic.example.custom-provider",
+  "version": "1.0.0",
+  "displayName": "Synthetic Custom Provider",
+  "hostProtocol": { "major": 1, "minimumMinor": 0 },
+  "profiles": [
+    {
+      "id": "model-provider",
+      "major": 1,
+      "capabilities": [
+        "synthetic.example/native-stream",
+        "synthetic.example/device-code-auth"
+      ]
+    }
+  ],
+  "runtime": {
+    "mode": "process",
+    "entry": "provider.py",
+    "runtimeRef": "user:python3"
+  },
+  "activation": "on-demand",
+  "permissions": []
+}

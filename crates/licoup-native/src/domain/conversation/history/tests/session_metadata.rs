@@ -53,14 +53,14 @@ fn codex_adapter_skips_local_command_caveats_for_titles() {
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let rollout =
-        sessions.join("rollout-2026-06-03T18-53-32-019e8d1d-fb25-7d82-b849-80a87fbe407d.jsonl");
+        sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-000000000001.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-06-03T10:53:36.044Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d","cwd":"/workspace/projects/pact"}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:43.745Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<local-command-caveat>Caveat: generated command context. DO NOT respond to these messages.</local-command-caveat>"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:44.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Explain readable Codex history titles"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:53:50.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Readable title answer"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001","cwd":"/workspace/fixture-project"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<local-command-caveat>Caveat: generated command context. DO NOT respond to these messages.</local-command-caveat>"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Explain readable Codex history titles"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Readable title answer"}]}}"#,
         ]
         .join("\n"),
     )
@@ -92,21 +92,21 @@ fn codex_session_index_thread_name_wins_over_message_noise() {
     let sessions = dir.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let rollout =
-        sessions.join("rollout-2026-07-12T00-00-00-019e8d1d-fb25-7d82-b849-80a87fbe407d.jsonl");
+        sessions.join("rollout-2000-01-01T00-00-00-00000000-0000-4000-8000-000000000001.jsonl");
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-07-12T00:00:00.000Z","type":"session_meta","payload":{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d","cwd":"/workspace/projects/lico"}}"#,
-            r#"{"timestamp":"2026-07-12T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<recommended_plugins> Here is a list of plugins that are available...</recommended_plugins>"}]}}"#,
-            r#"{"timestamp":"2026-07-12T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Check the release base"}]}}"#,
-            r#"{"timestamp":"2026-07-12T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001","cwd":"/workspace/fixture-project"}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<recommended_plugins> Here is a list of plugins that are available...</recommended_plugins>"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Read a synthetic record"}]}}"#,
+            r#"{"timestamp":"2000-01-01T00:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}}"#,
         ]
         .join("\n"),
     )
     .unwrap();
     fs::write(
         dir.join("session_index.jsonl"),
-        r#"{"id":"019e8d1d-fb25-7d82-b849-80a87fbe407d","thread_name":"检查发布基座","updated_at":"2026-07-12T00:04:00.000Z"}
+        r#"{"id":"00000000-0000-4000-8000-000000000001","thread_name":"合成会话标题","updated_at":"2000-01-01T00:04:00.000Z"}
 "#,
     )
     .unwrap();
@@ -124,10 +124,10 @@ fn codex_session_index_thread_name_wins_over_message_noise() {
         "listed={}",
         serde_json::to_string_pretty(&listed).unwrap()
     );
-    assert_eq!(sessions[0]["title"], "检查发布基座");
+    assert_eq!(sessions[0]["title"], "合成会话标题");
     assert_eq!(
         sessions[0]["nativeSessionId"],
-        "019e8d1d-fb25-7d82-b849-80a87fbe407d"
+        "00000000-0000-4000-8000-000000000001"
     );
 }
 

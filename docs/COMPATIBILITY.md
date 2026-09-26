@@ -1,5 +1,7 @@
 # LicoUp Compatibility
 
+Updated: 2026-09-14
+
 English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)
 
 Product version: `0.3.0`

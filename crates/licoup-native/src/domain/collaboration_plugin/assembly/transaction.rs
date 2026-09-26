@@ -5,18 +5,13 @@ use std::path::{Path, PathBuf};
 
 use super::model::LocalAssemblyRecord;
 use crate::platform::client_state::ClientStateStore;
+use crate::state_machines::collaboration_assembly_apply;
 
 const COLLECTION: &str = "local-server-assembly-transaction";
 const SCHEMA: &str = "licoup.local-server-assembly-transaction.v1";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum ApplyPhase {
-    Prepared,
-    ArtifactWritten,
-    ProjectionWritten,
-    AuthorityCommitted,
-}
+pub(super) use crate::state_machines::collaboration_assembly_apply::Event as ApplyEvent;
+pub(super) use crate::state_machines::collaboration_assembly_apply::State as ApplyPhase;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -61,21 +56,18 @@ pub(super) fn begin(store: &ClientStateStore, record: &LocalAssemblyRecord) -> R
         store,
         Some(&PendingAssemblyApply {
             schema_version: SCHEMA.to_owned(),
-            phase: ApplyPhase::Prepared,
+            phase: collaboration_assembly_apply::INITIAL,
             record: record.clone(),
             rollback_destination: path_text(&rollback)?,
         }),
     )
 }
 
-pub(super) fn advance(store: &ClientStateStore, phase: ApplyPhase) -> Result<()> {
+pub(super) fn advance(store: &ClientStateStore, event: ApplyEvent) -> Result<()> {
     let mut pending =
         read(store)?.ok_or_else(|| anyhow!("collaboration_local_server_transaction_missing"))?;
-    ensure!(
-        valid_transition(pending.phase, phase),
-        "collaboration_local_server_transaction_phase_invalid"
-    );
-    pending.phase = phase;
+    pending.phase = collaboration_assembly_apply::transition(pending.phase, event)
+        .ok_or_else(|| anyhow!("collaboration_local_server_transaction_phase_invalid"))?;
     write(store, Some(&pending))
 }
 
@@ -197,18 +189,6 @@ fn write(store: &ClientStateStore, pending: Option<&PendingAssemblyApply>) -> Re
         .map(|_| ())
 }
 
-fn valid_transition(previous: ApplyPhase, next: ApplyPhase) -> bool {
-    matches!(
-        (previous, next),
-        (ApplyPhase::Prepared, ApplyPhase::ArtifactWritten)
-            | (ApplyPhase::ArtifactWritten, ApplyPhase::ProjectionWritten)
-            | (
-                ApplyPhase::ProjectionWritten,
-                ApplyPhase::AuthorityCommitted
-            )
-    )
-}
-
 fn rollback_path(record: &LocalAssemblyRecord) -> Result<PathBuf> {
     let destination = Path::new(&record.destination);
     let parent = destination
@@ -239,7 +219,7 @@ fn path_entry_exists(path: &Path) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplyPhase, advance, begin, read, recover, recover_committed};
+    use super::{ApplyEvent, ApplyPhase, advance, begin, read, recover, recover_committed};
     use crate::domain::collaboration_plugin::assembly::model::LocalServerLifecycle;
     use crate::domain::collaboration_plugin::assembly::store::find_record;
     use crate::domain::collaboration_plugin::assembly::tests::synthetic_record;
@@ -260,7 +240,7 @@ mod tests {
         let (root, store) = fixture("authority-unavailable");
         let record = synthetic_record(&root.join("assembly"), LocalServerLifecycle::Stopped);
         begin(&store, &record).unwrap();
-        advance(&store, ApplyPhase::ArtifactWritten).unwrap();
+        advance(&store, ApplyEvent::WriteArtifact).unwrap();
 
         assert!(recover(&store).is_err());
         let pending = read(&store).unwrap().unwrap();
@@ -270,12 +250,23 @@ mod tests {
     }
 
     #[test]
+    fn declaration_rejects_skipping_an_apply_phase() {
+        let (root, store) = fixture("phase-skip");
+        let record = synthetic_record(&root.join("assembly"), LocalServerLifecycle::Stopped);
+        begin(&store, &record).unwrap();
+
+        assert!(advance(&store, ApplyEvent::WriteProjection).is_err());
+        assert_eq!(read(&store).unwrap().unwrap().phase, ApplyPhase::Prepared);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn committed_authority_recovers_missing_ordinary_projection_before_clear() {
         let (root, store) = fixture("projection-recovery");
         let record = synthetic_record(&root.join("assembly"), LocalServerLifecycle::Stopped);
         begin(&store, &record).unwrap();
-        advance(&store, ApplyPhase::ArtifactWritten).unwrap();
-        advance(&store, ApplyPhase::ProjectionWritten).unwrap();
+        advance(&store, ApplyEvent::WriteArtifact).unwrap();
+        advance(&store, ApplyEvent::WriteProjection).unwrap();
         let pending = read(&store).unwrap().unwrap();
 
         recover_committed(&store, &pending, |_| Ok(())).unwrap();

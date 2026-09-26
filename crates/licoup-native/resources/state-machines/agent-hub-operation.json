@@ -1,0 +1,41 @@
+{
+  "machines": [
+    {
+      "id": "agent-hub.operation",
+      "rust_module": "agent_hub_operation",
+      "states": [
+        { "id": "planned" },
+        { "id": "confirmed" },
+        { "id": "applying" },
+        { "id": "verifying" },
+        { "id": "rescanning" },
+        { "id": "available" },
+        { "id": "needs-login" },
+        { "id": "failed" },
+        { "id": "cancelled" }
+      ],
+      "events": [
+        "confirm",
+        "apply",
+        "fail",
+        "verify",
+        "rescan",
+        "mark-available",
+        "require-login",
+        "cancel"
+      ],
+      "initial": "planned",
+      "terminal": ["available", "needs-login", "failed", "cancelled"],
+      "transitions": [
+        { "from_state": "planned", "event": "confirm", "to_state": "confirmed" },
+        { "from_state": "confirmed", "event": "apply", "to_state": "applying" },
+        { "from_state": "confirmed", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "applying", "event": "fail", "to_state": "failed" },
+        { "from_state": "applying", "event": "verify", "to_state": "verifying" },
+        { "from_state": "verifying", "event": "rescan", "to_state": "rescanning" },
+        { "from_state": "rescanning", "event": "mark-available", "to_state": "available" },
+        { "from_state": "rescanning", "event": "require-login", "to_state": "needs-login" }
+      ]
+    }
+  ]
+}

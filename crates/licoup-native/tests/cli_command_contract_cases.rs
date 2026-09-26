@@ -21,7 +21,7 @@ const ADMISSION_STAGE: &str = "cli/admission";
 const ADMISSION_COMPONENT: &str = "native_cli";
 const MAX_CLI_ARGUMENT_COUNT: usize = 4_096;
 const MAX_CLI_ARGUMENT_BYTES: usize = 2 * 1024 * 1024;
-const AUTHORITATIVE_ROUTE_COUNT: usize = 177;
+const AUTHORITATIVE_ROUTE_COUNT: usize = 179;
 
 #[derive(Clone, Debug)]
 struct RouteAuthority {
@@ -2566,6 +2566,24 @@ fn route_authorities() -> Vec<RouteAuthority> {
             constraints: &[],
         },
     ]);
+    routes.push(RouteAuthority {
+        module: "full_backup.rs",
+        handler: "handle_backup_export",
+        path: "backup export",
+        required: &[("archive", Text)],
+        cardinality: Options,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "full_backup.rs",
+        handler: "handle_backup_import",
+        path: "backup import",
+        required: &[("archive", Text)],
+        cardinality: Options,
+        options: vec![],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "state.rs",
@@ -2756,6 +2774,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("profile", Text, true),
             value_option("trigger", Text, false),
         ],
+        "backup export" => &[
+            value_option("data-root", Text, false),
+            boolean_option("writers-stopped"),
+        ],
+        "backup import" => &[value_option("target-root", Text, true)],
         "snapshots archive verify" => &[
             value_option("profile", Text, false),
             value_option("trigger", Text, false),

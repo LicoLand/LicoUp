@@ -75,11 +75,10 @@ function inventory(installDir, ports) {
 }
 
 function unregister(apps, ports, stage) {
-  // Stale Spotlight/lsregister entries whose volume or worktree is gone fail
-  // the whole lsregister batch; unregister only real app bundles that still
-  // exist (non-.app paths are not valid bundles and abort the batch).
-  const existing = apps.filter((app) => app.endsWith(".app") && ports.exists(app));
-  if (existing.length && !ports.unregister(existing)) fail("macos_install_unregister_failed", stage);
+  // Registration records can outlive their bundle or retain a renamed backup
+  // path. The real port unregisters each record independently, so one stale
+  // entry cannot abort cleanup of the remaining records.
+  if (apps.length && !ports.unregister(apps)) fail("macos_install_unregister_failed", stage);
 }
 
 function removeInstallation(app, ports) {

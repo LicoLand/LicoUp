@@ -1,5 +1,7 @@
 # LicoUp Gateway Runtime
 
+Updated: 2026-08-13
+
 English (normative) · [简体中文](gateway-runtime.zh-CN.md)
 
 The Gateway Runtime is one local process (`lico-gateway`) with two layers:

@@ -4,6 +4,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::state_machines::security_effect_capability::{self, Event, State as CapabilityState};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SecurityWorkflow {
     AppUnlock,
@@ -66,12 +68,6 @@ impl EffectError {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CapabilityState {
-    Issued,
-    Consumed,
-}
-
 pub(super) struct CapabilityTable {
     next_id: u64,
     #[cfg(test)]
@@ -100,8 +96,10 @@ impl CapabilityTable {
             security_generation,
         };
         self.next_id = self.next_id.saturating_add(1);
-        self.live
-            .insert(capability.id, (capability, CapabilityState::Issued));
+        self.live.insert(
+            capability.id,
+            (capability, security_effect_capability::INITIAL),
+        );
         Ok(capability)
     }
 
@@ -126,7 +124,8 @@ impl CapabilityTable {
         {
             return Err(EffectError::GenerationMismatch);
         }
-        entry.1 = CapabilityState::Consumed;
+        entry.1 = security_effect_capability::transition(entry.1, Event::Consume)
+            .ok_or(EffectError::AlreadyConsumed)?;
         Ok(())
     }
 

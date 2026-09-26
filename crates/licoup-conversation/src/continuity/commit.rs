@@ -13,10 +13,9 @@ use super::generated::{
     ContinuityGoalControl, ContinuityGoalLifecycle, ContinuityGoalProgress,
     ContinuityInterpretationProposal, ContinuityMatter, ContinuityMatterStatus,
     ContinuityNextAttention, ContinuityParentContextGrant, ContinuityParentGrantBasis,
-    ContinuityParentGrantStatus, ContinuitySourceOwnerKind, ContinuitySourceRef,
-    ContinuitySourceValidity, ContinuitySpeechAct, ContinuityTaskChildAdmission,
-    ContinuityTaskConversationRelation, ContinuityTaskListingKind, ContinuityVisibilityScope,
-    ContinuityWake,
+    ContinuitySourceOwnerKind, ContinuitySourceRef, ContinuitySourceValidity, ContinuitySpeechAct,
+    ContinuityTaskChildAdmission, ContinuityTaskConversationRelation, ContinuityTaskListingKind,
+    ContinuityVisibilityScope, ContinuityWake,
 };
 use super::hooks::{
     ContinuityEffectStatus, ContinuityInterrupt, continuity_now_ms, take_interrupt,
@@ -983,7 +982,7 @@ fn upsert_validated_child_grants(
             recipient_membership_id: recipient.clone(),
             source_refs: vec![source.clone()],
             authorized_scopes: vec![source.visibility_scope],
-            status: ContinuityParentGrantStatus::Admitted,
+            status: super::initial_parent_grant_status(),
             request_id: request_id.to_owned(),
             revocation_generation: recipient_generation,
         };

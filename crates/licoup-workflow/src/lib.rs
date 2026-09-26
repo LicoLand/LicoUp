@@ -11,6 +11,12 @@ pub mod ir;
 pub mod machine;
 pub mod syntax;
 
+/// Generated state and event vocabularies. The JSON files under
+/// `resources/state-machines` are the only transition tables.
+pub mod state_machines {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}
+
 pub use analysis::{
     AnalyzedWorkflow, WorkflowValidation, WorkflowValidationFailure, analyze,
     compile_workflow_source, compile_workflow_value, validate_workflow_value,

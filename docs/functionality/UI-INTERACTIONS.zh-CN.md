@@ -1,11 +1,13 @@
 # 用户界面交互状态机
 
+Updated: 2026-09-25
+
 | 版本 | 入口 |
 | --- | --- |
 | 规范版本 | [English](UI-INTERACTIONS.md) |
 | 本地化 | 简体中文（本文） |
 
-[UI-INTERACTIONS.json](UI-INTERACTIONS.json) 是行为依据：用户看见什么、在那里能做什么、
+[UI interaction configuration](../../apps/desktop/test/ui_state_machine/model.json) 是行为依据：用户看见什么、在那里能做什么、
 操作后应该看见什么。不包含 Flutter key、controller 名称、RPC 或后端状态。
 [Flutter 适配层](../../apps/desktop/test/ui_state_machine/flutter_adapter.dart) 负责映射当前
 控件和可见内容。内部重构更新适配层；有意改变产品行为时，评审并更新模型。
@@ -64,7 +66,7 @@ npm run client:test:ui -- --machine dashboard.conversation-journey --replay list
 controller 的变化推断正确目标，也不得把错误跳转写进模型来让检查通过。
 
 不增加 CI 门禁、设备矩阵、后端 trace 服务或测试依赖。遵守
-[验证范围](../../CONTRIBUTING.zh-CN.md#验证范围)。
+[验证范围](../RUNBOOK.zh-CN.md)。
 
 ## 看懂结果
 
@@ -86,7 +88,7 @@ controller 的变化推断正确目标，也不得把错误跳转写进模型来
 
 | 职责 | 文件 |
 | --- | --- |
-| 用户状态、动作、预期目标 | [UI-INTERACTIONS.json](UI-INTERACTIONS.json) |
+| 用户状态、动作、预期目标 | [UI interaction configuration](../../apps/desktop/test/ui_state_machine/model.json) |
 | 模型检查与转换遍历，不导入 Flutter 或应用代码 | [model.dart](../../apps/desktop/test/ui_state_machine/model.dart) |
 | 点击、输入、滚动及可见结果 | [flutter_adapter.dart](../../apps/desktop/test/ui_state_machine/flutter_adapter.dart) |
 | 生产界面夹具、随机选择、重放及帧采样 | [runner.dart](../../apps/desktop/test/ui_state_machine/runner.dart) |

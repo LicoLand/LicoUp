@@ -1,5 +1,7 @@
 # 安全
 
+Updated: 2026-09-25
+
 [English](SECURITY.md) · 简体中文 · [首页](README.zh-CN.md)
 
 ## 报告问题
@@ -49,9 +51,8 @@ Reliable Exchange、协商与 Transport Profile 语义。LicoUp 执行一条固�
 Line，同时保留私钥、本地 Provider 配置、明文、会话历史、备份、用户信任、审批和
 本地效果。通讯站不获得其中任何权威。
 
-[当前正在退役的端点保护预览](docs/STATUS.zh-CN.md)不是 Lico Arc Profile 或
-稳定兼容面。它不承诺未来互操作；完整固定 Lico Arc Protocol Line 替换它时会
-直接退役。已经实现的 `licoarc.relay.v1` 候选外层 adapter 是另一项当前事实；
+[当前端点保护预览](docs/STATUS.zh-CN.md)不是 Lico Arc Profile 或稳定兼容面。
+已经实现的 `licoarc.relay.v1` 候选外层 adapter 是另一项当前事实；
 它的存在不会证明该预览符合 Lico Arc。
 
 ## 中转端威胁边界

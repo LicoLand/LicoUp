@@ -8,6 +8,10 @@ use super::{
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 
+use crate::state_machines::security_approval::{
+    self, Event as ApprovalEvent, State as ApprovalState,
+};
+
 /// Resolve a pending approval with first-valid-response CAS semantics.
 pub fn resolve_approval_response_json(params: &Value) -> Result<Value> {
     let pending_operation_id = require_text(
@@ -57,7 +61,14 @@ pub fn resolve_approval_response_json(params: &Value) -> Result<Value> {
         .pending
         .get_mut(&pending_operation_id)
         .ok_or_else(|| anyhow!("secure mesh approval pending operation was not found"))?;
-    if let Some(existing) = &entry.resolved {
+    if matches!(
+        entry.state,
+        ApprovalState::Approved | ApprovalState::Rejected
+    ) {
+        let existing = entry
+            .resolved
+            .as_ref()
+            .ok_or_else(|| anyhow!("secure mesh approval resolved payload is missing"))?;
         return Ok(json!({
             "ok": false,
             "code": "secure_mesh_approval_already_resolved",
@@ -70,7 +81,15 @@ pub fn resolve_approval_response_json(params: &Value) -> Result<Value> {
         }));
     }
     let now = now_rfc3339();
-    if is_expired(&entry.expires_at, &now) {
+    if entry.state == ApprovalState::Expired
+        || (entry.state == ApprovalState::Pending && is_expired(&entry.expires_at, &now))
+    {
+        if entry.state == ApprovalState::Pending {
+            entry.state = security_approval::transition(entry.state, ApprovalEvent::Expire)
+                .ok_or_else(|| {
+                    anyhow!("secure mesh approval expiry transition is not configured")
+                })?;
+        }
         return Ok(json!({
             "ok": false,
             "code": "secure_mesh_approval_expired",
@@ -81,6 +100,10 @@ pub fn resolve_approval_response_json(params: &Value) -> Result<Value> {
             "request": projection(entry),
         }));
     }
+    ensure!(
+        entry.state == ApprovalState::Pending,
+        "secure mesh approval stored phase is invalid"
+    );
     ensure!(
         entry.response_nonce == response_nonce,
         "secure mesh approval response nonce mismatch"
@@ -94,6 +117,12 @@ pub fn resolve_approval_response_json(params: &Value) -> Result<Value> {
         "secure mesh approval responding endpoint is not trusted"
     );
 
+    let event = match decision {
+        ApprovalDecision::Allow => ApprovalEvent::Approve,
+        ApprovalDecision::Deny => ApprovalEvent::Reject,
+    };
+    entry.state = security_approval::transition(entry.state, event)
+        .ok_or_else(|| anyhow!("secure mesh approval response transition is not configured"))?;
     entry.resolved = Some(ResolvedApproval {
         decision: decision.clone(),
         responding_endpoint_id: responding_endpoint_id.clone(),
@@ -169,10 +198,13 @@ pub fn list_approval_inbox_json(params: &Value) -> Result<Value> {
 }
 
 pub(super) fn prune_expired(ledger: &mut ApprovalLedger, now: &str) {
-    ledger.pending.retain(|_, entry| {
-        if entry.resolved.is_some() {
-            return true;
+    for entry in ledger.pending.values_mut() {
+        if entry.state == ApprovalState::Pending && is_expired(&entry.expires_at, now) {
+            entry.state = security_approval::transition(entry.state, ApprovalEvent::Expire)
+                .expect("pending approval expiry transition is configured");
         }
-        !is_expired(&entry.expires_at, now)
-    });
+    }
+    ledger
+        .pending
+        .retain(|_, entry| entry.state != ApprovalState::Expired);
 }

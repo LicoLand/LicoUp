@@ -58,3 +58,6 @@ jobs:
       - name: Verify release authority and publication readiness
         if: steps.readme.outputs.readme_fast != 'true'
         run: npm run client:gate:release-policy
+      - name: Refresh local project reports
+        if: always()
+        run: node tools/development/reports.mjs

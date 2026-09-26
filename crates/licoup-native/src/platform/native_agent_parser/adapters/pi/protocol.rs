@@ -5,6 +5,9 @@ use crate::platform::pi_driver::params::ProtocolConfig;
 use serde_json::{Value, json};
 use std::sync::mpsc::TryRecvError;
 
+pub(in crate::platform) use crate::state_machines::pi_protocol::State as ProtocolPhase;
+use crate::state_machines::pi_protocol::{self as protocol_machine, Event as ProtocolEvent};
+
 #[derive(Clone, Debug)]
 pub(in crate::platform) struct ProtocolOutcome {
     pub(in crate::platform) output: String,
@@ -130,20 +133,6 @@ impl Drop for PendingInteraction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ProtocolPhase {
-    AwaitSwitch,
-    AwaitInitialState,
-    AwaitAvailableModels,
-    AwaitModel,
-    AwaitThinking,
-    AwaitPromptAccept,
-    AwaitSettled,
-    AwaitAssistantText,
-    AwaitState,
-    Finished,
-}
-
 #[derive(Debug)]
 pub(in crate::platform) struct PiProtocol {
     pub(in crate::platform) config: ProtocolConfig,
@@ -166,21 +155,31 @@ impl PiProtocol {
             reasoning_effort: config.thinking_level.clone(),
             ..EffectiveSettings::default()
         };
-        let phase = if config.is_resume() {
-            ProtocolPhase::AwaitSwitch
-        } else {
-            ProtocolPhase::AwaitInitialState
-        };
-        Self {
+        let resume = config.is_resume();
+        let mut protocol = Self {
             config,
-            phase,
+            phase: protocol_machine::INITIAL,
             session_id: None,
             output: String::new(),
             events: Vec::new(),
             effective,
             pending_request: None,
             turn_error: None,
+        };
+        if resume {
+            protocol.advance(ProtocolEvent::Resume);
         }
+        protocol
+    }
+
+    fn advance(&mut self, event: ProtocolEvent) {
+        self.phase = protocol_machine::transition(self.phase, event).unwrap_or_else(|| {
+            panic!(
+                "invalid Pi protocol transition: {} + {}",
+                self.phase.as_str(),
+                event.as_str()
+            )
+        });
     }
 
     pub(in crate::platform) fn initial_request(&mut self) -> Value {
@@ -192,12 +191,12 @@ impl PiProtocol {
                 "sessionPath": path.to_string_lossy()
             });
         }
-        self.state_request("lico-pi-initial-state", ProtocolPhase::AwaitInitialState)
+        self.state_request("lico-pi-initial-state")
     }
 
     fn prompt_request(&mut self) -> Value {
         self.pending_request = Some("prompt");
-        self.phase = ProtocolPhase::AwaitPromptAccept;
+        self.advance(ProtocolEvent::RequestPrompt);
         json!({
             "id": "lico-pi-prompt",
             "type": "prompt",
@@ -208,7 +207,7 @@ impl PiProtocol {
     fn thinking_request(&mut self) -> Option<Value> {
         let level = self.config.thinking_level.clone()?;
         self.pending_request = Some("set_thinking_level");
-        self.phase = ProtocolPhase::AwaitThinking;
+        self.advance(ProtocolEvent::RequestThinking);
         Some(json!({
             "id": "lico-pi-thinking",
             "type": "set_thinking_level",
@@ -216,9 +215,8 @@ impl PiProtocol {
         }))
     }
 
-    fn state_request(&mut self, id: &'static str, phase: ProtocolPhase) -> Value {
+    fn state_request(&mut self, id: &'static str) -> Value {
         self.pending_request = Some("get_state");
-        self.phase = phase;
         json!({
             "id": id,
             "type": "get_state"
@@ -229,7 +227,7 @@ impl PiProtocol {
         let provider = self.config.model_provider.clone()?;
         let model_id = self.config.model_id.clone()?;
         self.pending_request = Some("set_model");
-        self.phase = ProtocolPhase::AwaitModel;
+        self.advance(ProtocolEvent::RequestModel);
         Some(json!({
             "id": "lico-pi-model",
             "type": "set_model",
@@ -240,7 +238,7 @@ impl PiProtocol {
 
     fn available_models_request(&mut self) -> Value {
         self.pending_request = Some("get_available_models");
-        self.phase = ProtocolPhase::AwaitAvailableModels;
+        self.advance(ProtocolEvent::RequestAvailableModels);
         json!({
             "id": "lico-pi-available-models",
             "type": "get_available_models"
@@ -312,7 +310,7 @@ impl PiProtocol {
                 .and_then(Value::as_str)
                 .filter(|method| !method.trim().is_empty())
             else {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(self.failure_with_ids(
                     "pi_extension_ui_method_missing",
                     "Pi Agent returned an interaction request without a method.",
@@ -323,7 +321,7 @@ impl PiProtocol {
                 "select" | "confirm" | "input" | "editor" => match self.park_interaction(message) {
                     Ok(pending) => vec![ProtocolEffect::Interact(pending)],
                     Err(failure) => {
-                        self.phase = ProtocolPhase::Finished;
+                        self.advance(ProtocolEvent::Fail);
                         vec![ProtocolEffect::Fail(failure)]
                     }
                 },
@@ -335,7 +333,7 @@ impl PiProtocol {
                     Vec::new()
                 }
                 _ => {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_extension_ui_method_unsupported",
                         "Pi Agent requested an unsupported interaction method.",
@@ -460,7 +458,7 @@ impl PiProtocol {
         match self.phase {
             ProtocolPhase::AwaitSwitch if command == "switch_session" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_switch_failed",
                         "Pi Agent could not switch to the requested session.",
@@ -470,21 +468,21 @@ impl PiProtocol {
                 if let Some(cancelled) = message.pointer("/data/cancelled").and_then(Value::as_bool)
                     && cancelled
                 {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_switch_cancelled",
                         "Pi Agent cancelled the session switch.",
                         "session/switch",
                     ))];
                 }
-                vec![ProtocolEffect::Send(self.state_request(
-                    "lico-pi-switched-state",
-                    ProtocolPhase::AwaitInitialState,
-                ))]
+                self.advance(ProtocolEvent::SwitchComplete);
+                vec![ProtocolEffect::Send(
+                    self.state_request("lico-pi-switched-state"),
+                )]
             }
             ProtocolPhase::AwaitInitialState if command == "get_state" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_state_failed",
                         "Pi Agent did not expose the active session state.",
@@ -493,7 +491,7 @@ impl PiProtocol {
                 }
                 self.capture_state(message);
                 let Some(active_session_id) = self.session_id.as_deref() else {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_id_missing",
                         "Pi Agent did not return a session identifier.",
@@ -503,7 +501,7 @@ impl PiProtocol {
                 if !self.config.requested_session_id.is_empty()
                     && active_session_id != self.config.requested_session_id
                 {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_identity_mismatch",
                         "Pi Agent switched to a different session than requested.",
@@ -512,7 +510,7 @@ impl PiProtocol {
                 }
                 if self.config.prompt.trim().is_empty() {
                     let session_id = active_session_id.to_owned();
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::CompleteWithoutPrompt);
                     return vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
                         output: String::new(),
                         session_id,
@@ -529,7 +527,7 @@ impl PiProtocol {
             }
             ProtocolPhase::AwaitAvailableModels if command == "get_available_models" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_model_override_failed",
                         "Pi Agent could not resolve the requested model.",
@@ -558,7 +556,7 @@ impl PiProtocol {
                 matches.sort();
                 matches.dedup();
                 if matches.len() != 1 {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     let (code, message) = if matches.is_empty() {
                         (
                             "pi_model_override_failed",
@@ -577,7 +575,7 @@ impl PiProtocol {
                     ))];
                 }
                 let Some((provider, model_id)) = matches.pop() else {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_model_override_failed",
                         "Pi Agent could not resolve the requested model.",
@@ -587,7 +585,7 @@ impl PiProtocol {
                 self.config.model_provider = Some(provider);
                 self.config.model_id = Some(model_id);
                 let Some(request) = self.model_request() else {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_model_override_failed",
                         "Pi Agent could not resolve the requested model.",
@@ -598,7 +596,7 @@ impl PiProtocol {
             }
             ProtocolPhase::AwaitModel if command == "set_model" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_model_override_failed",
                         "Pi Agent could not apply the requested model.",
@@ -622,7 +620,7 @@ impl PiProtocol {
             }
             ProtocolPhase::AwaitThinking if command == "set_thinking_level" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_thinking_override_failed",
                         "Pi Agent could not apply the requested thinking level.",
@@ -633,14 +631,14 @@ impl PiProtocol {
             }
             ProtocolPhase::AwaitPromptAccept if command == "prompt" => {
                 if !success {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_prompt_rejected",
                         "Pi Agent rejected the prompt before acceptance.",
                         "prompt",
                     ))];
                 }
-                self.phase = ProtocolPhase::AwaitSettled;
+                self.advance(ProtocolEvent::PromptAccepted);
                 self.pending_request = None;
                 Vec::new()
             }
@@ -656,7 +654,7 @@ impl PiProtocol {
                     }
                 }
                 self.pending_request = Some("get_state");
-                self.phase = ProtocolPhase::AwaitState;
+                self.advance(ProtocolEvent::AssistantTextRead);
                 vec![ProtocolEffect::Send(json!({
                     "id": "lico-pi-state",
                     "type": "get_state"
@@ -667,7 +665,7 @@ impl PiProtocol {
                     self.capture_state(message);
                 }
                 if self.output.trim().is_empty() {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.empty_final_failure())];
                 }
                 let session_id = self
@@ -680,7 +678,7 @@ impl PiProtocol {
                     })
                     .unwrap_or_default();
                 if session_id.is_empty() {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     return vec![ProtocolEffect::Fail(self.failure_with_ids(
                         "pi_session_id_missing",
                         "Pi Agent did not return a session identifier.",
@@ -693,7 +691,7 @@ impl PiProtocol {
                     &self.config.turn_id,
                     &self.output,
                 );
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::StateRead);
                 vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
                     output: self.output.clone(),
                     session_id,
@@ -729,7 +727,7 @@ impl PiProtocol {
             self.capture_assistant_text_event(message);
             if message_type == "agent_settled" {
                 self.pending_request = Some("get_last_assistant_text");
-                self.phase = ProtocolPhase::AwaitAssistantText;
+                self.advance(ProtocolEvent::AgentSettled);
                 return vec![ProtocolEffect::Send(json!({
                     "id": "lico-pi-assistant",
                     "type": "get_last_assistant_text"

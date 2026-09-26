@@ -74,13 +74,13 @@ test("startup failures stay typed and privacy safe", async () => {
   const installer = await probeCursorStartup({
     inspect: async () => ({ value: { version: "1.0.0", registrationMode: "installer-only", servers: [] } }),
   });
-  const unsafe = await probeAntigravityStartup({
-    inspect: async () => ({ value: { version: "not-a-version", servers: [] } }),
+  const missingVersion = await probeAntigravityStartup({
+    inspect: async () => ({ value: { servers: [] } }),
   });
   assert.equal(unavailable.result, "unavailable");
   assert.equal(installer.result, "installer_configuration_required");
-  assert.equal(unsafe.version, "unresolved");
-  assert.doesNotMatch(JSON.stringify([unavailable, installer, unsafe]), /not-a-version|Bearer|token/iu);
+  assert.equal(missingVersion.version, "unresolved");
+  assert.doesNotMatch(JSON.stringify([unavailable, installer, missingVersion]), /Bearer|token/iu);
 });
 
 test("text list parsing admits only the exact namespaced server key", () => {

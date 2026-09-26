@@ -2064,6 +2064,7 @@ dependencies = [
 name = "licoup-agent-runtime"
 version = "0.3.0"
 dependencies = [
+ "licoup-state-machine-codegen",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2086,6 +2087,7 @@ name = "licoup-conversation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "licoup-state-machine-codegen",
  "proptest",
  "rusqlite",
  "serde",
@@ -2097,6 +2099,17 @@ dependencies = [
 [[package]]
 name = "licoup-endpoint-core"
 version = "0.3.0"
+
+[[package]]
+name = "licoup-extension-contracts"
+version = "0.3.0"
+dependencies = [
+ "licoup-application",
+ "regex",
+ "serde",
+ "serde_json",
+ "url",
+]
 
 [[package]]
 name = "licoup-mcp"
@@ -2139,15 +2152,20 @@ dependencies = [
  "libcrux-sha3",
  "libcrux-traits",
  "lico-catalog-convergence",
+ "licoarc-rust",
  "licoup-agent-adapters",
  "licoup-agent-runtime",
  "licoup-application",
  "licoup-client-state",
  "licoup-conversation",
  "licoup-endpoint-core",
+ "licoup-extension-contracts",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
+ "licoup-state-machine-codegen",
  "licoup-workflow",
+ "licoup-workflow-runtime",
+ "licoup-workflow-store",
  "log",
  "mime_guess",
  "nix",
@@ -2199,6 +2217,15 @@ name = "licoup-protocol-bindings"
 version = "0.3.0"
 dependencies = [
  "licoarc-rust",
+ "serde_json",
+]
+
+[[package]]
+name = "licoup-state-machine-codegen"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2206,9 +2233,31 @@ name = "licoup-workflow"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "licoup-state-machine-codegen",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "licoup-workflow-runtime"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-state-machine-codegen",
+ "licoup-workflow",
+ "serde",
+]
+
+[[package]]
+name = "licoup-workflow-store"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "licoup-workflow",
+ "licoup-workflow-runtime",
+ "rusqlite",
+ "serde_json",
 ]
 
 [[package]]

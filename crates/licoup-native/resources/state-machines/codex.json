@@ -1,0 +1,49 @@
+{
+  "machines": [
+    {
+      "id": "agent.codex-protocol",
+      "rust_module": "codex_protocol",
+      "states": [
+        { "id": "await-initialize", "rust_name": "AwaitInitialize" },
+        { "id": "await-rate-limits", "rust_name": "AwaitRateLimits" },
+        { "id": "await-thread", "rust_name": "AwaitThread" },
+        { "id": "await-thread-unarchive", "rust_name": "AwaitThreadUnarchive" },
+        { "id": "await-turn-start", "rust_name": "AwaitTurnStart" },
+        { "id": "await-turn-completed", "rust_name": "AwaitTurnCompleted" },
+        { "id": "finished", "rust_name": "Finished" }
+      ],
+      "events": [
+        "initialize-with-rate-limits",
+        "initialize",
+        "rate-limits-ready",
+        "thread-archived",
+        "thread-ready",
+        "thread-empty",
+        "thread-unarchived",
+        "turn-started",
+        "turn-completed",
+        "fail"
+      ],
+      "initial": "await-initialize",
+      "terminal": ["finished"],
+      "transitions": [
+        { "from_state": "await-initialize", "event": "initialize-with-rate-limits", "to_state": "await-rate-limits" },
+        { "from_state": "await-initialize", "event": "initialize", "to_state": "await-thread" },
+        { "from_state": "await-rate-limits", "event": "rate-limits-ready", "to_state": "await-thread" },
+        { "from_state": "await-thread", "event": "thread-archived", "to_state": "await-thread-unarchive" },
+        { "from_state": "await-thread", "event": "thread-ready", "to_state": "await-turn-start" },
+        { "from_state": "await-thread", "event": "thread-empty", "to_state": "finished" },
+        { "from_state": "await-thread-unarchive", "event": "thread-unarchived", "to_state": "await-thread" },
+        { "from_state": "await-turn-start", "event": "turn-started", "to_state": "await-turn-completed" },
+        { "from_state": "await-turn-completed", "event": "turn-completed", "to_state": "finished" },
+        { "from_state": "await-initialize", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-rate-limits", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-thread", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-thread-unarchive", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-turn-start", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-turn-completed", "event": "fail", "to_state": "finished" },
+        { "from_state": "finished", "event": "fail", "to_state": "finished" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "machines": [
+    {
+      "id": "security.custody-lifecycle",
+      "rust_module": "security_custody_lifecycle",
+      "states": [
+        { "id": "staged" },
+        { "id": "adopted" },
+        { "id": "fenced" },
+        { "id": "deleted" }
+      ],
+      "events": ["adopt", "abort", "fence", "delete", "revoke"],
+      "initial": "staged",
+      "terminal": ["deleted"],
+      "transitions": [
+        { "from_state": "staged", "event": "adopt", "to_state": "adopted" },
+        { "from_state": "staged", "event": "abort", "to_state": "deleted" },
+        { "from_state": "adopted", "event": "fence", "to_state": "fenced" },
+        { "from_state": "adopted", "event": "delete", "to_state": "deleted" },
+        { "from_state": "staged", "event": "revoke", "to_state": "deleted" },
+        { "from_state": "adopted", "event": "revoke", "to_state": "deleted" },
+        { "from_state": "fenced", "event": "revoke", "to_state": "deleted" }
+      ]
+    }
+  ]
+}

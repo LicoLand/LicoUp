@@ -123,6 +123,12 @@ abstract final class BuiltInLayoutSpec {
       LayoutStateNamespace(
         profileId: profile.id,
         surface: surface,
+        destination: ClientSection.agentHub,
+        channel: LayoutStateChannels.featureSection,
+      ),
+      LayoutStateNamespace(
+        profileId: profile.id,
+        surface: surface,
         destination: ClientSection.settings,
         channel: LayoutStateChannels.settingsIndex,
       ),

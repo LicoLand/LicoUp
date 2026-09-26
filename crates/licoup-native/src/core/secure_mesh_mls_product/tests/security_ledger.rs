@@ -1,4 +1,112 @@
 use super::support::*;
+use crate::state_machines::security_mls_operation::{self, Event as OperationEvent};
+
+#[test]
+fn secure_mesh_mls_journal_uses_configured_targets_for_every_transition() {
+    let local = device("desktop_gui:journal-configured-targets-local");
+    let participant_scope = local.identity.fingerprint().unwrap();
+    let path = ledger_path("journal-configured-targets");
+    let group_id = b"journal-configured-targets-group";
+    let base = journal_metadata(group_id, &participant_scope, 1, "base");
+    let expected = journal_metadata(group_id, &participant_scope, 2, "expected");
+    let operation_id = hex_sha256(b"journal-configured-targets-operation");
+    let request_digest = hex_sha256(b"journal-configured-targets-request");
+    let now = capability_now().unix_timestamp();
+    let prepared = empty_prepared_security_inputs(&local.identity, now).unwrap();
+    let mut ledger = SecureMeshMlsSecurityLedger::open(&path).unwrap();
+
+    let begun = ledger
+        .begin_operation(
+            &operation_id,
+            "secure_mesh.mls.commit.process",
+            &request_digest,
+            &local.identity,
+            now,
+        )
+        .unwrap();
+    assert_eq!(begun.state, security_mls_operation::INITIAL);
+
+    let first_stage_target =
+        security_mls_operation::transition(begun.state, OperationEvent::StageCrypto).unwrap();
+    let first_staged = ledger
+        .stage_operation(
+            &operation_id,
+            &serde_json::json!({"stage": 1}),
+            group_id,
+            Some(&base),
+            &expected,
+            &prepared,
+            now + 1,
+        )
+        .unwrap();
+    assert_eq!(first_staged.state, first_stage_target);
+
+    let restage_target =
+        security_mls_operation::transition(first_staged.state, OperationEvent::StageCrypto)
+            .unwrap();
+    let restaged = ledger
+        .stage_operation(
+            &operation_id,
+            &serde_json::json!({"stage": 2}),
+            group_id,
+            Some(&base),
+            &expected,
+            &prepared,
+            now + 2,
+        )
+        .unwrap();
+    assert_eq!(restaged.state, restage_target);
+    assert_eq!(restaged.response, Some(serde_json::json!({"stage": 2})));
+
+    let reset_target =
+        security_mls_operation::transition(restaged.state, OperationEvent::ResetForRetry).unwrap();
+    let reset = ledger
+        .reset_crypto_prepared_operation_for_retry(&operation_id, now + 3)
+        .unwrap();
+    assert_eq!(reset.state, reset_target);
+
+    let second_stage_target =
+        security_mls_operation::transition(reset.state, OperationEvent::StageCrypto).unwrap();
+    let staged_again = ledger
+        .stage_operation(
+            &operation_id,
+            &serde_json::json!({"stage": 3}),
+            group_id,
+            Some(&base),
+            &expected,
+            &prepared,
+            now + 4,
+        )
+        .unwrap();
+    assert_eq!(staged_again.state, second_stage_target);
+
+    let commit_target =
+        security_mls_operation::transition(staged_again.state, OperationEvent::CommitCrypto)
+            .unwrap();
+    let committed = ledger
+        .commit_operation_crypto(&operation_id, &expected, now + 5)
+        .unwrap();
+    assert_eq!(committed.state, commit_target);
+
+    let reconcile_target =
+        security_mls_operation::transition(committed.state, OperationEvent::ReconcileMetadata)
+            .unwrap();
+    let final_response = serde_json::json!({"ok": true});
+    let reconciled = ledger
+        .mark_operation_metadata_reconciled(&operation_id, &final_response, now + 6)
+        .unwrap();
+    assert_eq!(reconciled.state, reconcile_target);
+
+    let delivery_target =
+        security_mls_operation::transition(reconciled.state, OperationEvent::Deliver).unwrap();
+    let delivered = ledger
+        .mark_operation_delivered(&operation_id, now + 7)
+        .unwrap();
+    assert_eq!(delivered.state, delivery_target);
+    assert!(security_mls_operation::terminal(delivered.state));
+
+    let _ = std::fs::remove_file(path);
+}
 
 #[test]
 fn secure_mesh_mls_journal_recovers_every_action_at_every_cross_store_boundary() {
@@ -413,13 +521,14 @@ fn secure_mesh_mls_journal_enforces_single_writer_exact_state_and_bounded_gc() {
                         response_json, group_id_base64url, base_metadata_json,
                         expected_metadata_json, prepared_security_json,
                         created_at_unix_seconds, updated_at_unix_seconds
-                    ) VALUES (?1, ?2, 'secure_mesh.mls.commit.process', ?3, 'delivered',
-                              '{}', NULL, NULL, NULL, NULL, ?4, ?4)
+                    ) VALUES (?1, ?2, 'secure_mesh.mls.commit.process', ?3, ?4,
+                              '{}', NULL, NULL, NULL, NULL, ?5, ?5)
                     "#,
                 params![
                     hex_sha256(format!("gc-delivered-{index}").as_bytes()),
                     local_scope,
                     hex_sha256(format!("gc-request-{index}").as_bytes()),
+                    SecureMeshMlsOperationState::Delivered.as_str(),
                     now + i64::try_from(index).unwrap(),
                 ],
             )
@@ -440,8 +549,8 @@ fn secure_mesh_mls_journal_enforces_single_writer_exact_state_and_bounded_gc() {
     let delivered_count: i64 = ledger
             .connection
             .query_row(
-                "SELECT COUNT(*) FROM secure_mesh_mls_operations WHERE local_endpoint_scope_hash = ?1 AND state = 'delivered'",
-                params![local_scope],
+                "SELECT COUNT(*) FROM secure_mesh_mls_operations WHERE local_endpoint_scope_hash = ?1 AND state = ?2",
+                params![local_scope, SecureMeshMlsOperationState::Delivered.as_str()],
                 |row| row.get(0),
             )
             .unwrap();

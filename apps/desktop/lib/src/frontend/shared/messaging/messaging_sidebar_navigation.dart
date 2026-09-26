@@ -36,6 +36,7 @@ enum MessagingFeatureItem {
   pluginManagement,
   skillHub,
   chatChannels,
+  projectCollaboration,
 }
 
 const messagingCommunicationModelsPaneGateway = 0;
@@ -46,8 +47,7 @@ const messagingCommunicationModelsPaneChatChannels = 1;
 /// per option.
 bool messagingSidebarShowsSearch(ClientSection section) => true;
 
-/// Destinations the 功能 bottom-nav tab owns: the seven sidebar-hosted
-/// feature panes, 统计面板 included.
+/// Destinations owned by the 功能 bottom-nav tab.
 bool messagingSidebarHostsFeatures(ClientSection section) =>
     section == ClientSection.agentHub ||
     section == ClientSection.models ||
@@ -106,6 +106,7 @@ String messagingFeatureItemLabel(
   MessagingFeatureItem.pluginManagement => strings.pluginManagement,
   MessagingFeatureItem.skillHub => strings.skillHubNav,
   MessagingFeatureItem.chatChannels => strings.chatChannels,
+  MessagingFeatureItem.projectCollaboration => strings.projectCollaboration,
 };
 
 IconData messagingFeatureItemIcon(MessagingFeatureItem item) => switch (item) {
@@ -116,6 +117,7 @@ IconData messagingFeatureItemIcon(MessagingFeatureItem item) => switch (item) {
   MessagingFeatureItem.pluginManagement => Icons.extension_outlined,
   MessagingFeatureItem.skillHub => Icons.library_books_outlined,
   MessagingFeatureItem.chatChannels => Icons.forum_outlined,
+  MessagingFeatureItem.projectCollaboration => Icons.account_tree_outlined,
 };
 
 ClientSection messagingFeatureItemSection(MessagingFeatureItem item) =>
@@ -127,6 +129,7 @@ ClientSection messagingFeatureItemSection(MessagingFeatureItem item) =>
       MessagingFeatureItem.pluginManagement => ClientSection.pluginManagement,
       MessagingFeatureItem.skillHub => ClientSection.skillHub,
       MessagingFeatureItem.chatChannels => ClientSection.models,
+      MessagingFeatureItem.projectCollaboration => ClientSection.agentHub,
     };
 
 /// The models pane a 功能 entry selects, or null for non-models entries.
@@ -155,8 +158,14 @@ bool messagingFeatureItemSelected({
   required MessagingFeatureItem item,
   required ClientSection current,
   required int modelsPane,
+  int featurePane = 0,
 }) {
   final section = messagingFeatureItemSection(item);
+  if (section == ClientSection.agentHub) {
+    return current == section &&
+        featurePane ==
+            (item == MessagingFeatureItem.projectCollaboration ? 1 : 0);
+  }
   if (section == ClientSection.models) {
     return current == ClientSection.models &&
         messagingFeatureItemModelsPane(item) == modelsPane;
@@ -513,6 +522,7 @@ final class MessagingFeatureSidebarList extends StatefulWidget {
 final class _MessagingFeatureSidebarListState
     extends State<MessagingFeatureSidebarList> {
   static const _defaultItems = <MessagingFeatureItem>[
+    MessagingFeatureItem.projectCollaboration,
     MessagingFeatureItem.agentHub,
     MessagingFeatureItem.modelGateway,
     MessagingFeatureItem.mobilePairing,
@@ -582,6 +592,15 @@ final class _MessagingFeatureSidebarListState
   }
 
   void _select(MessagingFeatureItem item) {
+    if (messagingFeatureItemSection(item) == ClientSection.agentHub) {
+      LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
+        ClientSection.agentHub,
+        LayoutStateChannels.featureSection,
+        LayoutTabState(
+          item == MessagingFeatureItem.projectCollaboration ? 1 : 0,
+        ),
+      );
+    }
     final pane = messagingFeatureItemModelsPane(item);
     if (pane != null) {
       LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
@@ -617,9 +636,17 @@ final class _MessagingFeatureSidebarListState
       state: scopedState,
       valuesOf: (context) => [
         messagingCommunicationModelsPaneIndex(scopedState),
+        scopedState?.readIfDeclaredFor(
+          ClientSection.agentHub,
+          LayoutStateChannels.featureSection,
+        ),
       ],
       builder: (context) {
         final modelsPane = messagingCommunicationModelsPaneIndex(scopedState);
+        final featureTab = scopedState?.readIfDeclaredFor(
+          ClientSection.agentHub,
+          LayoutStateChannels.featureSection,
+        );
         return ReorderableListView(
           key: const Key('messaging-sidebar-feature-list'),
           buildDefaultDragHandles: false,
@@ -656,6 +683,9 @@ final class _MessagingFeatureSidebarListState
                     item: item,
                     current: widget.current,
                     modelsPane: modelsPane,
+                    featurePane: featureTab is LayoutTabState
+                        ? featureTab.index
+                        : 0,
                   ),
                   onTap: () => _select(item),
                 ),

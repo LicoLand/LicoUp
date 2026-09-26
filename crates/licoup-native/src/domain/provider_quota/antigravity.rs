@@ -522,14 +522,14 @@ mod tests {
                         "displayName": "Gemini Models",
                         "buckets": [
                             {
-                                "bucketId": "gemini-weekly",
+                                "bucketId": "fixture-gemini-weekly",
                                 "window": "weekly",
-                                "remainingFraction": 0.92015475,
-                                "resetTime": "2026-08-30T10:08:23Z",
+                                "remainingFraction": 0.875,
+                                "resetTime": "2000-01-08T00:00:00Z",
                                 "description": "weekly limit reset"
                             },
                             {
-                                "bucketId": "gemini-session",
+                                "bucketId": "fixture-gemini-session",
                                 "window": "5h",
                                 "remainingFraction": 0.75
                             }
@@ -539,12 +539,12 @@ mod tests {
                         "displayName": "Claude and GPT models",
                         "buckets": [
                             {
-                                "bucketId": "claude-weekly",
+                                "bucketId": "fixture-claude-weekly",
                                 "window": "weekly",
                                 "remainingFraction": 0.8
                             },
                             {
-                                "bucketId": "claude-session",
+                                "bucketId": "fixture-claude-session",
                                 "window": "5h",
                                 "remainingFraction": 1.0
                             }
@@ -565,7 +565,7 @@ mod tests {
     }
 
     fn captured_at() -> String {
-        super::super::scheduler::format_rfc3339(OffsetDateTime::now_utc())
+        "2000-01-01T00:00:00Z".to_owned()
     }
 
     #[test]
@@ -580,8 +580,8 @@ mod tests {
             .find(|window| window.label == "Gemini · Weekly")
             .expect("gemini weekly window");
         assert_eq!(weekly.window_minutes, Some(10080));
-        assert!((weekly.used_percent - (1.0 - 0.92015475) * 100.0).abs() < 1e-9);
-        assert_eq!(weekly.resets_at.as_deref(), Some("2026-08-30T10:08:23Z"));
+        assert!((weekly.used_percent - (1.0 - 0.875) * 100.0).abs() < 1e-9);
+        assert_eq!(weekly.resets_at.as_deref(), Some("2000-01-08T00:00:00Z"));
         assert!(weekly.reset_description.contains("weekly limit"));
         let claude_5h = snapshot
             .windows
@@ -730,8 +730,8 @@ mod tests {
             Some("2023-11-14T22:13:20Z".to_owned())
         );
         assert_eq!(
-            parse_reset_time(&json!("2026-08-30T10:08:23Z")),
-            Some("2026-08-30T10:08:23Z".to_owned())
+            parse_reset_time(&json!("2000-01-08T00:00:00Z")),
+            Some("2000-01-08T00:00:00Z".to_owned())
         );
         assert_eq!(parse_reset_time(&json!(true)), None);
     }

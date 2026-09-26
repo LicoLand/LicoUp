@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/application/features/layout/generated/layout_selection_state_machine.g.dart';
 import 'package:licoup/src/presentation/layout/layout_catalog.dart';
 import 'package:licoup/src/application/features/layout/layout_preference_state.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
@@ -24,7 +25,7 @@ final class LayoutManager {
        _state = LayoutPreferenceState(
          committedId: preferredDefaultId ?? catalog.defaultProfile.id,
          effectiveId: preferredDefaultId ?? catalog.defaultProfile.id,
-         status: LayoutSelectionStatus.loading,
+         status: layoutSelectionStatusInitial,
          operationEpoch: 0,
        ) {
     if (!catalog.containsProfile(_preferredDefaultId)) {
@@ -82,7 +83,7 @@ final class LayoutManager {
       LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
-        status: LayoutSelectionStatus.loading,
+        status: _transition(LayoutSelectionEvent.reload),
         operationEpoch: epoch,
       ),
     );
@@ -110,9 +111,11 @@ final class LayoutManager {
         LayoutPreferenceState(
           committedId: committed,
           effectiveId: committed,
-          status: error == null
-              ? LayoutSelectionStatus.stable
-              : LayoutSelectionStatus.error,
+          status: _transition(
+            error == null
+                ? LayoutSelectionEvent.succeed
+                : LayoutSelectionEvent.fail,
+          ),
           operationEpoch: epoch,
           errorCode: error,
         ),
@@ -125,7 +128,7 @@ final class LayoutManager {
           LayoutPreferenceState(
             committedId: _preferredDefaultId,
             effectiveId: _preferredDefaultId,
-            status: LayoutSelectionStatus.error,
+            status: _transition(LayoutSelectionEvent.fail),
             operationEpoch: epoch,
             errorCode: LayoutSelectionErrorCode.persistenceFailed,
           ),
@@ -148,6 +151,7 @@ final class LayoutManager {
       final epoch = _beginOperation();
       _emitError(
         LayoutSelectionErrorCode.unavailableProfile,
+        event: LayoutSelectionEvent.reject,
         epoch: epoch,
         cause: cause,
       );
@@ -155,7 +159,11 @@ final class LayoutManager {
     }
     if (candidate == _state.committedId && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
-      _emitStable(epoch: epoch, cause: cause);
+      _emitStable(
+        epoch: epoch,
+        event: LayoutSelectionEvent.stabilize,
+        cause: cause,
+      );
       return Future<bool>.value(true);
     }
     return _commit(candidate, cause: cause);
@@ -169,7 +177,7 @@ final class LayoutManager {
     final candidate = _preferredDefaultId;
     if (_state.committedId == candidate && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
-      _emitStable(epoch: epoch);
+      _emitStable(epoch: epoch, event: LayoutSelectionEvent.stabilize);
       return true;
     }
     return _commit(candidate);
@@ -233,7 +241,11 @@ final class LayoutManager {
         _needsCanonicalPersistence = false;
         if (_state.status == LayoutSelectionStatus.error) {
           final epoch = _beginOperation();
-          _emitStable(epoch: epoch, cause: cause);
+          _emitStable(
+            epoch: epoch,
+            event: LayoutSelectionEvent.stabilize,
+            cause: cause,
+          );
         }
         return true;
       } catch (_) {
@@ -268,7 +280,7 @@ final class LayoutManager {
       LayoutPreferenceState(
         committedId: previousCommitted,
         effectiveId: candidate,
-        status: LayoutSelectionStatus.committing,
+        status: _transition(LayoutSelectionEvent.beginCommit),
         operationEpoch: epoch,
       ),
       cause: cause,
@@ -288,7 +300,7 @@ final class LayoutManager {
         LayoutPreferenceState(
           committedId: candidate,
           effectiveId: candidate,
-          status: LayoutSelectionStatus.stable,
+          status: _transition(LayoutSelectionEvent.succeed),
           operationEpoch: epoch,
         ),
         cause: cause,
@@ -301,6 +313,7 @@ final class LayoutManager {
       if (_isCurrent(epoch)) {
         _emitError(
           LayoutSelectionErrorCode.persistenceFailed,
+          event: LayoutSelectionEvent.fail,
           epoch: epoch,
           cause: cause,
         );
@@ -317,12 +330,16 @@ final class LayoutManager {
     return ++_epoch;
   }
 
-  void _emitStable({required int epoch, ApplicationCause? cause}) {
+  void _emitStable({
+    required int epoch,
+    required LayoutSelectionEvent event,
+    ApplicationCause? cause,
+  }) {
     _emit(
       LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
-        status: LayoutSelectionStatus.stable,
+        status: _transition(event),
         operationEpoch: epoch,
       ),
       cause: cause,
@@ -332,19 +349,26 @@ final class LayoutManager {
   void _emitError(
     LayoutSelectionErrorCode code, {
     required int epoch,
+    required LayoutSelectionEvent event,
     ApplicationCause? cause,
   }) {
     _emit(
       LayoutPreferenceState(
         committedId: _state.committedId,
         effectiveId: _state.committedId,
-        status: LayoutSelectionStatus.error,
+        status: _transition(event),
         operationEpoch: epoch,
         errorCode: code,
       ),
       cause: cause,
     );
   }
+
+  LayoutSelectionStatus _transition(LayoutSelectionEvent event) =>
+      transitionLayoutSelectionStatus(_state.status, event) ??
+      (throw StateError(
+        'layout_selection_transition_invalid:${_state.status.name}:${event.name}',
+      ));
 
   void _emit(LayoutPreferenceState next, {ApplicationCause? cause}) {
     if (_disposed) {

@@ -6,16 +6,19 @@
 
 pub mod admission;
 pub mod commit;
+mod effect_lifecycle;
 pub mod error;
 pub mod generated;
 pub mod hooks;
 pub mod lifecycle;
 pub mod migrate;
+mod parent_grant_lifecycle;
 pub mod persist;
 pub mod ports;
 pub mod store_ports;
 pub mod turn_response;
 pub mod unavailable;
+pub mod workflow_notices;
 
 pub use crate::store::ContinuityUnitOfWork;
 pub use admission::{
@@ -61,6 +64,7 @@ pub use hooks::{
     set_continuity_interrupt,
 };
 pub use lifecycle::ContinuityGoalEvent;
+pub use parent_grant_lifecycle::{initial_parent_grant_status, revoke_parent_grant_status};
 pub use persist::{
     EvaluationCasePolarity, EvaluationExpectedAction, StoredEvaluationCase, StoredEvaluationCorpus,
     StoredEvaluationSession, StoredOwnerAuthority, evaluation_corpus_version_digest,

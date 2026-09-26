@@ -1,0 +1,16 @@
+{
+  "machines": [
+    {
+      "id": "security.command-replay-execution",
+      "rust_module": "security_command_replay_execution",
+      "states": [{ "id": "absent" }, { "id": "reserved" }, { "id": "completed" }],
+      "events": ["reserve", "complete"],
+      "initial": "absent",
+      "terminal": ["completed"],
+      "transitions": [
+        { "from_state": "absent", "event": "reserve", "to_state": "reserved" },
+        { "from_state": "reserved", "event": "complete", "to_state": "completed" }
+      ]
+    }
+  ]
+}

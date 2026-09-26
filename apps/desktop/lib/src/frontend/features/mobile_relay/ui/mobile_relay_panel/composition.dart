@@ -33,20 +33,20 @@ class MobileRelayPanel extends StatefulWidget {
 
 class _MobileRelayPanelState extends State<MobileRelayPanel> {
   late final TextEditingController _stationBaseUrlController;
+  String? _lastStationInput;
 
   @override
   void initState() {
     super.initState();
-    _stationBaseUrlController = TextEditingController(
-      text: widget.binding.projection.current.stationLabel,
-    );
+    _stationBaseUrlController = TextEditingController();
   }
 
   @override
   void didUpdateWidget(covariant MobileRelayPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.binding, widget.binding)) {
-      _syncStation(widget.binding.projection.current.stationLabel);
+      _lastStationInput = null;
+      _stationBaseUrlController.clear();
     }
   }
 
@@ -198,6 +198,8 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
   }
 
   void _syncStation(String value) {
+    if (_lastStationInput == value) return;
+    _lastStationInput = value;
     if (_stationBaseUrlController.text != value) {
       _stationBaseUrlController.text = value;
     }

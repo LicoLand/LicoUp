@@ -19,8 +19,8 @@ import {
 } from "./client-gate-policy.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const taskEventPrefix = "::lico-dev-task-event::";
-const taskEventSchemaVersion = "v0.0.1:lico-dev:task-event-1";
+const taskEventPrefix = "::licoup-client-check::";
+const taskEventSchemaVersion = "licoup.client-check.v1";
 const safeTaskEventValue = /^[a-z0-9][a-z0-9:._-]{0,127}$/u;
 const forbiddenSourceTokens = Object.freeze([
   "dtolnay/rust-toolchain",

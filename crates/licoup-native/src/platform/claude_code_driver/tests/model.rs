@@ -31,6 +31,31 @@ fn transport_lifecycle_is_monotonic_and_single_claimed() {
 }
 
 #[test]
+fn concurrent_transport_closers_have_one_owner_and_cannot_skip_closing() {
+    let lifecycle = std::sync::Arc::new(TransportLifecycle::default());
+    assert!(!lifecycle.mark_closed());
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let attempts: Vec<_> = (0..8)
+        .map(|_| {
+            let lifecycle = lifecycle.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                lifecycle.begin_closing()
+            })
+        })
+        .collect();
+    let winners = attempts
+        .into_iter()
+        .map(|attempt| usize::from(attempt.join().expect("closer thread")))
+        .sum::<usize>();
+    assert_eq!(winners, 1);
+    assert!(lifecycle.is_closing());
+    assert!(lifecycle.mark_closed());
+    assert!(!lifecycle.begin_closing());
+}
+
+#[test]
 fn transcript_keeps_every_turn_beyond_former_limits_and_pages_backward() {
     let mut transcript = CompleteTranscript::new();
     let oversized_output = "x".repeat(1024 * 1024 + 1);

@@ -1,5 +1,7 @@
 # 安全架构与数据边界
 
+Updated: 2026-09-25
+
 [English (Normative)](SECURITY-AND-DATA-BOUNDARY.md) · 简体中文（本地化） · [返回架构主文档](README.zh-CN.md)
 
 本文档定义 LicoUp 客户端的安全边界、数据流动规则、虚拟机集成隔离以及端点加密规范。
@@ -18,7 +20,7 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes <user>@<host> <command>
 
 ## 2. 端点保护预览分层
 
-当前正在退役的端点保护预览使用一个固定安全配置：
+当前端点保护预览使用一个固定安全配置：
 
 ```mermaid
 flowchart TB

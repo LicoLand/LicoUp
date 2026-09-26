@@ -29,6 +29,7 @@ void registerAgentUsagePollingScenarios() {
 
     await tester.pumpWidget(
       usageTestApp(
+        overrides: monitoring.providerOverrides,
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),

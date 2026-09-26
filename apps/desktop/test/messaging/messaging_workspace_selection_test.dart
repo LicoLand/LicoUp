@@ -23,6 +23,7 @@ import '../layout/fixtures/production_client_shell_fixture.dart';
 import '../layout/fixtures/layout_destination_presentation_fixture.dart';
 import '../support/agent_conversation_workspace_fixture.dart';
 import '../support/fake_conversation_transport.dart';
+import '../support/presentation_source_overrides.dart';
 
 void main() {
   testWidgets(
@@ -51,6 +52,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump();
+      // The shell reads every region from runtime sources; wait for the
+      // messaging sidebar to be visible before asserting its chrome.
+      await pumpUntilVisible(
+        tester,
+        find.byKey(const Key('messaging-sidebar-search')),
+      );
 
       expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
       expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
@@ -131,16 +138,19 @@ void main() {
       await tester.pump();
       controller.selectConversationSession(session.id);
       await tester.pump();
+      // The sidebar rows follow the runtime conversation planes; wait for the
+      // selected session row instead of racing the plane admission.
+      final selectedRow = find.byKey(
+        Key('agents-sidebar-conversation-${session.id}'),
+      );
+      await pumpUntilVisible(tester, selectedRow);
 
       expect(controller.selectedConversationSession?.id, session.id);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(Key('agents-sidebar-conversation-${session.id}')),
-        findsOneWidget,
-      );
+      expect(selectedRow, findsOneWidget);
       expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
 
       await tester.tap(
@@ -176,6 +186,7 @@ void main() {
     await tester.pump();
 
     final welcomeAction = find.byKey(const Key('messaging-open-welcome'));
+    await pumpUntilVisible(tester, welcomeAction);
     expect(welcomeAction, findsOneWidget);
     expect(
       find.descendant(
@@ -253,6 +264,11 @@ void main() {
       ),
     );
     await tester.pump();
+    // The relay approval region installs one frame after the agents region.
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('canonical-group-menu-button')),
+    );
 
     expect(find.byKey(const Key('canonical-group-roster')), findsNothing);
     await tester.tap(find.byKey(const Key('canonical-group-menu-button')));
@@ -391,6 +407,8 @@ void main() {
     final conversationRow = find.byKey(
       const Key('agents-sidebar-conversation-session:codex'),
     );
+    // The relay approval region installs one frame after the agents region.
+    await pumpUntilVisible(tester, conversationRow);
     expect(conversationRow, findsOneWidget);
     expect(find.text('Historical group Agent detail'), findsOneWidget);
     expect(find.text('其它对话'), findsNothing);

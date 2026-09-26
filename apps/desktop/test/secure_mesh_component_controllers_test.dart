@@ -77,6 +77,27 @@ void main() {
   );
 
   test(
+    'file component records policy failure and explicit rejection',
+    () async {
+      controller.setFileDraft(fileName: 'report.pdf', totalSize: 16);
+      controller.setFileDestination('/approved');
+      gateway.fileRouteAllowed = false;
+
+      await controller.prepareFileTransfer();
+
+      expect(controller.fileDraft?.status, SecureMeshFileSyncStatus.failed);
+
+      gateway.fileRouteAllowed = true;
+      controller.setFileDraft(fileName: 'report.pdf', totalSize: 16);
+      controller.setFileDestination('/approved');
+      await controller.prepareFileTransfer();
+      await controller.confirmFileReceive(userConfirmed: false);
+
+      expect(controller.fileDraft?.status, SecureMeshFileSyncStatus.rejected);
+    },
+  );
+
+  test(
     'protocol component tracks KT and MLS action states independently',
     () async {
       final kt = await controller.executeKt(const SecureMeshKtRequest.status());
@@ -98,6 +119,7 @@ final class _FakeSecureMeshGateway implements SecureMeshGateway {
   int fileRouteCalls = 0;
   int fileDestinationCalls = 0;
   int fileConfirmationCalls = 0;
+  bool fileRouteAllowed = true;
   String resolvedEndpointId = '';
   String resolvedNonce = '';
 
@@ -123,8 +145,8 @@ final class _FakeSecureMeshGateway implements SecureMeshGateway {
     Map<String, dynamic> manifest,
   ) async {
     fileRouteCalls += 1;
-    return const {
-      'ok': true,
+    return {
+      'ok': fileRouteAllowed,
       'route': {'uploadOperation': 'secure_mesh.file_chunk.upload'},
     };
   }

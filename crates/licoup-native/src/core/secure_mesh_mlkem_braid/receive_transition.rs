@@ -11,7 +11,7 @@ use super::{
     erasure_decoder::ErasureDecoder,
     erasure_encoder::ErasureEncoder,
     output::MlKemBraidReceive,
-    protocol_state::ProtocolState,
+    protocol_state::{Event, ProtocolState, State, transition_state},
     transition::{checked_next_epoch, is_payload, previous_epoch, receive_output, required_data},
     wire::{MlKemBraidMessage, MlKemBraidMessageType},
 };
@@ -37,16 +37,24 @@ pub(super) fn receive_state(
                 ct1_decoder.add_chunk(required_data(message)?)?;
                 let ek_encoder = ErasureEncoder::new(&ek_vector)?;
                 // Transition (2).
-                Ok((
-                    ProtocolState::HeaderSent {
-                        epoch,
-                        auth,
-                        key_seed,
-                        ct1_decoder,
-                        ek_encoder,
+                let state = transition_state(
+                    State::KeysSampled,
+                    Event::ReceiveCt1Start,
+                    |target| match target {
+                        State::HeaderSent => Ok(ProtocolState::HeaderSent {
+                            epoch,
+                            auth,
+                            key_seed,
+                            ct1_decoder,
+                            ek_encoder,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid CT1-start payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
                     },
-                    receive_output(epoch, None)?,
-                ))
+                )?;
+                Ok((state, receive_output(epoch, None)?))
             } else {
                 Ok((
                     ProtocolState::KeysSampled {
@@ -72,16 +80,24 @@ pub(super) fn receive_state(
                 if ct1_decoder.has_message() {
                     let ct1 = ct1_decoder.take_message()?;
                     // Transition (3).
-                    return Ok((
-                        ProtocolState::Ct1Received {
-                            epoch,
-                            auth,
-                            key_seed,
-                            ct1,
-                            ek_encoder,
+                    let state = transition_state(
+                        State::HeaderSent,
+                        Event::ReceiveCt1Complete,
+                        |target| match target {
+                            State::Ct1Received => Ok(ProtocolState::Ct1Received {
+                                epoch,
+                                auth,
+                                key_seed,
+                                ct1,
+                                ek_encoder,
+                            }),
+                            target => bail!(
+                                "ML-KEM Braid complete-CT1 payload cannot construct configured target {}",
+                                target.as_str()
+                            ),
                         },
-                        receive_output(epoch, None)?,
-                    ));
+                    )?;
+                    return Ok((state, receive_output(epoch, None)?));
                 }
             }
             Ok((
@@ -107,16 +123,24 @@ pub(super) fn receive_state(
                     ErasureDecoder::new(ML_KEM_BRAID_CT2_BYTES + ML_KEM_BRAID_MAC_BYTES)?;
                 ct2_decoder.add_chunk(required_data(message)?)?;
                 // Transition (4).
-                Ok((
-                    ProtocolState::EkSentCt1Received {
-                        epoch,
-                        auth,
-                        key_seed,
-                        ct1,
-                        ct2_decoder,
+                let state = transition_state(
+                    State::Ct1Received,
+                    Event::ReceiveCt2Start,
+                    |target| match target {
+                        State::EkSentCt1Received => Ok(ProtocolState::EkSentCt1Received {
+                            epoch,
+                            auth,
+                            key_seed,
+                            ct1,
+                            ct2_decoder,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid CT2-start payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
                     },
-                    receive_output(epoch, None)?,
-                ))
+                )?;
+                Ok((state, receive_output(epoch, None)?))
             } else {
                 Ok((
                     ProtocolState::Ct1Received {
@@ -153,14 +177,25 @@ pub(super) fn receive_state(
                     auth.verify_ciphertext(epoch, &authenticated, mac)?;
                     let next_epoch = checked_next_epoch(epoch)?;
                     // Transition (5).
-                    return Ok((
-                        ProtocolState::NoHeaderReceived {
-                            epoch: next_epoch,
-                            auth,
-                            header_decoder: ErasureDecoder::new(
-                                ML_KEM_BRAID_HEADER_BYTES + ML_KEM_BRAID_MAC_BYTES,
-                            )?,
+                    let state = transition_state(
+                        State::EkSentCt1Received,
+                        Event::CompleteDecapsulation,
+                        |target| match target {
+                            State::NoHeaderReceived => Ok(ProtocolState::NoHeaderReceived {
+                                epoch: next_epoch,
+                                auth,
+                                header_decoder: ErasureDecoder::new(
+                                    ML_KEM_BRAID_HEADER_BYTES + ML_KEM_BRAID_MAC_BYTES,
+                                )?,
+                            }),
+                            target => bail!(
+                                "ML-KEM Braid decapsulation payload cannot construct configured target {}",
+                                target.as_str()
+                            ),
                         },
+                    )?;
+                    return Ok((
+                        state,
                         MlKemBraidReceive {
                             receiving_epoch: previous_epoch(epoch)?,
                             output_key: Some(output_key),
@@ -195,15 +230,23 @@ pub(super) fn receive_state(
                         &header_with_mac[ML_KEM_BRAID_HEADER_BYTES..],
                     )?;
                     // Transition (6).
-                    return Ok((
-                        ProtocolState::HeaderReceived {
-                            epoch,
-                            auth,
-                            header,
-                            ek_decoder: ErasureDecoder::new(ML_KEM_BRAID_EK_BYTES)?,
+                    let state = transition_state(
+                        State::NoHeaderReceived,
+                        Event::ReceiveHeader,
+                        |target| match target {
+                            State::HeaderReceived => Ok(ProtocolState::HeaderReceived {
+                                epoch,
+                                auth,
+                                header,
+                                ek_decoder: ErasureDecoder::new(ML_KEM_BRAID_EK_BYTES)?,
+                            }),
+                            target => bail!(
+                                "ML-KEM Braid header payload cannot construct configured target {}",
+                                target.as_str()
+                            ),
                         },
-                        receive_output(epoch, None)?,
-                    ));
+                    )?;
+                    return Ok((state, receive_output(epoch, None)?));
                 }
             }
             Ok((
@@ -253,17 +296,28 @@ fn receive_state_after_header(
                     let ek_vector = ek_decoder.take_message()?;
                     validate_encapsulation_key(&header, &ek_vector)?;
                     // Transition (10).
-                    return Ok((
-                        ProtocolState::EkReceivedCt1Sampled {
-                            epoch,
-                            auth,
-                            encaps_state,
-                            ct1,
-                            ek_vector,
-                            ct1_encoder,
-                        },
-                        receive_output(epoch, None)?,
-                    ));
+                    let state =
+                        transition_state(
+                            State::Ct1Sampled,
+                            Event::ReceiveEk,
+                            |target| match target {
+                                State::EkReceivedCt1Sampled => {
+                                    Ok(ProtocolState::EkReceivedCt1Sampled {
+                                        epoch,
+                                        auth,
+                                        encaps_state,
+                                        ct1,
+                                        ek_vector,
+                                        ct1_encoder,
+                                    })
+                                }
+                                target => bail!(
+                                    "ML-KEM Braid EK payload cannot construct configured target {}",
+                                    target.as_str()
+                                ),
+                            },
+                        )?;
+                    return Ok((state, receive_output(epoch, None)?));
                 }
             } else if is_payload(message, epoch, MlKemBraidMessageType::EkCt1Ack) {
                 ek_decoder.add_chunk(required_data(message)?)?;
@@ -273,27 +327,41 @@ fn receive_state_after_header(
                     let ct2_encoder =
                         complete_encapsulation(&auth, epoch, &encaps_state, &ct1, &ek_vector)?;
                     // Transition (9).
-                    return Ok((
-                        ProtocolState::Ct2Sampled {
-                            epoch,
-                            auth,
-                            ct2_encoder,
+                    let state = transition_state(
+                        State::Ct1Sampled,
+                        Event::CompleteAckEncapsulation,
+                        |target| match target {
+                            State::Ct2Sampled => Ok(ProtocolState::Ct2Sampled {
+                                epoch,
+                                auth,
+                                ct2_encoder,
+                            }),
+                            target => bail!(
+                                "ML-KEM Braid acknowledged encapsulation payload cannot construct configured target {}",
+                                target.as_str()
+                            ),
                         },
-                        receive_output(epoch, None)?,
-                    ));
+                    )?;
+                    return Ok((state, receive_output(epoch, None)?));
                 }
                 // Transition (8).
-                return Ok((
-                    ProtocolState::Ct1Acknowledged {
-                        epoch,
-                        auth,
-                        header,
-                        encaps_state,
-                        ct1,
-                        ek_decoder,
-                    },
-                    receive_output(epoch, None)?,
-                ));
+                let state = transition_state(State::Ct1Sampled, Event::AcknowledgeCt1, |target| {
+                    match target {
+                        State::Ct1Acknowledged => Ok(ProtocolState::Ct1Acknowledged {
+                            epoch,
+                            auth,
+                            header,
+                            encaps_state,
+                            ct1,
+                            ek_decoder,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid CT1 acknowledgement payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
+                    }
+                })?;
+                return Ok((state, receive_output(epoch, None)?));
             }
             Ok((
                 ProtocolState::Ct1Sampled {
@@ -320,14 +388,22 @@ fn receive_state_after_header(
                 let ct2_encoder =
                     complete_encapsulation(&auth, epoch, &encaps_state, &ct1, &ek_vector)?;
                 // Transition (12).
-                Ok((
-                    ProtocolState::Ct2Sampled {
-                        epoch,
-                        auth,
-                        ct2_encoder,
+                let state = transition_state(
+                    State::EkReceivedCt1Sampled,
+                    Event::CompleteEarlyEkEncapsulation,
+                    |target| match target {
+                        State::Ct2Sampled => Ok(ProtocolState::Ct2Sampled {
+                            epoch,
+                            auth,
+                            ct2_encoder,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid early-EK payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
                     },
-                    receive_output(epoch, None)?,
-                ))
+                )?;
+                Ok((state, receive_output(epoch, None)?))
             } else {
                 Ok((
                     ProtocolState::EkReceivedCt1Sampled {
@@ -358,14 +434,22 @@ fn receive_state_after_header(
                     let ct2_encoder =
                         complete_encapsulation(&auth, epoch, &encaps_state, &ct1, &ek_vector)?;
                     // Transition (11).
-                    return Ok((
-                        ProtocolState::Ct2Sampled {
-                            epoch,
-                            auth,
-                            ct2_encoder,
+                    let state = transition_state(
+                        State::Ct1Acknowledged,
+                        Event::CompleteAcknowledgedEncapsulation,
+                        |target| match target {
+                            State::Ct2Sampled => Ok(ProtocolState::Ct2Sampled {
+                                epoch,
+                                auth,
+                                ct2_encoder,
+                            }),
+                            target => bail!(
+                                "ML-KEM Braid complete-EK payload cannot construct configured target {}",
+                                target.as_str()
+                            ),
                         },
-                        receive_output(epoch, None)?,
-                    ));
+                    )?;
+                    return Ok((state, receive_output(epoch, None)?));
                 }
             }
             Ok((
@@ -388,11 +472,20 @@ fn receive_state_after_header(
             let next_epoch = checked_next_epoch(epoch)?;
             if message.epoch == next_epoch {
                 // Transition (13).
+                let state = transition_state(State::Ct2Sampled, Event::AdvanceEpoch, |target| {
+                    match target {
+                        State::KeysUnsampled => Ok(ProtocolState::KeysUnsampled {
+                            epoch: next_epoch,
+                            auth,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid next-epoch payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
+                    }
+                })?;
                 Ok((
-                    ProtocolState::KeysUnsampled {
-                        epoch: next_epoch,
-                        auth,
-                    },
+                    state,
                     MlKemBraidReceive {
                         receiving_epoch: epoch,
                         output_key: None,

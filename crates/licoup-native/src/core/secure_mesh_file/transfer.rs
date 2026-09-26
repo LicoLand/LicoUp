@@ -6,12 +6,16 @@ use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 
+use crate::state_machines::security_file_transfer::{
+    self, Event as TransferEvent, State as TransferPhase,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SecureMeshQueuedFileTransfer {
     recipient_endpoint_hash: String,
     state: SecureMeshFileTransferState,
     queued_ciphertext_bytes: usize,
-    receive_confirmed: bool,
+    phase: TransferPhase,
 }
 
 #[derive(Debug)]
@@ -78,7 +82,7 @@ impl SecureMeshFileTransferQueue {
                 recipient_endpoint_hash: hash_bytes(recipient_endpoint_id.as_bytes()),
                 state: start_file_transfer(manifest)?,
                 queued_ciphertext_bytes: 0,
-                receive_confirmed: false,
+                phase: security_file_transfer::INITIAL,
             },
         );
         self.order.push_back(transfer_id.clone());
@@ -112,6 +116,13 @@ impl SecureMeshFileTransferQueue {
             );
         }
         let report = record_file_chunk_receipt(&mut transfer.state, encrypted)?;
+        if report.complete && transfer.phase == TransferPhase::Receiving {
+            transfer.phase =
+                security_file_transfer::transition(transfer.phase, TransferEvent::CompleteChunks)
+                    .ok_or_else(|| {
+                    anyhow!("secure mesh file completion transition is not configured")
+                })?;
+        }
         if !already_received {
             transfer.queued_ciphertext_bytes += ciphertext_bytes;
             self.queued_ciphertext_bytes += ciphertext_bytes;
@@ -128,7 +139,21 @@ impl SecureMeshFileTransferQueue {
             file_transfer_resume_report(&transfer.state)?.complete,
             "secure mesh file transfer cannot be confirmed before complete"
         );
-        transfer.receive_confirmed = true;
+        if transfer.phase == TransferPhase::CompleteAwaitingConfirmation {
+            transfer.phase =
+                security_file_transfer::transition(transfer.phase, TransferEvent::ConfirmReceive)
+                    .ok_or_else(|| {
+                    anyhow!("secure mesh file confirmation transition is not configured")
+                })?;
+        } else {
+            ensure!(
+                matches!(
+                    transfer.phase,
+                    TransferPhase::ConfirmedAwaitingAck | TransferPhase::Acknowledged
+                ),
+                "secure mesh file transfer confirmation phase is invalid"
+            );
+        }
         Ok(())
     }
 
@@ -142,21 +167,34 @@ impl SecureMeshFileTransferQueue {
             .get_mut(transfer_id)
             .ok_or_else(|| anyhow!("secure mesh file transfer is not queued"))?;
         ensure!(
-            transfer.receive_confirmed,
+            matches!(
+                transfer.phase,
+                TransferPhase::ConfirmedAwaitingAck | TransferPhase::Acknowledged
+            ),
             "secure mesh file transfer requires receive confirmation before ACK"
         );
-        acknowledge_file_transfer(&mut transfer.state, acknowledged_at)
+        let report = acknowledge_file_transfer(&mut transfer.state, acknowledged_at)?;
+        if transfer.phase == TransferPhase::ConfirmedAwaitingAck {
+            transfer.phase =
+                security_file_transfer::transition(transfer.phase, TransferEvent::Acknowledge)
+                    .ok_or_else(|| {
+                        anyhow!("secure mesh file acknowledgment transition is not configured")
+                    })?;
+        }
+        Ok(report)
     }
 
     pub fn purge_acknowledged(&mut self, transfer_id: &str) -> Result<usize> {
         let transfer = self
             .transfers
-            .get(transfer_id)
+            .get_mut(transfer_id)
             .ok_or_else(|| anyhow!("secure mesh file transfer is not queued"))?;
         ensure!(
             file_transfer_resume_report(&transfer.state)?.purge_local_ciphertext,
             "secure mesh file transfer cannot be purged before ACK"
         );
+        transfer.phase = security_file_transfer::transition(transfer.phase, TransferEvent::Remove)
+            .ok_or_else(|| anyhow!("secure mesh file removal transition is not configured"))?;
         let purged_bytes = transfer.queued_ciphertext_bytes;
         self.transfers.remove(transfer_id);
         self.order.retain(|queued| queued != transfer_id);

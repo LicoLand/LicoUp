@@ -1,0 +1,39 @@
+{
+  "machines": [
+    {
+      "id": "agent.claude-transport",
+      "rust_module": "claude_transport",
+      "states": [
+        {
+          "id": "live"
+        },
+        {
+          "id": "closing"
+        },
+        {
+          "id": "closed"
+        }
+      ],
+      "events": [
+        "begin-closing",
+        "close"
+      ],
+      "initial": "live",
+      "terminal": [
+        "closed"
+      ],
+      "transitions": [
+        {
+          "from_state": "live",
+          "event": "begin-closing",
+          "to_state": "closing"
+        },
+        {
+          "from_state": "closing",
+          "event": "close",
+          "to_state": "closed"
+        }
+      ]
+    }
+  ]
+}

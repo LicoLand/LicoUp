@@ -4,6 +4,7 @@ import { BRIDGE_PACKAGING_RELEASE_MODULES } from "./client-module-catalog/groups
 import { FLUTTER_MODULES } from "./client-module-catalog/groups/flutter.mjs";
 import { REGRESSION_MODULES } from "./client-module-catalog/groups/regression.mjs";
 import { RUST_CORE_MODULES } from "./client-module-catalog/groups/rust-core.mjs";
+import { RUST_CRATE_MODULES } from "./client-module-catalog/groups/rust-crates.mjs";
 import { RUST_CATALOG_CONVERGENCE_MODULES } from "./client-module-catalog/groups/rust-catalog-convergence.mjs";
 import { RUST_DOMAIN_MODULES } from "./client-module-catalog/groups/rust-domain.mjs";
 import { RUST_PLATFORM_MODULES } from "./client-module-catalog/groups/rust-platform.mjs";
@@ -12,6 +13,7 @@ const CLIENT_MODULE_GROUPS = Object.freeze([
   REGRESSION_MODULES,
   FLUTTER_MODULES,
   RUST_CATALOG_CONVERGENCE_MODULES,
+  RUST_CRATE_MODULES,
   RUST_DOMAIN_MODULES,
   RUST_CORE_MODULES,
   RUST_PLATFORM_MODULES,

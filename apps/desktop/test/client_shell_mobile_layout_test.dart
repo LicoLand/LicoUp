@@ -34,6 +34,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'presentation/composed_client_shell_test_helper.dart';
 
+Future<void> _pumpUntilVisible(WidgetTester tester, Finder target) async {
+  // Runtime Sources open asynchronously. Wait for the public surface rather
+  // than assuming a fixed number of synchronous projection rebuilds; this is
+  // readiness, not a real-time performance assertion.
+  for (var frame = 0; frame < 60; frame += 1) {
+    if (target.evaluate().isNotEmpty) return;
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(target, findsWidgets, reason: 'composed shell did not become ready');
+}
+
 void main() {
   testWidgets('mobile runtime keeps the phone shell under a desktop theme', (
     tester,
@@ -77,7 +88,10 @@ void main() {
       ),
     );
 
-    await tester.pump();
+    await _pumpUntilVisible(
+      tester,
+      find.byKey(const Key('mobile-agent-list-item-codex')),
+    );
     expect(
       find.byKey(const Key('dashboard-mobile-menu-button')),
       findsOneWidget,
@@ -427,7 +441,7 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await _pumpUntilVisible(tester, find.byKey(pairedDeviceKey));
 
     expect(find.byKey(pairedDeviceKey), findsOneWidget);
     expect(find.byKey(const Key('mobile-desktop-agent-codex')), findsNothing);
@@ -484,7 +498,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await _pumpUntilVisible(tester, find.byType(MobileRelayPanel));
 
       expect(controller.currentSection, ClientSection.mobileRelay);
       expect(
@@ -537,7 +551,10 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await _pumpUntilVisible(
+        tester,
+        find.byKey(const Key('desktop-mobile-compact-navigation-trigger')),
+      );
 
       await tester.tap(
         find.byKey(const Key('desktop-mobile-compact-navigation-trigger')),
@@ -599,7 +616,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await _pumpUntilVisible(tester, find.byType(MobileRelayPanel));
 
       expect(controller.currentSection, ClientSection.mobileRelay);
       expect(
@@ -652,7 +669,10 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await _pumpUntilVisible(
+        tester,
+        find.byKey(const Key('dashboard-mobile-menu-button')),
+      );
 
       await tester.tap(find.byKey(const Key('dashboard-mobile-menu-button')));
       await tester.pumpAndSettle();

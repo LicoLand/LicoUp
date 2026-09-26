@@ -1,4 +1,5 @@
 import 'support/agents_workspace_test_harness.dart';
+import '../support/presentation_source_overrides.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
 
 void registerAgentsWorkspaceStateScenarios() {
@@ -215,6 +216,7 @@ void registerAgentsWorkspaceStateScenarios() {
     );
 
     await tester.pump();
+    await pumpUntilVisible(tester, find.text('0 条对话'));
 
     expect(find.text('历史对话'), findsNothing);
     expect(find.text('搜索历史对话'), findsNothing);

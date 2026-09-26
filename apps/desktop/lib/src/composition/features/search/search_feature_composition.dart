@@ -3,6 +3,7 @@ import 'dart:ui' show Locale;
 
 import 'package:flutter/material.dart' show Icons;
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -14,8 +15,10 @@ import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/search/search_effect.dart';
 import 'package:licoup/src/presentation/search/search_intent.dart';
 import 'package:licoup/src/presentation/search/search_projection.dart';
+import 'package:licoup/src/presentation/search/search_providers.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
 import 'package:licoup/src/projections/search/search_projection_producer.dart';
+import 'package:licoup/src/projections/search/search_presentation_source.dart';
 
 final class SearchFeatureComposition {
   SearchFeatureComposition(
@@ -37,6 +40,7 @@ final class SearchFeatureComposition {
       controller,
       readCatalog: _catalog.read,
     );
+    _source = SearchPresentationSource(projection: _projection);
     _effects = _SearchEffects();
     _intents = _SearchIntents(
       controller,
@@ -55,10 +59,15 @@ final class SearchFeatureComposition {
 
   late final _SearchCatalog _catalog;
   late final SearchProjectionProducer _projection;
+  late final SearchPresentationSource _source;
   late final _SearchEffects _effects;
   late final _SearchIntents _intents;
   late final SearchBinding binding;
   Future<void>? _disposal;
+
+  List<Override> get providerOverrides => <Override>[
+    searchSourceProvider.overrideWithValue(_source),
+  ];
 
   Future<void> close() => _disposal ??= _close();
 

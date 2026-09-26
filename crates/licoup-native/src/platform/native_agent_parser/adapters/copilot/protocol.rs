@@ -13,6 +13,9 @@ use std::collections::VecDeque;
 use std::path::Path;
 use uuid::Uuid;
 
+pub(super) use crate::state_machines::copilot_protocol::State as ProtocolPhase;
+use crate::state_machines::copilot_protocol::{self as protocol_machine, Event as ProtocolEvent};
+
 pub(super) const INITIALIZE_REQUEST_ID: i64 = 1;
 pub(super) const SESSION_REQUEST_ID: i64 = 2;
 pub(super) const PROMPT_REQUEST_ID: i64 = 3;
@@ -41,15 +44,6 @@ pub(super) struct ParsedProtocolFrame {
     pub(super) effects: Vec<ProtocolEffect>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ProtocolPhase {
-    AwaitInitialize,
-    AwaitSession,
-    AwaitConfig,
-    AwaitPrompt,
-    Finished,
-}
-
 #[derive(Debug)]
 pub(super) struct AcpProtocol {
     pub(super) parser: AcpParserKind,
@@ -69,11 +63,21 @@ pub(super) struct AcpProtocol {
 }
 
 impl AcpProtocol {
+    fn advance(&mut self, event: ProtocolEvent) {
+        self.phase = protocol_machine::transition(self.phase, event).unwrap_or_else(|| {
+            panic!(
+                "invalid ACP protocol transition: {} + {}",
+                self.phase.as_str(),
+                event.as_str()
+            )
+        });
+    }
+
     pub(super) fn new(config: ProtocolConfig, parser: AcpParserKind) -> Self {
         Self {
             parser,
             config,
-            phase: ProtocolPhase::AwaitInitialize,
+            phase: protocol_machine::INITIAL,
             capabilities: CapabilityProbe::default(),
             session_id: None,
             config_options: Vec::new(),
@@ -141,7 +145,7 @@ impl AcpProtocol {
         let message = match decoded {
             Ok(message) => message,
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return ParsedProtocolFrame {
                     effects: vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                         error,
@@ -159,7 +163,7 @@ impl AcpProtocol {
         let response = match acp::validate_initialize_response(message, INITIALIZE_REQUEST_ID) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure_from_response(
                     message,
                     "acp_initialize_rejected",
@@ -169,7 +173,7 @@ impl AcpProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                     error,
                     acp::INITIALIZE_METHOD,
@@ -178,11 +182,11 @@ impl AcpProtocol {
         };
         self.capabilities = CapabilityProbe::from_initialize(&response);
 
-        self.phase = ProtocolPhase::AwaitSession;
+        self.advance(ProtocolEvent::Initialized);
         let plan = match select_acp_session_plan(&self.config, &self.capabilities) {
             Ok(plan) => plan,
             Err(failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         };
@@ -210,7 +214,7 @@ impl AcpProtocol {
         match request {
             Ok(request) => vec![ProtocolEffect::Send(request)],
             Err(failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 vec![ProtocolEffect::Fail(
                     failure.with_session(self.session_id.as_deref()),
                 )]
@@ -222,7 +226,7 @@ impl AcpProtocol {
         let plan = match select_acp_session_plan(&self.config, &self.capabilities) {
             Ok(plan) => plan,
             Err(failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         };
@@ -233,7 +237,7 @@ impl AcpProtocol {
         ) {
             Ok(response) => response,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure_from_response(
                     message,
                     "acp_session_rejected",
@@ -243,7 +247,7 @@ impl AcpProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(
                     ProtocolFailure::from_acp(error, "session/setup")
                         .with_session(self.session_id.as_deref()),
@@ -253,7 +257,7 @@ impl AcpProtocol {
         self.session_id = match reconcile_acp_session_id(&self.config, plan, response.session_id) {
             Ok(session_id) => Some(session_id),
             Err(failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         };
@@ -266,7 +270,7 @@ impl AcpProtocol {
         ) {
             Ok(changes) => self.pending_changes = changes,
             Err(failure) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure)];
             }
         }
@@ -279,11 +283,11 @@ impl AcpProtocol {
             self.next_config_request_id += 1;
             let request = config_request(request_id, self.session_id.as_deref(), &change);
             self.current_change = Some(change);
-            self.phase = ProtocolPhase::AwaitConfig;
+            self.advance(ProtocolEvent::RequestConfig);
             return vec![ProtocolEffect::Send(request)];
         }
         self.current_change = None;
-        self.phase = ProtocolPhase::AwaitPrompt;
+        self.advance(ProtocolEvent::RequestPrompt);
         let request = self
             .session_id
             .as_deref()
@@ -303,7 +307,7 @@ impl AcpProtocol {
 
     pub(super) fn handle_config_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if message.get("error").is_some() {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(failure_from_response(
                 message,
                 "acp_setting_rejected",
@@ -317,7 +321,7 @@ impl AcpProtocol {
             .and_then(|result| result.get("configOptions"))
             .and_then(Value::as_array)
         else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(
                 ProtocolFailure::new(
                     "acp_setting_response_invalid",
@@ -331,7 +335,7 @@ impl AcpProtocol {
         if let Some(change) = self.current_change.as_ref()
             && !setting_applied(&self.config_options, change)
         {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(
                 ProtocolFailure::new(
                     "acp_setting_not_applied",
@@ -360,7 +364,7 @@ impl AcpProtocol {
             return match self.session_update(message, None) {
                 Ok(_) => Vec::new(),
                 Err(error) => {
-                    self.phase = ProtocolPhase::Finished;
+                    self.advance(ProtocolEvent::Fail);
                     vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
                         error,
                         acp::SESSION_UPDATE_METHOD,
@@ -371,7 +375,7 @@ impl AcpProtocol {
         let update = match self.session_update(message, Some(expected_session_id)) {
             Ok(update) => update,
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(
                     ProtocolFailure::from_acp(error, acp::SESSION_UPDATE_METHOD)
                         .with_session(self.session_id.as_deref()),
@@ -420,7 +424,7 @@ impl AcpProtocol {
         let id = request.id;
         if method == "session/request_permission" {
             if request.session_id.as_deref() != self.session_id.as_deref() {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![
                     ProtocolEffect::Send(json!({
                         "jsonrpc": "2.0",
@@ -474,7 +478,7 @@ impl AcpProtocol {
             }
             return effects;
         }
-        self.phase = ProtocolPhase::Finished;
+        self.advance(ProtocolEvent::Fail);
         vec![
             ProtocolEffect::Send(json!({
                 "jsonrpc": "2.0",
@@ -496,7 +500,7 @@ impl AcpProtocol {
         let stop_reason = match self.prompt_stop_reason(message) {
             Ok(stop_reason) => stop_reason,
             Err(error) if error.is_remote_error() => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(failure_from_response(
                     message,
                     "acp_prompt_rejected",
@@ -506,7 +510,7 @@ impl AcpProtocol {
                 ))];
             }
             Err(error) => {
-                self.phase = ProtocolPhase::Finished;
+                self.advance(ProtocolEvent::Fail);
                 return vec![ProtocolEffect::Fail(
                     ProtocolFailure::from_acp(error, acp::SESSION_PROMPT_METHOD)
                         .with_session(self.session_id.as_deref()),
@@ -516,12 +520,12 @@ impl AcpProtocol {
         if stop_reason == acp::AcpStopReason::Cancelled
             && let Some(mut failure) = self.interaction_failure.take()
         {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             failure.turn_status = Some(stop_reason.as_str().to_owned());
             failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
-        self.phase = ProtocolPhase::Finished;
+        self.advance(ProtocolEvent::PromptCompleted);
         let stop_reason = stop_reason.as_str().to_owned();
         if let Some(mut failure) = self.interaction_failure.take() {
             failure.turn_status = Some(stop_reason);

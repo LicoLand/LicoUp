@@ -1,5 +1,7 @@
 # Lico Arc Candidate Station Adapter
 
+Updated: 2026-09-25
+
 English (normative) ·
 [简体中文](licoarc-station-adapter.zh-CN.md) ·
 [Protocol index](README.md)
@@ -18,10 +20,9 @@ contract. LicoUp owns conforming local execution, private keys, Provider
 configuration, plaintext, history, backups, user trust, approvals, and local
 effects.
 
-The [current retiring endpoint-protection Preview](../STATUS.md) is a LicoUp
-implementation, not a Lico Arc Profile. It has no future interoperability
-promise and is to be retired directly when a complete pinned Lico Arc Protocol
-Line replaces it. This is independent of the current `licoarc.relay.v1` outer
+The [current endpoint-protection Preview](../STATUS.md) is a LicoUp
+implementation, not a Lico Arc Profile or stable interoperability contract.
+This is independent of the current `licoarc.relay.v1` outer
 adapter described below, which remains an implemented and locally verified
 Candidate adapter.
 
@@ -98,12 +99,3 @@ records.
 This scenario is candidate interoperability evidence only. It does not publish
 Lico Arc Protocol, release LicoUp or BadTower, declare platform support, or
 prove that an official network is operating.
-
-## Migration state
-
-The retired client-specific station envelope/API, route family,
-service-session scope, configuration, fixtures, and documentation are removed.
-There is no dual station-wire compatibility mode or station translation
-gateway. That completed station migration does not mean that the
-current retiring endpoint-protection Preview has already been removed or
-accepted as a Lico Arc Profile.

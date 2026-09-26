@@ -20,26 +20,18 @@
 /// Common text contains such bytes — `回` is E5 9B 9E, `集` is E9 9B 86, `盖`
 /// is E7 9B 96 — so the damage lands in ordinary prose, not just in output that
 /// happens to carry escape sequences.
+use crate::state_machines::ansi_parser::{self, Event, State};
+
 pub(super) struct AnsiStripper {
-    state: StripState,
+    state: State,
     out: Vec<u8>,
     flushed: usize,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StripState {
-    Ground,
-    Escape,
-    Csi,
-    Osc,
-    Dcs,
-    Other,
 }
 
 impl AnsiStripper {
     pub(super) fn new() -> Self {
         Self {
-            state: StripState::Ground,
+            state: ansi_parser::INITIAL,
             out: Vec::new(),
             flushed: 0,
         }
@@ -56,50 +48,62 @@ impl AnsiStripper {
     }
 
     pub(super) fn finish(&mut self) -> String {
-        self.state = StripState::Ground;
+        self.state = ansi_parser::transition(self.state, Event::Finish)
+            .expect("ANSI finish transition is defined for every state");
         let text = String::from_utf8_lossy(&self.out[self.flushed..]).into_owned();
         self.flushed = self.out.len();
         text
     }
 
     fn step(&mut self, byte: u8) {
-        match self.state {
-            StripState::Ground => match byte {
-                0x1B => self.state = StripState::Escape,
-                0x0D => {} // drop CR
-                _ => self.out.push(byte),
+        let event = match self.state {
+            State::Ground => match byte {
+                0x1B => Event::Escape,
+                0x0D => Event::CarriageReturn,
+                _ => {
+                    self.out.push(byte);
+                    Event::TextByte
+                }
             },
-            StripState::Escape => match byte {
-                b'[' => self.state = StripState::Csi,
-                b']' => self.state = StripState::Osc,
-                b'P' | b'^' | b'_' => self.state = StripState::Dcs,
-                b'\\' => self.state = StripState::Ground,
-                0x20..=0x2F => self.state = StripState::Other,
+            State::Escape => match byte {
+                b'[' => Event::CsiStart,
+                b']' => Event::OscStart,
+                b'P' | b'^' | b'_' => Event::DcsStart,
+                b'\\' => Event::StringTerminator,
+                0x20..=0x2F => Event::Intermediate,
                 // Single-char escapes (7 8 D E M c = >) — dropped.
-                _ => self.state = StripState::Ground,
+                _ => Event::SingleEscape,
             },
-            StripState::Csi => {
+            State::Csi => {
                 if (0x40..=0x7E).contains(&byte) {
-                    self.state = StripState::Ground;
+                    Event::SequenceFinal
+                } else {
+                    Event::SequenceData
                 }
             }
-            StripState::Osc => match byte {
-                0x07 => self.state = StripState::Ground,
+            State::Osc => match byte {
+                0x07 => Event::Bell,
                 // ESC \ (ST) closes an OSC.
-                0x1B => self.state = StripState::Escape,
-                _ => {}
+                0x1B => Event::Escape,
+                _ => Event::SequenceData,
             },
-            StripState::Dcs => {
+            State::Dcs => {
                 if byte == 0x1B {
-                    self.state = StripState::Escape;
+                    Event::Escape
+                } else {
+                    Event::SequenceData
                 }
             }
-            StripState::Other => {
+            State::Other => {
                 if (0x30..=0x7E).contains(&byte) {
-                    self.state = StripState::Ground;
+                    Event::SequenceFinal
+                } else {
+                    Event::SequenceData
                 }
             }
-        }
+        };
+        self.state = ansi_parser::transition(self.state, event)
+            .expect("ANSI byte classification must resolve to a configured transition");
     }
 
     /// Holds back an incomplete trailing UTF-8 sequence so a chunk boundary

@@ -1,3 +1,5 @@
+Updated: 2026-09-25
+
 <div align="center">
 
 <img src="docs/assets/brand/readme-banner.svg" alt="LicoUp — orbit ice-cream cup brand banner" width="720">
@@ -16,7 +18,7 @@ English · [简体中文](README.zh-CN.md)
 
 LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. Sensitive runtime data stays on the device. Default scenarios do not upload plaintext user content.
 
-Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
+Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. The path supports agent collaboration across multiple stations and identities.
 
 ## Installation
 
@@ -25,7 +27,7 @@ Applications:
 
 [LicoUp-macos-arm64.dmg](https://github.com/LicoLand/LicoUp/releases/latest/download/LicoUp-macos-arm64.dmg)
 
-Digests, source archives, and future platform packages are on the
+Digests and source archives are on the
 [latest release](https://github.com/LicoLand/LicoUp/releases/latest) page.
 
 To build from source instead:
@@ -48,17 +50,6 @@ npm run client:test
 > supported release. Check the [compatibility matrix](docs/COMPATIBILITY.md)
 > before relying on a platform or feature.
 
-## Perspective
-
-Building a distributed collaboration network for the agentic era — where humans and agents across endpoints connect and create freely, while privacy and ownership remain firmly with the individual.
-
-| Principle | Idea |
-| --- | --- |
-| **Diverse** | Work with different agents, devices, and local setups. |
-| **Connected** | Move between local agents and trusted peer devices with less friction. |
-| **Open** | Keep the source, client protocols, and contribution path visible. |
-| **Integrated** | Give different tools one simple client experience. |
-
 ## Capabilities
 
 | Capability | Description |
@@ -73,8 +64,7 @@ Building a distributed collaboration network for the agentic era — where human
 
 **Local first.** Sensitive runtime data stays on the device. Default client
 scenarios upload no local paths, logs, conversation history, usage records,
-credentials, or plaintext user content. Provider-managed history is a separate
-authorization-bound path.
+credentials, or plaintext user content.
 
 **Endpoint-protected peer transfer (preview).** Content is encrypted with the
 selected peer's keys before it leaves the device; the receiving endpoint
@@ -82,8 +72,7 @@ authenticates and verifies it before use. The station is untrusted — it
 supplies no algorithms, keys, or security policy, and its receipts are only
 delivery hints. Lico Arc owns the wire-observable protocol semantics; LicoUp
 keeps private keys, plaintext, history, backups, trust, and approvals. The
-current Preview is not a Lico Arc Profile and retires directly when a pinned
-Lico Arc Protocol Line replaces it.
+current Preview is not a Lico Arc Profile or a stable compatibility profile.
 
 ```mermaid
 flowchart LR
@@ -93,15 +82,6 @@ flowchart LR
     D --> E["Decrypt on Client B"]
     E --> F["Client B<br/>local data"]
 ```
-
-**Provider-managed history (planned).** Recovery restores every retained history
-object still available under the provider authorization. Provider access rules
-still apply, so recovery cannot bypass access or recreate missing,
-deleted, or expired objects. Identity recovery material is separately
-protected and does not lock default reads. Replacement-device recovery commits
-prepared identity authority and complete available history together. LicoUp
-does not use Stations for this history path. This path makes no mandatory
-notary or endpoint-evidence promise.
 
 **Only with your authorization.** LicoUp acts only under your authorization.
 For peer transfers, protected content leaves the client only as an
@@ -122,6 +102,7 @@ choose Telegram or another external messenger as a trusted channel.
 | Release packages | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
 | Security | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
 | Contributing | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
+| Development and operations | [Runbook](docs/RUNBOOK.md) | [开发与运维手册](docs/RUNBOOK.zh-CN.md) |
 
 [Product definition](PRODUCT.md) · [Changelog](CHANGELOG.md) ·
 [Code of conduct](CODE_OF_CONDUCT.md) · Licensed under

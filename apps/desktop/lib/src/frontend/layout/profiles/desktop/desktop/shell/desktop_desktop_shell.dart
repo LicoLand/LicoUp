@@ -194,6 +194,15 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
   }
 
   DesktopAppId _appForSection(ClientSection section) {
+    if (section == ClientSection.agentHub) {
+      final pane = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
+        ClientSection.agentHub,
+        LayoutStateChannels.featureSection,
+      );
+      return pane is LayoutTabState && pane.index == 1
+          ? DesktopAppId.projectCollaboration
+          : DesktopAppId.agentHub;
+    }
     if (section == ClientSection.models) {
       final pane = LayoutScope.maybeOf(context)?.state.readIfDeclaredFor(
         ClientSection.models,
@@ -298,6 +307,13 @@ final class _DesktopDesktopShellState extends State<DesktopDesktopShell> {
     _noteLaunched(app);
     if (_dock.ready) _dock.openApp(app);
     _writeModelsPane(app);
+    if (desktopAppSection(app) == ClientSection.agentHub) {
+      LayoutScope.maybeOf(context)?.state.writeIfDeclaredFor(
+        ClientSection.agentHub,
+        LayoutStateChannels.featureSection,
+        LayoutTabState(app == DesktopAppId.projectCollaboration ? 1 : 0),
+      );
+    }
     setState(() {
       _leftContent = _LeftApp(app);
       _leftCollapsed = false;

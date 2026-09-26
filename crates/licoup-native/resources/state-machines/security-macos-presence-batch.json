@@ -1,0 +1,16 @@
+{
+  "machines": [
+    {
+      "id": "security.macos-presence-batch",
+      "rust_module": "security_macos_presence_batch",
+      "states": [{ "id": "pending" }, { "id": "ready" }, { "id": "failed" }],
+      "events": ["approve", "fail"],
+      "initial": "pending",
+      "terminal": ["ready", "failed"],
+      "transitions": [
+        { "from_state": "pending", "event": "approve", "to_state": "ready" },
+        { "from_state": "pending", "event": "fail", "to_state": "failed" }
+      ]
+    }
+  ]
+}

@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/composition/client_app_composition.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
@@ -19,6 +21,7 @@ import 'package:licoup/src/contracts/presentation/presentation_preferences.dart'
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_management.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shell/client_shell.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/presentation/layout/built_in_layout_catalog.dart';
 
@@ -169,6 +172,7 @@ final class ProductionClientShellFixture {
     required Key semanticsKey,
     required Key repaintBoundaryKey,
     bool disableAnimations = true,
+    bool providerScopeAboveNavigator = false,
   }) {
     final theme =
         buildLicoTheme(
@@ -183,7 +187,24 @@ final class ProductionClientShellFixture {
         ? const EdgeInsets.only(top: 24, bottom: 16)
         : EdgeInsets.zero;
 
-    return MaterialApp(
+    Widget frame(Widget child) => MediaQuery(
+      data: MediaQueryData(
+        size: size,
+        devicePixelRatio: 1,
+        textScaler: TextScaler.noScaling,
+        platformBrightness: brightness,
+        padding: safePadding,
+        viewPadding: safePadding,
+        disableAnimations: disableAnimations,
+      ),
+      child: Semantics(
+        key: semanticsKey,
+        container: true,
+        explicitChildNodes: true,
+        child: RepaintBoundary(key: repaintBoundaryKey, child: child),
+      ),
+    );
+    MaterialApp app(Widget home) => MaterialApp(
       debugShowCheckedModeBanner: false,
       restorationScopeId: 'production-layout-baseline',
       locale: const Locale('en'),
@@ -194,30 +215,28 @@ final class ProductionClientShellFixture {
         GlobalWidgetsLocalizations.delegate,
       ],
       theme: theme,
-      home: MediaQuery(
-        data: MediaQueryData(
-          size: size,
-          devicePixelRatio: 1,
-          textScaler: TextScaler.noScaling,
-          platformBrightness: brightness,
-          padding: safePadding,
-          viewPadding: safePadding,
-          disableAnimations: disableAnimations,
+      home: frame(home),
+    );
+    if (!providerScopeAboveNavigator) {
+      return app(
+        composedClientShell(
+          controller,
+          onComposed: (composition) {
+            _layoutStateStore = composition.renderer.layoutStateStore;
+            _closeComposition = composition.dispose;
+          },
         ),
-        child: Semantics(
-          key: semanticsKey,
-          container: true,
-          explicitChildNodes: true,
-          child: RepaintBoundary(
-            key: repaintBoundaryKey,
-            child: composedClientShell(
-              controller,
-              onComposed: (composition) {
-                _layoutStateStore = composition.renderer.layoutStateStore;
-                _closeComposition = composition.dispose;
-              },
-            ),
-          ),
+      );
+    }
+    final composition = ClientAppComposition(controller: controller);
+    _layoutStateStore = composition.renderer.layoutStateStore;
+    _closeComposition = composition.dispose;
+    return ProviderScope(
+      overrides: composition.presentationOverrides,
+      child: app(
+        ClientShell(
+          binding: composition.binding,
+          renderer: composition.renderer,
         ),
       ),
     );

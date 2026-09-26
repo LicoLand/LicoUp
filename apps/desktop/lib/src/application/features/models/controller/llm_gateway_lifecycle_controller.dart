@@ -1,14 +1,15 @@
 import 'dart:async';
 
+import 'package:licoup/src/application/generated/state_machines.g.dart';
 import 'package:licoup/src/application/state/application_signal.dart';
+export 'package:licoup/src/application/generated/state_machines.g.dart'
+    show LlmGatewayRuntimeState;
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 
 const int defaultLlmGatewayPort = 15722;
 const String llmGatewayPortSettingsKey = 'llmGatewayPort';
-
-enum LlmGatewayRuntimeState { unknown, running, stopped, unhealthy }
 
 enum LlmGatewayNoticeKind { recovering, recoveryFailed }
 
@@ -55,7 +56,7 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
   int _recoveryAttempt = 0;
   int _autoRevealRevision = 0;
   int _port = defaultLlmGatewayPort;
-  LlmGatewayRuntimeState _state = LlmGatewayRuntimeState.unknown;
+  LlmGatewayRuntimeState _state = llmGatewayRuntimeStateInitial;
   LlmGatewayNoticeKind? _notice;
   Map<String, dynamic>? _lastReport;
 
@@ -83,7 +84,7 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
         initializationFailure = 'service_${_state.name}';
       }
     } on Object catch (error) {
-      _state = LlmGatewayRuntimeState.unknown;
+      _transition(LlmGatewayRuntimeEvent.reportUnknown);
       initializationFailure = _safeErrorCode(error);
     } finally {
       _setBusy(false);
@@ -112,7 +113,7 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
     try {
       _applyReport(await _runService('status'));
     } on Object {
-      _state = LlmGatewayRuntimeState.unknown;
+      _transition(LlmGatewayRuntimeEvent.reportUnknown);
       _managed = false;
       _lastReport = null;
       _notify();
@@ -290,12 +291,12 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
   void _applyReport(Map<String, dynamic> report) {
     _lastReport = Map.unmodifiable(report);
     _managed = report['managed'] == true;
-    _state = switch ('${report['state']}') {
-      'running' => LlmGatewayRuntimeState.running,
-      'stopped' => LlmGatewayRuntimeState.stopped,
-      'unhealthy' => LlmGatewayRuntimeState.unhealthy,
-      _ => LlmGatewayRuntimeState.unknown,
-    };
+    _transition(switch ('${report['state']}') {
+      'running' => LlmGatewayRuntimeEvent.reportRunning,
+      'stopped' => LlmGatewayRuntimeEvent.reportStopped,
+      'unhealthy' => LlmGatewayRuntimeEvent.reportUnhealthy,
+      _ => LlmGatewayRuntimeEvent.reportUnknown,
+    });
     if (_state == LlmGatewayRuntimeState.running) {
       _observedRunning = true;
     }
@@ -304,6 +305,10 @@ final class LlmGatewayLifecycleController extends ApplicationStateOwner {
       _port = reportedPort;
     }
     _notify();
+  }
+
+  void _transition(LlmGatewayRuntimeEvent event) {
+    _state = transitionLlmGatewayRuntimeState(_state, event)!;
   }
 
   Future<int> _settingsPort() async {

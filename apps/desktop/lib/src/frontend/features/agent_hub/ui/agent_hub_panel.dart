@@ -3,10 +3,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_install_dialog.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_detail_tabs.dart';
 import 'package:licoup/src/frontend/features/agent_hub/ui/agent_hub_uninstall_dialog.dart';
@@ -23,16 +25,17 @@ import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_binding.dart';
 import 'package:licoup/src/presentation/plugin_management/plugin_management_intent.dart';
-import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_providers.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_intent.dart';
-import 'package:licoup/src/presentation/skill_hub/skill_hub_projection.dart';
+import 'package:licoup/src/presentation/skill_hub/skill_hub_providers.dart';
 import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_effect.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_intent.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 const double _hubCardInset = LicoContentSpacing.compact;
@@ -324,10 +327,10 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     return EffectListener<AgentHubEffect>(
       source: widget.binding.effects,
       onEffect: _handleEffect,
-      child: ProjectionBuilder<AgentHubProjection, AgentHubProjection>(
-        source: widget.binding.projection,
-        select: (projection) => projection,
-        builder: (context, projection) => _buildProjection(projection),
+      child: AsyncRegion<AgentHubProjection, IntentSink<AgentHubIntent>>(
+        source: agentHubCatalogProjectionProvider,
+        actions: widget.binding.intents,
+        data: (context, value, _) => _buildProjection(value),
       ),
     );
   }
@@ -549,29 +552,39 @@ final class _AgentHubPanelState extends State<AgentHubPanel> {
     // Keep the same wrapper slots across selection so the embedded page state
     // survives. Only the active resource's phase participates in header updates.
     Widget observeSkills(bool pluginsBusy) {
-      final binding = widget.skills;
-      if (binding == null) {
+      if (widget.skills == null) {
         return render(pluginsBusy, false);
       }
-      return ProjectionBuilder<SkillHubProjection, bool>(
-        source: binding.projection,
-        select: (projection) =>
-            active == _AgentHubDetailDestination.skills &&
-            projection.phase == PresentationPhase.loading,
-        builder: (context, skillsBusy) => render(pluginsBusy, skillsBusy),
+      return Consumer(
+        builder: (context, ref, child) {
+          final skillsBusy = ref.watch(
+            skillHubCatalogInputsProvider.select(
+              (value) =>
+                  active == _AgentHubDetailDestination.skills &&
+                  value.hasValue &&
+                  value.requireValue.phase == PresentationPhase.loading,
+            ),
+          );
+          return render(pluginsBusy, skillsBusy);
+        },
       );
     }
 
-    final plugins = widget.plugins;
-    if (plugins == null) {
+    if (widget.plugins == null) {
       return observeSkills(false);
     }
-    return ProjectionBuilder<PluginManagementProjection, bool>(
-      source: plugins.projection,
-      select: (projection) =>
-          active == _AgentHubDetailDestination.plugins &&
-          projection.phase == PresentationPhase.loading,
-      builder: (context, pluginsBusy) => observeSkills(pluginsBusy),
+    return Consumer(
+      builder: (context, ref, child) {
+        final pluginsBusy = ref.watch(
+          pluginCatalogInputsProvider.select(
+            (value) =>
+                active == _AgentHubDetailDestination.plugins &&
+                value.hasValue &&
+                value.requireValue.phase == PresentationPhase.loading,
+          ),
+        );
+        return observeSkills(pluginsBusy);
+      },
     );
   }
 }

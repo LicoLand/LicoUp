@@ -1,0 +1,15 @@
+{
+  "schema": "licoup.model-provider.v1",
+  "id": "synthetic.example",
+  "displayName": "Synthetic Custom Provider",
+  "baseUrl": "http://127.0.0.1:8099/native/v1",
+  "apiDialect": "synthetic.example/native",
+  "credentialRef": "credential:synthetic-device",
+  "configRevision": 1,
+  "catalogSource": "discovered",
+  "models": [],
+  "compat": {
+    "synthetic.example/dialect-version": "1"
+  },
+  "streamAdapter": "synthetic.example/stream"
+}

@@ -7,12 +7,12 @@ import test from "node:test";
 const root = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 
-const decision0003 = read("docs/adrs/0003-group-conversation-agent-profile.md");
-const decision0004 = read("docs/adrs/0004-assistant-authored-flexible-workflows.md");
-const decision0005 = read("docs/adrs/0005-assistant-auto-adaptation-and-deepseek-harness.md");
 const domain = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const conversationDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
-const store = read("crates/licoup-conversation/src/store/mod.rs");
+const store = [
+  "crates/licoup-conversation/src/store/mod.rs",
+  "crates/licoup-conversation/src/store/schema.rs",
+].map(read).join("\n");
 const profile = read("crates/licoup-native/src/domain/client_conversation/profile_snapshot.rs");
 const assistant = read("crates/licoup-native/src/domain/workflow_runtime/assistant.rs");
 const flywheelService = read("crates/licoup-native/src/domain/workflow_runtime/service.rs");
@@ -32,17 +32,6 @@ const FORBIDDEN_PRIVATE = [
   /machine-id/u,
   /endpoint-token/u,
 ];
-
-test("ADR 0003 is historical and ADR 0004 freezes the Assistant boundary", () => {
-  assert.match(decision0003, /# ADR 0003/u);
-  // Decision 0003 deliberately defers the concrete fields, format, and
-  // default usage to a follow-up decision.
-  assert.match(decision0003, /intentionally unspecified|follow-up decision|left open/u);
-  assert.match(decision0004, /assistant-temporary/u);
-  assert.match(decision0004, /licoup-guide/u);
-  assert.match(decision0005, /Automatic adaptation/u);
-  assert.match(decision0005, /DeepSeek Harness/u);
-});
 
 test("conversation migration v8 cuts over to intent-only Assistant Profiles idempotently", () => {
   assert.equal(conversationDomain.includes('LICOUP_GUIDE_SKILL_ID: &str = "licoup-guide"'), true);

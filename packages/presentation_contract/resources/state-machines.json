@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "dart": {
+    "output": "packages/presentation_contract/lib/src/generated/state_machines.g.dart"
+  },
+  "machines": [
+    {
+      "id": "presentation.preparation",
+      "initial": "active",
+      "states": [
+        { "id": "active" },
+        { "id": "revoked" },
+        { "id": "disposed" }
+      ],
+      "events": ["revoke", "dispose"],
+      "terminal": ["disposed"],
+      "transitions": [
+        { "from_state": "active", "event": "revoke", "to_state": "revoked" },
+        { "from_state": "active", "event": "dispose", "to_state": "disposed" },
+        { "from_state": "revoked", "event": "revoke", "to_state": "revoked" },
+        { "from_state": "revoked", "event": "dispose", "to_state": "disposed" }
+      ],
+      "dart": {
+        "state_enum": "PreparationStatus",
+        "event_enum": "PreparationEvent",
+        "transition_function": "transitionPreparationStatus",
+        "state_from_id_function": "preparationStatusFromId"
+      }
+    }
+  ]
+}

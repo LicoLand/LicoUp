@@ -15,6 +15,10 @@ use anyhow::{Result, anyhow, bail, ensure};
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+use crate::state_machines::security_approval::{
+    self, Event as ApprovalEvent, State as ApprovalState,
+};
+
 /// Evaluate and register a remote approval request (fail-closed validation).
 pub fn evaluate_approval_request_json(params: &Value) -> Result<Value> {
     let pending_operation_id = require_text(
@@ -130,6 +134,8 @@ pub fn evaluate_approval_request_json(params: &Value) -> Result<Value> {
     );
 
     let entry = PendingApproval {
+        state: security_approval::transition(security_approval::INITIAL, ApprovalEvent::Request)
+            .ok_or_else(|| anyhow!("secure mesh approval request transition is not configured"))?,
         pending_operation_id: pending_operation_id.clone(),
         requester_agent_id,
         target_client_id,
@@ -198,14 +204,21 @@ pub fn evaluate_approval_fanout_json(params: &Value) -> Result<Value> {
         .ok_or_else(|| anyhow!("secure mesh approval pending operation id is required"))?,
         MAX_TEXT_BYTES,
     )?;
-    let guard = ledger()
+    let mut guard = ledger()
         .lock()
         .map_err(|_| anyhow!("secure mesh approval ledger is poisoned"))?;
     let entry = guard
         .pending
-        .get(&pending_operation_id)
+        .get_mut(&pending_operation_id)
         .ok_or_else(|| anyhow!("secure mesh approval pending operation was not found"))?;
-    if let Some(resolved) = &entry.resolved {
+    if matches!(
+        entry.state,
+        ApprovalState::Approved | ApprovalState::Rejected
+    ) {
+        let resolved = entry
+            .resolved
+            .as_ref()
+            .ok_or_else(|| anyhow!("secure mesh approval resolved payload is missing"))?;
         return Ok(json!({
             "ok": true,
             "pendingOperationId": pending_operation_id,
@@ -215,11 +228,19 @@ pub fn evaluate_approval_fanout_json(params: &Value) -> Result<Value> {
             "plaintextRelayBlocked": true,
         }));
     }
-    let now = now_rfc3339();
+    if entry.state == ApprovalState::Expired {
+        bail!("secure mesh approval request is expired");
+    }
     ensure!(
-        !is_expired(&entry.expires_at, &now),
-        "secure mesh approval request is expired"
+        entry.state == ApprovalState::Pending,
+        "secure mesh approval stored phase is invalid"
     );
+    let now = now_rfc3339();
+    if is_expired(&entry.expires_at, &now) {
+        entry.state = security_approval::transition(entry.state, ApprovalEvent::Expire)
+            .ok_or_else(|| anyhow!("secure mesh approval expiry transition is not configured"))?;
+        bail!("secure mesh approval request is expired");
+    }
     Ok(json!({
         "ok": true,
         "pendingOperationId": pending_operation_id,

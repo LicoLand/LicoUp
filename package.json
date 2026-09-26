@@ -14,8 +14,11 @@
     "node": "^22.0.0 || ^24.0.0"
   },
   "devDependencies": {
+    "@dagrejs/dagre": "3.1.1",
     "ajv": "^8.20.0",
-    "ajv-formats": "3.0.1"
+    "ajv-formats": "3.0.1",
+    "smol-toml": "1.9.0",
+    "yaml": "2.9.1"
   },
   "scripts": {
     "repo:identity:install": "node tools/scripts/repository-identity-policy.mjs install",
@@ -71,6 +74,7 @@
     "client:get": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter pub get",
     "client:analyze": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter analyze",
     "client:test": "node tools/scripts/client-toolchain-runner.mjs --check flutter --cwd apps/desktop -- flutter test",
+    "client:packages:verify": "node tools/scripts/client-packages-verify.mjs",
     "client:test:flutter:pinned": "node tools/scripts/client-flutter-pinned-test.mjs",
     "client:native:test": "node tools/scripts/cargo-client.mjs test -p licoup-native -p licoup-workflow",
     "client:native:smoke": "node tests/smoke/native-client-smoke.mjs",
@@ -222,6 +226,29 @@
     "client:gate:android": "node tools/scripts/client-gate.mjs run android",
     "client:gate:dependencies": "node tools/scripts/client-gate.mjs run dependencies",
     "client:gate:release-policy": "node tools/scripts/client-gate.mjs run release-policy",
-    "client:test:ui": "node tools/scripts/client-ui-state-machine.mjs"
+    "client:test:ui": "node tools/scripts/client-ui-state-machine.mjs",
+    "verify:workflow": "node tools/development/module.mjs workflow",
+    "verify:conversation": "node tools/development/module.mjs conversation",
+    "verify:presentation": "node tools/development/module.mjs presentation",
+    "verify:endpoint-collaboration": "node tools/development/module.mjs endpoint-collaboration",
+    "verify:extension-platform": "node tools/development/module.mjs extension-platform",
+    "verify:client-ui": "node tools/development/module.mjs client-ui",
+    "verify:agent-runtime": "node tools/development/module.mjs agent-runtime",
+    "verify:native-bridge": "node tools/development/module.mjs native-bridge",
+    "verify:catalogs": "node tools/development/module.mjs catalogs",
+    "verify:gateway": "node tools/development/module.mjs gateway",
+    "verify:data-migration": "node tools/development/module.mjs data-migration",
+    "verify:distribution": "node tools/development/module.mjs distribution",
+    "verify:development": "node tools/development/module.mjs development",
+    "verify:closure": "node tools/development/closure.mjs",
+    "repo:structure": "node tools/development/structure.mjs",
+    "repo:governance:test": "node --test \"tools/development/tests/*.test.mjs\"",
+    "repo:state-machines": "node tools/development/state-machines.mjs",
+    "repo:structure:all": "node tools/development/structure.mjs --all",
+    "repo:impact": "node tools/development/impact.mjs",
+    "repo:artifacts": "node tools/development/artifacts.mjs",
+    "repo:upstream": "node tools/development/upstream.mjs",
+    "repo:version": "node tools/release/verify-source-version.mjs",
+    "repo:version:test": "node --test tools/release/tests/*.test.mjs"
   }
 }

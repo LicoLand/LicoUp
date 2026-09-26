@@ -2,15 +2,6 @@
 ///
 /// Holds only the fields needed for picker → destination → confirmation UX.
 /// Wire ciphertext and absolute source paths stay out of status surfaces.
-enum SecureMeshFileSyncStatus {
-  drafting,
-  evaluating,
-  awaitingConfirmation,
-  confirmed,
-  rejected,
-  failed,
-}
-
 final class SecureMeshFileSyncTransfer {
   const SecureMeshFileSyncTransfer({
     required this.id,

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -11,6 +12,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 class AgentUsagePanel extends StatefulWidget {
@@ -91,47 +93,51 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
 
   @override
   Widget build(BuildContext context) {
+    return AsyncRegion<MonitoringProjection, IntentSink<MonitoringIntent>>(
+      source: monitoringUsageProjectionProvider,
+      actions: widget.binding.intents,
+      loading: (context, _) => const AgentUsageLoadingState(),
+      data: (context, value, _) {
+        return _buildPanel(context, _UsageView(value));
+      },
+    );
+  }
+
+  Widget _buildPanel(BuildContext context, _UsageView projection) {
     final strings = LicoStrings.of(context);
-    return ProjectionBuilder<MonitoringProjection, _UsageView>(
-      source: widget.binding.projection,
-      select: _UsageView.new,
-      // The standard feature-page structure: pane title bar (统计面板 +
-      // refresh) above, usage charts as the content body below.
-      builder: (context, projection) => LicoPaneScaffold(
-        title: strings.statsPanel,
-        refreshTooltip: strings.refreshUsage,
-        onRefresh: projection.refreshing
-            ? null
-            : () => widget.binding.intents.send(const RefreshMonitoring()),
-        refreshing: projection.refreshing,
-        refreshButtonKey: const Key('agent-usage-refresh'),
-        body:
-            !projection.hasUsage &&
-                projection.phase == PresentationPhase.loading
-            ? const AgentUsageLoadingState()
-            : !projection.hasUsage &&
-                  projection.phase == PresentationPhase.failed
-            ? Center(
-                child: Text(
-                  strings.usageLoadFailed,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: context.licoColors.textMuted),
-                ),
-              )
-            : SingleChildScrollView(
-                primary: false,
-                padding: EdgeInsets.zero,
-                child: AgentUsageCharts(
-                  report: projection.report,
-                  detectedAgentIds: projection.detectedAgentIds,
-                  windowDays: projection.historyDays,
-                  windowBusy: projection.refreshing,
-                  onWindowChanged: (days) => widget.binding.intents.send(
-                    SetMonitoringHistoryDays(days),
-                  ),
-                ),
+    // The standard feature-page structure: pane title bar (统计面板 +
+    // refresh) above, usage charts as the content body below.
+    return LicoPaneScaffold(
+      title: strings.statsPanel,
+      refreshTooltip: strings.refreshUsage,
+      onRefresh: projection.refreshing
+          ? null
+          : () => widget.binding.intents.send(const RefreshMonitoring()),
+      refreshing: projection.refreshing,
+      refreshButtonKey: const Key('agent-usage-refresh'),
+      body:
+          !projection.hasUsage && projection.phase == PresentationPhase.loading
+          ? const AgentUsageLoadingState()
+          : !projection.hasUsage && projection.phase == PresentationPhase.failed
+          ? Center(
+              child: Text(
+                strings.usageLoadFailed,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.licoColors.textMuted),
               ),
-      ),
+            )
+          : SingleChildScrollView(
+              primary: false,
+              padding: EdgeInsets.zero,
+              child: AgentUsageCharts(
+                report: projection.report,
+                detectedAgentIds: projection.detectedAgentIds,
+                windowDays: projection.historyDays,
+                windowBusy: projection.refreshing,
+                onWindowChanged: (days) =>
+                    widget.binding.intents.send(SetMonitoringHistoryDays(days)),
+              ),
+            ),
     );
   }
 }

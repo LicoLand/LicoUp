@@ -52,6 +52,7 @@ class AgentConversationUserMessageBlock extends StatelessWidget {
                   const SizedBox(height: 4),
                 ],
                 AgentConversationMessageContent(
+                  identity: agentConversationMarkdownIdentity(message),
                   data: message.text,
                   foreground: colors.text,
                   accent: colors.primary,
@@ -114,6 +115,7 @@ class AgentConversationAssistantDocumentBlock extends StatelessWidget {
                 const SizedBox(height: 6),
               ],
               AgentConversationMessageContent(
+                identity: agentConversationMarkdownIdentity(message),
                 data: message.text,
                 foreground: agentConversationMessageForeground(
                   colors,
@@ -171,6 +173,7 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: AgentConversationMessageContent(
+              identity: agentConversationMarkdownIdentity(message),
               data: message.text,
               foreground: agentConversationMessageForeground(
                 colors,

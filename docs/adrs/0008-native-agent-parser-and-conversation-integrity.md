@@ -1,5 +1,7 @@
 # ADR 0008: Native Agent parser and conversation integrity
 
+Updated: 2026-09-25
+
 Status: Implemented
 
 ## Context
@@ -48,6 +50,4 @@ All thirteen packaged conversation adapters now enter their isolated parser at
 the raw returned-frame boundary. Runtime normalization serializes only typed
 parser transitions, the scoped interaction route resumes parked native turns,
 and Flutter renders the explicit Rust lifecycle prefix and terminal transition.
-Focused Rust, Node, and rendered Flutter widget evidence covers the cutover;
-the temporary retired-parser residue scan reported zero retained paths or
-fallback symbols and was not kept as a permanent gate.
+Focused Rust, Node, and rendered Flutter widget tests cover these boundaries.

@@ -88,7 +88,16 @@ final class PagedConversationNative implements ClientConversationNativePort {
         revision += 1;
         result = {};
       case 'conversation.archive':
-        if (request['reopen'] == true) {
+        // The native store resets the reserved default local group in place
+        // instead of archiving it; this double mirrors that contract.
+        if (request['conversationId'] == 'lico-group-default') {
+          revision += 1;
+          result = {
+            'conversationId': request['conversationId'],
+            'archivedChildIds': <String>[],
+            'resetInPlace': true,
+          };
+        } else if (request['reopen'] == true) {
           events.clear();
           revision += 1;
           result = {

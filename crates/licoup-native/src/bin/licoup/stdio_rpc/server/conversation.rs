@@ -2259,6 +2259,31 @@ pub(super) fn strategy_turn_port(
     }
 }
 
+/// The host's control surface for in-flight strategy actor turns.
+///
+/// A strategy effect runs a Conversation turn; stopping or steering that turn
+/// is the Conversation runtime's own control channel, with its own answers. The
+/// port forwards the effect's turn handle and the lane's answer verbatim, so
+/// the effect path never has to guess what a control request established.
+pub(super) fn strategy_control_port(
+    runtime: PersistentConversationRuntime,
+) -> licoup_native::domain::workflow_runtime::ActorControlPort {
+    let cancel_runtime = runtime.clone();
+    let steer_runtime = runtime;
+    licoup_native::domain::workflow_runtime::ActorControlPort {
+        cancel: Arc::new(move |params: &Value| {
+            cancel_runtime
+                .request_cancel(params)
+                .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }),
+        steer: Arc::new(move |params: &Value| {
+            steer_runtime
+                .steer_sync(params)
+                .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }),
+    }
+}
+
 /// The designated-Assistant notice port: a notice already durable on the
 /// Conversation timeline wakes exactly one new Assistant turn, and only when
 /// no turn of that membership is in flight. Composition shares the persistent
@@ -4882,6 +4907,38 @@ mod tests {
             "reopened host must restore the started PersistentTurn without a second start"
         );
         let host = service.continuity().cloned().unwrap();
+        // Workflow bridge composition borrows this exact live continuity
+        // runtime. It must neither attach another host nor manufacture a
+        // workflow-only writer registry from a run id.
+        let (canonical, existing_owner) = host
+            .workflow_runtime_for(&child_id, &child_member)
+            .expect("the admitted child has its continuity runtime");
+        let workflow_sessions = licoup_native::domain::workflow_runtime::host_drive::ContinuityEffectSessions::from_service(&service)
+            .expect("borrow the root service's continuity host");
+        let borrowed = workflow_sessions
+            .borrow_for(&child_id, &child_member)
+            .expect("the existing native binding is bridge-ready");
+        let expected_owner: Arc<
+            dyn licoup_native::platform::work_context_ports::EffectSessionOwner,
+        > = existing_owner;
+        assert!(Arc::ptr_eq(&borrowed.owner, &expected_owner));
+        assert_eq!(borrowed.session, canonical);
+        assert_eq!(
+            borrowed.fresh_native_session.as_deref(),
+            Some(thread_id.as_str())
+        );
+        assert!(
+            workflow_sessions
+                .borrow_for(&conversation_id, &child_member)
+                .is_none()
+        );
+        assert!(workflow_sessions.borrow_for(&child_id, &agent).is_none());
+        assert!(borrowed.profiles.profile(&borrowed.agent_id).is_some());
+        // Reconnected native control is evidence this session already has a
+        // writer, independently of whether its in-memory claim was restored.
+        // The production service refuses before Bridge::submit in this state.
+        assert!(borrowed.live_writer);
+        assert_eq!(start_count.load(Ordering::SeqCst), 1);
         assert_eq!(
             host.steer_admitted_child_follow_up(
                 &child_id,

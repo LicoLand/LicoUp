@@ -1,66 +1,121 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart'
+    show
+        MessageMarkdownBlock,
+        MessageMarkdownBlockType,
+        MessageMarkdownInline,
+        MessageMarkdownInlineRun;
 
-/// Supported types of markdown blocks in [StreamingText].
-enum StreamingBlockType {
-  paragraph,
-  heading,
-  code,
-  blockquote,
-  bulletList,
-  orderedList,
-}
-
-/// One parsed markdown block in a streaming document.
-final class StreamingBlock {
-  const StreamingBlock({
-    required this.type,
-    required this.text,
-    this.level = 1,
-    this.language = '',
-    this.isClosed = true,
-  });
-
-  final StreamingBlockType type;
-  final String text;
-  final int level;
-  final String language;
-  final bool isClosed;
-
-  int get contentHash => Object.hash(type, text, level, language, isClosed);
-}
-
-/// High-performance text and markdown presenter designed for live streaming responses.
+/// Splits already prepared display text into consecutive pieces of at most
+/// [targetLength] UTF-16 code units.
 ///
-/// Features:
-/// - In streaming mode ([isStreaming] = true), completed blocks are sealed under stable keys
-///   to eliminate re-layout of already-rendered lines.
-/// - The growing tail block updates reactively; an unclosed code block renders its container frame
-///   immediately instead of waiting for the closing fence.
-/// - Isolated behind a [RepaintBoundary] so each token does not repaint parent viewports.
-/// - Supports headings, fenced code blocks, blockquotes, bullet & numbered lists, and inline styles
-///   (bold, italic, code spans, links).
-/// - Optional [onCopy] callback and copy interaction.
-class StreamingText extends StatelessWidget {
+/// The result is lossless: `partitionStreamingText(text).join()` equals `text`,
+/// so slicing never truncates or rewrites the original. Boundaries prefer line
+/// ends, and a single over-long line is cut at extended grapheme cluster
+/// boundaries, so no character, surrogate pair, or combining sequence is split
+/// across two pieces. This is a layout aid for long blocks; call it while
+/// assembling a presentation value, never from a widget build.
+List<String> partitionStreamingText(String text, {int targetLength = 2048}) {
+  if (targetLength < 1) {
+    throw ArgumentError.value(
+      targetLength,
+      'targetLength',
+      'a slice must hold at least one code unit',
+    );
+  }
+  if (text.isEmpty) return const <String>[];
+
+  final slices = <String>[];
+  final buffer = StringBuffer();
+  var buffered = 0;
+
+  void flush() {
+    if (buffered == 0) return;
+    slices.add(buffer.toString());
+    buffer.clear();
+    buffered = 0;
+  }
+
+  var start = 0;
+  while (start < text.length) {
+    var end = text.indexOf('\n', start);
+    end = end < 0 ? text.length : end + 1;
+    final line = text.substring(start, end);
+    start = end;
+
+    if (buffered + line.length <= targetLength) {
+      buffer.write(line);
+      buffered += line.length;
+      continue;
+    }
+    flush();
+    if (line.length <= targetLength) {
+      buffer.write(line);
+      buffered = line.length;
+      continue;
+    }
+
+    // One line longer than the target: cut it on grapheme clusters.
+    var chunkStart = 0;
+    var chunkLength = 0;
+    for (final cluster in line.characters) {
+      if (chunkLength > 0 && chunkLength + cluster.length > targetLength) {
+        slices.add(line.substring(chunkStart, chunkStart + chunkLength));
+        chunkStart += chunkLength;
+        chunkLength = 0;
+      }
+      chunkLength += cluster.length;
+    }
+    buffer.write(line.substring(chunkStart));
+    buffered = chunkLength;
+  }
+  flush();
+  return List<String>.unmodifiable(slices);
+}
+
+/// Immutable, renderer-ready text presenter for one prepared value.
+///
+/// It receives the installed [PreparedValue] and renders the prepared blocks it
+/// already contains. It never parses, normalizes, or re-reads source text: a
+/// block that the preparation sealed is rendered from its prepared payload, and
+/// a restyle never invalidates that work. Long blocks are laid out as bounded
+/// slices ([partitionStreamingText]) instead of one unbounded text object, while
+/// the original prepared text stays complete for selection, copy, and
+/// accessibility.
+///
+/// Anchors are per slice and stable while a source epoch keeps treating a block
+/// as the same block, so a growing mutable tail does not renumber or recreate
+/// the rows above it. A replaced source opens a new epoch and therefore new
+/// anchors, which is what keeps an old anchor from addressing new content.
+///
+/// The widget owns no source, provider, controller, or action: a host passes
+/// prepared values in and receives copy requests back through [onCopy].
+class StreamingText extends StatefulWidget {
   const StreamingText({
     super.key,
-    required this.document,
-    this.isStreaming = false,
+    required this.prepared,
     this.style,
     this.codeStyle,
     this.quoteStyle,
+    this.warningStyle,
     this.headingStyle,
+    this.markerStyle,
+    this.tableHeaderStyle,
     this.onCopy,
+    this.controller,
+    this.padding = EdgeInsets.zero,
+    this.physics,
+    this.shrinkWrap = true,
     this.blockSpacing = 8.0,
-    this.selectable = false,
-  });
+    this.selectable = true,
+    this.targetSliceLength = 2048,
+  }) : assert(targetSliceLength > 0, 'targetSliceLength must be positive');
 
-  /// The text or markdown document to render.
-  final String document;
+  /// The installed prepared value to render.
+  final PreparedValue<MessageMarkdownBlock> prepared;
 
-  /// Whether the document is actively receiving streaming tokens.
-  final bool isStreaming;
-
-  /// Base text style for ordinary paragraphs.
+  /// Base text style for ordinary blocks.
   final TextStyle? style;
 
   /// Style for fenced code blocks.
@@ -69,444 +124,524 @@ class StreamingText extends StatelessWidget {
   /// Style for blockquotes.
   final TextStyle? quoteStyle;
 
-  /// Base style for headings.
+  /// Style for runtime warning blocks.
+  final TextStyle? warningStyle;
+
+  /// Base style for headings; the level scales its font size.
   final TextStyle? headingStyle;
 
-  /// Callback executed when the user copies or requests copy of the document.
+  /// Style for list markers.
+  final TextStyle? markerStyle;
+
+  /// Style for the first table row.
+  final TextStyle? tableHeaderStyle;
+
+  /// Host action that copies the full original text, including the parts that
+  /// are outside the viewport. It is exposed as the accessibility copy action
+  /// and, when [selectable] is false, also on double tap.
   final VoidCallback? onCopy;
 
-  /// Vertical spacing between markdown blocks.
+  /// Controller for the bounded presentation, when [shrinkWrap] is false.
+  final ScrollController? controller;
+
+  /// Padding around the slice list.
+  final EdgeInsetsGeometry padding;
+
+  /// Physics of the bounded presentation; ignored while [shrinkWrap] is true.
+  final ScrollPhysics? physics;
+
+  /// Whether the presenter sizes itself to its content.
+  ///
+  /// The default fits a conversation row. A full-body viewer gives the
+  /// presenter a bounded height and sets this to false so only visible slices
+  /// are built.
+  final bool shrinkWrap;
+
+  /// Vertical space between two blocks.
   final double blockSpacing;
 
-  /// Whether the text is selectable.
+  /// Whether displayed text can be selected and copied by the platform.
   final bool selectable;
 
+  /// Largest slice of prepared text laid out as one text object.
+  final int targetSliceLength;
+
+  /// Anchor key of one slice of [block].
+  ///
+  /// The key is stable across content growth inside one epoch and changes when
+  /// the source is replaced, so it can be used to scroll to a slice or to
+  /// observe which slices are visible.
+  static Key anchorKey(SourceBlock block, int sliceIndex) => ValueKey((
+    block.text.resource,
+    block.text.position.epoch,
+    block.id,
+    sliceIndex,
+  ));
+
   @override
-  Widget build(BuildContext context) {
-    if (document.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  State<StreamingText> createState() => _StreamingTextState();
+}
 
-    final theme = Theme.of(context);
-    final defaultBodyStyle =
-        style ??
-        theme.textTheme.bodyMedium ??
-        const TextStyle(fontSize: 14, height: 1.5);
+sealed class _Unit {
+  const _Unit({required this.block});
 
-    final parsedBlocks = _parseBlocks(document, isStreaming);
-    if (parsedBlocks.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  final PreparedBlock<MessageMarkdownBlock> block;
 
-    final blockWidgets = <Widget>[];
+  Key get key;
+}
 
-    for (var i = 0; i < parsedBlocks.length; i++) {
-      final block = parsedBlocks[i];
-      final isTail = isStreaming && i == parsedBlocks.length - 1;
+final class _TextUnit extends _Unit {
+  const _TextUnit({
+    required super.block,
+    required this.sliceIndex,
+    required this.text,
+    this.runs,
+    this.marker = '',
+    this.label = '',
+    this.isFirstSlice = false,
+    this.isLastSlice = false,
+  });
 
-      // Stable key for completed blocks; tail has dynamic key
-      final key = isTail
-          ? const ValueKey<String>('streaming-tail-block')
-          : ValueKey<String>('block-$i-${block.contentHash}');
+  final int sliceIndex;
+  final String text;
 
-      final blockWidget = _buildBlockWidget(
-        context,
-        block,
-        defaultBodyStyle,
-        isTail: isTail,
-      );
+  /// Prepared inline display runs of this slice, when the block carries a
+  /// prepared inline value. Null means the slice is plain text: the renderer
+  /// shows [text] literally and never tokenizes it.
+  final List<MessageMarkdownInlineRun>? runs;
 
-      if (blockWidgets.isNotEmpty) {
-        blockWidgets.add(SizedBox(height: blockSpacing));
-      }
+  /// Inline marker: a bullet or an ordered list number.
+  final String marker;
 
-      blockWidgets.add(KeyedSubtree(key: key, child: blockWidget));
-    }
+  /// Block label rendered above the first slice, such as a fence language.
+  final String label;
 
-    Widget content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: blockWidgets,
-    );
+  final bool isFirstSlice;
+  final bool isLastSlice;
 
-    if (onCopy != null) {
-      content = GestureDetector(onDoubleTap: onCopy, child: content);
-    }
+  @override
+  Key get key => StreamingText.anchorKey(block.block, sliceIndex);
+}
 
-    // Isolate frame repaints during active streaming
-    return RepaintBoundary(child: content);
+final class _TableRowUnit extends _Unit {
+  const _TableRowUnit({
+    required super.block,
+    required this.rowIndex,
+    required this.cells,
+    required this.cellInline,
+    required this.isHeader,
+  });
+
+  final int rowIndex;
+
+  /// Authored cell text, used literally when no prepared cell value exists.
+  final List<String> cells;
+
+  /// Prepared cell values of this row, in the same order as [cells], or null
+  /// when the block carries no prepared cell values.
+  final List<MessageMarkdownInline>? cellInline;
+
+  final bool isHeader;
+
+  @override
+  Key get key => StreamingText.anchorKey(block.block, rowIndex);
+}
+
+class _BlockUnits {
+  const _BlockUnits(this.block, this.units);
+
+  final PreparedBlock<MessageMarkdownBlock> block;
+  final List<_Unit> units;
+}
+
+class _StreamingTextState extends State<StreamingText> {
+  List<_Unit> _units = const <_Unit>[];
+  Map<Key, int> _indexByKey = const <Key, int>{};
+
+  /// Units per block, reused while the prepared block keeps its identity, so a
+  /// growing tail does not re-slice the blocks that did not change.
+  Map<BlockId, _BlockUnits> _byBlock = const <BlockId, _BlockUnits>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _installUnits();
   }
 
-  Widget _buildBlockWidget(
-    BuildContext context,
-    StreamingBlock block,
-    TextStyle baseStyle, {
-    required bool isTail,
+  @override
+  void didUpdateWidget(covariant StreamingText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Style, padding, and physics are renderer-local: they repaint from the
+    // same prepared value and never invalidate preparation. Only a new
+    // prepared value changes what the slices are.
+    if (!identical(widget.prepared, oldWidget.prepared)) {
+      if (widget.prepared.resource != oldWidget.prepared.resource ||
+          widget.prepared.position.epoch != oldWidget.prepared.position.epoch) {
+        _byBlock = const <BlockId, _BlockUnits>{};
+      }
+      _installUnits();
+    }
+  }
+
+  void _installUnits() {
+    final units = <_Unit>[];
+    final byBlock = <BlockId, _BlockUnits>{};
+    for (final block in widget.prepared.blocks) {
+      final cached = _byBlock[block.id];
+      final entry = cached != null && cached.block == block
+          ? cached
+          : _buildUnits(block);
+      byBlock[block.id] = entry;
+      units.addAll(entry.units);
+    }
+    _byBlock = byBlock;
+    _units = units;
+    _indexByKey = <Key, int>{
+      for (var index = 0; index < units.length; index++)
+        units[index].key: index,
+    };
+  }
+
+  _BlockUnits _buildUnits(PreparedBlock<MessageMarkdownBlock> block) {
+    final value = block.value;
+    final units = <_Unit>[];
+    switch (value.type) {
+      case MessageMarkdownBlockType.paragraph:
+      case MessageMarkdownBlockType.heading:
+      case MessageMarkdownBlockType.code:
+      case MessageMarkdownBlockType.quote:
+      case MessageMarkdownBlockType.warning:
+        _addTextUnits(
+          units,
+          block: block,
+          inline: value.inline,
+          text: value.text,
+          label: value.language,
+        );
+      case MessageMarkdownBlockType.unorderedList:
+      case MessageMarkdownBlockType.orderedList:
+        for (var item = 0; item < value.items.length; item++) {
+          _addTextUnits(
+            units,
+            block: block,
+            inline: item < value.itemInline.length
+                ? value.itemInline[item]
+                : null,
+            text: value.items[item],
+            marker: value.type == MessageMarkdownBlockType.unorderedList
+                ? '•'
+                : '${item + 1}.',
+          );
+        }
+      case MessageMarkdownBlockType.table:
+        final cellInline = value.cellInline.length == value.rows.length
+            ? value.cellInline
+            : null;
+        for (var row = 0; row < value.rows.length; row++) {
+          units.add(
+            _TableRowUnit(
+              block: block,
+              rowIndex: row,
+              cells: value.rows[row],
+              cellInline: cellInline?[row],
+              isHeader: row == 0,
+            ),
+          );
+        }
+    }
+    return _BlockUnits(block, List<_Unit>.unmodifiable(units));
+  }
+
+  /// Adds one prepared field as bounded text slices.
+  ///
+  /// The slices cut the prepared display when one exists, so the visible text
+  /// is exactly the worker's display value; a field without a prepared value
+  /// falls back to its own text and renders literally. Each slice carries the
+  /// prepared runs that cover it, with run text clipped at the slice boundary,
+  /// so a styled run split by the layout keeps its style in every piece.
+  void _addTextUnits(
+    List<_Unit> units, {
+    required PreparedBlock<MessageMarkdownBlock> block,
+    required MessageMarkdownInline? inline,
+    required String text,
+    String marker = '',
+    String label = '',
   }) {
+    final display = inline?.displayText ?? text;
+    final slices = partitionStreamingText(
+      display,
+      targetLength: widget.targetSliceLength,
+    );
+    var offset = 0;
+    for (var index = 0; index < slices.length; index++) {
+      final slice = slices[index];
+      units.add(
+        _TextUnit(
+          block: block,
+          sliceIndex: marker.isEmpty ? index : units.length,
+          text: slice,
+          runs: inline == null
+              ? null
+              : inline.slice(offset, offset + slice.length),
+          marker: marker,
+          label: index == 0 ? label : '',
+          isFirstSlice: index == 0,
+          isLastSlice: index == slices.length - 1,
+        ),
+      );
+      offset += slice.length;
+    }
+  }
+
+  /// Style mapping of prepared runs for this presenter's own look.
+  ///
+  /// Flags map to styles only; the raw Markdown is never read here.
+  List<InlineSpan> _inlineSpans(
+    BuildContext context,
+    List<MessageMarkdownInlineRun> runs,
+    TextStyle style,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return <InlineSpan>[
+      for (final run in runs)
+        TextSpan(text: run.text, style: _runStyle(colors, run, style)),
+    ];
+  }
+
+  TextStyle _runStyle(
+    ColorScheme colors,
+    MessageMarkdownInlineRun run,
+    TextStyle style,
+  ) {
+    var mapped = style;
+    if (run.isStrong) {
+      mapped = mapped.copyWith(fontWeight: FontWeight.bold);
+    }
+    if (run.isEmphasis) {
+      mapped = mapped.copyWith(fontStyle: FontStyle.italic);
+    }
+    if (run.isLink) {
+      mapped = mapped.copyWith(
+        color: colors.primary,
+        decoration: TextDecoration.underline,
+        decorationColor: colors.primary,
+      );
+    }
+    if (run.isCode) {
+      mapped = mapped.copyWith(
+        fontFamily: 'monospace',
+        fontSize: (style.fontSize ?? 14) - 1,
+        backgroundColor: colors.surfaceContainerHighest.withValues(alpha: 0.6),
+      );
+    }
+    return mapped;
+  }
+
+  TextStyle _baseStyle(BuildContext context) =>
+      widget.style ??
+      Theme.of(context).textTheme.bodyMedium ??
+      const TextStyle(fontSize: 14, height: 1.5);
+
+  TextStyle _styleFor(BuildContext context, MessageMarkdownBlock block) {
+    final base = _baseStyle(context);
     switch (block.type) {
-      case StreamingBlockType.heading:
+      case MessageMarkdownBlockType.heading:
         final factor = switch (block.level) {
           1 => 1.6,
           2 => 1.4,
           3 => 1.25,
           _ => 1.1,
         };
-        final hStyle = (headingStyle ?? baseStyle).copyWith(
-          fontSize: (baseStyle.fontSize ?? 14) * factor,
+        return (widget.headingStyle ?? base).copyWith(
+          fontSize: (base.fontSize ?? 14) * factor,
           fontWeight: FontWeight.bold,
           height: 1.3,
         );
-        return _buildRichText(block.text, hStyle, context);
-
-      case StreamingBlockType.code:
-        final cStyle =
-            codeStyle ??
+      case MessageMarkdownBlockType.code:
+        return widget.codeStyle ??
             const TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.4);
-        return Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0x0D000000),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0x1A000000)),
+      case MessageMarkdownBlockType.quote:
+        return widget.quoteStyle ??
+            base.copyWith(
+              fontStyle: FontStyle.italic,
+              color:
+                  base.color?.withValues(alpha: 0.8) ?? const Color(0xCC000000),
+            );
+      case MessageMarkdownBlockType.warning:
+        return widget.warningStyle ??
+            base.copyWith(
+              color: const Color(0xFF8A5300),
+              fontWeight: FontWeight.w600,
+            );
+      case MessageMarkdownBlockType.paragraph:
+      case MessageMarkdownBlockType.unorderedList:
+      case MessageMarkdownBlockType.orderedList:
+      case MessageMarkdownBlockType.table:
+        return base;
+    }
+  }
+
+  Widget _buildTextUnit(BuildContext context, _TextUnit unit) {
+    final block = unit.block.value;
+    final style = _styleFor(context, block);
+    final runs = unit.runs;
+    final text = runs == null
+        ? Text(unit.text, style: style)
+        : Text.rich(TextSpan(children: _inlineSpans(context, runs, style)));
+
+    final Widget body;
+    if (unit.marker.isEmpty) {
+      body = text;
+    } else {
+      body = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${unit.marker} ',
+            style:
+                widget.markerStyle ??
+                _baseStyle(context).copyWith(fontWeight: FontWeight.bold),
           ),
-          child: Column(
+          Expanded(child: text),
+        ],
+      );
+    }
+
+    final Widget labelled = unit.label.isEmpty
+        ? body
+        : Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (block.language.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    block.language,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          baseStyle.color?.withValues(alpha: 0.6) ??
-                          const Color(0x99000000),
-                    ),
-                  ),
-                ),
-              SelectableText(block.text, style: cStyle),
-            ],
-          ),
-        );
-
-      case StreamingBlockType.blockquote:
-        final qStyle =
-            quoteStyle ??
-            baseStyle.copyWith(
-              fontStyle: FontStyle.italic,
-              color:
-                  baseStyle.color?.withValues(alpha: 0.8) ??
-                  const Color(0xCC000000),
-            );
-        return Container(
-          padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-          decoration: const BoxDecoration(
-            border: Border(
-              left: BorderSide(color: Color(0x4D000000), width: 3),
-            ),
-          ),
-          child: _buildRichText(block.text, qStyle, context),
-        );
-
-      case StreamingBlockType.bulletList:
-        return Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
-              Expanded(child: _buildRichText(block.text, baseStyle, context)),
-            ],
-          ),
-        );
-
-      case StreamingBlockType.orderedList:
-        return Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
               Text(
-                '${block.level}. ',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                unit.label,
+                style: _baseStyle(context).copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      _baseStyle(context).color?.withValues(alpha: 0.6) ??
+                      const Color(0x99000000),
+                ),
               ),
-              Expanded(child: _buildRichText(block.text, baseStyle, context)),
+              const SizedBox(height: 6),
+              body,
             ],
-          ),
-        );
+          );
 
-      case StreamingBlockType.paragraph:
-        return _buildRichText(block.text, baseStyle, context);
-    }
+    final isCode = block.type == MessageMarkdownBlockType.code;
+    final isQuote = block.type == MessageMarkdownBlockType.quote;
+    final isWarning = block.type == MessageMarkdownBlockType.warning;
+    if (!isCode && !isQuote && !isWarning) return labelled;
+
+    // Chrome is applied per slice with no rounded corners, so adjacent slices
+    // of one block read as one continuous surface.
+    final accent = isCode
+        ? const Color(0x1A000000)
+        : isQuote
+        ? const Color(0x4D000000)
+        : const Color(0xFFB26A00);
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 4,
+        top: unit.isFirstSlice ? 8 : 0,
+        bottom: unit.isLastSlice ? 8 : 0,
+      ),
+      decoration: BoxDecoration(
+        color: isCode ? const Color(0x0D000000) : null,
+        border: Border(left: BorderSide(color: accent, width: 3)),
+      ),
+      child: labelled,
+    );
   }
 
-  Widget _buildRichText(
-    String text,
-    TextStyle baseStyle,
+  Widget _buildTableRow(BuildContext context, _TableRowUnit unit) {
+    final base = _baseStyle(context);
+    final style = unit.isHeader
+        ? (widget.tableHeaderStyle ?? base).copyWith(
+            fontWeight: FontWeight.bold,
+          )
+        : base;
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0x1A000000))),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var cell = 0; cell < unit.cells.length; cell++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _tableCell(context, unit, cell, style),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableCell(
     BuildContext context,
+    _TableRowUnit unit,
+    int cell,
+    TextStyle style,
   ) {
-    final spans = parseInlineSpans(text, baseStyle);
-    if (selectable) {
-      return SelectableText.rich(TextSpan(children: spans));
+    final inline = unit.cellInline;
+    if (inline == null || cell >= inline.length) {
+      return Text(unit.cells[cell], style: style);
     }
-    return Text.rich(TextSpan(children: spans));
+    return Text.rich(
+      TextSpan(children: _inlineSpans(context, inline[cell].runs, style)),
+    );
   }
 
-  /// Parses inline markdown elements (bold, italic, inline code, link).
-  static List<InlineSpan> parseInlineSpans(String text, TextStyle baseStyle) {
-    final spans = <InlineSpan>[];
-    var cursor = 0;
+  @override
+  Widget build(BuildContext context) {
+    if (_units.isEmpty) return const SizedBox.shrink();
 
-    while (cursor < text.length) {
-      // 1. Inline code: `code`
-      if (text[cursor] == '`') {
-        final end = text.indexOf('`', cursor + 1);
-        if (end != -1) {
-          final code = text.substring(cursor + 1, end);
-          spans.add(
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: const Color(0x14000000),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  code,
-                  style: baseStyle.copyWith(
-                    fontFamily: 'monospace',
-                    fontSize: (baseStyle.fontSize ?? 14) * 0.9,
-                  ),
-                ),
-              ),
-            ),
-          );
-          cursor = end + 1;
-          continue;
-        }
-      }
+    Widget content = ListView.builder(
+      controller: widget.controller,
+      padding: widget.padding,
+      shrinkWrap: widget.shrinkWrap,
+      physics: widget.shrinkWrap
+          ? const NeverScrollableScrollPhysics()
+          : widget.physics,
+      itemCount: _units.length,
+      findChildIndexCallback: (Key key) => _indexByKey[key],
+      itemBuilder: (context, index) {
+        final unit = _units[index];
+        final previous = index == 0 ? null : _units[index - 1];
+        final spacing = previous != null && previous.block.id != unit.block.id
+            ? widget.blockSpacing
+            : 0.0;
+        final child = switch (unit) {
+          _TextUnit() => _buildTextUnit(context, unit),
+          _TableRowUnit() => _buildTableRow(context, unit),
+        };
+        return Padding(
+          key: unit.key,
+          padding: EdgeInsets.only(top: spacing),
+          child: child,
+        );
+      },
+    );
 
-      // 2. Bold: **bold**
-      if (cursor + 1 < text.length &&
-          text.substring(cursor, cursor + 2) == '**') {
-        final end = text.indexOf('**', cursor + 2);
-        if (end != -1) {
-          final boldText = text.substring(cursor + 2, end);
-          spans.add(
-            TextSpan(
-              text: boldText,
-              style: baseStyle.copyWith(fontWeight: FontWeight.bold),
-            ),
-          );
-          cursor = end + 2;
-          continue;
-        }
-      }
-
-      // 3. Italic: *italic*
-      if (text[cursor] == '*' &&
-          (cursor + 1 >= text.length || text[cursor + 1] != '*')) {
-        final end = text.indexOf('*', cursor + 1);
-        if (end != -1) {
-          final italicText = text.substring(cursor + 1, end);
-          spans.add(
-            TextSpan(
-              text: italicText,
-              style: baseStyle.copyWith(fontStyle: FontStyle.italic),
-            ),
-          );
-          cursor = end + 1;
-          continue;
-        }
-      }
-
-      // 4. Link: [label](url)
-      if (text[cursor] == '[') {
-        final closeBracket = text.indexOf(']', cursor + 1);
-        if (closeBracket != -1 &&
-            closeBracket + 1 < text.length &&
-            text[closeBracket + 1] == '(') {
-          final closeParen = text.indexOf(')', closeBracket + 2);
-          if (closeParen != -1) {
-            final label = text.substring(cursor + 1, closeBracket);
-            spans.add(
-              TextSpan(
-                text: label,
-                style: baseStyle.copyWith(
-                  color: const Color(0xFF0066CC),
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            );
-            cursor = closeParen + 1;
-            continue;
-          }
-        }
-      }
-
-      // Regular text accumulation up to the next special char
-      final nextSpecial = _findNextSpecial(text, cursor);
-      spans.add(
-        TextSpan(text: text.substring(cursor, nextSpecial), style: baseStyle),
+    if (widget.selectable) {
+      content = SelectionArea(child: content);
+    }
+    if (widget.onCopy != null) {
+      content = Semantics(
+        container: true,
+        onCopy: widget.onCopy,
+        child: content,
       );
-      cursor = nextSpecial;
-    }
-
-    return spans;
-  }
-
-  static int _findNextSpecial(String text, int from) {
-    for (var i = from + 1; i < text.length; i++) {
-      final ch = text[i];
-      if (ch == '`' || ch == '*' || ch == '[') {
-        return i;
+      if (!widget.selectable) {
+        content = GestureDetector(onDoubleTap: widget.onCopy, child: content);
       }
     }
-    return text.length;
-  }
-
-  /// Parses markdown document text into [StreamingBlock]s.
-  static List<StreamingBlock> _parseBlocks(String doc, bool isStreaming) {
-    final blocks = <StreamingBlock>[];
-    final lines = doc.split('\n');
-    var i = 0;
-
-    while (i < lines.length) {
-      final rawLine = lines[i];
-
-      // Code fence start
-      if (rawLine.trimLeft().startsWith('```')) {
-        final trimmed = rawLine.trim();
-        final language = trimmed.length > 3 ? trimmed.substring(3).trim() : '';
-        final codeLines = <String>[];
-        var closed = false;
-        i++;
-
-        while (i < lines.length) {
-          if (lines[i].trim() == '```') {
-            closed = true;
-            i++;
-            break;
-          }
-          codeLines.add(lines[i]);
-          i++;
-        }
-
-        blocks.add(
-          StreamingBlock(
-            type: StreamingBlockType.code,
-            text: codeLines.join('\n'),
-            language: language,
-            isClosed: closed,
-          ),
-        );
-        continue;
-      }
-
-      final line = rawLine.trim();
-      if (line.isEmpty) {
-        i++;
-        continue;
-      }
-
-      // Headings: #, ##, ###
-      if (line.startsWith('#')) {
-        var level = 0;
-        while (level < line.length && line[level] == '#') {
-          level++;
-        }
-        if (level < line.length && line[level] == ' ') {
-          blocks.add(
-            StreamingBlock(
-              type: StreamingBlockType.heading,
-              text: line.substring(level + 1).trim(),
-              level: level,
-            ),
-          );
-          i++;
-          continue;
-        }
-      }
-
-      // Blockquotes: >
-      if (line.startsWith('>')) {
-        blocks.add(
-          StreamingBlock(
-            type: StreamingBlockType.blockquote,
-            text: line.substring(1).trim(),
-          ),
-        );
-        i++;
-        continue;
-      }
-
-      // Bullet lists: - or *
-      if ((line.startsWith('- ') || line.startsWith('* ')) && line.length > 2) {
-        blocks.add(
-          StreamingBlock(
-            type: StreamingBlockType.bulletList,
-            text: line.substring(2).trim(),
-          ),
-        );
-        i++;
-        continue;
-      }
-
-      // Ordered lists: 1. 2. etc.
-      final dotIndex = line.indexOf('. ');
-      if (dotIndex > 0 && dotIndex < 5) {
-        final numPart = line.substring(0, dotIndex);
-        final parsedNum = int.tryParse(numPart);
-        if (parsedNum != null) {
-          blocks.add(
-            StreamingBlock(
-              type: StreamingBlockType.orderedList,
-              text: line.substring(dotIndex + 2).trim(),
-              level: parsedNum,
-            ),
-          );
-          i++;
-          continue;
-        }
-      }
-
-      // Paragraph: accumulate lines until blank line or special block
-      final paraLines = <String>[rawLine];
-      i++;
-      while (i < lines.length) {
-        final next = lines[i];
-        final nextTrimmed = next.trim();
-        if (nextTrimmed.isEmpty ||
-            nextTrimmed.startsWith('```') ||
-            nextTrimmed.startsWith('#') ||
-            nextTrimmed.startsWith('>') ||
-            nextTrimmed.startsWith('- ') ||
-            nextTrimmed.startsWith('* ') ||
-            (nextTrimmed.indexOf('. ') > 0 &&
-                int.tryParse(
-                      nextTrimmed.substring(0, nextTrimmed.indexOf('. ')),
-                    ) !=
-                    null)) {
-          break;
-        }
-        paraLines.add(next);
-        i++;
-      }
-
-      blocks.add(
-        StreamingBlock(
-          type: StreamingBlockType.paragraph,
-          text: paraLines.join('\n'),
-        ),
-      );
-    }
-
-    return blocks;
+    return RepaintBoundary(child: content);
   }
 }

@@ -1,0 +1,46 @@
+{
+  "id": "integration-review",
+  "file": "04-integration-review.json",
+  "title": {
+    "en": "Integration and static review",
+    "zh": "汇合与源码审阅"
+  },
+  "purpose": {
+    "en": "Review the complete feature across production boundaries.",
+    "zh": "审阅跨模块连接后的完整功能。"
+  },
+  "owner": {
+    "en": "Reviewer and integrator",
+    "zh": "审阅与集成人"
+  },
+  "entry": {
+    "en": "All worker deliveries are available",
+    "zh": "所有工作泳道已交付"
+  },
+  "steps": [
+    {
+      "en": "Join deliveries",
+      "zh": "汇合交付物"
+    },
+    {
+      "en": "Trace production paths",
+      "zh": "追踪完整生产路径"
+    },
+    {
+      "en": "Repair scoped findings",
+      "zh": "修复范围内问题"
+    }
+  ],
+  "exit": {
+    "en": "Production wiring, ownership, transitions and recovery have been reviewed.",
+    "zh": "生产接线、权威归属、状态转移与恢复已审阅。"
+  },
+  "failure": {
+    "en": "Send findings to the responsible owner and review affected consumers.",
+    "zh": "将问题交给对应负责人，审阅受影响的使用方。"
+  },
+  "boundary": {
+    "en": "Remove superseded paths; keep one current unpublished development contract.",
+    "zh": "移除已取代路径；未发布开发状态保留一套现行契约。"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "machines": [
+    {
+      "id": "workflow.native-node",
+      "states": [
+        { "id": "ready" }, { "id": "running" }, { "id": "pauseRequested", "rust_name": "PauseRequested" },
+        { "id": "paused" }, { "id": "waiting" }, { "id": "stopRequested", "rust_name": "StopRequested" },
+        { "id": "stopped" }, { "id": "failed" }, { "id": "completed" }
+      ],
+      "events": [
+        "submit", "request-pause", "pause", "pause-unsupported", "resume-active", "resume-idle",
+        "request-stop", "stop", "succeed", "fail", "retryable-failure", "cancel", "suspend"
+      ],
+      "initial": "ready",
+      "terminal": ["stopped"],
+      "transitions": [
+        { "from_state": "ready", "event": "submit", "to_state": "running" },
+        { "from_state": "waiting", "event": "submit", "to_state": "running" },
+        { "from_state": "ready", "event": "pause", "to_state": "paused" },
+        { "from_state": "waiting", "event": "pause", "to_state": "paused" },
+        { "from_state": "running", "event": "request-pause", "to_state": "pauseRequested" },
+        { "from_state": "failed", "event": "request-pause", "to_state": "pauseRequested" },
+        { "from_state": "completed", "event": "request-pause", "to_state": "pauseRequested" },
+        { "from_state": "pauseRequested", "event": "pause", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "pause-unsupported", "to_state": "running" },
+        { "from_state": "pauseRequested", "event": "resume-active", "to_state": "running" },
+        { "from_state": "paused", "event": "resume-active", "to_state": "running" },
+        { "from_state": "waiting", "event": "resume-active", "to_state": "running" },
+        { "from_state": "paused", "event": "resume-idle", "to_state": "ready" },
+        { "from_state": "waiting", "event": "resume-idle", "to_state": "ready" },
+        { "from_state": "ready", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "running", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "pauseRequested", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "paused", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "waiting", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "failed", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "completed", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "stopRequested", "event": "request-stop", "to_state": "stopRequested" },
+        { "from_state": "stopRequested", "event": "stop", "to_state": "stopped" },
+        { "from_state": "ready", "event": "stop", "to_state": "stopped" },
+        { "from_state": "running", "event": "succeed", "to_state": "ready" },
+        { "from_state": "running", "event": "fail", "to_state": "failed" },
+        { "from_state": "running", "event": "retryable-failure", "to_state": "waiting" },
+        { "from_state": "running", "event": "cancel", "to_state": "stopped" },
+        { "from_state": "running", "event": "suspend", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "succeed", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "fail", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "retryable-failure", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "cancel", "to_state": "paused" },
+        { "from_state": "pauseRequested", "event": "suspend", "to_state": "paused" },
+        { "from_state": "stopRequested", "event": "succeed", "to_state": "stopped" },
+        { "from_state": "stopRequested", "event": "fail", "to_state": "stopped" },
+        { "from_state": "stopRequested", "event": "cancel", "to_state": "stopped" },
+        { "from_state": "stopRequested", "event": "suspend", "to_state": "stopRequested" }
+      ]
+    }
+  ]
+}

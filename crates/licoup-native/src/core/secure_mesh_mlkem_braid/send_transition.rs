@@ -8,7 +8,7 @@ use super::{
     encapsulation_kdf::derive_output_key,
     erasure_encoder::ErasureEncoder,
     output::MlKemBraidSend,
-    protocol_state::ProtocolState,
+    protocol_state::{Event, ProtocolState, State, transition_state},
     secret::SecretBytes,
     transition::send_output,
     wire::{MlKemBraidMessage, MlKemBraidMessageType},
@@ -45,16 +45,22 @@ where
                 None,
             )?;
             // Transition (1).
-            Ok((
-                ProtocolState::KeysSampled {
-                    epoch,
-                    auth,
-                    key_seed: SecretBytes::new(key_seed.to_vec()),
-                    ek_vector,
-                    header_encoder,
-                },
-                output,
-            ))
+            let state = transition_state(State::KeysUnsampled, Event::SampleKeys, |target| {
+                match target {
+                    State::KeysSampled => Ok(ProtocolState::KeysSampled {
+                        epoch,
+                        auth,
+                        key_seed: SecretBytes::new(key_seed.to_vec()),
+                        ek_vector,
+                        header_encoder,
+                    }),
+                    target => bail!(
+                        "ML-KEM Braid sampled-key payload cannot construct configured target {}",
+                        target.as_str()
+                    ),
+                }
+            })?;
+            Ok((state, output))
         }
         ProtocolState::KeysSampled {
             epoch,
@@ -199,18 +205,27 @@ where
                 Some(output_key),
             )?;
             // Transition (7).
-            Ok((
-                ProtocolState::Ct1Sampled {
-                    epoch,
-                    auth,
-                    header,
-                    encaps_state: SecretBytes::new(encaps_state.to_vec()),
-                    ct1,
-                    ct1_encoder,
-                    ek_decoder,
-                },
-                output,
-            ))
+            let state =
+                transition_state(
+                    State::HeaderReceived,
+                    Event::SampleCt1,
+                    |target| match target {
+                        State::Ct1Sampled => Ok(ProtocolState::Ct1Sampled {
+                            epoch,
+                            auth,
+                            header,
+                            encaps_state: SecretBytes::new(encaps_state.to_vec()),
+                            ct1,
+                            ct1_encoder,
+                            ek_decoder,
+                        }),
+                        target => bail!(
+                            "ML-KEM Braid CT1 payload cannot construct configured target {}",
+                            target.as_str()
+                        ),
+                    },
+                )?;
+            Ok((state, output))
         }
         ProtocolState::Ct1Sampled {
             epoch,

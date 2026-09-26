@@ -12,6 +12,7 @@
     "package-lock.json",
     "crates/licoup-native",
     "crates/licoup-mcp",
+    "crates/licoup-workflow",
     "apps/desktop",
     "packages/protocols",
     "tools"

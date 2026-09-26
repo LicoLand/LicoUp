@@ -118,8 +118,7 @@ test-results/
 /tools/scripts/lib/better-plan-evidence-ledger/
 
 # AGENTS.md is the tracked Agent guide: stable boundaries and task routes.
-# Shared development Skills stay in lico-dev. The other agent entrypoints
-# remain retired.
+# Other agent entrypoint filenames are not used.
 AGENT.md
 CLAUDE.md
 
@@ -127,3 +126,10 @@ CLAUDE.md
 # never enter the remote repository; regenerate via transcript-record ingest.
 tests/replay-corpus/
 .commandcode/
+
+# Personal execution plans and machine-specific result artifacts
+plans/
+plan/
+report/
+test-results/
+playwright-report/

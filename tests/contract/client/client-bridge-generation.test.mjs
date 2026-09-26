@@ -118,6 +118,7 @@ function copyRepoSubset(root, destination) {
     generatorPath,
     packagePath,
     "tools/templates/client_bridge",
+    "apps/desktop/resources/state-machines/secure-mesh.json",
     "crates/licoup-conversation/src/continuity/generated.rs",
     "crates/licoup-agent-runtime/src/work_context/generated.rs",
     ...manifest.families.flatMap((family) => [

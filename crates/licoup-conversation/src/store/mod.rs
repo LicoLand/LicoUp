@@ -26,9 +26,15 @@ mod conversations;
 mod dispatches;
 mod events;
 mod execution;
+mod lifecycle;
 mod native_sessions;
 mod path_security;
 mod recovery;
+mod schema;
+
+#[cfg(test)]
+use schema::CONVERSATION_SCHEMA_TABLES;
+use schema::{configure_connection, initialize_schema, validate_current_schema};
 
 pub use continuity_seam::ContinuityUnitOfWork;
 pub use conversations::ConversationRepository;
@@ -51,159 +57,7 @@ pub type StoreError = anyhow::Error;
 pub type StoreResult<T> = Result<T, StoreError>;
 
 const DATABASE_FILE: &str = "conversations.sqlite3";
-pub const CURRENT_SCHEMA_VERSION: &str = "17";
-
-/// Canonical Conversation table and index layout. Shared by the schema
-/// initializer and the synthetic versioned fixtures used by migration tests.
-const CONVERSATION_SCHEMA_TABLES: &str = "
-         CREATE TABLE IF NOT EXISTS principals (
-           id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('human','agent')),
-           display_name TEXT NOT NULL, agent_id TEXT, created_at INTEGER NOT NULL
-         );
-         CREATE TABLE IF NOT EXISTS conversations (
-           id TEXT PRIMARY KEY, title TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-           pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),
-           is_group INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1)), strategy_revision TEXT,
-           assistant_membership_id TEXT REFERENCES memberships(id),
-           revision INTEGER NOT NULL DEFAULT 0,
-           created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS conversations_updated_idx ON conversations(updated_at DESC, id DESC);
-         CREATE TABLE IF NOT EXISTS memberships (
-           id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           principal_id TEXT NOT NULL REFERENCES principals(id), access TEXT NOT NULL CHECK(access IN ('owner','member')),
-           status TEXT NOT NULL CHECK(status IN ('active','left')), joined_at INTEGER NOT NULL, left_at INTEGER
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS memberships_active_unique ON memberships(conversation_id, principal_id) WHERE status='active';
-         CREATE INDEX IF NOT EXISTS memberships_conversation_idx ON memberships(conversation_id, status, joined_at);
-         CREATE TABLE IF NOT EXISTS membership_profiles (
-           membership_id TEXT PRIMARY KEY REFERENCES memberships(id) ON DELETE CASCADE,
-           revision INTEGER NOT NULL,
-           responsibility TEXT NOT NULL DEFAULT 'member' CHECK(responsibility IN ('assistant','member')),
-           required_capabilities TEXT NOT NULL DEFAULT '[]',
-           preferred_capabilities TEXT NOT NULL DEFAULT '[]',
-           skill_references TEXT NOT NULL DEFAULT '[]',
-           preferred_model TEXT, preferred_reasoning_effort TEXT,
-           preferred_environment TEXT,
-           updated_at INTEGER NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS membership_profiles_membership_idx
-           ON membership_profiles(membership_id, revision);
-         CREATE TABLE IF NOT EXISTS events (
-           id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           sequence INTEGER NOT NULL, author_membership_id TEXT REFERENCES memberships(id), kind TEXT NOT NULL,
-           causation_id TEXT, correlation_id TEXT,
-           created_at INTEGER NOT NULL, finalized INTEGER NOT NULL DEFAULT 0 CHECK(finalized IN (0,1)),
-           UNIQUE(conversation_id, sequence)
-         );
-         CREATE INDEX IF NOT EXISTS events_conversation_idx ON events(conversation_id, sequence);
-         CREATE TABLE IF NOT EXISTS event_parts (
-           id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-           ordinal INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
-           runtime_cursor INTEGER, execution_kind TEXT, created_at INTEGER NOT NULL,
-           UNIQUE(event_id, ordinal)
-         );
-         CREATE INDEX IF NOT EXISTS event_parts_event_idx ON event_parts(event_id, ordinal);
-         CREATE TABLE IF NOT EXISTS direct_turns (
-           id TEXT PRIMARY KEY,
-           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           source_event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-           membership_id TEXT NOT NULL REFERENCES memberships(id),
-           state TEXT NOT NULL, ordinal INTEGER NOT NULL,
-           UNIQUE(source_event_id, membership_id)
-         );
-         CREATE INDEX IF NOT EXISTS direct_turns_pending_idx
-           ON direct_turns(state, conversation_id, ordinal);
-         CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5(event_id UNINDEXED, conversation_id UNINDEXED, content);
-         CREATE TABLE IF NOT EXISTS source_links (
-           id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           source_kind TEXT NOT NULL, native_identity TEXT NOT NULL,
-           UNIQUE(source_kind, native_identity)
-         );
-         CREATE TABLE IF NOT EXISTS runtime_bindings (
-           id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           membership_id TEXT NOT NULL REFERENCES memberships(id) ON DELETE CASCADE, lane TEXT NOT NULL,
-           availability TEXT NOT NULL, safe_reason TEXT,
-           runtime_session_id TEXT, runtime_conversation_path TEXT, working_directory TEXT,
-           UNIQUE(conversation_id, membership_id, lane)
-         );
-         CREATE TABLE IF NOT EXISTS conversation_dispatches (
-           id TEXT PRIMARY KEY,
-           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           membership_id TEXT NOT NULL REFERENCES memberships(id),
-           operation TEXT NOT NULL,
-           state TEXT NOT NULL CHECK(state IN ('accepted','running','completed','failed','cancel-requested','cancelled')),
-           session_mode TEXT NOT NULL CHECK(session_mode IN ('new','resume')),
-           runtime_conversation_path TEXT, error_code TEXT,
-           request_payload TEXT, terminal_payload TEXT, native_provenance TEXT,
-           created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-         );
-          CREATE INDEX IF NOT EXISTS conversation_dispatches_resume_idx
-            ON conversation_dispatches(conversation_id, membership_id, state, updated_at DESC);
-          CREATE TABLE IF NOT EXISTS subagent_dispatch_claims (
-            id TEXT PRIMARY KEY,
-            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-            caller_membership_id TEXT NOT NULL REFERENCES memberships(id),
-            target_membership_id TEXT NOT NULL REFERENCES memberships(id),
-            parent_dispatch_id TEXT REFERENCES subagent_dispatch_claims(id),
-            depth INTEGER NOT NULL CHECK(depth BETWEEN 1 AND 8),
-            state TEXT NOT NULL CHECK(state IN (
-              'claimed','running','cancel-requested','reconciliation-required',
-              'completed','failed','cancelled'
-            )),
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            watchdog_deadline_unix_ms INTEGER
-          );
-          CREATE UNIQUE INDEX IF NOT EXISTS subagent_dispatch_claims_active_edge
-            ON subagent_dispatch_claims(conversation_id, caller_membership_id, target_membership_id)
-            WHERE state IN ('claimed','running','cancel-requested','reconciliation-required');
-          CREATE INDEX IF NOT EXISTS subagent_dispatch_claims_parent_idx
-            ON subagent_dispatch_claims(parent_dispatch_id);
-          CREATE INDEX IF NOT EXISTS subagent_dispatch_claims_target_idx
-            ON subagent_dispatch_claims(conversation_id, target_membership_id, updated_at DESC);
-          CREATE TABLE IF NOT EXISTS subagent_mcp_inbound (
-            id TEXT PRIMARY KEY,
-            conversation_id TEXT NOT NULL,
-            caller_membership_id TEXT,
-            target_membership_id TEXT,
-            tool TEXT NOT NULL CHECK(tool IN (
-              'lico_subagent_delegate','lico_subagent_continue','lico_subagent_cancel'
-            )),
-            outcome TEXT NOT NULL,
-            created_at INTEGER NOT NULL
-          );
-          CREATE INDEX IF NOT EXISTS subagent_mcp_inbound_edge_idx
-            ON subagent_mcp_inbound(
-              conversation_id, caller_membership_id, target_membership_id, created_at, id
-            );
-          CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
-            claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
-            kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
-            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-            recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
-            state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
-            terminal_state TEXT,
-            payload TEXT,
-            attempt_count INTEGER NOT NULL DEFAULT 0,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            delivered_at INTEGER,
-            admitted_turn_id TEXT,
-            PRIMARY KEY (claim_id, kind)
-          );
-          CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
-            ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
-         CREATE TABLE IF NOT EXISTS migration_provenance (
-           source_kind TEXT NOT NULL, source_identity TEXT NOT NULL,
-           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           PRIMARY KEY(source_kind, source_identity)
-         );
-         CREATE TABLE IF NOT EXISTS archived_native_sessions (
-           agent_id TEXT NOT NULL, native_session_id TEXT NOT NULL,
-           conversation_id TEXT NOT NULL, archived_at INTEGER NOT NULL,
-           PRIMARY KEY(agent_id, native_session_id)
-         );";
+pub const CURRENT_SCHEMA_VERSION: &str = "18";
 
 #[derive(Clone, Debug)]
 pub struct ConversationStore {
@@ -624,8 +478,8 @@ impl ConversationStore {
         Ok(store)
     }
 
-    /// Open the canonical store through its complete incremental migration
-    /// chain. Ordinary readers use [`Self::open`] and therefore cannot mutate
+    /// Upgrade a published canonical store to the current development format.
+    /// Ordinary readers use [`Self::open`] and therefore cannot mutate
     /// an older schema before startup admission owns the transition.
     #[doc(hidden)]
     pub fn open_for_migration(portable_root: &Path) -> StoreResult<Self> {
@@ -832,11 +686,16 @@ impl ConversationStore {
                         )
                         .optional()?;
                     let membership_id = if let Some(membership_id) = membership_id {
+                        let active = lifecycle::reactivate_membership();
                         transaction.execute(
                             "UPDATE memberships
-                             SET status='active', left_at=NULL
-                             WHERE id=?1 AND status='left'",
-                            params![membership_id],
+                             SET status=?2, left_at=NULL
+                             WHERE id=?1 AND status=?3",
+                            params![
+                                membership_id,
+                                active.as_str(),
+                                super::MembershipStatus::Left.as_str()
+                            ],
                         )?;
                         membership_id
                     } else {
@@ -870,11 +729,12 @@ impl ConversationStore {
                 "INSERT INTO conversation_dispatches(
                    id, conversation_id, membership_id, operation, state, session_mode,
                    runtime_conversation_path, error_code, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, 'send', 'accepted', ?4, NULL, NULL, ?5, ?5)",
+                 ) VALUES (?1, ?2, ?3, 'send', ?4, ?5, NULL, NULL, ?6, ?6)",
                 params![
                     dispatch_id,
                     conversation_id,
                     membership_id,
+                    lifecycle::initial_dispatch().as_str(),
                     if session_id.trim().is_empty() { "new" } else { "resume" },
                     now,
                 ],
@@ -1152,10 +1012,16 @@ impl ConversationStore {
                 )?;
                 ordinal += 1;
             }
+            let running = lifecycle::start_dispatch();
             transaction.execute(
-                "UPDATE conversation_dispatches SET state='running', updated_at=?2
-                 WHERE id=?1 AND state='accepted'",
-                params![scope.dispatch_id, now],
+                "UPDATE conversation_dispatches SET state=?2, updated_at=?3
+                 WHERE id=?1 AND state=?4",
+                params![
+                    scope.dispatch_id,
+                    running.as_str(),
+                    now,
+                    DispatchState::Accepted.as_str()
+                ],
             )?;
             bump_revision(&transaction, &scope.conversation_id, now)?;
             transaction.commit()?;
@@ -1245,11 +1111,21 @@ impl ConversationStore {
                 error_code.map(str::to_owned)
             };
             let error_code = persisted_error.as_deref();
+            let current_dispatch: String = transaction.query_row(
+                "SELECT state FROM conversation_dispatches WHERE id=?1",
+                params![scope.dispatch_id],
+                |row| row.get(0),
+            )?;
+            let current_dispatch = DispatchState::from_name(&current_dispatch)
+                .ok_or_else(|| anyhow!("runtime_dispatch_state_invalid"))?;
+            if !lifecycle::dispatch_permits(current_dispatch, persisted_state) {
+                return Err(anyhow!("runtime_dispatch_transition_invalid"));
+            }
             let changed = transaction.execute(
                 "UPDATE conversation_dispatches SET state=?2, error_code=?3, updated_at=?4,
                    runtime_conversation_path=COALESCE(?5, runtime_conversation_path),
                    terminal_payload=?6
-                 WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
+                 WHERE id=?1 AND state=?7",
                 params![
                     scope.dispatch_id,
                     enum_wire(persisted_state)?,
@@ -1257,6 +1133,7 @@ impl ConversationStore {
                     now,
                     runtime_conversation_path,
                     serde_json::to_string(terminal)?,
+                    current_dispatch.as_str(),
                 ],
             )?;
             if changed != 1 {
@@ -1725,6 +1602,13 @@ impl ConversationStore {
     /// Conversation is created in the same transaction: memberships and the
     /// assistant profile are copied silently (no member joined/left churn), and
     /// one plain `conversation-reset` notice opens the successor.
+    /// The reserved default local group can never stay archived — startup
+    /// normalization always restores it — so an archive request resets it in
+    /// place instead: children and member native sessions are archived the
+    /// same way, the visible Event history is cleared (refusing in-flight work
+    /// like `conversation.clear`), the Assistant membership rotates, and one
+    /// `conversation-reset` notice reopens the same active, pinned
+    /// Conversation. No successor is created, so no duplicate can survive.
     pub fn archive_conversation_tree(
         &self,
         id: &str,
@@ -1740,6 +1624,18 @@ impl ConversationStore {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             ensure_conversation(&transaction, id)?;
+            if archived && id == DEFAULT_LOCAL_AGENT_GROUP_ID {
+                let (archived_child_ids, archived_native_sessions) =
+                    reset_reserved_default_group(&transaction, id, now)?;
+                transaction.commit()?;
+                return Ok(ConversationArchiveReport {
+                    conversation_id: id.to_owned(),
+                    archived_child_ids,
+                    archived_native_sessions,
+                    successor_conversation_id: None,
+                    reset_in_place: true,
+                });
+            }
             transaction.execute(
                 "UPDATE conversations SET archived=?2, revision=revision+1, updated_at=?3
                  WHERE id=?1 AND archived<>?2",
@@ -1767,6 +1663,7 @@ impl ConversationStore {
                 archived_child_ids,
                 archived_native_sessions,
                 successor_conversation_id,
+                reset_in_place: false,
             })
         })
     }
@@ -1795,41 +1692,7 @@ impl ConversationStore {
             if !is_group {
                 return Err(anyhow!("invalid_request"));
             }
-            let blocked: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM events
-                   WHERE conversation_id=?1 AND finalized=0
-                 ) OR EXISTS(
-                   SELECT 1 FROM direct_turns
-                   WHERE conversation_id=?1
-                     AND state IN ('pending','claimed','running','waiting-for-human')
-                 ) OR EXISTS(
-                   SELECT 1 FROM conversation_dispatches
-                   WHERE conversation_id=?1
-                     AND state IN ('accepted','running','cancel-requested')
-                 )",
-                params![conversation_id],
-                |row| row.get(0),
-            )?;
-            if blocked {
-                return Err(anyhow!("conversation_clear_blocked"));
-            }
-            if table_exists(&transaction, "subagent_dispatch_claims")? {
-                let subagent_active: bool = transaction.query_row(
-                    "SELECT EXISTS(
-                       SELECT 1 FROM subagent_dispatch_claims
-                       WHERE conversation_id=?1
-                         AND state IN (
-                           'claimed','running','cancel-requested','reconciliation-required'
-                         )
-                     )",
-                    params![conversation_id],
-                    |row| row.get(0),
-                )?;
-                if subagent_active {
-                    return Err(anyhow!("conversation_clear_blocked"));
-                }
-            }
+            refuse_in_flight_group_work(&transaction, conversation_id)?;
             let archived_child_ids =
                 archive_continuity_children(&transaction, conversation_id, now)?;
             delete_conversation_events(&transaction, conversation_id)?;
@@ -2216,19 +2079,32 @@ impl ConversationStore {
                 )
                 .optional()?;
             let membership_id = if let Some(membership_id) = existing_left {
+                let active = lifecycle::reactivate_membership();
                 transaction.execute(
                     "UPDATE memberships
-                     SET status='active', left_at=NULL, access=?2
-                     WHERE id=?1",
-                    params![membership_id, enum_wire(access)?],
+                     SET status=?2, left_at=NULL, access=?3
+                     WHERE id=?1 AND status=?4",
+                    params![
+                        membership_id,
+                        active.as_str(),
+                        enum_wire(access)?,
+                        super::MembershipStatus::Left.as_str()
+                    ],
                 )?;
                 membership_id
             } else {
                 let membership_id = new_id("membership");
                 transaction.execute(
                     "INSERT INTO memberships(id, conversation_id, principal_id, access, status, joined_at)
-                     VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
-                    params![membership_id, conversation_id, principal.id, enum_wire(access)?, now],
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        membership_id,
+                        conversation_id,
+                        principal.id,
+                        enum_wire(access)?,
+                        lifecycle::initial_membership().as_str(),
+                        now
+                    ],
                 )?;
                 membership_id
             };
@@ -2275,6 +2151,7 @@ impl ConversationStore {
                 return Err(anyhow!("conversation_requires_owner"));
             }
             let now = now_ms();
+            let left = lifecycle::leave_membership();
             let was_assistant: bool = transaction.query_row(
                 "SELECT assistant_membership_id IS ?2 FROM conversations WHERE id=?1",
                 params![conversation_id, membership_id],
@@ -2293,8 +2170,15 @@ impl ConversationStore {
                 )?;
             }
             transaction.execute(
-                "UPDATE memberships SET status='left', left_at=?3 WHERE id=?1 AND conversation_id=?2",
-                params![membership_id, conversation_id, now],
+                "UPDATE memberships SET status=?3, left_at=?4
+                 WHERE id=?1 AND conversation_id=?2 AND status=?5",
+                params![
+                    membership_id,
+                    conversation_id,
+                    left.as_str(),
+                    now,
+                    super::MembershipStatus::Active.as_str()
+                ],
             )?;
             append_domain_event(
                 &transaction,
@@ -3204,12 +3088,13 @@ impl ConversationStore {
                 "INSERT INTO conversation_dispatches(
                    id, conversation_id, membership_id, operation, state, session_mode,
                    runtime_conversation_path, error_code, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, 'accepted', ?5, NULL, NULL, ?6, ?6)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, ?7, ?7)",
                 params![
                     dispatch_id,
                     conversation_id,
                     membership_id,
                     operation,
+                    lifecycle::initial_dispatch().as_str(),
                     enum_wire(session_mode)?,
                     now,
                 ],
@@ -3230,16 +3115,32 @@ impl ConversationStore {
             return Err(anyhow!("dispatch_runtime_location_invalid"));
         }
         self.with_connection(|connection| {
+            let current: Option<String> = connection
+                .query_row(
+                    "SELECT state FROM conversation_dispatches WHERE id=?1",
+                    params![dispatch_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(current) = current else {
+                return Err(anyhow!("dispatch_not_found"));
+            };
+            let current = DispatchState::from_name(&current)
+                .ok_or_else(|| anyhow!("dispatch_state_invalid"))?;
+            if !lifecycle::dispatch_permits(current, state) {
+                return Err(anyhow!("dispatch_transition_invalid"));
+            }
             let changed = connection.execute(
                 "UPDATE conversation_dispatches SET state=?2,
                    runtime_conversation_path=COALESCE(?3, runtime_conversation_path),
-                   error_code=?4, updated_at=?5 WHERE id=?1",
+                   error_code=?4, updated_at=?5 WHERE id=?1 AND state=?6",
                 params![
                     dispatch_id,
                     enum_wire(state)?,
                     runtime_conversation_path,
                     error_code,
                     now_ms(),
+                    current.as_str(),
                 ],
             )?;
             if changed == 0 {
@@ -3637,712 +3538,6 @@ impl NewEventPart {
         }
     }
 }
-fn configure_connection(connection: &Connection) -> StoreResult<()> {
-    // WAL + NORMAL skips fsync of the main file during checkpoint. A SIGKILL
-    // in that window can leave a torn database and an empty WAL, which SQLite
-    // reports as malformed. FULL fsyncs the main file before the WAL is reset.
-    // On macOS, fullfsync is required because ordinary fsync does not flush
-    // the drive cache.
-    connection.execute_batch(
-        "PRAGMA foreign_keys=ON;
-         PRAGMA journal_mode=WAL;
-         PRAGMA synchronous=FULL;
-         PRAGMA fullfsync=ON;
-         PRAGMA checkpoint_fullfsync=ON;
-         PRAGMA busy_timeout=8000;
-         PRAGMA trusted_schema=OFF;",
-    )?;
-    Ok(())
-}
-
-fn validate_current_schema(connection: &mut Connection) -> StoreResult<()> {
-    configure_connection(connection)?;
-    let version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if version != CURRENT_SCHEMA_VERSION {
-        return Err(anyhow!("conversation_schema_migration_required"));
-    }
-    ensure_search_index(connection)?;
-    Ok(())
-}
-
-fn initialize_schema(connection: &mut Connection) -> StoreResult<()> {
-    configure_connection(connection)?;
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-    )?;
-    let prior_schema_version: Option<String> = connection
-        .query_row(
-            "SELECT value FROM schema_meta WHERE key='version'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()?;
-    connection.execute_batch(CONVERSATION_SCHEMA_TABLES)?;
-    match prior_schema_version.as_deref() {
-        None => {
-            connection.execute_batch(
-                "INSERT INTO schema_meta(key, value) VALUES ('version', '11')
-                 ON CONFLICT(key) DO UPDATE SET value='11';",
-            )?;
-        }
-        Some("1") => {
-            connection.execute_batch(
-                "DELETE FROM event_search WHERE event_id IN (
-               SELECT id FROM events WHERE kind IN (
-                 'role-changed','flywheel-changed','run-started','run-progress',
-                 'run-completed','run-failed','run-cancelled'
-               )
-             );
-             DELETE FROM events WHERE kind IN (
-               'role-changed','flywheel-changed','run-started','run-progress',
-               'run-completed','run-failed','run-cancelled'
-             );
-             DROP TABLE IF EXISTS idempotency;
-             DROP TABLE IF EXISTS run_candidate_snapshots;
-             DROP TABLE IF EXISTS run_stage_snapshots;
-             DROP TABLE IF EXISTS turns;
-             DROP TABLE IF EXISTS runs;
-             DROP TABLE IF EXISTS round_robin_cursors;
-             DROP TABLE IF EXISTS flywheel_stages;
-             DROP TABLE IF EXISTS flywheels;
-             DROP TABLE IF EXISTS role_candidates;
-             DROP TABLE IF EXISTS conversation_roles;
-             INSERT INTO schema_meta(key, value) VALUES ('version', '2')
-               ON CONFLICT(key) DO UPDATE SET value='2';",
-            )?;
-            migrate_reserved_group_v3(connection)?;
-            migrate_reserved_group_v4(connection)?;
-        }
-        Some("2") => {
-            migrate_reserved_group_v3(connection)?;
-            migrate_reserved_group_v4(connection)?;
-        }
-        Some("3") => {
-            migrate_reserved_group_v4(connection)?;
-        }
-        Some(
-            "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16"
-            | "17",
-        ) => {}
-        Some(other) => {
-            return Err(anyhow!("conversation_schema_unsupported_version: {other}"));
-        }
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "4" {
-        migrate_runtime_replay_v5(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "5" {
-        migrate_strategy_selection_v6(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "6" {
-        migrate_assistant_profile_v7(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "7" {
-        migrate_profile_intent_v8(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "8" {
-        migrate_profile_reasoning_effort_v9(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "9" {
-        migrate_subagent_dispatch_claims_v10(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "10" {
-        migrate_subagent_mcp_inbound_v11(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "11" {
-        migrate_membership_convergence_v12(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "12" {
-        migrate_licoup_guide_profile_references_v13(connection)?;
-    }
-    let current_schema_version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if current_schema_version == "13" {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        ensure_column(&transaction, "event_parts", "execution_kind", "TEXT")?;
-        ensure_column(
-            &transaction,
-            "conversation_dispatches",
-            "request_payload",
-            "TEXT",
-        )?;
-        ensure_column(
-            &transaction,
-            "conversation_dispatches",
-            "terminal_payload",
-            "TEXT",
-        )?;
-        ensure_column(
-            &transaction,
-            "conversation_dispatches",
-            "native_provenance",
-            "TEXT",
-        )?;
-        transaction.execute_batch("CREATE INDEX IF NOT EXISTS conversation_dispatches_native_provenance_idx
-            ON conversation_dispatches(json_extract(native_provenance,'$.agentId'),json_extract(native_provenance,'$.nativeSessionId'))
-            WHERE native_provenance IS NOT NULL;")?;
-        transaction.execute("UPDATE schema_meta SET value='14' WHERE key='version'", [])?;
-        transaction.commit()?;
-    }
-    ensure_column(
-        connection,
-        "conversations",
-        "assistant_membership_id",
-        "TEXT REFERENCES memberships(id)",
-    )?;
-    ensure_column(connection, "runtime_bindings", "runtime_session_id", "TEXT")?;
-    ensure_column(
-        connection,
-        "conversations",
-        "pinned",
-        "INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1))",
-    )?;
-    ensure_column(
-        connection,
-        "conversations",
-        "is_group",
-        "INTEGER NOT NULL DEFAULT 0 CHECK(is_group IN (0,1))",
-    )?;
-    connection.execute(
-        "UPDATE conversations SET is_group=1
-         WHERE is_group=0 AND (
-           pinned=1 OR id=?1 OR
-           EXISTS (
-             SELECT 1 FROM migration_provenance p
-             WHERE p.conversation_id=conversations.id AND p.source_kind='group'
-           ) OR
-           (SELECT COUNT(*) FROM memberships m
-            WHERE m.conversation_id=conversations.id AND m.status='active') > 2
-         )",
-        params![DEFAULT_LOCAL_AGENT_GROUP_ID],
-    )?;
-    connection.execute_batch(
-        "CREATE INDEX IF NOT EXISTS conversations_pinned_updated_idx
-         ON conversations(pinned DESC, updated_at DESC, id DESC);",
-    )?;
-    ensure_converged_membership_index(connection)?;
-    ensure_column(
-        connection,
-        "runtime_bindings",
-        "runtime_conversation_path",
-        "TEXT",
-    )?;
-    ensure_column(connection, "runtime_bindings", "working_directory", "TEXT")?;
-    ensure_column(
-        connection,
-        "subagent_dispatch_claims",
-        "watchdog_deadline_unix_ms",
-        "INTEGER",
-    )?;
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
-           claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
-           kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
-           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
-           state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
-           terminal_state TEXT,
-           payload TEXT,
-           attempt_count INTEGER NOT NULL DEFAULT 0,
-           created_at INTEGER NOT NULL,
-           updated_at INTEGER NOT NULL,
-           delivered_at INTEGER,
-           admitted_turn_id TEXT,
-           PRIMARY KEY (claim_id, kind)
-         );
-         CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
-           ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);",
-    )?;
-    ensure_search_index(connection)?;
-    let version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if version == "14" {
-        native_sessions::migrate_native_sessions_v15(connection)?;
-    }
-    let version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if version == "15" {
-        migrate_subagent_dispatch_deliveries_v16(connection)?;
-    }
-    let version: String = connection.query_row(
-        "SELECT value FROM schema_meta WHERE key='version'",
-        [],
-        |row| row.get(0),
-    )?;
-    if version == "16" {
-        migrate_archived_native_sessions_v17(connection)?;
-    }
-    Ok(())
-}
-
-/// `event_search` is a derived FTS index. Rebuild it from `event_parts` only
-/// when the index is corrupt or empty while searchable parts still exist.
-fn ensure_search_index(connection: &Connection) -> StoreResult<()> {
-    if search_index_is_corrupt(connection) || search_index_is_empty_with_source(connection)? {
-        rebuild_search_index(connection)?;
-    }
-    Ok(())
-}
-
-fn search_index_is_corrupt(connection: &Connection) -> bool {
-    connection
-        .execute(
-            "INSERT INTO event_search(event_search) VALUES('integrity-check')",
-            [],
-        )
-        .is_err()
-}
-
-fn search_index_is_empty_with_source(connection: &Connection) -> StoreResult<bool> {
-    let indexed: i64 =
-        connection.query_row("SELECT COUNT(*) FROM event_search", [], |row| row.get(0))?;
-    if indexed > 0 {
-        return Ok(false);
-    }
-    let source: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM event_parts WHERE kind IN ('text', 'reasoning')",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(source > 0)
-}
-
-fn rebuild_search_index(connection: &Connection) -> StoreResult<()> {
-    connection.execute_batch(
-        "DROP TABLE IF EXISTS event_search;
-         CREATE VIRTUAL TABLE event_search USING fts5(
-           event_id UNINDEXED, conversation_id UNINDEXED, content
-         );
-         INSERT INTO event_search(event_id, conversation_id, content)
-         SELECT p.event_id, e.conversation_id, p.content
-           FROM event_parts p
-           JOIN events e ON e.id = p.event_id
-          WHERE p.kind IN ('text', 'reasoning');",
-    )?;
-    Ok(())
-}
-
-/// One-time schema transition to version 3: normalize the pre-cutover
-/// reserved default local group inside one immediate transaction that also
-/// records the new schema version. A failure rolls back both the cleanup and
-/// the version write, leaving the store at version 2.
-fn migrate_reserved_group_v3(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    normalize_reserved_group(&transaction)?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '3')
-         ON CONFLICT(key) DO UPDATE SET value='3'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// One-time schema transition to version 4: rename only the reserved local
-/// group's retired built-in title. Custom group names and recency timestamps
-/// are preserved.
-fn migrate_reserved_group_v4(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    rename_reserved_group(&transaction)?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '4')
-         ON CONFLICT(key) DO UPDATE SET value='4'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// One-time schema transition to version 5: add the private per-part cursor
-/// used to reconstruct active-turn transport frames from their owning
-/// canonical Message Event. Existing Event content and ordering are untouched.
-fn migrate_runtime_replay_v5(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let has_runtime_cursor = {
-        let mut statement = transaction.prepare("PRAGMA table_info(event_parts)")?;
-        statement
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-            .iter()
-            .any(|column| column == "runtime_cursor")
-    };
-    if !has_runtime_cursor {
-        transaction.execute_batch("ALTER TABLE event_parts ADD COLUMN runtime_cursor INTEGER;")?;
-    }
-    transaction.execute_batch(
-        "CREATE INDEX IF NOT EXISTS event_parts_runtime_replay_idx
-         ON event_parts(event_id, runtime_cursor, ordinal)
-         WHERE runtime_cursor IS NOT NULL;",
-    )?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '5')
-         ON CONFLICT(key) DO UPDATE SET value='5'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// One-time schema transition to version 6: persist the strategy explicitly
-/// selected for each group Conversation. A nullable column preserves the
-/// existing no-strategy state for all prior conversations.
-fn migrate_strategy_selection_v6(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let has_strategy_revision = {
-        let mut statement = transaction.prepare("PRAGMA table_info(conversations)")?;
-        statement
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-            .iter()
-            .any(|column| column == "strategy_revision")
-    };
-    if !has_strategy_revision {
-        transaction
-            .execute_batch("ALTER TABLE conversations ADD COLUMN strategy_revision TEXT;")?;
-    }
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '6')
-         ON CONFLICT(key) DO UPDATE SET value='6'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// One-time schema transition to version 7: persist one explicit long-lived
-/// Assistant per Conversation and bounded endpoint-local Profile intent for
-/// every active Agent Membership. The migration never assigns an Assistant
-/// to an existing ambiguous group; it only backfills default Profile intent
-/// rows so existing active Agent Memberships remain revisioned and visible.
-fn migrate_assistant_profile_v7(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let has_assistant_column = {
-        let mut statement = transaction.prepare("PRAGMA table_info(conversations)")?;
-        statement
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-            .iter()
-            .any(|column| column == "assistant_membership_id")
-    };
-    if !has_assistant_column {
-        transaction.execute_batch(
-            "ALTER TABLE conversations ADD COLUMN assistant_membership_id TEXT REFERENCES memberships(id);",
-        )?;
-    }
-    transaction.execute_batch(
-        "INSERT OR IGNORE INTO membership_profiles(
-           membership_id, revision, responsibility, required_capabilities,
-           preferred_capabilities, skill_references, preferred_model,
-           preferred_environment, updated_at
-         )
-         SELECT m.id, 0, 'member', '[]', '[]', '[]', NULL, NULL, m.joined_at
-         FROM memberships m
-         WHERE m.status='active'
-           AND EXISTS (
-             SELECT 1 FROM principals p
-             WHERE p.id=m.principal_id AND p.kind='agent'
-           );",
-    )?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '7')
-         ON CONFLICT(key) DO UPDATE SET value='7'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 8 replaces the draft Profile row with intent-only fields. Any
-/// draft caller-asserted capability, Skill, or Authority values are discarded
-/// instead of being translated into trusted facts. The current Assistant is
-/// reconstructed solely from the Conversation-owned designation.
-fn migrate_profile_intent_v8(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let columns = {
-        let mut statement = transaction.prepare("PRAGMA table_info(membership_profiles)")?;
-        statement
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<BTreeSet<_>>>()?
-    };
-    if !columns.contains("required_capabilities") || columns.contains("authority") {
-        transaction.execute_batch(
-            "ALTER TABLE membership_profiles RENAME TO membership_profiles_v7_draft;
-             CREATE TABLE membership_profiles (
-               membership_id TEXT PRIMARY KEY REFERENCES memberships(id) ON DELETE CASCADE,
-               revision INTEGER NOT NULL,
-               responsibility TEXT NOT NULL DEFAULT 'member' CHECK(responsibility IN ('assistant','member')),
-               required_capabilities TEXT NOT NULL DEFAULT '[]',
-               preferred_capabilities TEXT NOT NULL DEFAULT '[]',
-               skill_references TEXT NOT NULL DEFAULT '[]',
-               preferred_model TEXT, preferred_environment TEXT,
-               updated_at INTEGER NOT NULL
-             );",
-        )?;
-        transaction.execute(
-            "INSERT INTO membership_profiles(
-               membership_id, revision, responsibility, required_capabilities,
-               preferred_capabilities, skill_references, preferred_model,
-               preferred_environment, updated_at
-             )
-             SELECT m.id,
-                    COALESCE(d.revision, 0) + 1,
-                    CASE WHEN c.assistant_membership_id=m.id THEN 'assistant' ELSE 'member' END,
-                    '[]', '[]',
-                    CASE WHEN c.assistant_membership_id=m.id THEN ?1 ELSE '[]' END,
-                    NULL, NULL, COALESCE(d.updated_at, m.joined_at)
-             FROM memberships m
-             JOIN principals p ON p.id=m.principal_id
-             JOIN conversations c ON c.id=m.conversation_id
-             LEFT JOIN membership_profiles_v7_draft d ON d.membership_id=m.id
-             WHERE m.status='active' AND p.kind='agent'",
-            params![serde_json::to_string(&vec![LICOUP_GUIDE_SKILL_ID])?],
-        )?;
-        transaction.execute_batch(
-            "DROP TABLE membership_profiles_v7_draft;
-             CREATE INDEX membership_profiles_membership_idx
-               ON membership_profiles(membership_id, revision);",
-        )?;
-    }
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '8')
-         ON CONFLICT(key) DO UPDATE SET value='8'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 9 makes reasoning effort part of the same revisioned Profile intent
-/// as the preferred model. It is nullable so existing Profiles preserve their
-/// native runtime default without inventing a value.
-fn migrate_profile_reasoning_effort_v9(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let columns = {
-        let mut statement = transaction.prepare("PRAGMA table_info(membership_profiles)")?;
-        statement
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<BTreeSet<_>>>()?
-    };
-    if !columns.contains("preferred_reasoning_effort") {
-        transaction.execute_batch(
-            "ALTER TABLE membership_profiles ADD COLUMN preferred_reasoning_effort TEXT;",
-        )?;
-    }
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '9')
-         ON CONFLICT(key) DO UPDATE SET value='9'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 10 adds private, durable Subagent lineage and active-edge claims.
-/// `CONVERSATION_SCHEMA_TABLES` creates the table before migrations run, so
-/// this transaction advances the version only after that DDL succeeded.
-fn migrate_subagent_dispatch_claims_v10(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '10')
-         ON CONFLICT(key) DO UPDATE SET value='10'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 11 records inbound Subagent MCP `tools/call` rows. The table is
-/// created by `CONVERSATION_SCHEMA_TABLES`; this step only advances the version.
-fn migrate_subagent_mcp_inbound_v11(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '11')
-         ON CONFLICT(key) DO UPDATE SET value='11'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 12 keeps one Membership row per (conversation, principal). Join and
-/// leave flip that row's status; leftover left rows from earlier churn are
-/// retargeted onto the surviving id and deleted.
-fn migrate_membership_convergence_v12(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    converge_duplicate_memberships(&transaction, None)?;
-    ensure_converged_membership_index(&transaction)?;
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '12')
-         ON CONFLICT(key) DO UPDATE SET value='12'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 13 moves the retired bundled Assistant Skill reference to the
-/// single product-owned LicoUp guide. Only Assistant Profiles are rewritten;
-/// every unrelated user-selected reference keeps its original order.
-fn migrate_licoup_guide_profile_references_v13(connection: &mut Connection) -> StoreResult<()> {
-    const RETIRED_SKILL_ID: &str = "assistant-workflow-authoring";
-
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let profiles = {
-        let mut statement = transaction.prepare(
-            "SELECT membership_id, skill_references
-             FROM membership_profiles
-             WHERE responsibility='assistant'",
-        )?;
-        statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-    };
-    for (membership_id, encoded) in profiles {
-        let current = serde_json::from_str::<Vec<String>>(&encoded)?;
-        let mut migrated = current
-            .iter()
-            .filter(|reference| {
-                reference.as_str() != RETIRED_SKILL_ID
-                    && reference.as_str() != LICOUP_GUIDE_SKILL_ID
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        migrated.push(LICOUP_GUIDE_SKILL_ID.to_owned());
-        if migrated != current {
-            transaction.execute(
-                "UPDATE membership_profiles
-                 SET revision=revision+1, skill_references=?2
-                 WHERE membership_id=?1",
-                params![membership_id, serde_json::to_string(&migrated)?],
-            )?;
-        }
-    }
-    transaction.execute(
-        "INSERT INTO schema_meta(key, value) VALUES ('version', '13')
-         ON CONFLICT(key) DO UPDATE SET value='13'",
-        [],
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Version 16 creates the subagent dispatch delivery table. The table entered
-/// the schema after version 15 was already deployed, so stores that reached 15
-/// before its introduction never created it.
-fn migrate_subagent_dispatch_deliveries_v16(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(
-        "CREATE TABLE IF NOT EXISTS subagent_dispatch_deliveries (
-           claim_id TEXT NOT NULL REFERENCES subagent_dispatch_claims(id) ON DELETE CASCADE,
-           kind TEXT NOT NULL CHECK(kind IN ('observation','terminal')),
-           conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-           recipient_membership_id TEXT NOT NULL REFERENCES memberships(id),
-           state TEXT NOT NULL CHECK(state IN ('pending','delivering','delivered','failed')),
-           terminal_state TEXT,
-           payload TEXT,
-           attempt_count INTEGER NOT NULL DEFAULT 0,
-           created_at INTEGER NOT NULL,
-           updated_at INTEGER NOT NULL,
-           delivered_at INTEGER,
-           admitted_turn_id TEXT,
-           PRIMARY KEY (claim_id, kind)
-         );
-         CREATE INDEX IF NOT EXISTS subagent_dispatch_deliveries_pending_idx
-           ON subagent_dispatch_deliveries(state, conversation_id, recipient_membership_id, updated_at ASC);
-         INSERT INTO schema_meta(key, value) VALUES ('version', '16')
-           ON CONFLICT(key) DO UPDATE SET value='16';",
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-/// Archive marks for agent-native sessions are Lico-side visibility records:
-/// the agent's own on-disk history is never deleted, it only stops surfacing
-/// in the client's browse catalogs.
-fn migrate_archived_native_sessions_v17(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(
-        "CREATE TABLE IF NOT EXISTS archived_native_sessions (
-           agent_id TEXT NOT NULL, native_session_id TEXT NOT NULL,
-           conversation_id TEXT NOT NULL, archived_at INTEGER NOT NULL,
-           PRIMARY KEY(agent_id, native_session_id)
-         );
-         INSERT INTO schema_meta(key, value) VALUES ('version', '17')
-           ON CONFLICT(key) DO UPDATE SET value='17';",
-    )?;
-    transaction.commit()?;
-    Ok(())
-}
-
-fn ensure_converged_membership_index(connection: &Connection) -> StoreResult<()> {
-    connection.execute_batch(
-        "DROP INDEX IF EXISTS memberships_active_unique;
-         CREATE UNIQUE INDEX IF NOT EXISTS memberships_principal_unique
-           ON memberships(conversation_id, principal_id);",
-    )?;
-    Ok(())
-}
-
 fn converge_duplicate_memberships(
     connection: &Connection,
     conversation_id: Option<&str>,
@@ -4650,11 +3845,16 @@ fn ensure_default_local_group_inner(
             )
             .optional()?;
         if let Some(membership_id) = left_membership {
+            let active = lifecycle::reactivate_membership();
             transaction.execute(
                 "UPDATE memberships
-                 SET access='owner', status='active', left_at=NULL
-                 WHERE id=?1",
-                params![membership_id],
+                 SET access='owner', status=?2, left_at=NULL
+                 WHERE id=?1 AND status=?3",
+                params![
+                    membership_id,
+                    active.as_str(),
+                    super::MembershipStatus::Left.as_str()
+                ],
             )?;
         } else {
             transaction.execute(
@@ -4829,10 +4029,16 @@ fn normalize_reserved_group(connection: &Connection) -> StoreResult<()> {
             )
             .optional()?;
         if let Some(membership_id) = left {
+            let active = lifecycle::reactivate_membership();
             connection.execute(
-                "UPDATE memberships SET status='active', left_at=NULL
-                 WHERE id=?1 AND conversation_id=?2",
-                params![membership_id, conversation_id],
+                "UPDATE memberships SET status=?3, left_at=NULL
+                 WHERE id=?1 AND conversation_id=?2 AND status=?4",
+                params![
+                    membership_id,
+                    conversation_id,
+                    active.as_str(),
+                    super::MembershipStatus::Left.as_str()
+                ],
             )?;
             continue;
         }
@@ -5709,6 +4915,91 @@ fn clear_native_sessions_archived(
         params![conversation_id],
     )?;
     Ok(())
+}
+
+/// Refuse a destructive group write while any work is still in flight:
+/// unfinalized Events, active Direct Turns, running dispatches, or claimed
+/// subagent dispatches would lose their settlement records.
+fn refuse_in_flight_group_work(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+) -> StoreResult<()> {
+    let blocked: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM events
+           WHERE conversation_id=?1 AND finalized=0
+         ) OR EXISTS(
+           SELECT 1 FROM direct_turns
+           WHERE conversation_id=?1
+             AND state IN ('pending','claimed','running','waiting-for-human')
+         ) OR EXISTS(
+           SELECT 1 FROM conversation_dispatches
+           WHERE conversation_id=?1
+             AND state IN ('accepted','running','cancel-requested')
+         )",
+        params![conversation_id],
+        |row| row.get(0),
+    )?;
+    if blocked {
+        return Err(anyhow!("conversation_clear_blocked"));
+    }
+    if table_exists(connection, "subagent_dispatch_claims")? {
+        let subagent_active: bool = connection.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM subagent_dispatch_claims
+               WHERE conversation_id=?1
+                 AND state IN (
+                   'claimed','running','cancel-requested','reconciliation-required'
+                 )
+             )",
+            params![conversation_id],
+            |row| row.get(0),
+        )?;
+        if subagent_active {
+            return Err(anyhow!("conversation_clear_blocked"));
+        }
+    }
+    Ok(())
+}
+
+/// Reset the reserved default local group in place: its continuity children
+/// and member native sessions are archived exactly like a group archive, the
+/// visible Event history is deleted, the Assistant membership rotates with
+/// its Profile preserved, and one `conversation-reset` notice reopens the
+/// same Conversation — still active, pinned, and grouped. The reserved group
+/// can never stay archived, so this replaces both archive and reopen for it;
+/// a successor copy would survive as a permanent duplicate.
+fn reset_reserved_default_group(
+    connection: &impl CountedSqlite,
+    conversation_id: &str,
+    now: i64,
+) -> StoreResult<(Vec<String>, Vec<NativeSessionReference>)> {
+    refuse_in_flight_group_work(connection, conversation_id)?;
+    let archived_child_ids = archive_continuity_children(connection, conversation_id, now)?;
+    let mut conversation_ids = vec![conversation_id.to_owned()];
+    conversation_ids.extend(archived_child_ids.iter().cloned());
+    let archived_native_sessions =
+        mark_native_sessions_archived(connection, &conversation_ids, now)?;
+    delete_conversation_events(connection, conversation_id)?;
+    rotate_assistant_membership(connection, conversation_id, now)?;
+    connection.execute(
+        "UPDATE conversations
+         SET archived=0, pinned=1, is_group=1,
+             title=CASE
+               WHEN trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default')
+               THEN ?2 ELSE title END
+         WHERE id=?1",
+        params![conversation_id, DEFAULT_LOCAL_AGENT_GROUP_TITLE],
+    )?;
+    append_domain_event(
+        connection,
+        conversation_id,
+        EventKind::ConversationReset,
+        serde_json::json!({"resetInPlace": true}),
+        now,
+    )?;
+    bump_revision(connection, conversation_id, now)?;
+    Ok((archived_child_ids, archived_native_sessions))
 }
 
 /// Create the fresh successor of an archived group: same title and strategy,
@@ -6793,6 +6084,67 @@ mod tests {
                 .archive_conversation_tree(&group.id, false, true)
                 .is_err()
         );
+
+        drop(store);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn archiving_the_default_local_group_resets_it_in_place() {
+        let root = std::env::temp_dir().join(format!("licoup-reset-default-{}", Uuid::new_v4()));
+        path_security::ensure_private_dir(&root).unwrap();
+        let store = ConversationStore::open(&root).unwrap();
+        let local = store.ensure_default_local_group().unwrap();
+        assert_eq!(local.id, DEFAULT_LOCAL_AGENT_GROUP_ID);
+        let owner_membership = membership_of(&local, PrincipalKind::Human);
+        store
+            .post_message_with_mentions(
+                &local.id,
+                Some(&owner_membership.id),
+                "remember this",
+                None,
+                &[],
+            )
+            .unwrap();
+        let report = store
+            .archive_conversation_tree(&local.id, true, true)
+            .unwrap();
+
+        assert!(report.reset_in_place);
+        assert!(report.successor_conversation_id.is_none());
+        let reset = store.get(&local.id).unwrap();
+        assert!(!reset.archived);
+        assert!(reset.pinned);
+        assert!(reset.is_group);
+        // The visible history is cleared and one plain reset notice reopens
+        // the same reserved Conversation.
+        let events = store.event_page(&local.id, None, 16).unwrap().events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+        // The active list still holds exactly one default group: itself.
+        assert_eq!(
+            store
+                .list(false)
+                .unwrap()
+                .iter()
+                .filter(|conversation| conversation.id == DEFAULT_LOCAL_AGENT_GROUP_ID)
+                .count(),
+            1
+        );
+
+        // A plain archive request resets the reserved group the same way.
+        store
+            .post_message_with_mentions(&local.id, Some(&owner_membership.id), "again", None, &[])
+            .unwrap();
+        let second = store
+            .archive_conversation_tree(&local.id, true, false)
+            .unwrap();
+        assert!(second.reset_in_place);
+        assert!(second.successor_conversation_id.is_none());
+        let events = store.event_page(&local.id, None, 16).unwrap().events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ConversationReset);
+        assert!(!store.get(&local.id).unwrap().archived);
 
         drop(store);
         let _ = std::fs::remove_dir_all(&root);
@@ -8559,8 +7911,9 @@ mod tests {
     }
 
     #[test]
-    fn v15_store_missing_dispatch_deliveries_is_healed_by_migration() {
-        let root = std::env::temp_dir().join(format!("lico-conv-v15-delivery-{}", Uuid::new_v4()));
+    fn published_store_upgrade_creates_dispatch_delivery_storage() {
+        let root =
+            std::env::temp_dir().join(format!("lico-conv-published-delivery-{}", Uuid::new_v4()));
         std::fs::create_dir_all(fixture_database(&root).parent().unwrap()).unwrap();
         let store = ConversationStore::open_for_migration(&root).unwrap();
         assert_eq!(schema_version(&root), CURRENT_SCHEMA_VERSION);
@@ -8570,7 +7923,7 @@ mod tests {
         fixture
             .execute_batch(
                 "DROP TABLE subagent_dispatch_deliveries;
-                 UPDATE schema_meta SET value='15' WHERE key='version';",
+                 UPDATE schema_meta SET value='12' WHERE key='version';",
             )
             .unwrap();
         fixture.close().unwrap();

@@ -544,6 +544,9 @@ extension LicoStringsLabels on LicoStrings {
   String archiveGroupConversationMessage(String title) => isChinese
       ? '“$title” 与其真正涉及的对话会一起归档保存，随后开启新的助手对话。'
       : '“$title” and the conversations it involves will be archived together, then a new Assistant conversation opens.';
+  String archiveDefaultGroupConversationMessage(String title) => isChinese
+      ? '“$title” 将清空历史并重置为全新对话，其真正涉及的对话会一起归档保存。'
+      : '“$title” clears its history and resets to a fresh conversation; the conversations it involves are archived together.';
   String get conversationResetNotice =>
       isChinese ? '已开启新对话' : 'New conversation started';
   String get archivedContinuityChildren =>

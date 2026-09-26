@@ -1,0 +1,29 @@
+{
+  "machines": [
+    {
+      "id": "workflow.adapter-execution",
+      "states": [
+        { "id": "running" }, { "id": "suspended" }, { "id": "completed" },
+        { "id": "failed" }, { "id": "cancelled" }
+      ],
+      "events": ["pause", "resume", "complete", "fail", "cancel"],
+      "initial": "running",
+      "terminal": ["completed", "failed", "cancelled"],
+      "transitions": [
+        { "from_state": "running", "event": "pause", "to_state": "suspended" },
+        { "from_state": "suspended", "event": "pause", "to_state": "suspended" },
+        { "from_state": "suspended", "event": "resume", "to_state": "running" },
+        { "from_state": "running", "event": "resume", "to_state": "running" },
+        { "from_state": "running", "event": "complete", "to_state": "completed" },
+        { "from_state": "suspended", "event": "complete", "to_state": "completed" },
+        { "from_state": "completed", "event": "complete", "to_state": "completed" },
+        { "from_state": "running", "event": "fail", "to_state": "failed" },
+        { "from_state": "suspended", "event": "fail", "to_state": "failed" },
+        { "from_state": "failed", "event": "fail", "to_state": "failed" },
+        { "from_state": "running", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "suspended", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "cancelled", "event": "cancel", "to_state": "cancelled" }
+      ]
+    }
+  ]
+}

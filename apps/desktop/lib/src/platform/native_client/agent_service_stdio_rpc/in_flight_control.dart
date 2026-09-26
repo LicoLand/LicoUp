@@ -16,6 +16,9 @@ Future<Map<String, dynamic>> executeStdioRpcInFlightControl({
     requestId: requestId,
     workflowId: workflowId,
     sessionManager: sessionManager,
+    // Cancel, steer and detach are control: they must not queue behind the
+    // bulk decode backlog of the turn they are about to change.
+    control: true,
   ).timeout(
     timeout,
     onTimeout: () async {

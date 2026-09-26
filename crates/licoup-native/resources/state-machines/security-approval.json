@@ -1,0 +1,24 @@
+{
+  "machines": [
+    {
+      "id": "security.approval",
+      "rust_module": "security_approval",
+      "states": [
+        { "id": "absent" },
+        { "id": "pending" },
+        { "id": "approved" },
+        { "id": "rejected" },
+        { "id": "expired" }
+      ],
+      "events": ["request", "approve", "reject", "expire"],
+      "initial": "absent",
+      "terminal": ["approved", "rejected", "expired"],
+      "transitions": [
+        { "from_state": "absent", "event": "request", "to_state": "pending" },
+        { "from_state": "pending", "event": "approve", "to_state": "approved" },
+        { "from_state": "pending", "event": "reject", "to_state": "rejected" },
+        { "from_state": "pending", "event": "expire", "to_state": "expired" }
+      ]
+    }
+  ]
+}

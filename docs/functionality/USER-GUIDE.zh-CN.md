@@ -1,5 +1,7 @@
 # LicoUp 用户指南
 
+Updated: 2026-09-25
+
 [English（规范版本）](USER-GUIDE.md) · 简体中文（本地化） · [文档索引](../README.md) · [项目首页](../../README.zh-CN.md)
 
 LicoUp 仍处于早期 Alpha 阶段。在重要场景中使用某个平台或功能前，请先查看
@@ -202,7 +204,7 @@ LicoUp Adaptive Bridge 负责针对该目标的交互适配。只有目录条目
 
 ## 预览发往另一个客户端的受保护传输
 
-该流程使用[当前正在退役的端点保护预览](../STATUS.zh-CN.md)，可以通过候选
+该流程使用[当前端点保护预览](../STATUS.zh-CN.md)，可以通过候选
 `licoarc.relay.v1` 外层 adapter 承载，并已有一项有界双全新端点场景通过实际
 BadTower 候选完成本机验证。这不建立已发布 Lico Arc Protocol Line、稳定中立
 通讯站支持、产品发布或托管运营。只应用于测试内容或用户明确接受的预览内容：
@@ -215,8 +217,7 @@ BadTower 候选完成本机验证。这不建立已发布 Lico Arc Protocol Line
 
 LicoUp 不信任当前运输服务处理明文，只向它发送密文和完成本次传输所需的最少
 路由信息。更换目标或修改内容后，必须重新确认。当前内层预览不是 Lico Arc
-Profile，也不承诺未来兼容；完整固定 Lico Arc Protocol Line 替换它时会直接
-退役。
+Profile 或稳定兼容配置。
 
 ## 校验发布文件
 

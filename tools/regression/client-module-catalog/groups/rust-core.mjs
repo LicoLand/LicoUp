@@ -8,6 +8,28 @@ import {
 
 export const RUST_CORE_MODULES = Object.freeze([
   defineModule({
+    id: "rust.workflow.authority-adapter",
+    kind: "rust-core",
+    summary: "Actual StrategyStore grant, semantic identity, live lease, and revocation admission",
+    inputs: ["crates/licoup-native/src/domain/workflow_runtime/authority_adapter.rs", "crates/licoup-workflow-runtime/src/admission/**"],
+    command: command("cargo", ["test", "-p", "licoup-native", "--lib", "--locked", "--offline", "authority_adapter"], 20 * 60_000),
+  }),
+  defineModule({
+    id: "rust.workflow.evolution-adapters",
+    kind: "rust-core",
+    summary: "Workflow consumption of existing usage, budget, source, and policy owners",
+    inputs: [
+      "crates/licoup-native/src/domain/workflow_runtime/evolution_adapters/**",
+      "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
+      "crates/licoup-native/src/domain/workflow_runtime/evolution.rs",
+      "crates/licoup-native/src/domain/provider_model_pricing/**",
+    ],
+    command: command("cargo", [
+      "test", "-p", "licoup-native", "--lib", "--locked", "--offline",
+      "evolution_adapters", "--", "--test-threads=4",
+    ], 20 * 60_000),
+  }),
+  defineModule({
       id: "rust.core.workflow",
       kind: "rust-core",
       summary: "Pure workflow parsing, analysis, compilation, and transition machine",

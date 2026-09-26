@@ -1,5 +1,7 @@
 # Global model registry
 
+Updated: 2026-09-14
+
 English · [简体中文](MODEL-REGISTRY.zh-CN.md) · [Architecture](README.md)
 
 This document owns canonical model identity in the Rust client core. An Agent,

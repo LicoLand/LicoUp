@@ -1,33 +1,7 @@
 use serde_json::{Value, json};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::platform) enum LifecycleStage {
-    Submitted,
-    Accepted,
-    Processing,
-    Responding,
-    Completed,
-}
-
-impl LifecycleStage {
-    pub(in crate::platform) const ALL: [Self; 5] = [
-        Self::Submitted,
-        Self::Accepted,
-        Self::Processing,
-        Self::Responding,
-        Self::Completed,
-    ];
-
-    pub(in crate::platform) const fn wire_name(self) -> &'static str {
-        match self {
-            Self::Submitted => "submitted",
-            Self::Accepted => "accepted",
-            Self::Processing => "processing",
-            Self::Responding => "responding",
-            Self::Completed => "completed",
-        }
-    }
-}
+pub(in crate::platform) use crate::state_machines::parser_lifecycle::State as LifecycleStage;
+use crate::state_machines::parser_lifecycle::{self, Event};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum Transition {
@@ -53,7 +27,7 @@ impl Transition {
         match self {
             Self::Lifecycle(stage) => json!({
                 "kind": "lifecycle",
-                "stage": stage.wire_name(),
+                "stage": stage.as_str(),
             }),
             Self::Text { unit_id, text } => json!({
                 "kind": "text",
@@ -92,13 +66,24 @@ impl TransitionReducer {
         if self.failure.is_some() || self.highest.is_some_and(|current| current >= stage) {
             return Vec::new();
         }
-        let start = self.highest.map_or(0, |current| current as usize + 1);
-        self.highest = Some(stage);
-        LifecycleStage::ALL[start..=stage as usize]
-            .iter()
-            .copied()
-            .map(Transition::Lifecycle)
-            .collect()
+
+        let mut emitted = Vec::new();
+        let mut current = match self.highest {
+            Some(current) => current,
+            None => {
+                let initial = parser_lifecycle::INITIAL;
+                emitted.push(Transition::Lifecycle(initial));
+                initial
+            }
+        };
+        while current != stage {
+            let next = parser_lifecycle::transition(current, Event::Advance)
+                .expect("parser lifecycle must reach every later configured stage");
+            current = next;
+            emitted.push(Transition::Lifecycle(current));
+        }
+        self.highest = Some(current);
+        emitted
     }
 
     pub(in crate::platform) fn fail(
@@ -107,7 +92,7 @@ impl TransitionReducer {
         stage: impl Into<String>,
         message: impl Into<String>,
     ) -> Option<Transition> {
-        if self.failure.is_some() || self.highest == Some(LifecycleStage::Completed) {
+        if self.failure.is_some() || self.highest.is_some_and(parser_lifecycle::terminal) {
             return None;
         }
         let failure = Transition::Failed {

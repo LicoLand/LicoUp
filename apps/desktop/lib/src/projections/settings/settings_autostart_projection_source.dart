@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/presentation/generated/settings_state_machines.g.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/projections/close_broadcast_controller.dart';
@@ -53,7 +54,7 @@ final class SettingsAutostartProjectionSource
     }
     _publish(
       _current.copyWith(
-        phase: SettingsAutostartPhase.applying,
+        phase: _transition(SettingsAutostartEvent.apply),
         result: SettingsAutostartResult.none,
       ),
       trace,
@@ -99,7 +100,7 @@ final class SettingsAutostartProjectionSource
     if (showLoading) {
       _publish(
         _current.copyWith(
-          phase: SettingsAutostartPhase.loading,
+          phase: _transition(SettingsAutostartEvent.load),
           result: SettingsAutostartResult.none,
         ),
         trace,
@@ -112,7 +113,7 @@ final class SettingsAutostartProjectionSource
     } catch (_) {
       _publish(
         _current.copyWith(
-          phase: SettingsAutostartPhase.failed,
+          phase: _transition(SettingsAutostartEvent.fail),
           supported: false,
           result: failureResult,
         ),
@@ -130,9 +131,11 @@ final class SettingsAutostartProjectionSource
     final mcp = payload['mcp'];
     final supported = payload['supported'] == true;
     return SettingsAutostartProjection(
-      phase: supported
-          ? SettingsAutostartPhase.ready
-          : SettingsAutostartPhase.unsupported,
+      phase: _transition(
+        supported
+            ? SettingsAutostartEvent.ready
+            : SettingsAutostartEvent.unsupported,
+      ),
       supported: supported,
       desktopEnabled: desktop is Map && desktop['enabled'] == true,
       desktopSilent: desktop is Map && desktop['silent'] == true,
@@ -146,6 +149,14 @@ final class SettingsAutostartProjectionSource
     if (_disposed || next == _current) return;
     _current = next;
     _changes.add(ProjectionUpdate(next, trace: trace));
+  }
+
+  SettingsAutostartPhase _transition(SettingsAutostartEvent event) {
+    final next = transitionSettingsAutostartPhase(_current.phase, event);
+    if (next == null) {
+      throw StateError('settings_autostart_transition_invalid');
+    }
+    return next;
   }
 
   Future<void> dispose() async {

@@ -12,6 +12,7 @@ import {
   loadEmbeddedFrontier,
   planSteps,
 } from "../../../tools/scripts/client-state-migration/frontier.mjs";
+import { CURRENT_SQLITE_SCHEMA_VERSION } from "../../../tools/data-migration/lib/codecs/canonical-conversation.mjs";
 import { DURABLE_SHAPES } from "../../../tools/scripts/client-state-migration/probe.mjs";
 import { evaluateMigrationState } from "../../../tools/scripts/client-state-migration/report.mjs";
 import { repairDomain } from "../../../tools/scripts/client-state-migration/repair.mjs";
@@ -135,7 +136,7 @@ function seedAdmittedRoot(root, frontier) {
   const database = new DatabaseSync(path.join(conversations, "conversations.sqlite3"));
   database.exec(
     "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
-      "INSERT INTO schema_meta(key,value) VALUES ('version','15');",
+      `INSERT INTO schema_meta(key,value) VALUES ('version','${CURRENT_SQLITE_SCHEMA_VERSION}');`,
   );
   database.close();
   fs.writeFileSync(
@@ -830,11 +831,13 @@ test("exit codes stay distinct for healthy, behind, ahead, invalid, and usage", 
 });
 
 test("every mirrored durable shape and constant still matches the Rust admission", async () => {
-  const [migration, policy, migrationPlatform, conversationStore] = await Promise.all([
-    fs.promises.readFile(path.join(repoRoot, MIGRATION_MODULE), "utf8"),
+  const [migration, policy, migrationPlatform, conversationStore, probe, strategyStore] = await Promise.all([
+    fs.promises.readFile(path.join(repoRoot, "crates/licoup-native/src/domain/client_state_migration/stores.rs"), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_POLICY), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CLIENT_STATE_MIGRATION), "utf8"),
     fs.promises.readFile(path.join(repoRoot, CONVERSATION_STORE), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, "tools/scripts/client-state-migration/probe.mjs"), "utf8"),
+    fs.promises.readFile(path.join(repoRoot, "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs"), "utf8"),
   ]);
   // Whitespace is stripped so the binding survives any rustfmt layout.
   const compact = migration.replace(/\s+/gu, "");
@@ -875,9 +878,10 @@ test("every mirrored durable shape and constant still matches the Rust admission
   assert.ok(
     compact.includes(probeRoute("probe_mobile_relay", DURABLE_SHAPES["mobile-relay"].document)),
   );
-  assert.ok(compact.includes('root.join("client-state/adaptive-flywheel/strategies.sqlite3")'));
-  assert.ok(compact.includes('Some("3")=>Ok(AuthoritativeProbe{version:2,present:true,})'));
-  assert.ok(compact.includes('Some("2")=>Ok(AuthoritativeProbe{version:1,present:true,})'));
+  const strategy = strategyStore.replace(/\s+/gu, "");
+  assert.ok(strategy.includes('STRATEGY_STORE_DATABASE:&str="client-state/adaptive-flywheel/strategies.sqlite3";'));
+  assert.ok(strategy.includes('meta_versions:&["3"],domain_schema_version:2,'));
+  assert.ok(strategy.includes('meta_versions:&["2"],domain_schema_version:1,'));
   assert.ok(compact.includes('root.join("client-state/conversations/conversations.sqlite3")'));
   assert.ok(compact.includes('root.join("client-state/conversations/migration-v5.complete")'));
   const completionSource =
@@ -890,11 +894,7 @@ test("every mirrored durable shape and constant still matches the Rust admission
     /pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u,
   );
   assert.ok(currentSchema, "the conversation store schema version moved");
-  const probe = await fs.promises.readFile(
-    path.join(repoRoot, "tools/scripts/client-state-migration/probe.mjs"),
-    "utf8",
-  );
-  assert.ok(probe.includes(`const CONVERSATION_SCHEMA_VERSION = "${currentSchema[1]}";`));
+  assert.equal(CURRENT_SQLITE_SCHEMA_VERSION, currentSchema[1]);
 
   const collections = policy
     .slice(

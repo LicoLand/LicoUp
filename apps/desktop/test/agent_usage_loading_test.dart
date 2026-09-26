@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/monitoring/monitoring_feature_composition.dart';
@@ -11,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets
 import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'fixtures/agent_usage_panel/usage_agent_service_fakes.dart';
 
@@ -26,8 +28,13 @@ void main() {
         controller.dispose();
       });
       await tester.pumpWidget(
-        _app(AgentUsagePanel(binding: monitoring.binding), chinese: true),
+        _app(
+          AgentUsagePanel(binding: monitoring.binding),
+          chinese: true,
+          overrides: monitoring.providerOverrides,
+        ),
       );
+      await tester.pump();
       expect(find.byType(LicoLoadingIndicator), findsOneWidget);
       expect(find.text('正在加载中'), findsOneWidget);
       expect(find.text('暂无用量报表'), findsNothing);
@@ -61,8 +68,12 @@ void main() {
         controller.dispose();
       });
       await tester.pumpWidget(
-        _app(AgentUsagePanel(binding: monitoring.binding)),
+        _app(
+          AgentUsagePanel(binding: monitoring.binding),
+          overrides: monitoring.providerOverrides,
+        ),
       );
+      await tester.pump();
       expect(find.byType(AgentUsageLoadingState), findsOneWidget);
       service.reportGate.complete();
       await tester.pump();
@@ -91,8 +102,13 @@ void main() {
         controller.dispose();
       });
       await tester.pumpWidget(
-        _app(AgentUsagePanel(binding: monitoring.binding), chinese: true),
+        _app(
+          AgentUsagePanel(binding: monitoring.binding),
+          chinese: true,
+          overrides: monitoring.providerOverrides,
+        ),
       );
+      await tester.pump();
       service.reportGate.complete();
       service.scanGate.complete();
       service.registryGate.complete();
@@ -193,21 +209,28 @@ void main() {
   );
 }
 
-Widget _app(Widget body, {bool chinese = false, bool reducedMotion = false}) =>
-    MaterialApp(
-      locale: Locale(chinese ? 'zh' : 'en'),
-      supportedLocales: const [Locale('zh'), Locale('en')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      theme: buildLicoTheme(),
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          disableAnimations: reducedMotion,
-          textScaler: TextScaler.linear(reducedMotion ? 2 : 1),
-        ),
-        child: child!,
+Widget _app(
+  Widget body, {
+  bool chinese = false,
+  bool reducedMotion = false,
+  List<Override> overrides = const <Override>[],
+}) => ProviderScope(
+  overrides: overrides,
+  child: MaterialApp(
+    locale: Locale(chinese ? 'zh' : 'en'),
+    supportedLocales: const [Locale('zh'), Locale('en')],
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    theme: buildLicoTheme(),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        disableAnimations: reducedMotion,
+        textScaler: TextScaler.linear(reducedMotion ? 2 : 1),
       ),
-      home: Scaffold(body: body),
-    );
+      child: child!,
+    ),
+    home: Scaffold(body: body),
+  ),
+);
 
 final class _LoadingUsageService extends UsageAgentService {
   final reportGate = Completer<void>();

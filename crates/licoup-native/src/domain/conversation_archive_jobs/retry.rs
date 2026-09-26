@@ -7,7 +7,11 @@ use serde_json::{Value, json};
 use super::clock::{timestamp, timestamp_after_seconds};
 use super::request::{required_job_id, retry_policy_from_request, text_param};
 use super::store::ArchiveJobStore;
-use crate::domain::conversation::archive_queue::{ArchiveJob, ArchiveJobStatus};
+use crate::domain::conversation::archive_queue::{
+    ArchiveJob, ArchiveJobEvent, ArchiveJobStatus, advance_archive_job_status,
+    parse_archive_job_status,
+};
+use crate::state_machines::conversation_archive_job;
 
 impl ArchiveJobStore {
     pub(super) fn cancel(&self, params: &Value) -> Result<Value> {
@@ -16,24 +20,26 @@ impl ArchiveJobStore {
         let job = self
             .get_job(&conn, &job_id)?
             .ok_or_else(|| anyhow!("unknown conversation archive job: {}", job_id))?;
-        if ArchiveJobStatus::from_str(&job.status)?.terminal() {
+        let current = parse_archive_job_status(&job.status)?;
+        if conversation_archive_job::terminal(current) {
             return self.job_response(&conn, job);
         }
+        let cancelled = advance_archive_job_status(current, ArchiveJobEvent::Cancel)?;
         let now = timestamp();
         conn.execute(
             "
             UPDATE conversation_archive_jobs
-            SET status = 'cancelled', phase = 'cancelled', updated_at = ?1,
-                cancelled_at = ?1, last_error = 'operator_cancelled'
-            WHERE job_id = ?2
+            SET status = ?1, phase = ?1, updated_at = ?2,
+                cancelled_at = ?2, last_error = 'operator_cancelled'
+            WHERE job_id = ?3
             ",
-            params![now, job_id],
+            params![cancelled.as_str(), now, job_id],
         )?;
         self.append_event(
             &conn,
             &job_id,
             "archive.cancelled",
-            ArchiveJobStatus::Cancelled,
+            cancelled,
             job.attempt,
             json!({ "reason": text_param(params, &["reason"]).unwrap_or_else(|| "operator_cancelled".to_string()) }),
         )?;
@@ -52,8 +58,11 @@ impl ArchiveJobStore {
         payload: Value,
     ) -> Result<Value> {
         let policy = retry_policy_from_request(&job.request, Some(job.max_attempts));
+        let current = parse_archive_job_status(&job.status)?;
         let now = timestamp();
         if policy.should_retry(job.attempt, error_kind) {
+            let retry_scheduled =
+                advance_archive_job_status(current, ArchiveJobEvent::ScheduleRetry)?;
             let retry_delay = policy.retry_delay_seconds(job.attempt);
             let retry_after = if retry_delay == 0 {
                 String::new()
@@ -63,17 +72,23 @@ impl ArchiveJobStore {
             conn.execute(
                 "
                 UPDATE conversation_archive_jobs
-                SET status = 'retry_scheduled', phase = 'retry_scheduled',
-                    updated_at = ?1, retry_after = ?2, last_error = ?3
-                WHERE job_id = ?4
+                SET status = ?1, phase = ?1,
+                    updated_at = ?2, retry_after = ?3, last_error = ?4
+                WHERE job_id = ?5
                 ",
-                params![now, retry_after, message, job.job_id],
+                params![
+                    retry_scheduled.as_str(),
+                    now,
+                    retry_after,
+                    message,
+                    job.job_id
+                ],
             )?;
             self.append_event(
                 conn,
                 &job.job_id,
                 "archive.retry.scheduled",
-                ArchiveJobStatus::RetryScheduled,
+                retry_scheduled,
                 job.attempt,
                 json!({
                     "errorKind": error_kind,
@@ -84,20 +99,21 @@ impl ArchiveJobStore {
                 }),
             )?;
         } else {
+            let failed = advance_archive_job_status(current, ArchiveJobEvent::Fail)?;
             conn.execute(
                 "
                 UPDATE conversation_archive_jobs
-                SET status = 'failed', phase = 'failed', updated_at = ?1,
-                    failed_at = ?1, last_error = ?2
-                WHERE job_id = ?3
+                SET status = ?1, phase = ?1, updated_at = ?2,
+                    failed_at = ?2, last_error = ?3
+                WHERE job_id = ?4
                 ",
-                params![now, message, job.job_id],
+                params![failed.as_str(), now, message, job.job_id],
             )?;
             self.append_event(
                 conn,
                 &job.job_id,
                 "archive.failed",
-                ArchiveJobStatus::Failed,
+                failed,
                 job.attempt,
                 json!({
                     "errorKind": error_kind,
@@ -122,6 +138,6 @@ impl ArchiveJobStore {
             )
             .optional()?
             .unwrap_or_default();
-        Ok(status == "cancelled")
+        Ok(status == ArchiveJobStatus::Cancelled.as_str())
     }
 }

@@ -1,5 +1,7 @@
 # LicoUp Local LLM Gateway
 
+Updated: 2026-09-14
+
 English (normative) · [简体中文](llm-gateway.zh-CN.md)
 
 The LLM Gateway is the **lower layer** of the Gateway Runtime. Authority for

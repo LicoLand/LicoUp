@@ -10,12 +10,15 @@ use super::plan::validate_stored_plan;
 use super::request::merge_params;
 use super::store::ArchiveJobStore;
 use super::validation::{aggregate_validations, archive_collection_paths, failed_validation};
-use crate::domain::conversation::archive_queue::{ArchiveJob, ArchiveJobStatus};
+use crate::domain::conversation::archive_queue::{
+    ArchiveJob, ArchiveJobEvent, ArchiveJobStatus, advance_archive_job_status,
+    parse_archive_job_status,
+};
 use crate::domain::conversation_snapshots;
 
 impl ArchiveJobStore {
     pub(super) fn advance_job(&self, conn: &Connection, job: ArchiveJob) -> Result<Value> {
-        match ArchiveJobStatus::from_str(&job.status)? {
+        match parse_archive_job_status(&job.status)? {
             ArchiveJobStatus::Queued | ArchiveJobStatus::RetryScheduled => {
                 self.run_archive_step(conn, job)
             }
@@ -38,26 +41,31 @@ impl ArchiveJobStore {
         if job.attempt == 0 {
             validate_stored_plan(&job.request, &job.target_scan)?;
         }
+        let archiving = advance_archive_job_status(
+            parse_archive_job_status(&job.status)?,
+            ArchiveJobEvent::BeginArchive,
+        )?;
         let attempt = job.attempt + 1;
         let now = timestamp();
         conn.execute(
             "
             UPDATE conversation_archive_jobs
-            SET status = 'archiving', phase = 'archiving', attempt = ?1,
-                updated_at = ?2, retry_after = '', last_error = ''
-            WHERE job_id = ?3
+            SET status = ?1, phase = ?1, attempt = ?2,
+                updated_at = ?3, retry_after = '', last_error = ''
+            WHERE job_id = ?4
             ",
-            params![attempt, now, job.job_id],
+            params![archiving.as_str(), attempt, now, job.job_id],
         )?;
         self.append_event(
             conn,
             &job.job_id,
             "archive.run.started",
-            ArchiveJobStatus::Archiving,
+            archiving,
             attempt,
             json!({ "attempt": attempt }),
         )?;
         job.attempt = attempt;
+        job.status = archiving.as_str().to_owned();
 
         let archive_params = merge_params(
             &job.request,
@@ -91,20 +99,22 @@ impl ArchiveJobStore {
                     json!({ "result": result.clone() }),
                 )?;
                 if archive_ok {
+                    let verifying =
+                        advance_archive_job_status(archiving, ArchiveJobEvent::BeginVerification)?;
                     conn.execute(
                         "
                         UPDATE conversation_archive_jobs
-                        SET status = 'verifying', phase = 'verifying', updated_at = ?1,
+                        SET status = ?1, phase = ?1, updated_at = ?2,
                             last_error = ''
-                        WHERE job_id = ?2
+                        WHERE job_id = ?3
                         ",
-                        params![timestamp(), job.job_id],
+                        params![verifying.as_str(), timestamp(), job.job_id],
                     )?;
                     self.append_event(
                         conn,
                         &job.job_id,
                         "archive.verify.started",
-                        ArchiveJobStatus::Verifying,
+                        verifying,
                         attempt,
                         json!({ "attempt": attempt }),
                     )?;
@@ -221,21 +231,25 @@ impl ArchiveJobStore {
             json!({ "validation": validation_result.clone() }),
         )?;
         if verification_ok {
+            let completed = advance_archive_job_status(
+                parse_archive_job_status(&job.status)?,
+                ArchiveJobEvent::Complete,
+            )?;
             let now = timestamp();
             conn.execute(
                 "
                 UPDATE conversation_archive_jobs
-                SET status = 'completed', phase = 'completed', updated_at = ?1,
-                    completed_at = ?1, last_error = ''
-                WHERE job_id = ?2
+                SET status = ?1, phase = ?1, updated_at = ?2,
+                    completed_at = ?2, last_error = ''
+                WHERE job_id = ?3
                 ",
-                params![now, job.job_id],
+                params![completed.as_str(), now, job.job_id],
             )?;
             self.append_event(
                 conn,
                 &job.job_id,
                 "archive.completed",
-                ArchiveJobStatus::Completed,
+                completed,
                 job.attempt,
                 json!({ "validation": validation_result }),
             )?;

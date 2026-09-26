@@ -1,5 +1,7 @@
 # licoup-agent-runtime
 
+Updated: 2026-09-18
+
 Extracted Agent Runtime crate.
 
 ## Migration Target

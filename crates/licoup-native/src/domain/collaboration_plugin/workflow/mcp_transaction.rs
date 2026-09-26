@@ -8,18 +8,13 @@ use super::model::{WorkflowKind, WorkflowPlanRecord};
 use crate::domain::collaboration_plugin::authority::AuthorityRegistration;
 use crate::domain::collaboration_plugin::lifecycle::InstalledWorkflowPlugin;
 use crate::platform::client_state::ClientStateStore;
+use crate::state_machines::collaboration_mcp_install;
 
 const COLLECTION: &str = "mcp-install-transactions";
 const SCHEMA: &str = "licoup.mcp-install-transaction.v1";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum Phase {
-    Prepared,
-    FilesCommitted,
-    AuthorityCommitted,
-    RollingBack,
-}
+pub(super) use crate::state_machines::collaboration_mcp_install::Event as PhaseEvent;
+pub(super) use crate::state_machines::collaboration_mcp_install::State as Phase;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -58,13 +53,7 @@ impl PendingMcpInstall {
         ensure!(
             self.schema_version == SCHEMA
                 && self.plan.workflow_kind == WorkflowKind::McpInstall
-                && matches!(
-                    self.phase,
-                    Phase::Prepared
-                        | Phase::FilesCommitted
-                        | Phase::AuthorityCommitted
-                        | Phase::RollingBack
-                ),
+                && collaboration_mcp_install::ALL_STATES.contains(&self.phase),
             "collaboration_mcp_transaction_invalid"
         );
         self.plan.validate()?;
@@ -112,7 +101,7 @@ pub(super) fn begin(
     );
     let pending = PendingMcpInstall {
         schema_version: SCHEMA.to_owned(),
-        phase: Phase::Prepared,
+        phase: collaboration_mcp_install::INITIAL,
         plan: plan.clone(),
         authority_registrations: authority_registrations.to_vec(),
         units: units
@@ -141,14 +130,11 @@ pub(super) fn begin(
     write(store, Some(&pending))
 }
 
-pub(super) fn advance(store: &ClientStateStore, phase: Phase) -> Result<()> {
+pub(super) fn advance(store: &ClientStateStore, event: PhaseEvent) -> Result<()> {
     let mut pending =
         read(store)?.ok_or_else(|| anyhow!("collaboration_mcp_transaction_missing"))?;
-    ensure!(
-        valid_transition(pending.phase, phase),
-        "collaboration_mcp_transaction_phase_invalid"
-    );
-    pending.phase = phase;
+    pending.phase = collaboration_mcp_install::transition(pending.phase, event)
+        .ok_or_else(|| anyhow!("collaboration_mcp_transaction_phase_invalid"))?;
     write(store, Some(&pending))
 }
 
@@ -205,7 +191,7 @@ pub(super) fn recover(
         "collaboration_authority_registration_binding_mismatch"
     );
     if pending.phase != Phase::RollingBack {
-        advance(store, Phase::RollingBack)?;
+        advance(store, PhaseEvent::BeginRollback)?;
     }
     rollback_files(&pending)?;
     clear(store)?;
@@ -328,16 +314,6 @@ fn write(store: &ClientStateStore, pending: Option<&PendingMcpInstall>) -> Resul
             json!({"items": pending.into_iter().collect::<Vec<_>>()}),
         )
         .map(|_| ())
-}
-
-fn valid_transition(previous: Phase, next: Phase) -> bool {
-    matches!(
-        (previous, next),
-        (Phase::Prepared, Phase::FilesCommitted)
-            | (Phase::Prepared, Phase::RollingBack)
-            | (Phase::FilesCommitted, Phase::AuthorityCommitted)
-            | (Phase::FilesCommitted, Phase::RollingBack)
-    )
 }
 
 fn path_text(path: &PathBuf) -> Result<String> {

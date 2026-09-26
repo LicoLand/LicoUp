@@ -1,5 +1,7 @@
 # Functionality
 
+Updated: 2026-09-25
+
 [Documentation](../README.md)
 
 - [Client capability boundary](CLIENT-DESKTOP.md)
@@ -7,7 +9,7 @@
 - [Adaptive Flywheel strategies](ADAPTIVE-FLYWHEEL.md) · [Adaptive Flywheel 策略](ADAPTIVE-FLYWHEEL.zh-CN.md)
 - [Design system](DESIGN-SYSTEM.md)
 - [UI interaction state machine](UI-INTERACTIONS.md) · [用户界面交互状态机](UI-INTERACTIONS.zh-CN.md)
-- [Current retiring endpoint-protection Preview file handoff](ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
+- [Current endpoint-protection Preview file handoff](ENDPOINT-PROTECTION-PREVIEW-FILE-HANDOFF.md)
 
 `PRODUCT.md` owns the public product boundary. These documents explain
 implemented client behavior and link to the code, schemas, catalogs, and

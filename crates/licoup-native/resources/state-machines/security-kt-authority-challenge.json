@@ -1,0 +1,19 @@
+{
+  "machines": [
+    {
+      "id": "security.kt-authority-challenge-marker",
+      "rust_module": "security_kt_authority_challenge_marker",
+      "states": [{ "id": "absent" }, { "id": "pending" }, { "id": "expired" }],
+      "events": ["stage", "expire", "replace", "complete"],
+      "initial": "absent",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "absent", "event": "stage", "to_state": "pending" },
+        { "from_state": "pending", "event": "expire", "to_state": "expired" },
+        { "from_state": "expired", "event": "replace", "to_state": "pending" },
+        { "from_state": "pending", "event": "complete", "to_state": "absent" },
+        { "from_state": "expired", "event": "complete", "to_state": "absent" }
+      ]
+    }
+  ]
+}

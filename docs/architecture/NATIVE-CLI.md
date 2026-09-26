@@ -1,5 +1,7 @@
 # Native CLI
 
+Updated: 2026-09-25
+
 | Reference | Owner |
 | --- | --- |
 | Simplified Chinese | [NATIVE-CLI.zh-CN.md](NATIVE-CLI.zh-CN.md) |
@@ -74,7 +76,7 @@ entry is used by this native process supervisor.
 
 The local `agent.conversation.execution` stream inspects one exact dispatch.
 Its record ownership, cursor and observation contract is defined by
-[Local execution inspection](CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+[Local execution inspection](CONVERSATION-DOMAIN.md#local-execution-inspection).
 
 ## Independent MCP process
 
@@ -101,11 +103,6 @@ executable. The MCP adapter's narrower remote exposure is owned by its
 | Local Subagents and MCP lifecycle commands | `crates/licoup-native/src/ffi/commands/subagents.rs` |
 | Local Subagents invocation and caller admission | `crates/licoup-native/src/domain/subagents/local.rs` |
 
-## Custom operation properties
-
-The accepted customization boundary extends the existing native catalog and tool
-contracts. Custom properties have a namespace, type, default and capability-version
-boundary. They cannot override the actor, authorization, idempotency identity or
-canonical state. Unknown or invalid tool input receives a typed admission error;
-ordinary Agent text remains original text, even when it resembles JSON. This is a
-constraint on future catalog extensions, not a new customization command.
+The current catalog is closed. Unknown or invalid tool input receives a typed
+admission error, and ordinary Agent text remains original text even when it
+resembles JSON. The CLI has no generic custom-operation-property command.

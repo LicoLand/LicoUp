@@ -1,0 +1,12 @@
+{"jsonrpc": "2.0", "method": "extension.ready", "params": {"profiles": ["agent-execution", "usage-metric"]}}
+{"jsonrpc": "2.0", "id": 1, "result": {"protocol": {"major": 1, "minimumMinor": 0}, "maxFrameBytes": 65536, "profiles": ["agent-execution", "usage-metric"]}}
+{"jsonrpc": "2.0", "id": 2, "result": {"id": "dev.example.agent.sdk.full", "instanceKind": "executable", "inputKinds": ["text"], "capabilities": ["dev.example.agent/stream", "dev.example.agent/resume"], "interfaceVersion": "1.0.0", "usage": "reported", "cancel": "supported", "resume": "supported"}}
+{"jsonrpc": "2.0", "id": 3, "result": {"items": [], "nextCursor": ""}}
+{"jsonrpc": "2.0", "id": 4, "result": {"models": [{"modelId": "dev.example.agent/local-echo", "displayName": "Local Echo", "capabilities": ["dev.example.agent/text"]}]}}
+{"jsonrpc": "2.0", "id": 5, "result": {"invocationRef": "sample-invocation-1", "outcome": "accepted"}}
+{"jsonrpc": "2.0", "method": "agent.event", "params": {"invocationRef": "sample-invocation-1", "sequence": 1, "kind": "text", "body": "abcdefghijklmnop"}}
+{"jsonrpc": "2.0", "method": "agent.event", "params": {"invocationRef": "sample-invocation-1", "sequence": 2, "kind": "text", "body": "qrstuvwxyz012345"}}
+{"jsonrpc": "2.0", "method": "agent.event", "params": {"invocationRef": "sample-invocation-1", "sequence": 3, "kind": "text", "body": "6789"}}
+{"jsonrpc": "2.0", "method": "agent.event", "params": {"invocationRef": "sample-invocation-1", "sequence": 4, "kind": "terminal", "body": {"outcome": "succeeded"}}}
+{"jsonrpc": "2.0", "method": "usage.publish", "params": {"schema": "licoup.usage-observation.v1", "observationId": "sample-invocation-1/items", "revision": 1, "operation": "upsert", "sourceEpoch": "dev.example.agent.sdk-full/session-1", "scopeRef": "sample-invocation-1", "observedAt": "2026-01-01T00:00:00Z", "metrics": {"dev.example.agent/items": {"value": "1", "unit": "items", "temporality": "delta", "quality": "reported"}, "dev.example.agent/tokens": {"unit": "tokens", "temporality": "delta", "quality": "unknown"}}}}
+{"jsonrpc": "2.0", "id": 6, "result": {"outcome": "stopped"}}

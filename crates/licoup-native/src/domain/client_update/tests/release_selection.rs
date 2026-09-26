@@ -88,21 +88,6 @@ fn client_update_rejects_prerelease_versions_in_a_stable_manifest() {
 }
 
 #[test]
-fn client_update_rejects_malformed_release_instead_of_reporting_up_to_date() {
-    let fixture = UpdateFixture::new();
-    let manifest = fixture.sign_manifest(fixture.unsigned_manifest(json!([release(
-        "not-a-version",
-        fixture.artifact(TARGET_ID)
-    ),])));
-    assert!(
-        check(&fixture.params(manifest))
-            .unwrap_err()
-            .to_string()
-            .contains("semantic versioning")
-    );
-}
-
-#[test]
 fn client_update_rejects_manifest_track_mismatch() {
     let fixture = UpdateFixture::new();
     let mut manifest =

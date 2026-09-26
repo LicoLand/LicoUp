@@ -481,7 +481,7 @@ export function inspectPresentationBoundarySources(sourceByPath) {
         pushFailure(failures, "presentation_boundary_stable_controller", relativePath);
       }
       if (
-        /\b(?:StreamController|ApplicationStateOwner|ApplicationSignalOwner|PresentationPreferencesRepository)\b|\bpublishChange\s*\(|\bdispose\s*\(/u.test(masked)
+        /\b(?:StreamController|ApplicationStateOwner|ApplicationSignalOwner|PresentationPreferencesRepository)\b|\bStream\s*\.\s*multi\s*\(|\bpublishChange\s*\(|\bdispose\s*\(|\.\s*dispose\b/u.test(masked)
       ) {
         pushFailure(failures, "presentation_boundary_stable_runtime_owner", relativePath);
       }
@@ -659,8 +659,16 @@ export function inspectPresentationContractSources(sourceByPath) {
     if (importsFrom(source).some((specifier) => specifier.startsWith("package:"))) {
       pushFailure(failures, "presentation_boundary_package_purity", relativePath);
     }
+    // SyntaxConfig's immutable parser-version key is not a mutable source or
+    // application revision owner. Keep the legacy counter prohibition outside
+    // that specific value type, and retain every other surface restriction.
+    const syntaxBody = classBody(source, "SyntaxConfig");
+    const revisionSurface = syntaxBody != null && /\bfinal\s+String\s+revision\s*;/u.test(syntaxBody)
+      ? masked.replace(syntaxBody, "")
+      : masked;
     if (
-      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|close|revision)\b/u.test(masked)
+      /\b(?:Widget|BuildContext|ClientController|ChangeNotifier|ValueNotifier|ValueListenable|StreamController|close)\b/u.test(masked)
+      || /\brevision\b/u.test(revisionSurface)
     ) {
       pushFailure(failures, "presentation_boundary_package_surface", relativePath);
     }

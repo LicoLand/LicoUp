@@ -1,5 +1,7 @@
 # Security Architecture and Data Boundaries
 
+Updated: 2026-09-25
+
 English (Normative) · [简体中文](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) · [Back to Architecture README](README.md)
 
 This document defines LicoUp client security boundaries, data flow rules, virtual machine integration isolation, and endpoint encryption standards.
@@ -16,9 +18,9 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes <user>@<host> <command>
 ```
 It passes one fixed, shell-quoted guest command. Both ACP and Hermes TUI gateway protocols use bounded JSON-RPC over stdin/stdout.
 
-## 2. Retiring Endpoint-Protection Preview Layers
+## 2. Endpoint-Protection Preview Layers
 
-The current retiring endpoint-protection Preview uses a fixed security profile:
+The current endpoint-protection Preview uses a fixed security profile:
 
 ```mermaid
 flowchart TB

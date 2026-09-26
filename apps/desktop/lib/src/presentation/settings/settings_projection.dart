@@ -1,5 +1,8 @@
 import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/presentation/generated/settings_state_machines.g.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+export 'package:licoup/src/presentation/generated/settings_state_machines.g.dart'
+    show SettingsAutostartPhase;
 
 enum SettingsAppearanceMode { system, light, dark }
 
@@ -216,8 +219,6 @@ final class SettingsResourceUsageProjection {
   );
 }
 
-enum SettingsAutostartPhase { loading, ready, applying, unsupported, failed }
-
 enum SettingsAutostartResult { none, saved, loadFailed, saveFailed }
 
 final class SettingsAutostartProjection {
@@ -232,7 +233,7 @@ final class SettingsAutostartProjection {
   });
 
   const SettingsAutostartProjection.loading()
-    : phase = SettingsAutostartPhase.loading,
+    : phase = settingsAutostartPhaseInitial,
       supported = false,
       desktopEnabled = false,
       desktopSilent = false,

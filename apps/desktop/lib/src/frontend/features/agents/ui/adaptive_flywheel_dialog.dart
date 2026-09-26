@@ -3,11 +3,14 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_workflow_diagram.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
@@ -24,6 +27,7 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
@@ -43,25 +47,42 @@ Future<void> showAdaptiveFlywheelDialog(
   required AgentsBinding agents,
   String initialRevision = '',
 }) {
+  final providerContainer = ProviderScope.containerOf(context, listen: false);
   return showDialog<void>(
     context: context,
-    builder: (context) => ProjectionBuilder<AgentsProjection, AgentsProjection>(
-      source: agents.projection,
-      select: (projection) => projection,
-      builder: (context, agentsProjection) =>
-          ProjectionBuilder<
-            CanonicalConversationProjection,
-            CanonicalConversationProjection
-          >(
-            source: conversation.canonicalEvents,
-            select: (projection) => projection,
-            builder: (context, canonical) => _AdaptiveFlywheelDialog(
-              agents: agents,
-              agentsProjection: agentsProjection,
-              canonical: canonical,
-              initialRevision: initialRevision,
-            ),
-          ),
+    builder: (dialogContext) => UncontrolledProviderScope(
+      container: providerContainer,
+      child: Builder(
+        builder: (context) {
+          final planes = conversationSourcePortOf(context);
+          return AsyncRegion<AgentsProjection, IntentSink<AgentsIntent>>(
+            source: agentsCatalogProjectionProvider,
+            actions: agents.intents,
+            data: (context, agentsProjection, _) =>
+                ConversationPlaneBuilder<
+                  CanonicalConversationProjection,
+                  CanonicalConversationProjection
+                >(
+                  plane: planes.canonicalEvents,
+                  select: (projection) => projection,
+                  // A withdrawn canonical plane hides only this dialog's
+                  // conversation-bound controls; the agents side stays readable.
+                  emptyBuilder: (context) => _AdaptiveFlywheelDialog(
+                    agents: agents,
+                    agentsProjection: agentsProjection,
+                    canonical: null,
+                    initialRevision: initialRevision,
+                  ),
+                  builder: (context, canonical) => _AdaptiveFlywheelDialog(
+                    agents: agents,
+                    agentsProjection: agentsProjection,
+                    canonical: canonical,
+                    initialRevision: initialRevision,
+                  ),
+                ),
+          );
+        },
+      ),
     ),
   );
 }
@@ -76,7 +97,7 @@ final class _AdaptiveFlywheelDialog extends StatefulWidget {
 
   final AgentsBinding agents;
   final AgentsProjection agentsProjection;
-  final CanonicalConversationProjection canonical;
+  final CanonicalConversationProjection? canonical;
   final String initialRevision;
 
   @override

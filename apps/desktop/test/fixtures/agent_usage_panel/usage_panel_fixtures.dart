@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/misc.dart' show Override;
 
-Widget usageTestApp({required ThemeData theme, required Widget home}) {
-  return MaterialApp(
-    builder: (context, child) => Material(child: child),
-    theme: theme,
-    home: home,
+Widget usageTestApp({
+  required ThemeData theme,
+  required Widget home,
+  required List<Override> overrides,
+}) {
+  return ProviderScope(
+    overrides: overrides,
+    child: MaterialApp(
+      builder: (context, child) => Material(child: child),
+      theme: theme,
+      home: home,
+    ),
   );
 }
 

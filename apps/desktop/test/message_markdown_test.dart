@@ -1,68 +1,116 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:presentation_runtime/presentation_runtime.dart'
+    show
+        MessageMarkdownBlockType,
+        PresentationRuntime,
+        parseMessageMarkdownBlocks,
+        parseStreamingMessageMarkdownBlocks,
+        prepareMessageMarkdownInline;
+
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_block_view.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
+
+import 'v7_conversation_ui/prepared_message_markdown_harness.dart';
 
 void main() {
-  test('inline span parsing is content-addressed and cached', () {
-    const accent = Color(0xFF0000FF);
-    const codeBackground = Color(0xFFEEEEEE);
-    final first = messageMarkdownInlineSpans(
-      'hello **world** and `code`',
-      const TextStyle(fontSize: 14),
-      accent: accent,
-      codeBackground: codeBackground,
-    );
-    // A rebuild with equal-but-fresh inputs hits the cache.
-    final second = messageMarkdownInlineSpans(
-      'hello **world** and `code`',
-      const TextStyle(fontSize: 14),
-      accent: accent,
-      codeBackground: codeBackground,
-    );
-    expect(identical(first, second), isTrue);
-    expect(first, hasLength(4));
+  const accent = Color(0xFF0000FF);
+  const codeBackground = Color(0xFFEEEEEE);
 
-    final otherText = messageMarkdownInlineSpans(
-      'hello world',
-      const TextStyle(fontSize: 14),
-      accent: accent,
-      codeBackground: codeBackground,
-    );
-    expect(identical(first, otherText), isFalse);
+  group('prepared inline display mapping', () {
+    test('maps prepared flags to styles without reading the raw markup', () {
+      final inline = prepareMessageMarkdownInline('hello **world** and `code`');
+      final first = messageMarkdownInlineSpans(
+        inline,
+        const TextStyle(fontSize: 14),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      // A rebuild with the same prepared value and style hits the cache.
+      final second = messageMarkdownInlineSpans(
+        inline,
+        const TextStyle(fontSize: 14),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      expect(identical(first, second), isTrue);
+      expect(first, hasLength(4));
+      expect((first[0] as TextSpan).text, 'hello ');
+      expect((first[0] as TextSpan).style?.fontWeight, isNull);
+      expect((first[1] as TextSpan).text, 'world');
+      expect((first[1] as TextSpan).style?.fontWeight, FontWeight.w800);
+      expect((first[3] as TextSpan).text, 'code');
+      expect((first[3] as TextSpan).style?.fontFamily, 'SF Mono');
+      expect((first[3] as TextSpan).style?.fontSize, 13);
+      expect((first[3] as TextSpan).style?.backgroundColor, codeBackground);
 
-    // Cached span trees are shared across widgets, so they are immutable.
-    expect(() => first.add(const TextSpan()), throwsUnsupportedError);
-  });
+      // The display value is the authority: the raw source never reaches the
+      // mapping, so nothing here can re-tokenize it.
+      expect(inline.displayText, 'hello world and code');
+      expect((first[3] as TextSpan).text, isNot(contains('`')));
 
-  test('table intrinsic width measurement is cached per content and style', () {
-    const accent = Color(0xFF0000FF);
-    const codeBackground = Color(0xFFEEEEEE);
-    const data = '| A | B |\n|---|---|\n| long cell content | x |\n';
-    // The block-parse cache keeps the rows list identity per content.
-    final firstRows = parseMessageMarkdownBlocks(data).single.rows;
-    final secondRows = parseMessageMarkdownBlocks(data).single.rows;
-    expect(identical(firstRows, secondRows), isTrue);
+      // A restyle maps the same prepared value again; the value is untouched.
+      final restyled = messageMarkdownInlineSpans(
+        inline,
+        const TextStyle(fontSize: 20),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      expect(identical(restyled, first), isFalse);
+      expect((restyled[3] as TextSpan).style?.fontSize, 19);
 
-    final first = messageMarkdownTableIntrinsicColumnWidths(
-      firstRows,
-      const TextStyle(fontSize: 14),
-      accent: accent,
-      codeBackground: codeBackground,
-    );
-    final second = messageMarkdownTableIntrinsicColumnWidths(
-      secondRows,
-      const TextStyle(fontSize: 14),
-      accent: accent,
-      codeBackground: codeBackground,
-    );
-    expect(identical(first, second), isTrue);
-    expect(first, hasLength(2));
-    expect(first[0], greaterThan(first[1]));
-    expect(first[1], greaterThan(0));
+      // Cached span trees are shared across widgets, so they are immutable.
+      expect(() => first.add(const TextSpan()), throwsUnsupportedError);
+    });
+
+    test('maps link and emphasis flags with the renderer styles', () {
+      final inline = prepareMessageMarkdownInline(
+        'see [label](https://example.test) and *slanted*',
+      );
+      final spans = messageMarkdownInlineSpans(
+        inline,
+        const TextStyle(fontSize: 14),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      final link =
+          spans.firstWhere((span) => (span as TextSpan).text == 'label')
+              as TextSpan;
+      expect(link.style?.color, accent);
+      expect(link.style?.decoration, TextDecoration.underline);
+      final emphasis =
+          spans.firstWhere((span) => (span as TextSpan).text == 'slanted')
+              as TextSpan;
+      expect(emphasis.style?.fontStyle, FontStyle.italic);
+    });
+
+    test('table intrinsic width measurement is cached per prepared cells', () {
+      const data = '| A | B |\n|---|---|\n| long cell content | x |\n';
+      final cells = parseMessageMarkdownBlocks(data).single.cellInline;
+      expect(cells, isNotEmpty);
+
+      final first = messageMarkdownTableIntrinsicColumnWidths(
+        cells,
+        const TextStyle(fontSize: 14),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      final second = messageMarkdownTableIntrinsicColumnWidths(
+        cells,
+        const TextStyle(fontSize: 14),
+        accent: accent,
+        codeBackground: codeBackground,
+      );
+      expect(identical(first, second), isTrue);
+      expect(first, hasLength(2));
+      expect(first[0], greaterThan(first[1]));
+      expect(first[1], greaterThan(0));
+    });
   });
 
   test('parseMessageMarkdownBlocks recognizes common message markdown', () {
@@ -82,11 +130,19 @@ final value = 1;
     expect(blocks, hasLength(4));
     expect(blocks[0].type, MessageMarkdownBlockType.heading);
     expect(blocks[0].text, 'Heading');
+    expect(blocks[0].inline!.displayText, 'Heading');
     expect(blocks[1].type, MessageMarkdownBlockType.unorderedList);
     expect(blocks[1].items, ['first', '**second**']);
+    // The item keeps its authored text and carries its own display value.
+    expect(blocks[1].itemInline, hasLength(2));
+    expect(blocks[1].itemInline[1].displayText, 'second');
+    expect(blocks[1].itemInline[1].runs.single.isStrong, isTrue);
     expect(blocks[2].type, MessageMarkdownBlockType.quote);
+    expect(blocks[2].inline!.displayText, 'quoted');
     expect(blocks[3].type, MessageMarkdownBlockType.code);
     expect(blocks[3].text, 'final value = 1;');
+    // Code keeps its raw text and has no prepared inline display.
+    expect(blocks[3].inline, isNull);
   });
 
   test('parseMessageMarkdownBlocks recognizes GFM pipe tables', () {
@@ -110,6 +166,9 @@ final value = 1;
     ]);
     expect(blocks[1].rows[1][0], 'server/core/');
     expect(blocks[1].rows[2][1], 'apps/desktop/');
+    expect(blocks[1].cellInline, hasLength(3));
+    expect(blocks[1].cellInline[0][0].displayText, 'Old Path');
+    expect(blocks[1].cellInline[2][1].displayText, 'apps/desktop/');
   });
 
   test('parseMessageMarkdownBlocks recognizes runtime API warnings', () {
@@ -128,172 +187,11 @@ The response above may be incomplete.
       'API Error: Connection closed mid-response.\n'
       'The response above may be incomplete.',
     );
-  });
-
-  testWidgets('MessageMarkdown renders markdown as structured widgets', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Builder(
-          builder: (context) {
-            final colors = context.licoColors;
-            return Scaffold(
-              body: MessageMarkdown(
-                data:
-                    '# Title\n\nUse **bold**, `code`, and [link](https://example.com).\n\n1. step\n\n```sh\necho ok\n```',
-                foreground: colors.text,
-                accent: colors.primary,
-                codeBackground: colors.surfaceRaised,
-                blockBackground: colors.surface,
-                borderColor: colors.line,
-                renderStyle: const MessageMarkdownStyle(showCodeLanguage: true),
-              ),
-            );
-          },
-        ),
-      ),
+    expect(
+      blocks[1].inline!.displayText,
+      'API Error: Connection closed mid-response.\n'
+      'The response above may be incomplete.',
     );
-
-    expect(find.text('Title'), findsOneWidget);
-    expect(find.textContaining('Use bold, code, and link.'), findsOneWidget);
-    expect(find.text('1.'), findsOneWidget);
-    expect(find.text('sh'), findsOneWidget);
-    expect(find.text('echo ok'), findsOneWidget);
-  });
-
-  testWidgets('MessageMarkdown renders GFM pipe tables as a table', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Builder(
-          builder: (context) {
-            final colors = context.licoColors;
-            return Scaffold(
-              body: MessageMarkdown(
-                data:
-                    '| Old Path | New Path | Status | Verifier |\n'
-                    '|----------|----------|--------|----------|\n'
-                    '| server/core/ | packages/foundation/ | migration in progress | architecture-graph |\n',
-                foreground: colors.text,
-                accent: colors.primary,
-                codeBackground: colors.surfaceRaised,
-                blockBackground: colors.surface,
-                borderColor: colors.line,
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    expect(find.byType(Table), findsOneWidget);
-    expect(find.text('Old Path'), findsOneWidget);
-    expect(find.text('packages/foundation/'), findsOneWidget);
-    expect(find.textContaining('|----------|'), findsNothing);
-    // Tables fit the dialog inner boundary: no horizontal scroll, no overflow.
-    expect(find.byType(SingleChildScrollView), findsNothing);
-    final tableWidth = tester
-        .renderObject<RenderBox>(find.byType(Table))
-        .size
-        .width;
-    expect(tableWidth, lessThanOrEqualTo(800));
-  });
-
-  testWidgets('MessageMarkdown table wraps text to the available width', (
-    tester,
-  ) async {
-    final longCell = List.filled(2, 'wraps at word boundaries').join(' ');
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Builder(
-          builder: (context) {
-            final colors = context.licoColors;
-            return Scaffold(
-              body: Align(
-                alignment: Alignment.topLeft,
-                child: SizedBox(
-                  width: 220,
-                  child: MessageMarkdown(
-                    data:
-                        '| Wide | Short |\n'
-                        '|------|-------|\n'
-                        '| $longCell | short |\n',
-                    foreground: colors.text,
-                    accent: colors.primary,
-                    codeBackground: colors.surfaceRaised,
-                    blockBackground: colors.surface,
-                    borderColor: colors.line,
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    expect(tester.takeException(), isNull);
-    final tableWidth = tester
-        .renderObject<RenderBox>(find.byType(Table))
-        .size
-        .width;
-    expect(tableWidth, lessThanOrEqualTo(220));
-    // A 220px container cannot hold 42 characters on a single 14px line,
-    // so a taller cell proves the text wrapped instead of overflowing.
-    final cellHeight = tester
-        .renderObject<RenderParagraph>(
-          find.textContaining(longCell, findRichText: true),
-        )
-        .size
-        .height;
-    expect(cellHeight, greaterThan(30));
-    // Narrow columns keep their intrinsic width instead of an equal share.
-    final longCellWidth = tester
-        .renderObject<RenderParagraph>(
-          find.textContaining(longCell, findRichText: true),
-        )
-        .size
-        .width;
-    final shortCellWidth = tester
-        .renderObject<RenderParagraph>(find.text('short'))
-        .size
-        .width;
-    expect(shortCellWidth, lessThan(longCellWidth));
-  });
-
-  testWidgets('MessageMarkdown renders runtime API warnings as alert blocks', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Builder(
-          builder: (context) {
-            final colors = context.licoColors;
-            return Scaffold(
-              body: MessageMarkdown(
-                data:
-                    'API Error: Connection closed mid-response. '
-                    'The response above may be incomplete.',
-                foreground: colors.text,
-                accent: colors.primary,
-                codeBackground: colors.surfaceRaised,
-                blockBackground: colors.surface,
-                borderColor: colors.line,
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
-    expect(find.textContaining('API Error:'), findsOneWidget);
   });
 
   group('parseStreamingMessageMarkdownBlocks', () {
@@ -497,135 +395,535 @@ The response above may be incomplete.
       final finalized = parseMessageMarkdownBlocks(data);
       expect(streaming.complete.length, finalized.length);
       for (var index = 0; index < finalized.length; index++) {
-        expect(streaming.complete[index].type, finalized[index].type);
-        expect(streaming.complete[index].text, finalized[index].text);
-        expect(streaming.complete[index].items, finalized[index].items);
-        expect(streaming.complete[index].rows, finalized[index].rows);
-        expect(streaming.complete[index].language, finalized[index].language);
-        expect(streaming.complete[index].level, finalized[index].level);
+        // The content fingerprint covers the prepared inline display too, so
+        // equality here means the streaming split kept the same prepared value.
+        expect(
+          streaming.complete[index].contentHash,
+          finalized[index].contentHash,
+        );
       }
     });
   });
 
-  group('MessageMarkdown streaming mode', () {
-    testWidgets(
-      'styles a heading mid-stream once its line completes, plain before',
-      (tester) async {
-        await _pumpMarkdown(tester, '# Tit', isStreaming: true);
-        // The half-typed heading renders as calm body text, not heading style.
-        expect(_spanStyleForText(tester, 'Tit')?.fontSize, 14);
-        expect(_hasSpanWithFontSize(tester, 18), isFalse);
+  group('MessageMarkdown over the real prepared pipeline', () {
+    late PresentationRuntime runtime;
+    late ConversationMarkdownPreparation preparation;
 
-        await _pumpMarkdown(tester, '# Title\n', isStreaming: true);
-        expect(_spanStyleForText(tester, 'Title')?.fontSize, 18);
+    setUp(() {
+      runtime = PresentationRuntime();
+      preparation = conversationMarkdownTestPreparation(runtime: runtime);
+    });
 
-        await _pumpMarkdown(tester, '# Title\n\nbody grows', isStreaming: true);
-        expect(_spanStyleForText(tester, 'Title')?.fontSize, 18);
-        expect(_spanStyleForText(tester, 'body grows')?.fontSize, 14);
-      },
+    tearDown(() {
+      unawaited(preparation.dispose());
+      runtime.dispose();
+    });
+
+    Widget markdown({
+      required String data,
+      required String identity,
+      bool isStreaming = false,
+      Color? foreground,
+      MessageMarkdownStyle renderStyle = const MessageMarkdownStyle(
+        showCodeLanguage: true,
+      ),
+    }) => conversationMarkdownTestApp(
+      preparation: preparation,
+      child: conversationMarkdownTestView(
+        data: data,
+        identity: identity,
+        isStreaming: isStreaming,
+        foreground: foreground,
+        renderStyle: renderStyle,
+      ),
     );
 
+    Future<void> prepare(WidgetTester tester, String identity) async {
+      await waitForPreparedBody(tester, preparation, identity);
+      await tester.pump();
+    }
+
+    Future<void> finish(WidgetTester tester) =>
+        finishConversationMarkdownTest(tester, preparation, runtime);
+
+    testWidgets('MessageMarkdown renders markdown as structured widgets', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        markdown(
+          identity: 'md-structured',
+          data:
+              '# Title\n\nUse **bold**, `code`, and [link](https://example.com).\n\n1. step\n\n```sh\necho ok\n```',
+        ),
+      );
+      await prepare(tester, 'md-structured');
+
+      expect(find.text('Title'), findsOneWidget);
+      expect(find.textContaining('Use bold, code, and link.'), findsOneWidget);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('sh'), findsOneWidget);
+      expect(find.text('echo ok'), findsOneWidget);
+
+      // The visible inline semantics survived the move into the worker: the
+      // display text is styled from the prepared runs, not re-tokenized.
+      expect(_spanStyleForText(tester, 'bold')?.fontWeight, FontWeight.w800);
+      expect(_spanStyleForText(tester, 'code')?.fontFamily, 'SF Mono');
+      final link = _spanStyleForText(tester, 'link');
+      expect(link?.decoration, TextDecoration.underline);
+      expect(find.textContaining('**'), findsNothing);
+      expect(find.textContaining('`'), findsNothing);
+      expect(find.textContaining('](https://'), findsNothing);
+
+      // The body was prepared by a real worker isolate, not the caller.
+      expect(
+        preparation.workerFor('md-structured')?.runsInCallerIsolate,
+        isFalse,
+        reason: 'the prepared body came from a worker isolate',
+      );
+      await finish(tester);
+    });
+
+    testWidgets('MessageMarkdown renders GFM pipe tables as a table', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        markdown(
+          identity: 'md-table',
+          data:
+              '| Old Path | New Path | Status | Verifier |\n'
+              '|----------|----------|--------|----------|\n'
+              '| server/core/ | packages/foundation/ | migration in progress | architecture-graph |\n',
+        ),
+      );
+      await prepare(tester, 'md-table');
+
+      expect(find.byType(Table), findsOneWidget);
+      expect(find.text('Old Path'), findsOneWidget);
+      expect(find.text('packages/foundation/'), findsOneWidget);
+      expect(find.textContaining('|----------|'), findsNothing);
+      // Tables fit the dialog inner boundary: no horizontal scroll, no overflow.
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      final tableWidth = tester
+          .renderObject<RenderBox>(find.byType(Table))
+          .size
+          .width;
+      expect(tableWidth, lessThanOrEqualTo(800));
+      await finish(tester);
+    });
+
+    testWidgets('MessageMarkdown table wraps text to the available width', (
+      tester,
+    ) async {
+      final longCell = List.filled(2, 'wraps at word boundaries').join(' ');
+      await tester.pumpWidget(
+        conversationMarkdownTestApp(
+          preparation: preparation,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 220,
+              child: conversationMarkdownTestView(
+                identity: 'md-wrap',
+                data:
+                    '| Wide | Short |\n'
+                    '|------|-------|\n'
+                    '| $longCell | short |\n',
+              ),
+            ),
+          ),
+        ),
+      );
+      await prepare(tester, 'md-wrap');
+
+      expect(tester.takeException(), isNull);
+      final tableWidth = tester
+          .renderObject<RenderBox>(find.byType(Table))
+          .size
+          .width;
+      expect(tableWidth, lessThanOrEqualTo(220));
+      // A 220px container cannot hold 42 characters on a single 14px line,
+      // so a taller cell proves the text wrapped instead of overflowing.
+      final cellHeight = tester
+          .renderObject<RenderParagraph>(
+            find.textContaining(longCell, findRichText: true),
+          )
+          .size
+          .height;
+      expect(cellHeight, greaterThan(30));
+      // Narrow columns keep their intrinsic width instead of an equal share.
+      final longCellWidth = tester
+          .renderObject<RenderParagraph>(
+            find.textContaining(longCell, findRichText: true),
+          )
+          .size
+          .width;
+      final shortCellWidth = tester
+          .renderObject<RenderParagraph>(find.text('short'))
+          .size
+          .width;
+      expect(shortCellWidth, lessThan(longCellWidth));
+      await finish(tester);
+    });
+
     testWidgets(
-      'unclosed code fence shows the code frame immediately and never flashes '
-      'to plain text',
+      'MessageMarkdown renders runtime API warnings as alert blocks',
       (tester) async {
-        // The frame appears from the opening fence, before any content.
-        await _pumpMarkdown(tester, '```dart\n', isStreaming: true);
-        expect(_hasCodeFrame(tester), isTrue);
-        expect(find.text('dart'), findsOneWidget);
-
-        // Content streams inside the frame.
-        await _pumpMarkdown(tester, '```dart\nint a = 1;', isStreaming: true);
-        expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
-
-        // The closing fence keeps the same code frame; no plain-text phase.
-        await _pumpMarkdown(
-          tester,
-          '```dart\nint a = 1;\n```',
-          isStreaming: true,
+        await tester.pumpWidget(
+          markdown(
+            identity: 'md-warning',
+            data:
+                'API Error: Connection closed mid-response. '
+                'The response above may be incomplete.',
+          ),
         );
-        expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
+        await prepare(tester, 'md-warning');
 
-        await _pumpMarkdown(
-          tester,
-          '```dart\nint a = 1;\n```\n\nafter',
-          isStreaming: true,
-        );
-        expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
-        expect(_spanStyleForText(tester, 'after')?.fontSize, 14);
+        expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+        expect(find.textContaining('API Error:'), findsOneWidget);
+        await finish(tester);
       },
     );
 
-    testWidgets(
-      'mid-list renders terminated items as a list and the dangling item as '
-      'plain tail text',
-      (tester) async {
-        await _pumpMarkdown(tester, '- one\n- tw', isStreaming: true);
-        // One completed item: exactly one list marker.
-        expect(find.text('-'), findsOneWidget);
-        expect(_spanStyleForText(tester, 'one'), isNotNull);
-        // The dangling item is tail text in the calm body presentation.
-        expect(_spanStyleForText(tester, 'tw')?.fontSize, 14);
+    testWidgets('a long body is prepared and rendered without truncation', (
+      tester,
+    ) async {
+      final words = List.generate(1200, (index) => 'word$index').join(' ');
+      final data = 'Long **body** with `code`: $words';
+      await tester.pumpWidget(
+        conversationMarkdownTestApp(
+          preparation: preparation,
+          child: SingleChildScrollView(
+            child: conversationMarkdownTestView(
+              data: data,
+              identity: 'md-long',
+            ),
+          ),
+        ),
+      );
+      await prepare(tester, 'md-long');
 
-        await _pumpMarkdown(tester, '- one\n- two\n', isStreaming: true);
-        expect(find.text('-'), findsNWidgets(2));
-      },
-    );
+      // The prepared display is complete: the first and last words render, the
+      // markup is gone, and no synchronous parser stood in for the worker.
+      expect(find.textContaining('Long body with code:'), findsOneWidget);
+      expect(find.textContaining('word1199'), findsOneWidget);
+      expect(find.textContaining('**'), findsNothing);
+      expect(
+        preparation.workerFor('md-long')?.runsInCallerIsolate,
+        isFalse,
+        reason: 'the long body was prepared on a worker isolate',
+      );
+      await finish(tester);
+    });
 
-    testWidgets(
-      'final render with isStreaming false is the finalized rendering',
-      (tester) async {
-        const data =
-            '# Title\n\n- a\n- b\n\n```sh\necho ok\n```\n\nlast para\n\n';
-        await _pumpMarkdown(tester, data, isStreaming: true);
-        final streaming = _renderedPlainTexts(tester);
-        await _pumpMarkdown(tester, data);
-        final finalized = _renderedPlainTexts(tester);
-        expect(streaming, finalized);
-        // A terminated document in streaming mode renders identically too.
-        expect(streaming, contains('Title'));
-        expect(streaming, contains('echo ok'));
-      },
-    );
+    testWidgets('a theme change and rebuild repaint the same prepared value', (
+      tester,
+    ) async {
+      const data = '# Title\n\nbody **bold** text\n\n';
+      await tester.pumpWidget(markdown(data: data, identity: 'md-restyle'));
+      await prepare(tester, 'md-restyle');
+      final prepared = preparation.valueFor('md-restyle');
+      final preparations = preparation.preparationsFor('md-restyle');
+      final worker = preparation.workerFor('md-restyle');
+      expect(prepared, isNotNull);
+
+      // Replacing colours and renderer metrics is a pure appearance change:
+      // no new preparation, no new worker, and no re-tokenizing of the body.
+      await tester.pumpWidget(
+        conversationMarkdownTestApp(
+          preparation: preparation,
+          brightness: Brightness.light,
+          child: conversationMarkdownTestView(
+            data: data,
+            identity: 'md-restyle',
+            foreground: const Color(0xFF112233),
+            renderStyle: const MessageMarkdownStyle(
+              bodyFontSize: 17,
+              heading1FontSize: 22,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(identical(preparation.valueFor('md-restyle'), prepared), isTrue);
+      expect(preparation.preparationsFor('md-restyle'), preparations);
+      expect(identical(preparation.workerFor('md-restyle'), worker), isTrue);
+      expect(find.text('Title'), findsOneWidget);
+      expect(messageMarkdownSpanFontSize(tester, 'Title'), 22);
+      expect(_spanStyleForText(tester, 'bold')?.fontWeight, FontWeight.w800);
+      await finish(tester);
+    });
+
+    group('streaming mode', () {
+      testWidgets(
+        'styles a heading mid-stream once its line completes, plain before',
+        (tester) async {
+          await tester.pumpWidget(
+            markdown(
+              data: '# Tit',
+              identity: 'md-stream-heading',
+              isStreaming: true,
+            ),
+          );
+          await prepare(tester, 'md-stream-heading');
+          // The half-typed heading renders its prepared title as calm body
+          // text, not heading style, and never the raw marker.
+          expect(find.text('Tit'), findsOneWidget);
+          expect(find.textContaining('#'), findsNothing);
+          expect(_spanStyleForText(tester, 'Tit')?.fontSize, 14);
+          expect(_hasSpanWithFontSize(tester, 18), isFalse);
+
+          await tester.pumpWidget(
+            markdown(
+              data: '# Title\n',
+              identity: 'md-stream-heading',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-heading');
+          expect(find.text('Title'), findsOneWidget);
+          expect(messageMarkdownSpanFontSize(tester, 'Title'), 18);
+
+          await tester.pumpWidget(
+            markdown(
+              data: '# Title\n\nbody grows',
+              identity: 'md-stream-heading',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-heading');
+          expect(messageMarkdownSpanFontSize(tester, 'Title'), 18);
+          expect(_spanStyleForText(tester, 'body grows')?.fontSize, 14);
+          await finish(tester);
+        },
+      );
+
+      testWidgets(
+        'unclosed code fence shows the code frame immediately and never flashes '
+        'to plain text',
+        (tester) async {
+          // The frame appears from the opening fence, before any content.
+          await tester.pumpWidget(
+            markdown(
+              data: '```dart\n',
+              identity: 'md-stream-code',
+              isStreaming: true,
+            ),
+          );
+          await prepare(tester, 'md-stream-code');
+          expect(_hasCodeFrame(tester), isTrue);
+          expect(find.text('dart'), findsOneWidget);
+
+          // Content streams inside the frame.
+          await tester.pumpWidget(
+            markdown(
+              data: '```dart\nint a = 1;',
+              identity: 'md-stream-code',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-code');
+          expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
+
+          // The closing fence keeps the same code frame; no plain-text phase.
+          await tester.pumpWidget(
+            markdown(
+              data: '```dart\nint a = 1;\n```',
+              identity: 'md-stream-code',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-code');
+          expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
+
+          await tester.pumpWidget(
+            markdown(
+              data: '```dart\nint a = 1;\n```\n\nafter',
+              identity: 'md-stream-code',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-code');
+          expect(_codeTextStyle(tester, 'int a = 1;')?.fontFamily, 'SF Mono');
+          expect(_spanStyleForText(tester, 'after')?.fontSize, 14);
+          await finish(tester);
+        },
+      );
+
+      testWidgets(
+        'a half-typed list stays calm until its run terminates, then renders '
+        'as a list',
+        (tester) async {
+          await tester.pumpWidget(
+            markdown(
+              data: '- one\n- tw',
+              identity: 'md-stream-list',
+              isStreaming: true,
+            ),
+          );
+          await prepare(tester, 'md-stream-list');
+          // The completed item renders as a list item and only the dangling
+          // item is calm prepared text: the raw marker line never shows.
+          expect(find.text('-'), findsOneWidget);
+          expect(find.text('one'), findsOneWidget);
+          expect(find.text('tw'), findsOneWidget);
+          expect(_spanStyleForText(tester, 'tw')?.fontSize, 14);
+          expect(find.textContaining('- one'), findsNothing);
+
+          await tester.pumpWidget(
+            markdown(
+              data: '- one\n- two\n',
+              identity: 'md-stream-list',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-list');
+          // A terminated run renders as a list with one marker per item.
+          expect(find.text('-'), findsNWidgets(2));
+          await finish(tester);
+        },
+      );
+
+      testWidgets(
+        'a half-typed table keeps completed rows and a calm dangling row',
+        (tester) async {
+          await tester.pumpWidget(
+            markdown(
+              data: '| A | B |\n|---|---|\n| a | b |\n| c | d',
+              identity: 'md-stream-table',
+              isStreaming: true,
+            ),
+          );
+          await prepare(tester, 'md-stream-table');
+          expect(find.byType(Table), findsOneWidget);
+          expect(find.text('A'), findsOneWidget);
+          expect(find.text('a'), findsOneWidget);
+          // The dangling row line is calm prepared text, not a table row.
+          expect(find.text('| c | d'), findsOneWidget);
+          expect(find.text('c'), findsNothing);
+
+          await tester.pumpWidget(
+            markdown(
+              data: '| A | B |\n|---|---|\n| a | b |\n| c | d |\n',
+              identity: 'md-stream-table',
+              isStreaming: true,
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-table');
+          // The terminated row joins the table with final styling.
+          expect(find.byType(Table), findsOneWidget);
+          expect(find.text('c'), findsOneWidget);
+          expect(find.textContaining('| c |'), findsNothing);
+          await finish(tester);
+        },
+      );
+
+      testWidgets(
+        'a long growing stream keeps its settled items on a worker value',
+        (tester) async {
+          final items = <String>[
+            for (var index = 0; index < 200; index++) '- item $index',
+          ];
+          final data = '${items.join('\n')}\n- grow';
+          await tester.pumpWidget(
+            conversationMarkdownTestApp(
+              preparation: preparation,
+              child: SingleChildScrollView(
+                child: conversationMarkdownTestView(
+                  data: data,
+                  identity: 'md-stream-long',
+                  isStreaming: true,
+                ),
+              ),
+            ),
+          );
+          await prepare(tester, 'md-stream-long');
+          expect(find.text('-'), findsNWidgets(200));
+          expect(find.text('item 0'), findsOneWidget);
+          expect(find.text('item 199'), findsOneWidget);
+          expect(find.text('grow'), findsOneWidget);
+          expect(
+            preparation.workerFor('md-stream-long')?.runsInCallerIsolate,
+            isFalse,
+          );
+
+          await tester.pumpWidget(
+            conversationMarkdownTestApp(
+              preparation: preparation,
+              child: SingleChildScrollView(
+                child: conversationMarkdownTestView(
+                  data: '$data more',
+                  identity: 'md-stream-long',
+                  isStreaming: true,
+                ),
+              ),
+            ),
+          );
+          await waitForStreamRevision(tester, preparation, 'md-stream-long');
+          expect(find.text('-'), findsNWidgets(200));
+          expect(find.text('grow more'), findsOneWidget);
+          expect(
+            preparation.workerFor('md-stream-long')?.runsInCallerIsolate,
+            isFalse,
+            reason: 'the grown stream is prepared on a worker isolate',
+          );
+          await finish(tester);
+        },
+      );
+
+      testWidgets(
+        'final render with isStreaming false is the finalized rendering',
+        (tester) async {
+          const data =
+              '# Title\n\n- a\n- b\n\n```sh\necho ok\n```\n\nlast para\n\n';
+          await tester.pumpWidget(
+            markdown(
+              data: data,
+              identity: 'md-stream-final',
+              isStreaming: true,
+            ),
+          );
+          await prepare(tester, 'md-stream-final');
+          final streaming = _renderedPlainTexts(tester);
+          await tester.pumpWidget(
+            markdown(data: data, identity: 'md-stream-final'),
+          );
+          await tester.pump();
+          final finalized = _renderedPlainTexts(tester);
+          expect(streaming, finalized);
+          // A terminated document in streaming mode renders identically too.
+          expect(streaming, contains('Title'));
+          expect(streaming, contains('echo ok'));
+          await finish(tester);
+        },
+      );
+    });
   });
 }
 
-Future<void> _pumpMarkdown(
+/// Waits until a streamed identity has a value different from the one held.
+Future<void> waitForStreamRevision(
   WidgetTester tester,
-  String data, {
-  bool isStreaming = false,
-}) {
-  return tester.pumpWidget(
-    MaterialApp(
-      theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Builder(
-        builder: (context) {
-          final colors = context.licoColors;
-          return Scaffold(
-            body: MessageMarkdown(
-              data: data,
-              foreground: colors.text,
-              accent: colors.primary,
-              codeBackground: colors.surfaceRaised,
-              blockBackground: colors.surface,
-              borderColor: colors.line,
-              renderStyle: const MessageMarkdownStyle(showCodeLanguage: true),
-              isStreaming: isStreaming,
-            ),
-          );
-        },
-      ),
-    ),
-  );
+  ConversationMarkdownPreparation preparation,
+  String identity,
+) async {
+  final previous = preparation.valueFor(identity);
+  await waitForConversationMarkdown(tester, () {
+    final value = preparation.valueFor(identity);
+    return value != null && !identical(value, previous);
+  }, description: 'the next revision of $identity');
+  await tester.pump();
 }
 
 /// Style of the inline span whose plain text is exactly [text], searching
-/// every Text.rich subtree. InlineSpan.visitChildren is a full pre-order walk
-/// of the span tree (including the span itself when it has text).
+/// every Text.rich subtree, falling back to the plain Text style.
 TextStyle? _spanStyleForText(WidgetTester tester, String text) {
   for (final widget in tester.widgetList<Text>(find.byType(Text))) {
     final span = widget.textSpan;
-    if (span == null) continue;
+    if (span == null) {
+      if (widget.data == text) return widget.style;
+      continue;
+    }
     TextStyle? found;
     span.visitChildren((candidate) {
       if (candidate is TextSpan && candidate.text == text) {
@@ -641,7 +939,10 @@ TextStyle? _spanStyleForText(WidgetTester tester, String text) {
 bool _hasSpanWithFontSize(WidgetTester tester, double fontSize) {
   for (final widget in tester.widgetList<Text>(find.byType(Text))) {
     final span = widget.textSpan;
-    if (span == null) continue;
+    if (span == null) {
+      if (widget.style?.fontSize == fontSize) return true;
+      continue;
+    }
     var found = false;
     span.visitChildren((candidate) {
       if (candidate.style?.fontSize == fontSize) {

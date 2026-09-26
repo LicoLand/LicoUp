@@ -12,6 +12,9 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/continuous_assistant/continuous_assistant.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/header.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/projection.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
+import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_projection_source.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/reveal.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/roster.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane/strategy.dart';
@@ -47,6 +50,7 @@ class CanonicalGroupConversationPane extends StatefulWidget {
     required this.turns,
     required this.composer,
     required this.attachments,
+    this.allTargets = const <TargetCandidate>[],
     this.onOpenAgentConversations,
     this.onOpenAdaptiveFlywheel,
     this.onPickComposerImages,
@@ -58,8 +62,22 @@ class CanonicalGroupConversationPane extends StatefulWidget {
   final AgentsBinding agents;
   final CanonicalConversationProjection canonical;
   final PersistentTurnProjection turns;
-  final ComposerProjection composer;
-  final ConversationAttachmentsProjection attachments;
+
+  /// Draft state of this conversation, or null when the composer plane is
+  /// withdrawn. A missing composer only disables its own region: history,
+  /// sidebar, members, and every other authorized plane stay visible.
+  final ComposerProjection? composer;
+
+  /// Pending attachments of this conversation, or null when the attachments
+  /// plane is withdrawn. Missing attachments never hide the conversation.
+  final ConversationAttachmentsProjection? attachments;
+
+  /// Known targets the outer workspace read from the agents provider.
+  ///
+  /// The pane never reads the agents binding itself: a missing target list
+  /// only changes how much detail a roster seat carries, never which seats the
+  /// conversation's own memberships authorize.
+  final List<TargetCandidate> allTargets;
   final ValueChanged<String>? onOpenAgentConversations;
   final Future<void> Function(String? revision)? onOpenAdaptiveFlywheel;
   final VoidCallback? onPickComposerImages;
@@ -228,18 +246,24 @@ class _CanonicalGroupConversationPaneState
       );
       _cachedLiveMessages = live;
     }
-    if (widget.attachments.attachments.isEmpty) return live;
+    final attachments = widget.attachments;
+    final composer = widget.composer;
+    if (attachments == null ||
+        composer == null ||
+        attachments.attachments.isEmpty) {
+      return live;
+    }
     final identity = 'draft:${widget.canonical.conversationId}:attachments';
     return List<AgentConversationMessage>.unmodifiable([
       ...live,
       AgentConversationMessage(
         id: identity,
         role: 'user',
-        text: widget.composer.draft,
+        text: composer.draft,
         createdAt: DateTime.now().toUtc().toIso8601String(),
         stableIdentity: identity,
         images: [
-          for (final attachment in widget.attachments.attachments)
+          for (final attachment in attachments.attachments)
             AgentConversationImageAttachment(
               mediaType: attachment.mediaKind,
               dataBase64: attachment.dataBase64,
@@ -307,9 +331,15 @@ class _CanonicalGroupConversationPaneState
       context: context,
       builder: (dialogContext) {
         final dialogStrings = LicoStrings.of(dialogContext);
+        final isReservedDefaultGroup =
+            conversation.id == ClientConversation.defaultLocalAgentGroupId;
         return AlertDialog(
           title: Text(dialogStrings.archiveGroupConversationTitle),
-          content: Text(dialogStrings.archiveGroupConversationMessage(title)),
+          content: Text(
+            isReservedDefaultGroup
+                ? dialogStrings.archiveDefaultGroupConversationMessage(title)
+                : dialogStrings.archiveGroupConversationMessage(title),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -333,8 +363,12 @@ class _CanonicalGroupConversationPaneState
     ClientConversation conversation,
     String text,
   ) async {
-    if (widget.attachments.attachments.isNotEmpty &&
-        !widget.attachments.acceptsImages) {
+    final composer = widget.composer;
+    final attachments = widget.attachments;
+    if (composer == null) return false;
+    if (attachments != null &&
+        attachments.attachments.isNotEmpty &&
+        !attachments.acceptsImages) {
       widget.conversation.intents.send(
         SurfaceConversationFailure(
           stage: 'send',
@@ -346,7 +380,7 @@ class _CanonicalGroupConversationPaneState
     }
     widget.conversation.intents.send(
       PostConversationMessage(
-        conversationId: widget.composer.conversationId,
+        conversationId: composer.conversationId,
         content: text,
         addressedMembershipIds: [
           for (final membership in conversation.activeAgentMemberships)
@@ -385,15 +419,16 @@ class _CanonicalGroupConversationPaneState
     final label = membership == null
         ? agentConversationTargetDisplayName(target)
         : _mentionLabel(membership, target);
+    final composer = widget.composer;
+    if (composer == null) return;
     final separator =
-        widget.composer.draft.isEmpty ||
-            RegExp(r'\\s$').hasMatch(widget.composer.draft)
+        composer.draft.isEmpty || RegExp(r'\\s$').hasMatch(composer.draft)
         ? ''
         : ' ';
     widget.conversation.intents.send(
       UpdateConversationDraft(
-        widget.composer.conversationId,
-        '${widget.composer.draft}$separator@$label ',
+        composer.conversationId,
+        '${composer.draft}$separator@$label ',
       ),
     );
   }
@@ -416,6 +451,12 @@ class _CanonicalGroupConversationPaneState
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
+    final conversationSources = conversationSourcePortOf(context);
+    final executionPlane = conversationSources.execution;
+    // The auxiliary planes may be withdrawn independently of the history:
+    // their absence only disables their own region.
+    final composer = widget.composer;
+    final attachments = widget.attachments;
     final canonical = widget.canonical;
     final conversation = canonical.conversation;
     if (conversation == null) {
@@ -437,7 +478,7 @@ class _CanonicalGroupConversationPaneState
       );
     }
 
-    final allTargets = widget.agents.projection.current.targetDetails;
+    final allTargets = widget.allTargets;
     final participantTargets = resolveCanonicalGroupParticipantTargets(
       conversation,
       allTargets,
@@ -502,10 +543,11 @@ class _CanonicalGroupConversationPaneState
               .length ==
           1,
       preparingNewConversation: false,
-      composerEnabled: conversation.localOwnerMembership != null,
+      composerEnabled:
+          composer != null && conversation.localOwnerMembership != null,
       sendGateReasonCode: '',
-      composerDraft: widget.composer.draft,
-      hasAttachments: widget.attachments.attachments.isNotEmpty,
+      composerDraft: widget.composer?.draft ?? '',
+      hasAttachments: widget.attachments?.attachments.isNotEmpty ?? false,
       conversationLabel: historySessionDisplayTitle(
         conversation.title,
         fallback: strings.groupConversation,
@@ -516,7 +558,7 @@ class _CanonicalGroupConversationPaneState
       reasoningEffortOptions: const [],
       selectedReasoningEffort: '',
       participantTargets: participantTargets,
-      composerMentionLabels: mentionLabels,
+      composerMentionLabels: composer == null ? const {} : mentionLabels,
       participantConversationIds: {
         for (final membership in conversation.activeAgentMemberships)
           membership.principal.agentId: conversation.id,
@@ -564,20 +606,22 @@ class _CanonicalGroupConversationPaneState
         tooltip: strings.configureAssistantTooltip,
         onTap: () => unawaited(_openAssistantConfiguration()),
       ),
-      composerLeading: CanonicalGroupAssistantActions(
-        onPickAttachments:
-            widget.onPickComposerImages ??
-            () => widget.conversation.intents.send(
-              AddConversationAttachment(widget.composer.conversationId),
+      composerLeading: composer == null || attachments == null
+          ? null
+          : CanonicalGroupAssistantActions(
+              onPickAttachments:
+                  widget.onPickComposerImages ??
+                  () => widget.conversation.intents.send(
+                    AddConversationAttachment(composer.conversationId),
+                  ),
+              onArchive: _archiveAndReopen,
+              onDiscardImages:
+                  widget.onClearComposerImages ??
+                  () => widget.conversation.intents.send(
+                    ClearConversationAttachments(composer.conversationId),
+                  ),
+              showDiscardImages: attachments.attachments.isNotEmpty,
             ),
-        onArchive: _archiveAndReopen,
-        onDiscardImages:
-            widget.onClearComposerImages ??
-            () => widget.conversation.intents.send(
-              ClearConversationAttachments(widget.composer.conversationId),
-            ),
-        showDiscardImages: widget.attachments.attachments.isNotEmpty,
-      ),
     );
     final actions = AgentConversationPaneActions(
       onOpenExecution: (context, message, speakingTarget, returnFocusNode) =>
@@ -587,7 +631,14 @@ class _CanonicalGroupConversationPaneState
               message: message,
               target: speakingTarget,
               conversationTitle: state.conversationLabel,
-              projection: widget.conversation.execution,
+              projection: executionPlane == null
+                  ? null
+                  : ConversationPlaneProjectionSource<
+                      ConversationExecutionProjection
+                    >(
+                      executionPlane,
+                      empty: ConversationExecutionProjection.new,
+                    ),
               intents: widget.conversation.intents,
               onCopyText: _copyText,
               returnFocusNode: returnFocusNode,
@@ -595,9 +646,11 @@ class _CanonicalGroupConversationPaneState
           ),
       onModelChanged: (_) {},
       onReasoningEffortChanged: (_) {},
-      onDraftChanged: (draft) => widget.conversation.intents.send(
-        UpdateConversationDraft(widget.composer.conversationId, draft),
-      ),
+      onDraftChanged: (draft) => widget.composer == null
+          ? null
+          : widget.conversation.intents.send(
+              UpdateConversationDraft(widget.composer!.conversationId, draft),
+            ),
       onSend: (text) => _sendComposerMessage(conversation, text),
       onCancel: _cancelVisibleTurn,
       onSelectSession: (_) {},

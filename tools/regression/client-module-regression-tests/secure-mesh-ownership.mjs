@@ -110,7 +110,7 @@ test("key transparency workflows retain precise changed-file ownership", async (
     ["rust.domain.mobile-relay.key-transparency",
       "domain::mobile_relay::key_transparency::tests::"],
     ["rust.domain.mobile-relay.key-transparency.authority",
-      "domain::mobile_relay::key_transparency::tests::authority::"],
+      "domain::mobile_relay::key_transparency::tests::authority"],
     ["rust.domain.mobile-relay.key-transparency.publication",
       "domain::mobile_relay::key_transparency::tests::publication::"],
     ["rust.domain.mobile-relay.key-transparency.revocation",

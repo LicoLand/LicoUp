@@ -1,5 +1,7 @@
 # Code of Conduct
 
+Updated: 2026-08-08
+
 ## Our standard
 
 LicoUp welcomes contributors with different backgrounds, tools, languages,

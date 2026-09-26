@@ -2,6 +2,7 @@ import 'package:licoup/src/application/state/application_signal.dart';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/client_update_gateway.dart';
+import 'package:licoup/src/contracts/generated/client_update_state_machine.g.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 
 final class ClientUpdateStatusUpdate {
@@ -39,7 +40,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
   final Future<String> Function()? _dataDirectory;
 
   ClientUpdateStatus _status = const ClientUpdateStatus(
-    phase: ClientUpdatePhase.idle,
+    phase: clientUpdatePhaseInitial,
     runningVersion: '',
     runningReleaseTrack: ReleaseTrack.nightly,
     targetReleaseTrack: ReleaseTrack.nightly,
@@ -94,7 +95,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
     _targetReleaseTrack = track.wireName;
     _clearArtifactBinding();
     _status = _status.copyWith(
-      phase: ClientUpdatePhase.idle,
+      phase: _transition(ClientUpdateEvent.reset),
       targetReleaseTrack: track,
       availableVersion: '',
       releaseNotesUrl: '',
@@ -198,7 +199,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
   }) async {
     _begin();
     _status = ClientUpdateStatus(
-      phase: ClientUpdatePhase.checking,
+      phase: _transition(ClientUpdateEvent.check),
       runningVersion: _status.runningVersion,
       runningReleaseTrack: _status.runningReleaseTrack,
       targetReleaseTrack: _status.targetReleaseTrack,
@@ -234,7 +235,12 @@ final class ClientUpdateController extends ApplicationStateOwner {
               checked.targetId.isEmpty)) {
         throw StateError('client_update_check_missing_artifact_receipt');
       }
-      _status = _adopt(checked);
+      _status = _adopt(checked, switch (checked.phase) {
+        ClientUpdatePhase.upToDate => ClientUpdateEvent.upToDate,
+        ClientUpdatePhase.unavailable => ClientUpdateEvent.unavailable,
+        ClientUpdatePhase.updateAvailable => ClientUpdateEvent.updateAvailable,
+        _ => throw StateError('client_update_check_invalid_status'),
+      });
       _artifactReceiptId = checked.artifactReceiptId;
       if (_status.phase == ClientUpdatePhase.unavailable) {
         _report(
@@ -298,7 +304,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
 
   Future<void> _downloadStaged({required String sourcePath}) async {
     _begin();
-    _status = _status.copyWith(phase: ClientUpdatePhase.downloading);
+    _status = _status.copyWith(phase: _transition(ClientUpdateEvent.download));
     publishChange();
     await _resolveRoots();
     try {
@@ -314,7 +320,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
         stateRoot: _stateRoot,
       );
       _requireMatchingReceipt(downloaded, 'download');
-      _status = _adopt(downloaded);
+      _status = _adopt(downloaded, ClientUpdateEvent.downloaded);
       _artifactDownloaded = true;
       _artifactVerified = false;
       await _verifyUnlocked();
@@ -365,7 +371,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
   }
 
   Future<void> _verifyUnlocked() async {
-    _status = _status.copyWith(phase: ClientUpdatePhase.verifying);
+    _status = _status.copyWith(phase: _transition(ClientUpdateEvent.verify));
     publishChange();
     await _resolveRoots();
     final verified = await _gateway.verify(
@@ -379,7 +385,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
       stateRoot: _stateRoot,
     );
     _requireMatchingReceipt(verified, 'verify');
-    _status = _adopt(verified);
+    _status = _adopt(verified, ClientUpdateEvent.verified);
     _artifactVerified = true;
   }
 
@@ -424,7 +430,10 @@ final class ClientUpdateController extends ApplicationStateOwner {
         dataRoot: _dataRoot,
       );
       _requireMatchingReceipt(applied, 'apply');
-      _status = _adopt(applied);
+      _status = _adopt(
+        applied,
+        execute ? ClientUpdateEvent.apply : ClientUpdateEvent.planApply,
+      );
       _report(
         execute ? '更新安装已调度，客户端即将重启。' : '已生成更新安装计划（未实际执行）。',
         execute
@@ -450,9 +459,21 @@ final class ClientUpdateController extends ApplicationStateOwner {
       _artifactReceiptId.isNotEmpty &&
       _status.updateAvailable;
 
-  ClientUpdateStatus _adopt(ClientUpdateStatus next) {
+  ClientUpdateStatus _adopt(ClientUpdateStatus next, ClientUpdateEvent event) {
+    final expected = _transition(event);
+    if (next.phase != expected) {
+      throw StateError('client_update_transition_result_mismatch');
+    }
     if (next.runningVersion.isNotEmpty) return next;
     return next.copyWith(runningVersion: _status.runningVersion);
+  }
+
+  ClientUpdatePhase _transition(ClientUpdateEvent event) {
+    final next = transitionClientUpdatePhase(_status.phase, event);
+    if (next == null) {
+      throw StateError('client_update_transition_invalid');
+    }
+    return next;
   }
 
   void _requireMatchingReceipt(ClientUpdateStatus next, String phase) {
@@ -495,7 +516,7 @@ final class ClientUpdateController extends ApplicationStateOwner {
 
   void _fail(String code) {
     _status = _status.copyWith(
-      phase: ClientUpdatePhase.failed,
+      phase: _transition(ClientUpdateEvent.fail),
       errorCode: code,
       updateAvailable: false,
     );

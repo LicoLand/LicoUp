@@ -884,7 +884,7 @@ mod tests {
                 ALTER TABLE event_parts DROP COLUMN execution_kind;
                 ALTER TABLE conversation_dispatches DROP COLUMN request_payload;
                 ALTER TABLE conversation_dispatches DROP COLUMN terminal_payload;
-                UPDATE schema_meta SET value='13' WHERE key='version';",
+                UPDATE schema_meta SET value='12' WHERE key='version';",
                 )?;
                 Ok(())
             })

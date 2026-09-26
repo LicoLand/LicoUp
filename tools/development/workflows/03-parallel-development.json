@@ -1,0 +1,46 @@
+{
+  "id": "parallel-development",
+  "file": "03-parallel-development.json",
+  "title": {
+    "en": "Parallel module development",
+    "zh": "并行开发"
+  },
+  "purpose": {
+    "en": "Complete independent ready parts of the active milestone.",
+    "zh": "并行完成当前里程碑内已就绪的独立部分。"
+  },
+  "owner": {
+    "en": "Assigned module implementers",
+    "zh": "各模块实施者"
+  },
+  "entry": {
+    "en": "Stable interfaces and non-overlapping write scopes",
+    "zh": "接口和写入边界已确定"
+  },
+  "steps": [
+    {
+      "en": "Implement owned modules",
+      "zh": "实现各自模块"
+    },
+    {
+      "en": "Verify production wiring",
+      "zh": "验证生产接线"
+    },
+    {
+      "en": "Deliver attributable changes",
+      "zh": "交付可归属的改动"
+    }
+  ],
+  "exit": {
+    "en": "Every assigned requirement is implemented with focused engineering evidence.",
+    "zh": "分配的需求实现完整，并有定向工程证据。"
+  },
+  "failure": {
+    "en": "Coordinate interface changes with the integrator and all consumers.",
+    "zh": "接口变化由集成人协调所有受影响的使用方。"
+  },
+  "boundary": {
+    "en": "One owner writes shared files; waiting is observation, not a task timeout.",
+    "zh": "共享文件由单一负责人写入；观察窗口不是任务终止期限。"
+  }
+}

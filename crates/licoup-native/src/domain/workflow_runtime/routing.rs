@@ -12,20 +12,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
-/// Node lifecycle state according to D23 / ASSISTANT-WORKFLOW-CONTROL.md.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum NodeLifecycleState {
-    Ready,
-    Running,
-    PauseRequested,
-    Paused,
-    Waiting,
-    StopRequested,
-    Stopped,
-    Failed,
-    Completed,
-}
+/// Node lifecycle state generated from the declarative workflow-node machine.
+pub use crate::state_machines::workflow_native_node::State as NodeLifecycleState;
 
 impl NodeLifecycleState {
     /// Whether the node is in an active (non-terminal) state.

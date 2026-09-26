@@ -33,6 +33,8 @@ import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_pane_title_bar.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_projection.dart';
+import 'package:licoup/src/presentation/agent_hub/agent_hub_providers.dart';
+import 'package:licoup/src/projections/agent_hub/agent_hub_presentation_source.dart';
 
 import 'fixtures/agent_hub_renderer_binding_fixture.dart';
 
@@ -425,9 +427,16 @@ _HubHarness _harness(
 }) {
   final controller = AgentHubCatalogController(engine: engine);
   final feature = AgentHubRendererBindingFixture(controller);
+  // The panel reads the catalog region from the runtime; install the one source
+  // over the fixture's own projection so actions and rendering share a value.
+  final catalogSource = AgentHubPresentationSource(
+    projection: feature.binding.projection,
+  );
   addTearDown(controller.dispose);
   addTearDown(feature.dispose);
+  addTearDown(catalogSource.dispose);
   final overrides = <Override>[
+    agentHubCatalogSourceProvider.overrideWithValue(catalogSource),
     ...?pluginPresentation?.overrides,
     ...?skillPresentation?.overrides,
   ];
@@ -463,10 +472,7 @@ _HubHarness _harness(
       ),
     ),
   );
-  return (
-    overrides.isEmpty ? app : ProviderScope(overrides: overrides, child: app),
-    controller,
-  );
+  return (ProviderScope(overrides: overrides, child: app), controller);
 }
 
 Future<void> _openDetail(WidgetTester tester, String id) async {

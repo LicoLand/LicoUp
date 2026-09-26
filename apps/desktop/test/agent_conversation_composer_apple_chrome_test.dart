@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 import 'support/agent_conversation_workspace_fixture.dart';
+import 'support/presentation_source_overrides.dart';
 
 void main() {
   testWidgets(
@@ -67,6 +68,11 @@ void main() {
       );
       await tester.pump();
       expect(tester.takeException(), isNull);
+      // The relay approval region installs one frame after the agents region.
+      await pumpUntilVisible(
+        tester,
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
 
       expect(
         find.byKey(const Key('agent-conversation-composer-field')),

@@ -673,6 +673,36 @@ void main() {
   );
 
   test(
+    'resets the reserved default group in place and keeps the selection',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('lico-group-default');
+
+      expect(await controller.archiveAndReopenSelected(), isTrue);
+
+      final archived = runner.requests.singleWhere(
+        (request) => request['action'] == 'conversation.archive',
+      );
+      expect(archived['conversationId'], 'lico-group-default');
+      expect(archived['archived'], isTrue);
+      expect(archived['reopen'], isTrue);
+      // The store resets the reserved default group in place: no successor,
+      // no duplicate, and the same conversation stays selected.
+      expect(runner.successorId, isEmpty);
+      expect(controller.selectedConversationId, 'lico-group-default');
+      expect(controller.selectedConversation, isNotNull);
+      expect(controller.failureCode, isEmpty);
+      expect(
+        controller.groupConversations.map((group) => group.id),
+        isNot(contains('conversation:successor')),
+      );
+    },
+  );
+
+  test(
     'refuses archive and reopen while a group dispatch is still live',
     () async {
       final runner = _ConversationRunner()
@@ -798,6 +828,7 @@ final class _ConversationRunner implements ClientConversationNativePort {
   bool groupArchived;
   final Completer<void>? gate;
   final Map<String, String> addedAgents = {};
+  bool defaultGroupReset = false;
   bool failStrategyStart = false;
   bool dispatchPending = false;
   bool throwUntypedDispatch = false;
@@ -832,9 +863,15 @@ final class _ConversationRunner implements ClientConversationNativePort {
       groupPinned = request['pinned'] == true;
     }
     if (action == 'conversation.archive') {
-      groupArchived = request['archived'] == true;
-      if (request['reopen'] == true) {
-        successorId = 'conversation:successor';
+      // The native store resets the reserved default local group in place
+      // instead of archiving it; this double mirrors that contract.
+      if (request['conversationId'] == 'lico-group-default') {
+        defaultGroupReset = request['archived'] == true;
+      } else {
+        groupArchived = request['archived'] == true;
+        if (request['reopen'] == true) {
+          successorId = 'conversation:successor';
+        }
       }
     }
     if (action == 'conversation.membership.add') {
@@ -924,7 +961,10 @@ final class _ConversationRunner implements ClientConversationNativePort {
         'conversation.archive' => <String, dynamic>{
           'conversationId': request['conversationId'],
           'archivedChildIds': <String>['conversation:child'],
-          if (request['reopen'] == true)
+          if (request['conversationId'] == 'lico-group-default' &&
+              defaultGroupReset)
+            'resetInPlace': true
+          else if (request['reopen'] == true && successorId.isNotEmpty)
             'successor': _conversation(successorId),
         },
         'conversation.membership.add' => <String, dynamic>{},

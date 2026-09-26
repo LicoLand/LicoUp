@@ -15,7 +15,7 @@
 
 use crate::actor::ActorClaim;
 use crate::command::ApplicationCommand;
-use crate::failure::{ApplicationFailure, RecoveryAction};
+use crate::failure::ApplicationFailure;
 use crate::ports::ApplicationPorts;
 use crate::result::CommandOutcome;
 
@@ -36,10 +36,7 @@ impl ApplicationFacade {
         claim: &ActorClaim,
         command: &ApplicationCommand,
     ) -> Result<CommandOutcome, ApplicationFailure> {
-        claim.validate().map_err(|error| {
-            ApplicationFailure::permanent(error.code(), error.stage())
-                .with_recovery(RecoveryAction::CorrectRequest)
-        })?;
+        claim.validate().map_err(ApplicationFailure::from)?;
         command.validate()?;
         if let Some(conversation_id) = command.conversation_id()
             && !claim.admits_conversation(conversation_id)

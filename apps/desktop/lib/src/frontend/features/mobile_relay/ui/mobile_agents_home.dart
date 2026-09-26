@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
 
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_add_agent.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
@@ -16,6 +16,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
@@ -80,20 +81,16 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<AgentsProjection, AgentsProjection>(
-      source: widget.agents.projection,
-      select: (projection) => projection,
-      builder: (context, agents) {
-        return AsyncRegion<
-          MobileRelayHomeInputs,
-          IntentSink<MobileRelayIntent>
-        >(
-          source: mobileRelayHomeInputsProvider,
-          actions: widget.relay.intents,
-          loading: (_, _) => const SizedBox.shrink(),
-          data: (context, relay, _) => _buildProjection(context, agents, relay),
-        );
-      },
+    return AsyncRegion<AgentsProjection, IntentSink<AgentsIntent>>(
+      source: agentsCatalogProjectionProvider,
+      actions: widget.agents.intents,
+      data: (context, agents, _) =>
+          AsyncRegion<MobileRelayHomeInputs, IntentSink<MobileRelayIntent>>(
+            source: mobileRelayHomeInputsProvider,
+            actions: widget.relay.intents,
+            data: (context, relay, _) =>
+                _buildProjection(context, agents, relay),
+          ),
     );
   }
 
@@ -194,7 +191,11 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
     _initialScanQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final projection = widget.agents.projection.current;
+      final projection = ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(agentsCatalogProjectionProvider).value;
+      if (projection == null) return;
       final scanning =
           projection.phase == PresentationPhase.loading ||
           projection.phase == PresentationPhase.applying;
@@ -218,7 +219,11 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
       if (!mounted) return;
       _pendingScanAfterPeerId = '';
       _peerScanQueued = false;
-      if (widget.agents.projection.current.targets.isEmpty) _scanAgents();
+      final targets = ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(agentsCatalogProjectionProvider).value?.targets;
+      if (targets != null && targets.isEmpty) _scanAgents();
     });
   }
 
@@ -290,7 +295,12 @@ class MobileAgentsHomeState extends State<MobileAgentsHome> {
   Future<void> _showMobilePairingDialog() async {
     await showDialog<void>(
       context: context,
-      barrierDismissible: !widget.relay.projection.current.busy,
+      barrierDismissible:
+          !(ProviderScope.containerOf(
+                context,
+                listen: false,
+              ).read(mobileRelayPairingInputsProvider).value?.busy ??
+              false),
       builder: (context) => PairDeviceDialog(
         binding: widget.relay,
         scannerPreviewBuilder:

@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+use crate::state_machines::workflow_native_node::{self, Event as NodeLifecycleEvent};
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -201,6 +203,18 @@ pub struct NodeFacade {
 }
 
 impl NodeFacade {
+    fn apply_lifecycle_event(
+        &mut self,
+        event: NodeLifecycleEvent,
+    ) -> Result<(), NodeExecutionError> {
+        self.lifecycle_state = workflow_native_node::transition(self.lifecycle_state, event)
+            .ok_or_else(|| NodeExecutionError::InvalidStateTransition {
+                current: self.lifecycle_state,
+                attempted: event.as_str().to_owned(),
+            })?;
+        Ok(())
+    }
+
     pub fn new(
         node_id: impl Into<String>,
         graph_id: impl Into<String>,
@@ -296,7 +310,7 @@ impl NodeFacade {
         }
 
         self.active_invocation = Some(invocation.clone());
-        self.lifecycle_state = NodeLifecycleState::Running;
+        self.apply_lifecycle_event(NodeLifecycleEvent::Submit)?;
         self.durable_cursor = current_cursor;
 
         self.invocation_history.push(InvocationRecord {
@@ -399,28 +413,28 @@ impl NodeFacade {
 
         // If idle, safe boundary is already reached: transition directly to Paused
         if self.lifecycle_state.can_accept_new_work() && self.active_invocation.is_none() {
-            self.lifecycle_state = NodeLifecycleState::Paused;
+            self.apply_lifecycle_event(NodeLifecycleEvent::Pause)?;
             return Ok(PauseResult::Suspended);
         }
 
         // If running, enter PauseRequested
-        self.lifecycle_state = NodeLifecycleState::PauseRequested;
+        self.apply_lifecycle_event(NodeLifecycleEvent::RequestPause)?;
 
         if let Some(active) = &self.active_invocation {
             let outcome = self.adapter.pause_invocation(&active.invocation_id)?;
             match outcome {
                 PauseOutcome::SuspendedInFlight => {
-                    self.lifecycle_state = NodeLifecycleState::Paused;
+                    self.apply_lifecycle_event(NodeLifecycleEvent::Pause)?;
                     Ok(PauseResult::Suspended)
                 }
                 PauseOutcome::DrainToSafeBoundary => Ok(PauseResult::DrainingToSafeBoundary),
                 PauseOutcome::Unsupported => {
-                    self.lifecycle_state = NodeLifecycleState::Running;
+                    self.apply_lifecycle_event(NodeLifecycleEvent::PauseUnsupported)?;
                     Ok(PauseResult::Unsupported)
                 }
             }
         } else {
-            self.lifecycle_state = NodeLifecycleState::Paused;
+            self.apply_lifecycle_event(NodeLifecycleEvent::Pause)?;
             Ok(PauseResult::Suspended)
         }
     }
@@ -429,7 +443,8 @@ impl NodeFacade {
     /// Converts `PauseRequested` to `Paused`.
     pub fn observe_safe_boundary(&mut self) {
         if self.lifecycle_state == NodeLifecycleState::PauseRequested {
-            self.lifecycle_state = NodeLifecycleState::Paused;
+            self.apply_lifecycle_event(NodeLifecycleEvent::Pause)
+                .expect("safe-boundary transition is declared");
         }
     }
 
@@ -450,7 +465,7 @@ impl NodeFacade {
 
         if self.lifecycle_state == NodeLifecycleState::PauseRequested {
             // Cancel pause negotiation and remain running
-            self.lifecycle_state = NodeLifecycleState::Running;
+            self.apply_lifecycle_event(NodeLifecycleEvent::ResumeActive)?;
             return Ok(ResumeResult::Resumed);
         }
 
@@ -467,7 +482,7 @@ impl NodeFacade {
             let outcome = self.adapter.resume_invocation(&active.invocation_id)?;
             match outcome {
                 ResumeOutcome::Resumed | ResumeOutcome::NotPaused => {
-                    self.lifecycle_state = NodeLifecycleState::Running;
+                    self.apply_lifecycle_event(NodeLifecycleEvent::ResumeActive)?;
                     Ok(ResumeResult::Resumed)
                 }
                 ResumeOutcome::Unsupported => Err(NodeExecutionError::CapabilityUnsupported(
@@ -475,7 +490,7 @@ impl NodeFacade {
                 )),
             }
         } else {
-            self.lifecycle_state = NodeLifecycleState::Ready;
+            self.apply_lifecycle_event(NodeLifecycleEvent::ResumeIdle)?;
             Ok(ResumeResult::Resumed)
         }
     }
@@ -494,7 +509,7 @@ impl NodeFacade {
         }
 
         self.stop_requested = true;
-        self.lifecycle_state = NodeLifecycleState::StopRequested;
+        self.apply_lifecycle_event(NodeLifecycleEvent::RequestStop)?;
 
         if let Some(active) = &self.active_invocation {
             let cancel_outcome = self.adapter.cancel_invocation(&active.invocation_id)?;
@@ -548,7 +563,7 @@ impl NodeFacade {
                 requested_at_ms: now_ms(),
             };
             self.cancellation_facts = Some(facts);
-            self.lifecycle_state = NodeLifecycleState::Stopped;
+            self.apply_lifecycle_event(NodeLifecycleEvent::Stop)?;
             Ok(StopResult::Stopped)
         }
     }
@@ -608,36 +623,39 @@ impl NodeFacade {
                 NodeExecutionOutcome::Suspended { .. } => false,
                 NodeExecutionOutcome::Success { .. } | NodeExecutionOutcome::Failure { .. } => true,
             };
-            self.lifecycle_state = if work_stopped {
-                NodeLifecycleState::Stopped
+            let event = if work_stopped {
+                NodeLifecycleEvent::Stop
             } else {
-                NodeLifecycleState::StopRequested
+                NodeLifecycleEvent::Suspend
             };
+            self.apply_lifecycle_event(event)?;
         } else if self.lifecycle_state == NodeLifecycleState::PauseRequested {
             // Reached safe boundary upon invocation completion
-            self.lifecycle_state = NodeLifecycleState::Paused;
-        } else {
-            match &outcome {
-                NodeExecutionOutcome::Success { .. } => {
-                    self.lifecycle_state = NodeLifecycleState::Ready;
-                }
+            let event = match &outcome {
+                NodeExecutionOutcome::Success { .. } => NodeLifecycleEvent::Succeed,
                 NodeExecutionOutcome::Failure {
                     retryable: false, ..
-                } => {
-                    self.lifecycle_state = NodeLifecycleState::Failed;
-                }
+                } => NodeLifecycleEvent::Fail,
                 NodeExecutionOutcome::Failure {
                     retryable: true, ..
-                } => {
-                    self.lifecycle_state = NodeLifecycleState::Waiting;
-                }
-                NodeExecutionOutcome::Cancelled { .. } => {
-                    self.lifecycle_state = NodeLifecycleState::Stopped;
-                }
-                NodeExecutionOutcome::Suspended { .. } => {
-                    self.lifecycle_state = NodeLifecycleState::Paused;
-                }
-            }
+                } => NodeLifecycleEvent::RetryableFailure,
+                NodeExecutionOutcome::Cancelled { .. } => NodeLifecycleEvent::Cancel,
+                NodeExecutionOutcome::Suspended { .. } => NodeLifecycleEvent::Suspend,
+            };
+            self.apply_lifecycle_event(event)?;
+        } else {
+            let event = match &outcome {
+                NodeExecutionOutcome::Success { .. } => NodeLifecycleEvent::Succeed,
+                NodeExecutionOutcome::Failure {
+                    retryable: false, ..
+                } => NodeLifecycleEvent::Fail,
+                NodeExecutionOutcome::Failure {
+                    retryable: true, ..
+                } => NodeLifecycleEvent::RetryableFailure,
+                NodeExecutionOutcome::Cancelled { .. } => NodeLifecycleEvent::Cancel,
+                NodeExecutionOutcome::Suspended { .. } => NodeLifecycleEvent::Suspend,
+            };
+            self.apply_lifecycle_event(event)?;
         }
 
         self.durable_cursor = cursor;

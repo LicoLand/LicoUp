@@ -797,8 +797,6 @@ class AgentConversationService
                   'conversationId': line['conversationId'],
                 if (line['membershipId'] != null)
                   'membershipId': line['membershipId'],
-                if (line['membershipId'] != null)
-                  'membershipId': line['membershipId'],
                 if (line['cursor'] != null) 'cursor': line['cursor'],
               }
             : Map<String, dynamic>.from(line),

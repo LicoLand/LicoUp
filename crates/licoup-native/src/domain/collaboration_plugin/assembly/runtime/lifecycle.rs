@@ -12,6 +12,7 @@ use super::super::store::{
 use super::identity::{RuntimeIdentity, runtime_identity};
 use super::process::ProcessLiveness;
 use crate::platform::client_state::ClientStateStore;
+use crate::state_machines::collaboration_local_server::{self, Event};
 
 const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -81,13 +82,13 @@ pub(in crate::domain::collaboration_plugin::assembly) fn status_with(
         }
         match runtime.liveness(record) {
             ProcessLiveness::Dead => {
-                clear_runtime_fields(record);
+                clear_runtime_fields(record)?;
                 changed = true;
                 continue;
             }
             ProcessLiveness::Unavailable => {
                 if record.lifecycle != LocalServerLifecycle::Quarantined {
-                    quarantine_runtime(record);
+                    quarantine_runtime(record)?;
                     changed = true;
                 }
                 continue;
@@ -96,18 +97,18 @@ pub(in crate::domain::collaboration_plugin::assembly) fn status_with(
         }
         match runtime.identity(store, record) {
             RuntimeIdentity::Owned if record.lifecycle == LocalServerLifecycle::Starting => {
-                record.lifecycle = LocalServerLifecycle::Running;
+                advance_lifecycle(record, Event::RuntimeReady)?;
                 changed = true;
             }
             RuntimeIdentity::Mismatched => {
                 if record.lifecycle != LocalServerLifecycle::Quarantined {
-                    quarantine_runtime(record);
+                    quarantine_runtime(record)?;
                     changed = true;
                 }
             }
             RuntimeIdentity::Unavailable => {
                 if record.lifecycle != LocalServerLifecycle::Quarantined {
-                    quarantine_runtime(record);
+                    quarantine_runtime(record)?;
                     changed = true;
                 }
             }
@@ -142,7 +143,7 @@ pub(in crate::domain::collaboration_plugin::assembly) fn start_with(
     );
     super::runner::verify_assembly(store, &record)?;
     super::super::apply::ensure_port_available(record.port)?;
-    record.lifecycle = LocalServerLifecycle::Starting;
+    advance_lifecycle(&mut record, Event::Start)?;
     record.runtime_instance_id = Some(Uuid::new_v4().to_string());
     let spawned = runtime.spawn(store, &record)?;
     let pid = spawned.pid;
@@ -158,7 +159,7 @@ pub(in crate::domain::collaboration_plugin::assembly) fn start_with(
         match runtime.liveness(&record) {
             ProcessLiveness::Dead => break,
             ProcessLiveness::Unavailable => {
-                quarantine_runtime(&mut record);
+                quarantine_runtime(&mut record)?;
                 replace_record(store, record)?;
                 return Err(anyhow!(
                     "collaboration_local_server_runtime_liveness_unavailable"
@@ -168,7 +169,7 @@ pub(in crate::domain::collaboration_plugin::assembly) fn start_with(
         }
         match runtime.identity(store, &record) {
             RuntimeIdentity::Owned => {
-                record.lifecycle = LocalServerLifecycle::Running;
+                advance_lifecycle(&mut record, Event::RuntimeReady)?;
                 replace_record(store, record.clone())?;
                 return Ok(json!({
                     "ok": true,
@@ -186,7 +187,7 @@ pub(in crate::domain::collaboration_plugin::assembly) fn start_with(
             .map_err(|_| anyhow!("collaboration_local_server_start_cleanup_failed"))?;
         wait_until_stopped(runtime, &record)?;
     }
-    clear_runtime_fields(&mut record);
+    clear_runtime_fields(&mut record)?;
     replace_record(store, record)?;
     Err(anyhow!("collaboration_local_server_readiness_failed"))
 }
@@ -208,12 +209,12 @@ pub(in crate::domain::collaboration_plugin::assembly) fn stop_with(
     };
     match runtime.liveness(&record) {
         ProcessLiveness::Dead => {
-            clear_runtime_fields(&mut record);
+            clear_runtime_fields(&mut record)?;
             replace_record(store, record.clone())?;
             return Ok(stopped_projection(record, true, true));
         }
         ProcessLiveness::Unavailable => {
-            quarantine_runtime(&mut record);
+            quarantine_runtime(&mut record)?;
             replace_record(store, record)?;
             return Err(anyhow!(
                 "collaboration_local_server_runtime_liveness_unavailable"
@@ -225,14 +226,14 @@ pub(in crate::domain::collaboration_plugin::assembly) fn stop_with(
         match runtime.identity(store, &record) {
             RuntimeIdentity::Owned => {}
             RuntimeIdentity::Mismatched => {
-                quarantine_runtime(&mut record);
+                quarantine_runtime(&mut record)?;
                 replace_record(store, record)?;
                 return Err(anyhow!(
                     "collaboration_local_server_runtime_identity_mismatch"
                 ));
             }
             RuntimeIdentity::Unavailable => {
-                quarantine_runtime(&mut record);
+                quarantine_runtime(&mut record)?;
                 replace_record(store, record)?;
                 return Err(anyhow!(
                     "collaboration_local_server_runtime_identity_unavailable"
@@ -241,19 +242,19 @@ pub(in crate::domain::collaboration_plugin::assembly) fn stop_with(
         }
     }
     let previous_lifecycle = record.lifecycle;
-    record.lifecycle = LocalServerLifecycle::Stopping;
+    advance_lifecycle(&mut record, Event::RequestStop)?;
     replace_record(store, record.clone())?;
     if let Err(error) = runtime.terminate(&record) {
-        record.lifecycle = previous_lifecycle;
+        restore_lifecycle(&mut record, previous_lifecycle)?;
         replace_record(store, record)?;
         return Err(error);
     }
     if let Err(error) = wait_until_stopped(runtime, &record) {
-        record.lifecycle = previous_lifecycle;
+        restore_lifecycle(&mut record, previous_lifecycle)?;
         replace_record(store, record)?;
         return Err(error);
     }
-    clear_runtime_fields(&mut record);
+    clear_runtime_fields(&mut record)?;
     replace_record(store, record.clone())?;
     Ok(stopped_projection(record, false, false))
 }
@@ -277,15 +278,40 @@ fn wait_until_stopped(runtime: &dyn RuntimeControl, record: &LocalAssemblyRecord
     Err(anyhow!("collaboration_local_server_stop_failed"))
 }
 
-fn clear_runtime_fields(record: &mut LocalAssemblyRecord) {
-    record.lifecycle = LocalServerLifecycle::Stopped;
+fn clear_runtime_fields(record: &mut LocalAssemblyRecord) -> Result<()> {
+    advance_lifecycle(record, Event::RuntimeStopped)?;
     record.runtime_pid = None;
     record.runtime_instance_id = None;
     record.runtime_process_identity = None;
+    Ok(())
 }
 
-fn quarantine_runtime(record: &mut LocalAssemblyRecord) {
-    record.lifecycle = LocalServerLifecycle::Quarantined;
+fn quarantine_runtime(record: &mut LocalAssemblyRecord) -> Result<()> {
+    advance_lifecycle(record, Event::Quarantine)
+}
+
+fn restore_lifecycle(
+    record: &mut LocalAssemblyRecord,
+    previous: LocalServerLifecycle,
+) -> Result<()> {
+    let event = match previous {
+        LocalServerLifecycle::Starting => Event::RestoreStarting,
+        LocalServerLifecycle::Running => Event::RestoreRunning,
+        LocalServerLifecycle::Stopping => Event::RestoreStopping,
+        LocalServerLifecycle::Quarantined => Event::RestoreQuarantined,
+        LocalServerLifecycle::Stopped => {
+            return Err(anyhow!(
+                "collaboration_local_server_lifecycle_restore_invalid"
+            ));
+        }
+    };
+    advance_lifecycle(record, event)
+}
+
+fn advance_lifecycle(record: &mut LocalAssemblyRecord, event: Event) -> Result<()> {
+    record.lifecycle = collaboration_local_server::transition(record.lifecycle, event)
+        .ok_or_else(|| anyhow!("collaboration_local_server_lifecycle_transition_invalid"))?;
+    Ok(())
 }
 
 fn stopped_projection(

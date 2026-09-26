@@ -1,0 +1,444 @@
+[
+  {
+    "id": "conversation",
+    "configuration": "crates/licoup-conversation/resources/state-machines.json",
+    "execution": "compiled-table",
+    "verification": "verify:conversation",
+    "owner": "conversation",
+    "executor": "crates/licoup-conversation/src/state_machine/mod.rs",
+    "consumers": [
+      "crates/licoup-conversation/src/store/mod.rs",
+      "crates/licoup-conversation/src/store/dispatches.rs",
+      "crates/licoup-conversation/src/continuity/commit.rs",
+      "crates/licoup-conversation/src/continuity/persist.rs",
+      "crates/licoup-conversation/src/store/lifecycle.rs",
+      "crates/licoup-conversation/src/continuity/effect_lifecycle.rs",
+      "crates/licoup-conversation/src/store/recovery.rs",
+      "crates/licoup-conversation/src/continuity/lifecycle.rs",
+      "crates/licoup-conversation/src/continuity/parent_grant_lifecycle.rs",
+      "crates/licoup-conversation/src/continuity/admission.rs",
+      "crates/licoup-native/src/domain/assistant_continuity/context/store.rs"
+    ]
+  },
+  {
+    "id": "ui-interactions",
+    "configuration": "apps/desktop/test/ui_state_machine/model.json",
+    "execution": "widget-model",
+    "verification": "client:test:ui",
+    "owner": "client-ui",
+    "executor": "tools/scripts/client-ui-state-machine.mjs"
+  },
+  {
+    "id": "workflow-graph",
+    "kind": "dynamic",
+    "provider": "crates/licoup-workflow/src/syntax.rs",
+    "format": "user-supplied JSON Graph definition",
+    "executor": "crates/licoup-workflow/src/machine.rs",
+    "owner": "workflow",
+    "verification": "verify:workflow",
+    "execution": "runtime-graph",
+    "note": "User graph instances stay private; the provider and executor are registered."
+  },
+  {
+    "id": "codex-protocol",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/codex.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/codex.json",
+    "execution": "compiled-table",
+    "consumers": [
+      "crates/licoup-native/src/platform/codex_app_server/model.rs"
+    ]
+  },
+  {
+    "id": "pi-protocol",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/pi/protocol.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/pi.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "hermes-protocol",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/hermes/protocol.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/hermes.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "openclaw-protocol",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/openclaw/protocol.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/openclaw.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "copilot-protocol",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/adapters/copilot/protocol.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/copilot.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "native-parser-lifecycle",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/native_agent_parser/lifecycle.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/parser-lifecycle.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "ansi-parser",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/ansi_stripper.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/ansi-parser.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "cursor-update",
+    "owner": "agent-runtime",
+    "executor": "crates/licoup-native/src/platform/cursor_driver/update_watcher.rs",
+    "verification": "verify:agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/cursor-update.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "workflow-node",
+    "owner": "workflow",
+    "executor": "crates/licoup-workflow-runtime/src/node/mod.rs",
+    "verification": "verify:workflow",
+    "configuration": "crates/licoup-workflow-runtime/resources/state-machines/node.json",
+    "execution": "compiled-table"
+  },
+  {
+    "id": "extension-package",
+    "owner": "extension-platform",
+    "executor": "crates/licoup-native/src/platform/extension_packages/state.rs",
+    "verification": "verify:extension-platform",
+    "configuration": "crates/licoup-native/resources/state-machines/extension-package.json",
+    "execution": "compiled-table",
+    "source": "crates/licoup-extension-contracts/src/deployment.rs",
+    "symbol": "PackageLifecycle"
+  },
+  {
+    "id": "extension-instance",
+    "owner": "extension-platform",
+    "executor": "crates/licoup-native/src/platform/extension_packages/state.rs",
+    "verification": "verify:extension-platform",
+    "configuration": "crates/licoup-native/resources/state-machines/extension-instance.json",
+    "execution": "compiled-table",
+    "source": "crates/licoup-extension-contracts/src/deployment.rs",
+    "symbol": "InstanceLifecycle"
+  },
+  {
+    "id": "claude-transport",
+    "owner": "agent-runtime",
+    "configuration": "crates/licoup-native/resources/state-machines/claude-transport.json",
+    "execution": "compiled-table",
+    "executor": "crates/licoup-native/src/platform/claude_code_driver/model.rs",
+    "verification": "verify:agent-runtime"
+  },
+  {
+    "id": "extension-invocation",
+    "owner": "extension-platform",
+    "configuration": "crates/licoup-native/resources/state-machines/extension-invocation.json",
+    "execution": "compiled-table",
+    "executor": "crates/licoup-native/src/platform/extension_host/invocation.rs",
+    "verification": "verify:extension-platform"
+  },
+  {
+    "id": "analytics-package",
+    "owner": "catalogs",
+    "configuration": "components/analytics/resources/state-machines/package.json",
+    "executor": "components/analytics/src/package.rs",
+    "execution": "compiled-table",
+    "verification": "verify:catalogs"
+  },
+  {
+    "id": "model-provider-auth",
+    "owner": "gateway",
+    "configuration": "sdk/model-provider/resources/state-machines/auth.json",
+    "executor": "sdk/model-provider/src/auth.rs",
+    "execution": "compiled-table",
+    "verification": "verify:gateway",
+    "source": "sdk/model-provider/src/auth.rs",
+    "symbol": "AuthStage"
+  },
+  {
+    "id": "model-provider-stream",
+    "owner": "gateway",
+    "configuration": "sdk/model-provider/resources/state-machines/stream.json",
+    "executor": "sdk/model-provider/src/stream.rs",
+    "execution": "compiled-table",
+    "verification": "verify:gateway"
+  },
+  {
+    "id": "presentation-preparation",
+    "owner": "presentation",
+    "configuration": "packages/presentation_contract/resources/state-machines.json",
+    "executor": "packages/presentation_contract/lib/presentation_contract.dart",
+    "execution": "generated-dart",
+    "verification": "verify:presentation"
+  },
+  {
+    "id": "presentation-source-connection",
+    "owner": "presentation",
+    "configuration": "packages/presentation_runtime/resources/state-machines.json",
+    "executor": "packages/presentation_runtime/lib/src/resources/resource_observation.dart",
+    "execution": "generated-dart",
+    "verification": "verify:presentation"
+  },
+  {
+    "id": "desktop-application",
+    "owner": "client-ui",
+    "configuration": "apps/desktop/resources/state-machines.json",
+    "executor": "apps/desktop/lib/src/application/controller/client_lifecycle_coordinator.dart",
+    "execution": "generated-dart",
+    "verification": "verify:client-ui"
+  },
+  {
+    "id": "workflow-domain",
+    "owner": "workflow",
+    "configuration": "crates/licoup-workflow/resources/state-machines/workflow.json",
+    "executor": "crates/licoup-workflow/src/machine.rs",
+    "execution": "compiled-table",
+    "verification": "verify:workflow"
+  },
+  {
+    "id": "workflow-native-node",
+    "owner": "workflow",
+    "configuration": "crates/licoup-native/resources/state-machines/workflow-node.json",
+    "executor": "crates/licoup-native/src/domain/workflow_runtime/node.rs",
+    "execution": "compiled-table",
+    "verification": "verify:workflow"
+  },
+  {
+    "id": "workflow-adapter-execution",
+    "owner": "workflow",
+    "configuration": "crates/licoup-native/resources/state-machines/workflow-adapter-execution.json",
+    "executor": "crates/licoup-native/src/domain/workflow_runtime/adapter.rs",
+    "execution": "compiled-table",
+    "verification": "verify:workflow",
+    "source": "crates/licoup-native/src/domain/workflow_runtime/adapter.rs",
+    "symbol": "AdapterExecutionStatus"
+  },
+  {
+    "id": "security-mlkem-braid",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-mlkem-braid.json",
+    "executor": "crates/licoup-native/src/core/secure_mesh_mlkem_braid/session.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration",
+    "source": "crates/licoup-native/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
+    "symbol": "ProtocolState",
+    "consumers": [
+      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/protocol_state.rs",
+      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/send_transition.rs",
+      "crates/licoup-native/src/core/secure_mesh_mlkem_braid/receive_transition.rs"
+    ]
+  },
+  {
+    "id": "security-mls-operation",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-mls-operation.json",
+    "executor": "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "security-effect-capability",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-capability.json",
+    "executor": "crates/licoup-native/src/domain/session_policy/capability.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "security-macos-presence-batch",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-macos-presence-batch.json",
+    "executor": "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "security-custody-lifecycle",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-custody-lifecycle.json",
+    "executor": "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/store.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration",
+    "source": "crates/licoup-endpoint-core/src/ports.rs",
+    "symbol": "CustodyLifecycle",
+    "consumers": [
+      "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/root.rs",
+      "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/custody.rs"
+    ]
+  },
+  {
+    "id": "client-runtime-services",
+    "owner": "native-bridge",
+    "configuration": "crates/licoup-native/resources/state-machines/services-client-runtime.json",
+    "executor": "crates/licoup-native/src/domain/client_runtime/runtime.rs",
+    "execution": "compiled-table",
+    "verification": "verify:native-bridge",
+    "consumers": [
+      "crates/licoup-native/src/domain/client_runtime/mod.rs"
+    ]
+  },
+  {
+    "id": "collaboration-services",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/services-collaboration.json",
+    "executor": "crates/licoup-native/src/domain/collaboration_plugin/assembly/transaction.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration",
+    "consumers": [
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/apply.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/model.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/lifecycle.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/workflow/mcp_transaction.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations/apply_mcp.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/api.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/supervisor.rs",
+      "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs"
+    ]
+  },
+  {
+    "id": "conversation-archive-job",
+    "owner": "conversation",
+    "configuration": "crates/licoup-native/resources/state-machines/services-conversation-archive.json",
+    "executor": "crates/licoup-native/src/domain/conversation_archive_jobs/execution.rs",
+    "execution": "compiled-table",
+    "verification": "verify:conversation",
+    "consumers": [
+      "crates/licoup-native/src/domain/conversation/archive_queue.rs",
+      "crates/licoup-native/src/domain/conversation_archive_jobs/retry.rs",
+      "crates/licoup-native/src/domain/conversation_archive_jobs/creation.rs",
+      "crates/licoup-native/src/domain/conversation_archive_jobs/store/events.rs"
+    ]
+  },
+  {
+    "id": "desktop-client-update",
+    "owner": "client-ui",
+    "configuration": "apps/desktop/resources/client-update-state-machine.json",
+    "executor": "apps/desktop/lib/src/application/features/settings/controller/client_update_controller.dart",
+    "execution": "generated-dart",
+    "verification": "verify:client-ui"
+  },
+  {
+    "id": "desktop-settings-autostart",
+    "owner": "client-ui",
+    "configuration": "apps/desktop/resources/settings-state-machines.json",
+    "executor": "apps/desktop/lib/src/projections/settings/settings_autostart_projection_source.dart",
+    "execution": "generated-dart",
+    "verification": "verify:client-ui"
+  },
+  {
+    "id": "work-context-binding",
+    "owner": "agent-runtime",
+    "configuration": "crates/licoup-agent-runtime/resources/state-machines/work-context.json",
+    "executor": "crates/licoup-agent-runtime/src/work_context/runtime.rs",
+    "execution": "compiled-table",
+    "verification": "verify:agent-runtime"
+  },
+  {
+    "id": "update-handoff",
+    "owner": "data-migration",
+    "configuration": "crates/licoup-native/resources/state-machines/update-handoff.json",
+    "executor": "crates/licoup-native/src/domain/client_state_migration/handoff.rs",
+    "execution": "compiled-table",
+    "verification": "verify:data-migration",
+    "consumers": [
+      "crates/licoup-native/src/domain/client_state_migration/strategy_store.rs",
+      "crates/licoup-native/src/domain/client_state_migration.rs"
+    ]
+  },
+  {
+    "id": "agent-hub-operation",
+    "owner": "catalogs",
+    "configuration": "crates/licoup-native/resources/state-machines/agent-hub-operation.json",
+    "executor": "crates/licoup-native/src/domain/agent_hub/engine.rs",
+    "execution": "compiled-table",
+    "verification": "verify:catalogs",
+    "consumers": [
+      "crates/licoup-native/src/domain/agent_hub/contract.rs"
+    ]
+  },
+  {
+    "id": "security-approval",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-approval.json",
+    "executor": "crates/licoup-native/src/core/secure_mesh_approval/response.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration",
+    "consumers": [
+      "crates/licoup-native/src/core/secure_mesh_approval/request.rs",
+      "crates/licoup-native/src/core/secure_mesh_approval/model.rs"
+    ]
+  },
+  {
+    "id": "security-command-replay",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-command-replay.json",
+    "executor": "crates/licoup-native/src/core/secure_mesh_command/replay.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "security-file-transfer",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-file-transfer.json",
+    "executor": "crates/licoup-native/src/core/secure_mesh_file/transfer.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "security-kt-authority-challenge",
+    "owner": "endpoint-collaboration",
+    "configuration": "crates/licoup-native/resources/state-machines/security-kt-authority-challenge.json",
+    "executor": "crates/licoup-native/src/domain/mobile_relay/key_transparency/authority/challenge.rs",
+    "execution": "compiled-table",
+    "verification": "verify:endpoint-collaboration"
+  },
+  {
+    "id": "secure-mesh-client",
+    "owner": "endpoint-collaboration",
+    "configuration": "apps/desktop/resources/state-machines/secure-mesh.json",
+    "executor": "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_approval_controller.dart",
+    "execution": "generated-dart",
+    "verification": "verify:endpoint-collaboration",
+    "consumers": [
+      "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_file_transfer_controller.dart",
+      "schemas/client_bridge/secure_mesh.json"
+    ]
+  },
+  {
+    "id": "layout-selection",
+    "owner": "client-ui",
+    "configuration": "apps/desktop/resources/layout-selection-state-machine.json",
+    "execution": "generated-dart",
+    "verification": "verify:client-ui",
+    "executor": "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+    "source": "apps/desktop/lib/src/contracts/presentation/layout_selection_status.dart",
+    "symbol": "LayoutSelectionStatus"
+  },
+  {
+    "id": "workflow-budget-reservation",
+    "owner": "catalogs",
+    "configuration": "crates/licoup-native/resources/state-machines/workflow-budget-reservation.json",
+    "execution": "compiled-table",
+    "verification": "verify:catalogs",
+    "executor": "crates/licoup-native/src/domain/agent_usage/workflow_ledger/reservation.rs",
+    "consumers": [
+      "crates/licoup-native/src/domain/workflow_runtime/evolution_adapters/budget.rs",
+      "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs"
+    ],
+    "source": "crates/licoup-native/src/domain/workflow_runtime/evolution_adapters/budget.rs",
+    "symbol": "ReservationState"
+  }
+]

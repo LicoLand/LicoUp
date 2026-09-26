@@ -1,5 +1,7 @@
 # Native release package templates
 
+Updated: 2026-08-13
+
 This directory contains source templates for native installer formats. It is
 not a release output directory. The canonical target list, support state,
 artifact names, and update authority live in

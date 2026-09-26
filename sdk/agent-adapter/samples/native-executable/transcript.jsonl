@@ -1,0 +1,4 @@
+{"jsonrpc": "2.0", "id": 1, "method": "extension.initialize", "params": {"protocol": {"major": 1, "minimumMinor": 0}, "maxFrameBytes": 65536}}
+{"jsonrpc": "2.0", "id": 2, "method": "agent.describe", "params": {}}
+{"jsonrpc": "2.0", "id": 3, "method": "agent.execute", "params": {"invocationRef": "native-invocation-1", "input": "quote \" backslash \\ tab\t newline\n雪"}}
+{"jsonrpc": "2.0", "id": 4, "method": "extension.shutdown", "params": {}}

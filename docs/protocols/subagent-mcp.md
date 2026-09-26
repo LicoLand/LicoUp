@@ -1,5 +1,7 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-09-12
+
 | Reference | Document |
 | --- | --- |
 | Localization | [简体中文](subagent-mcp.zh-CN.md) |

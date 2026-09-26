@@ -2,6 +2,8 @@
 
 use std::cell::Cell;
 
+pub use crate::state_machine::conversation_continuity_effect::State as ContinuityEffectStatus;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContinuityInterrupt {
     BeforeFirstWrite,
@@ -10,29 +12,9 @@ pub enum ContinuityInterrupt {
     AfterCommit,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ContinuityEffectStatus {
-    NotExecuted,
-    Executed,
-    Unknown,
-}
-
 impl ContinuityEffectStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::NotExecuted => "not_executed",
-            Self::Executed => "executed",
-            Self::Unknown => "unknown",
-        }
-    }
-
     pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "not_executed" => Some(Self::NotExecuted),
-            "executed" => Some(Self::Executed),
-            "unknown" => Some(Self::Unknown),
-            _ => None,
-        }
+        Self::from_name(value)
     }
 }
 

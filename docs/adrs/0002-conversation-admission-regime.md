@@ -1,5 +1,7 @@
 # ADR 0002: Conversation admission regime for running Agent dialogs
 
+Updated: 2026-09-02
+
 > **Governing principle: leverage the Agent framework's native capabilities
 > to the maximum, and have LicoUp continue onto existing dialogs.**
 >

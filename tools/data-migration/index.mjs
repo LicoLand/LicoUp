@@ -20,6 +20,21 @@ export {
   listPreservations,
   clearPreservation,
 } from "./lib/preservation.mjs";
+export {
+  PUBLISHED_STRATEGY_FORMATS,
+  STRATEGY_STORE_EDGES,
+  STRATEGY_DATABASE_REF,
+  NOTICE_OUTBOX_TABLES,
+  currentStrategyFormat,
+  readPublishedFormat,
+  readPublishedDomainVersion,
+  strategyFormatForDomainVersion,
+  strategyFormatPosition,
+  strategyStorePath,
+  strategyStoreArtifactPath,
+  strategyRecoveryPath,
+  loadStrategyRecovery,
+} from "./lib/published-strategy-format.mjs";
 export { openJournal, journalPath } from "./lib/journal.mjs";
 export { withRootLock, RootLock } from "./lib/lock.mjs";
 export {

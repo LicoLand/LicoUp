@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "dart": {
+    "output": "apps/desktop/lib/src/application/generated/state_machines.g.dart"
+  },
+  "machines": [
+    {
+      "id": "client.lifecycle",
+      "states": [
+        { "id": "idle" },
+        { "id": "initializing" },
+        { "id": "ready" },
+        { "id": "failed" },
+        { "id": "disposed" }
+      ],
+      "events": ["initialize", "initialization-succeeded", "initialization-failed", "dispose"],
+      "initial": "idle",
+      "terminal": ["disposed"],
+      "transitions": [
+        { "from_state": "idle", "event": "initialize", "to_state": "initializing" },
+        { "from_state": "failed", "event": "initialize", "to_state": "initializing" },
+        { "from_state": "initializing", "event": "initialization-succeeded", "to_state": "ready" },
+        { "from_state": "initializing", "event": "initialization-failed", "to_state": "failed" },
+        { "from_state": "idle", "event": "dispose", "to_state": "disposed" },
+        { "from_state": "initializing", "event": "dispose", "to_state": "disposed" },
+        { "from_state": "ready", "event": "dispose", "to_state": "disposed" },
+        { "from_state": "failed", "event": "dispose", "to_state": "disposed" }
+      ],
+      "dart": {
+        "state_enum": "ClientLifecyclePhase",
+        "event_enum": "ClientLifecycleEvent",
+        "transition_function": "transitionClientLifecyclePhase",
+        "state_from_id_function": "clientLifecyclePhaseFromId",
+        "event_for_transition_function": "clientLifecycleEventForTransition"
+      }
+    },
+    {
+      "id": "catalog.convergence",
+      "states": [
+        { "id": "disabled" },
+        { "id": "idle" },
+        { "id": "reconciling" },
+        { "id": "ready" },
+        { "id": "blocked" },
+        { "id": "failed" }
+      ],
+      "events": ["not-configured", "reconciliation-required", "reconcile", "current", "block", "status-failed", "disable"],
+      "initial": "disabled",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "disabled", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "idle", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "reconciling", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "ready", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "blocked", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "failed", "event": "not-configured", "to_state": "disabled" },
+        { "from_state": "disabled", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "idle", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "reconciling", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "ready", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "blocked", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "failed", "event": "reconciliation-required", "to_state": "blocked" },
+        { "from_state": "disabled", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "idle", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "reconciling", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "ready", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "blocked", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "failed", "event": "reconcile", "to_state": "reconciling" },
+        { "from_state": "disabled", "event": "current", "to_state": "ready" },
+        { "from_state": "idle", "event": "current", "to_state": "ready" },
+        { "from_state": "reconciling", "event": "current", "to_state": "ready" },
+        { "from_state": "ready", "event": "current", "to_state": "ready" },
+        { "from_state": "blocked", "event": "current", "to_state": "ready" },
+        { "from_state": "failed", "event": "current", "to_state": "ready" },
+        { "from_state": "disabled", "event": "block", "to_state": "blocked" },
+        { "from_state": "idle", "event": "block", "to_state": "blocked" },
+        { "from_state": "reconciling", "event": "block", "to_state": "blocked" },
+        { "from_state": "ready", "event": "block", "to_state": "blocked" },
+        { "from_state": "blocked", "event": "block", "to_state": "blocked" },
+        { "from_state": "failed", "event": "block", "to_state": "blocked" },
+        { "from_state": "disabled", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "idle", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "reconciling", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "ready", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "blocked", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "failed", "event": "status-failed", "to_state": "failed" },
+        { "from_state": "disabled", "event": "disable", "to_state": "disabled" },
+        { "from_state": "idle", "event": "disable", "to_state": "disabled" },
+        { "from_state": "reconciling", "event": "disable", "to_state": "disabled" },
+        { "from_state": "ready", "event": "disable", "to_state": "disabled" },
+        { "from_state": "blocked", "event": "disable", "to_state": "disabled" },
+        { "from_state": "failed", "event": "disable", "to_state": "disabled" }
+      ],
+      "dart": {
+        "state_enum": "CatalogConvergencePhase",
+        "event_enum": "CatalogConvergenceEvent",
+        "transition_function": "transitionCatalogConvergencePhase",
+        "state_from_id_function": "catalogConvergencePhaseFromId"
+      }
+    },
+    {
+      "id": "llm-gateway.runtime",
+      "states": [
+        { "id": "unknown" },
+        { "id": "running" },
+        { "id": "stopped" },
+        { "id": "unhealthy" }
+      ],
+      "events": ["report-unknown", "report-running", "report-stopped", "report-unhealthy"],
+      "initial": "unknown",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "unknown", "event": "report-unknown", "to_state": "unknown" },
+        { "from_state": "running", "event": "report-unknown", "to_state": "unknown" },
+        { "from_state": "stopped", "event": "report-unknown", "to_state": "unknown" },
+        { "from_state": "unhealthy", "event": "report-unknown", "to_state": "unknown" },
+        { "from_state": "unknown", "event": "report-running", "to_state": "running" },
+        { "from_state": "running", "event": "report-running", "to_state": "running" },
+        { "from_state": "stopped", "event": "report-running", "to_state": "running" },
+        { "from_state": "unhealthy", "event": "report-running", "to_state": "running" },
+        { "from_state": "unknown", "event": "report-stopped", "to_state": "stopped" },
+        { "from_state": "running", "event": "report-stopped", "to_state": "stopped" },
+        { "from_state": "stopped", "event": "report-stopped", "to_state": "stopped" },
+        { "from_state": "unhealthy", "event": "report-stopped", "to_state": "stopped" },
+        { "from_state": "unknown", "event": "report-unhealthy", "to_state": "unhealthy" },
+        { "from_state": "running", "event": "report-unhealthy", "to_state": "unhealthy" },
+        { "from_state": "stopped", "event": "report-unhealthy", "to_state": "unhealthy" },
+        { "from_state": "unhealthy", "event": "report-unhealthy", "to_state": "unhealthy" }
+      ],
+      "dart": {
+        "state_enum": "LlmGatewayRuntimeState",
+        "event_enum": "LlmGatewayRuntimeEvent",
+        "transition_function": "transitionLlmGatewayRuntimeState",
+        "state_from_id_function": "llmGatewayRuntimeStateFromId"
+      }
+    },
+    {
+      "id": "conversation.turn-process",
+      "states": [
+        { "id": "submitted" },
+        { "id": "accepted" },
+        { "id": "processing" },
+        { "id": "responding" },
+        { "id": "completed" },
+        { "id": "failed" }
+      ],
+      "events": ["submitted", "accepted", "processing", "responding", "completed", "failed"],
+      "initial": "submitted",
+      "terminal": ["failed"],
+      "transitions": [
+        { "from_state": "submitted", "event": "submitted", "to_state": "submitted" },
+        { "from_state": "submitted", "event": "accepted", "to_state": "accepted" },
+        { "from_state": "submitted", "event": "processing", "to_state": "processing" },
+        { "from_state": "submitted", "event": "responding", "to_state": "responding" },
+        { "from_state": "submitted", "event": "completed", "to_state": "completed" },
+        { "from_state": "submitted", "event": "failed", "to_state": "failed" },
+        { "from_state": "accepted", "event": "accepted", "to_state": "accepted" },
+        { "from_state": "accepted", "event": "processing", "to_state": "processing" },
+        { "from_state": "accepted", "event": "responding", "to_state": "responding" },
+        { "from_state": "accepted", "event": "completed", "to_state": "completed" },
+        { "from_state": "accepted", "event": "failed", "to_state": "failed" },
+        { "from_state": "processing", "event": "processing", "to_state": "processing" },
+        { "from_state": "processing", "event": "responding", "to_state": "responding" },
+        { "from_state": "processing", "event": "completed", "to_state": "completed" },
+        { "from_state": "processing", "event": "failed", "to_state": "failed" },
+        { "from_state": "responding", "event": "responding", "to_state": "responding" },
+        { "from_state": "responding", "event": "completed", "to_state": "completed" },
+        { "from_state": "responding", "event": "failed", "to_state": "failed" },
+        { "from_state": "completed", "event": "completed", "to_state": "completed" },
+        { "from_state": "completed", "event": "failed", "to_state": "failed" }
+      ],
+      "dart": {
+        "state_enum": "ConversationTurnProcessStage",
+        "event_enum": "ConversationTurnProcessEvent",
+        "transition_function": "transitionConversationTurnProcessStage",
+        "state_from_id_function": "conversationTurnProcessStageFromId",
+        "state_id_function": "conversationTurnProcessStageId",
+        "event_from_id_function": "conversationTurnProcessEventFromId"
+      }
+    }
+  ]
+}

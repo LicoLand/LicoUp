@@ -246,6 +246,21 @@
       "requires": [
         "subagents-mcp"
       ]
+    },
+    "user-skills": {
+      "label": "Optional public user Skills",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "module-resources",
+      "includePaths": [
+        "crates/licoup-native/resources/licoup-refactor"
+      ]
     }
   },
   "deferredCapabilities": {}

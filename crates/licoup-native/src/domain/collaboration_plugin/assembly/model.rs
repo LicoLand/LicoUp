@@ -116,25 +116,15 @@ impl PlannedLocalAssembly {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum LocalServerLifecycle {
-    Stopped,
-    Starting,
-    Running,
-    Stopping,
-    Quarantined,
-}
+pub(crate) use crate::state_machines::collaboration_local_server::State as LocalServerLifecycle;
 
-impl LocalServerLifecycle {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Stopped => "assembled-awaiting-deployment",
-            Self::Starting => "deployment-starting",
-            Self::Running => "running",
-            Self::Stopping => "deployment-stopping",
-            Self::Quarantined => "quarantined-runtime-identity",
-        }
+pub(crate) fn lifecycle_status(lifecycle: LocalServerLifecycle) -> &'static str {
+    match lifecycle {
+        LocalServerLifecycle::Stopped => "assembled-awaiting-deployment",
+        LocalServerLifecycle::Starting => "deployment-starting",
+        LocalServerLifecycle::Running => "running",
+        LocalServerLifecycle::Stopping => "deployment-stopping",
+        LocalServerLifecycle::Quarantined => "quarantined-runtime-identity",
     }
 }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/adaptive_flywheel/adaptive_flywheel_controller.dart';
@@ -217,24 +218,27 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('zh'),
-        supportedLocales: const [Locale('zh')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showAdaptiveFlywheelDialog(
-                context,
-                agents: bindings.agents,
-                conversation: bindings.conversation,
+      ProviderScope(
+        overrides: bindings.providerOverrides,
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: const [Locale('zh')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),
@@ -347,24 +351,27 @@ void main() {
         await agentService.dispose();
       });
       await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('en'),
-          supportedLocales: const [Locale('en')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showAdaptiveFlywheelDialog(
-                  context,
-                  agents: bindings.agents,
-                  conversation: bindings.conversation,
+        ProviderScope(
+          overrides: bindings.providerOverrides,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            supportedLocales: const [Locale('en')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            theme: buildLicoTheme(platformBrightness: Brightness.dark),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showAdaptiveFlywheelDialog(
+                    context,
+                    agents: bindings.agents,
+                    conversation: bindings.conversation,
+                  ),
+                  child: const Text('open'),
                 ),
-                child: const Text('open'),
               ),
             ),
           ),
@@ -441,24 +448,27 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: const [Locale('en'), Locale('zh')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showAdaptiveFlywheelDialog(
-                context,
-                agents: bindings.agents,
-                conversation: bindings.conversation,
+      ProviderScope(
+        overrides: bindings.providerOverrides,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: const [Locale('en'), Locale('zh')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),
@@ -515,36 +525,39 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('en'),
-          supportedLocales: const [Locale('en'), Locale('zh')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => Column(
-                children: [
-                  TextButton(
-                    onPressed: () => showAdaptiveFlywheelDialog(
-                      context,
-                      agents: bindings.agents,
-                      conversation: bindings.conversation,
+        ProviderScope(
+          overrides: bindings.providerOverrides,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            supportedLocales: const [Locale('en'), Locale('zh')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            theme: buildLicoTheme(platformBrightness: Brightness.dark),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => Column(
+                  children: [
+                    TextButton(
+                      onPressed: () => showAdaptiveFlywheelDialog(
+                        context,
+                        agents: bindings.agents,
+                        conversation: bindings.conversation,
+                      ),
+                      child: const Text('open flywheel'),
                     ),
-                    child: const Text('open flywheel'),
-                  ),
-                  TextButton(
-                    onPressed: () => showAssistantConfigurationDialog(
-                      context,
-                      agents: bindings.agents,
-                      conversation: bindings.conversation,
+                    TextButton(
+                      onPressed: () => showAssistantConfigurationDialog(
+                        context,
+                        agents: bindings.agents,
+                        conversation: bindings.conversation,
+                      ),
+                      child: const Text('open assistant'),
                     ),
-                    child: const Text('open assistant'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -649,25 +662,28 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: const [Locale('en'), Locale('zh')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showAdaptiveFlywheelDialog(
-                context,
-                agents: bindings.agents,
-                conversation: bindings.conversation,
-                initialRevision: 'revision-b',
+      ProviderScope(
+        overrides: bindings.providerOverrides,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: const [Locale('en'), Locale('zh')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAdaptiveFlywheelDialog(
+                  context,
+                  agents: bindings.agents,
+                  conversation: bindings.conversation,
+                  initialRevision: 'revision-b',
+                ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),

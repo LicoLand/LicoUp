@@ -39,7 +39,7 @@ test("resume continues an interrupted conversion without repeating committed ste
     assert.equal(beforeResumeJournal.domains["workspace-manifest"].status, "pending");
 
     // Call resume
-    const result = resume(root);
+    const result = resume(root, { writersStopped: true });
     assert.equal(result.status, "success");
 
     // Agent tab order should have been detected as already committed
@@ -80,13 +80,13 @@ test("convert refuses to run over an interrupted migration journal", () => {
     const p = plan(root, "v0.3.0");
     initJournal(root, p);
 
-    assert.throws(() => convert(root, "v0.3.0"), /migration_interrupted/);
+    assert.throws(() => convert(root, "v0.3.0", { writersStopped: true }), /migration_interrupted/);
 
     // Resume clears the interrupted state; a later convert applies nothing
     // new (credential custody stays pending authorization by design)
-    const resumed = resume(root);
+    const resumed = resume(root, { writersStopped: true });
     assert.equal(resumed.status, "success");
-    const second = convert(root, "v0.3.0");
+    const second = convert(root, "v0.3.0", { writersStopped: true });
     assert.equal(second.status, "success");
     assert.equal(second.convertedSteps.length, 0);
     assert.ok(second.pendingAuthorizationDomains.includes("gateway-credential-custody"));

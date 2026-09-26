@@ -4,9 +4,15 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { documentDate, markdownAnchors, validateModuleRoutes } from "./development/documentation.mjs";
+import { CLIENT_MODULE_CATALOG } from "./regression/client-module-catalog.mjs";
+import { inspectCandidate } from "./development/artifacts.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const failures = [];
+for (const finding of inspectCandidate(repoRoot).findings) {
+  failures.push(`${finding.file}: ${finding.reason} (${finding.snapshot})`);
+}
 
 const requiredFiles = [
   "PRODUCT.md",
@@ -108,6 +114,33 @@ function localTarget(sourcePath, rawTarget) {
 
 const candidate = candidateFiles();
 
+for (const relativePath of candidate) {
+  if (!/\.mdx?$/u.test(relativePath)) continue;
+  const issue = documentDate(readFileSync(path.join(repoRoot, relativePath), "utf8"));
+  if (issue) failures.push(`${relativePath}: ${issue}`);
+}
+const modules = JSON.parse(readFileSync(path.join(repoRoot, "tools/development/modules.json"), "utf8"));
+const scripts = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts;
+const closureSteps = JSON.parse(readFileSync(path.join(repoRoot, "tools/development/closure-steps.json"), "utf8"));
+for (const step of closureSteps) {
+  if (!scripts[step.command]) failures.push(`closure ${step.id}: command is missing`);
+}
+for (const file of candidate) {
+  if (file.startsWith("docs/modules/") && /\.md$/u.test(file) && !modules.some((module) => module.guide === file)) {
+    failures.push(`${file}: module guide is not registered`);
+  }
+}
+failures.push(...validateModuleRoutes(modules, {
+  exists: relativeFileExists,
+  read: (file) => readFileSync(path.join(repoRoot, file), "utf8"),
+  scripts,
+  regressionIds: new Set(CLIENT_MODULE_CATALOG.map((entry) => entry.id)),
+}));
+const entry = readFileSync(path.join(repoRoot, "docs/RUNBOOK.md"), "utf8");
+for (const module of modules) {
+  if (!entry.includes(path.relative("docs", module.guide))) failures.push(`${module.id}: absent from developer entry`);
+}
+
 for (const required of requiredFiles) {
   if (!relativeFileExists(required)) failures.push(`${required}: required file is missing`);
   if (!candidate.has(required)) failures.push(`${required}: absent from public Git candidate`);
@@ -167,19 +200,17 @@ for (const relativePath of [...candidate].filter(
     if (target !== null && !relativeFileExists(target)) {
       failures.push(`${relativePath}: missing link target ${target}`);
     }
-  }
-}
-
-const docsIndex = readFileSync(path.join(repoRoot, "docs/README.md"), "utf8");
-for (const relativePath of [...candidate].filter(
-  (entry) =>
-    entry.startsWith("docs/") &&
-    /\.md$/u.test(entry) &&
-    entry !== "docs/README.md",
-)) {
-  const fromIndex = path.relative("docs", relativePath).split(path.sep).join("/");
-  if (!docsIndex.includes(`(${fromIndex})`)) {
-    failures.push(`${relativePath}: absent from docs/README.md`);
+    if (target !== null && localRoots.some((root) => target === root || target.startsWith(`${root}/`))) {
+      failures.push(`${relativePath}: public link targets local-only material`);
+    }
+    const anchor = rawTarget.split("#")[1];
+    const anchorFile = rawTarget.startsWith("#") ? relativePath : target;
+    if (anchor && anchorFile && /\.mdx?$/u.test(anchorFile) && relativeFileExists(anchorFile)) {
+      let decoded;
+      try { decoded = decodeURIComponent(anchor); } catch { failures.push(`${relativePath}: invalid anchor encoding`); continue; }
+      const headings = markdownAnchors(readFileSync(path.join(repoRoot, anchorFile), "utf8"));
+      if (!headings.has(decoded)) failures.push(`${relativePath}: missing anchor ${anchorFile}#${decoded}`);
+    }
   }
 }
 

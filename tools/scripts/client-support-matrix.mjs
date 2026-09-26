@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { withContentDate } from "../development/documentation.mjs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -473,10 +474,13 @@ if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
     drivers,
   );
   const readiness = validateDriverReadiness(readJson(driverReadinessPath), drivers);
-  const reports = Object.freeze({
+  const rendered = {
     en: renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities),
     zhCN: renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities)
-  });
+  };
+  const reports = Object.fromEntries(Object.entries(rendered).map(([locale, content]) => [
+    locale, withContentDate(content, existsSync(reportPaths[locale]) ? readFileSync(reportPaths[locale], "utf8") : ""),
+  ]));
   if (action === "sync") {
     for (const [locale, reportPath] of Object.entries(reportPaths)) {
       mkdirSync(path.dirname(reportPath), { recursive: true });

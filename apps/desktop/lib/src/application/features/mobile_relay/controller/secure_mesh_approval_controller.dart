@@ -5,6 +5,8 @@ import 'package:licoup/src/application/features/mobile_relay/policy/secure_mesh_
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
+import 'generated/secure_mesh_state_machines.g.dart';
+
 /// Owns the redacted approval inbox and short-lived response secrets.
 final class SecureMeshApprovalController extends ApplicationStateOwner {
   SecureMeshApprovalController({
@@ -105,7 +107,7 @@ final class SecureMeshApprovalController extends ApplicationStateOwner {
           : adapterStyle.trim(),
       requestedTools: List<String>.unmodifiable(requestedTools),
       trustedEndpointCount: trustedEndpointIds.length,
-      status: SecureMeshApprovalStatus.pending,
+      status: secureMeshApprovalStatusInitial,
     );
     _rememberSecrets(request);
     try {
@@ -254,6 +256,11 @@ final class SecureMeshApprovalController extends ApplicationStateOwner {
           break;
         }
       }
+      final resolvedStatus = transitionSecureMeshApprovalStatus(
+        existing?.status ?? secureMeshApprovalStatusInitial,
+        SecureMeshApprovalEvent.resolve,
+      );
+      if (resolvedStatus == null) throw const SecureMeshPolicyFailure();
       final resolved =
           (existing ??
                   SecureMeshApprovalRequest(
@@ -266,10 +273,10 @@ final class SecureMeshApprovalController extends ApplicationStateOwner {
                     responseNonce: '',
                     adapterCallbackTokenRef: '',
                     adapterStyle: 'callback',
-                    status: SecureMeshApprovalStatus.pending,
+                    status: secureMeshApprovalStatusInitial,
                   ))
               .copyWith(
-                status: SecureMeshApprovalStatus.resolved,
+                status: resolvedStatus,
                 decision: allow
                     ? SecureMeshApprovalDecision.allow
                     : SecureMeshApprovalDecision.deny,

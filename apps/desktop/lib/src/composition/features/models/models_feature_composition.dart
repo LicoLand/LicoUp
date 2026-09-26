@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
+import 'package:licoup/src/presentation/models/models_providers.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/models/controller/models_semantic_controller.dart';
@@ -48,6 +50,10 @@ final class ModelsFeatureComposition {
 
   /// F01 Riverpod entry for the model catalog resource.
   late final PresentationProviderEntry<ModelsProjection> catalogEntry;
+
+  List<Override> get providerOverrides => <Override>[
+    modelsCatalogSourceProvider.overrideWithValue(_catalogSource),
+  ];
 
   /// Narrow renderer actions with the models scope pinned.
   late final ModelsCatalogActions catalogActions;

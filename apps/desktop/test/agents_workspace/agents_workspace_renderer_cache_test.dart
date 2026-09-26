@@ -1,6 +1,7 @@
 import 'package:licoup/src/contracts/target_management.dart';
 
 import 'support/agents_workspace_test_harness.dart';
+import '../support/presentation_source_overrides.dart';
 
 void registerAgentsWorkspaceRendererCacheScenarios() {
   testWidgets('message list reuses adapter resolution across rebuilds', (
@@ -74,6 +75,7 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
       ),
     );
     await tester.pump();
+    await pumpUntilVisible(tester, find.text('Stable content.'));
 
     expect(registry.resolveCalls, 1);
     expect(find.text('Stable content.'), findsWidgets);

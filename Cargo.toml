@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/lico-catalog-convergence",
+    "crates/licoup-state-machine-codegen",
     "crates/licoup-protocol-bindings",
     "crates/licoup-client-state",
     "crates/licoup-endpoint-core",
@@ -8,7 +9,10 @@ members = [
     "crates/licoup-agent-adapters",
     "crates/licoup-agent-runtime",
     "crates/licoup-application",
+    "crates/licoup-extension-contracts",
     "crates/licoup-workflow",
+    "crates/licoup-workflow-runtime",
+    "crates/licoup-workflow-store",
     "crates/licoup-conversation",
     "crates/licoup-mcp",
     "crates/licoup-native",

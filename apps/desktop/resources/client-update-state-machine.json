@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "dart": {
+    "output": "apps/desktop/lib/src/contracts/generated/client_update_state_machine.g.dart"
+  },
+  "machines": [
+    {
+      "id": "client.update",
+      "states": [
+        { "id": "idle" },
+        { "id": "checking" },
+        { "id": "up-to-date", "dart_name": "upToDate" },
+        { "id": "unavailable" },
+        { "id": "update-available", "dart_name": "updateAvailable" },
+        { "id": "downloading" },
+        { "id": "downloaded" },
+        { "id": "verifying" },
+        { "id": "verified" },
+        { "id": "apply-planned", "dart_name": "applyPlanned" },
+        { "id": "applied" },
+        { "id": "failed" }
+      ],
+      "events": ["reset", "check", "up-to-date", "unavailable", "update-available", "download", "downloaded", "verify", "verified", "plan-apply", "apply", "fail"],
+      "initial": "idle",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "idle", "event": "reset", "to_state": "idle" },
+        { "from_state": "checking", "event": "reset", "to_state": "idle" },
+        { "from_state": "up-to-date", "event": "reset", "to_state": "idle" },
+        { "from_state": "unavailable", "event": "reset", "to_state": "idle" },
+        { "from_state": "update-available", "event": "reset", "to_state": "idle" },
+        { "from_state": "downloading", "event": "reset", "to_state": "idle" },
+        { "from_state": "downloaded", "event": "reset", "to_state": "idle" },
+        { "from_state": "verifying", "event": "reset", "to_state": "idle" },
+        { "from_state": "verified", "event": "reset", "to_state": "idle" },
+        { "from_state": "apply-planned", "event": "reset", "to_state": "idle" },
+        { "from_state": "applied", "event": "reset", "to_state": "idle" },
+        { "from_state": "failed", "event": "reset", "to_state": "idle" },
+        { "from_state": "idle", "event": "check", "to_state": "checking" },
+        { "from_state": "up-to-date", "event": "check", "to_state": "checking" },
+        { "from_state": "unavailable", "event": "check", "to_state": "checking" },
+        { "from_state": "update-available", "event": "check", "to_state": "checking" },
+        { "from_state": "downloaded", "event": "check", "to_state": "checking" },
+        { "from_state": "verified", "event": "check", "to_state": "checking" },
+        { "from_state": "apply-planned", "event": "check", "to_state": "checking" },
+        { "from_state": "applied", "event": "check", "to_state": "checking" },
+        { "from_state": "failed", "event": "check", "to_state": "checking" },
+        { "from_state": "checking", "event": "up-to-date", "to_state": "up-to-date" },
+        { "from_state": "checking", "event": "unavailable", "to_state": "unavailable" },
+        { "from_state": "checking", "event": "update-available", "to_state": "update-available" },
+        { "from_state": "update-available", "event": "download", "to_state": "downloading" },
+        { "from_state": "downloading", "event": "downloaded", "to_state": "downloaded" },
+        { "from_state": "downloaded", "event": "verify", "to_state": "verifying" },
+        { "from_state": "verifying", "event": "verified", "to_state": "verified" },
+        { "from_state": "verified", "event": "plan-apply", "to_state": "apply-planned" },
+        { "from_state": "apply-planned", "event": "plan-apply", "to_state": "apply-planned" },
+        { "from_state": "verified", "event": "apply", "to_state": "applied" },
+        { "from_state": "apply-planned", "event": "apply", "to_state": "applied" },
+        { "from_state": "idle", "event": "fail", "to_state": "failed" },
+        { "from_state": "checking", "event": "fail", "to_state": "failed" },
+        { "from_state": "up-to-date", "event": "fail", "to_state": "failed" },
+        { "from_state": "unavailable", "event": "fail", "to_state": "failed" },
+        { "from_state": "update-available", "event": "fail", "to_state": "failed" },
+        { "from_state": "downloading", "event": "fail", "to_state": "failed" },
+        { "from_state": "downloaded", "event": "fail", "to_state": "failed" },
+        { "from_state": "verifying", "event": "fail", "to_state": "failed" },
+        { "from_state": "verified", "event": "fail", "to_state": "failed" },
+        { "from_state": "apply-planned", "event": "fail", "to_state": "failed" },
+        { "from_state": "applied", "event": "fail", "to_state": "failed" },
+        { "from_state": "failed", "event": "fail", "to_state": "failed" }
+      ],
+      "dart": {
+        "state_enum": "ClientUpdatePhase",
+        "event_enum": "ClientUpdateEvent",
+        "transition_function": "transitionClientUpdatePhase",
+        "state_from_id_function": "clientUpdatePhaseFromId"
+      }
+    }
+  ]
+}

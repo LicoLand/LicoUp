@@ -1,7 +1,9 @@
 # 发布包结构
 
+Updated: 2026-09-25
+
 [English（规范版本）](RELEASE-PACKAGES.md) · 简体中文（本地化） ·
-[兼容性](COMPATIBILITY.zh-CN.md) · [运行手册](RUNBOOK.md)
+[兼容性](COMPATIBILITY.zh-CN.md) · [运行手册](RUNBOOK.zh-CN.md)
 
 Nightly 与 Stable 发布包保留同一个应用身份和数据根。签名更新清单使用 manifest-v2，
 并绑定制品的发布轨道与状态迁移前沿。参见

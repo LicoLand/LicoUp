@@ -1,0 +1,26 @@
+{
+  "machines": [
+    {
+      "id": "security.mls-operation",
+      "rust_module": "security_mls_operation",
+      "states": [
+        { "id": "prepared" },
+        { "id": "crypto_prepared", "rust_name": "CryptoPrepared" },
+        { "id": "crypto_committed", "rust_name": "CryptoCommitted" },
+        { "id": "metadata_reconciled", "rust_name": "MetadataReconciled" },
+        { "id": "delivered" }
+      ],
+      "events": ["stage-crypto", "reset-for-retry", "commit-crypto", "reconcile-metadata", "deliver"],
+      "initial": "prepared",
+      "terminal": ["delivered"],
+      "transitions": [
+        { "from_state": "prepared", "event": "stage-crypto", "to_state": "crypto_prepared" },
+        { "from_state": "crypto_prepared", "event": "stage-crypto", "to_state": "crypto_prepared" },
+        { "from_state": "crypto_prepared", "event": "reset-for-retry", "to_state": "prepared" },
+        { "from_state": "crypto_prepared", "event": "commit-crypto", "to_state": "crypto_committed" },
+        { "from_state": "crypto_committed", "event": "reconcile-metadata", "to_state": "metadata_reconciled" },
+        { "from_state": "metadata_reconciled", "event": "deliver", "to_state": "delivered" }
+      ]
+    }
+  ]
+}

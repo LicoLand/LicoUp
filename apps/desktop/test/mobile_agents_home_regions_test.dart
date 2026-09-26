@@ -12,11 +12,14 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
 
 import 'fixtures/mobile_relay_binding_fixture.dart';
 import 'fixtures/mobile_relay_presentation_fixture.dart';
+import 'support/presentation_source_overrides.dart';
 
 void main() {
   testWidgets('the agents home list follows the relay home region', (
@@ -37,15 +40,23 @@ void main() {
     addTearDown(relay.dispose);
     addTearDown(presentation.dispose);
     final relayIntents = relay.intents.values;
+    final agents = _agentsBinding();
+    final agentsSource = AgentsPresentationSource(
+      projection: agents.projection,
+    );
+    addTearDown(agentsSource.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: presentation.overrides,
+        overrides: [
+          ...presentation.overrides,
+          agentsCatalogSourceProvider.overrideWithValue(agentsSource),
+        ],
         child: MaterialApp(
           theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
           home: Scaffold(
             body: MobileAgentsHome(
-              agents: _agentsBinding(),
+              agents: agents,
               relay: relay.binding,
               conversationContentBuilder: (context, target) =>
                   const SizedBox.shrink(),
@@ -57,6 +68,10 @@ void main() {
       ),
     );
     await tester.pump();
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('mobile-agent-list-item-codex')),
+    );
 
     expect(find.byKey(const Key('mobile-paired-device-device-1')), findsOne);
     expect(
@@ -109,15 +124,23 @@ void main() {
       mobileTokenPresent: true,
       paired: true,
     );
+    final agents = _agentsBinding();
+    final agentsSource = AgentsPresentationSource(
+      projection: agents.projection,
+    );
+    addTearDown(agentsSource.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: feature.providerOverrides,
+        overrides: [
+          ...feature.providerOverrides,
+          agentsCatalogSourceProvider.overrideWithValue(agentsSource),
+        ],
         child: MaterialApp(
           theme: buildLicoTheme().copyWith(platform: TargetPlatform.macOS),
           home: Scaffold(
             body: MobileAgentsHome(
-              agents: _agentsBinding(),
+              agents: agents,
               relay: feature.binding,
               conversationContentBuilder: (context, target) =>
                   const SizedBox.shrink(),
@@ -130,6 +153,15 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    await pumpUntilVisible(
+      tester,
+      find.byKey(
+        Key(
+          'mobile-paired-device-'
+          '${controller.mobileRelayConfig.deviceTabs.single.id}',
+        ),
+      ),
+    );
 
     expect(feature.binding.projection.current.peers, hasLength(1));
     expect(

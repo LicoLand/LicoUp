@@ -1,0 +1,5 @@
+{"kind":"text","body":"local "}
+{"kind":"text","body":"fixture "}
+{"kind":"text","body":"stream","delayMs":2}
+{"kind":"usage","usage":{"inputTokens":7}}
+{"kind":"terminal","outcome":"completed","usage":{"inputTokens":7,"cost":{"amount":null,"currency":"USD","quality":"unknown"}}}

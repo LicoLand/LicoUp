@@ -640,25 +640,24 @@ pub fn record_effect(
         )
         .optional()
         .map_err(sql_failure)?;
-    if let Some(existing) = existing {
-        let current = ContinuityEffectStatus::parse(&existing).ok_or_else(|| {
-            continuity_failure(
-                ContinuityFailureCode::InvalidRequest,
-                ContinuityFailureStage::ContinuityEffects,
-            )
-        })?;
-        if current == ContinuityEffectStatus::Unknown && status != ContinuityEffectStatus::Unknown {
-            // Reconcile may resolve unknown. Replay of a known-executed id is refused above.
-        } else if current == ContinuityEffectStatus::Executed
-            && status != ContinuityEffectStatus::Executed
-        {
-            return Err(continuity_failure(
-                ContinuityFailureCode::InvalidRequest,
-                ContinuityFailureStage::ContinuityEffects,
-            ));
-        } else if current == status {
-            return Ok(current);
-        }
+    let current = existing
+        .map(|existing| {
+            ContinuityEffectStatus::parse(&existing).ok_or_else(|| {
+                continuity_failure(
+                    ContinuityFailureCode::InvalidRequest,
+                    ContinuityFailureStage::ContinuityEffects,
+                )
+            })
+        })
+        .transpose()?;
+    if current == Some(status) {
+        return Ok(status);
+    }
+    if !super::effect_lifecycle::permits(current, status) {
+        return Err(continuity_failure(
+            ContinuityFailureCode::InvalidRequest,
+            ContinuityFailureStage::ContinuityEffects,
+        ));
     }
     unit.execute(
         "INSERT INTO continuity_effects(logical_effect_id, conversation_id, goal_id, status, updated_at)
@@ -833,7 +832,8 @@ pub fn revoke_admitted_recipient_grants(
                 continue;
             }
             let mut revoked = grant;
-            revoked.status = ContinuityParentGrantStatus::Revoked;
+            revoked.status = super::revoke_parent_grant_status(revoked.status)
+                .expect("only admitted grants reach the revocation transition");
             upsert_grant(unit, &revoked)?;
         }
         if page_len < PENDING_OBLIGATION_PAGE_SIZE as usize {

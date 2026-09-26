@@ -11,6 +11,7 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { generateReports } from "../development/reports.mjs";
 import {
   SensitiveContentScanner,
   classifyPath,
@@ -168,6 +169,11 @@ export function assertCommitMessage(message) {
 }
 
 export function isAgentIdentity(name, email) {
+  // The responsible person may register an account specifically for Agent work.
+  // Do not infer a service identity from that account's chosen login. The local
+  // authenticated-account check and remote GitHub User check remain authoritative.
+  const account = /^([1-9][0-9]*)\+([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)@users\.noreply\.github\.com$/u.exec(email || "");
+  if (account && name === account[2]) return false;
   return agentIdentityValue.test(`${name || ""} <${email || ""}>`);
 }
 
@@ -377,19 +383,56 @@ function outgoingCommitEntries(commits) {
   return records;
 }
 
-// Pure staged-object check: sensitive destination paths fail before any
-// content read, and only newly introduced object identifiers are returned.
+function sensitiveWarning(reason, relativePath) {
+  return Object.freeze({
+    severity: "warning",
+    rule: reason,
+    path: relativePath,
+    evidenceClass: "candidate-shape",
+  });
+}
+
+function emitSensitiveWarnings(warnings) {
+  for (const warning of warnings) {
+    process.stderr.write(`repository_sensitive_warning=${JSON.stringify(warning)}\n`);
+  }
+}
+
+function registerObjectPath(pathsByOid, oid, relativePath) {
+  if (!pathsByOid.has(oid)) pathsByOid.set(oid, new Set());
+  pathsByOid.get(oid).add(relativePath);
+}
+
+function freezeObjectPaths(pathsByOid) {
+  return Object.freeze(Object.fromEntries(
+    [...pathsByOid].map(([oid, paths]) => [oid, Object.freeze([...paths])]),
+  ));
+}
+
+// Pure staged-object check: sensitive destination paths become review
+// warnings, while every newly introduced object identifier remains readable.
 export function stagedObjectChecks(entries) {
   const readOids = new Set();
+  const pathsByOid = new Map();
+  const warnings = [];
   for (const entry of entries) {
     if (entry.status === "D") continue;
-    if (classifyPath(entry.path).verdict === "reject") {
-      return Object.freeze({ status: "reject", code: "SENSITIVE_PATH_STAGED", readOids: [] });
+    const pathFinding = classifyPath(entry.path);
+    if (pathFinding.verdict === "warning") {
+      warnings.push(sensitiveWarning(pathFinding.reason, entry.path));
     }
     const { srcOid, dstOid } = entry;
-    if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) readOids.add(dstOid);
+    if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) {
+      readOids.add(dstOid);
+      registerObjectPath(pathsByOid, dstOid, entry.path);
+    }
   }
-  return Object.freeze({ status: "pass", readOids: Object.freeze([...readOids]) });
+  return Object.freeze({
+    status: "pass",
+    readOids: Object.freeze([...readOids]),
+    pathsByOid: freezeObjectPaths(pathsByOid),
+    warnings: Object.freeze(warnings),
+  });
 }
 
 // Pure outgoing-history check across every introduced destination path and
@@ -397,17 +440,28 @@ export function stagedObjectChecks(entries) {
 // the gate; duplicate object identifiers are read at most once.
 export function outgoingObjectChecks(commitRecords) {
   const readOids = new Set();
+  const pathsByOid = new Map();
+  const warnings = [];
   for (const record of commitRecords) {
     for (const entry of record.entries) {
       if (entry.status === "D") continue;
-      if (classifyPath(entry.path).verdict === "reject") {
-        return Object.freeze({ status: "reject", code: "SENSITIVE_PATH_OUTGOING", readOids: [] });
+      const pathFinding = classifyPath(entry.path);
+      if (pathFinding.verdict === "warning") {
+        warnings.push(sensitiveWarning(pathFinding.reason, entry.path));
       }
       const { srcOid, dstOid } = entry;
-      if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) readOids.add(dstOid);
+      if (!zeroObjectId.test(dstOid) && dstOid !== srcOid) {
+        readOids.add(dstOid);
+        registerObjectPath(pathsByOid, dstOid, entry.path);
+      }
     }
   }
-  return Object.freeze({ status: "pass", readOids: Object.freeze([...readOids]) });
+  return Object.freeze({
+    status: "pass",
+    readOids: Object.freeze([...readOids]),
+    pathsByOid: freezeObjectPaths(pathsByOid),
+    warnings: Object.freeze(warnings),
+  });
 }
 
 const SENSITIVE_READ_CHUNK_BYTES = 64 * 1024;
@@ -464,9 +518,10 @@ class CatFileBatchReader {
   }
 }
 
-async function scanBlobContents(blobIds, code) {
+async function scanBlobContents(blobIds, pathsByOid) {
   const uniqueIds = [...new Set(blobIds)];
-  if (uniqueIds.length === 0) return "pass";
+  if (uniqueIds.length === 0) return [];
+  const warnings = [];
   const reader = new CatFileBatchReader();
   reader.child.stdin.write(`${uniqueIds.join("\n")}\n`);
   reader.child.stdin.end();
@@ -490,14 +545,18 @@ async function scanBlobContents(blobIds, code) {
         if (chunk === null) {
           reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
         }
-        if (scanner.feed(chunk).verdict === "reject") {
-          reject(code, "A staged or outgoing object is rejected by the sensitive-file policy.");
-        }
+        scanner.feed(chunk);
         remaining -= chunk.length;
       }
       const trailer = await reader.readExactly(1);
       if (trailer === null) {
         reject("SENSITIVE_OBJECT_UNREADABLE", "A staged or outgoing object could not be inspected.");
+      }
+      const contentFinding = scanner.finish();
+      if (contentFinding.verdict === "warning") {
+        for (const relativePath of pathsByOid[blobId] || ["<candidate-object>"]) {
+          warnings.push(sensitiveWarning(contentFinding.reason, relativePath));
+        }
       }
     }
     const outcome = await reader.exitPromise;
@@ -508,7 +567,7 @@ async function scanBlobContents(blobIds, code) {
   } finally {
     reader.child.kill();
   }
-  return "pass";
+  return warnings;
 }
 
 function writeStagedReceipt() {
@@ -603,10 +662,9 @@ async function preCommit() {
   verifyLocalIdentityAndPolicy();
   assertStagedCandidate();
   const checks = stagedObjectChecks(stagedEntries());
-  if (checks.status === "reject") {
-    reject(checks.code, "The staged candidate is rejected by the sensitive-file policy.");
-  }
-  await scanBlobContents(checks.readOids, "SENSITIVE_OBJECT_STAGED");
+  emitSensitiveWarnings(checks.warnings);
+  emitSensitiveWarnings(await scanBlobContents(checks.readOids, checks.pathsByOid));
+  generateReports();
   writeStagedReceipt();
 }
 
@@ -630,10 +688,8 @@ async function prePush(remoteName) {
     assertCommitRecord(readCommitRecord(commit));
   }
   const checks = outgoingObjectChecks(outgoingCommitEntries(commits));
-  if (checks.status === "reject") {
-    reject(checks.code, "The outgoing history is rejected by the sensitive-file policy.");
-  }
-  await scanBlobContents(checks.readOids, "SENSITIVE_OBJECT_OUTGOING");
+  emitSensitiveWarnings(checks.warnings);
+  emitSensitiveWarnings(await scanBlobContents(checks.readOids, checks.pathsByOid));
   process.stdout.write(`identity_policy=passed commits=${commits.length}\n`);
 }
 

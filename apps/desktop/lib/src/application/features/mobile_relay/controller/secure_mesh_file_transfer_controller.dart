@@ -7,6 +7,8 @@ import 'package:licoup/src/application/features/mobile_relay/policy/secure_mesh_
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
+import 'generated/secure_mesh_state_machines.g.dart';
+
 /// Owns the local file-sync draft, receive policy, and confirmation state.
 final class SecureMeshFileTransferController extends ApplicationStateOwner {
   SecureMeshFileTransferController({
@@ -161,7 +163,7 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
       totalSize: totalSize,
       chunkSize: chunkSize,
       chunkCount: secureMeshFileSyncChunkCount(totalSize, chunkSize),
-      status: SecureMeshFileSyncStatus.drafting,
+      status: secureMeshFileSyncStatusInitial,
     );
     _report(
       '已选择文件 $normalizedName，请确认目标目录。',
@@ -216,10 +218,14 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
       return;
     }
     if (!_operationGate.tryAcquire()) return;
-    _draft = current.copyWith(
-      status: SecureMeshFileSyncStatus.evaluating,
+    final evaluating = current.copyWith(
+      status: transitionSecureMeshFileSyncStatus(
+        current.status,
+        SecureMeshFileSyncEvent.beginEvaluation,
+      )!,
       errorCode: '',
     );
+    _draft = evaluating;
     _report(
       '正在评估 Secure Mesh 文件同步路由与接收确认策略。',
       'Evaluating Secure Mesh file-sync route and receive confirmation policy.',
@@ -283,8 +289,11 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
               true) {
         throw const SecureMeshPolicyFailure();
       }
-      final pending = current.copyWith(
-        status: SecureMeshFileSyncStatus.awaitingConfirmation,
+      final pending = evaluating.copyWith(
+        status: transitionSecureMeshFileSyncStatus(
+          evaluating.status,
+          SecureMeshFileSyncEvent.policyAccepted,
+        )!,
         errorCode: '',
       );
       _draft = pending;
@@ -294,7 +303,7 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
         'File-sync awaiting local write confirmation: ${current.fileName}',
       );
     } catch (_) {
-      _failDraft(current, 'secure_mesh_file_sync_prepare_failed');
+      _failDraft(evaluating, 'secure_mesh_file_sync_prepare_failed');
       _report(
         'Secure Mesh 文件同步准备失败。',
         'Secure Mesh file-sync preparation failed.',
@@ -355,9 +364,12 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
         throw const SecureMeshPolicyFailure();
       }
       final completed = current.copyWith(
-        status: userConfirmed
-            ? SecureMeshFileSyncStatus.confirmed
-            : SecureMeshFileSyncStatus.rejected,
+        status: transitionSecureMeshFileSyncStatus(
+          current.status,
+          userConfirmed
+              ? SecureMeshFileSyncEvent.confirm
+              : SecureMeshFileSyncEvent.reject,
+        )!,
         errorCode: '',
       );
       _draft = completed;
@@ -383,7 +395,10 @@ final class SecureMeshFileTransferController extends ApplicationStateOwner {
 
   void _failDraft(SecureMeshFileSyncTransfer current, String errorCode) {
     final failed = current.copyWith(
-      status: SecureMeshFileSyncStatus.failed,
+      status: transitionSecureMeshFileSyncStatus(
+        current.status,
+        SecureMeshFileSyncEvent.fail,
+      )!,
       errorCode: errorCode,
     );
     _draft = failed;

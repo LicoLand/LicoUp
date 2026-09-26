@@ -1,5 +1,7 @@
 # Semantic Conversation Contract
 
+Updated: 2026-08-08
+
 [Documentation](../README.md) · [Canonical schema](../../packages/contracts/client/semantic-conversation.schema.json)
 
 Canonical read-only model for native agent history in LicoUp.

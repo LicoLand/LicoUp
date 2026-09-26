@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::state_machines::agent_hub_operation::State as OperationLifecycle;
+
 pub const SCHEMA_VERSION: &str = "v0.0.2:client-agent-hub-manifest-1";
 pub const HOST_SCOPE: &str = "desktop";
 pub const PLUGIN_MANAGEMENT_BOUNDARY: &str = "adapter-plugins-only";
@@ -27,14 +29,15 @@ pub const OWNERSHIP_EXTERNAL: &str = "external";
 pub const OWNERSHIP_OWNED: &str = "owned";
 
 pub const LIFECYCLE_DISCOVERED: &str = "discovered";
-pub const LIFECYCLE_PLANNED: &str = "planned";
-pub const LIFECYCLE_CONFIRMED: &str = "confirmed";
-pub const LIFECYCLE_APPLYING: &str = "applying";
-pub const LIFECYCLE_VERIFYING: &str = "verifying";
-pub const LIFECYCLE_RESCANNING: &str = "rescanning";
-pub const LIFECYCLE_AVAILABLE: &str = "available";
-pub const LIFECYCLE_NEEDS_LOGIN: &str = "needs-login";
-pub const LIFECYCLE_FAILED: &str = "failed";
+pub const LIFECYCLE_PLANNED: &str = OperationLifecycle::Planned.as_str();
+pub const LIFECYCLE_CONFIRMED: &str = OperationLifecycle::Confirmed.as_str();
+pub const LIFECYCLE_APPLYING: &str = OperationLifecycle::Applying.as_str();
+pub const LIFECYCLE_VERIFYING: &str = OperationLifecycle::Verifying.as_str();
+pub const LIFECYCLE_RESCANNING: &str = OperationLifecycle::Rescanning.as_str();
+pub const LIFECYCLE_AVAILABLE: &str = OperationLifecycle::Available.as_str();
+pub const LIFECYCLE_NEEDS_LOGIN: &str = OperationLifecycle::NeedsLogin.as_str();
+pub const LIFECYCLE_FAILED: &str = OperationLifecycle::Failed.as_str();
+pub const LIFECYCLE_CANCELLED: &str = OperationLifecycle::Cancelled.as_str();
 
 pub const CHANNEL_HOMEBREW: &str = "homebrew";
 pub const CHANNEL_NPM: &str = "npm";
@@ -251,7 +254,8 @@ pub fn contract_surface() -> Value {
             LIFECYCLE_RESCANNING,
             LIFECYCLE_AVAILABLE,
             LIFECYCLE_NEEDS_LOGIN,
-            LIFECYCLE_FAILED
+            LIFECYCLE_FAILED,
+            LIFECYCLE_CANCELLED
         ],
         "operations": ["install", "update", "uninstall", "verify", "rescan"],
         "confirmation": "single-use-plan-token"

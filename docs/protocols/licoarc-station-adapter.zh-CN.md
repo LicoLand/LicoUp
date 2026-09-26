@@ -1,5 +1,7 @@
 # Lico Arc 候选通讯站 Adapter
 
+Updated: 2026-09-25
+
 [English（规范版本）](licoarc-station-adapter.md) ·
 简体中文（本地化） · [协议索引](README.md)
 
@@ -14,9 +16,8 @@ Lico Arc Protocol 拥有所有稳定、线上可观测的 Pairwise Protection、
 Message、Reliable Exchange、协商与 Transport Profile 契约。LicoUp 拥有合规
 本地执行、私钥、Provider 配置、明文、历史、备份、用户信任、审批和本地效果。
 
-[当前正在退役的端点保护预览](../STATUS.zh-CN.md)是 LicoUp 实现，不是
-Lico Arc Profile。它不承诺未来互操作；完整固定 Lico Arc Protocol Line
-替换它时会直接退役。这与下文当前 `licoarc.relay.v1` 外层 adapter 相互独立；
+[当前端点保护预览](../STATUS.zh-CN.md)是 LicoUp 实现，不是 Lico Arc Profile
+或稳定互操作合同。这与下文当前 `licoarc.relay.v1` 外层 adapter 相互独立；
 后者仍是已经实现并在本机验证的候选 adapter。
 
 ## 封闭外层边界
@@ -81,10 +82,3 @@ bundle 和实际 BadTower 候选进程。它验证：
 
 该场景只是候选互操作证据。它不发布 Lico Arc Protocol，不发布 LicoUp 或
 BadTower，不声明平台支持，也不证明官方网络正在运营。
-
-## 迁移状态
-
-退役的客户端专用通讯站信封/API、路由族、服务会话 scope、配置、夹具和文档均已
-移除。不存在双通讯站线路兼容模式或通讯站翻译网关。这项已完成
-的通讯站迁移不表示当前正在退役的端点保护预览已经移除或已被接受为 Lico Arc
-Profile。

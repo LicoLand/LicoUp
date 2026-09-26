@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/llm_gateway_credentials_card.dart';
 import 'package:licoup/src/frontend/features/models/ui/telegram_channel_card.dart';
@@ -13,6 +14,7 @@ import 'package:licoup/src/frontend/shared/ui/lico_pane_scaffold.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/models/models_intent.dart';
 import 'package:licoup/src/presentation/models/models_projection.dart';
+import 'package:licoup/src/presentation/models/models_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 enum ModelsPanelPane { gateway, chatChannels }
@@ -53,66 +55,74 @@ final class ModelsPanel extends StatelessWidget {
   /// ([LicoPaneScaffold]: title bar on top, content below); only the title,
   /// refresh intent, and body cards differ per pane.
   Widget _buildFor(BuildContext context, ModelsPanelPane resolvedPane) {
-    final strings = LicoStrings.of(context);
-    return ProjectionBuilder<ModelsProjection, ModelsProjection>(
-      source: binding.projection,
-      select: (projection) => projection,
-      builder: (context, projection) {
-        final refreshing = projection.phase == PresentationPhase.loading;
-        if (resolvedPane == ModelsPanelPane.chatChannels) {
-          return LicoPaneScaffold(
-            title: strings.chatChannels,
-            refreshTooltip: strings.refresh,
-            onRefresh: refreshing
-                ? null
-                : () => binding.intents.send(const RefreshTelegramChannel()),
-            refreshing: refreshing,
-            refreshButtonKey: const Key('models-chat-channels-refresh'),
-            body: ListView(
-              key: const Key('models-panel-chat-channels'),
-              padding: EdgeInsets.zero,
-              children: [
-                TelegramChannelCard(
-                  projection: projection.telegram,
-                  phase: projection.phase,
-                  notice: projection.notice,
-                  intents: binding.intents,
-                ),
-              ],
-            ),
-          );
-        }
-        return LicoPaneScaffold(
-          title: strings.modelGateway,
-          refreshTooltip: strings.refresh,
-          onRefresh: refreshing
-              ? null
-              : () => binding.intents.send(const RefreshGateway()),
-          refreshing: refreshing,
-          refreshButtonKey: const Key('models-gateway-refresh'),
-          body: ListView(
-            key: const Key('models-panel-licoup-keys-layout-v3-gateway-first'),
-            padding: EdgeInsets.zero,
-            children: [
-              LlmGatewayCard(
-                projection: projection.gateway,
-                phase: projection.phase,
-                notice: projection.notice,
-                intents: binding.intents,
-                belowDivider: LlmGatewayCredentialsCard(
-                  credentials: projection.credentials,
-                  migrationPending: projection.credentialMigrationPending,
-                  credentialsSupported: projection.credentialsSupported,
-                  gatewayRunning: projection.gateway.running,
-                  phase: projection.phase,
-                  notice: projection.notice,
-                  intents: binding.intents,
-                ),
-              ),
-            ],
-          ),
-        );
+    return AsyncRegion<ModelsProjection, IntentSink<ModelsIntent>>(
+      source: modelsCatalogProjectionProvider,
+      actions: binding.intents,
+      data: (context, projection, _) {
+        return _buildPane(context, resolvedPane, projection);
       },
+    );
+  }
+
+  Widget _buildPane(
+    BuildContext context,
+    ModelsPanelPane resolvedPane,
+    ModelsProjection projection,
+  ) {
+    final strings = LicoStrings.of(context);
+    final refreshing = projection.phase == PresentationPhase.loading;
+    if (resolvedPane == ModelsPanelPane.chatChannels) {
+      return LicoPaneScaffold(
+        title: strings.chatChannels,
+        refreshTooltip: strings.refresh,
+        onRefresh: refreshing
+            ? null
+            : () => binding.intents.send(const RefreshTelegramChannel()),
+        refreshing: refreshing,
+        refreshButtonKey: const Key('models-chat-channels-refresh'),
+        body: ListView(
+          key: const Key('models-panel-chat-channels'),
+          padding: EdgeInsets.zero,
+          children: [
+            TelegramChannelCard(
+              projection: projection.telegram,
+              phase: projection.phase,
+              notice: projection.notice,
+              intents: binding.intents,
+            ),
+          ],
+        ),
+      );
+    }
+    return LicoPaneScaffold(
+      title: strings.modelGateway,
+      refreshTooltip: strings.refresh,
+      onRefresh: refreshing
+          ? null
+          : () => binding.intents.send(const RefreshGateway()),
+      refreshing: refreshing,
+      refreshButtonKey: const Key('models-gateway-refresh'),
+      body: ListView(
+        key: const Key('models-panel-licoup-keys-layout-v3-gateway-first'),
+        padding: EdgeInsets.zero,
+        children: [
+          LlmGatewayCard(
+            projection: projection.gateway,
+            phase: projection.phase,
+            notice: projection.notice,
+            intents: binding.intents,
+            belowDivider: LlmGatewayCredentialsCard(
+              credentials: projection.credentials,
+              migrationPending: projection.credentialMigrationPending,
+              credentialsSupported: projection.credentialsSupported,
+              gatewayRunning: projection.gateway.running,
+              phase: projection.phase,
+              notice: projection.notice,
+              intents: binding.intents,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,7 @@
 # ADR 0005: Assistant auto-adaptation, diagnostics, and DeepSeek Harness
 
+Updated: 2026-09-25
+
 - `context` — ADR 0004 made the long-lived Assistant the group-chat
   owner, but the default label still describes a strategy choice, workflow
   failures are too coarse to repair in one pass, opening Adaptive Flywheel
@@ -30,11 +32,9 @@
     realtime output. Generated Assistant guidance uses the ordinary native
     message prefix, leaving the canonical user Event and Part unchanged.
     Cancel, active-prompt steer, history readback, and
-    multimodal input remain unsupported until the official protocol exposes
-    them. The official SDK route is admitted under the shared installed-driver
+    multimodal input are unsupported. The official SDK route is admitted under the shared installed-driver
     rules; route/model authentication is still validated by initialization.
-    Release readiness remains unverified until its independent evidence is
-    recorded, and does not veto an installed official runtime.
+    Release readiness is unverified and does not veto an installed official runtime.
     Historical token usage is independently supported through the installed
     read-only session persistence API; its source, compression, retry, and fork
     boundaries are defined in [desktop usage](../functionality/CLIENT-DESKTOP.md#scenario-s-05--desktop-token-usage).
@@ -49,8 +49,7 @@
     scanner already provides bounded concurrency and shared snapshots.
   - Adapt ordinary `dsh` output or emulate missing capabilities: rejected
     because neither is the official native conversation contract.
-- `consequences` — The old optional-strategy wording is removed. Diagnostic
-  consumers read `diagnostics`, selected model refreshes use the batch scan
+- `consequences` — Diagnostic consumers read `diagnostics`, selected model refreshes use the batch scan
   contract, and the inventory gains DeepSeek Harness with unverified readiness.
 - `status` — implemented, 2026-08-22.
 

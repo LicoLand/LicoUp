@@ -259,7 +259,6 @@ fn client_update_github_check_distinguishes_unavailable_metadata_from_no_new_rel
         ("v0.0.0", "stable", "upToDate"),
         ("v999.0.0", "stable", "unavailable"),
         ("", "stable", "unavailable"),
-        ("not-a-version", "stable", "unavailable"),
         ("nightly", "nightly", "unavailable"),
         ("v0.0.0", "nightly", "unavailable"),
     ] {

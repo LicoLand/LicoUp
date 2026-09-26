@@ -4,16 +4,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { sensitiveRulesetExtensions } from "./lib/repository-sensitive-file-policy.mjs";
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
-const sensitivePublicationRulesetName = "LicoUp sensitive publication — all pushes";
 const cutoffRulesetName = "LicoUp immutable nightly cutoffs";
-// Push Rulesets are hostable on private or internal Team/Enterprise
-// repositories. Branch protection remains independently deployable when the
-// host cannot provide this optional push-only control.
-const pushRulesetPlans = Object.freeze(["team", "enterprise"]);
 const identityStatusContext = "Commit identity";
 const leadingPromotionStatusContexts = Object.freeze([
   "Branch flow",
@@ -197,42 +191,15 @@ export function buildRulesets(actionsIntegrationId, appleIntegrationId) {
     conditions: { ref_name: { include: ["refs/heads/nightly-cutoff/*"], exclude: [] } },
     rules: [{ type: "deletion" }, { type: "update", parameters: { update_allows_fetch_and_merge: false } }],
   };
-  const sensitivePublicationRuleset = {
-      name: sensitivePublicationRulesetName,
-      target: "push",
-      enforcement: "active",
-      bypass_actors: [],
-      rules: [
-        {
-          type: "file_extension_restriction",
-          parameters: {
-            restricted_file_extensions: sensitiveRulesetExtensions(),
-          },
-        },
-      ],
-    };
-  return [identityRuleset, ...promotionRulesets, cutoffRuleset, sensitivePublicationRuleset];
+  return [identityRuleset, ...promotionRulesets, cutoffRuleset];
 }
 
-export function pushRulesetCapability(repositoryDetails) {
-  return Boolean(
-    repositoryDetails &&
-    ["private", "internal"].includes(repositoryDetails.visibility) &&
-    pushRulesetPlans.includes(repositoryDetails.plan?.name?.toLowerCase()),
-  );
-}
-
-// Push protection is optional because GitHub does not expose it for public
-// repositories. Branch authorities are always planned and applied.
-export function planRulesetApply(repositoryDetails, actionsIntegrationId, appleIntegrationId) {
+export function planRulesetApply(_repositoryDetails, actionsIntegrationId, appleIntegrationId) {
   const desired = buildRulesets(actionsIntegrationId, appleIntegrationId);
-  const pushSupported = pushRulesetCapability(repositoryDetails);
   return Object.freeze({
-    status: pushSupported ? "supported" : "branch-only",
-    code: pushSupported ? null : "PUSH_RULESET_UNSUPPORTED",
-    desired: Object.freeze(pushSupported
-      ? desired
-      : desired.filter((payload) => payload.target === "branch")),
+    status: "supported",
+    code: null,
+    desired: Object.freeze(desired),
   });
 }
 
@@ -421,7 +388,6 @@ function verify({ repositoryDetails, desired } = {}) {
   assertReleaseDefaultBranch(details);
   const integrationId = actionsIntegrationId();
   const appleId = appleReleaseIntegrationId();
-  const plan = planRulesetApply(details, integrationId, appleId);
   const expected = desired || buildRulesets(integrationId, appleId);
   const branchPayloads = expected.filter((payload) => payload.target === "branch");
   const summaries = repositoryRulesets();
@@ -433,8 +399,7 @@ function verify({ repositoryDetails, desired } = {}) {
     reject("RULESET_AUTHORITY_CONFLICT",
       "Active branch Rulesets do not exactly match the managed authorities.");
   }
-  const checkedPayloads = plan.status === "supported" ? expected : branchPayloads;
-  for (const payload of checkedPayloads) {
+  for (const payload of expected) {
     const matches = summaries.filter((ruleset) => ruleset.name === payload.name);
     if (matches.length !== 1) {
       reject(matches.length > 1 ? "DUPLICATE_RULESET" : "RULESET_MISSING",
@@ -445,10 +410,6 @@ function verify({ repositoryDetails, desired } = {}) {
     }
   }
   assertLegacyBranchProtectionAbsent(details.default_branch);
-  if (plan.status === "branch-only") {
-    process.stdout.write(`rulesets=pending push_ruleset=${plan.code}\n`);
-    return;
-  }
   process.stdout.write(`rulesets=verified count=${expected.length} policy_digest=${rulesetDigest(expected)}\n`);
 }
 
@@ -496,7 +457,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
-  sensitivePublicationRulesetName,
   identityStatusContext,
   cutoffRulesetName,
   promotionRulesetNames,

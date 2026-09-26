@@ -1,5 +1,7 @@
 # LicoUp Desktop Client
 
+Updated: 2026-09-25
+
 English (normative) · [简体中文](README.zh-CN.md)
 
 LicoUp is a local-first open-source desktop and mobile client. Its product
@@ -35,12 +37,9 @@ ACP and MCP are built-in protocol-adaptation foundations, not separate
 navigation entries.
 
 `Mobile Relay` currently executes the
-[current retiring endpoint-protection Preview](../../docs/STATUS.md) and
-carries it through the implemented candidate `licoarc.relay.v1` outer adapter.
-That preview is not a Lico Arc Profile and has no future compatibility promise.
-A stable client will execute a pinned Lico Arc Protocol Line for
-wire-observable Pairwise Protection, Generic Message, Reliable Exchange,
-negotiation, and Transport Profile semantics while continuing to own its
+[endpoint-protection Preview](../../docs/STATUS.md) and carries it through the
+implemented candidate `licoarc.relay.v1` outer adapter. The Preview is not a
+Lico Arc Profile or stable compatibility contract. LicoUp continues to own its
 private keys, Provider configuration, plaintext, history, backups, trust
 decisions, approvals, and local effects.
 

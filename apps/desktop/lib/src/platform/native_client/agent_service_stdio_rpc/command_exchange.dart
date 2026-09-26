@@ -30,6 +30,7 @@ Future<Map<String, dynamic>> executeStdioRpcStructuredCommand({
   required String workflowId,
   required StdioRpcSessionManager sessionManager,
   bool recreateIfDeadBeforeWrite = false,
+  bool control = false,
 }) async {
   final protocolMethod = ConversationProtocolMethod.fromWire(method);
   if (protocolMethod == null) {
@@ -47,5 +48,6 @@ Future<Map<String, dynamic>> executeStdioRpcStructuredCommand({
     workflowId: workflowId,
     sessionManager: sessionManager,
     recreateIfDeadBeforeWrite: recreateIfDeadBeforeWrite,
+    control: control,
   );
 }

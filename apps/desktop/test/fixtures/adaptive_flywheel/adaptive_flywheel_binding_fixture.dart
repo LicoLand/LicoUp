@@ -3,6 +3,7 @@ import 'package:licoup/src/composition/features/agents/agents_feature_compositio
 import 'package:licoup/src/composition/features/conversation/conversation_feature_composition.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 /// Test-only composition seam that keeps widgets on semantic bindings while
 /// retaining the real application adapters and fake native runner beneath.
@@ -16,6 +17,11 @@ final class AdaptiveFlywheelBindingFixture {
 
   AgentsBinding get agents => _agents.binding;
   ConversationBinding get conversation => _conversation.binding;
+
+  List<Override> get providerOverrides => <Override>[
+    ..._agents.providerOverrides,
+    ..._conversation.providerOverrides,
+  ];
 
   Future<void> close() async {
     await _conversation.close();

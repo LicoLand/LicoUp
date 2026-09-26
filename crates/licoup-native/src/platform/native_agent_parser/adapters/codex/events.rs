@@ -7,6 +7,8 @@ use crate::platform::codex_app_server::model::{
 };
 use serde_json::Value;
 
+use crate::state_machines::codex_protocol::Event as ProtocolEvent;
+
 impl CodexParser {
     pub(super) fn handle_notification(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         match message.get("method").and_then(Value::as_str) {
@@ -185,7 +187,7 @@ impl CodexParser {
             .and_then(|items| final_agent_message(items))
             .or_else(|| final_agent_message(&self.completed_items));
 
-        self.phase = ProtocolPhase::Finished;
+        self.advance(ProtocolEvent::TurnCompleted);
         if status != "completed" {
             let class = closed_codex_error_class(turn);
             let (code, message) = turn_failure(status.as_str(), class);

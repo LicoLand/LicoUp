@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "licoup.generic-adapter.v1",
+  "title": "Generic CLI adapter descriptor",
+  "description": "The data a user supplies to run an existing command-line program as an Agent through the shared generic carrier. Declared here with the reference carrier in extensions/generic/; a host-side declarative runtime may adopt the same shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "displayName",
+    "command",
+    "input",
+    "output",
+    "terminal",
+    "cancel",
+    "capabilities"
+  ],
+  "properties": {
+    "schema": {
+      "const": "licoup.generic-adapter.v1"
+    },
+    "id": {
+      "type": "string",
+      "description": "Namespaced Agent identity this adapter presents."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "The program and its arguments, as an argv array. No shell, no templates, no command substitution."
+    },
+    "input": {
+      "enum": [
+        "stdin-text",
+        "none"
+      ],
+      "description": "How the invocation input reaches the command."
+    },
+    "output": {
+      "const": "stdout-lines",
+      "description": "Every standard-output line is carried as a text event, newline included."
+    },
+    "terminal": {
+      "const": "exit-code",
+      "description": "Exit 0 succeeded; non-zero failed; a signal failed with the signal named."
+    },
+    "cancel": {
+      "enum": [
+        "terminate",
+        "unsupported"
+      ],
+      "description": "How a cancel request is honoured. `unsupported` is a complete answer."
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "description": "Namespaced capability, such as vendor.example/stream."
+      }
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Working directory for the command; relative paths resolve against the descriptor's directory. Defaults to the descriptor's directory."
+    }
+  }
+}

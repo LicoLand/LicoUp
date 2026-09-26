@@ -1,0 +1,57 @@
+[
+  {
+    "id": "compatibility-projection",
+    "command": "client:support-matrix:sync",
+    "kind": "refresh"
+  },
+  {
+    "id": "state-machines",
+    "command": "repo:state-machines",
+    "kind": "check"
+  },
+  {
+    "id": "change-impact",
+    "command": "repo:impact",
+    "kind": "review"
+  },
+  {
+    "id": "upstream-observations",
+    "command": "repo:upstream",
+    "kind": "review"
+  },
+  {
+    "id": "source-version",
+    "command": "repo:version",
+    "kind": "check"
+  },
+  {
+    "id": "documentation",
+    "command": "repo:docs",
+    "kind": "check"
+  },
+  {
+    "id": "privacy",
+    "command": "repo:local-info-hygiene",
+    "kind": "check"
+  },
+  {
+    "id": "source-structure",
+    "command": "repo:structure:all",
+    "kind": "review"
+  },
+  {
+    "id": "model-prices",
+    "command": "client:pricing:check",
+    "kind": "check"
+  },
+  {
+    "id": "governance-tools",
+    "command": "repo:governance:test",
+    "kind": "check"
+  },
+  {
+    "id": "global-static-regression",
+    "command": "client:regression:nightly",
+    "kind": "check"
+  }
+]

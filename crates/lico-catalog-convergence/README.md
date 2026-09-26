@@ -1,5 +1,7 @@
 # Lico Catalog Convergence
 
+Updated: 2026-08-08
+
 This Rust crate provides the typed catalog-convergence engine used by the
 client. Its public Rust API and tests are authoritative for convergence
 behavior.

@@ -1,19 +1,17 @@
 # User-Approved Protected File Handoff Preview
 
+Updated: 2026-09-25
+
 [Documentation](../README.md) · [Product boundary](../../PRODUCT.md) · [Architecture](../architecture/README.md)
 
 The native file codec, current endpoint-protection modules, public schemas, and
 `tools/scripts/config/secure-mesh-encrypted-file-handoff.json` own the detailed
 current-preview implementation contract. They do not own stable endpoint wire
 semantics. This document projects the verified user-visible flow. Exact current
-implementation and retirement facts remain in [Status](../STATUS.md).
+implementation facts remain in [Status](../STATUS.md).
 
-## Metadata
-
-- Last updated: 2026-07-30
-- Status: Current retiring endpoint-protection Preview scenario contract
-- Scope: Explicit file handoff among desktop, Android, and iPhone clients through an opaque relay.
-- Staleness check: Reconciled with the current preview file codec, mobile relay, platform bridges, Lico Arc ownership boundary, and product approval contract on 2026-07-30.
+The current scenario is an explicit file handoff among desktop, Android, and
+iPhone clients through an opaque relay.
 
 ## Contract
 
@@ -25,7 +23,7 @@ cancellable until commit. Approval expires when any bound field changes.
 
 | Boundary | Requirement |
 | --- | --- |
-| Protocol authority | Lico Arc owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. The current retiring endpoint-protection Preview is not a Lico Arc Profile, has no future compatibility promise, and is to be retired directly when a complete pinned Protocol Line replaces it. |
+| Protocol authority | Lico Arc owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. The current endpoint-protection Preview is not a Lico Arc Profile or stable compatibility contract. |
 | Shared implementation | Desktop, Android, and iOS use the shared Rust preview file manifest/chunk and pairwise-session implementation. Kotlin and Swift do not own alternate cryptographic implementations. |
 | Key locality | Private keys and content keys stay inside approved platform custody. Raw key material never enters Flutter, logs, evidence, or relay payload metadata. |
 | Relay-visible wire | The relay sees only bounded routing fields and authenticated opaque ciphertext. File name, MIME, destination, content, and content key remain encrypted. |

@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
@@ -17,21 +20,30 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_effect.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/search/search_effect.dart';
 import 'package:licoup/src/presentation/search/search_intent.dart';
 import 'package:licoup/src/presentation/search/search_projection.dart';
+import 'package:licoup/src/presentation/search/search_providers.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
+import 'package:licoup/src/projections/conversation/conversation_source_owner.dart';
+import 'package:licoup/src/projections/mobile_relay/mobile_relay_presentation_sources.dart';
+import 'package:licoup/src/projections/search/search_presentation_source.dart';
 
 import '../layout/fixtures/layout_destination_presentation_fixture.dart';
+import '../support/presentation_source_overrides.dart';
 
 void main() {
   testWidgets(
@@ -61,9 +73,48 @@ void main() {
         messages: messages,
         conversationIntents: conversationIntents,
       );
+      final agentsSource = AgentsPresentationSource(
+        projection: bindings.agents.projection,
+      );
+      addTearDown(agentsSource.dispose);
+      // The workspace approval region reads the runtime source, not the raw
+      // relay binding projection; wrap that same projection owner once.
+      final relayApprovalsSource = mobileRelayRegionPresentationSource(
+        mobileRelayApprovalsRegion,
+        bindings.relay.projection,
+      );
+      addTearDown(relayApprovalsSource.dispose);
+      // The workspace reads the conversation planes from the runtime owner, so
+      // the planes are the same projection instances the binding hands it.
+      final conversationPlanes = ConversationSourcePlanes(
+        projection: bindings.conversation.projection,
+        nativeCatalog: bindings.conversation.nativeCatalog,
+        canonicalEvents: bindings.conversation.canonicalEvents,
+        persistentTurns: bindings.conversation.persistentTurns,
+        composer: bindings.conversation.composer,
+        attachments: bindings.conversation.attachments,
+        tabActivity: bindings.conversation.tabActivity,
+        archive: bindings.conversation.archive,
+        execution: bindings.conversation.execution,
+      );
+      final overrides = <Override>[
+        agentsCatalogSourceProvider.overrideWithValue(agentsSource),
+        conversationSourcePortProvider.overrideWith((ref) {
+          final owner = ConversationSourceOwner.spawn(
+            runtime: ref.watch(presentationRuntimeProvider),
+            planes: conversationPlanes,
+          );
+          ref.onDispose(owner.dispose);
+          return owner;
+        }),
+        mobileRelayApprovalsSourceProvider.overrideWithValue(
+          relayApprovalsSource,
+        ),
+      ];
 
-      await tester.pumpWidget(_host(bindings.workspace));
+      await tester.pumpWidget(_host(bindings.workspace, overrides: overrides));
       await tester.pump();
+      await pumpUntilVisible(tester, find.byType(AgentConversationActivePane));
 
       final pane = tester.widget<AgentConversationActivePane>(
         find.byType(AgentConversationActivePane),
@@ -105,6 +156,7 @@ void main() {
       intents: intents,
       effects: const _EmptyEffects<SearchEffect>(),
     );
+    final searchSource = SearchPresentationSource(projection: source);
 
     await tester.pumpWidget(
       _host(
@@ -115,10 +167,15 @@ void main() {
             child: const Text('Search'),
           ),
         ),
+        overrides: [searchSourceProvider.overrideWithValue(searchSource)],
       ),
     );
     await tester.tap(find.text('Search'));
     await tester.pumpAndSettle();
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('agent-conversation-search-field')),
+    );
     await tester.enterText(
       find.byKey(const Key('agent-conversation-search-field')),
       'alpha',
@@ -142,6 +199,10 @@ void main() {
       ),
     );
     await tester.pump();
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('agent-conversation-search-session-1')),
+    );
     await tester.tap(
       find.byKey(const Key('agent-conversation-search-session-1')),
     );
@@ -154,21 +215,25 @@ void main() {
   });
 }
 
-Widget _host(Widget child) => MaterialApp(
-  locale: const Locale('en'),
-  supportedLocales: LicoStrings.supportedLocales,
-  localizationsDelegates: const [
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ],
-  theme: buildLicoTheme(platformBrightness: Brightness.dark),
-  home: Scaffold(
-    body: FixtureLayoutPresentationScope(
-      child: SizedBox(width: 1000, height: 700, child: child),
-    ),
-  ),
-);
+Widget _host(Widget child, {List<Override> overrides = const <Override>[]}) =>
+    ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: FixtureLayoutPresentationScope(
+            child: SizedBox(width: 1000, height: 700, child: child),
+          ),
+        ),
+      ),
+    );
 
 final class _RendererBindings {
   _RendererBindings({

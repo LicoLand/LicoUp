@@ -3,6 +3,40 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  parseUpdateReleaseVerificationOptions,
+  runMacosReleaseBundleEvidence,
+} from "../../verify-client-update-release-channel.mjs";
+
+test("source-policy update checks cannot activate live builds from environment", () => {
+  const spawn = () => assert.fail("source checks must not spawn a live build or signer");
+  assert.deepEqual(parseUpdateReleaseVerificationOptions([]), { liveMacosBundle: false });
+  const evidence = runMacosReleaseBundleEvidence("macos", {
+    env: { LICO_MACOS_APP_IDENTIFIER_PREFIX: "SYNTHETIC" },
+    spawn,
+  });
+  assert.equal(evidence.attempted, false);
+  assert.equal(evidence.ok, false);
+  assert.equal(evidence.status, "deferred-until-post-review-acceptance");
+});
+
+test("live update bundle selection is explicit and preserves platform gates", () => {
+  const spawn = () => assert.fail("an unavailable platform or entitlement must not spawn");
+  assert.deepEqual(parseUpdateReleaseVerificationOptions(["--live-macos-bundle"]), {
+    liveMacosBundle: true,
+  });
+  for (const args of [["--unknown"], ["--live-macos-bundle", "--live-macos-bundle"],
+    ["--live-macos-bundle=false"]]) {
+    assert.throws(() => parseUpdateReleaseVerificationOptions(args),
+      /update_release_verification_argument_invalid/);
+  }
+  const otherHost = runMacosReleaseBundleEvidence("linux", { requested: true, env: {}, spawn });
+  assert.equal(otherHost.attempted, false);
+  assert.equal(otherHost.status, "not-run-on-this-host");
+  const unavailable = runMacosReleaseBundleEvidence("macos", { requested: true, env: {}, spawn });
+  assert.equal(unavailable.ok, false);
+  assert.equal(unavailable.status, "production-entitlements-blocked");
+});
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadePath = "crates/licoup-native/src/domain/client_update.rs";

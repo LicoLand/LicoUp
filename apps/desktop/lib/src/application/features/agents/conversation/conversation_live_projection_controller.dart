@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:licoup/src/application/state/application_signal.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_state_holder.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/generated/secure_mesh_state_machines.g.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -224,7 +225,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
         adapterStyle: 'callback',
         requestedTools: List<String>.unmodifiable(tools),
         trustedEndpointCount: 1,
-        status: SecureMeshApprovalStatus.pending,
+        status: secureMeshApprovalStatusInitial,
       );
       final next = <SecureMeshApprovalRequest>[
         for (final item in secureMeshApprovalInbox)

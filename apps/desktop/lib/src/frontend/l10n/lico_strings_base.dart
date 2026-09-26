@@ -84,6 +84,9 @@ class LicoStrings {
   String get skillHubNav => isChinese ? '技能一览' : 'Skills';
   String get pluginManagement => isChinese ? '插件管理' : 'Plugin Management';
   String get agentHub => isChinese ? '智能体中心' : 'Agent Hub';
+  String get projectCollaboration => isChinese ? '项目泳道' : 'Project Swimlanes';
+  String get projectCollaborationUnavailable =>
+      isChinese ? '项目协作服务暂不可用' : 'Project collaboration is unavailable';
   String get mobileRelay => isChinese ? '移动中转' : 'Mobile Relay';
   String get keys => isChinese ? '密钥' : 'Keys';
   String get modelGateway => isChinese ? '模型网关' : 'Model Gateway';

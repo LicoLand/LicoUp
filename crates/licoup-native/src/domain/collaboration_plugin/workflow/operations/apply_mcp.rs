@@ -4,7 +4,7 @@ use serde_json::Value;
 use super::super::super::lifecycle::{client_state_store, require_direct_confirmation};
 use super::super::super::package::mcp_install_choices;
 use super::super::super::registration::{authority_bindings, revalidate_registrations};
-use super::super::mcp_transaction::{self, Phase, Recovery};
+use super::super::mcp_transaction::{self, PhaseEvent, Recovery};
 use super::super::model::WorkflowKind;
 use super::super::store::claim_plan;
 use super::destination_policy::{
@@ -87,7 +87,7 @@ pub(in crate::domain::collaboration_plugin::workflow) fn mcp_install_apply(
                 return Err(error);
             }
         };
-        mcp_transaction::advance(&store, Phase::FilesCommitted)?;
+        mcp_transaction::advance(&store, PhaseEvent::CommitFiles)?;
         let authority_result = if simulate_authority_failure_before_commit(params) {
             Err(anyhow!("collaboration_mcp_test_authority_failure"))
         } else {
@@ -113,7 +113,7 @@ pub(in crate::domain::collaboration_plugin::workflow) fn mcp_install_apply(
         if simulate_projection_failure_after_authority_commit(params) {
             return Err(anyhow!("collaboration_mcp_test_projection_failure"));
         }
-        mcp_transaction::advance(&store, Phase::AuthorityCommitted)?;
+        mcp_transaction::advance(&store, PhaseEvent::CommitAuthority)?;
         mcp_transaction::clear(&store)?;
         Ok(apply_projection(&claim.record, cleanup_pending, None))
     })();

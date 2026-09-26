@@ -11,7 +11,10 @@ const contract = JSON.parse(read("schemas/client_bridge/conversation.json"));
 const manifest = JSON.parse(read("schemas/client_bridge/manifest.json"));
 const state = JSON.parse(read("schemas/client_bridge/state.json"));
 const canonicalDomain = read("crates/licoup-conversation/src/client_conversation/mod.rs");
-const canonicalStore = read("crates/licoup-conversation/src/store/mod.rs");
+const canonicalStore = [
+  "crates/licoup-conversation/src/store/mod.rs",
+  "crates/licoup-conversation/src/store/schema.rs",
+].map(read).join("\n");
 const nativeFacade = read("crates/licoup-native/src/domain/client_conversation/mod.rs");
 const service = read("crates/licoup-native/src/domain/client_conversation/service.rs");
 const migration = read("crates/licoup-native/src/domain/client_conversation/migration.rs");

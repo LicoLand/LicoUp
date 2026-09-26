@@ -8,13 +8,17 @@ import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_effect.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_intent.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_projection.dart';
+import 'package:licoup/src/presentation/monitoring/monitoring_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/monitoring/monitoring_presentation_source.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 final class MonitoringBindingFixture {
   MonitoringBindingFixture(ClientController controller)
     : _projection = _MonitoringProjectionSource(controller),
       _effects = _MonitoringEffectSource(),
       _intents = _MonitoringIntentSink(controller) {
+    _source = MonitoringPresentationSource(projection: _projection);
     _intents.effects = _effects;
     binding = MonitoringBinding(
       projection: _projection,
@@ -26,12 +30,18 @@ final class MonitoringBindingFixture {
   final _MonitoringProjectionSource _projection;
   final _MonitoringEffectSource _effects;
   final _MonitoringIntentSink _intents;
+  late final MonitoringPresentationSource _source;
   late final MonitoringBinding binding;
   bool _closed = false;
+
+  List<Override> get providerOverrides => <Override>[
+    monitoringUsageSourceProvider.overrideWithValue(_source),
+  ];
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    await _source.dispose();
     await _projection.close();
     await _effects.close();
   }

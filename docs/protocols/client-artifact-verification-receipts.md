@@ -1,5 +1,7 @@
 # Client Artifact Consumer Verification Receipts
 
+Updated: 2026-08-18
+
 [Documentation](../README.md) · [Canonical schema](../../tools/scripts/config/client-artifact-verification-receipts-report.schema.json)
 
 This document describes the public receipt format and its verification boundary.

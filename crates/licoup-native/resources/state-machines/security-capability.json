@@ -1,0 +1,15 @@
+{
+  "machines": [
+    {
+      "id": "security.effect-capability",
+      "rust_module": "security_effect_capability",
+      "states": [{ "id": "issued" }, { "id": "consumed" }],
+      "events": ["consume"],
+      "initial": "issued",
+      "terminal": ["consumed"],
+      "transitions": [
+        { "from_state": "issued", "event": "consume", "to_state": "consumed" }
+      ]
+    }
+  ]
+}

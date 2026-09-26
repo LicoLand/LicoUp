@@ -7,8 +7,6 @@ const String secureMeshApprovalRequestProtocol =
 const String secureMeshApprovalResponseProtocol =
     'secure_mesh.approval_response.v1';
 
-enum SecureMeshApprovalStatus { pending, resolved, expired, failed }
-
 enum SecureMeshApprovalDecision { allow, deny, none }
 
 final class SecureMeshApprovalRequest {

@@ -1,0 +1,26 @@
+[package]
+name = "licoup-model-provider"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "C10 host-side model provider runtime: configuration generations, catalogs, credentials and streams."
+# Standalone package on purpose: the repository root Cargo.toml and Cargo.lock
+# are owned by the workspace owner, and this package must not change them. It is
+# registered as a workspace member in a separate, coordinated change.
+[workspace]
+
+[dependencies]
+licoup-application = { path = "../../crates/licoup-application" }
+licoup-extension-contracts = { path = "../../crates/licoup-extension-contracts" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[build-dependencies]
+licoup-state-machine-codegen = { path = "../../crates/licoup-state-machine-codegen" }
+
+[[test]]
+name = "v71_model_providers"
+path = "../../tests/integration/v71_model_providers/main.rs"

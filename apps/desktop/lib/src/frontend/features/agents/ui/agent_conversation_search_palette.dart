@@ -1,9 +1,10 @@
 import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:flutter/services.dart';
 
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -11,6 +12,7 @@ import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/search/search_intent.dart';
 import 'package:licoup/src/presentation/search/search_projection.dart';
+import 'package:licoup/src/presentation/search/search_providers.dart';
 
 Future<void> showAgentConversationSearchPalette(
   BuildContext context,
@@ -41,13 +43,12 @@ class _AgentConversationSearchPaletteState
   late final TextEditingController _query;
   late final FocusNode _queryFocus;
   int _selectedIndex = 0;
+  bool _queryInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _query = TextEditingController(
-      text: widget.binding.projection.current.query,
-    );
+    _query = TextEditingController();
     _queryFocus = FocusNode();
   }
 
@@ -60,6 +61,23 @@ class _AgentConversationSearchPaletteState
 
   @override
   Widget build(BuildContext context) {
+    return AsyncRegion<SearchProjection, IntentSink<SearchIntent>>(
+      source: searchProjectionProvider,
+      actions: widget.binding.intents,
+      data: (context, projection, _) {
+        if (!_queryInitialized || _query.text != projection.query) {
+          _queryInitialized = true;
+          _query.value = TextEditingValue(
+            text: projection.query,
+            selection: TextSelection.collapsed(offset: projection.query.length),
+          );
+        }
+        return _buildPalette(context, projection);
+      },
+    );
+  }
+
+  Widget _buildPalette(BuildContext context, SearchProjection projection) {
     final strings = LicoStrings.of(context);
     return Dialog(
       key: const Key('agent-conversation-search-palette'),
@@ -67,66 +85,66 @@ class _AgentConversationSearchPaletteState
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680, maxHeight: 520),
-        child: ProjectionBuilder<SearchProjection, SearchProjection>(
-          source: widget.binding.projection,
-          select: (projection) => projection,
-          builder: (context, projection) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Focus(
-                  onKeyEvent: _handleKeyEvent,
-                  child: TextField(
-                    key: const Key('agent-conversation-search-field'),
-                    controller: _query,
-                    focusNode: _queryFocus,
-                    autofocus: true,
-                    onChanged: (query) {
-                      _selectedIndex = 0;
-                      widget.binding.intents.send(UpdateSearchQuery(query));
-                    },
-                    decoration: InputDecoration(
-                      hintText: strings.searchConversationsHint,
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _query.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _query.clear();
-                                _selectedIndex = 0;
-                                widget.binding.intents.send(
-                                  const UpdateSearchQuery(''),
-                                );
-                                setState(() {});
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                    ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Focus(
+                onKeyEvent: (node, event) =>
+                    _handleKeyEvent(node, event, projection.results),
+                child: TextField(
+                  key: const Key('agent-conversation-search-field'),
+                  controller: _query,
+                  focusNode: _queryFocus,
+                  autofocus: true,
+                  onChanged: (query) {
+                    _selectedIndex = 0;
+                    widget.binding.intents.send(UpdateSearchQuery(query));
+                  },
+                  decoration: InputDecoration(
+                    hintText: strings.searchConversationsHint,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _query.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _query.clear();
+                              _selectedIndex = 0;
+                              widget.binding.intents.send(
+                                const UpdateSearchQuery(''),
+                              );
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
                   ),
                 ),
               ),
-              const Divider(height: 1),
-              Flexible(
-                child: _SearchResults(
-                  projection: projection,
-                  selectedIndex: _selectedIndex,
-                  onSelect: (id) {
-                    widget.binding.intents.send(SelectSearchResult(id));
-                    Navigator.of(context).pop();
-                  },
-                ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: _SearchResults(
+                projection: projection,
+                selectedIndex: _selectedIndex,
+                onSelect: (id) {
+                  widget.binding.intents.send(SelectSearchResult(id));
+                  Navigator.of(context).pop();
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+  KeyEventResult _handleKeyEvent(
+    FocusNode node,
+    KeyEvent event,
+    List<SearchResultProjection> results,
+  ) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final results = widget.binding.projection.current.results;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       Navigator.of(context).pop();
       return KeyEventResult.handled;

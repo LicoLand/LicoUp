@@ -1,5 +1,7 @@
 # macOS 站外直发合规清单
 
+Updated: 2026-09-25
+
 [English](MACOS-DIRECT-DISTRIBUTION.md)
 
 本文只适用于 Mac App Store 之外的 Developer ID 直发。只有最终产物真实通过
@@ -18,7 +20,7 @@ Mac App Store 目标仍受沙盒、进程模型、自更新权威和提交流程
 | 准确披露隐私实践和第三方 SDK 行为 | `PrivacyInfo.xcprivacy` 与中英双语隐私政策只进入 macOS 应用/DMG 发行路径；当前声明无跟踪、无项目方运营的数据收集，并披露有代码证据的文件时间戳、系统启动时间与 User Defaults Required Reason API 用途 | 已实现；依赖或数据流变化时必须重审 |
 | 防止自更新被替换或降级为其他签名者 | 更新候选必须匹配当前应用的准确 Developer ID designated requirement 与团队，并通过签名、Runtime、时间戳、公证票据和 Gatekeeper；替换脚本会再次复验 | 已实现；真实更新证据待执行 |
 | 对发行代码和依赖负责 | LicoUp 不再下载、安装、更新、回滚或跨设备同步技能；只发现本机已有技能，并可把选中目录移入系统废纸篓。发行包附带 AGPL、项目 Notice、Flutter/Dart notices，以及从锁定 Rust 依赖图按目标筛选生成的依赖清单和可用许可证文本 | 技能与随包材料已实现 |
-| 密钥不得进入源码或远程发布任务 | 签名与公证输入仅允许本机使用；仓库门禁和 Rulesets 拒绝证书/密钥类文件；旧 GitHub/本地临时身份 macOS 归档与安装入口已停用 | 已实现 |
+| 受保护凭据不得进入源码或远程发布任务 | 签名与公证输入仅允许本机使用；仓库扫描把证书与密钥形状的候选项交给上下文审查，不把文件格式本身当作泄露结论 | 已实现 |
 
 ## 直发与 Mac App Store 的区别
 

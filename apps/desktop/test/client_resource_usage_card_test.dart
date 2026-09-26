@@ -55,6 +55,7 @@ void main() {
       ProviderScope(
         overrides: presentation.overrides,
         child: usageTestApp(
+          overrides: const [],
           theme: buildLicoTheme(
             platformBrightness: Brightness.dark,
           ).copyWith(platform: TargetPlatform.macOS),
@@ -95,6 +96,7 @@ void main() {
       ProviderScope(
         overrides: presentation.overrides,
         child: usageTestApp(
+          overrides: const [],
           theme: buildLicoTheme(),
           home: SizedBox(
             width: 700,
@@ -137,6 +139,7 @@ void main() {
     Widget frame(String layout) => ProviderScope(
       overrides: presentation.overrides,
       child: usageTestApp(
+        overrides: const [],
         theme: buildLicoTheme(),
         home: KeyedSubtree(
           key: ValueKey(layout),

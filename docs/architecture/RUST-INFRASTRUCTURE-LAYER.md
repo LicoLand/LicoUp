@@ -1,5 +1,7 @@
 # Rust Infrastructure & External Boundary Layer Specification
 
+Updated: 2026-09-02
+
 | Related Document | Language / Path | Authority |
 |:---|:---|:---|
 | **Normative Version** | English (Normative) | Authoritative technical specification |

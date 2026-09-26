@@ -268,6 +268,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
         "crates/licoup-native/src/domain/agent_usage/variant.rs",
         "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
+        "crates/licoup-native/src/domain/agent_usage/workflow_ledger/**",
       ],
       command: rustLayer("domain::agent_usage::"),
     }),
@@ -1984,8 +1985,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/mobile_relay/key_transparency/persistence.rs",
         "crates/licoup-native/src/domain/mobile_relay/key_transparency/projection.rs",
         "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/authority.rs",
+        "crates/licoup-native/src/domain/mobile_relay/key_transparency/tests/authority_challenge.rs",
       ],
-      command: rustLayer("domain::mobile_relay::key_transparency::tests::authority::"),
+      command: rustLayer("domain::mobile_relay::key_transparency::tests::authority"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.key-transparency.publication",
@@ -2758,6 +2760,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/resources/client-state-migration-frontier.json",
         "crates/licoup-native/src/domain/client_state_migration.rs",
+        "crates/licoup-native/src/domain/client_state_migration/**",
       ],
       command: rustLayer("domain::client_state_migration::tests::"),
     }),

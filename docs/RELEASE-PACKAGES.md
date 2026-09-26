@@ -1,5 +1,7 @@
 # Release packages
 
+Updated: 2026-09-02
+
 English (normative) · [简体中文](RELEASE-PACKAGES.zh-CN.md) ·
 [Compatibility](COMPATIBILITY.md) · [Runbook](RUNBOOK.md)
 

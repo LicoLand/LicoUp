@@ -4,6 +4,10 @@
 //! value fails the build rather than shipping a wrong version.
 
 fn main() {
+    println!("cargo:rerun-if-changed=resources/state-machines");
+    licoup_state_machine_codegen::generate_directory("resources/state-machines")
+        .expect("native state-machine configuration must compile");
+
     println!("cargo:rerun-if-env-changed=LICO_CLIENT_PRODUCT_VERSION");
     let Ok(value) = std::env::var("LICO_CLIENT_PRODUCT_VERSION") else {
         return;

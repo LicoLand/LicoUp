@@ -1,0 +1,15 @@
+{
+  "machines": [
+    {
+      "id": "model-provider.stream-session",
+      "rust_module": "provider_stream_session",
+      "states": [{ "id": "active" }, { "id": "terminal" }],
+      "events": ["observe-terminal"],
+      "initial": "active",
+      "terminal": ["terminal"],
+      "transitions": [
+        { "from_state": "active", "event": "observe-terminal", "to_state": "terminal" }
+      ]
+    }
+  ]
+}

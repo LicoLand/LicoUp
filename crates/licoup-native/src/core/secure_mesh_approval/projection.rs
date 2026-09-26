@@ -1,5 +1,5 @@
 use super::SECURE_MESH_APPROVAL_REQUEST_PROTOCOL;
-use super::model::PendingApproval;
+use super::model::{ApprovalState, PendingApproval};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -32,23 +32,28 @@ pub(super) fn redact_hash(value: &str) -> String {
 }
 
 pub(super) fn projection(entry: &PendingApproval) -> Value {
-    let status = if let Some(resolved) = &entry.resolved {
-        json!({
-            "state": "resolved",
-            "decision": resolved.decision.as_str(),
-            "respondingEndpointIdHash": redact_hash(&resolved.responding_endpoint_id),
-            "resolvedAt": resolved.resolved_at,
-        })
-    } else if is_expired(&entry.expires_at, &now_rfc3339()) {
-        json!({
+    let status = match entry.state {
+        ApprovalState::Approved | ApprovalState::Rejected => {
+            let resolved = entry
+                .resolved
+                .as_ref()
+                .expect("resolved approval phase carries response details");
+            json!({
+                "state": "resolved",
+                "decision": resolved.decision.as_str(),
+                "respondingEndpointIdHash": redact_hash(&resolved.responding_endpoint_id),
+                "resolvedAt": resolved.resolved_at,
+            })
+        }
+        ApprovalState::Expired => json!({
             "state": "expired",
             "decision": Value::Null,
-        })
-    } else {
-        json!({
+        }),
+        ApprovalState::Pending => json!({
             "state": "pending",
             "decision": Value::Null,
-        })
+        }),
+        ApprovalState::Absent => unreachable!("absent approvals are not stored"),
     };
     json!({
         "protocolVersion": SECURE_MESH_APPROVAL_REQUEST_PROTOCOL,

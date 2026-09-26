@@ -24,7 +24,7 @@ const replay = options.get('--replay') ?? '';
 for (const [name, value] of [['seed', seed], ['steps', steps]]) {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > 0xffffffff) throw new Error(`Invalid ${name}: use an integer from 0 to 4294967295.`);
 }
-const model = JSON.parse(readFileSync(path.join(root, 'docs/functionality/UI-INTERACTIONS.json'), 'utf8'));
+const model = JSON.parse(readFileSync(path.join(root, 'apps/desktop/test/ui_state_machine/model.json'), 'utf8'));
 if (machineId && !model.machines.some((machine) => machine.id === machineId)) throw new Error('Unknown UI flow. Use --describe.');
 if (replay && !machineId) throw new Error('Replay requires --machine and a comma-separated action sequence.');
 if (profile && machineId && !model.machines.find((machine) => machine.id === machineId).presentation.endsWith('-wide')) throw new Error('This flow is available in widget mode; profile currently runs desktop views.');

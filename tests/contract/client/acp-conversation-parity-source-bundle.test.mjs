@@ -24,6 +24,7 @@ const leaves = Object.freeze([
   "evidence.mjs",
   "live-gate.mjs",
   "live.mjs",
+  "native/acp-settings.mjs",
   "native/acp-turn.mjs",
   "native/app-server.mjs",
   "native/cursor-cli.mjs",
@@ -136,7 +137,7 @@ test("acp conversation parity facade is a thin serial CLI entry", async () => {
   assert.equal(typeof module.runAcpConversationParityCli, "function");
 });
 
-test("acp conversation parity owns exactly twenty-nine bounded ordinary modules", async () => {
+test("acp conversation parity owns its registered ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
   const source = await sources();
   for (const leaf of Object.keys(source)) {

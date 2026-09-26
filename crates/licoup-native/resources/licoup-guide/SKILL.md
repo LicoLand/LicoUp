@@ -3,6 +3,8 @@ name: licoup-guide
 description: Use LicoUp conversations, active agent Memberships, delegation, and workflows when a user asks an agent to operate LicoUp; excludes developing LicoUp, general replies, and independent planning frameworks.
 ---
 
+Updated: 2026-09-25
+
 # LicoUp Guide
 
 Complete the user's requested LicoUp operation through the available interfaces.
@@ -31,3 +33,9 @@ paths, endpoints, credentials, prompts, Agent output, and backend runtime data
 remain private to LicoUp. Share only the minimum authorized result.
 
 Use `licoup commands` and `licoup subagents catalog` to discover local syntax and schemas. Local Subagents calls use `--stdin-json true` with `{name, arguments, caller}`; bind `caller.providerId`, `caller.conversationId`, and `caller.membershipId` to the current native context. MCP exposes only list, probe, delegate, continue, and cancel; Assistant workflows and full Conversation commands use the local CLI.
+
+For a local operation, use the exposed MCP tool when available. If MCP is
+unavailable, discover and use the corresponding local CLI operation with the same
+caller and authorization. A local command or tool does not establish a remote
+endpoint; discover the remote peer's advertised transport and capabilities before
+requesting remote work.

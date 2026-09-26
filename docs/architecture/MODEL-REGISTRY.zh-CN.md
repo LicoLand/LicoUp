@@ -1,5 +1,7 @@
 # 全局模型注册表
 
+Updated: 2026-09-14
+
 简体中文 · [English](MODEL-REGISTRY.md) · [架构](README.zh-CN.md)
 
 本文拥有 Rust 客户端核心的标准模型身份。Agent、模型开发者、服务供应商、

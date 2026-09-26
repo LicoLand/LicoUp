@@ -1,0 +1,43 @@
+{
+  "machines": [
+    {
+      "id": "agent.work-context-binding",
+      "rust_module": "work_context_binding",
+      "states": [
+        {
+          "id": "bound"
+        },
+        {
+          "id": "lost"
+        },
+        {
+          "id": "replaced"
+        }
+      ],
+      "initial": "bound",
+      "events": [
+        "replace"
+      ],
+      "terminal": [
+        "replaced"
+      ],
+      "transitions": [
+        {
+          "from_state": "bound",
+          "event": "replace",
+          "to_state": "replaced"
+        },
+        {
+          "from_state": "lost",
+          "event": "replace",
+          "to_state": "replaced"
+        },
+        {
+          "from_state": "replaced",
+          "event": "replace",
+          "to_state": "replaced"
+        }
+      ]
+    }
+  ]
+}

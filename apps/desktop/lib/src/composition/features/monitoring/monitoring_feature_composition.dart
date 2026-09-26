@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
+import 'package:licoup/src/presentation/monitoring/monitoring_providers.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -41,6 +43,10 @@ final class MonitoringFeatureComposition {
 
   /// F01 Riverpod entry for the usage observation resource.
   late final PresentationProviderEntry<MonitoringProjection> usageEntry;
+
+  List<Override> get providerOverrides => <Override>[
+    monitoringUsageSourceProvider.overrideWithValue(_usageSource),
+  ];
 
   /// Narrow renderer actions with the monitoring scope pinned.
   late final MonitoringUsageActions usageActions;

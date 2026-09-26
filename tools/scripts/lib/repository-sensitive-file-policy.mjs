@@ -1,15 +1,14 @@
-// Canonical sensitive-file policy shared by the local Git publication gates,
-// ignore rules, push Ruleset construction, and the publication-guard regression.
-// Both consumers import the same frozen extension authority and content
-// detector; no runtime substitution exists.
+// Canonical sensitive-file indicators shared by the local Git publication
+// review, ignore rules, and regression tests.
+// A local indicator is review evidence, not a disclosure verdict.
 
 export const SENSITIVE_EXTENSION_REASON = "sensitive_extension";
 export const SENSITIVE_CONTENT_REASON = "sensitive_content";
 
 // Common certificate, provisioning-profile, key-container, and private-key
 // filename extensions, including Apple notary key files (.p8). Public-key-only
-// suffixes (.pub, .asc, .gpg) are intentionally absent: they are not rejected
-// solely by name, while certificate or private-key content markers still fail.
+// suffixes (.pub, .asc, .gpg) are intentionally absent from the extension
+// list. Every listed suffix remains a review prompt rather than a verdict.
 export const sensitiveExtensions = Object.freeze(new Set([
   ".cer",
   ".cert",
@@ -75,21 +74,17 @@ export function classifyPath(relativePath) {
   const base = normalized.slice(normalized.lastIndexOf("/") + 1);
   for (const extension of sensitiveExtensions) {
     if (base.endsWith(extension)) {
-      return Object.freeze({ verdict: "reject", reason: SENSITIVE_EXTENSION_REASON });
+      return Object.freeze({ verdict: "warning", reason: SENSITIVE_EXTENSION_REASON });
     }
   }
   return Object.freeze({ verdict: "pass", reason: null });
-}
-
-export function sensitiveRulesetExtensions() {
-  return Object.freeze([...sensitiveExtensions].map((extension) => extension.slice(1)));
 }
 
 // Streaming content detector. Marker matches are discovered from a bounded
 // carry, while each marker type keeps only candidate byte offsets. Invalid
 // body bytes discard every open candidate immediately. Candidate queues are
 // pruned at the fixed block limit, so neither input size nor chunk boundaries
-// change the verdict or cause unbounded buffering.
+// change the warning or cause unbounded buffering.
 export class SensitiveContentScanner {
   constructor() {
     this.result = Object.freeze({ verdict: "pass", reason: null });
@@ -103,7 +98,7 @@ export class SensitiveContentScanner {
   }
 
   feed(chunk) {
-    if (this.result.verdict === "reject") return this.result;
+    if (this.result.verdict !== "pass") return this.result;
     const input = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     if (input.length === 0) return this.result;
     const buffer = this.carry.length > 0 ? Buffer.concat([this.carry, input]) : input;
@@ -166,7 +161,7 @@ export class SensitiveContentScanner {
           queue.head < queue.starts.length &&
           bodyEnd - queue.starts[queue.head] >= MIN_PEM_BODY_BYTES
         ) {
-          this.result = Object.freeze({ verdict: "reject", reason: SENSITIVE_CONTENT_REASON });
+          this.result = Object.freeze({ verdict: "warning", reason: SENSITIVE_CONTENT_REASON });
           return this.result;
         }
         if (queue.head > 1024 && queue.head * 2 > queue.starts.length) {

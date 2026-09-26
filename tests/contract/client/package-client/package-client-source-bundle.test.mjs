@@ -96,7 +96,7 @@ test("clean Flutter staging closes the pure presentation package boundary", asyn
     });
     assert.deepEqual(
       stagedPackages.map((entry) => `${entry.name}:${entry.isDirectory()}`).sort(),
-      ["presentation_contract:true"],
+      ["presentation_contract:true", "presentation_flutter:true", "presentation_runtime:true"],
     );
   } finally {
     if (previousCleanBuildRoot === undefined) {

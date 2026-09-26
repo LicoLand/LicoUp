@@ -1,0 +1,31 @@
+{
+  "machines": [
+    {
+      "id": "workflow.budget-reservation",
+      "rust_module": "workflow_budget_reservation",
+      "states": [
+        { "id": "reserved" },
+        { "id": "unknown" },
+        { "id": "settled" },
+        { "id": "released" }
+      ],
+      "events": [
+        "settle-known",
+        "settle-unknown",
+        "release"
+      ],
+      "initial": "reserved",
+      "terminal": [
+        "settled",
+        "released"
+      ],
+      "transitions": [
+        { "from_state": "reserved", "event": "settle-known", "to_state": "settled" },
+        { "from_state": "reserved", "event": "settle-unknown", "to_state": "unknown" },
+        { "from_state": "reserved", "event": "release", "to_state": "released" },
+        { "from_state": "unknown", "event": "settle-known", "to_state": "settled" },
+        { "from_state": "unknown", "event": "settle-unknown", "to_state": "unknown" }
+      ]
+    }
+  ]
+}

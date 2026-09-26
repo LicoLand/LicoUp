@@ -508,16 +508,29 @@ where
                         return Ok(false);
                     }
                     let runtime = conversation_runtime.clone();
+                    let root_service = conversation_service(
+                        &mut conversation_services,
+                        portable_data_dir.clone(),
+                        runtime.as_ref(),
+                    )?;
+                    let effect_sessions = licoup_native::domain::workflow_runtime::host_drive::ContinuityEffectSessions::from_service(&root_service);
                     let execution = catch_unwind(AssertUnwindSafe(|| {
                         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
                         let root = licoup_native::platform::paths::portable_data_dir()?;
                         let service =
                             licoup_native::domain::workflow_runtime::StrategyService::open(&root)?;
+                        let service = match effect_sessions {
+                            Some(source) => service.with_effect_session_source(Arc::new(source)),
+                            None => service,
+                        };
                         let service = if let Some(runtime) = runtime {
                             service
                                 .with_actor_turn_port(conversation::strategy_turn_port(
                                     runtime.clone(),
                                     portable_data_dir.clone(),
+                                ))
+                                .with_actor_control_port(conversation::strategy_control_port(
+                                    runtime.clone(),
                                 ))
                                 .with_assistant_wake_port(conversation::assistant_wake_port(
                                     runtime,
@@ -783,6 +796,7 @@ pub(crate) fn bind_conversation_runtime(
         .parent()
         .expect("Conversation database always has a parent")
         .to_path_buf();
+    let effect_sessions = licoup_native::domain::workflow_runtime::host_drive::ContinuityEffectSessions::from_service(&service).map(Arc::new);
     let bound = service.bind_conversation_runtime(
         licoup_native::domain::client_conversation::PersistentRuntimePorts::new(
             move |params| send_runtime.start_admitted_background(params, send_dir.clone()),
@@ -797,8 +811,17 @@ pub(crate) fn bind_conversation_runtime(
             move |request| {
                 let port =
                     conversation::strategy_turn_port(actor_runtime.clone(), actor_dir.clone());
-                licoup_native::domain::workflow_runtime::StrategyService::open(&strategy_root)?
+                let strategy =
+                    licoup_native::domain::workflow_runtime::StrategyService::open(&strategy_root)?;
+                let strategy = match &effect_sessions {
+                    Some(source) => strategy.with_effect_session_source(source.clone()),
+                    None => strategy,
+                };
+                strategy
                     .with_actor_turn_port(port)
+                    .with_actor_control_port(conversation::strategy_control_port(
+                        actor_runtime.clone(),
+                    ))
                     .with_assistant_wake_port(conversation::assistant_wake_port(
                         actor_runtime.clone(),
                         actor_dir.clone(),

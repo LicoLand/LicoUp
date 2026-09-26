@@ -1,11 +1,13 @@
 # packages/contracts/client -- DTO Schemas
 
+Updated: 2026-09-25
+
 This directory defines the DTO schemas owned by the LicoUp client boundary.
 They cover local agent execution, conversation backup, and encrypted mobile
 relay without defining a default server-ingestion path. Endpoint-protection
 DTOs belong only to the
-[current retiring Preview](../../../docs/STATUS.md), not to a stable Lico Arc
-Profile or future compatibility contract.
+[current Preview](../../../docs/STATUS.md), not to a stable Lico Arc Profile or
+compatibility contract.
 
 ## Schemas
 

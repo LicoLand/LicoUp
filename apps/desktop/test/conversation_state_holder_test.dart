@@ -131,6 +131,31 @@ void main() {
     expect(replies[0].stableIdentity, isNot(replies[1].stableIdentity));
   });
 
+  test('terminal summary does not duplicate streamed message units', () {
+    final holder = ConversationStateHolder();
+    addTearDown(holder.dispose);
+    for (final event in [
+      _delta('agent.message.chunk', {
+        'messageUnit': 'answer',
+        'text': 'Streamed reply',
+      }),
+      _delta('dispatch.turn.completed', {'text': 'Streamed reply', 'ok': true}),
+    ]) {
+      holder.applyDelta(
+        event,
+        scopeKey: 'scope-1',
+        participantAgentId: 'codex',
+        participantLabel: 'Codex',
+      );
+    }
+    final replies = holder
+        .messagesFor('scope-1')
+        .where((message) => message.role == 'assistant')
+        .toList();
+    expect(replies.map((message) => message.text), ['Streamed reply']);
+    expect(replies.single.stableIdentity, 'turn-1-assistant');
+  });
+
   testWidgets('events without an active phase publish immediately', (
     tester,
   ) async {

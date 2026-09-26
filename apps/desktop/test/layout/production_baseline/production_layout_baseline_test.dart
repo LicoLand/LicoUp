@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/desktop_dest
 
 import '../fixtures/production_client_shell_fixture.dart';
 import '../../support/bundled_font_loader.dart';
+import '../../support/presentation_source_overrides.dart';
 
 void main() {
   final composition = BuiltInLayoutComposition();
@@ -67,14 +68,33 @@ void main() {
             surface: surface,
             width: baseline.size.width,
           );
-          expect(
-            find.byKey(
-              Key(
-                'layout-host-${profileId.value}/${surface.name}/${viewport.name}',
-              ),
+          // The shell renders its regions from runtime-backed sources, so its
+          // first frames are loading states. Wait for the real layout host to
+          // become visible instead of forcing a synthetic value or relaxing
+          // the expectation.
+          final layoutHost = find.byKey(
+            Key(
+              'layout-host-${profileId.value}/${surface.name}/${viewport.name}',
             ),
-            findsOneWidget,
           );
+          expect(
+            await pumpUntilVisible(tester, layoutHost, maxFrames: 60),
+            isTrue,
+            reason: 'layout host never became visible',
+          );
+          if (destination == ClientSection.agents &&
+              profileId.value == 'dashboard' &&
+              surface == LayoutRuntimeSurface.desktop) {
+            expect(
+              await pumpUntilVisible(
+                tester,
+                find.byKey(const Key('messaging-conversation-list')),
+                maxFrames: 60,
+              ),
+              isTrue,
+              reason: 'conversation projection never became visible',
+            );
+          }
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 120));
           await tester.pump();

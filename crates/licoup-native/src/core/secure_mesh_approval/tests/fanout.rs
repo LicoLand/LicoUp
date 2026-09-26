@@ -1,8 +1,10 @@
 use super::super::{evaluate_approval_fanout_json, evaluate_approval_request_json};
+use super::support::{approval_test_guard, insert_expired_pending};
 use serde_json::json;
 
 #[test]
 fn approval_fanout_plan_never_exposes_plaintext_operation_detail() {
+    let _test_guard = approval_test_guard();
     let request = json!({
         "pendingOperationId": "op-fanout-plain-1",
         "requesterAgentId": "hermes",
@@ -47,4 +49,19 @@ fn approval_fanout_plan_never_exposes_plaintext_operation_detail() {
     assert!(wire.contains("trustedEndpointIdHashes"));
     assert!(!wire.contains("endpoint-phone"));
     assert!(!wire.contains("endpoint-tablet"));
+}
+
+#[test]
+fn repeated_expired_fanout_keeps_the_stable_expired_error() {
+    let _test_guard = approval_test_guard();
+    let operation_id = "op-fanout-expired-repeat";
+    insert_expired_pending(operation_id, "nonce-fanout-expired-repeat");
+
+    for _ in 0..2 {
+        let error = evaluate_approval_fanout_json(&json!({
+            "pendingOperationId": operation_id,
+        }))
+        .unwrap_err();
+        assert_eq!(error.to_string(), "secure mesh approval request is expired");
+    }
 }

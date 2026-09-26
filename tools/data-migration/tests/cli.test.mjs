@@ -48,11 +48,34 @@ test("cli plan and convert execute migration via command line", () => {
     assert.equal(planParsed.targetVersion, "0.3.0");
     assert.equal(planParsed.direction, "upgrade");
 
-    const convertRes = runCli(["convert", "--data-root", root, "--target", "v0.3.0", "--format", "json"]);
+    // A real conversion is gated on the operator's statement that every writer
+    // stopped: the tool's own lock cannot constrain a program that never heard
+    // of it, and the plan forbids claiming offline safety from a lock file.
+    const refused = runCli(["convert", "--data-root", root, "--target", "v0.3.0"]);
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /maintenance_confirmation_required/);
+    assert.equal(
+      fs.existsSync(path.join(root, "client-state", "migrations", "data-migration-journal.json")),
+      false,
+      "a refused conversion must not have started writing",
+    );
+
+    // --dry-run is the preview path and needs no confirmation.
+    const preview = runCli(["convert", "--data-root", root, "--target", "v0.3.0", "--dry-run", "--format", "json"]);
+    assert.equal(preview.status, 0);
+    assert.equal(JSON.parse(preview.stdout).status, "dry_run");
+
+    const convertRes = runCli([
+      "convert", "--data-root", root, "--target", "v0.3.0", "--writers-stopped", "--format", "json",
+    ]);
     assert.equal(convertRes.status, 0);
     const convertParsed = JSON.parse(convertRes.stdout);
     assert.equal(convertParsed.status, "success");
     assert.ok(convertParsed.pendingAuthorizationDomains.includes("gateway-credential-custody"));
+    assert.ok(
+      convertParsed.pendingNativeAdmissionDomains.includes("canonical-conversation"),
+      "the Conversation store's owner still owes its step",
+    );
 
     const inspectRes = runCli(["inspect", "--data-root", root]);
     assert.equal(inspectRes.status, 0);

@@ -1,0 +1,63 @@
+{
+  "machines": [
+    {
+      "id": "agent.pi-protocol",
+      "rust_module": "pi_protocol",
+      "states": [
+        { "id": "await-switch", "rust_name": "AwaitSwitch" },
+        { "id": "await-initial-state", "rust_name": "AwaitInitialState" },
+        { "id": "await-available-models", "rust_name": "AwaitAvailableModels" },
+        { "id": "await-model", "rust_name": "AwaitModel" },
+        { "id": "await-thinking", "rust_name": "AwaitThinking" },
+        { "id": "await-prompt-accept", "rust_name": "AwaitPromptAccept" },
+        { "id": "await-settled", "rust_name": "AwaitSettled" },
+        { "id": "await-assistant-text", "rust_name": "AwaitAssistantText" },
+        { "id": "await-state", "rust_name": "AwaitState" },
+        { "id": "finished", "rust_name": "Finished" }
+      ],
+      "events": [
+        "resume",
+        "switch-complete",
+        "request-available-models",
+        "request-model",
+        "request-thinking",
+        "request-prompt",
+        "prompt-accepted",
+        "agent-settled",
+        "assistant-text-read",
+        "state-read",
+        "complete-without-prompt",
+        "fail"
+      ],
+      "initial": "await-initial-state",
+      "terminal": ["finished"],
+      "transitions": [
+        { "from_state": "await-initial-state", "event": "resume", "to_state": "await-switch" },
+        { "from_state": "await-switch", "event": "switch-complete", "to_state": "await-initial-state" },
+        { "from_state": "await-initial-state", "event": "request-available-models", "to_state": "await-available-models" },
+        { "from_state": "await-initial-state", "event": "request-model", "to_state": "await-model" },
+        { "from_state": "await-available-models", "event": "request-model", "to_state": "await-model" },
+        { "from_state": "await-initial-state", "event": "request-thinking", "to_state": "await-thinking" },
+        { "from_state": "await-model", "event": "request-thinking", "to_state": "await-thinking" },
+        { "from_state": "await-initial-state", "event": "request-prompt", "to_state": "await-prompt-accept" },
+        { "from_state": "await-model", "event": "request-prompt", "to_state": "await-prompt-accept" },
+        { "from_state": "await-thinking", "event": "request-prompt", "to_state": "await-prompt-accept" },
+        { "from_state": "await-prompt-accept", "event": "prompt-accepted", "to_state": "await-settled" },
+        { "from_state": "await-settled", "event": "agent-settled", "to_state": "await-assistant-text" },
+        { "from_state": "await-assistant-text", "event": "assistant-text-read", "to_state": "await-state" },
+        { "from_state": "await-state", "event": "state-read", "to_state": "finished" },
+        { "from_state": "await-initial-state", "event": "complete-without-prompt", "to_state": "finished" },
+        { "from_state": "await-switch", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-initial-state", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-available-models", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-model", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-thinking", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-prompt-accept", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-settled", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-assistant-text", "event": "fail", "to_state": "finished" },
+        { "from_state": "await-state", "event": "fail", "to_state": "finished" },
+        { "from_state": "finished", "event": "fail", "to_state": "finished" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[package]
+name = "licoup-workflow-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+licoup-workflow = { path = "../licoup-workflow" }
+licoup-workflow-runtime = { path = "../licoup-workflow-runtime" }
+rusqlite.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

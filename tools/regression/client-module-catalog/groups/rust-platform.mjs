@@ -16,6 +16,69 @@ const nativeBinaryCheck = (binary) => command(
 
 export const RUST_PLATFORM_MODULES = Object.freeze([
   defineModule({
+    id: "rust.platform.client-state-migration",
+    kind: "rust-platform",
+    summary: "Actual native startup admission, schema-shape refusal and migration-domain consistency",
+    inputs: ["crates/licoup-native/src/domain/client_state_migration.rs", "crates/licoup-native/src/domain/client_state_migration/**", "crates/licoup-native/resources/client-state-migration-frontier.json"],
+    command: command("cargo", ["test", "-p", "licoup-native", "--lib", "--locked", "--offline", "domain::client_state_migration::"], 20 * 60_000),
+  }),
+  defineModule({
+    id: "rust.platform.extension-packages",
+    kind: "rust-platform",
+    summary: "Local package verification, transactional publication, recovery, pins, and byte reclamation",
+    inputs: ["crates/licoup-native/src/platform/extension_packages/**"],
+    command: command("cargo", [
+      "test", "-p", "licoup-native", "--lib", "--locked", "--offline", "platform::extension_packages::",
+    ], 20 * 60_000),
+  }),
+  ...[
+    {
+      id: "rust.platform.extension-isolation", target: "v7_extension_isolation",
+      summary: "Real OS-enforced extension limits, environment ownership, scoped release and honest unsupported modes",
+      inputs: ["crates/licoup-native/src/platform/extension_host/isolation/**", "tests/integration/v7_extension_isolation/**", "sdk/agent-adapter/samples/minimal-specialist/**", "sdk/agent-adapter/python/**"],
+    },
+    {
+      id: "rust.platform.endpoint-storage", target: "v7_endpoint_storage",
+      summary: "Endpoint state, custody, root locking, and explicit recovery contracts",
+      inputs: ["crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/**", "crates/licoup-native/tests/v7_endpoint_storage/**"],
+    },
+    {
+      id: "rust.platform.peer-ingress", target: "v7_peer_ingress",
+      summary: "Peer attribution, Conversation admission, and scoped message facts; Candidate cases need explicit material",
+      inputs: ["crates/licoup-native/src/domain/mobile_relay/endpoint_v7_transport/**", "crates/licoup-native/src/domain/client_conversation/peer_ingress/**", "crates/licoup-native/tests/v7_peer_ingress/**"],
+    },
+    {
+      id: "rust.platform.extension-package-lifecycle", target: "v71_package_lifecycle",
+      summary: "Real package import, interruption, restart, and uninstall integration",
+      inputs: ["crates/licoup-native/src/platform/extension_packages/**", "crates/licoup-native/tests/v71_package_lifecycle/**", "tests/integration/v71_package_lifecycle/**"],
+    },
+    {
+      id: "rust.platform.extension-host", target: "v7_extension_contract",
+      summary: "Generation-bound catalog, effect admission, lifecycle, and host contracts",
+      inputs: ["crates/licoup-native/src/platform/extension_host/**", "crates/licoup-native/tests/v7_extension_contract/**"],
+    },
+    {
+      id: "rust.platform.workflow-effects", target: "v7_effect_adapter",
+      summary: "Workflow effects through the existing work-context and adapter owners",
+      inputs: ["crates/licoup-native/src/platform/work_context_ports/**", "crates/licoup-native/src/platform/strategy_runtime/**", "crates/licoup-native/tests/v7_effect_adapter/**"],
+    },
+    {
+      id: "rust.platform.workflow-migration", target: "v7_migration",
+      summary: "Historical workflow database migration fixtures",
+      inputs: ["crates/licoup-native/tests/v7_migration/**"],
+    },
+    {
+      id: "rust.platform.workflow-recovery", target: "v7_recovery",
+      summary: "Workflow effect and outbox recovery integration fixtures",
+      inputs: ["crates/licoup-native/tests/v7_recovery/**"],
+    },
+  ].map(({ id, target, summary, inputs }) => defineModule({
+    id, kind: "rust-platform", summary, inputs,
+    command: command("cargo", [
+      "test", "-p", "licoup-native", "--test", target, "--locked", "--offline",
+    ], 20 * 60_000),
+  })),
+  defineModule({
       id: "rust.ffi.typed-error-chain",
       kind: "rust-ffi",
       summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",
@@ -2090,5 +2153,14 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/tests/parsing.rs",
       ],
       command: rustBinaryTests("licoup-cli", "tests::parsing::"),
+    }),
+  defineModule({
+      id: "rust.platform.diagnostics-v7-observation-port",
+      kind: "rust-platform",
+      summary: "Bounded v7 observation probe, correlation ids, and privacy-safe segment records beside the existing diagnostic owners",
+      inputs: [
+        "crates/licoup-native/src/platform/diagnostics/**",
+      ],
+      command: rustLayer("platform::diagnostics::v7::"),
     })
 ]);

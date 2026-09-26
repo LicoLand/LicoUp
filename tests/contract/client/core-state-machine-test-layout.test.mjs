@@ -148,6 +148,7 @@ test("MLS security-ledger test-only queries have a physical support owner", asyn
   assert.equal(support.includes("#[path"), false);
   assert.equal(support.includes("include!("), false);
   assert.deepEqual(testNames(scenarios), [
+    "secure_mesh_mls_journal_uses_configured_targets_for_every_transition",
     "secure_mesh_mls_journal_recovers_every_action_at_every_cross_store_boundary",
     "secure_mesh_mls_invalid_prepared_requests_do_not_consume_journal_capacity",
     "secure_mesh_mls_journal_enforces_single_writer_exact_state_and_bounded_gc",

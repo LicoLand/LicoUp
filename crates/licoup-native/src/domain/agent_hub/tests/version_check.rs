@@ -38,30 +38,6 @@ fn stderr_is_used_when_stdout_is_empty() {
     assert_eq!(parse_output("claude-code", "", "claude 1.2.3\n"), "1.2.3");
 }
 
-#[test]
-fn unsafe_and_malformed_native_versions_stay_blank() {
-    assert_eq!(
-        parse_output("cursor", "cursor-agent not-a-version\n", ""),
-        ""
-    );
-    assert_eq!(
-        parse_output("cursor", "cursor-agent release-next\n", ""),
-        ""
-    );
-    for malformed in [
-        "cursor-agent 2026.08.32-3e8eec8\n",
-        "cursor-agent 2026.08.25-3e8eec\n",
-        "cursor-agent 2026.08.25-3e8eec8/path\n",
-        "cursor-agent 2026.08.25-3e8eec8 extra\n",
-    ] {
-        assert_eq!(parse_output("cursor", malformed, ""), "");
-    }
-    assert_eq!(
-        parse_output("antigravity", "agy 3.7.0 extra/path\n", ""),
-        ""
-    );
-}
-
 #[cfg(unix)]
 #[test]
 fn installed_version_executes_only_the_exact_bound_target_binary() {

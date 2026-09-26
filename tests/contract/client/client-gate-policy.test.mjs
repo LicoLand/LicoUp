@@ -38,6 +38,7 @@ test("source policy is mandatory without selecting platform toolchains", () => {
   });
   assert.deepEqual(selectedOptionalLanes(["docs/RUNBOOK.md"]), []);
   for (const forbidden of [
+    "repo:local-info-hygiene",
     "client:get",
     "client:native:fmt:check",
     "client:test:android:native",
@@ -70,6 +71,26 @@ test("changed paths select only their independent technology lanes", () => {
     ["rust", "dependencies"],
   );
   assert.deepEqual(
+    selectedOptionalLanes([
+      "packages/presentation_runtime/lib/src/presentation_runtime.dart",
+    ]),
+    ["flutter"],
+  );
+  assert.deepEqual(
+    selectedOptionalLanes([
+      "packages/presentation_contract/test/prepared_contract_test.dart",
+    ]),
+    ["flutter"],
+  );
+  assert.deepEqual(
+    selectedOptionalLanes(["packages/presentation_flutter/pubspec.yaml"]),
+    ["flutter", "dependencies"],
+  );
+  assert.deepEqual(
+    selectedOptionalLanes(["packages/presentation_flutter/pubspec.lock"]),
+    ["flutter", "dependencies"],
+  );
+  assert.deepEqual(
     selectedOptionalLanes(["tools/apple-release/macos-direct-arm64.json"]),
     [],
   );
@@ -85,6 +106,74 @@ test("changed paths select only their independent technology lanes", () => {
     selectedOptionalLanes(["tools/scripts/client-gate-policy.mjs"]),
     [],
   );
+});
+
+test("presentation packages select a package-aware verification step", () => {
+  assert.equal(CLIENT_GATE_LANES.flutter.includes("client:packages:verify"), true);
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "tools/scripts/client-packages-verify.mjs",
+      "--plan",
+      "--changed",
+      "packages/presentation_runtime/lib/src/presentation_runtime.dart",
+    ],
+    { cwd: process.cwd(), encoding: "utf8" },
+  );
+  assert.equal(planned.status, 0, planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  const runtime = plan.packages.find(
+    (entry) => entry.directory === "packages/presentation_runtime",
+  );
+  assert.equal(runtime.applicable, true);
+  assert.deepEqual(runtime.commands[0], ["dart", "pub", "get"]);
+  assert.equal(runtime.commands.some((command) => command.join(" ") === "dart test"), true);
+  for (const directory of [
+    "packages/presentation_contract",
+    "packages/presentation_flutter",
+  ]) {
+    const entry = plan.packages.find((candidate) => candidate.directory === directory);
+    assert.equal(entry.applicable, false);
+    assert.equal(entry.result, "not-applicable");
+  }
+
+  const flutterPlanned = spawnSync(
+    process.execPath,
+    [
+      "tools/scripts/client-packages-verify.mjs",
+      "--plan",
+      "--changed",
+      "packages/presentation_flutter/lib/src/collection_view.dart",
+    ],
+    { cwd: process.cwd(), encoding: "utf8" },
+  );
+  assert.equal(flutterPlanned.status, 0, flutterPlanned.stderr);
+  const flutterPlan = JSON.parse(flutterPlanned.stdout);
+  const widgets = flutterPlan.packages.find(
+    (entry) => entry.directory === "packages/presentation_flutter",
+  );
+  assert.deepEqual(widgets.commands[0], ["flutter", "pub", "get"]);
+  assert.equal(widgets.commands.some((command) => command.join(" ") === "flutter test"), true);
+});
+
+test("a changed package path without a real package fails instead of passing", () => {
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "tools/scripts/client-packages-verify.mjs",
+      "--plan",
+      "--changed",
+      "packages/presentation_ghost/lib/ghost.dart",
+    ],
+    { cwd: process.cwd(), encoding: "utf8" },
+  );
+  assert.equal(planned.status, 1);
+  const plan = JSON.parse(planned.stdout);
+  assert.equal(plan.ok, false);
+  const ghost = plan.packages.find(
+    (entry) => entry.directory === "packages/presentation_ghost",
+  );
+  assert.equal(ghost.result, "missing");
 });
 
 test("gate policy rejects paths that escape the repository", () => {
@@ -166,10 +255,10 @@ test("client gate emits bounded typed failure events without raw diagnostics", (
     retryable: false,
     recovery: "inspect-failed-step",
   });
-  assert.equal(line.startsWith("::lico-dev-task-event::"), true);
-  const event = JSON.parse(line.slice("::lico-dev-task-event::".length));
+  assert.equal(line.startsWith("::licoup-client-check::"), true);
+  const event = JSON.parse(line.slice("::licoup-client-check::".length));
   assert.deepEqual(event, {
-    schemaVersion: "v0.0.1:lico-dev:task-event-1",
+    schemaVersion: "licoup.client-check.v1",
     type: "step-failure",
     stage: "client:test",
     component: "client-gate",

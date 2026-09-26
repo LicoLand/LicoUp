@@ -1,5 +1,7 @@
 # LicoUp Subagent MCP
 
+Updated: 2026-09-12
+
 | 参考 | 文档 |
 | --- | --- |
 | 规范版本 | [English](subagent-mcp.md) |

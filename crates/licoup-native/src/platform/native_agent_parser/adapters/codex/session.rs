@@ -5,9 +5,11 @@ use crate::platform::codex_app_server::limits::{
     ACCOUNT_RATE_LIMITS_REQUEST_ID, THREAD_REQUEST_ID, THREAD_UNARCHIVE_REQUEST_ID, TURN_REQUEST_ID,
 };
 use crate::platform::codex_app_server::model::{
-    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome, ProtocolPhase,
+    EffectiveSettings, ProtocolEffect, ProtocolFailure, ProtocolOutcome,
 };
 use serde_json::{Map, Value, json};
+
+use crate::state_machines::codex_protocol::Event as ProtocolEvent;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -149,7 +151,7 @@ fn resume_target_is_archived(message: &Value, thread_id: &str) -> bool {
 impl CodexParser {
     pub(super) fn handle_initialize_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_initialize_failed",
                 "Codex app-server initialization failed.",
@@ -157,7 +159,7 @@ impl CodexParser {
             ))];
         }
         if message.get("result").is_none() {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_protocol_error",
                 "Codex app-server returned an invalid initialization response.",
@@ -167,10 +169,10 @@ impl CodexParser {
 
         let mut effects = vec![ProtocolEffect::Send(json!({"method": "initialized"}))];
         if self.config.model.as_deref().is_none_or(is_luna_model) {
-            self.phase = ProtocolPhase::AwaitRateLimits;
+            self.advance(ProtocolEvent::InitializeWithRateLimits);
             effects.push(ProtocolEffect::Send(self.account_rate_limits_request(true)));
         } else {
-            self.phase = ProtocolPhase::AwaitThread;
+            self.advance(ProtocolEvent::Initialize);
             effects.push(ProtocolEffect::Send(self.thread_request()));
         }
         effects
@@ -212,7 +214,7 @@ impl CodexParser {
     }
 
     fn start_thread_after_rate_limits(&mut self) -> Vec<ProtocolEffect> {
-        self.phase = ProtocolPhase::AwaitThread;
+        self.advance(ProtocolEvent::RateLimitsReady);
         vec![ProtocolEffect::Send(self.thread_request())]
     }
 
@@ -274,11 +276,11 @@ impl CodexParser {
                     && resume_target_is_archived(message, &requested_thread_id)
                 {
                     self.unarchive_attempted = true;
-                    self.phase = ProtocolPhase::AwaitThreadUnarchive;
+                    self.advance(ProtocolEvent::ThreadArchived);
                     return vec![ProtocolEffect::Send(self.thread_unarchive_request())];
                 }
             }
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.requested_thread_failure(
                 ProtocolFailure::new(
                     "codex_thread_open_failed",
@@ -292,7 +294,7 @@ impl CodexParser {
             ))];
         }
         let Some(result) = message.get("result") else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_protocol_error",
                 "Codex app-server returned an invalid thread response.",
@@ -300,7 +302,7 @@ impl CodexParser {
             ))];
         };
         let Some(thread) = result.get("thread") else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_protocol_error",
                 "Codex app-server did not return a conversation identifier.",
@@ -312,7 +314,7 @@ impl CodexParser {
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
         else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(ProtocolFailure::new(
                 "codex_protocol_error",
                 "Codex app-server did not return a conversation identifier.",
@@ -320,7 +322,7 @@ impl CodexParser {
             ))];
         };
         if self.config.is_resume() && thread_id != self.config.requested_session_id {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.requested_thread_failure(
                 ProtocolFailure::new(
                     "codex_thread_resume_identity_mismatch",
@@ -347,7 +349,7 @@ impl CodexParser {
         };
 
         if self.config.prompt.is_empty() && self.config.local_images.is_empty() {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::ThreadEmpty);
             return vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
                 output: String::new(),
                 session_id: thread_id.to_string(),
@@ -362,7 +364,7 @@ impl CodexParser {
             }))];
         }
 
-        self.phase = ProtocolPhase::AwaitTurnStart;
+        self.advance(ProtocolEvent::ThreadReady);
         vec![ProtocolEffect::Send(self.turn_start_request(thread_id))]
     }
 
@@ -371,7 +373,7 @@ impl CodexParser {
         message: &Value,
     ) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.requested_thread_failure(
                 ProtocolFailure::new(
                     "codex_thread_unarchive_failed",
@@ -388,7 +390,7 @@ impl CodexParser {
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty());
         if returned_thread_id != Some(self.config.requested_session_id.as_str()) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.requested_thread_failure(
                 ProtocolFailure::new(
                     "codex_thread_unarchive_identity_mismatch",
@@ -398,7 +400,7 @@ impl CodexParser {
             ))];
         }
 
-        self.phase = ProtocolPhase::AwaitThread;
+        self.advance(ProtocolEvent::ThreadUnarchived);
         vec![ProtocolEffect::Send(self.thread_request())]
     }
 
@@ -447,7 +449,7 @@ impl CodexParser {
 
     pub(super) fn handle_turn_start_response(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         if response_is_error(message) {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.contextualize(
                 ProtocolFailure::new(
                     "codex_turn_start_failed",
@@ -463,7 +465,7 @@ impl CodexParser {
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
         else {
-            self.phase = ProtocolPhase::Finished;
+            self.advance(ProtocolEvent::Fail);
             return vec![ProtocolEffect::Fail(self.contextualize(
                 ProtocolFailure::new(
                     "codex_protocol_error",
@@ -486,7 +488,7 @@ impl CodexParser {
         if let Some(effort) = self.config.reasoning_effort.as_ref() {
             self.effective.reasoning_effort = Some(effort.clone());
         }
-        self.phase = ProtocolPhase::AwaitTurnCompleted;
+        self.advance(ProtocolEvent::TurnStarted);
         Vec::new()
     }
 }

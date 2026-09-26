@@ -21,6 +21,8 @@ use crate::core::secure_mesh_capability_proof::{
 };
 use crate::core::secure_mesh_mls::SecureMeshMlsGroupMetadata;
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
+pub(crate) use crate::state_machines::security_mls_operation::State as SecureMeshMlsOperationState;
+use crate::state_machines::security_mls_operation::{self, Event as OperationEvent};
 
 #[cfg(test)]
 mod test_support;
@@ -52,40 +54,6 @@ pub(crate) struct PreparedMlsSecurityInputs {
     pub(super) key_package: Option<PreparedMlsKeyPackageUse>,
     pub(super) capability_proofs: [PreparedMlsCapabilityProofUse; 2],
     pub(super) consumed_at_unix_seconds: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SecureMeshMlsOperationState {
-    Prepared,
-    CryptoPrepared,
-    CryptoCommitted,
-    MetadataReconciled,
-    Delivered,
-}
-
-impl SecureMeshMlsOperationState {
-    pub(super) fn as_str(self) -> &'static str {
-        match self {
-            Self::Prepared => "prepared",
-            Self::CryptoPrepared => "crypto_prepared",
-            Self::CryptoCommitted => "crypto_committed",
-            Self::MetadataReconciled => "metadata_reconciled",
-            Self::Delivered => "delivered",
-        }
-    }
-
-    pub(super) fn parse(value: &str) -> Result<Self> {
-        match value {
-            "prepared" => Ok(Self::Prepared),
-            "crypto_prepared" => Ok(Self::CryptoPrepared),
-            "crypto_committed" => Ok(Self::CryptoCommitted),
-            "metadata_reconciled" => Ok(Self::MetadataReconciled),
-            "delivered" => Ok(Self::Delivered),
-            _ => Err(anyhow!(
-                "secure mesh MLS operation journal state is invalid"
-            )),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -194,38 +162,42 @@ impl SecureMeshMlsSecurityLedger {
         tx.execute(
             r#"
             DELETE FROM secure_mesh_mls_operations
-            WHERE state = 'prepared'
+            WHERE state = ?1
               AND response_json IS NULL
               AND prepared_security_json IS NULL
-              AND updated_at_unix_seconds < ?1
+              AND updated_at_unix_seconds < ?2
               AND NOT EXISTS (
                   SELECT 1 FROM secure_mesh_mls_operation_reservations reservations
                   WHERE reservations.operation_id = secure_mesh_mls_operations.operation_id
               )
             "#,
-            params![stale_before],
+            params![security_mls_operation::INITIAL.as_str(), stale_before],
         )?;
         tx.execute(
             r#"
             DELETE FROM secure_mesh_mls_operations
             WHERE operation_id IN (
                 SELECT operation_id FROM secure_mesh_mls_operations
-                WHERE local_endpoint_scope_hash = ?1 AND state = 'delivered'
+                WHERE local_endpoint_scope_hash = ?1 AND state = ?2
                 ORDER BY updated_at_unix_seconds DESC, operation_id DESC
-                LIMIT -1 OFFSET ?2
+                LIMIT -1 OFFSET ?3
             )
             "#,
             params![
                 local_scope_hash,
+                SecureMeshMlsOperationState::Delivered.as_str(),
                 i64::try_from(MAX_DELIVERED_MLS_OPERATIONS_PER_SCOPE).unwrap_or(i64::MAX)
             ],
         )?;
         let incomplete_count: i64 = tx.query_row(
             r#"
             SELECT COUNT(*) FROM secure_mesh_mls_operations
-            WHERE local_endpoint_scope_hash = ?1 AND state != 'delivered'
+            WHERE local_endpoint_scope_hash = ?1 AND state != ?2
             "#,
-            params![local_scope_hash],
+            params![
+                local_scope_hash,
+                SecureMeshMlsOperationState::Delivered.as_str()
+            ],
             |row| row.get(0),
         )?;
         ensure!(
@@ -248,13 +220,14 @@ impl SecureMeshMlsSecurityLedger {
                 prepared_security_json,
                 created_at_unix_seconds,
                 updated_at_unix_seconds
-            ) VALUES (?1, ?2, ?3, ?4, 'prepared', NULL, NULL, NULL, NULL, NULL, ?5, ?5)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, NULL, NULL, NULL, ?6, ?6)
             "#,
             params![
                 operation_id,
                 local_scope_hash,
                 action,
                 request_digest,
+                security_mls_operation::INITIAL.as_str(),
                 now_unix_seconds
             ],
         )?;
@@ -325,6 +298,11 @@ impl SecureMeshMlsSecurityLedger {
             ),
             "secure mesh MLS committed operation cannot be restaged"
         );
+        let target_state =
+            security_mls_operation::transition(record.state, OperationEvent::StageCrypto)
+                .ok_or_else(|| {
+                    anyhow!("secure mesh MLS operation stage transition is not configured")
+                })?;
         reserve_prepared_security_transaction(&tx, operation_id, prepared_security)?;
         reserve_operation_key_transaction(
             &tx,
@@ -335,24 +313,27 @@ impl SecureMeshMlsSecurityLedger {
         let changed = tx.execute(
             r#"
             UPDATE secure_mesh_mls_operations
-            SET state = 'crypto_prepared',
-                response_json = ?1,
-                group_id_base64url = ?2,
-                base_metadata_json = ?3,
-                expected_metadata_json = ?4,
-                prepared_security_json = ?5,
-                updated_at_unix_seconds = ?6
-            WHERE operation_id = ?7
-              AND state IN ('prepared', 'crypto_prepared')
+            SET state = ?1,
+                response_json = ?2,
+                group_id_base64url = ?3,
+                base_metadata_json = ?4,
+                expected_metadata_json = ?5,
+                prepared_security_json = ?6,
+                updated_at_unix_seconds = ?7
+            WHERE operation_id = ?8
+              AND state IN (?9, ?10)
             "#,
             params![
+                target_state.as_str(),
                 response_json,
                 group_id_base64url,
                 base_metadata_json,
                 metadata_json,
                 security_json,
                 now_unix_seconds,
-                operation_id
+                operation_id,
+                SecureMeshMlsOperationState::Prepared.as_str(),
+                SecureMeshMlsOperationState::CryptoPrepared.as_str()
             ],
         )?;
         ensure!(
@@ -383,6 +364,11 @@ impl SecureMeshMlsSecurityLedger {
             record.state == SecureMeshMlsOperationState::CryptoPrepared,
             "secure mesh MLS committed operation cannot reset for retry"
         );
+        let target_state =
+            security_mls_operation::transition(record.state, OperationEvent::ResetForRetry)
+                .ok_or_else(|| {
+                    anyhow!("secure mesh MLS operation retry transition is not configured")
+                })?;
         tx.execute(
             "DELETE FROM secure_mesh_mls_operation_reservations WHERE operation_id = ?1",
             params![operation_id],
@@ -390,16 +376,21 @@ impl SecureMeshMlsSecurityLedger {
         let changed = tx.execute(
             r#"
             UPDATE secure_mesh_mls_operations
-            SET state = 'prepared',
+            SET state = ?1,
                 response_json = NULL,
                 group_id_base64url = NULL,
                 base_metadata_json = NULL,
                 expected_metadata_json = NULL,
                 prepared_security_json = NULL,
-                updated_at_unix_seconds = ?1
-            WHERE operation_id = ?2 AND state = 'crypto_prepared'
+                updated_at_unix_seconds = ?2
+            WHERE operation_id = ?3 AND state = ?4
             "#,
-            params![now_unix_seconds, operation_id],
+            params![
+                target_state.as_str(),
+                now_unix_seconds,
+                operation_id,
+                SecureMeshMlsOperationState::CryptoPrepared.as_str()
+            ],
         )?;
         ensure!(
             changed == 1,
@@ -419,7 +410,7 @@ impl SecureMeshMlsSecurityLedger {
             r#"
             DELETE FROM secure_mesh_mls_operations
             WHERE operation_id = ?1
-              AND state = 'prepared'
+              AND state = ?2
               AND response_json IS NULL
               AND group_id_base64url IS NULL
               AND base_metadata_json IS NULL
@@ -430,7 +421,7 @@ impl SecureMeshMlsSecurityLedger {
                   WHERE reservations.operation_id = secure_mesh_mls_operations.operation_id
               )
             "#,
-            params![operation_id],
+            params![operation_id, security_mls_operation::INITIAL.as_str()],
         )?;
         ensure!(
             removed <= 1,
@@ -477,6 +468,11 @@ impl SecureMeshMlsSecurityLedger {
             record.state == SecureMeshMlsOperationState::CryptoPrepared,
             "secure mesh MLS operation crypto state is not prepared"
         );
+        let target_state =
+            security_mls_operation::transition(record.state, OperationEvent::CommitCrypto)
+                .ok_or_else(|| {
+                    anyhow!("secure mesh MLS operation crypto transition is not configured")
+                })?;
         let security_json: String = tx.query_row(
             "SELECT prepared_security_json FROM secure_mesh_mls_operations WHERE operation_id = ?1",
             params![operation_id],
@@ -508,10 +504,15 @@ impl SecureMeshMlsSecurityLedger {
         let changed = tx.execute(
             r#"
             UPDATE secure_mesh_mls_operations
-            SET state = 'crypto_committed', updated_at_unix_seconds = ?1
-            WHERE operation_id = ?2 AND state = 'crypto_prepared'
+            SET state = ?1, updated_at_unix_seconds = ?2
+            WHERE operation_id = ?3 AND state = ?4
             "#,
-            params![now_unix_seconds, operation_id],
+            params![
+                target_state.as_str(),
+                now_unix_seconds,
+                operation_id,
+                SecureMeshMlsOperationState::CryptoPrepared.as_str()
+            ],
         )?;
         ensure!(
             changed == 1,
@@ -552,6 +553,9 @@ impl SecureMeshMlsSecurityLedger {
             record.state == SecureMeshMlsOperationState::CryptoCommitted,
             "secure mesh MLS metadata journal transition is invalid"
         );
+        let target_state =
+            security_mls_operation::transition(record.state, OperationEvent::ReconcileMetadata)
+                .ok_or_else(|| anyhow!("secure mesh MLS metadata transition is not configured"))?;
         let writer_reservation_removed = tx.execute(
             r#"
             DELETE FROM secure_mesh_mls_operation_reservations
@@ -566,10 +570,16 @@ impl SecureMeshMlsSecurityLedger {
         let changed = tx.execute(
             r#"
             UPDATE secure_mesh_mls_operations
-            SET state = 'metadata_reconciled', response_json = ?1, updated_at_unix_seconds = ?2
-            WHERE operation_id = ?3 AND state = 'crypto_committed'
+            SET state = ?1, response_json = ?2, updated_at_unix_seconds = ?3
+            WHERE operation_id = ?4 AND state = ?5
             "#,
-            params![response_json, now_unix_seconds, operation_id],
+            params![
+                target_state.as_str(),
+                response_json,
+                now_unix_seconds,
+                operation_id,
+                SecureMeshMlsOperationState::CryptoCommitted.as_str()
+            ],
         )?;
         ensure!(
             changed == 1,
@@ -589,7 +599,7 @@ impl SecureMeshMlsSecurityLedger {
         self.advance_operation_state(
             operation_id,
             SecureMeshMlsOperationState::MetadataReconciled,
-            SecureMeshMlsOperationState::Delivered,
+            OperationEvent::Deliver,
             now_unix_seconds,
         )
     }
@@ -615,12 +625,19 @@ impl SecureMeshMlsSecurityLedger {
                 ON reservations.operation_id = operations.operation_id
             WHERE operations.local_endpoint_scope_hash = ?1
               AND reservations.reservation_key = 'participant-writer'
-              AND operations.state IN ('crypto_prepared', 'crypto_committed')
+              AND operations.state IN (?2, ?3)
             ORDER BY operations.created_at_unix_seconds, operations.operation_id
             "#,
         )?;
         let ids = statement
-            .query_map(params![scope], |row| row.get::<_, String>(0))?
+            .query_map(
+                params![
+                    scope,
+                    SecureMeshMlsOperationState::CryptoPrepared.as_str(),
+                    SecureMeshMlsOperationState::CryptoCommitted.as_str()
+                ],
+                |row| row.get::<_, String>(0),
+            )?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         ids.into_iter()
             .map(|operation_id| {
@@ -635,7 +652,7 @@ impl SecureMeshMlsSecurityLedger {
         &mut self,
         operation_id: &str,
         expected: SecureMeshMlsOperationState,
-        next: SecureMeshMlsOperationState,
+        event: OperationEvent,
         now_unix_seconds: i64,
     ) -> Result<SecureMeshMlsOperationRecord> {
         let tx = self
@@ -643,7 +660,7 @@ impl SecureMeshMlsSecurityLedger {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let (record, _, _) = read_operation_transaction(&tx, operation_id)?
             .ok_or_else(|| anyhow!("secure mesh MLS operation journal entry is missing"))?;
-        if record.state == next || record.state == SecureMeshMlsOperationState::Delivered {
+        if security_mls_operation::terminal(record.state) {
             tx.commit()?;
             return Ok(record);
         }
@@ -651,15 +668,19 @@ impl SecureMeshMlsSecurityLedger {
             record.state == expected,
             "secure mesh MLS operation journal transition is invalid"
         );
+        let target_state =
+            security_mls_operation::transition(record.state, event).ok_or_else(|| {
+                anyhow!("secure mesh MLS operation journal transition is not configured")
+            })?;
         let changed = tx.execute(
             "UPDATE secure_mesh_mls_operations SET state = ?1, updated_at_unix_seconds = ?2 WHERE operation_id = ?3 AND state = ?4",
-            params![next.as_str(), now_unix_seconds, operation_id, expected.as_str()],
+            params![target_state.as_str(), now_unix_seconds, operation_id, expected.as_str()],
         )?;
         ensure!(
             changed == 1,
             "secure mesh MLS operation journal transition lost ownership"
         );
-        if next == SecureMeshMlsOperationState::Delivered {
+        if security_mls_operation::terminal(target_state) {
             let scope: String = tx.query_row(
                 "SELECT local_endpoint_scope_hash FROM secure_mesh_mls_operations WHERE operation_id = ?1",
                 params![operation_id],
@@ -671,14 +692,15 @@ impl SecureMeshMlsSecurityLedger {
                 WHERE operation_id IN (
                     SELECT operation_id FROM secure_mesh_mls_operations
                     WHERE local_endpoint_scope_hash = ?1
-                      AND state = 'delivered'
-                      AND operation_id != ?3
+                      AND state = ?2
+                      AND operation_id != ?4
                     ORDER BY updated_at_unix_seconds DESC, operation_id DESC
-                    LIMIT -1 OFFSET ?2
+                    LIMIT -1 OFFSET ?3
                 )
                 "#,
                 params![
                     scope,
+                    target_state.as_str(),
                     i64::try_from(MAX_DELIVERED_MLS_OPERATIONS_PER_SCOPE)
                         .unwrap_or(i64::MAX)
                         .saturating_sub(1),

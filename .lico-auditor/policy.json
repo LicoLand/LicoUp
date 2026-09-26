@@ -2,11 +2,223 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
-      "path": "docs/functionality/ui-interactions.json",
+      "path": "apps/desktop/resources/client-update-state-machine.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "apps/desktop/resources/layout-selection-state-machine.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "apps/desktop/resources/settings-state-machines.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "apps/desktop/resources/state-machines.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "apps/desktop/resources/state-machines/secure-mesh.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "apps/desktop/test/ui_state_machine/model.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "components/analytics/resources/state-machines/package.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-agent-runtime/resources/state-machines/work-context.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-conversation/resources/state-machines.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-extension-contracts/samples/echo-agent/manifest.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-extension-contracts/samples/echo-agent/wire_fixture.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/agent-hub-operation.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/ansi-parser.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/claude-transport.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/codex.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/copilot.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/cursor-update.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-instance.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-invocation.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/extension-package.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/hermes.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/openclaw.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/parser-lifecycle.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/pi.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-approval.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-capability.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-command-replay.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-custody-lifecycle.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-file-transfer.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-kt-authority-challenge.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-macos-presence-batch.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-mlkem-braid.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/security-mls-operation.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/services-client-runtime.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/services-collaboration.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/services-conversation-archive.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/update-handoff.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/workflow-adapter-execution.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/workflow-budget-reservation.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/workflow-node.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-workflow-runtime/resources/state-machines/node.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-workflow/resources/state-machines/workflow.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "packages/presentation_contract/resources/state-machines.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "packages/presentation_runtime/resources/state-machines.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/deployment.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/graph-resource.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/manifest.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/provider.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/ui.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "schemas/extensions/usage.schema.json",
       "kind": "config-object"
     },
     {
       "path": "schemas/subagent_mcp/subagent_mcp.schema.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "sdk/model-provider/resources/state-machines/auth.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "sdk/model-provider/resources/state-machines/stream.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/adoption/adoption-policy.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/adoption/live-admission-facts.json",
       "kind": "config-object"
     },
     {
@@ -166,6 +378,50 @@
       "kind": "config-object"
     },
     {
+      "path": "tests/fixtures/continuous-assistant/evaluation/all-abstain-heldout.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/candidate-identity.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/evaluation-policy.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/family-heldout-split.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/heldout-denominators.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/identity-drift.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/live-admission-missing.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/native-comparable.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/pairing-unmatched-cost.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/unknown-cost.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/fixtures/continuous-assistant/evaluation/zero-sample.json",
+      "kind": "config-object"
+    },
+    {
       "path": "tests/fixtures/continuous-assistant/integration/continuous-collaboration.json",
       "kind": "config-object"
     },
@@ -214,50 +470,6 @@
       "kind": "config-object"
     },
     {
-      "path": "tests/fixtures/continuous-assistant/evaluation/all-abstain-heldout.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/candidate-identity.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/evaluation-policy.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/family-heldout-split.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/heldout-denominators.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/identity-drift.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/live-admission-missing.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/native-comparable.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/pairing-unmatched-cost.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/unknown-cost.json",
-      "kind": "config-object"
-    },
-    {
-      "path": "tests/fixtures/continuous-assistant/evaluation/zero-sample.json",
-      "kind": "config-object"
-    },
-    {
       "path": "tests/fixtures/continuous-assistant/scenarios/catalog.json",
       "kind": "config-object"
     },
@@ -266,26 +478,94 @@
       "kind": "config-object"
     },
     {
-      "path": "tests/fixtures/continuous-assistant/adoption/adoption-policy.json",
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-cumulative.json",
       "kind": "config-object"
     },
     {
-      "path": "tests/fixtures/continuous-assistant/adoption/live-admission-facts.json",
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-regressed.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "tests/integration/v71_usage_sources/fixtures/otlp-restarted.json",
       "kind": "config-object"
     }
   ],
   "publicReferenceDomains": [
+    "antigravity.google",
+    "api.flutter.dev",
+    "api.github.com",
+    "api.kilo.ai",
+    "api.kimi.com",
+    "api.telegram.org",
+    "arena.ai",
+    "artificialanalysis.ai",
+    "carbondesignsystem.com",
+    "cdn.jsdelivr.net",
+    "chatgpt.com",
     "claude.ai",
     "claude.com",
+    "clawhub.ai",
+    "cloud-images.ubuntu.com",
+    "cloud.debian.org",
+    "code.claude.com",
     "codeload.github.com",
+    "commandcode.ai",
+    "cursor.com",
+    "dart.dev",
     "deepseek.com",
+    "dev.opencode.ai",
+    "developer.android.com",
+    "developer.apple.com",
+    "dl.rockylinux.org",
+    "docs.anthropic.com",
+    "docs.appimage.org",
+    "docs.cursor.com",
+    "docs.fedoraproject.org",
+    "docs.flutter.dev",
+    "docs.microsoft.com",
+    "docs.openclaw.ai",
+    "download.opensuse.org",
+    "downloads.cursor.com",
     "en.wikipedia.org",
+    "flutter.dev",
     "formulae.brew.sh",
-    "licoland.org",
+    "forum.cursor.com",
+    "fsf.org",
+    "grok.com",
+    "hermes-agent.nousresearch.com",
+    "img.shields.io",
+    "json-schema.org",
+    "kilo.ai",
+    "lico.land",
+    "licoarc.com",
+    "licoland.com",
+    "licoup.com",
+    "licoup.net",
+    "moonshotai.github.io",
+    "nodejs.org",
+    "objects.githubusercontent.com",
     "openclaw.ai",
+    "opencode.ai",
+    "opencollective.com",
     "openfontlicense.org",
     "pi.dev",
+    "refactoring.com",
+    "repo.almalinux.org",
+    "schemas.android.com",
+    "schemas.microsoft.com",
     "scripts.sil.org",
-    "www.adobe.com"
+    "static.rust-lang.org",
+    "vanlent.dev",
+    "wiki.alpinelinux.org",
+    "wiki.archlinux.org",
+    "wiki.gnome.org",
+    "www.adobe.com",
+    "www.anthropic.com",
+    "www.apple.com",
+    "www.debian.org",
+    "www.deepseek.com",
+    "www.gnu.org",
+    "www.kimi.com",
+    "www.npmjs.com"
   ]
 }

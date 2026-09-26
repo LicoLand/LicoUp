@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/binding/effect_listener.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_multi_capsule_section.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/adaptive_flywheel_renderer_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
@@ -15,6 +18,7 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 
@@ -23,24 +27,42 @@ Future<void> showAssistantConfigurationDialog(
   required ConversationBinding conversation,
   required AgentsBinding agents,
 }) {
+  final providerContainer = ProviderScope.containerOf(context, listen: false);
   return showDialog<void>(
     context: context,
-    builder: (context) => ProjectionBuilder<AgentsProjection, AgentsProjection>(
-      source: agents.projection,
-      select: (projection) => projection,
-      builder: (context, agentsProjection) =>
-          ProjectionBuilder<
-            CanonicalConversationProjection,
-            CanonicalConversationProjection
-          >(
-            source: conversation.canonicalEvents,
-            select: (projection) => projection,
-            builder: (context, canonical) => _AssistantConfigurationDialog(
-              agents: agents,
-              agentsProjection: agentsProjection,
-              groupSelected: canonical.conversation?.group == true,
-            ),
-          ),
+    builder: (dialogContext) => UncontrolledProviderScope(
+      container: providerContainer,
+      child: Builder(
+        builder: (context) {
+          final planes = conversationSourcePortOf(context);
+          return AsyncRegion<AgentsProjection, IntentSink<AgentsIntent>>(
+            source: agentsCatalogProjectionProvider,
+            actions: agents.intents,
+            data: (context, agentsProjection, _) =>
+                ConversationPlaneBuilder<
+                  CanonicalConversationProjection,
+                  CanonicalConversationProjection
+                >(
+                  plane: planes.canonicalEvents,
+                  select: (projection) => projection,
+                  // A withdrawn canonical plane leaves the group state unknown
+                  // instead of claiming either membership; only the group-bound
+                  // controls stay disabled.
+                  emptyBuilder: (context) => _AssistantConfigurationDialog(
+                    agents: agents,
+                    agentsProjection: agentsProjection,
+                    groupSelected: null,
+                  ),
+                  builder: (context, canonical) =>
+                      _AssistantConfigurationDialog(
+                        agents: agents,
+                        agentsProjection: agentsProjection,
+                        groupSelected: canonical.conversation?.group == true,
+                      ),
+                ),
+          );
+        },
+      ),
     ),
   );
 }
@@ -54,7 +76,7 @@ final class _AssistantConfigurationDialog extends StatefulWidget {
 
   final AgentsBinding agents;
   final AgentsProjection agentsProjection;
-  final bool groupSelected;
+  final bool? groupSelected;
 
   @override
   State<_AssistantConfigurationDialog> createState() =>
@@ -162,7 +184,7 @@ final class _AssistantConfigurationDialogState
   }
 
   void _save() {
-    if (!widget.groupSelected || _draft.agentId.trim().isEmpty) {
+    if (widget.groupSelected != true || _draft.agentId.trim().isEmpty) {
       setState(() {
         _validationError = _copy(
           '请为 Assistant 选择一个可调用 Agent。',
@@ -309,7 +331,7 @@ final class _AssistantConfigurationDialogState
                     const SizedBox(width: 8),
                     FilledButton(
                       key: const Key('assistant-configuration-save'),
-                      onPressed: loading || !widget.groupSelected
+                      onPressed: loading || widget.groupSelected != true
                           ? null
                           : _save,
                       child: _savePending

@@ -1,0 +1,34 @@
+{
+  "schema": "licoup.model-provider.v1",
+  "id": "synthetic.example.compat-local",
+  "displayName": "Synthetic Local Compatible Endpoint",
+  "baseUrl": "http://127.0.0.1:8098/v1",
+  "apiDialect": "openai-chat-compatible",
+  "credentialRef": "credential:compat-local",
+  "configRevision": 1,
+  "catalogSource": "static",
+  "models": [
+    {
+      "id": "local-small",
+      "displayName": "Local Small",
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "tools": null,
+      "reasoning": null,
+      "contextTokens": null,
+      "pricingSource": null
+    },
+    {
+      "id": "local-large",
+      "displayName": "Local Large",
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "tools": true,
+      "contextTokens": 8192,
+      "pricingSource": "synthetic.example/list-price"
+    }
+  ],
+  "compat": {
+    "synthetic.example/token-limit-parameter": "max_completion_tokens"
+  }
+}

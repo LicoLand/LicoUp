@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use std::collections::HashMap;
 
+pub(super) use crate::state_machines::security_approval::State as ApprovalState;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ApprovalDecision {
     Allow,
@@ -26,6 +28,7 @@ impl ApprovalDecision {
 
 #[derive(Clone, Debug)]
 pub(super) struct PendingApproval {
+    pub(super) state: ApprovalState,
     pub(super) pending_operation_id: String,
     pub(super) requester_agent_id: String,
     pub(super) target_client_id: String,

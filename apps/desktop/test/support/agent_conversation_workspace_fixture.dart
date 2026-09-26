@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/features/agents/agents_feature_composition.dart';
@@ -11,9 +14,13 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
+import 'package:licoup/src/projections/conversation/conversation_source_owner.dart';
 
 /// Test-only bridge that keeps existing controller fixtures while production
 /// renderers accept semantic bindings exclusively.
@@ -49,6 +56,11 @@ class _AgentConversationWorkspaceFixtureState
   late final AgentsFeatureComposition _agents;
   late final ConversationFeatureComposition _conversation;
   late final MobileRelayFeatureComposition _relay;
+  late final _FixtureAgentsProjectionSource _agentsProjection;
+  late final AgentsPresentationSource _agentsSource;
+  late final _FixturePersistentTurnsProjectionSource _persistentTurnsProjection;
+  late final ConversationSourcePlanes _conversationPlanes;
+  late final List<Override> _overrides;
 
   @override
   void initState() {
@@ -61,6 +73,51 @@ class _AgentConversationWorkspaceFixtureState
       homeLayout: widget.controller.mobileHomeLayoutController,
       readMobileRuntime: () => widget.controller.mobileClientRuntimePlatform,
     );
+    // The renderer reads the catalog region from the runtime source, while the
+    // same projection instance still feeds the workspace binding (participant
+    // targets). Installing one shared source keeps both paths on one value.
+    _agentsProjection = _FixtureAgentsProjectionSource(
+      delegate: _agents.binding.projection,
+      targets: widget.targets,
+      scanning: widget.scanning,
+      adding: widget.adding,
+    );
+    _agentsSource = AgentsPresentationSource(projection: _agentsProjection);
+    // The workspace reads the conversation planes from the runtime owner, so
+    // every plane must be the exact projection instance its binding holds,
+    // including this fixture's persistent-turn overlay. The owner wraps the
+    // container's own runtime and is created once per container.
+    final conversation = _conversation.binding;
+    _persistentTurnsProjection = _FixturePersistentTurnsProjectionSource(
+      delegate: conversation.persistentTurns,
+      controller: widget.controller,
+    );
+    _conversationPlanes = ConversationSourcePlanes(
+      projection: conversation.projection,
+      nativeCatalog: conversation.nativeCatalog,
+      canonicalEvents: conversation.canonicalEvents,
+      persistentTurns: _persistentTurnsProjection,
+      composer: conversation.composer,
+      attachments: conversation.attachments,
+      tabActivity: conversation.tabActivity,
+      archive: conversation.archive,
+      execution: conversation.execution,
+    );
+    _overrides = <Override>[
+      agentsCatalogSourceProvider.overrideWithValue(_agentsSource),
+      conversationSourcePortProvider.overrideWith((ref) {
+        final owner = ConversationSourceOwner.spawn(
+          runtime: ref.watch(presentationRuntimeProvider),
+          planes: _conversationPlanes,
+        );
+        ref.onDispose(owner.dispose);
+        return owner;
+      }),
+      // The workspace's relay approval region reads its runtime source instead
+      // of the binding; the feature composition owns these sources and this
+      // fixture disposes them through [_relay].
+      ..._relay.providerOverrides,
+    ];
   }
 
   @override
@@ -76,6 +133,7 @@ class _AgentConversationWorkspaceFixtureState
   void dispose() {
     unawaited(
       Future.wait<void>([
+        _agentsSource.dispose(),
         _agents.close(),
         _conversation.close(),
         _relay.dispose(),
@@ -87,41 +145,37 @@ class _AgentConversationWorkspaceFixtureState
   @override
   Widget build(BuildContext context) {
     final conversation = _conversation.binding;
-    return MediaQuery(
-      data: MediaQuery.of(
-        context,
-      ).copyWith(disableAnimations: widget.disableAnimations),
-      child: AgentConversationWorkspace(
-        agents: AgentsBinding(
-          projection: _FixtureAgentsProjectionSource(
-            delegate: _agents.binding.projection,
-            targets: widget.targets,
-            scanning: widget.scanning,
-            adding: widget.adding,
+    return ProviderScope(
+      overrides: _overrides,
+      child: MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(disableAnimations: widget.disableAnimations),
+        child: AgentConversationWorkspace(
+          agents: AgentsBinding(
+            projection: _agentsProjection,
+            intents: _agents.binding.intents,
+            effects: _agents.binding.effects,
           ),
-          intents: _agents.binding.intents,
-          effects: _agents.binding.effects,
-        ),
-        conversation: ConversationBinding(
-          projection: conversation.projection,
-          nativeCatalog: conversation.nativeCatalog,
-          canonicalEvents: conversation.canonicalEvents,
-          persistentTurns: _FixturePersistentTurnsProjectionSource(
-            delegate: conversation.persistentTurns,
-            controller: widget.controller,
+          conversation: ConversationBinding(
+            projection: conversation.projection,
+            execution: conversation.execution,
+            nativeCatalog: conversation.nativeCatalog,
+            canonicalEvents: conversation.canonicalEvents,
+            persistentTurns: _persistentTurnsProjection,
+            composer: conversation.composer,
+            attachments: conversation.attachments,
+            tabActivity: conversation.tabActivity,
+            notifications: conversation.notifications,
+            archive: conversation.archive,
+            intents: conversation.intents,
+            effects: conversation.effects,
           ),
-          composer: conversation.composer,
-          attachments: conversation.attachments,
-          tabActivity: conversation.tabActivity,
-          notifications: conversation.notifications,
-          archive: conversation.archive,
-          intents: conversation.intents,
-          effects: conversation.effects,
+          relay: _relay.binding,
+          onAddTarget: widget.onAddTarget,
+          onSearch: widget.onSearch,
+          allowManualTargetActions: widget.allowManualTargetActions,
         ),
-        relay: _relay.binding,
-        onAddTarget: widget.onAddTarget,
-        onSearch: widget.onSearch,
-        allowManualTargetActions: widget.allowManualTargetActions,
       ),
     );
   }

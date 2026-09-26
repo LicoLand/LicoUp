@@ -3,11 +3,31 @@ use rand_core::SeedableRng;
 
 use super::{
     super::{
+        protocol_state::{Event, transition_target},
         session::MlKemBraidSession,
         transition::{checked_next_epoch, previous_epoch},
     },
     support::TEST_SECRET,
 };
+
+#[test]
+fn generated_targets_drive_constructed_protocol_phases() {
+    let mut rng = StdRng::seed_from_u64(5);
+    let mut initiator = MlKemBraidSession::new_initiator(&TEST_SECRET).unwrap();
+    let initiator_target = transition_target(initiator.state_name(), Event::SampleKeys).unwrap();
+
+    initiator.send_with_rng(&mut rng).unwrap();
+    assert_eq!(initiator.state_name(), initiator_target);
+
+    let failure_target = transition_target(initiator.state_name(), Event::Fail).unwrap();
+    initiator.destroy();
+    assert_eq!(initiator.state_name(), failure_target);
+
+    let responder_source = crate::state_machines::security_mlkem_braid::INITIAL;
+    let responder_target = transition_target(responder_source, Event::InitializeResponder).unwrap();
+    let responder = MlKemBraidSession::new_responder(&TEST_SECRET).unwrap();
+    assert_eq!(responder.state_name(), responder_target);
+}
 
 #[test]
 fn duplicate_chunk_poisoning_is_fail_closed() {

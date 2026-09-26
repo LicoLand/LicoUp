@@ -18,6 +18,8 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::io;
 
+use crate::state_machines::codex_protocol::{self as protocol_machine, Event as ProtocolEvent};
+
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("codex", "stdio-jsonrpc");
 
 pub(in crate::platform) fn completed_transitions(output: &str) -> Vec<Transition> {
@@ -124,7 +126,7 @@ impl CodexParser {
     pub(in crate::platform) fn new(config: ProtocolConfig) -> Self {
         Self {
             config,
-            phase: ProtocolPhase::AwaitInitialize,
+            phase: protocol_machine::INITIAL,
             session_id: None,
             thread_id: None,
             turn_id: None,
@@ -147,6 +149,16 @@ impl CodexParser {
                 "capabilities": {"experimentalApi": self.config.session_path.is_some()}
             }
         })
+    }
+
+    pub(super) fn advance(&mut self, event: ProtocolEvent) {
+        self.phase = protocol_machine::transition(self.phase, event).unwrap_or_else(|| {
+            panic!(
+                "invalid Codex protocol transition: {} + {}",
+                self.phase.as_str(),
+                event.as_str()
+            )
+        });
     }
 
     pub(in crate::platform) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {

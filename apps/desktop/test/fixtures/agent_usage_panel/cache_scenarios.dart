@@ -27,6 +27,7 @@ void registerAgentUsageCacheScenarios() {
 
     await tester.pumpWidget(
       usageTestApp(
+        overrides: monitoring.providerOverrides,
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -55,6 +56,7 @@ void registerAgentUsageCacheScenarios() {
       });
 
       Widget panel() => usageTestApp(
+        overrides: monitoring.providerOverrides,
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),

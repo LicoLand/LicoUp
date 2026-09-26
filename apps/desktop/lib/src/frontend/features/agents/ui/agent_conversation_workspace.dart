@@ -5,6 +5,8 @@ import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
@@ -15,7 +17,6 @@ import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
@@ -26,6 +27,8 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conta
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_projection_source.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_directive.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -39,13 +42,19 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_execution_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
 
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_inputs.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_intent.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_projection.dart';
+import 'package:licoup/src/presentation/mobile_relay/mobile_relay_providers.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 
 const _conversationAttachmentMediaUnsupported = 'attachment_media_unsupported';
@@ -417,114 +426,76 @@ class _AgentConversationWorkspaceState
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<AgentsProjection, AgentsProjection>(
-      source: widget.agents.projection,
-      select: (projection) => projection,
-      builder: (context, agents) => ProjectionBuilder<ConversationProjection, ConversationProjection>(
-        source: widget.conversation.projection,
-        select: (projection) => projection,
-        builder: (context, root) =>
-            ProjectionBuilder<
-              NativeConversationCatalogProjection,
-              NativeConversationCatalogProjection
-            >(
-              source: widget.conversation.nativeCatalog,
-              select: (projection) => projection,
-              builder: (context, native) =>
-                  ProjectionBuilder<
-                    CanonicalConversationProjection,
-                    CanonicalConversationProjection
-                  >(
-                    source: widget.conversation.canonicalEvents,
-                    select: (projection) => projection,
-                    builder: (context, canonical) =>
-                        ProjectionBuilder<
-                          PersistentTurnProjection,
-                          PersistentTurnProjection
-                        >(
-                          source: widget.conversation.persistentTurns,
-                          select: (projection) => projection,
-                          builder: (context, turns) =>
-                              ProjectionBuilder<
-                                ComposerProjection,
-                                ComposerProjection
-                              >(
-                                source: widget.conversation.composer,
-                                select: (projection) => projection,
-                                builder: (context, composer) =>
-                                    ProjectionBuilder<
-                                      ConversationAttachmentsProjection,
-                                      ConversationAttachmentsProjection
-                                    >(
-                                      source: widget.conversation.attachments,
-                                      select: (projection) => projection,
-                                      builder: (context, attachments) =>
-                                          ProjectionBuilder<
-                                            ConversationTabActivityProjection,
-                                            ConversationTabActivityProjection
-                                          >(
-                                            source:
-                                                widget.conversation.tabActivity,
-                                            select: (projection) => projection,
-                                            builder: (context, tabActivity) =>
-                                                ProjectionBuilder<
-                                                  ConversationArchiveProjection,
-                                                  ConversationArchiveProjection
-                                                >(
-                                                  source: widget
-                                                      .conversation
-                                                      .archive,
-                                                  select: (projection) =>
-                                                      projection,
-                                                  builder: (context, archive) =>
-                                                      ProjectionBuilder<
-                                                        MobileRelayProjection,
-                                                        MobileRelayProjection
-                                                      >(
-                                                        source: widget
-                                                            .relay
-                                                            .projection,
-                                                        select: (projection) =>
-                                                            projection,
-                                                        builder:
-                                                            (context, relay) =>
-                                                                _buildWorkspace(
-                                                                  context,
-                                                                  agents,
-                                                                  root,
-                                                                  native,
-                                                                  canonical,
-                                                                  turns,
-                                                                  composer,
-                                                                  attachments,
-                                                                  tabActivity,
-                                                                  archive,
-                                                                  relay,
-                                                                ),
-                                                      ),
-                                                ),
-                                          ),
-                                    ),
-                              ),
-                        ),
-                  ),
-            ),
-      ),
+    final planes = conversationSourcePortOf(context);
+    // Only the planes a conversation's identity depends on gate the frame.
+    // Every other plane is consumed where it is visible, so losing authority
+    // over the composer or a tab badge never hides authorized history.
+    return AsyncRegion<AgentsProjection, IntentSink<AgentsIntent>>(
+      source: agentsCatalogProjectionProvider,
+      actions: widget.agents.intents,
+      data: (context, agents, _) =>
+          ConversationPlaneSurface<
+            ConversationProjection,
+            ConversationProjection
+          >(
+            plane: planes.projection,
+            select: (projection) => projection,
+            builder: (context, root) =>
+                ConversationPlaneSurface<
+                  NativeConversationCatalogProjection,
+                  NativeConversationCatalogProjection
+                >(
+                  plane: planes.nativeCatalog,
+                  select: (projection) => projection,
+                  builder: (context, native) =>
+                      ConversationPlaneSurface<
+                        CanonicalConversationProjection,
+                        CanonicalConversationProjection
+                      >(
+                        plane: planes.canonicalEvents,
+                        select: (projection) => projection,
+                        builder: (context, canonical) =>
+                            ConversationPlaneSurface<
+                              PersistentTurnProjection,
+                              PersistentTurnProjection
+                            >(
+                              plane: planes.persistentTurns,
+                              select: (projection) => projection,
+                              builder: (context, turns) =>
+                                  AsyncRegion<
+                                    MobileRelayApprovalsInputs,
+                                    IntentSink<MobileRelayIntent>
+                                  >(
+                                    source: mobileRelayApprovalsInputsProvider,
+                                    actions: widget.relay.intents,
+                                    data: (context, relay, _) =>
+                                        _buildWorkspace(
+                                          context,
+                                          agents,
+                                          planes,
+                                          root,
+                                          native,
+                                          canonical,
+                                          turns,
+                                          relay,
+                                        ),
+                                  ),
+                            ),
+                      ),
+                ),
+          ),
     );
   }
 
   Widget _buildWorkspace(
     BuildContext context,
     AgentsProjection agents,
+    ConversationSourcePort planes,
     ConversationProjection root,
     NativeConversationCatalogProjection native,
     CanonicalConversationProjection canonical,
     PersistentTurnProjection turns,
-    ComposerProjection composer,
-    ConversationAttachmentsProjection attachments,
-    ConversationTabActivityProjection tabActivity,
-    ConversationArchiveProjection archive,
-    MobileRelayProjection relay,
+    MobileRelayApprovalsInputs relay,
   ) {
     _syncConversationListWithSelection(agents, root, native, canonical);
     _scheduleAgentBrowseCatalogWarm(agents);
@@ -546,21 +517,33 @@ class _AgentConversationWorkspaceState
         root.authority == ConversationAuthority.canonicalConversation &&
         !_showAgentDetailInsideGroupList;
     final detail = canonicalDetail
-        ? CanonicalGroupConversationPane(
-            conversation: widget.conversation,
-            agents: widget.agents,
-            canonical: canonical,
-            turns: turns,
-            composer: composer,
-            attachments: attachments,
-            framed: mobile,
-            onOpenAgentConversations: (agentId) {
-              _showAgentConversationList(agentId);
-              widget.conversation.intents.send(
-                const ClearCanonicalConversationSelection(),
-              );
-              widget.agents.intents.send(SelectAgent(agentId));
-            },
+        // Composer and attachments are nullable planes now: a withdrawal only
+        // disables its own region (draft/send/mention or attachments) while
+        // the canonical history, sidebar, and roster stay visible from their
+        // own admitted planes.
+        ? ConversationPlaneValue<ComposerProjection>(
+            plane: planes.composer,
+            builder: (context, _) =>
+                ConversationPlaneValue<ConversationAttachmentsProjection>(
+                  plane: planes.attachments,
+                  builder: (context, _) => CanonicalGroupConversationPane(
+                    conversation: widget.conversation,
+                    agents: widget.agents,
+                    canonical: canonical,
+                    turns: turns,
+                    composer: planes.composer.visibleValue,
+                    attachments: planes.attachments.visibleValue,
+                    allTargets: agents.targetDetails,
+                    framed: mobile,
+                    onOpenAgentConversations: (agentId) {
+                      _showAgentConversationList(agentId);
+                      widget.conversation.intents.send(
+                        const ClearCanonicalConversationSelection(),
+                      );
+                      widget.agents.intents.send(SelectAgent(agentId));
+                    },
+                  ),
+                ),
           )
         : _showWelcome
         ? AgentConversationWelcome(
@@ -584,15 +567,24 @@ class _AgentConversationWorkspaceState
                 ? widget.onAddTarget
                 : null,
           )
-        : _nativeConversationPane(
-            context,
-            selectedTarget,
-            selectedSession,
-            native,
-            turns,
-            composer,
-            attachments,
-            mobile: mobile,
+        : ConversationPlaneValue<ComposerProjection>(
+            plane: planes.composer,
+            builder: (context, composer) =>
+                ConversationPlaneValue<ConversationAttachmentsProjection>(
+                  plane: planes.attachments,
+                  builder: (context, attachments) => _nativeConversationPane(
+                    context,
+                    agents,
+                    selectedTarget,
+                    selectedSession,
+                    native,
+                    turns,
+                    composer,
+                    attachments,
+                    planes.execution,
+                    mobile: mobile,
+                  ),
+                ),
           );
     final hostsInternalComposer =
         canonicalDetail || (!_showWelcome && selectedTarget != null);
@@ -609,8 +601,8 @@ class _AgentConversationWorkspaceState
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                child: SecureMeshApprovalCard(
-                  projection: relay,
+                child: SecureMeshApprovalCard.inputs(
+                  inputs: relay,
                   intents: widget.relay.intents,
                 ),
               ),
@@ -619,7 +611,7 @@ class _AgentConversationWorkspaceState
           );
     if (mobile) return decoratedDetail;
 
-    final sidebar = _sidebar(agents, native, canonical, tabActivity, archive);
+    final sidebar = _sidebar(agents, native, canonical, planes);
     return ColoredBox(
       key: const Key('agents-workspace-shell'),
       color: presentation.canvasColor(context.layoutPalette),
@@ -697,8 +689,35 @@ class _AgentConversationWorkspaceState
     AgentsProjection agents,
     NativeConversationCatalogProjection native,
     CanonicalConversationProjection canonical,
-    ConversationTabActivityProjection tabActivity,
-    ConversationArchiveProjection archive,
+    ConversationSourcePort planes,
+  ) {
+    // Tab badges and the archive affordance are local planes: losing authority
+    // over one of them degrades that affordance and never the sidebar list or
+    // the conversations it still shows.
+    return ConversationPlaneValue<ConversationTabActivityProjection>(
+      plane: planes.tabActivity,
+      builder: (context, tabActivity) =>
+          ConversationPlaneValue<ConversationArchiveProjection>(
+            plane: planes.archive,
+            builder: (context, archive) => _buildSidebarBody(
+              agents,
+              planes,
+              native,
+              canonical,
+              tabActivity,
+              archive,
+            ),
+          ),
+    );
+  }
+
+  Widget _buildSidebarBody(
+    AgentsProjection agents,
+    ConversationSourcePort planes,
+    NativeConversationCatalogProjection native,
+    CanonicalConversationProjection canonical,
+    ConversationTabActivityProjection? tabActivity,
+    ConversationArchiveProjection? archive,
   ) {
     final selectedId = _selectedSession(native)?.id ?? '';
     var showConversationList = false;
@@ -791,9 +810,9 @@ class _AgentConversationWorkspaceState
     void refreshSidebarCatalog() {
       // Read current projections, not the last rendered snapshot: a second
       // gesture must not redispatch during the frame before loading paints.
-      if (widget.conversation.nativeCatalog.current.phase ==
+      if (planes.nativeCatalog.visibleValue?.phase ==
               PresentationPhase.loading ||
-          widget.conversation.canonicalEvents.current.phase ==
+          planes.canonicalEvents.visibleValue?.phase ==
               PresentationPhase.loading) {
         return;
       }
@@ -875,13 +894,15 @@ class _AgentConversationWorkspaceState
           : (agentId) => widget.conversation.intents.send(
               RefreshConversationCatalog(agentId: agentId),
             ),
-      onArchive: () => unawaited(
-        showConversationArchiveDialog(
-          context,
-          actions: _archiveActions(archive),
-          sourceAgentId: '',
-        ),
-      ),
+      onArchive: archive == null
+          ? null
+          : () => unawaited(
+              showConversationArchiveDialog(
+                context,
+                actions: _archiveActions(archive),
+                sourceAgentId: '',
+              ),
+            ),
       onAddTarget: widget.onAddTarget,
       onRefresh: refreshSidebarCatalog,
       scanning: agents.scanning,
@@ -904,9 +925,10 @@ class _AgentConversationWorkspaceState
   }
 
   AgentConversationTabActivity _activityFor(
-    ConversationTabActivityProjection projection,
+    ConversationTabActivityProjection? projection,
     String agentId,
   ) {
+    if (projection == null) return AgentConversationTabActivity.none;
     final normalized = agentId.trim();
     for (final activity in projection.agentActivities) {
       if (activity.agentId == normalized) return activity.activity;
@@ -953,12 +975,14 @@ class _AgentConversationWorkspaceState
 
   Widget _nativeConversationPane(
     BuildContext context,
+    AgentsProjection agents,
     TargetCandidate target,
     AgentConversationSession? session,
     NativeConversationCatalogProjection native,
     PersistentTurnProjection turns,
-    ComposerProjection composer,
-    ConversationAttachmentsProjection attachments, {
+    ComposerProjection? composer,
+    ConversationAttachmentsProjection? attachments,
+    ConversationPlanePort<ConversationExecutionProjection>? executionPlane, {
     required bool mobile,
   }) {
     final turn = turns.memberships.isEmpty ? null : turns.memberships.first;
@@ -970,10 +994,13 @@ class _AgentConversationWorkspaceState
     final showWorkingDirectory =
         !mobile && !target.hasValidVirtualMachineConnection;
     final composerEnabled =
-        composer.inputEnabled && (turn?.inputEnabled ?? true);
+        composer != null &&
+        composer.inputEnabled &&
+        (turn?.inputEnabled ?? true);
+    final attachmentStatusCode = attachments?.statusCode ?? '';
     final gateReasonCode = composerEnabled
-        ? (attachments.statusCode.isNotEmpty
-              ? attachments.statusCode
+        ? (attachmentStatusCode.isNotEmpty
+              ? attachmentStatusCode
               : turn?.failureReasonCode ?? native.notice?.reasonCode ?? '')
         : target.conversationSendGateReason;
     final unblockSend = switch (gateReasonCode) {
@@ -1003,21 +1030,25 @@ class _AgentConversationWorkspaceState
       preparingNewConversation: native.preparingNewConversation,
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
-      composerDraft: composer.draft,
-      hasAttachments: attachments.attachments.isNotEmpty,
-      modelOptions: composer.modelOptions,
-      selectedModel: composer.selectedModel,
-      defaultModel: composer.defaultModel,
-      reasoningEffortOptions: composer.reasoningEffortOptions,
-      selectedReasoningEffort: composer.selectedReasoningEffort,
-      defaultReasoningEffort: composer.defaultReasoningEffort,
+      composerDraft: composer?.draft ?? '',
+      hasAttachments: attachments?.attachments.isNotEmpty ?? false,
+      modelOptions: composer?.modelOptions ?? const <String>[],
+      selectedModel: composer?.selectedModel ?? '',
+      defaultModel: composer?.defaultModel ?? '',
+      reasoningEffortOptions:
+          composer?.reasoningEffortOptions ?? const <String>[],
+      selectedReasoningEffort: composer?.selectedReasoningEffort ?? '',
+      defaultReasoningEffort: composer?.defaultReasoningEffort ?? '',
       showWorkingDirectory: showWorkingDirectory,
-      workingDirectory: showWorkingDirectory ? composer.workingDirectory : '',
+      workingDirectory: showWorkingDirectory
+          ? (composer?.workingDirectory ?? '')
+          : '',
       workingDirectorySelectable:
-          showWorkingDirectory && composer.workingDirectorySelectable,
+          showWorkingDirectory &&
+          (composer?.workingDirectorySelectable ?? false),
       sendAuthorizeActive: native.authorizingRuntime,
       permissionRetryTool: native.pendingPermissionRetryTool,
-      participantTargets: widget.agents.projection.current.targetDetails,
+      participantTargets: agents.targetDetails,
       showLicoProfileCapsule: native.supportsLicoProfile,
       selectedLicoProfile: native.selectedLicoProfile,
       runningRecentSessionIds: native.runningSessionIds.toSet(),
@@ -1031,7 +1062,14 @@ class _AgentConversationWorkspaceState
               message: message,
               target: speakingTarget,
               conversationTitle: session?.title ?? '',
-              projection: widget.conversation.execution,
+              projection: executionPlane == null
+                  ? null
+                  : ConversationPlaneProjectionSource<
+                      ConversationExecutionProjection
+                    >(
+                      executionPlane,
+                      empty: ConversationExecutionProjection.new,
+                    ),
               intents: widget.conversation.intents,
               onCopyText: (text) async =>
                   widget.conversation.intents.send(CopyConversationText(text)),
@@ -1042,9 +1080,13 @@ class _AgentConversationWorkspaceState
           widget.conversation.intents.send(SelectConversationModel(model)),
       onReasoningEffortChanged: (reasoningEffort) => widget.conversation.intents
           .send(SelectConversationReasoningEffort(reasoningEffort)),
-      onDraftChanged: (draft) => widget.conversation.intents.send(
-        UpdateConversationDraft(composer.conversationId, draft),
-      ),
+      onDraftChanged: (draft) {
+        final conversationId = composer?.conversationId ?? '';
+        if (conversationId.isEmpty) return;
+        widget.conversation.intents.send(
+          UpdateConversationDraft(conversationId, draft),
+        );
+      },
       onPermissionRetry: () =>
           widget.conversation.intents.send(const RetryConversationPermission()),
       onPermissionRetryRemember: () => widget.conversation.intents.send(
@@ -1056,9 +1098,11 @@ class _AgentConversationWorkspaceState
       onCopyText: (text) async =>
           widget.conversation.intents.send(CopyConversationText(text)),
       onSend: (content) async {
+        final conversationId = composer?.conversationId ?? '';
+        if (conversationId.isEmpty) return true;
         widget.conversation.intents.send(
           PostConversationMessage(
-            conversationId: composer.conversationId,
+            conversationId: conversationId,
             content: content,
             addressedMembershipIds: [
               if (turn?.membershipId.trim().isNotEmpty == true)
@@ -1069,7 +1113,7 @@ class _AgentConversationWorkspaceState
         );
         return true;
       },
-      onCancel: turn?.cancelEnabled == true
+      onCancel: turn?.cancelEnabled == true && composer != null
           ? () async => widget.conversation.intents.send(
               InterruptConversationTurn(
                 composer.conversationId,
@@ -1087,24 +1131,33 @@ class _AgentConversationWorkspaceState
               const LoadMoreConversationSessions(),
             )
           : null,
-      onLoadEarlierMessages: () async => widget.conversation.intents.send(
-        LoadEarlierConversationEvents(composer.conversationId),
-      ),
+      onLoadEarlierMessages: () async {
+        final conversationId = composer?.conversationId ?? '';
+        if (conversationId.isEmpty) return;
+        widget.conversation.intents.send(
+          LoadEarlierConversationEvents(conversationId),
+        );
+      },
       onUnblockSend: unblockSend,
       onChooseWorkingDirectory:
-          showWorkingDirectory && composer.workingDirectorySelectable
-          ? () => unawaited(_chooseWorkingDirectory(composer.workingDirectory))
+          showWorkingDirectory &&
+              (composer?.workingDirectorySelectable ?? false)
+          ? () => unawaited(
+              _chooseWorkingDirectory(composer?.workingDirectory ?? ''),
+            )
           : null,
       onAttach:
           strategy.messageStyle == AgentsMessageStyle.participantFlow &&
-              attachments.acceptsImages
+              (attachments?.acceptsImages ?? false) &&
+              composer != null
           ? () => widget.conversation.intents.send(
               AddConversationAttachment(composer.conversationId),
             )
           : null,
       onPasteImage:
           strategy.messageStyle == AgentsMessageStyle.participantFlow &&
-              attachments.acceptsImages
+              (attachments?.acceptsImages ?? false) &&
+              composer != null
           ? () async {
               widget.conversation.intents.send(
                 PasteConversationAttachment(composer.conversationId),
@@ -1235,4 +1288,152 @@ class _EmptyConversation extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Subscribes to one conversation plane for a surface that must distinguish a
+/// first frame from a withdrawal: a plane that was never read renders its
+/// loading state, a withdrawn plane renders its unavailable state, and a
+/// visible plane renders the selected value. No value is ever revived.
+class ConversationPlaneSurface<T, S> extends StatefulWidget {
+  const ConversationPlaneSurface({
+    super.key,
+    required this.plane,
+    required this.select,
+    required this.builder,
+    this.loading,
+    this.unavailable,
+  });
+
+  final ConversationPlanePort<T> plane;
+  final S Function(T value) select;
+  final Widget Function(BuildContext context, S selected) builder;
+  final WidgetBuilder? loading;
+  final WidgetBuilder? unavailable;
+
+  @override
+  State<ConversationPlaneSurface<T, S>> createState() =>
+      _ConversationPlaneSurfaceState<T, S>();
+}
+
+class _ConversationPlaneSurfaceState<T, S>
+    extends State<ConversationPlaneSurface<T, S>> {
+  StreamSubscription<ConversationPlaneRead<T>>? _subscription;
+  T? _value;
+  bool _withdrawn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationPlaneSurface<T, S> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.plane, widget.plane)) {
+      _subscription?.cancel();
+      _subscribe();
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+
+  void _subscribe() {
+    _value = widget.plane.visibleValue;
+    _withdrawn = false;
+    _subscription = widget.plane.reads.listen(_handleRead);
+  }
+
+  void _handleRead(ConversationPlaneRead<T> read) {
+    if (!mounted) return;
+    switch (read) {
+      case ConversationPlaneVisible<T>(:final value):
+        setState(() {
+          _value = value;
+          _withdrawn = false;
+        });
+      case ConversationPlaneWithdrawn<T>():
+        setState(() {
+          _value = null;
+          _withdrawn = true;
+        });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _value;
+    if (value != null) return widget.builder(context, widget.select(value));
+    if (_withdrawn) {
+      return (widget.unavailable ?? widget.loading)?.call(context) ??
+          const SizedBox.shrink();
+    }
+    return widget.loading?.call(context) ?? const SizedBox.shrink();
+  }
+}
+
+/// Subscribes to one local conversation plane and always builds, passing null
+/// while the plane is invisible. A local plane degrades its own affordance and
+/// never gates the surface around it.
+class ConversationPlaneValue<T> extends StatefulWidget {
+  const ConversationPlaneValue({
+    super.key,
+    required this.plane,
+    required this.builder,
+  });
+
+  final ConversationPlanePort<T> plane;
+  final Widget Function(BuildContext context, T? value) builder;
+
+  @override
+  State<ConversationPlaneValue<T>> createState() =>
+      _ConversationPlaneValueState<T>();
+}
+
+class _ConversationPlaneValueState<T> extends State<ConversationPlaneValue<T>> {
+  StreamSubscription<ConversationPlaneRead<T>>? _subscription;
+  T? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationPlaneValue<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.plane, widget.plane)) {
+      _subscription?.cancel();
+      _subscribe();
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+
+  void _subscribe() {
+    _value = widget.plane.visibleValue;
+    _subscription = widget.plane.reads.listen((read) {
+      if (!mounted) return;
+      setState(() {
+        _value = switch (read) {
+          ConversationPlaneVisible<T>(:final value) => value,
+          ConversationPlaneWithdrawn<T>() => null,
+        };
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _value);
 }

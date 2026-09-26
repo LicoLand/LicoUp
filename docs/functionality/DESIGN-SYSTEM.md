@@ -1,5 +1,7 @@
 # LicoUp Client Design System
 
+Updated: 2026-09-25
+
 | Relationship | Authority |
 | --- | --- |
 | Product scope | [Client functionality](CLIENT-DESKTOP.md) |
@@ -340,7 +342,7 @@ reasoning effort muted behind it; it opens the same editor, hides the effort
 half when no effort is configured, and disappears entirely while the Assistant
 is paused or unconfigured. The Adaptive Flywheel capsule opens its
 configuration only. Configuration and
-message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#group-conversation-start).
+message routing belong to the [Adaptive Flywheel flow](ADAPTIVE-FLYWHEEL.md#desktop-flow).
 
 桌面消息界面左上角使用随内容收窄的身份胶囊，右上角使用一个圆形三点菜单。
 长标题在可用宽度内省略。单聊菜单保留历史、新建与详情入口，群聊菜单保留成员
@@ -359,7 +361,7 @@ Adaptive Flywheel 胶囊，两者同为玻璃材质、同高。点击助手名�
 前方有一处安静的模型展示器：以正文色显示激活助手已选的模型名称，思考强度以弱化色
 跟在其后，点击同样打开助手编辑框；未配置思考强度时不显示后半段，助手暂停或未配置
 时整体消失。Adaptive Flywheel 胶囊仅打开其配置；配置和发送语义
-由[对应流程](ADAPTIVE-FLYWHEEL.md#group-conversation-start)维护。
+由[对应流程](ADAPTIVE-FLYWHEEL.md#desktop-flow)维护。
 
 The product-owned **Local** group is the highest-priority cold-start data
 target. After native state admission, load the canonical group catalog and
@@ -537,4 +539,4 @@ continuous strokes, keyboard actions, activity ticker lifetime, asynchronous
 partial publication, usage caching, message paging and native lineage cards.
 Synthetic layout and feature renders provide visual evidence without real
 user content. The complete regression and installed-client verification follow
-[Contributing](../../CONTRIBUTING.md#local-client-verification).
+[Runbook](../RUNBOOK.md).

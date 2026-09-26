@@ -1,0 +1,207 @@
+{
+  "kind": "licoup-distribution-catalogue-vectors.v1",
+  "product_source": "crates/licoup-extension-contracts/src/deployment.rs",
+  "product_function": "install_closure",
+  "note": "Shared test vectors: the plan resolver must return exactly these decisions, and each case names the product test that pins the same behaviour in Rust. Ranges are recorded and never solved, exactly like the product.",
+  "cases": [
+    {
+      "id": "optional-dependency-is-declined-not-installed",
+      "rule": "optionalRequires is reported, never installed",
+      "product_test": "optional_dependencies_are_reported_and_never_installed_on_someone_elses_account",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "org.licoland.core", "version": "0.3.0", "source": "official-directory", "requires": [], "optionalRequires": [] },
+          {
+            "id": "org.licoland.adapter.generic",
+            "version": "1.0.0",
+            "source": "official-directory",
+            "requires": [{ "packageId": "org.licoland.core", "range": "^0.3" }],
+            "optionalRequires": [{ "packageId": "org.licoland.feature.analytics", "range": "^1" }]
+          },
+          { "id": "org.licoland.feature.analytics", "version": "1.0.0", "source": "third-party-directory", "requires": [{ "packageId": "org.licoland.core", "range": "^0.3" }], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["org.licoland.adapter.generic"],
+      "expected": {
+        "ok": true,
+        "selected": ["org.licoland.adapter.generic", "org.licoland.core"],
+        "declined_optional": ["org.licoland.feature.analytics"]
+      }
+    },
+    {
+      "id": "optional-that-is-also-required-is-installed-once",
+      "rule": "a package that is both required and optional is installed once and not reported as declined",
+      "product_test": "an_optional_dependency_that_is_also_required_is_installed_once",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "org.licoland.core", "version": "0.3.0", "source": "official-directory", "requires": [], "optionalRequires": [] },
+          {
+            "id": "org.licoland.adapter.generic",
+            "version": "1.0.0",
+            "source": "official-directory",
+            "requires": [
+              { "packageId": "org.licoland.core", "range": "^0.3" },
+              { "packageId": "org.licoland.feature.analytics", "range": "^1" }
+            ],
+            "optionalRequires": [{ "packageId": "org.licoland.feature.analytics", "range": "^1" }]
+          },
+          { "id": "org.licoland.feature.analytics", "version": "1.0.0", "source": "third-party-directory", "requires": [{ "packageId": "org.licoland.core", "range": "^0.3" }], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["org.licoland.adapter.generic", "org.licoland.feature.analytics"],
+      "expected": {
+        "ok": true,
+        "selected": ["org.licoland.adapter.generic", "org.licoland.core", "org.licoland.feature.analytics"],
+        "declined_optional": []
+      }
+    },
+    {
+      "id": "missing-dependency-names-the-dependent",
+      "rule": "an unknown required dependency refuses with the dependent named",
+      "product_test": "a_missing_required_package_is_actionable_and_names_the_dependent",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "org.licoland.core", "version": "0.3.0", "source": "official-directory", "requires": [], "optionalRequires": [] },
+          {
+            "id": "example.specialist.echo",
+            "version": "1.0.0",
+            "source": "local-import",
+            "requires": [{ "packageId": "example.something.absent", "range": "^1" }],
+            "optionalRequires": []
+          }
+        ]
+      },
+      "roots": ["example.specialist.echo"],
+      "expected": {
+        "ok": false,
+        "code": "install_package_unavailable",
+        "package": "example.something.absent",
+        "required_by": "example.specialist.echo",
+        "field": "packageId"
+      }
+    },
+    {
+      "id": "unknown-root-is-actionable",
+      "rule": "a root that is not in the catalogue refuses as an unavailable package",
+      "product_test": "a_missing_required_package_is_actionable_and_names_the_dependent",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "org.licoland.core", "version": "0.3.0", "source": "official-directory", "requires": [], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["example.absent"],
+      "expected": {
+        "ok": false,
+        "code": "install_package_unavailable",
+        "package": "example.absent",
+        "required_by": null,
+        "field": "packageId"
+      }
+    },
+    {
+      "id": "requires-cycle-is-refused",
+      "rule": "a cycle among requires is refused with the revisited package named",
+      "product_test": "a_cycle_is_refused_rather_than_half_installed",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "example.a", "version": "1.0.0", "source": "local-import", "requires": [{ "packageId": "example.b", "range": "^1" }], "optionalRequires": [] },
+          { "id": "example.b", "version": "1.0.0", "source": "local-import", "requires": [{ "packageId": "example.a", "range": "^1" }], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["example.a"],
+      "expected": {
+        "ok": false,
+        "code": "install_dependency_cycle",
+        "package": "example.a",
+        "required_by": null,
+        "field": "requires"
+      }
+    },
+    {
+      "id": "diamond-is-visited-once",
+      "rule": "a diamond closure visits each package once and is not a cycle",
+      "product_test": "a_diamond_closure_is_visited_once_and_is_not_a_cycle",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          {
+            "id": "example.top",
+            "version": "1.0.0",
+            "source": "local-import",
+            "requires": [
+              { "packageId": "example.left", "range": "^1" },
+              { "packageId": "example.right", "range": "^1" }
+            ],
+            "optionalRequires": []
+          },
+          { "id": "example.left", "version": "1.0.0", "source": "local-import", "requires": [{ "packageId": "example.leaf", "range": "^1" }], "optionalRequires": [] },
+          { "id": "example.right", "version": "1.0.0", "source": "local-import", "requires": [{ "packageId": "example.leaf", "range": "^1" }], "optionalRequires": [] },
+          { "id": "example.leaf", "version": "1.0.0", "source": "local-import", "requires": [], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["example.top"],
+      "expected": {
+        "ok": true,
+        "selected": ["example.leaf", "example.left", "example.right", "example.top"],
+        "declined_optional": []
+      }
+    },
+    {
+      "id": "local-import-needs-no-directory",
+      "rule": "a local import installs and needs no directory or account",
+      "product_test": "local_imports_need_no_directory_and_no_account",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          { "id": "org.licoland.core", "version": "0.3.0", "source": "local-import", "requires": [], "optionalRequires": [] },
+          { "id": "example.specialist.echo", "version": "1.0.0", "source": "local-import", "requires": [{ "packageId": "org.licoland.core", "range": "^0.3" }], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["example.specialist.echo"],
+      "expected": {
+        "ok": true,
+        "selected": ["example.specialist.echo", "org.licoland.core"],
+        "declined_optional": []
+      }
+    },
+    {
+      "id": "core-with-a-removable-dependency-is-refused",
+      "rule": "the core may not require anything removable",
+      "product_test": "core_may_not_require_something_removable",
+      "catalogue": {
+        "schema": "licoup.distribution-catalogue.v1",
+        "core_package": "org.licoland.core",
+        "packages": [
+          {
+            "id": "org.licoland.core",
+            "version": "0.3.0",
+            "source": "official-directory",
+            "requires": [{ "packageId": "org.licoland.feature.gateway", "range": "^1" }],
+            "optionalRequires": []
+          },
+          { "id": "org.licoland.feature.gateway", "version": "1.0.0", "source": "official-directory", "requires": [{ "packageId": "org.licoland.core", "range": "^0.3" }], "optionalRequires": [] }
+        ]
+      },
+      "roots": ["org.licoland.core"],
+      "expected": {
+        "ok": false,
+        "code": "core_requires_optional_package",
+        "package": "org.licoland.feature.gateway",
+        "required_by": null,
+        "field": "requires"
+      }
+    }
+  ]
+}

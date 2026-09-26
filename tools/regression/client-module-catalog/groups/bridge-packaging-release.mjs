@@ -12,6 +12,13 @@ import {
 
 export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
   defineModule({
+    id: "release.source-version",
+    kind: "release",
+    summary: "Contributor-owned source version, changelog and tag consistency",
+    inputs: ["tools/release/**", ".github/workflows/source-version.yml", "package.json", "tools/client-version.json", "CHANGELOG.md"],
+    command: command("node", ["--test", "tools/release/tests/source-version.test.mjs"], 60_000),
+  }),
+  defineModule({
       id: "bridge.native-mcp-command",
       kind: "platform-bridge",
       summary: "Private-stdin MCP preview, direct authorization, and one-shot execute commands",

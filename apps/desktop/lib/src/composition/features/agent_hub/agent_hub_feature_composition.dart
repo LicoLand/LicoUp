@@ -1,5 +1,7 @@
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
+import 'package:licoup/src/presentation/agent_hub/agent_hub_providers.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -43,6 +45,10 @@ final class AgentHubFeatureComposition {
 
   /// F01 Riverpod entry for the agent hub catalog resource.
   late final PresentationProviderEntry<AgentHubProjection> catalogEntry;
+
+  List<Override> get providerOverrides => <Override>[
+    agentHubCatalogSourceProvider.overrideWithValue(_catalogSource),
+  ];
 
   /// Narrow renderer actions with the agent hub scope pinned.
   late final AgentHubCatalogActions catalogActions;

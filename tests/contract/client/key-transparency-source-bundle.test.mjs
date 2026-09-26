@@ -27,6 +27,7 @@ const productionLeaves = Object.freeze([
 ]);
 const testLeaves = Object.freeze([
   "authority.rs",
+  "authority_challenge.rs",
   "dispatcher.rs",
   "monitor_gossip.rs",
   "provision.rs",

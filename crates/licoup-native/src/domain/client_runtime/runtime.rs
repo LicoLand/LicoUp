@@ -7,6 +7,7 @@ use super::agent_ipc::AgentPrivateIpc;
 use super::arena::{Handle, HandleArena, HandleKind};
 use super::spool::OutputSpool;
 use super::stream::{StreamCursor, StreamItem, StreamQueue};
+use crate::state_machines::{client_runtime_future, client_runtime_subscription};
 use std::sync::Arc;
 
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
@@ -15,20 +16,8 @@ const DEFAULT_HANDLE_CAPACITY: u32 = 256;
 const DEFAULT_STREAM_EVENTS: usize = 64;
 const DEFAULT_STREAM_BYTES: usize = 64 * 1024;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FutureState {
-    Pending,
-    Ready,
-    Cancelled,
-    Freed,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SubscriptionState {
-    Open,
-    Cancelled,
-    Freed,
-}
+pub use crate::state_machines::client_runtime_future::State as FutureState;
+pub use crate::state_machines::client_runtime_subscription::State as SubscriptionState;
 
 struct FutureSlot {
     state: FutureState,
@@ -107,14 +96,26 @@ impl ClientRuntime {
         let slot = self.futures.get_mut(handle)?;
         match slot.state {
             FutureState::Pending => {
-                slot.state = FutureState::Ready;
+                slot.state = client_runtime_future::transition(
+                    slot.state,
+                    client_runtime_future::Event::Complete,
+                )
+                .expect("pending future completion is declared");
                 slot.result = Some(result);
                 if let Some(wake) = slot.wake.take() {
                     wake();
                 }
                 Ok(())
             }
-            FutureState::Cancelled | FutureState::Freed => Ok(()),
+            FutureState::Cancelled => {
+                slot.state = client_runtime_future::transition(
+                    slot.state,
+                    client_runtime_future::Event::LateComplete,
+                )
+                .expect("cancelled future late completion is declared");
+                Ok(())
+            }
+            FutureState::Freed => Ok(()),
             FutureState::Ready => Err(RuntimeError::AlreadyCompleted),
         }
     }
@@ -135,12 +136,23 @@ impl ClientRuntime {
         let slot = self.futures.get_mut(handle)?;
         match slot.state {
             FutureState::Pending | FutureState::Ready => {
-                slot.state = FutureState::Cancelled;
+                slot.state = client_runtime_future::transition(
+                    slot.state,
+                    client_runtime_future::Event::Cancel,
+                )
+                .expect("live future cancellation is declared");
                 slot.result = None;
                 slot.wake = None;
                 Ok(())
             }
-            FutureState::Cancelled => Ok(()),
+            FutureState::Cancelled => {
+                slot.state = client_runtime_future::transition(
+                    slot.state,
+                    client_runtime_future::Event::Cancel,
+                )
+                .expect("idempotent future cancellation is declared");
+                Ok(())
+            }
             FutureState::Freed => Err(RuntimeError::StaleHandle {
                 kind: HandleKind::Future,
             }),
@@ -149,7 +161,9 @@ impl ClientRuntime {
 
     pub fn free_future(&mut self, handle: Handle) -> Result<(), RuntimeError> {
         let mut slot = self.futures.free(handle)?;
-        slot.state = FutureState::Freed;
+        slot.state =
+            client_runtime_future::transition(slot.state, client_runtime_future::Event::Free)
+                .ok_or(RuntimeError::InvalidState)?;
         slot.wake = None;
         slot.result = None;
         Ok(())
@@ -216,14 +230,22 @@ impl ClientRuntime {
 
     pub fn cancel_subscription(&mut self, handle: Handle) -> Result<(), RuntimeError> {
         let slot = self.subscriptions.get_mut(handle)?;
-        slot.state = SubscriptionState::Cancelled;
+        slot.state = client_runtime_subscription::transition(
+            slot.state,
+            client_runtime_subscription::Event::Cancel,
+        )
+        .ok_or(RuntimeError::InvalidState)?;
         slot.wake = None;
         Ok(())
     }
 
     pub fn free_subscription(&mut self, handle: Handle) -> Result<(), RuntimeError> {
         let mut slot = self.subscriptions.free(handle)?;
-        slot.state = SubscriptionState::Freed;
+        slot.state = client_runtime_subscription::transition(
+            slot.state,
+            client_runtime_subscription::Event::Free,
+        )
+        .ok_or(RuntimeError::InvalidState)?;
         slot.wake = None;
         Ok(())
     }

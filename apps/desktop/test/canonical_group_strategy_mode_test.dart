@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
@@ -1425,24 +1426,26 @@ void main() {
 }
 
 Widget _groupApp(Widget child) {
-  return MaterialApp(
-    debugShowCheckedModeBanner: false,
-    locale: const Locale('en'),
-    supportedLocales: LicoStrings.supportedLocales,
-    localizationsDelegates: const [
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    theme: buildLicoTheme(
-      platformBrightness: Brightness.dark,
-    ).copyWith(platform: TargetPlatform.macOS),
-    home: Builder(
-      builder: (context) => LayoutPaletteScope(
-        palette: layoutPaletteFromColors(context.licoColors),
-        child: LayoutAgentsStrategyScope(
-          strategy: const AgentsPresentationStrategy.messaging(),
-          child: Scaffold(body: child),
+  return ProviderScope(
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      locale: const Locale('en'),
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(
+        platformBrightness: Brightness.dark,
+      ).copyWith(platform: TargetPlatform.macOS),
+      home: Builder(
+        builder: (context) => LayoutPaletteScope(
+          palette: layoutPaletteFromColors(context.licoColors),
+          child: LayoutAgentsStrategyScope(
+            strategy: const AgentsPresentationStrategy.messaging(),
+            child: Scaffold(body: child),
+          ),
         ),
       ),
     ),

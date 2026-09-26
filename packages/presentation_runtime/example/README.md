@@ -1,5 +1,7 @@
 # Runtime provider assembly example
 
+Updated: 2026-09-18
+
 provider_assembly.dart is a pure-Dart Riverpod composition example. It uses
 the official Provider, ProviderContainer, ProviderListenable, and override
 APIs; a Flutter application can place the same override set at its root

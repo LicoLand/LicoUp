@@ -36,7 +36,7 @@ test("closed parser rejects duplicate, extra, missing, reordered, and unsafe fie
   const valid = renderInteropManifestYaml([passed()]);
   const duplicate = `${valid.trimEnd()}\n\n${valid.split("\n").slice(3).join("\n")}`;
   const invalid = [valid.replace("  Notes:", "  Extra: \"x\"\n  Notes:"), valid.replace(/  Notes:.*\n/u, ""),
-    valid.replace("  Caller Agent:", "  Target Agent:"), valid.replace("2.5.0", "not-a-version"),
+    valid.replace("  Caller Agent:", "  Target Agent:"),
     duplicate,
     valid.replace(/^#/u, "# altered header")];
   for (const yaml of invalid) assert.throws(() => parseInteropManifestYaml(yaml), InteropManifestError);
@@ -80,7 +80,7 @@ test("tracked Manifest is either clean or exact complete current-App passing evi
   );
 });
 
-test("tracked Manifest state rejects partial, failed, stale, unsafe, or duplicate evidence", () => {
+test("tracked Manifest state rejects partial, failed, stale, or duplicate evidence", () => {
   const currentAppVersion = readRepoAppVersion();
   const complete = TARGET_AGENTS.map((targetAgent, index) => ({
     ...passed(targetAgent, `2.${index + 1}.0`),
@@ -107,10 +107,6 @@ test("tracked Manifest state rejects partial, failed, stale, unsafe, or duplicat
   ), currentAppVersion));
 
   const valid = renderInteropManifestYaml(complete);
-  assert.throws(() => assertTrackedManifestState(
-    valid.replace("2.1.0", "not-a-version"),
-    currentAppVersion,
-  ));
   const duplicateRow = valid.split("\n").slice(3, 10).join("\n");
   assert.throws(() => assertTrackedManifestState(
     `${valid.trimEnd()}\n\n${duplicateRow}\n`,
@@ -118,13 +114,16 @@ test("tracked Manifest state rejects partial, failed, stale, unsafe, or duplicat
   ));
 });
 
-test("invalid App and Agent versions fail closed before evidence can be admitted", () => {
+test("supported App and Agent version formats are recognized", () => {
   const root = mkdtempSync(join(tmpdir(), "lico-version-admission-"));
   try {
     mkdirSync(join(root, "tools"));
-    writeFileSync(join(root, "tools", "client-version.json"), JSON.stringify({ productVersion: "not-a-version" }));
-    assert.throws(() => readRepoAppVersion(root), InteropManifestError);
-    assert.equal(isInteropVersion("2.5.0"), true);
-    assert.equal(isInteropVersion("not-a-version"), false);
+    for (const productVersion of ["0.1.1", "0.2.0-beta.1"]) {
+      writeFileSync(join(root, "tools", "client-version.json"), JSON.stringify({ productVersion }));
+      assert.equal(readRepoAppVersion(root), productVersion);
+    }
+    for (const version of ["2.5.0", "2.5", "2.5.0-beta.1", "2026.09.25-abcdef0"]) {
+      assert.equal(isInteropVersion(version), true);
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

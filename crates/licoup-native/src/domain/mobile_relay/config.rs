@@ -233,15 +233,15 @@ mod tests {
     #[test]
     fn station_policy_accepts_only_canonical_secure_or_loopback_origins() {
         assert_eq!(
-            validated_station_base_url("HTTPS://Station.LicoUp.Net:443/").unwrap(),
-            "https://station.licoup.net"
+            validated_station_base_url("HTTPS://Station.Example.Invalid:443/").unwrap(),
+            "https://station.example.invalid"
         );
         assert_eq!(
             validated_station_base_url("http://127.0.0.1:8787/").unwrap(),
             "http://127.0.0.1:8787"
         );
-        assert!(validated_station_base_url("http://station.licoup.net").is_err());
-        assert!(validated_station_base_url("https://station.licoup.net/path").is_err());
+        assert!(validated_station_base_url("http://station.example.invalid").is_err());
+        assert!(validated_station_base_url("https://station.example.invalid/path").is_err());
     }
 
     #[test]
@@ -271,13 +271,13 @@ mod tests {
     fn current_schema_preserves_the_canonical_station_base_url() {
         let config = normalize_config(json!({
             "schemaVersion": CONFIG_SCHEMA_VERSION,
-            "stationBaseUrl": "HTTPS://Station.LicoUp.Net:443/",
+            "stationBaseUrl": "HTTPS://Station.Example.Invalid:443/",
             "relayEnabled": true
         }));
 
         assert_eq!(
             config["stationBaseUrl"],
-            json!("https://station.licoup.net")
+            json!("https://station.example.invalid")
         );
         assert_eq!(config["relayEnabled"], json!(true));
     }

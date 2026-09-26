@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "dart": {
+    "output": "apps/desktop/lib/src/presentation/generated/settings_state_machines.g.dart"
+  },
+  "machines": [
+    {
+      "id": "settings.autostart",
+      "states": [
+        { "id": "loading" },
+        { "id": "ready" },
+        { "id": "applying" },
+        { "id": "unsupported" },
+        { "id": "failed" }
+      ],
+      "events": ["load", "apply", "ready", "unsupported", "fail"],
+      "initial": "loading",
+      "terminal": [],
+      "transitions": [
+        { "from_state": "loading", "event": "load", "to_state": "loading" },
+        { "from_state": "ready", "event": "load", "to_state": "loading" },
+        { "from_state": "applying", "event": "load", "to_state": "loading" },
+        { "from_state": "unsupported", "event": "load", "to_state": "loading" },
+        { "from_state": "failed", "event": "load", "to_state": "loading" },
+        { "from_state": "ready", "event": "apply", "to_state": "applying" },
+        { "from_state": "loading", "event": "ready", "to_state": "ready" },
+        { "from_state": "ready", "event": "ready", "to_state": "ready" },
+        { "from_state": "applying", "event": "ready", "to_state": "ready" },
+        { "from_state": "unsupported", "event": "ready", "to_state": "ready" },
+        { "from_state": "failed", "event": "ready", "to_state": "ready" },
+        { "from_state": "loading", "event": "unsupported", "to_state": "unsupported" },
+        { "from_state": "ready", "event": "unsupported", "to_state": "unsupported" },
+        { "from_state": "applying", "event": "unsupported", "to_state": "unsupported" },
+        { "from_state": "unsupported", "event": "unsupported", "to_state": "unsupported" },
+        { "from_state": "failed", "event": "unsupported", "to_state": "unsupported" },
+        { "from_state": "loading", "event": "fail", "to_state": "failed" },
+        { "from_state": "ready", "event": "fail", "to_state": "failed" },
+        { "from_state": "applying", "event": "fail", "to_state": "failed" },
+        { "from_state": "unsupported", "event": "fail", "to_state": "failed" },
+        { "from_state": "failed", "event": "fail", "to_state": "failed" }
+      ],
+      "dart": {
+        "state_enum": "SettingsAutostartPhase",
+        "event_enum": "SettingsAutostartEvent",
+        "transition_function": "transitionSettingsAutostartPhase",
+        "state_from_id_function": "settingsAutostartPhaseFromId"
+      }
+    }
+  ]
+}

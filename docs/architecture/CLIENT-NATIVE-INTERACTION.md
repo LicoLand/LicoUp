@@ -1,5 +1,7 @@
 # Bridging Contract Layer — Client-Native Interaction Boundary
 
+Updated: 2026-09-16
+
 [Documentation](../README.md) · [Architecture](README.md) · [Architecture (zh-CN)](README.zh-CN.md)
 
 This document defines the technical specification for **Tier 2: Bridging Contract / RPC Protocol Layer**, isolating **Tier 1: Flutter Presentation Layer** from **Tier 3: Rust Functional Core Layer**.

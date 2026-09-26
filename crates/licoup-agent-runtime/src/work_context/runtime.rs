@@ -12,6 +12,7 @@ use super::types::{
 use super::{
     NativeCapabilitySnapshot, NativeWorkContextFailure, NativeWorkContextKey, NativeWorkContextPort,
 };
+use crate::state_machines::work_context_binding;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -486,7 +487,7 @@ impl WorkContextRuntime {
                 key: new_key,
                 operation_id: operation.operation_id,
                 binding_generation: new_generation,
-                status: BindingStatus::Bound,
+                status: work_context_binding::INITIAL,
                 source_checkpoint: checkpoint,
                 fidelity,
                 child,
@@ -741,7 +742,7 @@ pub(super) fn resume_exact(
             key: key.clone(),
             operation_id: operation.operation_id,
             binding_generation: key.generation,
-            status: BindingStatus::Bound,
+            status: work_context_binding::INITIAL,
             source_checkpoint: None,
             fidelity,
             child,
@@ -813,7 +814,11 @@ pub(super) fn rehydrate_explicit(
             source_checkpoint: checkpoint_value,
         });
         if let Some(previous) = inner.bindings.get_mut(&BindingIndex::from_key(key)) {
-            previous.status = BindingStatus::Replaced;
+            previous.status = work_context_binding::transition(
+                previous.status,
+                work_context_binding::Event::Replace,
+            )
+            .expect("a retained binding accepts replacement");
         }
     }
     let new_key = NativeWorkContextKey {
@@ -828,7 +833,7 @@ pub(super) fn rehydrate_explicit(
             key: new_key,
             operation_id: operation.operation_id,
             binding_generation: new_generation,
-            status: BindingStatus::Bound,
+            status: work_context_binding::INITIAL,
             source_checkpoint: checkpoint,
             fidelity,
             child,

@@ -167,7 +167,7 @@ impl ConversationStore {
                 "INSERT INTO subagent_dispatch_claims(
                    id, conversation_id, caller_membership_id, target_membership_id,
                    parent_dispatch_id, depth, state, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'claimed', ?7, ?7)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 params![
                     dispatch_id,
                     conversation_id,
@@ -175,6 +175,7 @@ impl ConversationStore {
                     target_membership_id,
                     parent_dispatch_id,
                     i64::from(depth),
+                    super::lifecycle::initial_claim().as_str(),
                     now,
                 ],
             )?;
@@ -260,7 +261,7 @@ impl ConversationStore {
             let Some(current) = current else {
                 return Err(anyhow!("subagent_dispatch_not_found"));
             };
-            if !valid_claim_transition(&current, next) {
+            if !super::lifecycle::valid_claim_transition(&current, next) {
                 return Err(anyhow!("subagent_dispatch_transition_invalid"));
             }
             connection.execute(
@@ -610,12 +611,19 @@ impl ConversationStore {
     ) -> StoreResult<bool> {
         validate_identifier(claim_id, "claim_id")?;
         let now = now_ms();
+        let next = super::lifecycle::begin_delivery();
         self.with_connection(|connection| {
             let changed = connection.execute(
                 "UPDATE subagent_dispatch_deliveries
-                 SET state='delivering', attempt_count=attempt_count+1, updated_at=?3
-                 WHERE claim_id=?1 AND kind=?2 AND state='pending'",
-                params![claim_id, kind.as_str(), now],
+                 SET state=?3, attempt_count=attempt_count+1, updated_at=?4
+                 WHERE claim_id=?1 AND kind=?2 AND state=?5",
+                params![
+                    claim_id,
+                    kind.as_str(),
+                    next.as_str(),
+                    now,
+                    DispatchDeliveryState::Pending.as_str()
+                ],
             )?;
             Ok(changed > 0)
         })
@@ -630,12 +638,19 @@ impl ConversationStore {
     ) -> StoreResult<bool> {
         validate_identifier(claim_id, "claim_id")?;
         let now = now_ms();
+        let next = super::lifecycle::retry_delivery();
         self.with_connection(|connection| {
             let changed = connection.execute(
                 "UPDATE subagent_dispatch_deliveries
-                 SET state='pending', updated_at=?3
-                 WHERE claim_id=?1 AND kind=?2 AND state='delivering'",
-                params![claim_id, kind.as_str(), now],
+                 SET state=?3, updated_at=?4
+                 WHERE claim_id=?1 AND kind=?2 AND state=?5",
+                params![
+                    claim_id,
+                    kind.as_str(),
+                    next.as_str(),
+                    now,
+                    DispatchDeliveryState::Delivering.as_str()
+                ],
             )?;
             Ok(changed > 0)
         })
@@ -652,12 +667,25 @@ impl ConversationStore {
         validate_identifier(claim_id, "claim_id")?;
         validate_identifier(admitted_turn_id, "admitted_turn_id")?;
         let now = now_ms();
+        let pending_next = super::lifecycle::admit_delivery(DispatchDeliveryState::Pending)
+            .expect("configured pending delivery can be admitted");
+        let delivering_next = super::lifecycle::admit_delivery(DispatchDeliveryState::Delivering)
+            .expect("configured in-flight delivery can be admitted");
+        debug_assert_eq!(pending_next, delivering_next);
         self.with_connection(|connection| {
             let changed = connection.execute(
                 "UPDATE subagent_dispatch_deliveries
-                 SET state='delivered', delivered_at=?3, admitted_turn_id=?4, updated_at=?3
-                 WHERE claim_id=?1 AND kind=?2 AND state IN ('pending','delivering')",
-                params![claim_id, kind.as_str(), now, admitted_turn_id],
+                 SET state=?3, delivered_at=?4, admitted_turn_id=?5, updated_at=?4
+                 WHERE claim_id=?1 AND kind=?2 AND state IN (?6,?7)",
+                params![
+                    claim_id,
+                    kind.as_str(),
+                    pending_next.as_str(),
+                    now,
+                    admitted_turn_id,
+                    DispatchDeliveryState::Pending.as_str(),
+                    DispatchDeliveryState::Delivering.as_str()
+                ],
             )?;
             Ok(changed > 0)
         })
@@ -819,12 +847,13 @@ fn record_pending_delivery_in_tx(
     transaction.execute(
         "INSERT INTO subagent_dispatch_deliveries
          (claim_id, kind, conversation_id, recipient_membership_id, state, terminal_state, payload, attempt_count, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, 0, ?7, ?7)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)",
         params![
             claim_id,
             kind.as_str(),
             conversation_id,
             recipient_membership_id,
+            super::lifecycle::initial_delivery().as_str(),
             terminal_state,
             payload,
             now,
@@ -841,29 +870,25 @@ fn reconcile_subagent_claims(
     transaction: &super::CountedTransaction<'_>,
     conversation_id: &str,
 ) -> StoreResult<()> {
-    transaction.execute(
-        "UPDATE subagent_dispatch_claims
-         SET state = CASE (
-           SELECT d.state FROM conversation_dispatches d
-           WHERE d.id=subagent_dispatch_claims.id
-         )
-           WHEN 'completed' THEN 'completed'
-           WHEN 'failed' THEN 'failed'
-           WHEN 'cancelled' THEN 'cancelled'
-           WHEN 'cancel-requested' THEN 'cancel-requested'
-           WHEN 'running' THEN 'running'
-           WHEN 'accepted' THEN 'running'
-           ELSE state
-         END,
-         updated_at=?2
-         WHERE conversation_id=?1
-           AND state IN ('claimed','running','cancel-requested','reconciliation-required')
-           AND EXISTS (
-             SELECT 1 FROM conversation_dispatches d
-             WHERE d.id=subagent_dispatch_claims.id
-           )",
-        params![conversation_id, now_ms()],
-    )?;
+    let rows = {
+        let mut statement = transaction.prepare(
+            "SELECT c.id, c.state, d.state
+             FROM subagent_dispatch_claims c
+             JOIN conversation_dispatches d ON d.id=c.id
+             WHERE c.conversation_id=?1
+               AND c.state IN ('claimed','running','cancel-requested','reconciliation-required')",
+        )?;
+        statement
+            .query_map(params![conversation_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    reconcile_claim_rows(transaction, rows, now_ms())?;
     Ok(())
 }
 
@@ -874,42 +899,67 @@ pub(super) fn reconcile_terminal_subagent_claims(
     transaction: &impl super::CountedSqlite,
 ) -> StoreResult<()> {
     let now = now_ms();
-    transaction.execute(
-        "UPDATE subagent_dispatch_claims
-         SET state = CASE (
-           SELECT d.state FROM conversation_dispatches d
-           WHERE d.id=subagent_dispatch_claims.id
-         )
-           WHEN 'completed' THEN 'completed'
-           WHEN 'failed' THEN 'failed'
-           WHEN 'cancelled' THEN 'cancelled'
-           ELSE state
-         END,
-         updated_at=?1
-         WHERE state IN ('claimed','running','cancel-requested','reconciliation-required')
-           AND EXISTS (
-             SELECT 1 FROM conversation_dispatches d
-             WHERE d.id=subagent_dispatch_claims.id
-               AND d.state IN ('completed','failed','cancelled')
-           )",
-        params![now],
-    )?;
+    let rows = {
+        let mut statement = transaction.prepare(
+            "SELECT c.id, c.state, d.state
+             FROM subagent_dispatch_claims c
+             JOIN conversation_dispatches d ON d.id=c.id
+             WHERE c.state IN ('claimed','running','cancel-requested','reconciliation-required')
+               AND d.state IN ('completed','failed','cancelled')",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    reconcile_claim_rows(transaction, rows, now)?;
     // Ensure every terminal claim has a recorded pending delivery if not already recorded.
     transaction.execute(
         "INSERT OR IGNORE INTO subagent_dispatch_deliveries
          (claim_id, kind, conversation_id, recipient_membership_id, state, terminal_state, payload, attempt_count, created_at, updated_at)
-         SELECT c.id, 'terminal', c.conversation_id, c.caller_membership_id, 'pending', c.state, NULL, 0, ?1, ?1
+         SELECT c.id, 'terminal', c.conversation_id, c.caller_membership_id, ?1, c.state, NULL, 0, ?2, ?2
          FROM subagent_dispatch_claims c
          WHERE c.state IN ('completed', 'failed', 'cancelled')",
-        params![now],
+        params![
+            super::lifecycle::initial_delivery().as_str(),
+            now
+        ],
     )?;
     // Host recovery resets any interrupted 'delivering' status back to 'pending'.
+    let pending = super::lifecycle::retry_delivery();
     transaction.execute(
         "UPDATE subagent_dispatch_deliveries
-         SET state='pending', updated_at=?1
-         WHERE state='delivering'",
-        params![now],
+         SET state=?1, updated_at=?2
+         WHERE state=?3",
+        params![
+            pending.as_str(),
+            now,
+            DispatchDeliveryState::Delivering.as_str()
+        ],
     )?;
+    Ok(())
+}
+
+fn reconcile_claim_rows(
+    transaction: &impl super::CountedSqlite,
+    rows: Vec<(String, String, String)>,
+    now: i64,
+) -> StoreResult<()> {
+    for (claim_id, current, dispatch) in rows {
+        let Some(next) = super::lifecycle::reconcile_claim(&current, &dispatch) else {
+            continue;
+        };
+        transaction.execute(
+            "UPDATE subagent_dispatch_claims SET state=?2, updated_at=?3
+             WHERE id=?1 AND state=?4",
+            params![claim_id, next.as_str(), now, current],
+        )?;
+    }
     Ok(())
 }
 
@@ -917,19 +967,13 @@ pub(super) fn reconcile_terminal_subagent_claims(
 /// `conversation_dispatches` row reaches a terminal state, the lineage claim
 /// sharing the dispatch id moves to the matching claim state inside the same
 /// transaction. A missing claim or a transition that
-/// `valid_claim_transition` forbids is left to the lazy reconciler instead
+/// the configured operational lifecycle forbids is left to the reconciler instead
 /// of failing the settlement.
 pub(super) fn writeback_subagent_claim_terminal(
     transaction: &super::CountedTransaction<'_>,
     dispatch_id: &str,
     state: DispatchState,
 ) -> StoreResult<()> {
-    let next = match state {
-        DispatchState::Completed => SubagentDispatchClaimState::Completed,
-        DispatchState::Failed => SubagentDispatchClaimState::Failed,
-        DispatchState::Cancelled => SubagentDispatchClaimState::Cancelled,
-        _ => return Ok(()),
-    };
     let claim_info: Option<(String, String, String)> = transaction
         .query_row(
             "SELECT state, conversation_id, caller_membership_id FROM subagent_dispatch_claims WHERE id=?1",
@@ -940,9 +984,9 @@ pub(super) fn writeback_subagent_claim_terminal(
     let Some((current, conversation_id, caller_membership_id)) = claim_info else {
         return Ok(());
     };
-    if !valid_claim_transition(&current, next) {
+    let Some(next) = super::lifecycle::settle_claim(&current, state) else {
         return Ok(());
-    }
+    };
     let now = now_ms();
     transaction.execute(
         "UPDATE subagent_dispatch_claims SET state=?2, updated_at=?3 WHERE id=?1",
@@ -961,44 +1005,10 @@ pub(super) fn writeback_subagent_claim_terminal(
     Ok(())
 }
 
-fn valid_claim_transition(current: &str, next: SubagentDispatchClaimState) -> bool {
-    use SubagentDispatchClaimState as State;
-    matches!(
-        (current, next),
-        (
-            "claimed",
-            State::Running
-                | State::Completed
-                | State::Failed
-                | State::Cancelled
-                | State::ReconciliationRequired
-        ) | (
-            "running",
-            State::Completed
-                | State::Failed
-                | State::CancelRequested
-                | State::ReconciliationRequired
-        ) | (
-            "cancel-requested",
-            State::Cancelled | State::Completed | State::Failed | State::ReconciliationRequired
-        ) | (
-            "reconciliation-required",
-            State::Running | State::Completed | State::Failed | State::Cancelled
-        )
-    )
-}
 fn claim_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SubagentDispatchClaim> {
     let state: String = row.get(6)?;
-    let state = match state.as_str() {
-        "claimed" => SubagentDispatchClaimState::Claimed,
-        "running" => SubagentDispatchClaimState::Running,
-        "cancel-requested" => SubagentDispatchClaimState::CancelRequested,
-        "reconciliation-required" => SubagentDispatchClaimState::ReconciliationRequired,
-        "completed" => SubagentDispatchClaimState::Completed,
-        "failed" => SubagentDispatchClaimState::Failed,
-        "cancelled" => SubagentDispatchClaimState::Cancelled,
-        _ => return Err(rusqlite::Error::InvalidQuery),
-    };
+    let state =
+        SubagentDispatchClaimState::from_name(&state).ok_or(rusqlite::Error::InvalidQuery)?;
     let depth: i64 = row.get(5)?;
     let depth =
         u8::try_from(depth).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(5, depth))?;

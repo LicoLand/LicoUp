@@ -540,6 +540,7 @@ class _SubagentChildMessageBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return AgentConversationMessageContent(
+      identity: agentConversationMarkdownIdentity(message),
       data: message.text,
       foreground: agentConversationMessageForeground(colors, message.role),
       accent: colors.primary,

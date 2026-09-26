@@ -11,6 +11,7 @@ use super::projection::target_scan_summary;
 use super::request::{job_id_for, retry_policy_from_request, text_param};
 use super::store::ArchiveJobStore;
 use crate::domain::conversation::archive_queue::ArchiveJobStatus;
+use crate::state_machines::conversation_archive_job;
 
 impl ArchiveJobStore {
     pub(super) fn create(&self, params: &Value) -> Result<Value> {
@@ -32,12 +33,13 @@ impl ArchiveJobStore {
               archive_result_json, validation_result_json, created_at, updated_at, retry_after,
               last_error, completed_at, failed_at, cancelled_at
             )
-            VALUES (?1, ?2, ?3, 'queued', 'queued', 0, ?4, '{}', '{}', ?5, ?5, '', '', '', '', '')
+            VALUES (?1, ?2, ?3, ?4, ?4, 0, ?5, '{}', '{}', ?6, ?6, '', '', '', '', '')
             ",
             params![
                 job_id,
                 serde_json::to_string(&request)?,
                 serde_json::to_string(&target_scan)?,
+                conversation_archive_job::INITIAL.as_str(),
                 policy.max_attempts,
                 now,
             ],

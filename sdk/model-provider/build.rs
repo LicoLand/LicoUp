@@ -1,0 +1,4 @@
+fn main() {
+    licoup_state_machine_codegen::generate_directory("resources/state-machines")
+        .expect("compile model-provider state machines");
+}

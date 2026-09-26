@@ -1,4 +1,8 @@
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
+
+use crate::state_machines::security_mlkem_braid;
+pub(super) use crate::state_machines::security_mlkem_braid::{Event, State};
 
 use super::{
     authenticator::RatchetedAuthenticator, erasure_decoder::ErasureDecoder,
@@ -6,21 +10,7 @@ use super::{
 };
 
 #[cfg(test)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MlKemBraidStateName {
-    KeysUnsampled,
-    KeysSampled,
-    HeaderSent,
-    Ct1Received,
-    EkSentCt1Received,
-    NoHeaderReceived,
-    HeaderReceived,
-    Ct1Sampled,
-    EkReceivedCt1Sampled,
-    Ct1Acknowledged,
-    Ct2Sampled,
-    Poisoned,
-}
+pub(crate) use crate::state_machines::security_mlkem_braid::State as MlKemBraidStateName;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "camelCase", deny_unknown_fields)]
@@ -121,21 +111,50 @@ impl ProtocolState {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn name(&self) -> MlKemBraidStateName {
+    pub(super) fn machine_state(&self) -> State {
         match self {
-            Self::KeysUnsampled { .. } => MlKemBraidStateName::KeysUnsampled,
-            Self::KeysSampled { .. } => MlKemBraidStateName::KeysSampled,
-            Self::HeaderSent { .. } => MlKemBraidStateName::HeaderSent,
-            Self::Ct1Received { .. } => MlKemBraidStateName::Ct1Received,
-            Self::EkSentCt1Received { .. } => MlKemBraidStateName::EkSentCt1Received,
-            Self::NoHeaderReceived { .. } => MlKemBraidStateName::NoHeaderReceived,
-            Self::HeaderReceived { .. } => MlKemBraidStateName::HeaderReceived,
-            Self::Ct1Sampled { .. } => MlKemBraidStateName::Ct1Sampled,
-            Self::EkReceivedCt1Sampled { .. } => MlKemBraidStateName::EkReceivedCt1Sampled,
-            Self::Ct1Acknowledged { .. } => MlKemBraidStateName::Ct1Acknowledged,
-            Self::Ct2Sampled { .. } => MlKemBraidStateName::Ct2Sampled,
-            Self::Poisoned { .. } => MlKemBraidStateName::Poisoned,
+            Self::KeysUnsampled { .. } => State::KeysUnsampled,
+            Self::KeysSampled { .. } => State::KeysSampled,
+            Self::HeaderSent { .. } => State::HeaderSent,
+            Self::Ct1Received { .. } => State::Ct1Received,
+            Self::EkSentCt1Received { .. } => State::EkSentCt1Received,
+            Self::NoHeaderReceived { .. } => State::NoHeaderReceived,
+            Self::HeaderReceived { .. } => State::HeaderReceived,
+            Self::Ct1Sampled { .. } => State::Ct1Sampled,
+            Self::EkReceivedCt1Sampled { .. } => State::EkReceivedCt1Sampled,
+            Self::Ct1Acknowledged { .. } => State::Ct1Acknowledged,
+            Self::Ct2Sampled { .. } => State::Ct2Sampled,
+            Self::Poisoned { .. } => State::Poisoned,
         }
     }
+
+    #[cfg(test)]
+    pub(super) fn name(&self) -> MlKemBraidStateName {
+        self.machine_state()
+    }
+}
+
+pub(super) fn transition_target(from: State, event: Event) -> Result<State> {
+    security_mlkem_braid::transition(from, event).with_context(|| {
+        format!(
+            "ML-KEM Braid transition is not configured: {} + {}",
+            from.as_str(),
+            event.as_str()
+        )
+    })
+}
+
+pub(super) fn transition_state(
+    from: State,
+    event: Event,
+    build: impl FnOnce(State) -> Result<ProtocolState>,
+) -> Result<ProtocolState> {
+    let target = transition_target(from, event)?;
+    let state = build(target)?;
+    ensure!(
+        state.machine_state() == target,
+        "ML-KEM Braid payload state does not match configured target {}",
+        target.as_str()
+    );
+    Ok(state)
 }

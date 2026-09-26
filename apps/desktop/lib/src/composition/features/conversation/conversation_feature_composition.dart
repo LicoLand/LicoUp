@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/composition/renderer_intent_trace.dart';
@@ -10,7 +12,11 @@ import 'package:licoup/src/contracts/generated/conversation.g.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
+import 'package:licoup/src/presentation/conversation/conversation_markdown_port.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
+import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 import 'package:licoup/src/projections/conversation/conversation_projection_producer.dart';
+import 'package:licoup/src/projections/conversation/conversation_source_owner.dart';
 
 final class ConversationFeatureComposition {
   ConversationFeatureComposition(
@@ -45,6 +51,42 @@ final class ConversationFeatureComposition {
   late final _ConversationIntents _intents;
   late final ConversationBinding binding;
   bool _closed = false;
+
+  /// Supply the concrete preparation owner and the runtime-backed plane owner
+  /// without letting presentation ports or frontends construct a source,
+  /// registry, or worker pool.
+  ///
+  /// The plane owner wraps this composition's own producer channels, so the
+  /// port a consumer reads is the same source of truth the feature renders; the
+  /// owner is created once per container and disposed with it, never by a
+  /// widget mount.
+  List<Override> get providerOverrides => <Override>[
+    conversationMarkdownPortProvider.overrideWith((ref) {
+      final owner = ConversationMarkdownPreparation.spawn(
+        runtime: ref.watch(presentationRuntimeProvider),
+      );
+      ref.onDispose(owner.dispose);
+      return owner;
+    }),
+    conversationSourcePortProvider.overrideWith((ref) {
+      final owner = ConversationSourceOwner.spawn(
+        runtime: ref.watch(presentationRuntimeProvider),
+        planes: ConversationSourcePlanes(
+          projection: _projection.projection,
+          nativeCatalog: _projection.nativeCatalog,
+          canonicalEvents: _projection.canonicalEvents,
+          persistentTurns: _projection.persistentTurns,
+          composer: _projection.composer,
+          attachments: _projection.attachments,
+          tabActivity: _projection.tabActivity,
+          archive: _projection.archive,
+          execution: _projection.execution,
+        ),
+      );
+      ref.onDispose(owner.dispose);
+      return owner;
+    }),
+  ];
 
   Future<void> close() async {
     if (_closed) return;

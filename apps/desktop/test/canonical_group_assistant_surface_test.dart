@@ -3,8 +3,15 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/canonical_group_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
 import 'package:licoup/src/frontend/shared/messaging/conversation_motion/orb_waiting_indicator.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
@@ -21,8 +28,16 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/shared/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
+import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
+import 'package:licoup/src/projections/conversation/conversation_source_owner.dart';
 
 import 'support/canonical_group/canonical_group_binding_fixture.dart';
+import 'support/presentation_source_overrides.dart';
 
 void main() {
   for (final retired in [false, true]) {
@@ -259,6 +274,248 @@ void main() {
       await tester.pump();
       expect(opened, ['kimi-code']);
       await tester.pump(const Duration(milliseconds: 350));
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'withdrawn composer and attachment planes keep group history visible and '
+    'refuse composer actions until an explicit reconnect',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 760);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final runner = _AssistantSurfaceRunner();
+      runner.historyEvents.add({
+        'id': 'event:history',
+        'conversationId': 'conversation:group',
+        'sequence': 1,
+        'authorMembershipId': 'membership:owner',
+        'kind': 'message',
+        'createdAtUnixMs': 1,
+        'finalized': true,
+        'parts': [
+          {
+            'id': 'part:history',
+            'eventId': 'event:history',
+            'ordinal': 0,
+            'kind': 'text',
+            'content': 'Saved group history',
+            'createdAtUnixMs': 1,
+          },
+        ],
+      });
+      final controller = ClientConversationController(native: runner);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      final target = _target('claude-code', 'Claude Code');
+      final picks = <String>[];
+      final fixture = CanonicalGroupBindingFixture(
+        controller: controller,
+        targets: [target],
+        onCopyText: (_) async {},
+        onPickComposerImages: () => picks.add('pick'),
+      );
+      addTearDown(fixture.close);
+
+      late ConversationSourceOwner owner;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            conversationSourcePortProvider.overrideWith((ref) {
+              owner = ConversationSourceOwner.spawn(
+                runtime: ref.watch(presentationRuntimeProvider),
+                planes: _fixtureConversationPlanes(fixture),
+              );
+              ref.onDispose(owner.dispose);
+              return owner;
+            }),
+          ],
+          child: _groupApp(
+            _SourceBackedCanonicalGroupPane(
+              fixture: fixture,
+              targets: [target],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await pumpUntilVisible(tester, find.byType(AgentConversationActivePane));
+
+      final paneFinder = find.byType(AgentConversationActivePane);
+      AgentConversationPaneState paneState() =>
+          tester.widget<AgentConversationActivePane>(paneFinder).state;
+
+      // History, sidebar, and the real member seats are visible.
+      expect(find.textContaining('Saved group history'), findsWidgets);
+      expect(
+        find.byKey(const Key('canonical-group-menu-button')),
+        findsOneWidget,
+      );
+      expect(
+        paneState().participantTargets.map((seat) => seat.target),
+        contains('claude-code'),
+      );
+
+      // The composer plane is visible, so a mention is a real action.
+      await tester.enterText(find.byType(TextField), '@Claude');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-mention-claude-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.draft, '@Claude Code ');
+
+      await tester.enterText(find.byType(TextField), '@Claude');
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.draft, '@Claude');
+      expect(
+        find.byKey(const Key('agent-conversation-mention-claude-code')),
+        findsOneWidget,
+        reason: 'withdrawal must also remove an already visible suggestion',
+      );
+
+      // Withdraw both auxiliary planes through the runtime authority chain.
+      owner.runtime.revoke(owner.composer.fieldGroup.resource);
+      owner.runtime.revoke(owner.attachments.fieldGroup.resource);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(owner.composer.visibleValue, isNull);
+      expect(owner.attachments.visibleValue, isNull);
+
+      // History, sidebar, and member seats never hide behind the withdrawal.
+      expect(find.textContaining('Saved group history'), findsWidgets);
+      expect(
+        find.byKey(const Key('canonical-group-menu-button')),
+        findsOneWidget,
+      );
+      expect(
+        paneState().participantTargets.map((seat) => seat.target),
+        contains('claude-code'),
+      );
+      expect(
+        paneState().composerDraft,
+        isEmpty,
+        reason: 'the withdrawn composer must not show a value',
+      );
+
+      // No composer action reaches the controller while the plane is withdrawn.
+      final draftBeforeAttempts = controller.draft;
+      final field = find.byType(TextField);
+      final send = find.byKey(const Key('agent-conversation-composer-send'));
+      expect(paneState().composerEnabled, isFalse);
+      expect(paneState().composerMentionLabels, isEmpty);
+      if (field.evaluate().isNotEmpty) {
+        expect(
+          tester.widget<TextField>(field).enabled,
+          isFalse,
+          reason: 'withdrawn composer must visibly disable editing',
+        );
+        await tester.tap(field);
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+      if (send.evaluate().isNotEmpty) {
+        expect(
+          tester.widget<LicoIconButton>(send).onPressed,
+          isNull,
+          reason: 'withdrawn composer must not offer an actionable send',
+        );
+        await tester.tap(send);
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+      final suggestion = find.byKey(
+        const Key('agent-conversation-mention-claude-code'),
+      );
+      expect(suggestion, findsNothing);
+      expect(controller.draft, draftBeforeAttempts);
+      expect(
+        runner.requests.where(
+          (request) =>
+              request['action'] == 'conversation.message.post' ||
+              request['action'] == 'conversation.membership.add',
+        ),
+        isEmpty,
+      );
+      expect(picks, isEmpty);
+      expect(
+        find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+        findsNothing,
+        reason: 'no attachment action without the attachment plane',
+      );
+
+      // The producer keeps producing; the withdrawn plane never revives.
+      controller.updateDraft('produced while withdrawn');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(owner.composer.visibleValue, isNull);
+      expect(paneState().composerDraft, isEmpty);
+      expect(controller.draft, 'produced while withdrawn');
+
+      // Explicit re-reads admit fresh incarnations with the current values.
+      owner.reconnect(conversationPlaneComposer);
+      owner.reconnect(conversationPlaneAttachments);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await pumpUntilVisible(
+        tester,
+        find.byKey(const Key('agent-conversation-composer-field')),
+      );
+      expect(owner.composer.visibleValue?.draft, 'produced while withdrawn');
+      expect(paneState().composerDraft, 'produced while withdrawn');
+      expect(paneState().composerEnabled, isTrue);
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+
+      // Real actions are available again: draft, mention, attachments, send.
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.enterText(
+        find.byType(TextField),
+        'restored after reconnect',
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.draft, 'restored after reconnect');
+
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.enterText(find.byType(TextField), '@Claude');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-mention-claude-code')),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.draft, '@Claude Code ');
+
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(
+        find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('canonical-group-action-attachments')),
+      );
+      await tester.pumpAndSettle();
+      expect(picks, hasLength(1));
+
+      await tester.enterText(find.byType(TextField), 'restored send');
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(
+        find.byKey(const Key('agent-conversation-composer-send')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.message.post',
+        ),
+        hasLength(1),
+      );
+      // Let the composer's debounced draft sync fire before teardown.
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       controller.dispose();
     },
   );
@@ -989,6 +1246,66 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('archiving the reserved default group resets it in place', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final runner = _AssistantSurfaceRunner();
+    final controller = ClientConversationController(native: runner);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.selectConversation('lico-group-default');
+
+    await tester.pumpWidget(
+      _groupApp(
+        CanonicalGroupConversationPaneFixture(
+          controller: controller,
+          targets: [_target('codex', 'Codex')],
+          onCopyText: (_) async {},
+          framed: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('canonical-group-assistant-actions-trigger')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('canonical-group-action-archive')));
+    await tester.pumpAndSettle();
+    expect(find.text('Archive this group conversation?'), findsOneWidget);
+    // The reserved default group resets in place, so the confirmation copy
+    // says the history clears rather than a new conversation opens.
+    expect(
+      find.textContaining('resets to a fresh conversation'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('canonical-group-archive-confirm')));
+    await tester.pumpAndSettle();
+
+    final archived = runner.requests.singleWhere(
+      (request) => request['action'] == 'conversation.archive',
+    );
+    expect(archived['conversationId'], 'lico-group-default');
+    expect(archived['archived'], isTrue);
+    expect(archived['reopen'], isTrue);
+    expect(runner.successorId, isEmpty);
+    // The same group stays selected and on screen; nothing duplicates it.
+    expect(controller.selectedConversationId, 'lico-group-default');
+    expect(controller.failureCode, isEmpty);
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsOneWidget,
+    );
+    controller.dispose();
+  });
+
   testWidgets(
     'typed slash-new in the group composer runs the same archive flow after confirmation and never posts',
     (tester) async {
@@ -1328,13 +1645,40 @@ void main() {
       await controller.initialize();
       await controller.selectConversation('conversation:group');
 
+      final target = _target('codex', 'Codex');
+      final agentsSource = AgentsPresentationSource(
+        projection: _StaticAgentsProjection(
+          AgentsProjection(
+            targets: [
+              AgentTargetProjection(
+                id: target.target,
+                displayName: target.label,
+                available: true,
+                pinned: false,
+                capabilityLabel: target.adapterStatus,
+              ),
+            ],
+            targetDetails: [target],
+            selectedAgentId: target.target,
+            workingDirectoryLabel: '',
+            phase: PresentationPhase.ready,
+          ),
+        ),
+      );
+      addTearDown(agentsSource.dispose);
+
       await tester.pumpWidget(
-        _groupApp(
-          CanonicalGroupConversationPaneFixture(
-            controller: controller,
-            targets: [_target('codex', 'Codex')],
-            onCopyText: (_) async {},
-            framed: false,
+        ProviderScope(
+          overrides: [
+            agentsCatalogSourceProvider.overrideWithValue(agentsSource),
+          ],
+          child: _groupApp(
+            CanonicalGroupConversationPaneFixture(
+              controller: controller,
+              targets: [target],
+              onCopyText: (_) async {},
+              framed: false,
+            ),
           ),
         ),
       );
@@ -1378,6 +1722,18 @@ void main() {
       controller.dispose();
     },
   );
+}
+
+final class _StaticAgentsProjection
+    implements ProjectionSource<AgentsProjection> {
+  const _StaticAgentsProjection(this.current);
+
+  @override
+  final AgentsProjection current;
+
+  @override
+  Stream<ProjectionUpdate<AgentsProjection>> get changes =>
+      const Stream.empty();
 }
 
 /// Timeline messages carrying image attachments, projected by the participant
@@ -1424,6 +1780,98 @@ Widget _groupApp(Widget child) {
       ),
     ),
   );
+}
+
+/// The fixture's own projections as live plane producers.
+///
+/// Each read is the fixture's current projection, so a runtime owner sees the
+/// same data the pane binding renders, and every fixture publish is one plane
+/// update instead of a second data owner.
+ConversationSourcePlanes _fixtureConversationPlanes(
+  CanonicalGroupBindingFixture fixture,
+) {
+  return ConversationSourcePlanes(
+    projection: _LiveFixtureProjection(
+      fixture,
+      () => fixture.conversation.projection.current,
+    ),
+    nativeCatalog: _LiveFixtureProjection(
+      fixture,
+      () => fixture.conversation.nativeCatalog.current,
+    ),
+    canonicalEvents: _LiveFixtureProjection(fixture, () => fixture.canonical),
+    persistentTurns: _LiveFixtureProjection(fixture, () => fixture.turns),
+    composer: _LiveFixtureProjection(fixture, () => fixture.composer),
+    attachments: _LiveFixtureProjection(fixture, () => fixture.attachments),
+    tabActivity: _LiveFixtureProjection(
+      fixture,
+      () => fixture.conversation.tabActivity.current,
+    ),
+    archive: _LiveFixtureProjection(
+      fixture,
+      () => fixture.conversation.archive.current,
+    ),
+  );
+}
+
+final class _LiveFixtureProjection<T> implements ProjectionSource<T> {
+  _LiveFixtureProjection(this._fixture, this._read);
+
+  final CanonicalGroupBindingFixture _fixture;
+  final T Function() _read;
+
+  @override
+  T get current => _read();
+
+  @override
+  Stream<ProjectionUpdate<T>> get changes =>
+      _fixture.changes.map((_) => ProjectionUpdate<T>(_read()));
+}
+
+/// The canonical pane with composer and attachments resolved from the port.
+///
+/// This mirrors the workspace call shape: the two auxiliary planes are read
+/// where they are visible, so withdrawing one degrades only its own region.
+final class _SourceBackedCanonicalGroupPane extends StatelessWidget {
+  const _SourceBackedCanonicalGroupPane({
+    required this.fixture,
+    required this.targets,
+  });
+
+  final CanonicalGroupBindingFixture fixture;
+  final List<TargetCandidate> targets;
+
+  @override
+  Widget build(BuildContext context) {
+    final ports = conversationSourcePortOf(context);
+    return StreamBuilder<bool>(
+      stream: fixture.changes,
+      initialData: false,
+      builder: (context, _) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: ConversationPlaneValue<ComposerProjection>(
+          plane: ports.composer,
+          builder: (context, composer) =>
+              ConversationPlaneValue<ConversationAttachmentsProjection>(
+                plane: ports.attachments,
+                builder: (context, attachments) =>
+                    CanonicalGroupConversationPane(
+                      conversation: fixture.conversation,
+                      agents: fixture.agents,
+                      canonical: fixture.canonical,
+                      turns: fixture.turns,
+                      composer: composer,
+                      attachments: attachments,
+                      allTargets: targets,
+                      onPickComposerImages: fixture.onPickComposerImages,
+                      onClearComposerImages: fixture.onClearComposerImages,
+                      framed: false,
+                    ),
+              ),
+        ),
+      ),
+    );
+  }
 }
 
 TargetCandidate _target(String id, String label) => TargetCandidate(
@@ -1639,12 +2087,26 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         };
       case 'conversation.archive':
         revision += 1;
+        final archiveTarget = (request['conversationId'] ?? '').toString();
+        // The native store resets the reserved default local group in place
+        // instead of archiving it; this double mirrors that contract.
+        if (archiveTarget == 'lico-group-default') {
+          return {
+            'ok': true,
+            'result': <String, dynamic>{
+              'conversationId': archiveTarget,
+              'archivedChildIds': <String>[],
+              'archivedNativeSessions': <Map<String, dynamic>>[],
+              'resetInPlace': true,
+            },
+          };
+        }
         if (request['reopen'] == true) {
           successorId = 'conversation:successor';
           return {
             'ok': true,
             'result': <String, dynamic>{
-              'conversationId': 'conversation:group',
+              'conversationId': archiveTarget,
               'archivedChildIds': <String>[],
               'archivedNativeSessions': <Map<String, dynamic>>[],
               'successor': _successorConversation(),
@@ -1654,7 +2116,7 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
         return {
           'ok': true,
           'result': <String, dynamic>{
-            'conversationId': 'conversation:group',
+            'conversationId': archiveTarget,
             'archivedChildIds': <String>[],
           },
         };
@@ -1711,7 +2173,10 @@ final class _AssistantSurfaceRunner implements ClientConversationNativePort {
           (request['conversationId'] ?? '') == successorId
               ? _successorConversation()
               : {
-                  'id': 'conversation:group',
+                  'id':
+                      (request['conversationId'] ?? '') == 'lico-group-default'
+                      ? 'lico-group-default'
+                      : 'conversation:group',
                   'title': 'Lico',
                   'archived': false,
                   'pinned': true,

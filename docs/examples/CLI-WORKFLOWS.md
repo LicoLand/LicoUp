@@ -1,5 +1,7 @@
 # LicoUp CLI Workflow Examples
 
+Updated: 2026-08-13
+
 [Documentation](../README.md) · [Runbook](../RUNBOOK.md)
 
 These examples project the implemented native CLI surface. The command dispatch

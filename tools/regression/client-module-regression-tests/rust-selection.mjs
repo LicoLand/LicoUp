@@ -12,10 +12,11 @@ test("workflow changes select the pure crate and its native integration", async 
   const sources = await sourceFiles("crates/licoup-workflow/src", ".rs");
   assert.ok(sources.length > 0);
   for (const source of sources) {
-    assert.deepEqual(ids(selectModulesForChangedPaths([source])), [
-      "rust.core.workflow",
-      "rust.domain.adaptive-flywheel",
-    ]);
+    const selected = ids(selectModulesForChangedPaths([source]));
+    assert.ok(selected.includes("rust.core.workflow"));
+    assert.ok(selected.includes("rust.domain.adaptive-flywheel"));
+    assert.ok(selected.every((id) => id.startsWith("rust.workflow.") ||
+      id === "rust.core.workflow" || id === "rust.domain.adaptive-flywheel"));
   }
 });
 
@@ -136,6 +137,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/licoup-conversation/src/store/execution.rs",
   ])), [
     "regression.subagent-mcp-common",
+    "rust.conversation.local-flow",
     "rust.domain.client-conversations",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

@@ -1,0 +1,45 @@
+{
+  "machines": [
+    {
+      "id": "client-runtime.future",
+      "rust_module": "client_runtime_future",
+      "states": [
+        { "id": "pending" },
+        { "id": "ready" },
+        { "id": "cancelled" },
+        { "id": "freed" }
+      ],
+      "events": ["complete", "cancel", "free", "late-complete"],
+      "initial": "pending",
+      "terminal": ["freed"],
+      "transitions": [
+        { "from_state": "pending", "event": "complete", "to_state": "ready" },
+        { "from_state": "pending", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "ready", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "cancelled", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "cancelled", "event": "late-complete", "to_state": "cancelled" },
+        { "from_state": "pending", "event": "free", "to_state": "freed" },
+        { "from_state": "ready", "event": "free", "to_state": "freed" },
+        { "from_state": "cancelled", "event": "free", "to_state": "freed" }
+      ]
+    },
+    {
+      "id": "client-runtime.subscription",
+      "rust_module": "client_runtime_subscription",
+      "states": [
+        { "id": "open" },
+        { "id": "cancelled" },
+        { "id": "freed" }
+      ],
+      "events": ["cancel", "free"],
+      "initial": "open",
+      "terminal": ["freed"],
+      "transitions": [
+        { "from_state": "open", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "cancelled", "event": "cancel", "to_state": "cancelled" },
+        { "from_state": "open", "event": "free", "to_state": "freed" },
+        { "from_state": "cancelled", "event": "free", "to_state": "freed" }
+      ]
+    }
+  ]
+}

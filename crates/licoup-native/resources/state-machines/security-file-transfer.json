@@ -1,0 +1,24 @@
+{
+  "machines": [
+    {
+      "id": "security.file-transfer",
+      "rust_module": "security_file_transfer",
+      "states": [
+        { "id": "receiving" },
+        { "id": "complete-awaiting-confirmation" },
+        { "id": "confirmed-awaiting-ack" },
+        { "id": "acknowledged" },
+        { "id": "removed" }
+      ],
+      "events": ["complete-chunks", "confirm-receive", "acknowledge", "remove"],
+      "initial": "receiving",
+      "terminal": ["removed"],
+      "transitions": [
+        { "from_state": "receiving", "event": "complete-chunks", "to_state": "complete-awaiting-confirmation" },
+        { "from_state": "complete-awaiting-confirmation", "event": "confirm-receive", "to_state": "confirmed-awaiting-ack" },
+        { "from_state": "confirmed-awaiting-ack", "event": "acknowledge", "to_state": "acknowledged" },
+        { "from_state": "acknowledged", "event": "remove", "to_state": "removed" }
+      ]
+    }
+  ]
+}

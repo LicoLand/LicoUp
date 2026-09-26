@@ -1,5 +1,7 @@
 # LicoUp User Guide
 
+Updated: 2026-09-25
+
 English (normative) · [简体中文](USER-GUIDE.zh-CN.md) · [Documentation](../README.md) · [Project](../../README.md)
 
 LicoUp is an early alpha client. Check the
@@ -259,7 +261,7 @@ Do not attach raw logs, histories, paths, or device details to a public issue.
 ## Preview a protected transfer to another client
 
 This flow uses the
-[current retiring endpoint-protection Preview](../STATUS.md). It can be
+[current endpoint-protection Preview](../STATUS.md). It can be
 carried through the candidate `licoarc.relay.v1` outer adapter, and one bounded
 two-fresh-endpoint scenario has been locally verified through an actual
 BadTower candidate. This does not establish a Published Lico Arc Protocol
@@ -275,9 +277,7 @@ the protected peer flow for test or explicitly accepted preview content:
 The current transport is not trusted with plaintext. LicoUp sends it only
 encrypted content and the minimum routing data needed for the transfer.
 Changing the peer or content requires a new approval. The current inner
-preview is not a Lico Arc Profile and has no future compatibility promise; it
-is to be retired directly when a complete pinned Lico Arc Protocol Line
-replaces it.
+preview is not a Lico Arc Profile or a stable compatibility profile.
 
 ## Verify a release file
 

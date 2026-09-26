@@ -1,3 +1,4 @@
+use crate::state_machines::conversation_archive_job;
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 
@@ -23,49 +24,20 @@ pub(crate) struct ArchiveJob {
     pub(crate) cancelled_at: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ArchiveJobStatus {
-    Queued,
-    Scanning,
-    Archiving,
-    Verifying,
-    RetryScheduled,
-    Completed,
-    Failed,
-    Cancelled,
+pub(crate) use crate::state_machines::conversation_archive_job::Event as ArchiveJobEvent;
+pub(crate) use crate::state_machines::conversation_archive_job::State as ArchiveJobStatus;
+
+pub(crate) fn parse_archive_job_status(value: &str) -> Result<ArchiveJobStatus> {
+    ArchiveJobStatus::from_name(value)
+        .ok_or_else(|| anyhow!("unknown archive job status: {}", value))
 }
 
-impl ArchiveJobStatus {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => "queued",
-            Self::Scanning => "scanning",
-            Self::Archiving => "archiving",
-            Self::Verifying => "verifying",
-            Self::RetryScheduled => "retry_scheduled",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
-
-    pub(crate) fn from_str(value: &str) -> Result<Self> {
-        match value {
-            "queued" => Ok(Self::Queued),
-            "scanning" => Ok(Self::Scanning),
-            "archiving" => Ok(Self::Archiving),
-            "verifying" => Ok(Self::Verifying),
-            "retry_scheduled" => Ok(Self::RetryScheduled),
-            "completed" => Ok(Self::Completed),
-            "failed" => Ok(Self::Failed),
-            "cancelled" => Ok(Self::Cancelled),
-            other => Err(anyhow!("unknown archive job status: {}", other)),
-        }
-    }
-
-    pub(crate) fn terminal(self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
-    }
+pub(crate) fn advance_archive_job_status(
+    current: ArchiveJobStatus,
+    event: ArchiveJobEvent,
+) -> Result<ArchiveJobStatus> {
+    conversation_archive_job::transition(current, event)
+        .ok_or_else(|| anyhow!("conversation archive job transition is not declared"))
 }
 
 pub(crate) struct RetryPolicy {
@@ -105,20 +77,18 @@ mod tests {
 
     #[test]
     fn status_codec_and_terminal_classification_are_consistent() {
-        for status in [
-            ArchiveJobStatus::Queued,
-            ArchiveJobStatus::Scanning,
-            ArchiveJobStatus::Archiving,
-            ArchiveJobStatus::Verifying,
-            ArchiveJobStatus::RetryScheduled,
-            ArchiveJobStatus::Completed,
-            ArchiveJobStatus::Failed,
-            ArchiveJobStatus::Cancelled,
-        ] {
-            assert_eq!(ArchiveJobStatus::from_str(status.as_str()).unwrap(), status);
+        for status in conversation_archive_job::ALL_STATES {
+            assert_eq!(
+                ArchiveJobStatus::from_name(status.as_str()).unwrap(),
+                status
+            );
         }
-        assert!(ArchiveJobStatus::Completed.terminal());
-        assert!(!ArchiveJobStatus::RetryScheduled.terminal());
+        assert!(conversation_archive_job::terminal(
+            ArchiveJobStatus::Completed
+        ));
+        assert!(!conversation_archive_job::terminal(
+            ArchiveJobStatus::RetryScheduled
+        ));
     }
 
     #[test]

@@ -13,6 +13,8 @@ use crate::platform::strategy_runtime::{
     RuntimeCatalog, StrategyEffectPermit, actor_fingerprint, admit_strategy_cwd, execute_actor,
     execute_script, predecessor_locator,
 };
+use licoup_workflow::reduce;
+use licoup_workflow_runtime::driver::{ControlRequest, DriverError};
 
 use super::assistant::sha256_hex;
 use super::{
@@ -29,8 +31,22 @@ use licoup_workflow::{
 };
 
 const MAX_PACKAGE_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_DRIVE_EFFECTS_PER_CALL: usize = 512;
 const EFFECT_LEASE_DURATION_MS: i64 = 5 * 60 * 1000;
+
+/// The Conversation projection owner: the timeline append.
+pub(crate) const NOTICE_PROJECTION: &str = "conversation-projection";
+/// The Assistant wake owner: one wake per report fact.
+pub(crate) const NOTICE_WAKE: &str = "assistant-wake";
+/// An actor result the Conversation must show.
+pub(crate) const NOTICE_RESULT: &str = "actor-result";
+/// The result kind, as the lane policy names it.
+pub(crate) const NOTICE_RESULT_KIND: &str = NOTICE_RESULT;
+/// A master-report fact: a newly parked callback.
+pub(crate) const NOTICE_CALLBACK: &str = "strategy-callback-request";
+/// A master-report fact: a terminal failure outcome.
+pub(crate) const NOTICE_TERMINAL: &str = "strategy-terminal-outcome";
+/// A master-report fact: a settled flow state.
+pub(crate) const NOTICE_SETTLED: &str = "strategy-flow-settled";
 
 /// The Conversation-dispatch seam for one Conversation-bound actor command.
 /// `open` registers the turn and returns its handle, `run` executes one
@@ -42,6 +58,59 @@ pub struct ActorTurnPort {
     pub run:
         Arc<dyn Fn(&str, &Value) -> std::result::Result<Value, RuntimeAdapterError> + Send + Sync>,
     pub abandon: Arc<dyn Fn(&str) + Send + Sync>,
+}
+
+/// The work-context handles one lane-delivered effect is admitted with.
+///
+/// The owner is the host's own work-context runtime (the existing one, scoped
+/// by the effect's session key); the profile source and the dispatch are the
+/// host's production lane pieces. Nothing here invents an owner: without a
+/// registered instance for the key, the effect is refused before anything is
+/// delivered.
+pub struct EffectSessionHandles {
+    /// The host-admitted scope, including its actual matter and generation.
+    /// Consumers must not substitute a workflow run id or a guessed generation.
+    pub session: licoup_agent_runtime::work_context::NativeWorkContextKey,
+    /// The registered Agent instance resolved from the admitted membership.
+    pub agent_id: String,
+    /// Reconnected native control is positive evidence of an existing writer,
+    /// even before the runtime has restored its in-memory writer claim.
+    pub live_writer: bool,
+    pub owner: Arc<dyn crate::platform::work_context_ports::EffectSessionOwner>,
+    pub profiles: Arc<dyn crate::platform::work_context_ports::AgentProfileSource>,
+    pub dispatch: Arc<dyn crate::platform::work_context_ports::EffectDispatch>,
+    /// The native session the host established for this effect, when the run
+    /// does not name one itself. The bridge carries the vendor's own session
+    /// identity, so a fresh effect is admitted only once the host's owner has
+    /// established that session; the host never invents one.
+    pub fresh_native_session: Option<String>,
+}
+
+/// The host's source of work-context handles, scoped by the effect's session
+/// key.
+pub trait EffectSessionSource: Send + Sync {
+    /// Whether this source owns the conversation's work-context scope. Absence
+    /// of a runtime inside an owned scope is a refusal, never a fallback.
+    fn governs(&self, _conversation_id: Option<&str>) -> Result<bool> {
+        Ok(true)
+    }
+
+    fn handles(
+        &self,
+        key: &licoup_agent_runtime::work_context::NativeWorkContextKey,
+    ) -> Option<EffectSessionHandles>;
+}
+
+/// The host's control surface for actor turns that are already in flight.
+///
+/// The actor turn port opens and runs turns; stopping or steering one is a
+/// different channel with its own answers, so it is composed separately. A
+/// closure answers with the lane's own control shape (`ok`/`status`) and a
+/// transport error is an unattempted-answer, never a claim about the effect.
+pub struct ActorControlPort {
+    pub cancel:
+        Arc<dyn Fn(&Value) -> std::result::Result<Value, RuntimeAdapterError> + Send + Sync>,
+    pub steer: Arc<dyn Fn(&Value) -> std::result::Result<Value, RuntimeAdapterError> + Send + Sync>,
 }
 
 /// The notice seam for the designated Assistant. `wake` receives the
@@ -104,15 +173,184 @@ fn driving_runs() -> &'static Mutex<BTreeSet<String>> {
     RUNS.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
 
+/// The in-flight facts one drive keeps between its entry point and its effect
+/// port.
+///
+/// The runtime driver dispatches effects on its own threads, so the things a
+/// particular activation of the drive knows — the pre-registered entry turn,
+/// whether an actor streamed its own group message, the failure class of an
+/// Assistant effect that the machine records with its own event — are parked
+/// here, keyed by run or command, rather than threaded through the runtime's
+/// data-only effect request. Everything is removed when it is consumed or when
+/// the drive ends, so a later drive cannot inherit an earlier one's facts.
+#[derive(Default)]
+pub(crate) struct DriveRuntime {
+    entry_turns: Mutex<BTreeMap<String, EntryTurnRegistration>>,
+    streamed: Mutex<BTreeMap<String, bool>>,
+    assistant_failures: Mutex<BTreeMap<String, (FailureClass, String)>>,
+    /// The control surface of one in-flight effect: the turn handle and the
+    /// params the turn was opened with, for the host's control closures.
+    in_flight: Mutex<BTreeMap<String, (String, Value)>>,
+    /// The lane effects this drive admitted through the work-context bridge,
+    /// so a control request can be asked of the same bridge.
+    lane_effects: Mutex<
+        BTreeMap<
+            String,
+            (
+                Arc<crate::platform::work_context_ports::EffectBridge>,
+                crate::platform::work_context_ports::EffectHandle,
+            ),
+        >,
+    >,
+}
+
+impl DriveRuntime {
+    fn store_entry(&self, run_id: &str, entry: Option<EntryTurnRegistration>) {
+        let mut entries = self
+            .entry_turns
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match entry {
+            Some(entry) => {
+                entries.insert(run_id.to_owned(), entry);
+            }
+            None => {
+                entries.remove(run_id);
+            }
+        }
+    }
+
+    fn clear_entry(&self, run_id: &str) {
+        let _ = self
+            .entry_turns
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(run_id);
+    }
+
+    /// Take the pre-registered entry turn if this command is the one it
+    /// belongs to. Consuming it once is what makes the registration a
+    /// dispatch, not a second copy of the turn.
+    fn take_entry(&self, run_id: &str, command: &RunCommand) -> Option<EntryTurnRegistration> {
+        let mut entries = self
+            .entry_turns
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let matched = entries
+            .get(run_id)
+            .is_some_and(|registration| registration.matches(command));
+        if matched {
+            entries.remove(run_id)
+        } else {
+            None
+        }
+    }
+
+    fn note_streamed(&self, command_id: &str, group_streamed: bool) {
+        if !group_streamed {
+            return;
+        }
+        self.streamed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(command_id.to_owned(), true);
+    }
+
+    fn is_streamed(&self, command_id: &str) -> bool {
+        self.streamed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .contains_key(command_id)
+    }
+
+    fn take_streamed(&self, command_id: &str) -> bool {
+        self.streamed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(command_id)
+            .unwrap_or(false)
+    }
+
+    fn note_assistant_failure(&self, command_id: &str, class: FailureClass, code: &str) {
+        self.assistant_failures
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(command_id.to_owned(), (class, code.to_owned()));
+    }
+
+    fn note_in_flight(&self, command_id: &str, handle: &str, params: &Value) {
+        self.in_flight
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(command_id.to_owned(), (handle.to_owned(), params.clone()));
+    }
+
+    fn note_lane_effect(
+        &self,
+        command_id: &str,
+        bridge: Arc<crate::platform::work_context_ports::EffectBridge>,
+        handle: crate::platform::work_context_ports::EffectHandle,
+    ) {
+        self.lane_effects
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(command_id.to_owned(), (bridge, handle));
+    }
+
+    pub(crate) fn lane_effect(
+        &self,
+        command_id: &str,
+    ) -> Option<(
+        Arc<crate::platform::work_context_ports::EffectBridge>,
+        crate::platform::work_context_ports::EffectHandle,
+    )> {
+        self.lane_effects
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(command_id)
+            .cloned()
+    }
+
+    fn clear_in_flight(&self, command_id: &str) {
+        let _ = self
+            .in_flight
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(command_id);
+    }
+
+    /// The control surface of the effect running under one command, if any.
+    pub(crate) fn in_flight(&self, command_id: &str) -> Option<(String, Value)> {
+        self.in_flight
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(command_id)
+            .cloned()
+    }
+
+    pub(crate) fn take_assistant_failure(
+        &self,
+        command_id: &str,
+    ) -> Option<(FailureClass, String)> {
+        self.assistant_failures
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(command_id)
+    }
+}
+
 #[derive(Clone)]
 pub struct StrategyService {
     store: StrategyStore,
     importer: StrategyPackageImporter,
     portable_root: PathBuf,
     actor_port: Option<Arc<ActorTurnPort>>,
+    actor_control: Option<Arc<ActorControlPort>>,
+    effect_sessions: Option<Arc<dyn EffectSessionSource>>,
     transition: TransitionDecorator,
     post_commit: Arc<PostCommitDispatcher>,
     profile_authority: crate::domain::client_conversation::SharedSnapshotAuthority,
+    drive: Arc<DriveRuntime>,
 }
 
 impl std::fmt::Debug for StrategyService {
@@ -149,10 +387,36 @@ impl StrategyService {
             importer,
             portable_root,
             actor_port: None,
+            actor_control: None,
+            effect_sessions: None,
             transition,
             post_commit,
             profile_authority: crate::domain::client_conversation::production_snapshot_authority(),
+            drive: Arc::new(DriveRuntime::default()),
         }
+    }
+
+    /// Compose the host's work-context handles for lane-delivered effects.
+    pub fn with_effect_session_source(mut self, source: Arc<dyn EffectSessionSource>) -> Self {
+        self.effect_sessions = Some(source);
+        self
+    }
+
+    /// The host's control surface for in-flight actor turns, if one is
+    /// composed.
+    pub(crate) fn actor_control(&self) -> Option<Arc<ActorControlPort>> {
+        self.actor_control.clone()
+    }
+
+    /// The host's work-context handles, if one is composed.
+    pub(crate) fn effect_sessions(&self) -> Option<Arc<dyn EffectSessionSource>> {
+        self.effect_sessions.clone()
+    }
+
+    /// Compose the host's control surface for in-flight actor turns.
+    pub fn with_actor_control_port(mut self, port: ActorControlPort) -> Self {
+        self.actor_control = Some(Arc::new(port));
+        self
     }
 
     pub fn with_actor_turn_port(mut self, actor_port: ActorTurnPort) -> Self {
@@ -171,6 +435,12 @@ impl StrategyService {
     ) -> Self {
         self.profile_authority = authority;
         self
+    }
+
+    /// The in-flight facts of the current drive, shared with the driver's
+    /// state port and effect port.
+    pub(crate) fn drive_runtime(&self) -> &DriveRuntime {
+        &self.drive
     }
 
     pub fn store(&self) -> &StrategyStore {
@@ -499,22 +769,7 @@ impl StrategyService {
             "strategy.run.cancel" => {
                 let run_id = required_string(object, "runId")?;
                 self.admit_run_identity(run_id)?;
-                let cancelled = self
-                    .store
-                    .apply_event(run_id, ReducerEvent::CancelRequested)?;
-                for command in cancelled
-                    .commands
-                    .values()
-                    .filter(|command| command.status == CommandStatus::CancelRequested)
-                {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::CancellationUnknown {
-                            command_id: command.id.clone(),
-                            attempt_token: command.attempt_token.clone(),
-                        },
-                    )?;
-                }
+                self.request_run_cancel(run_id)?;
                 let snapshot = self.store.run(run_id)?;
                 self.refresh_graph_usage(&snapshot, None);
                 Ok(serde_json::to_value(
@@ -624,22 +879,7 @@ impl StrategyService {
             "strategy.assistant.workflow.cancel" => {
                 let run_id = required_string(object, "runId")?;
                 self.admit_assistant_run_identity(run_id)?;
-                let cancelled = self
-                    .store
-                    .apply_event(run_id, ReducerEvent::CancelRequested)?;
-                for command in cancelled
-                    .commands
-                    .values()
-                    .filter(|command| command.status == CommandStatus::CancelRequested)
-                {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::CancellationUnknown {
-                            command_id: command.id.clone(),
-                            attempt_token: command.attempt_token.clone(),
-                        },
-                    )?;
-                }
+                self.request_run_cancel(run_id)?;
                 let snapshot = self.store.run(run_id)?;
                 self.refresh_graph_usage(&snapshot, None);
                 let mut value = self.assistant_run_projection(&snapshot)?;
@@ -1205,6 +1445,7 @@ impl StrategyService {
         // registering the first Membership turn or issuing any other effect.
         self.record_graph_usage(snapshot, None)?;
         let Some(reservation) = DriveReservation::acquire(&snapshot.run_id) else {
+            // A drive already owns this run in this process.
             return Ok(None);
         };
         let assistant_owned = snapshot.assistant_membership_id.is_some();
@@ -1224,15 +1465,50 @@ impl StrategyService {
             .map(|registration| registration.projection.clone());
         let run_id = snapshot.run_id.clone();
         let service = self.clone();
-        let spawned = std::thread::Builder::new()
-            .name("strategy-drive".to_owned())
-            .spawn(move || {
-                let _reservation = reservation;
-                if service.drive_run(&run_id, entry).is_err() {
-                    let _ = service.settle_drive_failure(&run_id);
+        // Spawning a drive thread can fail transiently when the process is at
+        // its thread limit; a start that gives up on the first refusal would
+        // fail a run for a condition that clears itself. A bounded retry keeps
+        // the failure for genuine spawn errors.
+        let mut spawned = None;
+        let mut entry = entry;
+        let mut reservation = Some(reservation);
+        for attempt in 0..3 {
+            let service = service.clone();
+            let run_id = run_id.clone();
+            let turn = if attempt == 0 { entry.take() } else { None };
+            let spawned_once = std::thread::Builder::new()
+                .name("strategy-drive".to_owned())
+                .spawn({
+                    let reservation = reservation
+                        .take()
+                        .expect("the reservation is held until the drive starts");
+                    move || {
+                        let _reservation = reservation;
+                        let entry = turn;
+                        if let Err(error) = service.drive_run(&run_id, entry) {
+                            // A drive that failed after the run was admitted is
+                            // not a start failure: the durable attempt is what
+                            // recovery reads, and the failure stays visible.
+                            log::warn!("workflow_drive_failed: {error:#}");
+                            let _ = service.settle_drive_failure(&run_id);
+                        }
+                    }
+                });
+            match spawned_once {
+                Ok(handle) => {
+                    spawned = Some(handle);
+                    break;
                 }
-            });
-        if spawned.is_err() {
+                Err(error) => {
+                    log::warn!("workflow_drive_spawn_failed: {error}");
+                    // The closure was dropped with the failed spawn, so the
+                    // reservation is free for the retry.
+                    reservation = DriveReservation::acquire(&snapshot.run_id);
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        }
+        if spawned.is_none() {
             self.settle_start_failure(snapshot, "strategy_run_start_failed")?;
             if assistant_owned {
                 return Ok(None);
@@ -1263,262 +1539,441 @@ impl StrategyService {
         Ok(())
     }
 
-    fn drive_run(&self, run_id: &str, mut entry: Option<EntryTurnRegistration>) -> Result<()> {
-        self.store.reclaim_abandoned_host_commands(run_id)?;
-        self.recover_expired_commands(run_id)?;
+    /// Drive one run to the end of this call's work, under the runtime driver.
+    ///
+    /// The runtime's continuous driver owns the loop (claim, commit the
+    /// possible-effect marker, invoke, commit the outcome, admit again), the
+    /// store's recovery assembly owns the durable state it advances, and this
+    /// method only supplies the production side: the H1 host-lost recovery the
+    /// production store already implements, the fallback/retry restoration for
+    /// attempts that failed before this call, and the entry turn this call
+    /// pre-registered.
+    fn drive_run(&self, run_id: &str, entry: Option<EntryTurnRegistration>) -> Result<()> {
+        // Who owns this run comes before any of this host's work: a live
+        // foreign owner is taken over by a committed successor handoff, and a
+        // refusal leaves the run exactly where it is.
+        let database = std::sync::Arc::new(
+            licoup_workflow_store::transactions::WorkflowDatabase::open(self.store.db_path())?,
+        );
+        let recovery =
+            licoup_workflow_store::recovery::RecoveryAssembly::assemble(database.clone())?;
+        match super::host_drive::prepare_ownership(&database, &recovery, run_id)? {
+            super::host_drive::OwnershipStart::Free => {
+                self.store.reclaim_abandoned_host_commands(run_id)?;
+            }
+            super::host_drive::OwnershipStart::TakenOver => {}
+            super::host_drive::OwnershipStart::Refused => return Ok(()),
+        }
         let _ = self.transition.reconcile_pending();
-        let recovered = self.store.run(run_id)?;
-        let assistant_owned = recovered.assistant_membership_id.is_some();
-        let mut executed = 0usize;
-        'drive: while executed < MAX_DRIVE_EFFECTS_PER_CALL {
-            if !assistant_owned {
-                self.recover_persisted_effects(run_id)?;
-            }
-            let snapshot = self.store.run(run_id)?;
-            if snapshot.status == StrategyRunStatus::AuthorizationRequired {
-                let definition = self
-                    .store
-                    .definition_by_revision(&snapshot.definition_digest)?;
-                let Some(authorization) = definition
-                    .authorization
-                    .filter(|authorization| authorization.active)
-                else {
-                    break;
-                };
-                if snapshot.commands.values().any(|command| {
-                    command.kind == CommandKind::Authorization
-                        && command.status == CommandStatus::Pending
-                }) {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::AuthorizationGranted {
-                            semantics_digest: authorization.semantics_digest,
-                        },
-                    )?;
-                } else if let Some(command) = snapshot.commands.values().find(|command| {
-                    command.status == CommandStatus::Retryable
-                        && command.failure_class == Some(FailureClass::Authority)
-                }) {
-                    self.apply_run_event(
-                        run_id,
-                        ReducerEvent::RetryRequested {
-                            command_id: command.id.clone(),
-                        },
-                    )?;
-                } else {
-                    break;
+        self.recover_persisted_effects(run_id)?;
+        self.drive.store_entry(run_id, entry);
+        let result = super::host_drive::run_drive(self, run_id);
+        // A registration that was never claimed by its command is abandoned by
+        // the drop, exactly as it was when the drive held it directly.
+        self.drive.clear_entry(run_id);
+        result
+    }
+
+    /// Ask the live drive to cancel, or write the durable request directly.
+    ///
+    /// While a drive holds the run, the cancellation has to be committed by
+    /// that owner: a second writer would advance the checkpoint under the
+    /// drive's compare-and-set and turn a cancellation into a drive failure.
+    /// With no live drive the request is committed here, exactly as it was
+    /// before the runtime driver existed. The brief wait afterwards is for the
+    /// caller's projection: the drive takes control before results, so the
+    /// request it just queued becomes visible within a turn.
+    fn request_run_cancel(&self, run_id: &str) -> Result<()> {
+        if let Some(driver) = super::host_drive::active_driver(run_id) {
+            let request = ControlRequest::cancel(format!("strategy-cancel-{run_id}-{}", now_ms()));
+            match driver.control(run_id, request) {
+                Ok(_) => {
+                    self.wait_for_cancel_visible(run_id, std::time::Duration::from_millis(1000));
+                    return Ok(());
                 }
-                executed = executed.saturating_add(1);
-                continue;
+                Err(DriverError::NotDriven { .. }) => {}
+                Err(error) => return Err(anyhow!(error.to_string())),
             }
-            let mut commands = Vec::new();
-            let capacity = licoup_workflow::MAX_ACTIVE_EFFECTS
-                .min(MAX_DRIVE_EFFECTS_PER_CALL.saturating_sub(executed));
-            for index in 0..capacity {
-                let claimant = format!(
-                    "scheduler-{}-{index}",
-                    &run_id.chars().take(24).collect::<String>()
-                );
-                let Some(command) = self.store.claim_next_command(
-                    run_id,
-                    &claimant,
-                    now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
-                )?
-                else {
-                    break;
-                };
-                self.apply_run_event(
-                    run_id,
-                    ReducerEvent::CommandStarted {
-                        command_id: command.id.clone(),
-                        attempt_token: command.attempt_token.clone(),
-                    },
-                )?;
-                commands.push((command, claimant));
-            }
-            if commands.is_empty() {
-                break;
-            }
-            let mut outcomes = std::thread::scope(|scope| -> Result<Vec<_>> {
-                let (sender, receiver) = std::sync::mpsc::channel();
-                let leases = commands
-                    .iter()
-                    .map(|(command, claimant)| (command.id.clone(), claimant.clone()))
-                    .collect::<Vec<_>>();
-                for (command, claimant) in commands {
-                    let registration = if entry
-                        .as_ref()
-                        .is_some_and(|registration| registration.matches(&command))
-                    {
-                        entry.take()
-                    } else {
-                        None
-                    };
-                    let service = self.clone();
-                    let run_id = run_id.to_owned();
-                    let sender = sender.clone();
-                    scope.spawn(move || {
-                        let result =
-                            service.execute_command(&run_id, &command, &claimant, registration);
-                        let _ = sender.send((command, result));
-                    });
-                }
-                drop(sender);
-                let mut outcomes = Vec::with_capacity(leases.len());
-                while outcomes.len() < leases.len() {
-                    match receiver.recv_timeout(std::time::Duration::from_secs(30)) {
-                        Ok(outcome) => outcomes.push(outcome),
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            let lease_until = now_ms().saturating_add(EFFECT_LEASE_DURATION_MS);
-                            for (command_id, claimant) in &leases {
-                                self.store.renew_command_lease(
-                                    command_id,
-                                    claimant,
-                                    lease_until,
-                                )?;
-                            }
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                            return Err(anyhow!("strategy_effect_thread_failed"));
-                        }
-                    }
-                }
-                Ok(outcomes)
-            })?;
-            executed = executed.saturating_add(outcomes.len());
-            outcomes.sort_by(|left, right| left.0.id.cmp(&right.0.id));
-            let mut assistant_failures = Vec::new();
-            for (command, result) in outcomes {
-                match result {
-                    Ok((output, group_streamed)) => {
-                        if let Some((class, code)) = actor_output_failure(&command, &output) {
-                            if assistant_owned {
-                                assistant_failures.push((
-                                    command,
-                                    class,
-                                    code.to_owned(),
-                                    Some(output),
-                                ));
-                                continue;
-                            }
-                            let updated = self.apply_run_event(
-                                run_id,
-                                ReducerEvent::CommandFailed {
-                                    command_id: command.id.clone(),
-                                    attempt_token: command.attempt_token.clone(),
-                                    class,
-                                    code: code.into(),
-                                },
-                            )?;
-                            self.refresh_graph_usage(&updated, None);
-                            self.recover_failed_effect(run_id, &command.id)?;
-                            continue;
-                        }
-                        let updated = self.apply_run_event(
-                            run_id,
-                            ReducerEvent::CommandSucceeded {
-                                command_id: command.id.clone(),
-                                attempt_token: command.attempt_token.clone(),
-                                output: output.clone(),
-                            },
-                        )?;
-                        self.refresh_graph_usage(&updated, Some((&command, &output)));
-                        if !group_streamed {
-                            let _ = self.project_membership_event(run_id, &command, &output);
-                        }
-                    }
-                    Err(error) => {
-                        let (class, code) = classify_effect_error(&error.to_string());
-                        if assistant_owned {
-                            assistant_failures.push((command, class, code.to_owned(), None));
-                            continue;
-                        }
-                        let updated = self.apply_run_event(
-                            run_id,
-                            ReducerEvent::CommandFailed {
-                                command_id: command.id.clone(),
-                                attempt_token: command.attempt_token.clone(),
-                                class,
-                                code: code.into(),
-                            },
-                        )?;
-                        self.refresh_graph_usage(&updated, None);
-                        self.recover_failed_effect(run_id, &command.id)?;
-                    }
-                }
-            }
-            if !assistant_failures.is_empty() {
-                for (command, class, code, output) in assistant_failures {
-                    let updated = self.apply_run_event(
-                        run_id,
-                        ReducerEvent::AssistantEffectFailed {
-                            command_id: command.id.clone(),
-                            attempt_token: command.attempt_token.clone(),
-                            class,
-                            code,
-                        },
-                    )?;
-                    self.refresh_graph_usage(
-                        &updated,
-                        output.as_ref().map(|output| (&command, output)),
-                    );
-                }
-                break 'drive;
-            }
+        }
+        let cancelled = self
+            .store
+            .apply_event(run_id, ReducerEvent::CancelRequested)?;
+        for command in cancelled
+            .commands
+            .values()
+            .filter(|command| command.status == CommandStatus::CancelRequested)
+        {
+            self.apply_run_event(
+                run_id,
+                ReducerEvent::CancellationUnknown {
+                    command_id: command.id.clone(),
+                    attempt_token: command.attempt_token.clone(),
+                },
+            )?;
         }
         Ok(())
     }
 
-    fn settle_drive_failure(&self, run_id: &str) -> Result<()> {
-        let snapshot = self.store.run(run_id)?;
-        if assistant_run_terminal(snapshot.status) {
-            return Ok(());
-        }
-        let updated = self.apply_run_event(
-            run_id,
-            ReducerEvent::AssistantDriveFailed {
-                code: "assistant_drive_outcome_unknown".to_owned(),
-            },
-        )?;
-        self.refresh_graph_usage(&updated, None);
-        Ok(())
-    }
-
-    fn recover_expired_commands(&self, run_id: &str) -> Result<()> {
-        while self.store.recover_next_expired_command(run_id)? {}
-        Ok(())
-    }
-
-    fn recover_persisted_effects(&self, run_id: &str) -> Result<()> {
+    /// Wait, bounded, until the cancellation request is visible in the run.
+    ///
+    /// A timeout is not an error: the durable request is already queued with
+    /// the drive that owns it, and reporting a failure because a projection had
+    /// not caught up would misstate what happened.
+    fn wait_for_cancel_visible(&self, run_id: &str, timeout: std::time::Duration) {
+        let deadline = std::time::Instant::now() + timeout;
         loop {
-            let snapshot = self.store.run(run_id)?;
-            let definition = self
-                .store
-                .definition_by_revision(&snapshot.definition_digest)?;
-            let workflow = compile_workflow(definition.workflow.clone())?;
-            let candidate = snapshot.commands.values().find(|command| {
-                matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
-                    && ((command.status == CommandStatus::Retryable
-                        && command.failure_class == Some(FailureClass::Transient))
-                        || fallback_reason(&workflow, &snapshot, command).is_some())
+            let visible = self.store.run(run_id).is_ok_and(|snapshot| {
+                matches!(
+                    snapshot.status,
+                    StrategyRunStatus::Cancelled | StrategyRunStatus::CancelInDoubt
+                ) || snapshot.commands.values().any(|command| {
+                    matches!(
+                        command.status,
+                        CommandStatus::CancelRequested | CommandStatus::Cancelled
+                    )
+                })
             });
-            let Some(command_id) = candidate.map(|command| command.id.clone()) else {
-                return Ok(());
-            };
-            ensure!(
-                self.recover_failed_effect(run_id, &command_id)?,
-                "strategy_recovery_state_conflict"
-            );
+            if visible || std::time::Instant::now() >= deadline {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 
-    fn execute_command(
+    /// Settle the authorization gate that stopped a drive.
+    ///
+    /// A run in `AuthorizationRequired` cannot be claimed, so the drive that
+    /// reports it stops there. Resolving the gate is the host's decision and
+    /// not the runtime's, which is why it lives here: an active grant is
+    /// granted, a revocable authority failure is retried, and no grant leaves
+    /// the run exactly where it is. Returns whether anything was applied.
+    pub(crate) fn settle_run_authorization(&self, run_id: &str) -> Result<bool> {
+        let snapshot = self.store.run(run_id)?;
+        if snapshot.status != StrategyRunStatus::AuthorizationRequired {
+            return Ok(false);
+        }
+        let definition = self
+            .store
+            .definition_by_revision(&snapshot.definition_digest)?;
+        let Some(authorization) = definition
+            .authorization
+            .filter(|authorization| authorization.active)
+        else {
+            return Ok(false);
+        };
+        if snapshot.commands.values().any(|command| {
+            command.kind == CommandKind::Authorization && command.status == CommandStatus::Pending
+        }) {
+            self.apply_run_event(
+                run_id,
+                ReducerEvent::AuthorizationGranted {
+                    semantics_digest: authorization.semantics_digest,
+                },
+            )?;
+            return Ok(true);
+        }
+        if let Some(command) = snapshot.commands.values().find(|command| {
+            command.status == CommandStatus::Retryable
+                && command.failure_class == Some(FailureClass::Authority)
+        }) {
+            self.apply_run_event(
+                run_id,
+                ReducerEvent::RetryRequested {
+                    command_id: command.id.clone(),
+                },
+            )?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Invoke one claimed command and report what it proved.
+    ///
+    /// This is the effect side of the production drive. Admission — the
+    /// pre-effect recheck, the one-shot permit, the binding and runtime
+    /// resolution — happens here, the external work happens here, and the
+    /// *commit* happens in the driver. Nothing in this method writes the run's
+    /// settlement, which is what keeps "the possible-effect marker is durable
+    /// before the effect" a property of the drive loop rather than of this
+    /// path.
+    pub(crate) fn invoke_claimed_command(
         &self,
         run_id: &str,
         command: &RunCommand,
         claimant: &str,
-        registration: Option<EntryTurnRegistration>,
-    ) -> Result<(Value, bool)> {
+    ) -> Result<super::host_drive::CommandVerdict> {
+        // Every way this invocation can refuse or fail becomes a verdict the
+        // machine records, exactly as it did when the old loop classified the
+        // error after the fact. Returning an I/O-style error here would reach
+        // the driver as "the adapter never reported", which is a different and
+        // much less informative fact than "this effect failed with this class
+        // and this code".
+        match self.invoke_claimed_command_inner(run_id, command, claimant) {
+            Ok(verdict) => Ok(verdict),
+            Err(error) => {
+                log::debug!("workflow_effect_refused: {error:#}");
+                let assistant_owned = self
+                    .store
+                    .run(run_id)
+                    .ok()
+                    .is_some_and(|snapshot| snapshot.assistant_membership_id.is_some());
+                let (class, code) = classify_effect_error(&error.to_string());
+                Ok(self.command_failure_verdict(command, assistant_owned, class, code))
+            }
+        }
+    }
+
+    /// The classified failure verdict for one command, with the Assistant's
+    /// fail-once rule applied.
+    ///
+    /// An Assistant-owned run records an effect failure with the machine's own
+    /// `AssistantEffectFailed` event, which the driver's data-only verdict
+    /// cannot carry: the verdict says "in doubt" so the driver does not retry
+    /// or fall back, and the state port translates the commit into the
+    /// Assistant event with the class and code recorded here.
+    fn command_failure_verdict(
+        &self,
+        command: &RunCommand,
+        assistant_owned: bool,
+        class: FailureClass,
+        code: &str,
+    ) -> super::host_drive::CommandVerdict {
+        use super::host_drive::CommandVerdict;
+        if assistant_owned {
+            self.drive.note_assistant_failure(&command.id, class, code);
+            CommandVerdict::AssistantFailed {
+                class,
+                code: code.to_owned(),
+            }
+        } else {
+            CommandVerdict::Failed {
+                class,
+                code: code.to_owned(),
+            }
+        }
+    }
+
+    /// Invoke one lane effect through the host's work-context bridge.
+    ///
+    /// The typed permit still gates admission (the same one-shot resource fact
+    /// the lane path consumes); the bridge adds the session writer claim, the
+    /// negotiated capabilities and the adapter's own answers. A refusal means
+    /// nothing was delivered, and an unanswered outcome stays unknown — this
+    /// path never re-delivers an attempt whose effect may already have happened.
+    fn invoke_through_effect_bridge(
+        &self,
+        run_id: &str,
+        command: &RunCommand,
+        snapshot: &RunSnapshot,
+        definition: &StrategyDefinition,
+        source: Arc<dyn EffectSessionSource>,
+        assistant_owned: bool,
+        claimant: &str,
+    ) -> Result<Option<super::host_drive::CommandVerdict>> {
+        use crate::platform::work_context_ports::{
+            EffectBridge, EffectInvocation, EffectRefusal, EffectTurn, ReconcileOutcome,
+            SubmitOutcome,
+        };
+        let binding = binding_for(
+            definition,
+            command
+                .binding_id
+                .as_deref()
+                .ok_or_else(|| anyhow!("binding_incomplete"))?,
+            command.binding_ordinal,
+        )?;
+        let key = licoup_agent_runtime::work_context::NativeWorkContextKey {
+            conversation_id: snapshot
+                .conversation_id
+                .clone()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| run_id.to_owned()),
+            membership_id: binding.value_id.clone(),
+            matter_id: run_id.to_owned(),
+            generation: 1,
+        };
+        let Some(handles) = source.handles(&key) else {
+            // No registered instance for this session: nothing is delivered and
+            // the attempt is refused rather than sent to a guessed target.
+            return Ok(Some(self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::Permanent,
+                "workflow_effect_instance_unregistered",
+            )));
+        };
+        if handles.live_writer {
+            return Ok(Some(self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::InDoubt,
+                "workflow_session_writer_unreconciled",
+            )));
+        }
+        let Some(native_session_id) = command
+            .resume_session_id
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                handles
+                    .fresh_native_session
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+            })
+        else {
+            // Once this host supplied a session owner, lack of its native
+            // binding cannot authorize a second delivery path. In particular,
+            // falling back to a fresh lane send would bypass writer admission.
+            return Ok(Some(self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::Permanent,
+                "workflow_effect_session_unestablished",
+            )));
+        };
+        let authorization = definition
+            .authorization
+            .as_ref()
+            .ok_or_else(|| anyhow!("authorization_required"))?;
+        let fingerprint =
+            actor_fingerprint(&handles.agent_id, &binding.model, &binding.reasoning_effort)?;
+        self.store.authorize_effect(
+            run_id,
+            &command.id,
+            &command.attempt_token,
+            &authorization.authorization_digest,
+            claimant,
+            now_ms().saturating_add(EFFECT_LEASE_DURATION_MS),
+        )?;
+        let mut permit = StrategyEffectPermit::issue(
+            &command.id,
+            &authorization.authorization_digest,
+            &fingerprint,
+        )?;
+        permit.consume(command, &authorization.authorization_digest, &fingerprint)?;
+        let bridge = EffectBridge::new(handles.owner, handles.profiles, handles.dispatch);
+        let invocation = EffectInvocation {
+            effect_id: command.id.clone(),
+            attempt_token: command.attempt_token.clone(),
+            agent_id: handles.agent_id.clone(),
+            session: handles.session.clone(),
+            turn: EffectTurn {
+                host_handle: command.id.clone(),
+                native_session_id,
+                native_turn_id: String::new(),
+            },
+            input: command.input.clone(),
+        };
+        match bridge.submit(&invocation) {
+            SubmitOutcome::Admitted(handle) => {
+                let bridge = Arc::new(bridge);
+                self.drive
+                    .note_lane_effect(&command.id, Arc::clone(&bridge), (*handle).clone());
+                // Reading the adapter's own record is what settles the session
+                // claim: a confirmed fact releases it, an absent record keeps
+                // it. The delivery answer itself is the fallback when the
+                // adapter keeps no readable record, so a terminal fact the
+                // adapter did report is never discarded — and no unknown
+                // becomes a retry.
+                let state = match bridge.reconcile(&handle) {
+                    ReconcileOutcome::Settled { state, .. } => state,
+                    ReconcileOutcome::InDoubt { .. } => handle.state.clone(),
+                };
+                Ok(Some(self.effect_state_verdict(
+                    command,
+                    assistant_owned,
+                    &state,
+                )))
+            }
+            SubmitOutcome::Refused(refusal) => {
+                let (class, code) = match &refusal {
+                    EffectRefusal::InvalidInvocation { .. } => {
+                        (FailureClass::Permanent, "effect_invocation_invalid")
+                    }
+                    EffectRefusal::UnknownInstance { .. } => (
+                        FailureClass::Permanent,
+                        "workflow_effect_instance_unregistered",
+                    ),
+                    EffectRefusal::SessionNotAdmitted { .. } => {
+                        (FailureClass::Transient, "workflow_session_not_admitted")
+                    }
+                    EffectRefusal::CapabilityUnavailable { .. } => {
+                        (FailureClass::Permanent, "effect_capability_unavailable")
+                    }
+                    EffectRefusal::InFlightInstance { .. } => {
+                        (FailureClass::Transient, "workflow_session_writer_busy")
+                    }
+                };
+                Ok(Some(self.command_failure_verdict(
+                    command,
+                    assistant_owned,
+                    class,
+                    code,
+                )))
+            }
+        }
+    }
+
+    /// One effect state, as the run records it.
+    ///
+    /// Only a fact the adapter reported becomes a terminal verdict; a state the
+    /// adapter did not confirm stays unknown.
+    fn effect_state_verdict(
+        &self,
+        command: &RunCommand,
+        assistant_owned: bool,
+        state: &crate::platform::work_context_ports::EffectState,
+    ) -> super::host_drive::CommandVerdict {
+        use super::host_drive::CommandVerdict;
+        use crate::platform::work_context_ports::EffectState;
+        match state {
+            EffectState::Succeeded { output } => match actor_output_failure(command, output) {
+                Some((class, code)) => {
+                    self.command_failure_verdict(command, assistant_owned, class, code)
+                }
+                None => CommandVerdict::Succeeded {
+                    output: output.clone(),
+                    group_streamed: false,
+                },
+            },
+            EffectState::Failed { code, retryable } => self.command_failure_verdict(
+                command,
+                assistant_owned,
+                if *retryable {
+                    FailureClass::Transient
+                } else {
+                    FailureClass::Permanent
+                },
+                code,
+            ),
+            EffectState::NotExecuted => self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::Permanent,
+                "effect_not_executed",
+            ),
+            EffectState::Cancelled => self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::InDoubt,
+                "effect_cancelled_unknown_scope",
+            ),
+            EffectState::InFlight | EffectState::Unknown { .. } => self.command_failure_verdict(
+                command,
+                assistant_owned,
+                FailureClass::InDoubt,
+                "effect_outcome_unknown",
+            ),
+        }
+    }
+
+    fn invoke_claimed_command_inner(
+        &self,
+        run_id: &str,
+        command: &RunCommand,
+        claimant: &str,
+    ) -> Result<super::host_drive::CommandVerdict> {
+        use super::host_drive::CommandVerdict;
         let snapshot = self.store.run(run_id)?;
         let definition = self
             .store
@@ -1541,6 +1996,27 @@ impl StrategyService {
             .authorization
             .as_ref()
             .ok_or_else(|| anyhow!("authorization_required"))?;
+        let assistant_owned = snapshot.assistant_membership_id.is_some();
+        // A lane-delivered effect goes through the host's work-context bridge:
+        // the owner claims the session, the capabilities decide, and the lane
+        // delivers — with every answer read for exactly what it states.
+        if matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem) {
+            if let Some(source) = self.effect_sessions() {
+                if source.governs(snapshot.conversation_id.as_deref())? {
+                    if let Some(verdict) = self.invoke_through_effect_bridge(
+                        run_id,
+                        command,
+                        &snapshot,
+                        &definition,
+                        source,
+                        assistant_owned,
+                        claimant,
+                    )? {
+                        return Ok(verdict);
+                    }
+                }
+            }
+        }
         match command.kind {
             CommandKind::Actor | CommandKind::WorksetItem => {
                 let binding = binding_for(
@@ -1576,7 +2052,8 @@ impl StrategyService {
                     &authorization.authorization_digest,
                     &fingerprint,
                 )?;
-                self.execute_actor_into_group(
+                let registration = self.drive.take_entry(run_id, command);
+                let outcome = self.execute_actor_into_group(
                     run_id,
                     command,
                     &authorization.authorization_digest,
@@ -1586,7 +2063,25 @@ impl StrategyService {
                     snapshot.conversation_id.as_deref(),
                     registration,
                     &fingerprint,
-                )
+                );
+                match outcome {
+                    Ok((output, group_streamed)) => match actor_output_failure(command, &output) {
+                        // A completed turn that reports failure is a classified
+                        // verdict, not an adapter error: the effect ran and its
+                        // outcome is known.
+                        Some((class, code)) => {
+                            Ok(self.command_failure_verdict(command, assistant_owned, class, code))
+                        }
+                        None => {
+                            self.drive.note_streamed(&command.id, group_streamed);
+                            Ok(CommandVerdict::Succeeded {
+                                output,
+                                group_streamed,
+                            })
+                        }
+                    },
+                    Err(error) => Err(error),
+                }
             }
             CommandKind::Script => {
                 let requirement_id = command
@@ -1628,17 +2123,110 @@ impl StrategyService {
                     .join("adaptive-flywheel")
                     .join("runtime")
                     .join(run_id);
-                execute_script(
+                match execute_script(
                     command,
                     &authorization.authorization_digest,
                     &runtime,
                     &revision_content,
                     &runtime_state,
                     &mut permit,
-                )
-                .map(|value| (value, false))
+                ) {
+                    Ok(value) => Ok(CommandVerdict::Succeeded {
+                        output: value,
+                        group_streamed: false,
+                    }),
+                    Err(error) => Err(error),
+                }
             }
             CommandKind::Authorization => Err(anyhow!("authorization_required")),
+        }
+    }
+
+    /// The production post-commit work for one transition the drive committed.
+    ///
+    /// The runtime's state port has no observer argument, so the composition
+    /// calls this after each commit it makes. What happens here is exactly what
+    /// the old loop did after applying an outcome, in the same order: numeric
+    /// usage refresh, the Conversation projection when the actor did not stream
+    /// its own message, retry/fallback issuance for a failed command, the
+    /// Assistant failure correction, and the master-gate report the transition
+    /// decorator used to dispatch.
+    pub(crate) fn after_drive_commit(
+        &self,
+        before: &RunSnapshot,
+        event: &ReducerEvent,
+        after: &RunSnapshot,
+    ) -> Result<()> {
+        let settled = match event {
+            ReducerEvent::CommandSucceeded {
+                command_id, output, ..
+            } => after
+                .commands
+                .get(command_id)
+                .map(|command| (command, output)),
+            _ => None,
+        };
+        self.refresh_graph_usage(after, settled);
+        if let ReducerEvent::CommandSucceeded {
+            command_id, output, ..
+        } = event
+        {
+            if let Some(command) = after.commands.get(command_id) {
+                if !self.drive.take_streamed(command_id) {
+                    let _ = self.project_membership_event(&after.run_id, command, output);
+                }
+            }
+        }
+        if let ReducerEvent::CommandFailed { command_id, .. } = event {
+            // Assistant-owned runs record their failure through the state
+            // port's own translation, and never retry or fall back.
+            if after.assistant_membership_id.is_none() {
+                let _ = self.recover_failed_effect(&after.run_id, command_id);
+            }
+        }
+        // The master-gate reports and the wake are no longer dispatched here:
+        // the drive writes their intents with the commit and the delivery side
+        // accepts them independently. `before` is kept for the usage ledger,
+        // which is the only accounting this pass still owns.
+        let _ = before;
+        Ok(())
+    }
+
+    fn settle_drive_failure(&self, run_id: &str) -> Result<()> {
+        let snapshot = self.store.run(run_id)?;
+        if assistant_run_terminal(snapshot.status) {
+            return Ok(());
+        }
+        let updated = self.apply_run_event(
+            run_id,
+            ReducerEvent::AssistantDriveFailed {
+                code: "assistant_drive_outcome_unknown".to_owned(),
+            },
+        )?;
+        self.refresh_graph_usage(&updated, None);
+        Ok(())
+    }
+
+    fn recover_persisted_effects(&self, run_id: &str) -> Result<()> {
+        loop {
+            let snapshot = self.store.run(run_id)?;
+            let definition = self
+                .store
+                .definition_by_revision(&snapshot.definition_digest)?;
+            let workflow = compile_workflow(definition.workflow.clone())?;
+            let candidate = snapshot.commands.values().find(|command| {
+                matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+                    && ((command.status == CommandStatus::Retryable
+                        && command.failure_class == Some(FailureClass::Transient))
+                        || fallback_reason(&workflow, &snapshot, command).is_some())
+            });
+            let Some(command_id) = candidate.map(|command| command.id.clone()) else {
+                return Ok(());
+            };
+            ensure!(
+                self.recover_failed_effect(run_id, &command_id)?,
+                "strategy_recovery_state_conflict"
+            );
         }
     }
 
@@ -1755,15 +2343,19 @@ impl StrategyService {
             }
         };
         let (handle, params) = registration.into_run();
-        match (port.run)(&handle, &params) {
+        self.drive.note_in_flight(&command.id, &handle, &params);
+        let outcome = match (port.run)(&handle, &params) {
             Ok(value) => {
                 if actor_output_failure(command, &value).is_some() {
-                    return Err(anyhow!("strategy_actor_failed"));
+                    Err(anyhow!("strategy_actor_failed"))
+                } else {
+                    Ok((value, true))
                 }
-                Ok((value, true))
             }
             Err(error) => Err(anyhow!("strategy_actor_dispatch_failed:{error}")),
-        }
+        };
+        self.drive.clear_in_flight(&command.id);
+        outcome
     }
 
     /// Apply one run event and then surface the durable master-agent reports
@@ -1979,6 +2571,415 @@ impl StrategyService {
         Ok(())
     }
 
+    /// Which committed facts owe downstream acceptance, decided at commit time.
+    ///
+    /// The decision is the one the old post-commit dispatcher made, computed
+    /// over the transition the commit is about to apply: an actor result the
+    /// Conversation must show, a master-report fact (a newly parked callback,
+    /// a terminal failure, a settled flow), and — for the report facts — a wake
+    /// on its own recipient. Each fact is written as an intent in the same
+    /// transaction as the event, the checkpoint, and the commands, so a crash
+    /// can lose the delivery but never the obligation.
+    pub(crate) fn drive_notices(
+        &self,
+        before: &RunSnapshot,
+        event: &ReducerEvent,
+    ) -> Vec<licoup_workflow_store::transactions::NoticeRequest> {
+        use licoup_workflow_store::transactions::NoticeRequest;
+        if before
+            .conversation_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            return Vec::new();
+        }
+        let Ok(definition) = self.store.definition_by_revision(&before.definition_digest) else {
+            return Vec::new();
+        };
+        let Ok(compiled) = super::host_drive::compiled_definition(&definition.workflow) else {
+            return Vec::new();
+        };
+        let Ok(reduction) = reduce(&compiled, before, event.clone()) else {
+            return Vec::new();
+        };
+        let after = &reduction.snapshot;
+        let parked = after.pending_callbacks.iter().any(|pending| {
+            !before.pending_callbacks.iter().any(|known| {
+                known.state_id == pending.state_id && known.state_visit == pending.state_visit
+            })
+        });
+        let terminal =
+            failure_terminal_status(after.status) && !failure_terminal_status(before.status);
+        let settled = !parked
+            && !terminal
+            && after
+                .completed_states
+                .iter()
+                .any(|state| !before.completed_states.contains(state));
+        let mut projection_kinds = Vec::new();
+        match event {
+            ReducerEvent::CommandSucceeded { command_id, .. } => {
+                if let Some(command) = after.commands.get(command_id) {
+                    if matches!(command.kind, CommandKind::Actor | CommandKind::WorksetItem)
+                        && !self.drive.is_streamed(command_id)
+                    {
+                        projection_kinds.push(NOTICE_RESULT);
+                    }
+                }
+                if parked {
+                    projection_kinds.push(NOTICE_CALLBACK);
+                } else if settled {
+                    projection_kinds.push(NOTICE_SETTLED);
+                }
+            }
+            ReducerEvent::CommandFailed { .. } | ReducerEvent::AssistantEffectFailed { .. } => {
+                if after.assistant_membership_id.is_none() && terminal {
+                    projection_kinds.push(NOTICE_TERMINAL);
+                }
+            }
+            _ => {}
+        }
+        let mut notices = Vec::new();
+        for kind in projection_kinds {
+            notices.push(NoticeRequest {
+                recipient: NOTICE_PROJECTION.to_owned(),
+                kind: kind.to_owned(),
+            });
+            // A report fact owes the master a wake on its own recipient: the
+            // same fact, a different owner, an independent acknowledgement.
+            if kind != NOTICE_RESULT {
+                notices.push(NoticeRequest {
+                    recipient: NOTICE_WAKE.to_owned(),
+                    kind: kind.to_owned(),
+                });
+            }
+        }
+        notices
+    }
+
+    /// Append one projection fact for a notice, idempotently.
+    pub(crate) fn deliver_notice_projection(
+        &self,
+        notice: &licoup_workflow_runtime::ports::Notice,
+    ) -> Result<()> {
+        let result = self.notice_action(notice);
+        let Some(action) = result? else {
+            // Nothing to project (the master membership is gone, the run has no
+            // conversation): the obligation is answered, not retried forever.
+            return Ok(());
+        };
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        if self.projection_recorded(&store, &action.conversation_id, &notice.notice_id)? {
+            return Ok(());
+        }
+        store.append_event(
+            &action.conversation_id,
+            action.author.as_deref(),
+            crate::domain::client_conversation::EventKind::Message,
+            &action.parts,
+            None,
+            Some(&notice.notice_id),
+            true,
+        )?;
+        Ok(())
+    }
+
+    /// Hand one wake fact to the Assistant wake port.
+    ///
+    /// Without an assembled wake port there is no owner to accept the fact, and
+    /// the notice stays open: reporting success here would acknowledge an
+    /// obligation nobody received.
+    pub(crate) fn deliver_notice_wake(
+        &self,
+        notice: &licoup_workflow_runtime::ports::Notice,
+    ) -> Result<()> {
+        let Some(port) = self.post_commit.assistant_wake() else {
+            return Err(anyhow!("assistant_wake_not_assembled"));
+        };
+        let Some(action) = self.notice_action(notice)? else {
+            return Ok(());
+        };
+        for payload in &action.payloads {
+            (port.wake)(&action.conversation_id, &action.membership_id, payload)
+                .map_err(|error| anyhow!("assistant_wake_failed: {error}"))?;
+        }
+        Ok(())
+    }
+
+    /// Rebuild the committed body one notice refers to.
+    ///
+    /// The intent carries the address `(run_id, sequence)` and no copy of the
+    /// body: this reduces the run's own history up to that commit and rebuilds
+    /// the projection the transition owed, so a retry after a crash carries the
+    /// fact itself rather than a memory of it. The state *at* the commit is
+    /// what the transition produced; the state *before* it is what makes the
+    /// delta (a settled step) identifiable.
+    fn notice_action(
+        &self,
+        notice: &licoup_workflow_runtime::ports::Notice,
+    ) -> Result<Option<NoticeAction>> {
+        // The conversation, its Assistant membership and the run's working
+        // directory are facts of the run row, not of any reducer event, so the
+        // reconstructed history cannot carry them: they are read from the run
+        // and merged into the checkpoint the notice is rebuilt from.
+        let current = self.store.run(&notice.run_id)?;
+        let Some(conversation_id) = current
+            .conversation_id
+            .clone()
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(None);
+        };
+        let mut after = self.snapshot_at(&notice.run_id, notice.sequence)?;
+        after.conversation_id = current.conversation_id.clone();
+        after.assistant_membership_id = current.assistant_membership_id.clone();
+        after.cwd = current.cwd.clone();
+        after.route_receipt = current.route_receipt.clone();
+        let mut before = self.snapshot_at(&notice.run_id, notice.sequence.saturating_sub(1))?;
+        // The merge above does not apply to the before view: it exists only for
+        // the delta, which the reducer owns.
+        before.conversation_id = current.conversation_id.clone();
+        let event = self.committed_event(&notice.run_id, notice.sequence)?;
+        let store =
+            crate::domain::client_conversation::ConversationStore::open(&self.portable_root)?;
+        let conversation = store.get(&conversation_id)?;
+        match notice.kind.as_str() {
+            NOTICE_RESULT => {
+                let ReducerEvent::CommandSucceeded {
+                    command_id, output, ..
+                } = &event
+                else {
+                    return Ok(None);
+                };
+                let Some(command) = after.commands.get(command_id) else {
+                    return Ok(None);
+                };
+                let Some(slot_id) = command.binding_id.as_deref() else {
+                    return Ok(None);
+                };
+                let definition = self
+                    .store
+                    .definition_by_revision(&after.definition_digest)?;
+                let Some(binding) = definition.bindings.iter().find(|binding| {
+                    binding.slot_id == slot_id && binding.ordinal == command.binding_ordinal
+                }) else {
+                    return Ok(None);
+                };
+                if !conversation.memberships.iter().any(|membership| {
+                    membership.id == binding.value_id
+                        && membership.status
+                            == crate::domain::client_conversation::MembershipStatus::Active
+                }) {
+                    return Ok(None);
+                }
+                let parts = group_actor_event_parts(output);
+                if parts.is_empty() {
+                    return Ok(None);
+                }
+                Ok(Some(NoticeAction {
+                    conversation_id,
+                    membership_id: binding.value_id.clone(),
+                    author: Some(binding.value_id.clone()),
+                    parts,
+                    payloads: vec![output.clone()],
+                }))
+            }
+            NOTICE_CALLBACK | NOTICE_TERMINAL | NOTICE_SETTLED => {
+                let Some(master) = conversation
+                    .assistant_membership_id
+                    .as_deref()
+                    .or(after.assistant_membership_id.as_deref())
+                else {
+                    return Ok(None);
+                };
+                let Some(master) = conversation
+                    .memberships
+                    .iter()
+                    .find(|membership| {
+                        membership.id == master
+                            && membership.status
+                                == crate::domain::client_conversation::MembershipStatus::Active
+                    })
+                    .map(|membership| membership.id.clone())
+                else {
+                    return Ok(None);
+                };
+                let enricher =
+                    super::evolution::CallbackEvolutionEnricher::new(&self.portable_root);
+                let payloads: Vec<Value> = match notice.kind.as_str() {
+                    NOTICE_CALLBACK => {
+                        let Some((state_id, state_visit)) = event_command_state(&event, &after)
+                        else {
+                            return Ok(None);
+                        };
+                        let Some(pending) = after.pending_callbacks.iter().find(|pending| {
+                            pending.state_id == state_id && pending.state_visit == state_visit
+                        }) else {
+                            return Ok(None);
+                        };
+                        let answer_channel = if after.assistant_membership_id.is_some() {
+                            "lico_assistant_workflow_execute"
+                        } else {
+                            "strategy.run.resume"
+                        };
+                        let evolution =
+                            enricher.enrich_callback_request(&after, pending, answer_channel);
+                        vec![json!({
+                            "kind": "strategy-callback-request",
+                            "schema": "licoup.adaptive-flywheel.callback.v1",
+                            "runId": after.run_id,
+                            "stateId": pending.state_id,
+                            "stateVisit": pending.state_visit,
+                            "transitionId": pending.transition_id,
+                            "event": pending.event.as_str(),
+                            "target": pending.target,
+                            "decisions": ["advance", "return", "terminate"],
+                            "answerChannel": answer_channel,
+                            "answerFields": ["decision", "callbackStateId", "callbackStateVisit"],
+                            "evolution": evolution,
+                            "facts": evolution.facts,
+                            "suggestions": evolution.suggestions,
+                        })]
+                    }
+                    NOTICE_TERMINAL => {
+                        if !failure_terminal_status(after.status) {
+                            return Ok(None);
+                        }
+                        let evolution = enricher.enrich_terminal_outcome(&after);
+                        vec![json!({
+                            "kind": "strategy-terminal-outcome",
+                            "schema": "licoup.adaptive-flywheel.callback.v1",
+                            "runId": after.run_id,
+                            "status": wire_enum(after.status)?,
+                            "diagnostic": after.diagnostic_code,
+                            "evolution": evolution,
+                            "facts": evolution.facts,
+                            "suggestions": evolution.suggestions,
+                        })]
+                    }
+                    _ => {
+                        // Every step this transition settled reports on its own,
+                        // exactly as the direct dispatch reported them.
+                        after
+                            .completed_states
+                            .iter()
+                            .filter(|state| !before.completed_states.contains(*state))
+                            .map(|state_id| {
+                                let state_visit =
+                                    after.state_visits.get(state_id).copied().unwrap_or(0);
+                                let evolution =
+                                    enricher.enrich_flow_settled(&after, state_id, state_visit);
+                                json!({
+                                    "kind": "strategy-flow-settled",
+                                    "schema": "licoup.adaptive-flywheel.callback.v1",
+                                    "runId": after.run_id,
+                                    "stateId": state_id,
+                                    "stateVisit": state_visit,
+                                    "mode": "flow",
+                                    "evolution": evolution,
+                                    "facts": evolution.facts,
+                                    "suggestions": evolution.suggestions,
+                                })
+                            })
+                            .collect()
+                    }
+                };
+                if payloads.is_empty() {
+                    return Ok(None);
+                }
+                let parts = payloads
+                    .iter()
+                    .map(|payload| crate::domain::client_conversation::NewEventPart {
+                        id: String::new(),
+                        kind: crate::domain::client_conversation::EventPartKind::Metadata,
+                        content: payload.to_string(),
+                    })
+                    .collect();
+                Ok(Some(NoticeAction {
+                    conversation_id,
+                    membership_id: master.clone(),
+                    author: Some(master),
+                    parts,
+                    payloads,
+                }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// The run checkpoint at one committed sequence, reduced from its history.
+    ///
+    /// Used only when a notice is rebuilt for delivery; the live paths read the
+    /// current checkpoint.
+    fn snapshot_at(&self, run_id: &str, sequence: u64) -> Result<RunSnapshot> {
+        let database =
+            licoup_workflow_store::transactions::WorkflowDatabase::open(self.store.db_path())?;
+        let (revision_digest, semantics_digest, events) = database.read(|connection| {
+            let (revision_digest, semantics_digest): (String, String) = connection.query_row(
+                "SELECT revision_digest, semantics_digest FROM strategy_runs WHERE run_id=?1",
+                rusqlite::params![run_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            let mut statement = connection.prepare(
+                "SELECT event_json FROM strategy_run_events
+                 WHERE run_id=?1 AND sequence<=?2 ORDER BY sequence ASC",
+            )?;
+            let events = statement
+                .query_map(rusqlite::params![run_id, sequence as i64], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok((revision_digest, semantics_digest, events))
+        })?;
+        let definition = self.store.definition_by_revision(&revision_digest)?;
+        let compiled = super::host_drive::compiled_definition(&definition.workflow)?;
+        let mut snapshot = RunSnapshot::empty(run_id, &revision_digest, &semantics_digest);
+        for event_json in events {
+            let event: ReducerEvent = serde_json::from_str(&event_json)?;
+            snapshot = reduce(&compiled, &snapshot, event)?.snapshot;
+        }
+        Ok(snapshot)
+    }
+
+    /// The committed event one notice addresses, read back from the history.
+    fn committed_event(&self, run_id: &str, sequence: u64) -> Result<ReducerEvent> {
+        let database =
+            licoup_workflow_store::transactions::WorkflowDatabase::open(self.store.db_path())?;
+        let event_json: String = database.read(|connection| {
+            Ok(connection.query_row(
+                "SELECT event_json FROM strategy_run_events WHERE run_id=?1 AND sequence=?2",
+                rusqlite::params![run_id, sequence as i64],
+                |row| row.get(0),
+            )?)
+        })?;
+        Ok(serde_json::from_str(&event_json)?)
+    }
+
+    /// Whether the projection for one notice is already on the timeline.
+    ///
+    /// The notice id travels as the event's correlation id, so a retry after a
+    /// crash that appended but did not acknowledge finds its own fact instead of
+    /// repeating it. The scan is bounded to the newest page: retries are
+    /// near-in-time by construction (the retry delay is its own lease), and an
+    /// older duplicate needs a stalled obligation that the same scan would have
+    /// delivered long before.
+    fn projection_recorded(
+        &self,
+        store: &crate::domain::client_conversation::ConversationStore,
+        conversation_id: &str,
+        notice_id: &str,
+    ) -> Result<bool> {
+        let page = store.page_events(conversation_id, None, 200)?;
+        Ok(page.events.iter().any(|event| {
+            event
+                .correlation_id
+                .as_deref()
+                .is_some_and(|correlation| correlation == notice_id)
+        }))
+    }
+
     fn project_membership_event(
         &self,
         run_id: &str,
@@ -2027,6 +3028,30 @@ impl StrategyService {
         )?;
         Ok(())
     }
+}
+
+/// One projection fact rebuilt from a committed notice.
+struct NoticeAction {
+    conversation_id: String,
+    membership_id: String,
+    author: Option<String>,
+    parts: Vec<crate::domain::client_conversation::NewEventPart>,
+    /// The rebuilt payloads, one per report fact this notice carries.
+    payloads: Vec<Value>,
+}
+
+/// The node visit one settled command belongs to, if the event names one.
+fn event_command_state(event: &ReducerEvent, snapshot: &RunSnapshot) -> Option<(String, u64)> {
+    let command_id = match event {
+        ReducerEvent::CommandSucceeded { command_id, .. }
+        | ReducerEvent::CommandFailed { command_id, .. }
+        | ReducerEvent::AssistantEffectFailed { command_id, .. } => command_id,
+        _ => return None,
+    };
+    snapshot
+        .commands
+        .get(command_id)
+        .map(|command| (command.state_id.clone(), command.state_visit))
 }
 
 /// One atomic reservation for a run's background drive. Reserving before the
@@ -5352,6 +6377,563 @@ mod tests {
             assert!(wake.2.get("stateId").and_then(Value::as_str).is_some());
         }
         drop(wakes);
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn a_cancel_reaches_the_composed_control_surface_without_faking_an_outcome() {
+        let root = root();
+        let (conversation_store, conversation_id, membership_id) =
+            conversation_bound_fixture(&root);
+        let (store, revision) = authorized_entry_store(&root, &membership_id);
+        let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+        let entered = Arc::new(Mutex::new(false));
+        let run_gate = Arc::clone(&gate);
+        let run_entered = Arc::clone(&entered);
+        let port = recording_port(Arc::clone(&calls), move |_, _| {
+            *run_entered.lock().unwrap() = true;
+            let (open, condvar) = &*run_gate;
+            let mut guard = open.lock().unwrap();
+            while !*guard {
+                guard = condvar.wait(guard).unwrap();
+            }
+            Ok(json!({"ok": true, "output": "done", "nativeSessionId": "session-1"}))
+        });
+        let controls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let control_log = Arc::clone(&controls);
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(port)
+        .with_actor_control_port(ActorControlPort {
+            cancel: Arc::new(move |params: &Value| {
+                control_log.lock().unwrap().push(params.clone());
+                Ok(json!({"ok": true, "status": "cancel_requested"}))
+            }),
+            steer: Arc::new(|_params: &Value| Ok(json!({"ok": true, "status": "steered"}))),
+        });
+
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": "control-1",
+                "conversationId": conversation_id,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+        wait_for_status(&store, &run_id, StrategyRunStatus::Running);
+        // A command reaches Running only when the drive that owns the run has
+        // claimed it and committed the marker, so from here the control request
+        // has an owner to reach.
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let mut running = false;
+            while !running && std::time::Instant::now() < deadline {
+                running = store
+                    .run(&run_id)
+                    .unwrap()
+                    .commands
+                    .values()
+                    .any(|command| command.status == CommandStatus::Running);
+                if !running {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+            assert!(
+                running,
+                "the drive claimed the effect and committed its marker"
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !*entered.lock().unwrap() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(
+                *entered.lock().unwrap(),
+                "the effect thread entered the turn"
+            );
+        }
+
+        // The run's cancel reaches the drive that owns it, which asks the
+        // effect port, which asks the host's control surface with the turn
+        // handle it opened.
+        service
+            .execute(json!({"action": "strategy.run.cancel", "runId": run_id}))
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while controls.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let seen = controls.lock().unwrap();
+        assert!(!seen.is_empty(), "the control surface received the request");
+        assert!(
+            seen[0].get("turnHandle").and_then(Value::as_str).is_some(),
+            "the control surface is given the turn handle: {}",
+            seen[0]
+        );
+        assert!(
+            seen[0].get("commandId").and_then(Value::as_str).is_some(),
+            "the control surface is given the command: {}",
+            seen[0]
+        );
+        drop(seen);
+
+        // The request reached the adapter and the effect's fate is not
+        // established: the run settles as cancellation-in-doubt, never as a
+        // fabricated `Cancelled`, and the started attempt is not re-dispatched.
+        let (open, condvar) = &*gate;
+        *open.lock().unwrap() = true;
+        condvar.notify_all();
+        let snapshot = wait_for_status(&store, &run_id, StrategyRunStatus::CancelInDoubt);
+        assert!(
+            snapshot
+                .commands
+                .values()
+                .all(|command| command.status != CommandStatus::Cancelled),
+            "no attempt is cancelled by a request alone: {:?}",
+            snapshot
+                .commands
+                .values()
+                .map(|command| command.status)
+                .collect::<Vec<_>>()
+        );
+        drop(conversation_store);
+        remove_drive_root(root, service);
+    }
+
+    // ------------------------------------------------------------------
+    // R4: lane effects through the real work-context bridge
+    // ------------------------------------------------------------------
+
+    use crate::platform::work_context_ports::{
+        ControlDelivery, DeliveryOutcome, EffectDelivery, EffectDispatch, EffectHandle,
+        EffectInvocation, EffectSessionOwner, EffectUnknownReason,
+    };
+    use licoup_agent_runtime::work_context::{CapabilityProfile, HermeticProtocol};
+
+    /// One controlled lane: it records what was delivered and answers with the
+    /// delivery/read-back facts the case needs. No agent process is involved.
+    struct RecordingLaneDispatch {
+        deliveries: Mutex<Vec<EffectInvocation>>,
+        answer: Mutex<EffectDelivery>,
+        read_back: Mutex<Option<EffectDelivery>>,
+    }
+
+    impl RecordingLaneDispatch {
+        fn new(answer: EffectDelivery) -> Self {
+            Self {
+                deliveries: Mutex::new(Vec::new()),
+                answer: Mutex::new(answer),
+                read_back: Mutex::new(None),
+            }
+        }
+
+        fn deliveries(&self) -> usize {
+            self.deliveries.lock().unwrap().len()
+        }
+
+        fn last_session(&self) -> Option<licoup_agent_runtime::work_context::NativeWorkContextKey> {
+            self.deliveries
+                .lock()
+                .unwrap()
+                .last()
+                .map(|invocation| invocation.session.clone())
+        }
+    }
+
+    impl EffectDispatch for RecordingLaneDispatch {
+        fn deliver(&self, invocation: &EffectInvocation) -> EffectDelivery {
+            self.deliveries.lock().unwrap().push(invocation.clone());
+            self.answer.lock().unwrap().clone()
+        }
+
+        fn read_back(&self, _handle: &EffectHandle) -> Option<EffectDelivery> {
+            if let Some(delivery) = self.read_back.lock().unwrap().clone() {
+                return Some(delivery);
+            }
+            // A recorded terminal delivery is readable back, as an adapter
+            // that keeps its own record would serve it.
+            let answer = self.answer.lock().unwrap().clone();
+            matches!(
+                answer.outcome,
+                DeliveryOutcome::Completed { .. }
+                    | DeliveryOutcome::Failed { .. }
+                    | DeliveryOutcome::NotExecuted
+                    | DeliveryOutcome::Cancelled
+            )
+            .then_some(answer)
+        }
+
+        fn control(
+            &self,
+            _handle: &EffectHandle,
+            _control: crate::platform::work_context_ports::EffectControl,
+            _instruction: Option<&str>,
+        ) -> ControlDelivery {
+            ControlDelivery {
+                disposition: crate::platform::work_context_ports::ControlDisposition::Accepted,
+                status: "accepted".to_owned(),
+            }
+        }
+    }
+
+    /// The host's handles for one session, or nothing when no instance is
+    /// registered.
+    ///
+    /// The owner is the real `WorkContextRuntime`, bound through the normal
+    /// hermetic test-support transport to exactly the session the effect asks
+    /// for — the same shape the continuity host binds for a child conversation.
+    struct StaticSessionSource {
+        registered: bool,
+        dispatch: Arc<RecordingLaneDispatch>,
+        fresh_native_session: Option<String>,
+        owners: Mutex<Vec<Arc<dyn EffectSessionOwner>>>,
+    }
+
+    impl StaticSessionSource {
+        fn new(
+            registered: bool,
+            dispatch: Arc<RecordingLaneDispatch>,
+            fresh_native_session: Option<String>,
+        ) -> Self {
+            Self {
+                registered,
+                dispatch,
+                fresh_native_session,
+                owners: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn owners(&self) -> Vec<Arc<dyn EffectSessionOwner>> {
+            self.owners.lock().unwrap().clone()
+        }
+    }
+
+    impl EffectSessionSource for StaticSessionSource {
+        fn handles(
+            &self,
+            key: &licoup_agent_runtime::work_context::NativeWorkContextKey,
+        ) -> Option<EffectSessionHandles> {
+            if !self.registered {
+                return None;
+            }
+            let binding = licoup_agent_runtime::work_context::ChildBinding {
+                child_conversation_id: key.conversation_id.clone(),
+                membership_id: key.membership_id.clone(),
+                source_task_id: key.matter_id.clone(),
+                parent_conversation_id: key.conversation_id.clone(),
+            };
+            let owner: Arc<dyn EffectSessionOwner> =
+                Arc::new(crate::platform::work_context_ports::bind_host_work_context(
+                    HermeticProtocol::codex(CapabilityProfile::High),
+                    licoup_agent_runtime::work_context::WorkContextConfig::child(binding),
+                ));
+            self.owners.lock().unwrap().push(Arc::clone(&owner));
+            Some(EffectSessionHandles {
+                session: key.clone(),
+                agent_id: key.membership_id.clone(),
+                live_writer: false,
+                owner,
+                profiles: Arc::new(crate::platform::strategy_runtime::RuntimeRegistryAgentProfiles),
+                dispatch: self.dispatch.clone(),
+                fresh_native_session: self.fresh_native_session.clone(),
+            })
+        }
+    }
+
+    /// A store whose entry slot binds to a real registered driver id.
+    fn lane_entry_store(root: &Path) -> (StrategyStore, String) {
+        let store = StrategyStore::open(root).unwrap();
+        let revision = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        store
+            .register_definition(revision, revision, &entry_workflow(), 1, 1)
+            .unwrap();
+        store
+            .replace_slot_bindings(
+                revision,
+                "entry",
+                &[BindingCandidate {
+                    value_id: "codex".to_owned(),
+                    model: String::new(),
+                    reasoning_effort: String::new(),
+                }],
+                None,
+            )
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        (store, revision.to_owned())
+    }
+
+    #[test]
+    fn bridge_rechecks_original_authority_after_session_resolution_before_delivery() {
+        struct RevokingSource {
+            inner: StaticSessionSource,
+            store: StrategyStore,
+            revision: String,
+        }
+        impl EffectSessionSource for RevokingSource {
+            fn handles(
+                &self,
+                key: &licoup_agent_runtime::work_context::NativeWorkContextKey,
+            ) -> Option<EffectSessionHandles> {
+                let handles = self.inner.handles(key)?;
+                self.store.revoke_authorization(&self.revision).unwrap();
+                Some(handles)
+            }
+        }
+        let root = root();
+        let (store, revision) = lane_entry_store(&root);
+        let dispatch = Arc::new(RecordingLaneDispatch::new(EffectDelivery {
+            outcome: DeliveryOutcome::Completed {
+                output: json!({"ok": true, "output": "must never be delivered"}),
+            },
+            status: "completed".to_owned(),
+        }));
+        let service = StrategyService::from_parts(
+            root.clone(),
+            store.clone(),
+            StrategyPackageImporter::open(&root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(|_| Err(RuntimeAdapterError::ConversationDispatchFailed)),
+            run: Arc::new(|_, _| Err(RuntimeAdapterError::ConversationDispatchFailed)),
+            abandon: Arc::new(|_| {}),
+        })
+        .with_effect_session_source(Arc::new(RevokingSource {
+            inner: StaticSessionSource::new(
+                true,
+                dispatch.clone(),
+                Some("controlled-native-session".to_owned()),
+            ),
+            store: store.clone(),
+            revision: revision.clone(),
+        }));
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "synthetic authorization race"},
+                "idempotencyKey": "bridge-revoke-at-session-resolution",
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let run_id = response["result"]["runId"].as_str().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let snapshot = store.run(run_id).unwrap();
+            if snapshot
+                .commands
+                .values()
+                .any(|command| command.failure_class == Some(FailureClass::Authority))
+            {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "authority refusal missing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(
+            dispatch.deliveries(),
+            0,
+            "capability/session resolution is not authorization"
+        );
+        remove_drive_root(root, service);
+    }
+
+    fn lane_run(
+        root: &Path,
+        source: Arc<dyn EffectSessionSource>,
+        key: &str,
+    ) -> (StrategyService, StrategyStore, String, Value) {
+        let (store, revision) = lane_entry_store(root);
+        // The run admission requires a composed actor port; this run carries no
+        // Conversation, so the port is never reached and the lane effect goes
+        // through the bridge.
+        let service = StrategyService::from_parts(
+            root.to_path_buf(),
+            store.clone(),
+            StrategyPackageImporter::open(root).unwrap(),
+        )
+        .with_actor_turn_port(ActorTurnPort {
+            open: Arc::new(|_params| Err(RuntimeAdapterError::ConversationDispatchFailed)),
+            run: Arc::new(|_handle, _params| Err(RuntimeAdapterError::ConversationDispatchFailed)),
+            abandon: Arc::new(|_handle| {}),
+        })
+        .with_effect_session_source(source);
+        let response = service
+            .execute(json!({
+                "action": "strategy.run.start",
+                "revisionDigest": revision,
+                "input": {"message": "hi"},
+                "idempotencyKey": key,
+            }))
+            .unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        (service, store, revision, response)
+    }
+
+    #[test]
+    fn a_lane_effect_runs_through_the_real_bridge_and_releases_its_session() {
+        let root = root();
+        let dispatch = Arc::new(RecordingLaneDispatch::new(EffectDelivery {
+            outcome: DeliveryOutcome::Completed {
+                output: json!({"ok": true, "output": "done", "nativeSessionId": "s1"}),
+            },
+            status: "completed".to_owned(),
+        }));
+        let source = Arc::new(StaticSessionSource::new(
+            true,
+            Arc::clone(&dispatch),
+            Some("native-fresh-1".to_owned()),
+        ));
+        let (service, store, _revision, response) =
+            lane_run(&root, source.clone(), "lane-bridge-1");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let snapshot = store.run(&run_id).unwrap();
+        assert_eq!(
+            snapshot.status,
+            StrategyRunStatus::Completed,
+            "commands: {:?}",
+            snapshot
+                .commands
+                .values()
+                .map(|command| (
+                    command.status,
+                    command.failure_class,
+                    command.failure_code.clone()
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(dispatch.deliveries(), 1, "the bridge delivers exactly once");
+        let session = dispatch.last_session().expect("the session key is carried");
+        assert_eq!(session.membership_id, "codex");
+        // The bridge took the writer claim from the real owner and released it
+        // once the effect held a confirmed terminal fact.
+        let owners = source.owners();
+        let owner = owners.first().expect("the host bound a real owner");
+        owner
+            .claim_writer(&session)
+            .expect("the owner's claim was released");
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn a_lane_effect_without_a_registered_instance_is_refused_before_delivery() {
+        let root = root();
+        let dispatch = Arc::new(RecordingLaneDispatch::new(EffectDelivery {
+            outcome: DeliveryOutcome::Completed {
+                output: json!({"ok": true, "output": "done"}),
+            },
+            status: "completed".to_owned(),
+        }));
+        let source = Arc::new(StaticSessionSource::new(
+            false,
+            Arc::clone(&dispatch),
+            Some("native-fresh-1".to_owned()),
+        ));
+        let (service, store, _revision, response) = lane_run(&root, source, "lane-bridge-none");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let snapshot = wait_for_terminal(&store, &run_id);
+        assert_eq!(snapshot.status, StrategyRunStatus::Failed);
+        assert_eq!(dispatch.deliveries(), 0, "nothing may be delivered");
+        let command = snapshot
+            .commands
+            .values()
+            .next()
+            .expect("the entry command");
+        assert_eq!(
+            command.failure_code.as_deref(),
+            Some("workflow_effect_instance_unregistered")
+        );
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn an_unconfirmed_lane_delivery_stays_unknown_and_is_never_redelivered() {
+        let root = root();
+        let dispatch = Arc::new(RecordingLaneDispatch::new(EffectDelivery::unconfirmed(
+            "adapter_silent",
+            EffectUnknownReason::StatusChannelUnavailable,
+        )));
+        let source = Arc::new(StaticSessionSource::new(
+            true,
+            Arc::clone(&dispatch),
+            Some("native-fresh-1".to_owned()),
+        ));
+        let (service, store, _revision, response) = lane_run(&root, source, "lane-bridge-unknown");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let snapshot = loop {
+            let snapshot = store.run(&run_id).unwrap();
+            if matches!(
+                snapshot.status,
+                StrategyRunStatus::CancelInDoubt | StrategyRunStatus::Cancelled
+            ) {
+                break snapshot;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the run did not become in doubt: {:?}",
+                snapshot.status
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert_eq!(snapshot.status, StrategyRunStatus::CancelInDoubt);
+        assert_eq!(
+            dispatch.deliveries(),
+            1,
+            "an unanswered attempt is never re-delivered"
+        );
+        let command = snapshot
+            .commands
+            .values()
+            .next()
+            .expect("the entry command");
+        assert_eq!(
+            command.failure_code.as_deref(),
+            Some("effect_outcome_unknown")
+        );
+        remove_drive_root(root, service);
+    }
+
+    #[test]
+    fn a_reconnected_lane_effect_is_settled_from_the_adapters_own_record() {
+        let root = root();
+        let dispatch = Arc::new(RecordingLaneDispatch::new(EffectDelivery {
+            outcome: DeliveryOutcome::Accepted,
+            status: "accepted".to_owned(),
+        }));
+        *dispatch.read_back.lock().unwrap() = Some(EffectDelivery {
+            outcome: DeliveryOutcome::Completed {
+                output: json!({"ok": true, "output": "done-after-reconnect"}),
+            },
+            status: "completed".to_owned(),
+        });
+        let source = Arc::new(StaticSessionSource::new(
+            true,
+            Arc::clone(&dispatch),
+            Some("native-fresh-1".to_owned()),
+        ));
+        let (service, store, _revision, response) = lane_run(&root, source, "lane-bridge-readback");
+        let run_id = response["result"]["runId"].as_str().unwrap().to_owned();
+
+        let snapshot = wait_for_terminal(&store, &run_id);
+        assert_eq!(snapshot.status, StrategyRunStatus::Completed);
+        assert_eq!(dispatch.deliveries(), 1);
         remove_drive_root(root, service);
     }
 

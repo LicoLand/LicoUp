@@ -1,55 +1,7 @@
 const rustCliRoot = "crates/licoup-native/src";
 
 export async function checkProductContractsAndPortableData(context, { modules }) {
-  const {
-    assert,
-    collectDartSourceFiles,
-    collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
-    collectSourceFiles,
-    exists,
-    fail,
-    lineNumberForToken,
-    moduleSupportsPlatform,
-    readDartSourceByBasename,
-    readImmediateDirectoryNames,
-    readJoinedDartSourcesByBasename,
-    readJoinedText,
-    readJson,
-    readText,
-    runJson,
-    sameSet,
-  } = context;
-  const architectureSource = await readText("docs/architecture/README.md");
-  const userGuideSource = await readText("docs/functionality/USER-GUIDE.md");
-  const contributingSource = await readText("CONTRIBUTING.md");
-  const normalizedArchitectureSource = architectureSource.replace(/\s+/gu, " ");
-  const normalizedUserGuideSource = userGuideSource.replace(/\s+/gu, " ");
-  const normalizedContributingSource = contributingSource.replace(/\s+/gu, " ");
-  assert(
-    normalizedArchitectureSource.includes("Agent conversations") &&
-      normalizedArchitectureSource.includes("New and native continued sessions") &&
-      normalizedArchitectureSource.includes("process-local") &&
-      normalizedArchitectureSource.includes("Subagent MCP") &&
-      normalizedArchitectureSource.includes("wakeable progress") &&
-      normalizedArchitectureSource.includes("native steer") &&
-      normalizedArchitectureSource.includes("exact-session safe-boundary follow-up"),
-    "architecture docs must keep native continuation and the local Subagent MCP boundary"
-  );
-  assert(
-    normalizedUserGuideSource.includes("prefers the agent's native attach or resume operation") &&
-      normalizedUserGuideSource.includes("keeps projecting its live output") &&
-      normalizedUserGuideSource.includes("starts the next turn only after the agent has completed its reply"),
-    "USER-GUIDE.md must describe native continuation and the non-interleaving fallback"
-  );
-  assert(
-    normalizedContributingSource.includes("run the smallest relevant checks") &&
-      normalizedContributingSource.includes("mandatory Node-only source policy once") &&
-      normalizedContributingSource.includes("only the affected technology lanes") &&
-      normalizedContributingSource.includes("commit gate never builds or publishes every platform"),
-    "CONTRIBUTING.md must preserve targeted closure and independent commit gates"
-  );
+  const { assert, sameSet } = context;
   const portableDirs = modules["portable-data"]?.portableDirectories || [];
   const expectedPortableDirs = [
     "licoup",

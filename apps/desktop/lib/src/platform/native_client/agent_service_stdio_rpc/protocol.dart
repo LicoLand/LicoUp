@@ -17,6 +17,22 @@ const int stdioRpcMaxErrorCodeBytes = conversationProtocolMaxErrorCodeBytes;
 const int stdioRpcMaxArgs = conversationProtocolMaxArgs;
 const Duration stdioRpcShutdownTimeout = Duration(seconds: 2);
 
+/// Frames at or above this size decode on a helper isolate. Smaller frames
+/// decode inline so a control reply (cancel/steer/detach) never waits for a
+/// bulk history or catalog frame that is still decoding.
+const int stdioRpcBulkDecodeThresholdBytes = 256 * 1024;
+
+/// Framed bytes may accumulate up to this bound before the transport pauses
+/// stdout. Pausing stalls the pipe, so the native child process applies real
+/// backpressure instead of the client buffering an unbounded decode backlog.
+/// The chunk that reaches the watermark is still accepted, so the pending
+/// backlog is bounded by this watermark plus one stdout chunk; the framer may
+/// additionally retain one in-progress frame up to [stdioRpcMaxFrameBytes].
+const int stdioRpcMaxDecodeBacklogBytes = stdioRpcMaxFrameBytes;
+
+/// stdout resumes once the decode backlog drains below this watermark.
+const int stdioRpcResumeDecodeBacklogBytes = stdioRpcMaxFrameBytes ~/ 4;
+
 int _workflowSequence = 0;
 
 String newStdioRpcWorkflowId() {

@@ -49,10 +49,26 @@ test("Rust native client admits state upgraded by independent migration tool", (
     });
     writeJsonAtomicSync(path.join(stateDir, "agent-tab-order.json"), ["test-agent"]);
 
-    // 1. Upgrade state with independent tool
-    const result = convert(root, "0.0.1-alpha");
+    // 1. Upgrade state with independent tool. The canonical Conversation store
+    // is the client owner's: the tool plans the step, reports it as pending
+    // native admission, and leaves the legacy projection for the owner's import
+    // instead of fabricating a database.
+    const result = convert(root, "0.0.1-alpha", { writersStopped: true });
     assert.equal(result.status, "success");
     assert.ok(result.pendingAuthorizationDomains.includes("gateway-credential-custody"));
+    assert.ok(
+      result.pendingNativeAdmissionDomains.includes("canonical-conversation"),
+      "the Conversation store's transition belongs to the native owner",
+    );
+    assert.ok(
+      fs.existsSync(path.join(stateDir, "agent-conversation-projections.json")),
+      "the legacy source must survive for the owner's import",
+    );
+    assert.equal(
+      fs.existsSync(path.join(stateDir, "conversations", "conversations.sqlite3")),
+      false,
+      "the tool must not fabricate the owner's store",
+    );
 
     // 2. Invoke native Rust CLI: licoup-cli state admit <data-root>
     const proc = spawnSync(nativeCli, ["state", "admit", root], {
@@ -64,6 +80,18 @@ test("Rust native client admits state upgraded by independent migration tool", (
     const admission = JSON.parse(proc.stdout.trim());
     assert.equal(admission.status, "ready");
     assert.equal(admission.frontierId, "licoup-state-0.2.2");
+    assert.ok(
+      admission.appliedDomainIds.includes("canonical-conversation"),
+      "the native admission must perform the deferred import",
+    );
+    assert.ok(
+      fs.existsSync(path.join(stateDir, "conversations", "conversations.sqlite3")),
+      "the owner's store now exists",
+    );
+    assert.ok(
+      fs.existsSync(path.join(stateDir, "conversations", "migration-v5.complete")),
+      "the owner's completion marker now exists",
+    );
 
     // 3. Second run should skip already admitted domains
     const proc2 = spawnSync(nativeCli, ["state", "admit", root], {

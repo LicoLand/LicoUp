@@ -1,5 +1,7 @@
 # Bundled fonts
 
+Updated: 2026-09-12
+
 Geist Sans (400, 500, 600, 700) and Geist Mono (400, 500) are distributed with
 the client under the [SIL Open Font License 1.1](OFL.txt). The unmodified files
 come from [Vercel's official Geist repository](https://github.com/vercel/geist-font/tree/10dc7658f13c38a474cde201bb09a4617267545b/fonts).

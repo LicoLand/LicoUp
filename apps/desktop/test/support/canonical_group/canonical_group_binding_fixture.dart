@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
 import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
@@ -22,12 +23,14 @@ import 'package:licoup/src/presentation/agents/agents_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_effect.dart';
 import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/agents/adaptive_flywheel_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_effect.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/projections/agents/agents_presentation_source.dart';
 
 /// Test-only semantic bridge for the pre-boundary Canonical Conversation
 /// scenarios. Production renderers still receive only immutable bindings.
@@ -769,6 +772,7 @@ class CanonicalGroupConversationPaneFixture extends StatefulWidget {
 class _CanonicalGroupConversationPaneFixtureState
     extends State<CanonicalGroupConversationPaneFixture> {
   late CanonicalGroupBindingFixture _fixture;
+  late AgentsPresentationSource _agentsSource;
   late StreamSubscription<bool> _changes;
   String _profileMembershipId = '';
   String _strategyConversationId = '';
@@ -782,6 +786,7 @@ class _CanonicalGroupConversationPaneFixtureState
   void initState() {
     super.initState();
     _fixture = _newFixture();
+    _agentsSource = _newAgentsSource();
     _changes = _listenForChanges();
     unawaited(_reloadAssistantProfile());
     unawaited(_synchronizeStrategyProjection());
@@ -809,6 +814,9 @@ class _CanonicalGroupConversationPaneFixtureState
     composerAttachments: widget.composerAttachments,
   );
 
+  AgentsPresentationSource _newAgentsSource() =>
+      AgentsPresentationSource(projection: _fixture.agents.projection);
+
   @override
   void didUpdateWidget(
     covariant CanonicalGroupConversationPaneFixture oldWidget,
@@ -817,7 +825,9 @@ class _CanonicalGroupConversationPaneFixtureState
     if (!identical(oldWidget.controller, widget.controller)) {
       unawaited(_changes.cancel());
       unawaited(_fixture.close());
+      unawaited(_agentsSource.dispose());
       _fixture = _newFixture();
+      _agentsSource = _newAgentsSource();
       _changes = _listenForChanges();
       _profileMembershipId = '';
       _strategyConversationId = '';
@@ -847,6 +857,7 @@ class _CanonicalGroupConversationPaneFixtureState
   void dispose() {
     unawaited(_changes.cancel());
     unawaited(_fixture.close());
+    unawaited(_agentsSource.dispose());
     super.dispose();
   }
 
@@ -981,25 +992,31 @@ class _CanonicalGroupConversationPaneFixtureState
   }
 
   @override
-  Widget build(BuildContext context) => MediaQuery(
-    data: MediaQuery.of(
-      context,
-    ).copyWith(disableAnimations: widget.reduceMotion),
-    child: CanonicalGroupConversationPane(
-      conversation: _fixture.conversation,
-      agents: _fixture.agents,
-      canonical: _fixture.canonical,
-      turns: _fixture.turns,
-      composer: _fixture.composer,
-      attachments: _fixture.attachments,
-      onOpenAgentConversations: widget.onOpenAgentConversations,
-      onOpenAdaptiveFlywheel: (revision) async {
-        await widget.onOpenAdaptiveFlywheel?.call(revision);
-        await _reloadAssistantProfile(force: true);
-      },
-      onPickComposerImages: widget.onPickComposerImages,
-      onClearComposerImages: widget.onClearComposerImages,
-      framed: widget.framed,
+  Widget build(BuildContext context) => ProviderScope(
+    overrides: [agentsCatalogSourceProvider.overrideWithValue(_agentsSource)],
+    child: MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(disableAnimations: widget.reduceMotion),
+      child: CanonicalGroupConversationPane(
+        conversation: _fixture.conversation,
+        agents: _fixture.agents,
+        canonical: _fixture.canonical,
+        turns: _fixture.turns,
+        composer: _fixture.composer,
+        attachments: _fixture.attachments,
+        // The pane resolves roster seats from the workspace's catalog targets;
+        // this fixture's own targets are the same list the workspace would pass.
+        allTargets: widget.targets,
+        onOpenAgentConversations: widget.onOpenAgentConversations,
+        onOpenAdaptiveFlywheel: (revision) async {
+          await widget.onOpenAdaptiveFlywheel?.call(revision);
+          await _reloadAssistantProfile(force: true);
+        },
+        onPickComposerImages: widget.onPickComposerImages,
+        onClearComposerImages: widget.onClearComposerImages,
+        framed: widget.framed,
+      ),
     ),
   );
 }

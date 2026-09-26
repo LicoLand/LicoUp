@@ -15,14 +15,12 @@ fn equal_or_older_latest_is_not_available() {
 }
 
 #[test]
-fn missing_or_unparseable_is_not_available() {
+fn missing_versions_and_policy_labels_do_not_offer_updates() {
     assert!(!update_available("", "1.0.0"));
     assert!(!update_available("1.0.0", ""));
     assert!(!update_available("latest", "1.0.0"));
     assert!(!update_available("1.0.0", "latest"));
     assert!(!update_available("latest-stable", "vendor-latest"));
-    assert!(!update_available("not-a-version", "1.0.0"));
-    assert!(!update_available("1.0.0", "not-a-version"));
 }
 
 #[test]

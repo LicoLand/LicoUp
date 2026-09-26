@@ -1,5 +1,7 @@
 # Lico Agent
 
+Updated: 2026-09-25
+
 English (normative) · [简体中文](lico-agent.zh-CN.md)
 
 Authority: `domain/lico_agent/`, `platform/lico_agent_driver/`,
@@ -16,7 +18,7 @@ Pi or Codex. It is not a special Conversation, role, or orchestration owner.
   `steer`, `abort`.
 - Models only through the local loopback [LLM Gateway](llm-gateway.md).
   Non-loopback base URLs fail closed.
-- Profiles: `base` (read + optional future write tools) and `plan`
+- Profiles: `base` (read tools) and `plan`
   (inheritance mode: `read` + `write_plan` only).
 - Plan mode spawns under macOS seatbelt capability
   `platform-lico-agent-plan-isolated-v1`: filesystem write is limited to one
@@ -34,5 +36,4 @@ Agent Membership, exactly like any other runnable integration. A user-defined
 Conversation Role may include that Membership, and an explicitly started
 Adaptive Flywheel may select it from the Role's ordered candidate pool. There
 is no built-in main-agent slot, automatic group turn-taking, or dedicated Lico
-group identity. The current delivery does not claim a desktop group or
-Flywheel editor.
+group identity.

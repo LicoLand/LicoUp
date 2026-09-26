@@ -3,12 +3,29 @@
 //! Runtime leaves are intentionally separate from [`crate::domain::workflow_store`]:
 //! adapters may perform external work, while store transactions only persist
 //! state, commands, and post-commit intent.
+//!
+//! ## Ownership boundary (V7-K0)
+//!
+//! The drive loop and its adapters are the runtime side; the consumer-owned
+//! ports they call live in `licoup-workflow-runtime`
+//! (`ports::{StatePort, AuthorityPort, NoticeSink}`). The runtime declares what
+//! it needs and storage implements it, so the compile-time edge points
+//! `store ──► ports ──► pure machine` while calls at run time point the other
+//! way. That inversion is deliberate, not a cycle to be flattened.
+//!
+//! `ContinuousNodeDriver` (`driver.rs`) has no production caller: the real
+//! sustained driver is `StrategyService::drive_run`. Do not extend the dormant
+//! driver into a second scheduler; the single entry is what the extraction and
+//! the recovery contract are written against.
 
 pub mod adapter;
 mod assistant;
+pub mod authority_adapter;
 pub mod control;
 pub mod driver;
 pub mod evolution;
+pub mod evolution_adapters;
+pub mod host_drive;
 pub mod node;
 mod package;
 pub mod routing;
@@ -53,7 +70,7 @@ pub use routing::{
     QueueCapacityExceeded, QueuedItem, RecipientEffectStatus, Subscription, SubscriptionPredicate,
     SubscriptionRegistry, SubscriptionScope, TargetSelector,
 };
-pub use service::{ActorTurnPort, AssistantWakePort, StrategyService};
+pub use service::{ActorControlPort, ActorTurnPort, AssistantWakePort, StrategyService};
 
 pub use crate::domain::workflow_store::{
     BindingCandidate, BindingValue, STRATEGY_SCHEMA_VERSION, StrategyAuthorization,

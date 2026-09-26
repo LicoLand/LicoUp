@@ -11,12 +11,9 @@ use std::time::Duration;
 pub(in crate::platform) const RUNTIME_PROTOCOL: &str = "claude-code-cli-stream-json";
 pub(super) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-#[repr(u8)]
-enum TransportState {
-    Live = 0,
-    Closing = 1,
-    Closed = 2,
-}
+use crate::state_machines::claude_transport::{
+    self, Event as TransportEvent, State as TransportState,
+};
 
 #[derive(Debug)]
 pub(in crate::platform) struct TransportLifecycle {
@@ -30,7 +27,7 @@ pub(in crate::platform) struct TransportLifecycle {
 impl Default for TransportLifecycle {
     fn default() -> Self {
         Self {
-            state: AtomicU8::new(TransportState::Live as u8),
+            state: AtomicU8::new(claude_transport::INITIAL as u8),
             #[cfg(test)]
             changed: Mutex::new(()),
             #[cfg(test)]
@@ -55,37 +52,28 @@ impl TransportLifecycle {
     }
 
     pub(in crate::platform) fn begin_closing(&self) -> bool {
-        let claimed = self
-            .state
-            .compare_exchange(
-                TransportState::Live as u8,
-                TransportState::Closing as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok();
-        if claimed {
-            #[cfg(test)]
-            self.notification.notify_all();
-        }
-        claimed
+        self.advance(TransportEvent::BeginClosing)
     }
 
     pub(in crate::platform) fn mark_closed(&self) -> bool {
-        let closed = self
+        self.advance(TransportEvent::Close)
+    }
+
+    fn advance(&self, event: TransportEvent) -> bool {
+        // Re-evaluate the configured transition if another owner wins the CAS.
+        // The atomic value is private and only stores generated state indices.
+        let changed = self
             .state
-            .compare_exchange(
-                TransportState::Closing as u8,
-                TransportState::Closed as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                let state = *claude_transport::ALL_STATES.get(usize::from(current))?;
+                claude_transport::transition(state, event).map(|next| next as u8)
+            })
             .is_ok();
-        if closed {
+        if changed {
             #[cfg(test)]
             self.notification.notify_all();
         }
-        closed
+        changed
     }
 
     #[cfg(test)]

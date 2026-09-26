@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+pub(in crate::platform) use crate::state_machines::codex_protocol::State as ProtocolPhase;
+
 #[derive(Clone, Debug, Default)]
 pub(in crate::platform) struct EffectiveSettings {
     pub(in crate::platform) cwd: Option<String>,
@@ -84,15 +86,4 @@ pub(in crate::platform) enum ProtocolEffect {
     Send(Value),
     Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum ProtocolPhase {
-    AwaitInitialize,
-    AwaitRateLimits,
-    AwaitThread,
-    AwaitThreadUnarchive,
-    AwaitTurnStart,
-    AwaitTurnCompleted,
-    Finished,
 }

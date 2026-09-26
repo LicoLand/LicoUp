@@ -50,22 +50,22 @@ fn cursor_usage_payload() -> Value {
     json!({
         "individualUsage": {
             "plan": {
-                "totalPercentUsed": 42.5,
+                "totalPercentUsed": 37.5,
                 "autoPercentUsed": 50.0,
                 "apiPercentUsed": 10.0,
-                "used": 850,
+                "used": 750,
                 "limit": 2000,
-                "remaining": 1150
+                "remaining": 1250
             },
             "onDemand": {
                 "enabled": true,
-                "used": 250,
+                "used": 400,
                 "limit": 5000,
-                "remaining": 4750
+                "remaining": 4600
             }
         },
-        "billingCycleStart": "2033-05-01T00:00:00Z",
-        "billingCycleEnd": "2033-06-01T00:00:00Z",
+        "billingCycleStart": "2026-08-01T00:00:00Z",
+        "billingCycleEnd": "2026-09-01T00:00:00Z",
         "membershipType": "pro"
     })
 }
@@ -74,15 +74,15 @@ fn kimi_usage_payload() -> Value {
     json!({
         "usage": {
             "limit": 100,
-            "used": 31,
-            "resetTime": "2033-06-01T00:00:00Z"
+            "used": 25,
+            "resetTime": "2026-09-01T00:00:00Z"
         },
         "limits": [{
             "window": {"duration": 5, "timeUnit": "TIME_UNIT_HOUR"},
             "detail": {
                 "limit": 100,
                 "used": 10,
-                "resetTime": "2033-05-01T05:00:00Z"
+                "resetTime": "2026-08-29T05:00:00Z"
             }
         }],
         "user": {"membership": {"level": "LEVEL_ADVANCED"}}
@@ -94,7 +94,7 @@ fn kimi_string_counter_payload() -> Value {
         "usage": {
             "limit": "200",
             "used": "50",
-            "resetTime": "2033-06-01T00:00:00Z"
+            "resetTime": "2026-09-01T00:00:00Z"
         },
         "user": {"membership": {"level": "LEVEL_FREE"}}
     })
@@ -392,23 +392,23 @@ fn provider_quota_cursor_source_normalizes_synthetic_payload() {
     assert_eq!(snapshot.windows.len(), 4);
     let plan = &snapshot.windows[0];
     assert_eq!(plan.label, "plan");
-    assert_eq!(plan.used_percent, 42.5);
+    assert_eq!(plan.used_percent, 37.5);
     assert_eq!(plan.window_minutes, Some(44640));
-    assert_eq!(plan.resets_at.as_deref(), Some("2033-06-01T00:00:00Z"));
+    assert_eq!(plan.resets_at.as_deref(), Some("2026-09-01T00:00:00Z"));
     // Cursor meters plan and on-demand budgets in cents; the contract carries
     // USD so the card can show used/limit next to the percentage.
-    assert_eq!(plan.used, Some(8.5));
+    assert_eq!(plan.used, Some(7.5));
     assert_eq!(plan.limit, Some(20.0));
-    assert_eq!(plan.remaining, Some(11.5));
+    assert_eq!(plan.remaining, Some(12.5));
     assert_eq!(snapshot.windows[1].label, "auto");
     assert_eq!(snapshot.windows[1].used_percent, 50.0);
     assert_eq!(snapshot.windows[2].label, "api");
     assert_eq!(snapshot.windows[2].used_percent, 10.0);
     let on_demand = &snapshot.windows[3];
     assert_eq!(on_demand.label, "on-demand");
-    assert_eq!(on_demand.used, Some(2.5));
+    assert_eq!(on_demand.used, Some(4.0));
     assert_eq!(on_demand.limit, Some(50.0));
-    assert_eq!(on_demand.used_percent, 5.0);
+    assert_eq!(on_demand.used_percent, 8.0);
     assert_eq!(snapshot.identity.plan.as_deref(), Some("pro"));
     assert_eq!(
         snapshot.identity.account_label.as_deref(),
@@ -427,16 +427,16 @@ fn provider_quota_cursor_source_keeps_on_demand_distinct_from_plan() {
     let db_path = write_cursor_state_db(&root, &token);
     let payload = json!({
         "individualUsage": {
-            "plan": {"totalPercentUsed": 12.0, "used": 240, "limit": 2000},
+            "plan": {"totalPercentUsed": 25.0, "used": 500, "limit": 2000},
             // A disabled individual budget reports nothing; the shared team
             // budget is the account's real on-demand meter.
             "onDemand": {"enabled": false, "used": 0, "limit": null, "remaining": null}
         },
         "teamUsage": {
-            "onDemand": {"enabled": true, "used": 1500, "limit": 10000, "remaining": 8500}
+            "onDemand": {"enabled": true, "used": 2000, "limit": 10000, "remaining": 8000}
         },
-        "billingCycleStart": "2033-05-01T00:00:00Z",
-        "billingCycleEnd": "2033-06-01T00:00:00Z",
+        "billingCycleStart": "2026-08-01T00:00:00Z",
+        "billingCycleEnd": "2026-09-01T00:00:00Z",
         "membershipType": "pro"
     });
     let source = cursor::CursorSource::for_testing(
@@ -457,9 +457,9 @@ fn provider_quota_cursor_source_keeps_on_demand_distinct_from_plan() {
         .collect::<Vec<_>>();
     assert_eq!(labels, ["plan", "on-demand"]);
     let on_demand = &snapshot.windows[1];
-    assert_eq!(on_demand.used, Some(15.0));
+    assert_eq!(on_demand.used, Some(20.0));
     assert_eq!(on_demand.limit, Some(100.0));
-    assert_eq!(on_demand.used_percent, 15.0);
+    assert_eq!(on_demand.used_percent, 20.0);
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -555,14 +555,14 @@ fn provider_quota_kimi_code_source_normalizes_synthetic_payload() {
     assert_eq!(snapshot.windows.len(), 2);
     let weekly = &snapshot.windows[0];
     assert_eq!(weekly.label, "weekly");
-    assert_eq!(weekly.used_percent, 31.0);
+    assert_eq!(weekly.used_percent, 25.0);
     assert_eq!(weekly.window_minutes, Some(10080));
-    assert_eq!(weekly.resets_at.as_deref(), Some("2033-06-01T00:00:00Z"));
+    assert_eq!(weekly.resets_at.as_deref(), Some("2026-09-01T00:00:00Z"));
     let session = &snapshot.windows[1];
     assert_eq!(session.label, "session");
     assert_eq!(session.used_percent, 10.0);
     assert_eq!(session.window_minutes, Some(300));
-    assert_eq!(session.resets_at.as_deref(), Some("2033-05-01T05:00:00Z"));
+    assert_eq!(session.resets_at.as_deref(), Some("2026-08-29T05:00:00Z"));
     assert_eq!(snapshot.identity.plan.as_deref(), Some("Advanced"));
     assert_eq!(
         snapshot.identity.account_label.as_deref(),
@@ -965,7 +965,7 @@ fn provider_quota_refresh_backfills_missing_reset_from_cache() {
     let root = temp_root("reset-backfill");
     let with_reset = registry(vec![(
         QuotaProvider::Cursor,
-        synthetic_snapshot(QuotaProvider::Cursor, Some("2033-06-01T00:00:00Z")),
+        synthetic_snapshot(QuotaProvider::Cursor, Some("2026-09-01T00:00:00Z")),
     )]);
     command::snapshot_with_sources(
         &json!({
@@ -995,7 +995,7 @@ fn provider_quota_refresh_backfills_missing_reset_from_cache() {
     .unwrap();
     assert_eq!(
         result["snapshots"][0]["windows"][0]["resetsAt"],
-        "2033-06-01T00:00:00Z"
+        "2026-09-01T00:00:00Z"
     );
     std::fs::remove_dir_all(root).unwrap();
 }

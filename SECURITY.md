@@ -1,5 +1,7 @@
 # Security
 
+Updated: 2026-09-25
+
 English · [简体中文](SECURITY.zh-CN.md) · [Home](README.md)
 
 ## Report a problem
@@ -64,10 +66,8 @@ LicoUp executes one pinned Protocol Line while retaining private keys, local
 Provider configuration, plaintext, conversation history, backups, user trust,
 approvals, and local effects. A Station receives none of those authorities.
 
-The [current retiring endpoint-protection Preview](docs/STATUS.md) is not a
-Lico Arc Profile or a stable compatibility surface. It has no future
-interoperability promise and is to be retired directly when a complete pinned
-Lico Arc Protocol Line replaces it. The implemented `licoarc.relay.v1`
+The [current endpoint-protection Preview](docs/STATUS.md) is not a Lico Arc
+Profile or a stable compatibility surface. The implemented `licoarc.relay.v1`
 candidate outer adapter remains a separate current fact; its existence does
 not certify that preview as Lico Arc conformance.
 

@@ -26,7 +26,6 @@ import {
   SensitiveContentScanner,
   classifyPath,
   normalizeSensitivePath,
-  sensitiveRulesetExtensions,
   sensitiveExtensions,
 } from "../../../tools/scripts/lib/repository-sensitive-file-policy.mjs";
 
@@ -49,8 +48,6 @@ import {
   planRulesetApply,
   promotionRulesetNames,
   promotionRequiredStatusContexts,
-  pushRulesetCapability,
-  sensitivePublicationRulesetName,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 
 test("Ruleset reads retry transient failures without retrying mutations", () => {
@@ -109,6 +106,15 @@ test("commit history preserves human identities and rejects Agent attribution", 
   assert.equal(isAgentIdentity("GitHub Actions", "service[bot]@users.noreply.github.com"), true);
 });
 
+test("a personally controlled Agent-named GitHub account is not a vendor service identity", () => {
+  assert.doesNotThrow(() => assertCommitRecord(validRecord({
+    authorName: "my-codex-agent", authorEmail: "123456+my-codex-agent@users.noreply.github.com",
+    committerName: "my-codex-agent", committerEmail: "123456+my-codex-agent@users.noreply.github.com",
+  })));
+  assert.equal(isAgentIdentity("codex", "codex@vendor.example.invalid"), true);
+  assert.equal(isAgentIdentity("service[bot]", "123456+service[bot]@users.noreply.github.com"), true);
+});
+
 test("all attribution trailers are rejected, including Agent co-authorship", () => {
   for (const trailer of [
     "Co-authored-by: Cursor Agent <cursor@example.invalid>",
@@ -143,18 +149,17 @@ test("pull request identity workflow requires a User or verified GitHub merge se
   assert.match(workflow, /has_forbidden_attribution/u);
 });
 
-test("branch-scoped Rulesets cover identity, every promotion edge, and push publication", () => {
+test("branch-scoped Rulesets cover identity and every promotion edge", () => {
   const integrationId = 15368;
   const appleIntegrationId = 27182;
   const rulesets = buildRulesets(integrationId, appleIntegrationId);
-  assert.equal(rulesets.length, 6);
+  assert.equal(rulesets.length, 5);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
     [
       allBranchesRulesetName,
       ...Object.values(promotionRulesetNames),
       cutoffRulesetName,
-      sensitivePublicationRulesetName,
     ],
   );
   for (const ruleset of rulesets) {
@@ -165,7 +170,6 @@ test("branch-scoped Rulesets cover identity, every promotion edge, and push publ
   const [identityRuleset, ...rest] = rulesets;
   const promotionRulesets = rest.slice(0, 3);
   const cutoffRuleset = rest[3];
-  const pushRuleset = rest.at(-1);
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
   const authorRule = identityRuleset.rules.find(
@@ -214,15 +218,6 @@ test("branch-scoped Rulesets cover identity, every promotion edge, and push publ
   assert.deepEqual(cutoffRuleset.rules.map(({ type }) => type), ["deletion", "update"]);
   assert.equal(cutoffRuleset.rules[1].parameters.update_allows_fetch_and_merge, false);
 
-  assert.equal(pushRuleset.target, "push");
-  assert.equal(Object.hasOwn(pushRuleset, "conditions"), false);
-  const extensionRule = pushRuleset.rules.find(
-    ({ type }) => type === "file_extension_restriction",
-  );
-  assert.ok(extensionRule);
-  assert.deepEqual(extensionRule.parameters, {
-    restricted_file_extensions: sensitiveRulesetExtensions(),
-  });
 });
 
 test("ignore defense mirrors every canonical sensitive suffix", () => {
@@ -281,15 +276,15 @@ function initFixtureRepo() {
   return { dir, git, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-test("classifyPath rejects every canonical sensitive suffix with normalization", () => {
+test("classifyPath warns for every canonical sensitive suffix with normalization", () => {
   assert.equal(sensitiveExtensions.size, 23);
   const alternateSeparator = String.fromCharCode(92);
   for (const extension of sensitiveExtensions) {
-    assert.equal(classifyPath(`config/keys/dev${extension}`).verdict, "reject", extension);
+    assert.equal(classifyPath(`config/keys/dev${extension}`).verdict, "warning", extension);
     assert.equal(
       classifyPath(["CONFIG", "KEYS", `DEV${extension.toUpperCase()}`]
         .join(alternateSeparator)).verdict,
-      "reject",
+      "warning",
       extension,
     );
     assert.equal(classifyPath(`config/keys/dev${extension}`).reason,
@@ -302,17 +297,10 @@ test("classifyPath rejects every canonical sensitive suffix with normalization",
   assert.equal(normalizeSensitivePath("A\\B.PEM"), "a/b.pem");
 });
 
-test("sensitiveRulesetExtensions mirror the frozen set as bare extensions", () => {
-  const extensions = sensitiveRulesetExtensions();
-  assert.equal(extensions.length, sensitiveExtensions.size);
-  assert.deepEqual(extensions, [...sensitiveExtensions].map((extension) => extension.slice(1)));
-  assert.ok(extensions.every((extension) => !extension.startsWith(".") && !extension.includes("*")));
-});
-
-test("content scanner rejects complete PEM blocks and passes safe controls", () => {
+test("content scanner warns for complete PEM blocks and passes safe controls", () => {
   for (const block of [pemCertificate(), pemPrivateKey()]) {
     const scanner = new SensitiveContentScanner();
-    assert.equal(scanner.feed(block).verdict, "reject");
+    assert.equal(scanner.feed(block).verdict, "warning");
     assert.equal(scanner.finish().reason, SENSITIVE_CONTENT_REASON);
   }
   const boundary = (kind, label) => `${"---" + "--"}${kind} ${label}${"---" + "--"}`;
@@ -335,9 +323,9 @@ test("content scanner detects markers split across arbitrary chunk boundaries", 
     const bytes = Buffer.from(pemCertificate(), "utf8");
     for (let offset = 0; offset < bytes.length; offset += chunkSize) {
       scanner.feed(bytes.subarray(offset, offset + chunkSize));
-      if (scanner.result.verdict === "reject") break;
+      if (scanner.result.verdict === "warning") break;
     }
-    assert.equal(scanner.finish().verdict, "reject", `chunk size ${chunkSize}`);
+    assert.equal(scanner.finish().verdict, "warning", `chunk size ${chunkSize}`);
   }
 });
 
@@ -355,14 +343,14 @@ test("malformed outer blocks cannot hide a complete nested private-key block", (
     for (let offset = 0; offset < bytes.length; offset += chunkSize) {
       scanner.feed(bytes.subarray(offset, offset + chunkSize));
     }
-    assert.equal(scanner.finish().verdict, "reject", `chunk size ${chunkSize}`);
+    assert.equal(scanner.finish().verdict, "warning", `chunk size ${chunkSize}`);
   }
 });
 
 test("sensitive-file verdicts expose only stable type codes, never candidates", () => {
   const pathVerdict = classifyPath("certs/Apple-Dev.p8");
   assert.deepEqual(Object.keys(pathVerdict), ["verdict", "reason"]);
-  assert.equal(pathVerdict.verdict, "reject");
+  assert.equal(pathVerdict.verdict, "warning");
   assert.equal(pathVerdict.reason, SENSITIVE_EXTENSION_REASON);
   const contentVerdict = new SensitiveContentScanner().feed(pemCertificate());
   assert.deepEqual(Object.keys(contentVerdict), ["verdict", "reason"]);
@@ -370,17 +358,23 @@ test("sensitive-file verdicts expose only stable type codes, never candidates", 
   assert.ok(!JSON.stringify(contentVerdict).includes("CERTIFICATE"));
 });
 
-test("staged checks reject sensitive paths before reading and deduplicate objects", () => {
+test("staged checks warn for sensitive paths and still inspect every object", () => {
   assert.deepEqual(
     stagedObjectChecks([{ path: "gone.key", status: "D", srcOid: oidA, dstOid: zeroOid }]),
-    { status: "pass", readOids: [] },
+    { status: "pass", readOids: [], pathsByOid: {}, warnings: [] },
   );
-  const rejected = stagedObjectChecks([
+  const warned = stagedObjectChecks([
     { path: "config/Apple.p8", status: "A", srcOid: zeroOid, dstOid: oidA },
   ]);
-  assert.equal(rejected.status, "reject");
-  assert.equal(rejected.code, "SENSITIVE_PATH_STAGED");
-  assert.deepEqual(rejected.readOids, []);
+  assert.equal(warned.status, "pass");
+  assert.deepEqual(warned.readOids, [oidA]);
+  assert.deepEqual(warned.pathsByOid, { [oidA]: ["config/Apple.p8"] });
+  assert.deepEqual(warned.warnings, [{
+    severity: "warning",
+    rule: SENSITIVE_EXTENSION_REASON,
+    path: "config/Apple.p8",
+    evidenceClass: "candidate-shape",
+  }]);
   const passed = stagedObjectChecks([
     { path: "src/lib.rs", status: "A", srcOid: zeroOid, dstOid: oidA },
     { path: "src/lib.rs", status: "M", srcOid: oidA, dstOid: oidA },
@@ -388,9 +382,11 @@ test("staged checks reject sensitive paths before reading and deduplicate object
   ]);
   assert.equal(passed.status, "pass");
   assert.deepEqual(passed.readOids, [oidA]);
+  assert.deepEqual(passed.pathsByOid, { [oidA]: ["src/lib.rs", "tests/fixture.bin"] });
+  assert.deepEqual(passed.warnings, []);
 });
 
-test("outgoing checks reject add-rename-delete history even when the tip is clean", () => {
+test("outgoing checks warn for add-rename-delete history and inspect hidden blobs", () => {
   const secretPathGraph = [
     { commit: "c1", entries: [
       { path: "config/secrets.pem", status: "A", srcOid: zeroOid, dstOid: oidA },
@@ -402,10 +398,12 @@ test("outgoing checks reject add-rename-delete history even when the tip is clea
       { path: "config/notes.txt", status: "D", srcOid: oidA, dstOid: zeroOid },
     ] },
   ];
-  const rejected = outgoingObjectChecks(secretPathGraph);
-  assert.equal(rejected.status, "reject");
-  assert.equal(rejected.code, "SENSITIVE_PATH_OUTGOING");
-  assert.deepEqual(rejected.readOids, []);
+  const warned = outgoingObjectChecks(secretPathGraph);
+  assert.equal(warned.status, "pass");
+  assert.deepEqual(warned.readOids, [oidA]);
+  assert.deepEqual(warned.pathsByOid, { [oidA]: ["config/secrets.pem"] });
+  assert.equal(warned.warnings.length, 1);
+  assert.equal(warned.warnings[0].rule, SENSITIVE_EXTENSION_REASON);
 
   const secretContentGraph = [
     { commit: "c1", entries: [
@@ -422,7 +420,7 @@ test("outgoing checks reject add-rename-delete history even when the tip is clea
   assert.equal(contentCheck.status, "pass");
   assert.deepEqual(contentCheck.readOids, [oidA]);
   const scanner = new SensitiveContentScanner();
-  assert.equal(scanner.feed(pemCertificate()).verdict, "reject");
+  assert.equal(scanner.feed(pemCertificate()).verdict, "warning");
 });
 
 test("outgoing checks pass a clean multi-ref graph and read each object once", () => {
@@ -455,15 +453,16 @@ test("staged gate inspects index objects, not worktree files", () => {
     assert.equal(checks.status, "pass");
     assert.deepEqual(checks.readOids, [indexOid]);
     const scanner = new SensitiveContentScanner();
-    assert.equal(scanner.feed(fixture.git(["cat-file", "blob", indexOid])).verdict, "reject");
+    assert.equal(scanner.feed(fixture.git(["cat-file", "blob", indexOid])).verdict, "warning");
 
     mkdirSync(path.join(fixture.dir, "keys"), { recursive: true });
     writeFileSync(path.join(fixture.dir, "keys", "apple.p8"), "not a real key\n");
     fixture.git(["add", "keys/apple.p8"]);
     const pathCheck = stagedObjectChecks(parseRawDiffEntries(
       fixture.git(["diff", "--cached", "--raw", "-z", "--abbrev=40", "--diff-filter=ACMRTUXB"])));
-    assert.equal(pathCheck.status, "reject");
-    assert.equal(pathCheck.code, "SENSITIVE_PATH_STAGED");
+    assert.equal(pathCheck.status, "pass");
+    assert.equal(pathCheck.warnings.length, 1);
+    assert.equal(pathCheck.warnings[0].path, "keys/apple.p8");
   } finally {
     fixture.cleanup();
   }
@@ -489,7 +488,7 @@ test("empty staged candidate is rejected only outside an in-progress merge commi
   }
 });
 
-test("outgoing history scan recovers add-rename-delete and rejects the hidden blob", () => {
+test("outgoing history scan recovers add-rename-delete and warns for the hidden blob", () => {
   const fixture = initFixtureRepo();
   try {
     writeFileSync(path.join(fixture.dir, "data.txt"), pemCertificate());
@@ -515,7 +514,7 @@ test("outgoing history scan recovers add-rename-delete and rejects the hidden bl
     const scanner = new SensitiveContentScanner();
     assert.equal(
       scanner.feed(fixture.git(["cat-file", "blob", checks.readOids[0]])).verdict,
-      "reject",
+      "warning",
     );
   } finally {
     fixture.cleanup();
@@ -543,26 +542,16 @@ test("a new remote ref scans only history not already reachable from that remote
   }
 });
 
-test("push Ruleset capability requires an internal/private Team or Enterprise repository", () => {
-  assert.equal(pushRulesetCapability({ visibility: "public", plan: { name: "free" } }), false);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "free" } }), false);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "team" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "private", plan: { name: "enterprise" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "internal", plan: { name: "Team" } }), true);
-  assert.equal(pushRulesetCapability({ visibility: "private" }), false);
-  assert.equal(pushRulesetCapability(null), false);
-});
-
-test("unsupported public push target still plans branch authorities", () => {
+test("public repositories plan the complete branch authorities", () => {
   const plan = planRulesetApply({ visibility: "public", plan: { name: "free" } }, 15368, 27182);
-  assert.equal(plan.status, "branch-only");
-  assert.equal(plan.code, "PUSH_RULESET_UNSUPPORTED");
+  assert.equal(plan.status, "supported");
+  assert.equal(plan.code, null);
   assert.deepEqual(plan.desired.map(({ name }) => name),
     [allBranchesRulesetName, ...Object.values(promotionRulesetNames), cutoffRulesetName]);
   assert.ok(plan.desired.every(({ target }) => target === "branch"));
 });
 
-test("supported push target plans all managed Rulesets in deterministic order", () => {
+test("all repository plans keep deterministic branch authority order", () => {
   const calls = [];
   const recorder = { apply(payload) { calls.push(payload.name); } };
   for (const planName of ["team", "enterprise"]) {
@@ -573,15 +562,12 @@ test("supported push target plans all managed Rulesets in deterministic order", 
         allBranchesRulesetName,
         ...Object.values(promotionRulesetNames),
         cutoffRulesetName,
-        sensitivePublicationRulesetName,
       ]);
-    assert.deepEqual(plan.desired.slice(0, 5).map(({ target }) => target),
+    assert.deepEqual(plan.desired.map(({ target }) => target),
       ["branch", "branch", "branch", "branch", "branch"]);
-    assert.equal(plan.desired[5].target, "push");
-    assert.deepEqual(plan.desired[5].bypass_actors, []);
     for (const payload of plan.desired) recorder.apply(payload);
   }
-  assert.equal(calls.length, 12);
+  assert.equal(calls.length, 10);
 });
 
 test("release remains the required default branch", () => {

@@ -1,10 +1,12 @@
 # packages/protocols/native-client
 
+Updated: 2026-09-25
+
 [English (normative)](README.md) · 简体中文本地化
 
 本目录记录 LicoUp Flutter 客户端、Rust native library 与本机智能体之间的客户端内部
 适配边界。这里的“稳定”不适用于
-[当前正在退役的端点保护预览](../../../docs/STATUS.zh-CN.md)。
+[当前端点保护预览](../../../docs/STATUS.zh-CN.md)。
 
 实现入口：
 
@@ -25,8 +27,8 @@
 
 - CLI、Flutter 与移动桥接复用同一组 Rust 协议模型，不各自创建报文变体。
 - 稳定、线上可观测的 Pairwise Protection、Generic Message、Reliable Exchange、
-  协商与 Transport Profile 语义属于一条固定 Lico Arc Protocol Line。当前正在
-  退役的预览不是 Lico Arc Profile，不承诺未来兼容；该线路替换它时会直接退役。
+  协商与 Transport Profile 语义属于一条固定 Lico Arc Protocol Line。当前预览不是
+  Lico Arc Profile 或稳定兼容合同。
 - LicoUp 保留私钥、Provider 配置、明文、历史、备份、用户信任、审批和本地效果。
 - 本机路径、配置、对话和统计保留在客户端拥有的存储中。
 - 任何把用户信息或文件发送到本机之外的动作都必须由用户针对本次动作、具体目的端和具体范围直接确认；取消、范围不匹配或批准缺失时失败关闭。

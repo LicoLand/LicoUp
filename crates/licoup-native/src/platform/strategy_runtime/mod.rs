@@ -11,6 +11,10 @@ use std::time::Duration;
 
 use licoup_workflow::{CommandKind, RunCommand, RuntimeKind};
 
+mod effect_dispatch;
+
+pub(crate) use effect_dispatch::{LaneEffectDispatch, RuntimeRegistryAgentProfiles};
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RuntimeDescriptor {

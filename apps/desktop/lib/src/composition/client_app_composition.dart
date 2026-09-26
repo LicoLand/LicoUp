@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 import 'package:riverpod/misc.dart' show Override;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -46,6 +47,7 @@ import 'package:licoup/src/presentation/plugin_management/plugin_management_bind
 import 'package:licoup/src/presentation/search/search_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/shell/shell_binding.dart';
+import 'package:licoup/src/presentation/shell/shell_providers.dart';
 import 'package:licoup/src/presentation/environment/environment_projection.dart';
 import 'package:licoup/src/presentation/environment/locale_preferences.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
@@ -55,8 +57,10 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
+import 'package:licoup/src/projections/chrome/chrome_presentation_source.dart';
 import 'package:licoup/src/projections/shell/shell_effect_producer.dart';
 import 'package:licoup/src/projections/shell/shell_projection_producer.dart';
+import 'package:licoup/src/projections/shell/shell_presentation_sources.dart';
 
 final class ClientAppComposition {
   factory ClientAppComposition({
@@ -177,6 +181,14 @@ final class ClientAppComposition {
       status: _projectionTracing.wrap(_shellProjection.status),
       intents: _shellIntents,
       effects: _shellEffects,
+    );
+    _shellSources = ShellPresentationSources(
+      appearance: binding.appearance,
+      locale: binding.locale,
+      layout: binding.layout,
+      environment: binding.environment,
+      navigation: binding.navigation,
+      status: binding.status,
     );
 
     _agents = AgentsFeatureComposition(
@@ -321,10 +333,11 @@ final class ClientAppComposition {
     _renderer = BindingShellRenderer(
       layout: _layout,
       shellIntents: _shellIntents,
-      status: binding.status,
-      locale: binding.locale,
+      runtime: _runtime,
+      chromeSource: _chrome.source,
+      statusSource: _shellSources.status,
+      localeSource: _shellSources.locale,
       agents: agents,
-      chrome: chrome,
       conversation: conversation,
       monitoring: monitoring,
       skillHub: skillHub,
@@ -345,7 +358,15 @@ final class ClientAppComposition {
   final BuiltInLayoutComposition _layout;
   final CausalFrameTelemetry? telemetry;
   final CausalProjectionSourceRegistry _projectionTracing;
+
+  /// The app-scope presentation runtime.
+  ///
+  /// The composition root owns it so the renderer chrome and every feature
+  /// provider observe the same sources through one lifetime; the root
+  /// `ProviderScope` receives it through [presentationOverrides].
+  final PresentationRuntime _runtime = PresentationRuntime();
   late final ShellProjectionProducer _shellProjection;
+  late final ShellPresentationSources _shellSources;
   late final EnvironmentProjectionSource _environment;
   late final StreamSubscription<bool> _systemReduceMotionSubscription;
   late final ShellEffectProducer _shellEffects;
@@ -381,9 +402,24 @@ final class ClientAppComposition {
   Future<void>? _disposal;
 
   /// Aggregated Riverpod overrides that install every migrated feature's live
-  /// presentation sources. The app root wraps its tree in a `ProviderScope`
-  /// with these; feature tests install their own synthetic overrides instead.
+  /// presentation sources and the app-scope runtime. The app root wraps its
+  /// tree in a `ProviderScope` with these; feature tests install their own
+  /// synthetic overrides instead.
   List<Override> get presentationOverrides => <Override>[
+    presentationRuntimeProvider.overrideWithValue(_runtime),
+    shellAppearanceSourceProvider.overrideWithValue(_shellSources.appearance),
+    shellLocaleSourceProvider.overrideWithValue(_shellSources.locale),
+    shellLayoutSourceProvider.overrideWithValue(_shellSources.layout),
+    shellEnvironmentSourceProvider.overrideWithValue(_shellSources.environment),
+    shellNavigationSourceProvider.overrideWithValue(_shellSources.navigation),
+    shellStatusSourceProvider.overrideWithValue(_shellSources.status),
+    ..._agents.providerOverrides,
+    ..._targets.providerOverrides,
+    ..._monitoring.providerOverrides,
+    ..._models.providerOverrides,
+    ..._agentHub.providerOverrides,
+    ..._search.providerOverrides,
+    ..._conversation.providerOverrides,
     ..._settings.providerOverrides,
     ..._pluginManagement.providerOverrides,
     ..._skillHub.providerOverrides,
@@ -393,6 +429,15 @@ final class ClientAppComposition {
   Future<void> initialize() => _controller.initialize();
 
   Future<void> initializeLlmGateway() => _controller.initializeLlmGateway();
+
+  /// The app-scope runtime the root scope and the renderer share.
+  PresentationRuntime get presentationRuntime => _runtime;
+
+  /// The runtime-backed chrome source observed by the renderer chrome.
+  ChromePresentationSource get chromeSource => _chrome.source;
+
+  /// The six runtime-backed shell region sources installed at the root.
+  ShellPresentationSources get shellSources => _shellSources;
 
   void attachFlutterObservation(WidgetsBinding binding) =>
       telemetry?.attachFrameObservation(binding);
@@ -418,6 +463,8 @@ final class ClientAppComposition {
   Future<void> _dispose() => disposeAll([
     _renderer.dispose,
     _layout.dispose,
+    _shellSources.dispose,
+    _runtime.dispose,
     _projectionTracing.dispose,
     () => telemetry?.dispose(),
     _settings.dispose,

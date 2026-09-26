@@ -1,11 +1,13 @@
 # LicoUp Native Client
 
+Updated: 2026-09-25
+
 This Rust crate owns the native CLI, local state and platform adapters, agent
 drivers, local Subagent MCP, and the
-[current retiring endpoint-protection Preview](../../docs/STATUS.md)
+[current endpoint-protection Preview](../../docs/STATUS.md)
 implementation used by the Flutter client. It does not own stable endpoint
 wire semantics: those belong to a pinned Lico Arc Protocol Line. The preview
-is not a Lico Arc Profile and has no future compatibility promise.
+is not a Lico Arc Profile or stable compatibility contract.
 
 - Module map: [`src/lib.rs`](src/lib.rs)
 - Public CLI: [`src/bin/licoup.rs`](src/bin/licoup.rs)

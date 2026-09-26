@@ -17,8 +17,30 @@ export function writeJsonAtomicSync(filePath, value, mode = 0o600) {
     throw new Error(`Payload exceeds maximum JSON bytes (${MAX_JSON_BYTES}): ${filePath}`);
   }
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tempPath, serialized, { encoding: "utf8", mode });
+  // Write, flush, then rename. The rename is atomic, so a reader sees the old
+  // document or the new one; the fsync before it is what keeps a crash from
+  // leaving the new name over bytes that never reached the disk.
+  const descriptor = fs.openSync(tempPath, "wx", mode);
+  try {
+    fs.writeFileSync(descriptor, serialized, "utf8");
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
   fs.renameSync(tempPath, filePath);
+  // Best effort: the directory entry itself. Not every platform permits a
+  // directory fsync, and failing to flush it does not undo the atomic rename —
+  // it only means the entry's power-loss durability is not claimed.
+  try {
+    const directory = fs.openSync(dir, "r");
+    try {
+      fs.fsyncSync(directory);
+    } finally {
+      fs.closeSync(directory);
+    }
+  } catch {
+    // Directory fsync is unavailable here; the rename already happened.
+  }
 }
 
 export function readJsonSync(filePath) {

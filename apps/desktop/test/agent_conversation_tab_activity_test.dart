@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 import 'support/agent_conversation_workspace_fixture.dart';
+import 'support/presentation_source_overrides.dart';
 
 void main() {
   TargetCandidate targetFixture(String id, {String status = 'detected'}) {
@@ -64,6 +65,11 @@ void main() {
       ),
     );
     await tester.pump();
+    // The relay approval region installs one frame after the agents region.
+    await pumpUntilVisible(
+      tester,
+      find.byKey(const Key('agents-workspace-shell')),
+    );
   }
 
   test('approval detection uses userInteractionRequired and codes', () {

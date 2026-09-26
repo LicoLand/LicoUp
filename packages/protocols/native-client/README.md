@@ -1,11 +1,13 @@
 # Native Client Protocol Boundary
 
+Updated: 2026-09-25
+
 English (normative) · [简体中文](README.zh-CN.md)
 
 This directory documents the client-internal adaptation boundary among the
 LicoUp Flutter client, Rust native library, and local agents. “Stable” here
 does not apply to the
-[current retiring endpoint-protection Preview](../../../docs/STATUS.md).
+[current endpoint-protection Preview](../../../docs/STATUS.md).
 
 ## Implementation Entry Points
 
@@ -37,9 +39,8 @@ does not apply to the
   of creating message variants.
 - Stable wire-observable Pairwise Protection, Generic Message, Reliable
   Exchange, negotiation, and Transport Profile semantics belong to a pinned
-  Lico Arc Protocol Line. The current retiring preview is not a Lico Arc
-  Profile, has no future compatibility promise, and is to be retired directly
-  when that line replaces it.
+  Lico Arc Protocol Line. The current Preview is not a Lico Arc Profile or
+  stable compatibility contract.
 - LicoUp retains private keys, Provider configuration, plaintext, history,
   backups, user trust, approvals, and local effects.
 - Local paths, configuration, conversations, and statistics stay in

@@ -2,6 +2,7 @@ pub mod acp;
 // Linux currently exposes the portable contract without a native authorized-record backend.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
+pub mod full_data_root_archive;
 pub mod licoarc_relay;
 pub mod mcp;
 pub mod safe_archive;

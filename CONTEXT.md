@@ -1,5 +1,7 @@
 # LicoUp
 
+Updated: 2026-09-25
+
 LicoUp defines the language of a human-agent conversation client whose
 endpoints retain control of protected content, trust, and local effects.
 
@@ -27,43 +29,6 @@ The durable interaction context in which visible human and Agent participants
 exchange authorized events. One-to-one and group chat are the same model; only
 the admitted Membership set differs.
 _Avoid_: provider thread, transport session
-
-**Trusted History**:
-The user-facing history boundary assembled from canonical local facts and
-provider-managed objects admitted by provider authorization. “Trusted” names
-the authorized boundary; it does not make a provider or Station a trust root.
-_Avoid_: provider-owned canonical store, Station trust
-
-**Provider-Managed History**:
-Conversation objects retained by a named external history provider and read by
-LicoUp after provider authorization. It is an external source and never the
-canonical LicoUp Conversation store.
-_Avoid_: Canonical Conversation store, Station mailbox
-
-**Provider Authorization**:
-The provider-controlled permission that admits LicoUp to read its retained
-history. The default readable history path uses this authorization and does not
-require a recovery-key call.
-_Avoid_: identity recovery, endpoint attestation
-
-**History Recovery**:
-Restores all retained history objects the authorized provider still makes
-available. Provider access rules remain in force; absent, deleted, expired, or
-otherwise unavailable objects are not recreated.
-_Avoid_: identity recovery, object recreation
-
-**Identity Recovery**:
-Separately authenticated material for restoring endpoint identity and key
-authority. It never locks default history reads. Replacement-device recovery
-prepares it alongside complete available history for one atomic caller-owned
-commit, and it does not restore missing history objects.
-_Avoid_: history restore, provider authorization
-
-**Client History Encryption**:
-Explicit opt-in client-side encryption for provider-managed history. It is a
-history setting and does not define a new wire protocol or imply a recovery-key
-call on the default path.
-_Avoid_: default provider encryption, Protocol Line
 
 **Membership**:
 One Human or Agent Principal's explicit participation, access, and lifecycle in
@@ -123,20 +88,14 @@ _Avoid_: client implementation detail, local custody policy
 
 **Endpoint-Local Security State**:
 Private keys, local Provider configuration, plaintext, canonical local
-Conversation history, provider-authorized history projections, backups, user
-trust, approvals, and local effects retained and controlled by LicoUp. The
-provider remains the owner of its provider-managed history objects.
+Conversation history, backups, user trust, approvals, and local effects retained
+and controlled by LicoUp.
 _Avoid_: wire profile, station policy
 
 **Station Signal**:
 A station-provided receipt, lease, timestamp, queue state, acknowledgement, or
 delivery claim that is only an operational hint.
 _Avoid_: Endpoint confirmation, application acceptance
-
-**Official Network**:
-A replaceable convenience entry operated under the same protocol and trust
-rules as any compatible network.
-_Avoid_: privileged trust root, mandatory backend
 
 **External Operation**:
 A user-approved action that discloses exact content to a named external

@@ -1,9 +1,14 @@
-# 版本发布状态
+# 版本发布
 
-版本计划的结构化权威来源是同目录下的
-[`plan.json`](plan.json)，英文生成视图是
-[`README.md`](README.md)。版本号、场景状态、验收证据和发布历史只在
-`plan.json` 中维护，中文入口不复制可能产生偏差的发布事实。
+Updated: 2026-09-25
 
-组织规则要求：补丁版本只能包含向后兼容修复；次版本必须至少包含一个
-独立验收的新能力场景；主版本必须包含破坏性场景及迁移验收。
+[English](README.md)
+
+发布状态以公开制品和验证收据为准；[包契约](../RELEASE-PACKAGES.zh-CN.md)
+说明可用制品，[晋升门禁](PROMOTION-GATES.zh-CN.md)说明来源和制品边界。
+本地进度与验收记录不在公开索引维护。
+
+`npm run repo:version` 校验公开版本源保持一致、变更日志
+包含该版本，并在要求校验标签时确认标签与版本一致。声明式版本源清单位于
+`tools/release/source-version.json`。版本契约或校验器发生变更时运行
+`npm run repo:version:test`。

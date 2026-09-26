@@ -8,10 +8,7 @@ use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-#[allow(dead_code)]
-#[path = "../../../licoup-conversation/src/state_machine/mod.rs"]
-mod conversation_state_machine;
-use conversation_state_machine::{
+use licoup_conversation::state_machine::{
     TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
 };
 

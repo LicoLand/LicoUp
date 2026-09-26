@@ -18,6 +18,7 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/shared/messaging/messaging_sidebar_navigation.dart';
 
 import '../../../fixtures/production_client_shell_fixture.dart';
+import '../../../../support/presentation_source_overrides.dart';
 
 final class _GoldenOrderStore extends DashboardFeatureOrderStore {
   List<String> _stored = DashboardFeatureOrder.defaultOrder;
@@ -63,16 +64,32 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump();
+      // The shell renders from runtime-backed region sources; wait for the
+      // real 功能 list to appear instead of forcing a synthetic value.
+      expect(
+        await pumpUntilVisible(
+          tester,
+          find.byKey(const Key('messaging-sidebar-feature-list')),
+          maxFrames: 60,
+        ),
+        isTrue,
+        reason: '功能 list never became visible',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump();
     }
 
     await pumpApp();
 
-    // The 功能 list shows the four visible entries in order.
+    // The 功能 list shows the five visible entries in order; the new project
+    // collaboration entry is appended after the stored default order.
     const frozenOrder = <String>[
       'agentHub',
       'modelGateway',
       'mobilePairing',
       'statsPanel',
+      'projectCollaboration',
     ];
     double? previousDy;
     for (final id in frozenOrder) {
@@ -142,6 +159,7 @@ void main() {
       'agentHub',
       'mobilePairing',
       'statsPanel',
+      'projectCollaboration',
     ]);
     await expectLater(
       find.byKey(const Key('dashboard-interaction-repaint')),
@@ -155,6 +173,7 @@ void main() {
     expect(dyOf('modelGateway'), lessThan(dyOf('agentHub')));
     expect(dyOf('agentHub'), lessThan(dyOf('mobilePairing')));
     expect(dyOf('mobilePairing'), lessThan(dyOf('statsPanel')));
+    expect(dyOf('statsPanel'), lessThan(dyOf('projectCollaboration')));
     await expectLater(
       find.byKey(const Key('dashboard-interaction-repaint')),
       matchesGoldenFile('goldens/dashboard_features_reorder_restored.png'),

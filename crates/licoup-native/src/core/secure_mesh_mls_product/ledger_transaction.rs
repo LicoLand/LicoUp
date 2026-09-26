@@ -350,7 +350,8 @@ pub(super) fn read_operation_connection(
                 metadata_json,
             )|
              -> Result<_> {
-                let state = SecureMeshMlsOperationState::parse(&state)?;
+                let state = SecureMeshMlsOperationState::from_name(&state)
+                    .ok_or_else(|| anyhow!("secure mesh MLS operation journal state is invalid"))?;
                 let response = response_json
                     .map(|json| {
                         serde_json::from_str(&json).map_err(|_| {

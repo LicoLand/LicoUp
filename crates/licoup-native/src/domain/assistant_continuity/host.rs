@@ -504,6 +504,62 @@ impl ContinuityHost {
             .cloned()
     }
 
+    /// Borrows the already-admitted continuity owner without creating a runtime.
+    /// Missing or ambiguous bindings are unavailable to workflow callers.
+    pub fn workflow_runtime_for(
+        &self,
+        conversation_id: &str,
+        membership_id: &str,
+    ) -> Option<(NativeWorkContextKey, Arc<WorkContextRuntime>)> {
+        let relation = read_relation_for_child(&self.store, conversation_id).ok()??;
+        read_goal(&self.store, &relation.goal_id).ok()??;
+        let child = self.store.get(conversation_id).ok()?;
+        let mut agents = child.memberships.iter().filter(|membership| {
+            membership.status == MembershipStatus::Active
+                && membership.principal.kind == PrincipalKind::Agent
+        });
+        match child.assistant_membership_id.as_deref() {
+            Some(id) if id == membership_id && agents.any(|agent| agent.id == membership_id) => {}
+            None => {
+                if agents.next()?.id != membership_id || agents.next().is_some() {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+        let binding = self
+            .child_binding(&relation.parent_conversation_id, &relation.goal_id)
+            .ok()?;
+        if binding.child_conversation_id != conversation_id
+            || binding.membership_id != membership_id
+            || binding.parent_conversation_id != relation.parent_conversation_id
+            || binding.source_task_id != relation.goal_id
+        {
+            return None;
+        }
+        let generation = self
+            .admitted_work_generation(&relation.parent_conversation_id, &relation.goal_id)
+            .ok()?;
+        if generation <= 0 {
+            return None;
+        }
+        let runtime = self.work_runtime(
+            conversation_id,
+            &relation.goal_id,
+            membership_id,
+            generation,
+        )?;
+        Some((
+            NativeWorkContextKey {
+                conversation_id: conversation_id.to_owned(),
+                membership_id: membership_id.to_owned(),
+                matter_id: relation.goal_id,
+                generation,
+            },
+            runtime,
+        ))
+    }
+
     pub fn work_runtime_binding(
         &self,
         child_conversation_id: &str,

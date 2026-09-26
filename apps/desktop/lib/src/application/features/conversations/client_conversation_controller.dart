@@ -1091,7 +1091,11 @@ final class ClientConversationController extends ApplicationStateOwner {
       );
       _applyArchiveReport(response);
       if (_selectedConversationId == id) {
-        _clearSelection();
+        if (response['resetInPlace'] == true) {
+          await _loadSelected();
+        } else {
+          _clearSelection();
+        }
       }
       _reconcileCatalogInBackground();
     });
@@ -1103,6 +1107,9 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// native transports are disconnected off the response path. The foreground
   /// applies the list change directly and selects the successor; a
   /// background-priority catalog read reconciles ordering later.
+  /// The reserved default local group is the one exception: the store resets
+  /// it in place — same Conversation, history cleared, one reset notice — so
+  /// the selection stays put and simply reloads.
   Future<bool> archiveAndReopenSelected() async {
     final conversation = _selectedConversation;
     if (conversation == null || !conversation.group) return false;
@@ -1127,15 +1134,18 @@ final class ClientConversationController extends ApplicationStateOwner {
       _applyArchiveReport(response);
       final successorId =
           _objectMap(response['successor'])['id']?.toString() ?? '';
-      if (successorId.isEmpty) {
+      final resetInPlace = response['resetInPlace'] == true;
+      if (successorId.isEmpty && !resetInPlace) {
         throw const ClientConversationServiceFailure('invalid_response');
       }
       _conversationCache.remove(selected.id);
       _earlierPageErrors.remove(selected.id);
       _liveTurns = const [];
       _dispatchPending = false;
-      _selectedConversationId = successorId;
-      _onSelectionChanged?.call(successorId);
+      if (!resetInPlace) {
+        _selectedConversationId = successorId;
+        _onSelectionChanged?.call(successorId);
+      }
       await _loadSelected();
       _reconcileCatalogInBackground();
     });
@@ -1144,10 +1154,12 @@ final class ClientConversationController extends ApplicationStateOwner {
   /// Applies one archive report to the in-memory lists so the foreground
   /// refreshes immediately: the retired conversations move to the archived
   /// partition and the successor joins the active list, with no full catalog
-  /// readback on the user's path.
+  /// readback on the user's path. A `resetInPlace` report retires only the
+  /// children — the reset conversation itself stays active.
   void _applyArchiveReport(Map<String, dynamic> response) {
     final retired = <String>{
-      (response['conversationId'] ?? '').toString(),
+      if (response['resetInPlace'] != true)
+        (response['conversationId'] ?? '').toString(),
       ...?(response['archivedChildIds'] as List?)?.map((id) => id.toString()),
     }..removeWhere((id) => id.isEmpty);
     if (retired.isEmpty) return;

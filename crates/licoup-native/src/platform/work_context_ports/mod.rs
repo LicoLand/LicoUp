@@ -8,6 +8,7 @@ use licoup_agent_runtime::work_context::{
 mod adapter;
 #[cfg(any(test, feature = "test-support"))]
 mod codex;
+mod effect_port;
 mod host_driver;
 #[cfg(any(test, feature = "test-support"))]
 mod pi;
@@ -16,6 +17,14 @@ mod transport;
 pub use adapter::{
     CodexAdapterProtocol, PiAdapterProtocol, bind_adapter_work_context,
     bind_persisted_work_context, pi_session_id_missing, unverified_snapshot,
+};
+pub use effect_port::{
+    AgentProfileSource, CancelOutcome, ControlDelivery, ControlDisposition, DeliveryOutcome,
+    EffectBridge, EffectCapabilities, EffectCapability, EffectControl, EffectDelivery,
+    EffectDispatch, EffectHandle, EffectInvocation, EffectObservation, EffectOperation,
+    EffectRefusal, EffectSessionOwner, EffectState, EffectTurn, EffectUnknownReason,
+    ReconcileOutcome, RuntimeAgentProfile, Settlement, SteerOutcome, SubmitOutcome,
+    effect_input_text,
 };
 pub use host_driver::HostDriverTransport;
 pub use transport::{

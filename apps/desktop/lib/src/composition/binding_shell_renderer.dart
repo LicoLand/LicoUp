@@ -3,12 +3,17 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+import 'package:presentation_runtime/presentation_runtime.dart';
 
 import 'package:licoup/src/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/composition/project_collaboration_root.dart';
 import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/layout_value_builder.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/binding/projection_builder.dart';
 import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/frontend/binding/shell_renderer_port.dart';
 import 'package:licoup/src/frontend/environment/environment_projection_adapter.dart';
@@ -39,12 +44,15 @@ import 'package:licoup/src/frontend/layout/profiles/desktop/desktop/tokens/deskt
 import 'package:licoup/src/frontend/shared/ui/lico_toast.dart';
 import 'package:licoup/src/presentation/agent_hub/agent_hub_binding.dart';
 import 'package:licoup/src/presentation/agents/agents_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_intent.dart';
 import 'package:licoup/src/presentation/agents/agents_projection.dart';
-import 'package:licoup/src/presentation/chrome/chrome_binding.dart';
+import 'package:licoup/src/presentation/agents/agents_providers.dart';
 import 'package:licoup/src/presentation/chrome/chrome_projection.dart';
 import 'package:licoup/src/presentation/conversation/conversation_binding.dart';
 import 'package:licoup/src/presentation/conversation/conversation_intent.dart';
 import 'package:licoup/src/presentation/conversation/conversation_projection.dart';
+import 'package:licoup/src/presentation/conversation/conversation_source_port.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation/conversation_plane_builder.dart';
 import 'package:licoup/src/presentation/mobile_relay/mobile_relay_binding.dart';
 import 'package:licoup/src/presentation/models/models_binding.dart';
 import 'package:licoup/src/presentation/monitoring/monitoring_binding.dart';
@@ -60,14 +68,20 @@ import 'package:licoup/src/presentation/targets/targets_binding.dart';
 typedef ExternalUriOpener = Future<void> Function(Uri uri);
 
 /// Concrete renderer factory assembled only at the composition boundary.
+///
+/// The shell chrome consumes the runtime-backed presentation sources: the
+/// application-scope [PresentationRuntime] owns source observation and
+/// authority revocation, so the renderer never reads the raw projection
+/// owners directly and never re-serves a withdrawn value.
 final class BindingShellRenderer implements ShellRendererPort {
   BindingShellRenderer({
     required BuiltInLayoutComposition layout,
     required IntentSink<ShellIntent> shellIntents,
-    required ProjectionSource<StatusProjection> status,
-    required ProjectionSource<LocaleProjection> locale,
+    required PresentationRuntime runtime,
+    required PresentationSource<ChromeProjection> chromeSource,
+    required PresentationSource<StatusProjection> statusSource,
+    required PresentationSource<LocaleProjection> localeSource,
     required AgentsBinding agents,
-    required ChromeBinding chrome,
     required ConversationBinding conversation,
     required MonitoringBinding monitoring,
     required SkillHubBinding skillHub,
@@ -82,8 +96,9 @@ final class BindingShellRenderer implements ShellRendererPort {
     required String workspaceHomeDirectory,
   }) : _layout = layout,
        _shellIntents = shellIntents,
+       _runtime = runtime,
+       _chromeSource = chromeSource,
        _agents = agents,
-       _chromeBinding = chrome,
        _conversation = conversation,
        _monitoring = monitoring,
        _skillHub = skillHub,
@@ -96,16 +111,18 @@ final class BindingShellRenderer implements ShellRendererPort {
        _openExternalUri = openExternalUri,
        _workspaceHomeDirectory = workspaceHomeDirectory,
        _chrome = _BindingLayoutChrome(
-         status: status,
-         locale: locale,
+         runtime: runtime,
+         status: statusSource,
+         locale: localeSource,
          mobileRelay: mobileRelay,
          search: search,
        );
 
   final BuiltInLayoutComposition _layout;
   final IntentSink<ShellIntent> _shellIntents;
+  final PresentationRuntime _runtime;
+  final PresentationSource<ChromeProjection> _chromeSource;
   final AgentsBinding _agents;
-  final ChromeBinding _chromeBinding;
   final ConversationBinding _conversation;
   final MonitoringBinding _monitoring;
   final SkillHubBinding _skillHub;
@@ -133,8 +150,9 @@ final class BindingShellRenderer implements ShellRendererPort {
   LayoutChromeFeatures createChromeFeatures(
     ValueNotifier<bool> auxChromePanelOpen,
   ) => _BindingChromeFeatures(
+    runtime: _runtime,
+    chromeSource: _chromeSource,
     agents: _agents,
-    chrome: _chromeBinding,
     conversation: _conversation,
     auxChromePanelOpen: auxChromePanelOpen,
   );
@@ -178,12 +196,14 @@ final class BindingShellRenderer implements ShellRendererPort {
       binding: _settings,
       layoutRegistry: _layout.registry,
     ),
-    ClientSection.agentHub => AgentHubPanel(
-      binding: _agentHub,
-      plugins: _pluginManagement,
-      skills: _skillHub,
-      openHomepage: _openExternalUri,
-      onOpenAgent: (agentId) => _shellIntents.send(OpenShellAgent(agentId)),
+    ClientSection.agentHub => _FeatureDestinationHost(
+      agentHub: AgentHubPanel(
+        binding: _agentHub,
+        plugins: _pluginManagement,
+        skills: _skillHub,
+        openHomepage: _openExternalUri,
+        onOpenAgent: (agentId) => _shellIntents.send(OpenShellAgent(agentId)),
+      ),
     ),
   };
 
@@ -200,18 +220,50 @@ final class BindingShellRenderer implements ShellRendererPort {
   }
 }
 
+/// Both feature entries use the existing retained feature host. Layouts decide
+/// where that host sits; it never replaces the permanent conversation surface.
+final class _FeatureDestinationHost extends StatelessWidget {
+  const _FeatureDestinationHost({required this.agentHub});
+
+  final Widget agentHub;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = LayoutScope.maybeOf(context)?.state;
+    int selection() {
+      final tab = state?.readIfDeclaredFor(
+        ClientSection.agentHub,
+        LayoutStateChannels.featureSection,
+      );
+      return tab is LayoutTabState && tab.index == 1 ? 1 : 0;
+    }
+
+    return LayoutValuesBuilder(
+      state: state,
+      valuesOf: (_) => [selection()],
+      builder: (context) => selection() == 1
+          ? KeyedSubtree(
+              key: const ValueKey('project-swimlanes-feature-content'),
+              child: ProjectCollaborationRoot.layerOf(context),
+            )
+          : agentHub,
+    );
+  }
+}
+
 final class _BindingChromeFeatures implements LayoutChromeFeatures {
   _BindingChromeFeatures({
+    required PresentationRuntime runtime,
+    required PresentationSource<ChromeProjection> chromeSource,
     required this.agents,
-    required this.chrome,
     required this.conversation,
     required this.auxChromePanelOpen,
   }) : notificationNotices = _ChromeNoticesListenable(
-         projection: chrome.projection,
+         runtime: runtime,
+         source: chromeSource,
        );
 
   final AgentsBinding agents;
-  final ChromeBinding chrome;
   final ConversationBinding conversation;
 
   @override
@@ -238,28 +290,35 @@ final class _BindingChromeFeatures implements LayoutChromeFeatures {
   }
 }
 
-/// Maps the chrome projection to the toast notices snapshot on demand.
-/// Listeners subscribe straight to the projection's change stream, so the
-/// exposure owns no persistent subscription of its own.
+/// Maps the runtime-backed chrome source to the toast notices snapshot.
+///
+/// One subscription per attached listener observes the source through the
+/// application-scope runtime, so the exposure owns no persistent subscription
+/// of its own and the value is seeded from the already-admitted snapshot when
+/// one exists. A revoked or failing source clears the snapshot instead of
+/// re-serving the withdrawn value.
 final class _ChromeNoticesListenable
     implements ValueListenable<LicoToastNoticesSnapshot> {
-  _ChromeNoticesListenable({required this.projection});
+  _ChromeNoticesListenable({required this.runtime, required this.source});
 
-  final ProjectionSource<ChromeProjection> projection;
-  final Map<
-    VoidCallback,
-    StreamSubscription<ProjectionUpdate<ChromeProjection>>
-  >
-  _subscriptions =
-      <VoidCallback, StreamSubscription<ProjectionUpdate<ChromeProjection>>>{};
+  final PresentationRuntime runtime;
+  final PresentationSource<ChromeProjection> source;
+  final Map<VoidCallback, _ChromeNoticesSubscription> _subscriptions =
+      <VoidCallback, _ChromeNoticesSubscription>{};
+  LicoToastNoticesSnapshot _value = const LicoToastNoticesSnapshot();
+  bool _seeded = false;
 
   @override
-  LicoToastNoticesSnapshot get value => _snapshot(projection.current);
+  LicoToastNoticesSnapshot get value {
+    _seedFromRuntime();
+    return _value;
+  }
 
   @override
   void addListener(VoidCallback listener) {
     if (_subscriptions.containsKey(listener)) return;
-    _subscriptions[listener] = projection.changes.listen((_) => listener());
+    _seedFromRuntime();
+    _subscriptions[listener] = _observe(listener);
   }
 
   @override
@@ -267,6 +326,30 @@ final class _ChromeNoticesListenable
     final subscription = _subscriptions.remove(listener);
     if (subscription == null) return;
     unawaited(subscription.cancel());
+  }
+
+  void _seedFromRuntime() {
+    if (_seeded) return;
+    _seeded = true;
+    final admitted = runtime.current(source.fieldGroup);
+    if (admitted != null) _value = _snapshot(admitted.value);
+  }
+
+  _ChromeNoticesSubscription _observe(VoidCallback listener) {
+    final observation = runtime.observe(source);
+    final subscription = observation.stream.listen(
+      (snapshot) {
+        _value = _snapshot(snapshot.value);
+        listener();
+      },
+      onError: (Object error, StackTrace stack) {
+        // Authority withdrawal and source failure both make the withdrawn
+        // notices invisible; the next admitted snapshot republishes.
+        _value = const LicoToastNoticesSnapshot();
+        listener();
+      },
+    );
+    return _ChromeNoticesSubscription(observation, subscription);
   }
 
   static LicoToastNoticesSnapshot _snapshot(ChromeProjection projection) {
@@ -299,6 +382,19 @@ final class _ChromeNoticesListenable
   }
 }
 
+final class _ChromeNoticesSubscription {
+  _ChromeNoticesSubscription(this._observation, this._streamSubscription);
+
+  final ResourceObservationSubscription<ChromeProjection> _observation;
+  final StreamSubscription<ResourceSnapshot<ChromeProjection>>
+  _streamSubscription;
+
+  Future<void> cancel() async {
+    await _streamSubscription.cancel();
+    await _observation.close();
+  }
+}
+
 /// The conversation composer re-parented into the Desktop bottom bar. Sends
 /// through the same conversation intents as the in-workspace composer; the
 /// Desktop shell hides the workspace's internal composer while this is
@@ -328,8 +424,81 @@ final class _DockConversationComposerState
   /// per-conversation toggle so the docked composer's sends honor it.
   final Map<String, bool> _assistantActiveByConversation = <String, bool>{};
 
+  /// The runtime-backed plane port this dock reads.
+  ///
+  /// Bound from the surrounding container once and kept for the dock's life:
+  /// remounting the dock reuses the same port instance, so it can neither open
+  /// a second source nor revive a withdrawn plane.
+  ConversationSourcePort? _boundPort;
+  final List<StreamSubscription<Object?>> _planeReads =
+      <StreamSubscription<Object?>>[];
+  ComposerProjection? _composer;
+  PersistentTurnProjection? _turns;
+  ConversationAttachmentsProjection? _attachments;
+  ConversationProjection? _root;
+  CanonicalConversationProjection? _canonical;
+
   ConversationBinding get conversation => widget.conversation;
   AgentsBinding get agents => widget.agents;
+
+  @override
+  void dispose() {
+    _unbindPlanes();
+    super.dispose();
+  }
+
+  void _bindPlanes(ConversationSourcePort port) {
+    if (identical(_boundPort, port)) return;
+    _unbindPlanes();
+    _boundPort = port;
+    _composer = port.composer.visibleValue;
+    _turns = port.persistentTurns.visibleValue;
+    _attachments = port.attachments.visibleValue;
+    _root = port.projection.visibleValue;
+    _canonical = port.canonicalEvents.visibleValue;
+    _planeReads
+      ..add(
+        port.composer.reads.listen(
+          (read) => _applyPlane(() => _composer = _visiblePlaneValue(read)),
+        ),
+      )
+      ..add(
+        port.persistentTurns.reads.listen(
+          (read) => _applyPlane(() => _turns = _visiblePlaneValue(read)),
+        ),
+      )
+      ..add(
+        port.attachments.reads.listen(
+          (read) => _applyPlane(() => _attachments = _visiblePlaneValue(read)),
+        ),
+      )
+      ..add(
+        port.projection.reads.listen(
+          (read) => _applyPlane(() => _root = _visiblePlaneValue(read)),
+        ),
+      )
+      ..add(
+        port.canonicalEvents.reads.listen(
+          (read) => _applyPlane(() => _canonical = _visiblePlaneValue(read)),
+        ),
+      );
+  }
+
+  void _unbindPlanes() {
+    for (final subscription in _planeReads) {
+      unawaited(subscription.cancel());
+    }
+    _planeReads.clear();
+    _boundPort = null;
+  }
+
+  void _applyPlane(VoidCallback mutate) {
+    if (!mounted) return;
+    setState(mutate);
+  }
+
+  static T? _visiblePlaneValue<T>(ConversationPlaneRead<T> read) =>
+      read is ConversationPlaneVisible<T> ? read.value : null;
 
   bool _assistantActive(ClientConversation conversation) =>
       _assistantActiveByConversation[conversation.id] ??
@@ -355,77 +524,50 @@ final class _DockConversationComposerState
 
   @override
   Widget build(BuildContext context) {
-    return ProjectionBuilder<ComposerProjection, ComposerProjection>(
-      source: conversation.composer,
-      select: (projection) => projection,
-      builder: (context, composer) =>
-          ProjectionBuilder<PersistentTurnProjection, PersistentTurnProjection>(
-            source: conversation.persistentTurns,
-            select: (projection) => projection,
-            builder: (context, turns) =>
-                ProjectionBuilder<
-                  ConversationAttachmentsProjection,
-                  ConversationAttachmentsProjection
-                >(
-                  source: conversation.attachments,
-                  select: (projection) => projection,
-                  builder: (context, attachments) =>
-                      ProjectionBuilder<
-                        ConversationProjection,
-                        ConversationProjection
-                      >(
-                        source: conversation.projection,
-                        select: (projection) => projection,
-                        builder: (context, root) =>
-                            ProjectionBuilder<
-                              CanonicalConversationProjection,
-                              CanonicalConversationProjection
-                            >(
-                              source: conversation.canonicalEvents,
-                              select: (projection) => projection,
-                              builder: (context, canonical) =>
-                                  ProjectionBuilder<
-                                    AgentsProjection,
-                                    AgentsProjection
-                                  >(
-                                    source: agents.projection,
-                                    select: (projection) => projection,
-                                    builder: (context, agentsProjection) =>
-                                        _buildComposer(
-                                          context,
-                                          composer: composer,
-                                          turns: turns,
-                                          attachments: attachments,
-                                          root: root,
-                                          canonical: canonical,
-                                          agentsProjection: agentsProjection,
-                                        ),
-                                  ),
-                            ),
-                      ),
-                ),
-          ),
+    // The dock reads the conversation planes the runtime admitted, never the
+    // producer's raw projections: a withdrawn plane stays invisible here, and
+    // the agents catalog it enriches itself with comes from its own source.
+    _bindPlanes(conversationSourcePortOf(context));
+    final composer = _composer;
+    if (composer == null) {
+      return const SizedBox.shrink();
+    }
+    return AsyncRegion<AgentsProjection, IntentSink<AgentsIntent>>(
+      source: agentsCatalogProjectionProvider,
+      actions: agents.intents,
+      data: (context, agentsProjection, _) => _buildComposer(
+        context,
+        composer: composer,
+        turns: _turns,
+        attachments: _attachments,
+        root: _root,
+        canonical: _canonical,
+        agentsProjection: agentsProjection,
+      ),
     );
   }
 
   Widget _buildComposer(
     BuildContext context, {
     required ComposerProjection composer,
-    required PersistentTurnProjection turns,
-    required ConversationAttachmentsProjection attachments,
-    required ConversationProjection root,
-    required CanonicalConversationProjection canonical,
+    required PersistentTurnProjection? turns,
+    required ConversationAttachmentsProjection? attachments,
+    required ConversationProjection? root,
+    required CanonicalConversationProjection? canonical,
     required AgentsProjection agentsProjection,
   }) {
     final strings = LicoStrings.of(context);
-    final turn = turns.memberships.isEmpty ? null : turns.memberships.first;
+    final memberships =
+        turns?.memberships ?? const <MembershipTurnProjection>[];
+    final turn = memberships.isEmpty ? null : memberships.first;
     final turnActive =
         turn?.phase == PersistentTurnPhase.running ||
         turn?.phase == PersistentTurnPhase.waiting;
 
+    final authority = root?.authority;
     final canonicalConversation =
-        root.authority == ConversationAuthority.canonicalConversation
-        ? canonical.conversation
+        authority == ConversationAuthority.canonicalConversation
+        ? canonical?.conversation
         : null;
 
     final String targetLabel;
@@ -443,7 +585,7 @@ final class _DockConversationComposerState
     final List<TargetCandidate> mentionTargets;
     final Map<String, String> mentionLabels;
 
-    if (canonicalConversation != null) {
+    if (canonicalConversation != null && attachments != null) {
       final group = canonicalConversation;
       mentionLabels = <String, String>{
         for (final membership in group.activeAgentMemberships)
@@ -457,15 +599,15 @@ final class _DockConversationComposerState
           : strings.groupConversation;
       enabled =
           group.localOwnerMembership != null &&
-          turns.memberships.every((membership) => membership.inputEnabled);
-      busy = canonical.sending || turnActive;
+          memberships.every((membership) => membership.inputEnabled);
+      busy = canonical!.sending || turnActive;
       onSend = (content) => _sendCanonical(
         conversation: group,
         composer: composer,
         attachments: attachments,
         content: content,
       );
-      final cancellable = turns.memberships
+      final cancellable = memberships
           .where((membership) => membership.cancelEnabled)
           .toList(growable: false);
       onCancel = cancellable.length == 1
@@ -483,7 +625,8 @@ final class _DockConversationComposerState
       reasoningEffortOptions = const <String>[];
       selectedReasoningEffort = '';
       defaultReasoningEffort = '';
-    } else {
+    } else if (authority != null &&
+        authority != ConversationAuthority.canonicalConversation) {
       TargetCandidate? selectedTarget;
       for (final target in agentsProjection.targetDetails) {
         if (target.id == agentsProjection.selectedAgentId ||
@@ -533,6 +676,24 @@ final class _DockConversationComposerState
       defaultReasoningEffort = composer.defaultReasoningEffort;
       mentionTargets = const <TargetCandidate>[];
       mentionLabels = const <String, String>{};
+    } else {
+      // The conversation identity or its attachment transport is not visible:
+      // the admitted draft stays readable, but the dock neither fabricates an
+      // identity nor sends through a plane the runtime has not authorized.
+      targetLabel = '';
+      enabled = false;
+      busy = false;
+      onSend = (_) async => false;
+      onCancel = null;
+      onSlashNewConversation = null;
+      modelOptions = const <String>[];
+      selectedModel = '';
+      defaultModel = '';
+      reasoningEffortOptions = const <String>[];
+      selectedReasoningEffort = '';
+      defaultReasoningEffort = '';
+      mentionTargets = const <TargetCandidate>[];
+      mentionLabels = const <String, String>{};
     }
 
     final composerWidget = RuntimeMessageComposer(
@@ -541,7 +702,7 @@ final class _DockConversationComposerState
       key: ValueKey<String>('dock-composer-${composer.conversationId}'),
       targetLabel: targetLabel,
       initialDraft: composer.draft,
-      hasAttachments: attachments.attachments.isNotEmpty,
+      hasAttachments: attachments?.attachments.isNotEmpty ?? false,
       busy: busy,
       enabled: enabled,
       cancelEnabled: onCancel != null,
@@ -570,7 +731,7 @@ final class _DockConversationComposerState
       // The Desktop bottom bar positions the composer; the capsule must sit
       // flush on the bar's grid.
       outerPadding: EdgeInsets.zero,
-      onPasteImage: attachments.acceptsImages
+      onPasteImage: (attachments?.acceptsImages ?? false)
           ? () async {
               conversation.intents.send(
                 PasteConversationAttachment(composer.conversationId),
@@ -582,7 +743,12 @@ final class _DockConversationComposerState
       mentionLabels: mentionLabels,
     );
     final group = canonicalConversation;
-    if (!widget.expanded || group == null) {
+    // The capsule row decorates the composer with canonical plane content; an
+    // invisible plane only drops the decoration, never the admitted input.
+    if (!widget.expanded ||
+        group == null ||
+        canonical == null ||
+        turns == null) {
       return composerWidget;
     }
     return Column(
@@ -743,29 +909,61 @@ final class _DockComposerCapsuleRow extends StatelessWidget {
   }
 }
 
+/// Shell chrome status/locale fed by the runtime-backed shell sources.
+///
+/// Seeded from the already-admitted snapshots when they exist, then advanced
+/// only by admitted source changes. A revoked or failing region clears the
+/// status instead of falling back to the raw projection owner.
 final class _BindingLayoutChrome implements LayoutChromePort {
   _BindingLayoutChrome({
-    required ProjectionSource<StatusProjection> status,
-    required ProjectionSource<LocaleProjection> locale,
+    required PresentationRuntime runtime,
+    required PresentationSource<StatusProjection> status,
+    required PresentationSource<LocaleProjection> locale,
     required MobileRelayBinding mobileRelay,
     required SearchBinding search,
   }) : _mobileRelay = mobileRelay,
        _search = search {
-    _status = status.current;
-    _locale = locale.current;
-    _value = _snapshot(_status, _locale);
-    _statusSubscription = status.changes.listen(_handleStatus);
-    _localeSubscription = locale.changes.listen(_handleLocale);
+    _status = runtime.current(status.fieldGroup)?.value;
+    _locale = runtime.current(locale.fieldGroup)?.value;
+    _value = _compose();
+    final statusObservation = runtime.observe(status);
+    _statusSubscription = statusObservation.stream.listen(
+      (snapshot) {
+        _status = snapshot.value;
+        _publish();
+      },
+      onError: (Object error, StackTrace stack) {
+        _status = null;
+        _publish();
+      },
+    );
+    final localeObservation = runtime.observe(locale);
+    _localeSubscription = localeObservation.stream.listen(
+      (snapshot) {
+        _locale = snapshot.value;
+        _publish();
+      },
+      onError: (Object error, StackTrace stack) {
+        _locale = null;
+        _publish();
+      },
+    );
+    _statusObservation = statusObservation;
+    _localeObservation = localeObservation;
   }
 
   final MobileRelayBinding _mobileRelay;
   final SearchBinding _search;
   final _RendererNotifier _listeners = _RendererNotifier();
-  late StatusProjection _status;
-  late LocaleProjection _locale;
-  late final StreamSubscription<ProjectionUpdate<StatusProjection>>
+  StatusProjection? _status;
+  LocaleProjection? _locale;
+  late final ResourceObservationSubscription<StatusProjection>
+  _statusObservation;
+  late final ResourceObservationSubscription<LocaleProjection>
+  _localeObservation;
+  late final StreamSubscription<ResourceSnapshot<StatusProjection>>
   _statusSubscription;
-  late final StreamSubscription<ProjectionUpdate<LocaleProjection>>
+  late final StreamSubscription<ResourceSnapshot<LocaleProjection>>
   _localeSubscription;
   late LayoutChromeSnapshot _value;
   bool _disposed = false;
@@ -788,19 +986,18 @@ final class _BindingLayoutChrome implements LayoutChromePort {
   Future<void> openGlobalSearch(BuildContext context) =>
       showAgentConversationSearchPalette(context, _search);
 
-  void _handleStatus(ProjectionUpdate<StatusProjection> update) {
-    if (_disposed) return;
-    _status = update.value;
-    final next = _snapshot(_status, _locale);
-    if (next == _value) return;
-    _value = next;
-    _listeners.publish();
+  LayoutChromeSnapshot _compose() {
+    final status = _status;
+    final locale = _locale;
+    if (status == null || locale == null) {
+      return const LayoutChromeSnapshot.empty();
+    }
+    return _snapshot(status, locale);
   }
 
-  void _handleLocale(ProjectionUpdate<LocaleProjection> update) {
+  void _publish() {
     if (_disposed) return;
-    _locale = update.value;
-    final next = _snapshot(_status, _locale);
+    final next = _compose();
     if (next == _value) return;
     _value = next;
     _listeners.publish();
@@ -827,6 +1024,7 @@ final class _BindingLayoutChrome implements LayoutChromePort {
       _statusSubscription.cancel(),
       _localeSubscription.cancel(),
     ]);
+    await Future.wait([_statusObservation.close(), _localeObservation.close()]);
     _listeners.dispose();
   }
 }

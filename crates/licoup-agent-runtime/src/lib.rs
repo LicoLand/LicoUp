@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 
+mod state_machines {
+    include!(concat!(env!("OUT_DIR"), "/state_machines.rs"));
+}
+
 pub mod protocol_selector;
 pub mod work_context;
 

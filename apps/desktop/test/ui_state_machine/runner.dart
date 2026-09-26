@@ -16,6 +16,7 @@ import '../layout/fixtures/production_client_shell_fixture.dart';
 import '../support/canonical_group/paged_conversation_native.dart';
 import 'flutter_adapter.dart';
 import 'model.dart';
+import 'project_collaboration_harness.dart';
 
 final class UiInteractionRun {
   UiInteractionRun(this.model, {required this.performance});
@@ -75,10 +76,17 @@ final class UiInteractionRun {
           ? PagedConversationNative()
           : null,
     );
+    // The project collaboration machine drives the feature's own surface. The
+    // app root places the contribution host the same way; until that wiring
+    // lands, the machine mounts this layer itself.
+    final collaboration = machine.id == 'project-collaboration-wide'
+        ? ProjectCollaborationHarness.create(wide: performance)
+        : null;
     final adapter = FlutterInteractionAdapter(
       tester,
       machine,
       nativeAgentId: fixture.controller.selectedConversationAgentId,
+      collaboration: collaboration,
     );
     // Keep the displayed composer directory synthetic as well as the data.
     fixture.controller.newConversationWorkingDirectories = {
@@ -91,6 +99,7 @@ final class UiInteractionRun {
         semanticsKey: const ValueKey('ui-interaction-root'),
         repaintBoundaryKey: const ValueKey('ui-interaction-view'),
         disableAnimations: false,
+        providerScopeAboveNavigator: true,
       );
       // The production composition installs disk-backed ports. This fixture
       // substitutes only persistence, before any real widgets are mounted.
@@ -98,7 +107,9 @@ final class UiInteractionRun {
       final featureStore = _MemoryFeatureStore();
       ClientPlatformPorts.dockLayoutStore = () => dockStore;
       ClientPlatformPorts.featureOrderStore = () => featureStore;
-      await tester.pumpWidget(app);
+      await tester.pumpWidget(
+        collaboration == null ? app : collaboration.wrap(app),
+      );
       // Start from the actual visible chat page. Setup also uses real clicks.
       for (var i = 0; i < 4; i += 1) {
         await tester.pump(const Duration(milliseconds: 16));
@@ -231,6 +242,19 @@ final class UiInteractionRun {
             result['frames'] = 'unavailable';
             continue;
           }
+          // The real frame record behind the aggregates, so a slow frame can be
+          // located instead of guessed at. Cold means the first measured
+          // transition after application start, which includes first-paint
+          // warmup; the rest are warm.
+          result['frameSamples'] = <Map<String, Object?>>[
+            for (final frame in frames)
+              <String, Object?>{
+                'vsyncUs': frame.timestampInMicroseconds(FramePhase.vsyncStart),
+                'buildMs': frame.buildDuration.inMicroseconds / 1000,
+                'rasterMs': frame.rasterDuration.inMicroseconds / 1000,
+              },
+          ];
+          result['cold'] = result['step'] == 1 && result['phase'] == 'coverage';
           double maxOf(Duration Function(FrameTiming) value) => frames
               .map((f) => value(f).inMicroseconds / 1000)
               .reduce((a, b) => a > b ? a : b);
@@ -272,6 +296,18 @@ final class UiInteractionRun {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(fixture.closeComposition);
       fixture.dispose();
+      if (collaboration != null) {
+        // The graph pool's shutdown handshake completes in real time.
+        // Disposal is drained with real asynchronous waits below; the pool's
+        // shutdown handshake cannot complete inside fake time.
+        collaboration.dispose();
+        for (var frame = 0; frame < 60; frame += 1) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+      }
       await tester.binding.setSurfaceSize(null);
     }
   }

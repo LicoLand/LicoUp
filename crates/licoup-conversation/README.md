@@ -1,5 +1,7 @@
 # licoup-conversation
 
+Updated: 2026-09-02
+
 Extracted Conversation domain crate.
 
 ## Migration Target

@@ -1,405 +1,65 @@
 # Contributing
 
-English · [简体中文](CONTRIBUTING.zh-CN.md) · [Home](README.md)
-
-Thank you for helping LicoUp. Keep each change small enough to review and
-test as one clear client feature, module, or flow.
-
-## Set up
-
-You need Node.js 22 or 24 for the source policy. Use the available Flutter,
-Rust, Java, and Android tooling for affected checks within the scope below.
-
-```bash
-npm ci
-```
-
-During development, run the smallest relevant checks. Before handoff, run the
-targeted tests for the changed module. After every intended change is confirmed
-effective, run the mandatory Node-only source policy once and only the affected
-technology lanes: Flutter, Rust, Android, or dependency regression. These lanes
-are independent and may run in parallel. Release policy is not a changed-path
-lane; it runs only at the `stable` → `release` promotion edge described in the
-[client promotion authority](docs/releases/PROMOTION-GATES.md). The commit gate
-never builds or publishes every platform.
-
-The maintained complete client regression is a bounded dependency graph. It
-runs the shared foundation once, overlaps frontend and backend work, settles
-all eligible siblings after failures, and only then reaches integration,
-scenarios, and the parallel capability-aware platform/Agent frontier. Use the
-dedicated `client:regression:frontend`, `:backend`, and `:integration` entries
-for focused work. Use `client:regression:environment -- --platform <id>` or
-`--agent <id>` immediately before a live compatibility target. Use
-`client:regression -- --retry-report build/reports/client-module-regression.json`
-to redispatch failed evidence instead of repeating unrelated successes.
-Agent static checks are independently scheduled after one shared inventory
-contract, and aggregated Node tests attribute failures through anonymous input
-indexes, so one Agent or test file does not invalidate its whole peer batch.
-
-After all intended changes, source review, in-scope repairs, and focused checks
-are complete, run the selected complete regression once. If it fails, diagnose
-and report the cause, effect, and concrete repair and verification proposal.
-The developer decides subsequent repairs and whether to rerun that regression;
-do not automatically widen scope, repair, or repeat it. Continue independent
-authorized work and report required checks that remain incomplete. Ordinary
-implementation and focused-test failures within the accepted scope can be
-fixed directly. Promotion failures follow the separate
-[promotion gates](docs/releases/PROMOTION-GATES.md).
-
-```bash
-npm run client:gate:source
-npm run client:gate:flutter         # Flutter changes only
-npm run client:gate:rust            # Rust changes only
-npm run client:gate:android         # Android changes only
-npm run client:gate:dependencies    # dependency authority changes only
-```
-
-**One crate, one version.** The dependency graph must not carry two versions of
-the same crate. Duplicates bloat the binary, split types across versions, and
-hide unmaintained generations behind the pin of another consumer. When a new
-dependency would introduce a second generation of an existing crate, converge
-to the latest compatible version instead of raising the duplicate allowance.
-The dependency gate fails on any duplicate generation; the historical exception
-list is being burned down to zero and accepts no new entries.
-
-Build-producing tests share one managed compiler target. The test runner holds
-an active lease while a build is using it and marks the output reclaimable on
-every terminal path. Inspect or remove only inactive, marked output with:
-
-```bash
-npm run client:artifacts:status
-npm run client:artifacts:prune -- --dry-run
-npm run client:artifacts:prune
-```
-
-Pruning never removes Cargo, Pub, Gradle, SDK, or toolchain download caches, so
-the next build can continue to reuse downloaded dependencies. Unmanaged legacy
-targets are reported but are not deleted automatically. After an abnormal test
-exit, a structurally valid dead lease remains protected for a grace period and
-only then becomes reclaimable; malformed or tampered records always fail closed.
-
-## Format before final verification
-
-Once all writers have finished, run the affected formatters before the final
-regression. This is a required preparation step, including for Agent-assisted
-work. Review the formatting diff, then run the selected checks.
-
-```bash
-npm run client:format              # Flutter and Rust changes together
-npm run client:format:flutter      # Flutter changes only
-npm run client:format:rust         # Rust changes only
-```
-
-The shared entry reuses `dart format` for the same `lib` and `test` roots as
-the Flutter format check, and `cargo fmt --all` for the Rust workspace. It adds
-no formatter dependency. Use only the relevant entry; documentation and Node-only
-changes do not require these toolchains. Do not format while another writer is
-still editing. If later repairs change source, format those affected sources
-again before verification. CI and regression lanes remain check-only: they
-report formatting omissions rather than silently changing the source being
-verified. Formatting does not stage files or create a commit.
-
-### Verification scope
-
-Test the affected behavior using the environments already available locally.
-The developer organizes additional devices and cross-platform testing. Do not
-require a device matrix, a minimum hardware tier, or a missing host, simulator,
-SDK, or device to complete local development and delivery. Record unavailable
-checks as not run, with their limits; they do not fail or block local delivery
-and do not establish support for an untested platform.
-
-Reuse existing checks and run shared work once. Do not add approval gates,
-verification frameworks, repeated regressions, or device provisioning merely
-to satisfy a plan or report. Add a check only when it directly verifies the
-requested behavior or prevents a concrete regression. This scope does not
-change separately authorized production and release requirements.
-
-### UI acceptance
-
-For component style changes, first produce the real-component review images
-defined by the [Design System visual reference](docs/functionality/DESIGN-SYSTEM.md#visual-reference-and-style-review).
-
-Describe UI acceptance as actions and visible results: refresh the conversation
-list, switch navigation repeatedly, scroll long lists in both directions, type
-and click during streaming output, and open, close, and return from dialogs.
-The flow must stay correct, preserve expected state, and respond without
-visible stalls, broken controls, crashes, or duplicate actions. Exercise these
-interactions together in a short hands-on monkey test in the available local
-environment; do not invent fixed operation counts or a device matrix.
-
-Maintain [the UI interaction model](docs/functionality/UI-INTERACTIONS.md)
-independently of controllers, renderers, and backend code. Its visible states,
-clickable actions, and expected destinations define the test oracle. A separate
-adapter locates controls, performs gestures, and observes visible results; a
-refactor updates that adapter without rewriting the expected user behavior.
-Enumerate the declared transitions, including reselect, return, and dismissal,
-and combine edge coverage with seeded random walks over currently visible,
-enabled controls. Keep the current page, list, and overlay context between
-actions. Retain the seed and action sequence for replay, and report visible
-controls missing from the model instead of calling partial coverage complete.
-
-Measure response time and frame performance on those same transitions. Report
-the user action beside its timing and frame results, and keep virtual-clock
-widget checks distinct from real-engine performance runs. Do not replace these
-measurements with a backend trace project or add arbitrary scorecards and
-approval gates. Focused state and lifecycle tests support this model.
-
-## Local client verification
-
-After a client fix or behavior change, including a bundled Agent prompt or
-Skill change, build macOS once and verify that exact installed output when
-the local macOS build and installation environment is available:
-
-```bash
-npm run client:build -- --platform macos
-npm run client:install:macos -- --launch-installed --verify-stable
-```
-
-Do not substitute `client:run:macos`; it rebuilds. Ordinary documentation and
-tests without product binary impact do not require a client build or launch.
-Honor an explicit request to skip installation and report the remaining
-verification. Local installation does not authorize signing, notarization,
-source promotion, public publication, or production changes.
-
-A live response or transport check spends real tokens, so use the cheapest
-adequate model. The per-Agent choice has one file:
-[`tools/scripts/config/agent-conversation-verification-models.toml`](tools/scripts/config/agent-conversation-verification-models.toml).
-Change a test model there and nowhere else; inherited environment variables
-must not select a more expensive model or effort. Use the lowest supported
-reasoning effort for a response check. Send `Hi` once and accept the Agent's
-own reply; a specific word, number, marker, or output format is not required.
-Use another short turn only when exact session continuation is being tested.
-Never request counting, repetition, long lists, or endless output to keep a
-paid turn active. Test prolonged streams, waiting, and cancellation races with
-a controlled local fixture. A live control check may use a short greeting; if
-it finishes before the control action, that action is unverified, not a reason
-to generate longer output, repeat paid probes, or upgrade the model. Keep a
-connectivity check scoped to its purpose.
-The local fixture proves stream, cancellation, and event-order behavior only;
-it does not prove long-task capability. End-to-end long-task acceptance uses a
-real Issue within the authorized scope. The executing Agent chooses a capable,
-cost-conscious model using available discovery and evaluation, and adjusts it
-from actual performance without repeated approval for model choice. The
-response-check model file does not govern Issue work. Reuse existing evaluation
-results and avoid probes that add no task value.
-
-## Agent guidance
-
-Keep AGENTS.md to stable boundaries and task links. Shared development Skills
-are maintained in `lico-dev`; this repository bundles only `licoup-guide` for
-operating LicoUp. Independent planning Skills remain with their own projects.
-Read a Skill only when explicitly requested or when its
-purpose and trigger match the actual task; a project or model name alone is
-not a trigger. Skill descriptions state purpose, trigger, and exclusions.
-Keep SKILL.md as a minimal route to task-specific references or existing tools.
-A bundled Skill must remain usable with the resources its loader supplies.
-
-User instructions override Skill guidelines. Ordinary authorized work proceeds
-without repeated approval; obtain any missing authorization before the actual
-protected or irreversible effect. Reading a runbook or an example does not
-authorize its operations. If guidance blocks work, identify its exact source,
-quote the relevant rule, and explain what decision or authority is missing.
-
-Scale planning and tests to the change. Delegate only useful independent work,
-with clear ownership and no fast mode. Allow at least a 10-minute observation
-window for ordinary delegated work and 30 minutes for large work, split into
-host-supported waits with progress updates. These windows are not deadlines;
-a wait returning does not prove completion or permit cancellation.
-
-Relay the Agent's own conversation. Never ask an Agent to answer in a format
-LicoUp defines, and never check whether it followed one. A reply is not
-invalid, empty or an abstention just because it is plain language. Continuity
-reads what the Agent actually said.
-
-## Agent-assisted contribution
-
-An Agent may assist your work, but you remain the author of every commit. If
-an Agent takes part in your contribution, prepare in this order before the
-first commit:
-
-1. Clone the repository and run `npm ci`.
-2. Authenticate GitHub CLI with your own account, then install and verify the
-   repository identity policy:
-
-   ```bash
-   gh auth login
-   npm run repo:identity:install
-   npm run repo:identity:verify
-   ```
-
-   Commits created before the hooks are installed fail the push-time and
-   remote identity checks and must be repaired in history.
-3. Disable your Agent tool's commit attribution. Most tools add a
-   `Co-Authored-By`, `Generated-by`, or "Generated with" line by default (for
-   example, Claude Code's `attribution` setting). The local hooks and the
-   remote identity check reject every attribution trailer and every
-   Agent-shaped identity.
-4. Review the Agent's output yourself. Commit only changes you have read and
-   accepted, under your own authenticated identity. The full policy is in
-   [Commit identity and authorship](#commit-identity-and-authorship).
-
-Start each change on one action-prefixed branch (`feature/`, `fix/`,
-`docs/`, `refactor/`, `test/`, or `chore/`) and open a merge-commit pull
-request to `nightly`. The contract is the
-[Pull request checklist](#pull-request-checklist). During development, run
-the smallest relevant checks. Before handoff, run the source policy once
-plus only the technology lanes your change touches, as listed in
-[Set up](#set-up).
-
-A temporary branch ends with its merge. When the pull request is merged and its
-merge commit is on `nightly`, delete that branch on the remote and in the local
-clone, in the same session. Delete only the branch that pull request closed,
-and only after the merge is confirmed. Keep any branch with unmerged commits,
-any pull request that closed without merging, and any branch you did not
-create.
-
-## Platform permissions
-
-Request an OS privacy permission only when the current user action needs that
-resource. Automatic Agent discovery probes only the Agent Scan Path Manifest
-and must not walk PATH, Desktop, Documents, Downloads, Pictures, Music, the
-photo library, the media library, network volumes, or unused Agent stores. A
-usage string, entitlement, or plugin that the current action does not use must
-not ship.
-
-When every locked dependency is already cached, the dependency audit has a
-separate offline form: `npm run client:deps:audit:offline`. It does not cause
-unaffected language or platform lanes to run.
-
-## Commit identity and authorship
-
-Every newly created commit must carry exactly one authenticated developer
-identity. The repository Git identity must match the account currently
-authenticated by GitHub CLI. Existing human-authored history keeps its original
-Author and Committer metadata when it is consolidated or published. After
-cloning the repository, and whenever `gh auth` changes to a different account,
-install the repository policy:
-
-```bash
-npm run repo:identity:install
-npm run repo:identity:verify
-```
-
-The installer uses the account's canonical GitHub noreply address and enables
-the repository-controlled `pre-commit`, `commit-msg`, and `pre-push` hooks.
-The hooks inspect every commit that is not already reachable from the selected
-remote, not only `HEAD`. They reject Agent-shaped Authors, Committers, and
-attribution lines while allowing historical human identities and GitHub's merge
-service. Missing, redirected, modified, symbolic-link, or non-executable policy
-files fail closed. Never use `--no-verify`, change `core.hooksPath`, or otherwise
-bypass these gates.
-
-An Agent may assist a developer, but it must never replace, overwrite, or claim
-the developer's authorship. An Agent's name, email, or other contact details
-must not appear as an Author, Committer, co-author, sign-off, attribution
-trailer, or identity-shaped line. Known Agent and bot identity forms are
-rejected locally and remotely, and all attribution trailers are forbidden so an
-unknown Agent cannot enter the contributor graph as a secondary identity. No
-metadata rule can identify an Agent that deliberately impersonates an ordinary
-human identity; the trust boundary for that case is the repository-controlled
-hook, the authenticated GitHub identity, and the developer's personal review
-before committing.
-
-## Privacy rules
-
-- Never commit secrets, local paths, user content, account data, device details,
-  logs, or raw runtime reports.
-- Use synthetic, redacted test data. Test frameworks may be public; real user
-  and system data may not.
-- Keep sensitive data on the client. Peer content must be encrypted before it
-  leaves the sender.
-- Do not add a general path that sends user content or runtime data to a
-  service.
-- Any allowed external transfer must require a fresh direct user approval bound
-  to the exact destination, purpose, scope, and content digest.
-
-## Native interface consistency
-
-The Flutter client and the Rust native core share two interfaces:
-
-- Generated contract types, owned by `schemas/client_bridge/` and generated
-  into Dart (`apps/desktop/lib/src/contracts/generated/*.g.dart`) and Rust
-  (`crates/licoup-native/src/ffi/generated/*.rs`) from one schema.
-- The native CLI command surface (`licoup.stdio.v1` frames and one-shot
-  arguments). The Rust side admits options through `admitted_params` in
-  `crates/licoup-native/src/ffi/commands/`; the Flutter side sends them from
-  `apps/desktop/lib/src/platform/native_client/`.
-
-The packaged app carries its own sidecar, so a running app keeps the old
-native binary until it is rebuilt. Rebuild and verify the client bundle
-after any native interface change.
-
-## Documentation rules
-
-- **Strict Single Source of Truth (SSOT)**: Every architectural model, protocol specification, feature mechanism, or platform rule must have exactly one authoritative owning document (see [ADR 0009](docs/adrs/0009-single-source-of-truth-documentation-architecture.md)). Other documents must reference that owner rather than duplicating or paraphrasing facts.
-- **Overview Document Modularity & Domain Indexing**: Top-level overview documents (architecture, protocols, functionalities) must remain concise and high-level, using structured Markdown tables to index and navigate to dedicated domain specifications.
-- **Tabular Document References**: Header cross-references (normative versions, localizations, governing product charters) must be presented in structured Markdown tables.
-- **Language & Synchronization**: Keep English as the normative public entry and link each maintained Simplified Chinese localization back to it. Shared product facts in the two root READMEs change together.
-- Use short sentences and common words. Use a small Mermaid diagram when a data flow is hard to explain in text.
-- Keep product text focused on diversity, connection, openness, integration, and user control. Design philosophy and product promises belong to `PRODUCT.md`.
-- Treat `README.md` as the public product page. Check every claim.
-- Keep structured plans under `docs/plans/`. Keep audit reports, temporary proposals, and other one-off documents under `docs/reports/`. Both paths are local only.
-- Do not add local skills or temporary scripts to the repository.
-
-## Maintained model and cost tables
-
-Each maintained model, Agent, benchmark, capability table, and model cost table
-has one current checked-in authority. The table freshness identity is a
-non-empty ISO date in `last_updated`; do not add table `schema_version`,
-`catalog_version`, `as_of`, `snapshot_date`, or parallel/versioned copies.
-Before a release, review every official HTTPS source, refresh the date, and
-remove rows that are no longer served. Never retain a generated or compatibility
-cost source beside the current catalog.
-
-## Cut onto `release`; delegate publication
-
-`nightly` is the open integration branch. Product changes land there through
-ordinary action-prefixed pull requests, then one accepted snapshot advances by
-merge commit from `nightly` to `stable` and from `stable` to `release`.
-
-The project must complete 100 distinct releases before promoting any build to
-the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
-candidate evidence, and artifact receipts; skipped or replaced candidates do
-not count as releases.
-
-After the cut, post-release macOS publication may be delegated from the exact
-`origin/release` revision with `npm run client:release:macos`. Read-only
-preflight runs first. One immutable authorization freezes the source and public
-installer contract. The delegated service never creates a source candidate,
-merges a pull request, or mutates the protected release train.
-
-## Pull request checklist
-
-Finish product changes, refactors, migrations, release tooling, workflows,
-Rulesets, identity policy, and Auditor policy through separate ordinary pull
-requests. Product work lands on `nightly`; the cut advances only through the
-fixed protected train. Public publication is a separate operation from the
-exact accepted `origin/release` source and is owned by Apple Release.
-
-A remote build, promotion merge, successful workflow, or draft is not release
-success. Success requires downloading the final public assets, verifying their
-bound source and digests, installing through the public path, observing a
-stable launch, and verifying the published update path. Draft assets may be
-reconciled before publication. Once public, the tag, source revision, and asset
-set are immutable. A damaged public Release requires an explicitly approved
-corrective-release plan with a new verified source and a new build or version;
-never replace an asset in place.
-
-- The change has one clear scope.
-- No Agent reply was made to fit a LicoUp format, and no plain reply was called
-  invalid, empty or an abstention for having none.
-- A live response or transport check used the cheapest adequate model from
-  the verification model authority. Real Issue work follows the executing
-  Agent's task-based model selection.
-- Native CLI or generated contract changes keep the Flutter and Rust sides
-  consistent in the same change.
-- Old paths and old names are removed when a migration is complete.
-- New or changed tests use made-up, redacted data.
-- Public documentation has matching English and Chinese text.
-- No sensitive values or raw runtime output are included.
-- New commits use the current `gh` account; published history contains no Agent
-  Author, Committer, attribution trailer, or bypassed hook.
-- The temporary branch is deleted on the remote and in the local clone once its
-  merge commit is on `nightly`.
-
-LicoUp uses the `AGPL-3.0-or-later` license.
+Updated: 2026-09-25
+
+[简体中文](CONTRIBUTING.zh-CN.md)
+
+## Account and authorship
+
+Contribute through a GitHub account you control and take responsibility for the
+changes. A manually registered account dedicated to Agent work is acceptable;
+its name need not resemble a person's legal name. Account authentication establishes
+accountability, not verified real-world identity. Vendor/service Agent identities
+must not replace the responsible contributor.
+
+Before the first commit, authenticate with `gh auth login`, then run
+`npm run repo:identity:install` and `npm run repo:identity:verify`. Repeat when
+switching accounts. New commits use the authenticated account's GitHub identity;
+preserve historical authors. Review Agent-produced changes yourself and disable
+automatic attribution trailers. Do not bypass repository hooks.
+
+## Branch, commit and pull request
+
+Start a scoped `feature/`, `fix/`, `docs/`, `refactor/`, `test/`, or `chore/` branch.
+Describe the concrete change in the commit. Open a **Draft PR** to `nightly` as soon
+as the initial reviewable commit is pushed, then push the remaining module commits
+to that Draft. Include at least one attributable commit per affected module; later
+correction commits are welcome. Mark it ready only after the complete feature and
+its dependent consumers are integrated. A one-sided protocol change or a half
+migration is not mergeable. The core client must remain a functioning whole.
+
+The PR includes:
+
+- the problem and resulting behavior, and the related Issue if one exists;
+- the checks run and their outcomes, explicitly identifying unverified behavior;
+- any public contract or migration impact.
+
+Use synthetic or redacted reproductions. Never submit credentials, personal data,
+local paths or raw runtime output. Development plans, progress/blocker reports,
+benchmark results, test reports and screenshots belong in ignored local directories.
+They describe one environment and are not durable project facts. Contribute reusable
+harnesses, synthetic fixtures and commands instead. Review the whole Git candidate
+with `npm run repo:artifacts`, including files outside the usual report directories. Before submitting, finish the developer closure
+checks. Code review and a passing check do not establish live acceptance. Missing real
+Agent validation is a visible warning, not a merge blocker by itself. Name affected
+adapters and what remains unverified; never label them verified from static checks.
+Shared semantic/transport changes require checking every registered consumer.
+Upstream protocol drift discovered during closure belongs in a separate scoped PR.
+
+## Issues
+
+Describe the user-visible problem, a minimal redacted reproduction and the desired
+behavior. For feature requests, explain the concrete use case and affected module.
+Small independently reviewable changes that respect module boundaries are easier to
+assess; private logs, personal plans and unrelated cleanups do not belong in an Issue.
+
+Merge by merge commit. After confirming that the merged commit is on `nightly`,
+delete only that contribution's temporary local and remote branches. Retain unmerged
+work and other contributors' branches. Protected promotion and publication require
+separate maintainer authority; do not replace published artifacts.
+
+The maintained README-only fast path follows the same identity, privacy and pull
+request rules. Its file membership is defined by repository configuration; do not
+use it to bypass checks for code changes.
+
+LicoUp uses `AGPL-3.0-or-later`.

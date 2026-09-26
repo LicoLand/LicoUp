@@ -168,12 +168,7 @@ pub enum OperationKind {
     ClaimWriter,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BindingStatus {
-    Bound,
-    Lost,
-    Replaced,
-}
+pub use crate::state_machines::work_context_binding::State as BindingStatus;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IsolationVerdict {

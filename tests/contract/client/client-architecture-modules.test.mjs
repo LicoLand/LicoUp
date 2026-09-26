@@ -5,9 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  createArchitectureContext,
   emitArchitectureResult,
   formatArchitectureResult,
 } from "../../../apps/desktop/scripts/client-architecture/context.mjs";
+import { checkCrateCoreAndFacadeBounds } from "../../../apps/desktop/scripts/client-architecture/checks/native/crate-core-and-facade-bounds.mjs";
 import {
   CLIENT_ARCHITECTURE_PHASE_IDS,
   runClientArchitecturePhases,
@@ -191,7 +193,6 @@ test("source and architecture gates share one required Flutter layer catalog", a
   assert.deepEqual(REQUIRED_FLUTTER_TOP_LEVEL_DIRS, [
     "events",
     "projections",
-    "display",
     "protocol",
     "shared",
     "presentation",
@@ -239,6 +240,27 @@ test("importing the architecture entry and leaves has no verification side effec
   ].map((relativePath) => import(pathToFileURL(
     path.join(repoRoot, moduleRoot, relativePath),
   ).href)));
+});
+
+test("reviewed extension rlimit FFI does not exempt adjacent carrier code", async () => {
+  const limits = "crates/licoup-native/src/platform/extension_host/isolation/limits.rs";
+  const carrier = "crates/licoup-native/src/platform/extension_host/isolation/carrier.rs";
+  for (const includeUnreviewedCarrier of [false, true]) {
+    const context = createArchitectureContext({ repoRoot });
+    const result = await checkCrateCoreAndFacadeBounds({
+      ...context,
+      collectRustUnsafeFiles: async () => includeUnreviewedCarrier
+        ? [limits, carrier]
+        : [limits],
+    });
+    assert.equal(result.reviewedRustUnsafeFiles.has(limits), true);
+    assert.equal(result.reviewedRustUnsafeFiles.has(carrier), false);
+    const unsafeFailures = context.failures.filter((failure) =>
+      failure.startsWith("Rust CLI source path must not contain unreviewed unsafe:"));
+    assert.deepEqual(unsafeFailures, includeUnreviewedCarrier
+      ? [`Rust CLI source path must not contain unreviewed unsafe: ${carrier}`]
+      : []);
+  }
 });
 
 test("client architecture phases run strictly and sequentially in the frozen order", async () => {
@@ -822,6 +844,12 @@ test("retired paths, symbols, annotations, and path-count substitution stay abse
     "apps/desktop/lib/src/frontend/shared/appearance/appearance_preset_config.dart",
     "apps/desktop/lib/src/projections/listenable_projection_consumer.dart",
     "apps/desktop/lib/src/projections/adapters/legacy_projection_consumer_source_adapter.dart",
+    "apps/desktop/lib/src/projections/composite_application_projection_source.dart",
+    "apps/desktop/lib/src/projections/projection_consumer.dart",
+    "apps/desktop/lib/src/projections/conversation/conversation_projection_consumer.dart",
+    "apps/desktop/lib/src/display/agent_hub/agent_hub_display.dart",
+    "apps/desktop/lib/src/display/settings/settings_display.dart",
+    "apps/desktop/lib/src/display/targets/targets_display.dart",
   ]);
   assert.equal(Object.isFrozen(RETIRED_PRESENTATION_PATHS), true);
   assert.ok(rulesFor(withSource(tree, RETIRED_PRESENTATION_PATHS[0], ""))
@@ -882,31 +910,46 @@ test("SDK-only presentation contract source and pubspec have positive and negati
   assert.deepEqual(inspectPresentationContractSources(new Map([
     [contractPath, "final class Port { void close() {} }\n"],
   ])), [["presentation_boundary_package_surface", contractPath]]);
+  assert.deepEqual(inspectPresentationContractSources(new Map([
+    [contractPath, "final class SyntaxConfig { const SyntaxConfig(this.revision); final String revision; }\n"],
+  ])), []);
+  for (const source of [
+    "final class SyntaxConfig { int revision = 0; }\n",
+    "final class Port { final int revision; }\n",
+    "final class SyntaxConfig { final String revision; void close() {} }\n",
+    "final class SyntaxConfig { final String revision; }\nfinal revision = 0;\n",
+  ]) {
+    assert.deepEqual(inspectPresentationContractSources(new Map([[contractPath, source]])),
+      [["presentation_boundary_package_surface", contractPath]]);
+  }
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\n"), []);
   assert.deepEqual(inspectPresentationContractPubspec("name: contract\ndependencies:\n"), [
     "presentation_boundary_package_dependency_surface",
   ]);
 });
 
+test("stable presentation cannot disguise source or disposal ownership", () => {
+  const tree = terminalPresentationTree();
+  const runtimeOwnerPath = "apps/desktop/lib/src/presentation/conversation/preparation.dart";
+  for (const source of [
+    "final stream = Stream.multi((controller) {});\n",
+    "void release() { final stop = engine.workers.dispose; stop(); }\n",
+    "void release() { engine.workers.dispose(); }\n",
+  ]) {
+    assert.ok(rulesFor(withSource(tree, runtimeOwnerPath, source))
+      .includes("presentation_boundary_stable_runtime_owner"));
+  }
+});
+
 test("terminal Presentation Boundary owns one focused Flutter module registration", async () => {
-  const [flutterCatalog, order] = await Promise.all([
-    fs.readFile(
-      path.join(repoRoot, "tools/regression/client-module-catalog/groups/flutter.mjs"),
-      "utf8",
-    ),
-    fs.readFile(
-      path.join(repoRoot, "tools/regression/client-module-catalog/order.mjs"),
-      "utf8",
-    ),
-  ]);
+  const { CLIENT_MODULE_CATALOG } = await import("../../../tools/regression/client-module-catalog.mjs");
+  const { CLIENT_MODULE_ID_ORDER } = await import("../../../tools/regression/client-module-catalog/order.mjs");
   assert.equal(
-    [...flutterCatalog.matchAll(/id:\s*"flutter\.presentation\.boundary-closure"/gu)].length,
+    CLIENT_MODULE_CATALOG.filter(({ id }) => id === "flutter.presentation.boundary-closure").length,
     1,
   );
   assert.equal(
-    [...order.matchAll(/"flutter\.presentation\.boundary-closure"/gu)].length,
+    CLIENT_MODULE_ID_ORDER.filter((id) => id === "flutter.presentation.boundary-closure").length,
     1,
   );
-  assert.equal(flutterCatalog.includes("flutter.presentation.shell-boundary"), false);
-  assert.equal(order.includes("flutter.presentation.shell-boundary"), false);
 });
