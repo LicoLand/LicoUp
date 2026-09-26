@@ -23,11 +23,11 @@ export const APPLICATION_SHELL_MODULES = Object.freeze([
     inputs: [
       "apps/desktop/lib/src/presentation/conversation/**",
       "apps/desktop/lib/src/frontend/shared/ui/message_markdown.dart",
-      "apps/desktop/test/v7_conversation_ui/**",
+      "apps/desktop/test/conversation_ui/**",
       "packages/presentation_contract/**",
       "packages/presentation_runtime/**",
     ],
-    command: flutterTests(["test/v7_conversation_ui"]),
+    command: flutterTests(["test/conversation_ui"]),
   }),
   defineModule({
       id: "flutter.feature.ui-state-machine",
@@ -596,11 +596,11 @@ export const APPLICATION_SHELL_MODULES = Object.freeze([
     kind: "flutter-layer",
     summary: "Bounded Dart observation probe, correlation ids, and segment records in the platform diagnostic layer",
     inputs: [
-      "apps/desktop/lib/src/platform/diagnostics/v7/**",
-      "apps/desktop/test/platform/diagnostics/v7/observation_probe_test.dart",
+      "apps/desktop/lib/src/platform/diagnostics/observation/**",
+      "apps/desktop/test/platform/diagnostics/observation/observation_probe_test.dart",
     ],
     command: flutterTests([
-      "test/platform/diagnostics/v7/observation_probe_test.dart",
+      "test/platform/diagnostics/observation/observation_probe_test.dart",
     ]),
   }),
 ]);

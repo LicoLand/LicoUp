@@ -30,7 +30,8 @@ export function loadBetterPlan(source) {
     });
   };
   return {
-    summary: "Better Plan · 当前计划源的只读投影", rules: ["一次执行一个获批里程碑；连线表达计划声明的前置条件，网页不调度任务。"],
+    summary: "Better Plan · read-only projection of the selected plan source",
+    rules: ["Execute one authorized milestone at a time; a declared edge expresses a design prerequisite and the page schedules nothing."],
     decisions: plans.flatMap((plan) => (plan.ledger?.unresolved ?? []).map((decision) => decision.statement)),
     milestones: plans.map((plan) => ({
       id: plan.code, title: plan.title, outcome: plan.intent.goal, acceptance: plan.intent.success,

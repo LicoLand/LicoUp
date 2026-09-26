@@ -43,7 +43,7 @@ function openDetail(index, trigger) {
     body.appendChild(link);
   }
   if (record.target) {
-    const button = element("button", "查看里程碑", "detail-link");
+    const button = element("button", "View milestone", "detail-link");
     button.addEventListener("click", () => { closeDetail(); document.getElementById(record.target)?.scrollIntoView({ block: "start", behavior: "smooth" }); });
     body.appendChild(button);
   }

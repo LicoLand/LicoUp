@@ -1,318 +1,318 @@
 {
-  "title": "LicoUp 用户界面交互状态机",
+  "title": "LicoUp user-interface interaction state machine",
   "version": 1,
-  "authority": "用户可见状态与操作预期；不从生产导航代码生成，不包含 Dart 类名、controller、RPC 或 Widget key。",
-  "scope": "两种布局的导航、菜单、功能窗口、设置目录；dashboard 群聊、返回、搜索输入/结果、取消弹窗、刷新、滚动及跨页面连续操作。穷举已声明转换并随机游走；报告遗漏，不声称已覆盖所有业务操作。",
+  "authority": "User-visible states and expected operations; not generated from production navigation code, and containing no Dart class names, controllers, RPC or widget keys.",
+  "scope": "Navigation, menus, feature windows and the Settings directory in both layouts; in the dashboard also group conversations, back, search input and results, dialog dismissal, refresh, scrolling and continuous cross-page operations. Declared transitions are enumerated and randomly walked; the report lists omissions and does not claim coverage of every product operation.",
   "principles": [
-    "状态由实际可见内容判定；按钮存在或 controller 值变化不能单独证明跳转成功。",
-    "操作模型与 Flutter 定位适配分离；内部重构只改适配，用户行为变化才改此模型。",
-    "同一转换记录动作到目标可见的时间及其帧耗时；普通 widget 测试不冒充真机性能。",
-    "只测本机已有环境，其他设备由开发者安排。",
-    "随机选择当前可见可用的动作，保留状态上下文及种子/完整序列以便重放。",
-    "已声明转换通过与整个产品覆盖完整分开报告；发现未映射按钮时显式列出遗漏。"
+    "A state is judged from what is actually visible; the presence of a button or a controller value change does not by itself prove that a transition succeeded.",
+    "The operation model is separate from the Flutter location adapter; an internal refactor changes only the adapter, and only a user-visible behaviour change changes this model.",
+    "One transition records the time from the action to the visible target together with its frame cost; an ordinary widget test does not stand in for on-device performance.",
+    "Only environments present on this machine are exercised; other devices are arranged by the developer.",
+    "Actions are chosen randomly from those currently visible and available, with the state context, the seed and the full sequence retained so a run can be replayed.",
+    "Declared-transition coverage is reported separately from whole-product coverage; a visible control with no declared transition is listed explicitly as an omission."
   ],
   "actions": {
     "nav.chats": {
-      "label": "点击对话",
+      "label": "Tap a conversation",
       "gesture": "tap"
     },
     "nav.settings": {
-      "label": "点击设置",
+      "label": "Tap Settings",
       "gesture": "tap"
     },
     "nav.features": {
-      "label": "点击功能",
+      "label": "Tap Features",
       "gesture": "tap"
     },
     "feature.agent-center": {
-      "label": "点击功能列表中的智能体中心",
+      "label": "Tap Agent Center in the feature list",
       "gesture": "tap"
     },
     "feature.model-gateway": {
-      "label": "点击功能列表中的模型网关",
+      "label": "Tap Model Gateway in the feature list",
       "gesture": "tap"
     },
     "feature.device-pairing": {
-      "label": "点击功能列表中的移动配对",
+      "label": "Tap Mobile Pairing in the feature list",
       "gesture": "tap"
     },
     "feature.usage": {
-      "label": "点击功能列表中的统计面板",
+      "label": "Tap Usage Dashboard in the feature list",
       "gesture": "tap"
     },
     "settings.general": {
-      "label": "前往设置：通用",
+      "label": "Go to Settings: General",
       "gesture": "tap"
     },
     "settings.appearance": {
-      "label": "前往设置：外观",
+      "label": "Go to Settings: Appearance",
       "gesture": "tap"
     },
     "settings.updates": {
-      "label": "前往设置：更新",
+      "label": "Go to Settings: Updates",
       "gesture": "tap"
     },
     "settings.startup": {
-      "label": "前往设置：启动",
+      "label": "Go to Settings: Launch",
       "gesture": "tap"
     },
     "settings.storage": {
-      "label": "前往设置：存储",
+      "label": "Go to Settings: Storage",
       "gesture": "tap"
     },
     "settings.diagnostics": {
-      "label": "前往设置：诊断",
+      "label": "Go to Settings: Diagnostics",
       "gesture": "tap"
     },
     "settings.archived-conversations": {
-      "label": "前往设置：已归档对话",
+      "label": "Go to Settings: Archived conversations",
       "gesture": "tap"
     },
     "nav.open-menu": {
-      "label": "点击导航菜单按钮",
+      "label": "Open the navigation menu",
       "gesture": "tap"
     },
     "nav.dismiss-menu": {
-      "label": "点击菜单外部关闭导航菜单",
+      "label": "Close the navigation menu by tapping outside it",
       "gesture": "dismiss"
     },
     "nav.device-pairing": {
-      "label": "点击移动配对",
+      "label": "Open Mobile Pairing",
       "gesture": "tap"
     },
     "dock.agent-center": {
-      "label": "点击 Dock 中的智能体中心",
+      "label": "Open Agent Center from the dock",
       "gesture": "tap"
     },
     "dock.model-gateway": {
-      "label": "点击 Dock 中的模型网关",
+      "label": "Open Model Gateway from the dock",
       "gesture": "tap"
     },
     "dock.device-pairing": {
-      "label": "点击 Dock 中的移动配对",
+      "label": "Open Mobile Pairing from the dock",
       "gesture": "tap"
     },
     "dock.usage": {
-      "label": "点击 Dock 中的统计面板",
+      "label": "Open Usage Dashboard from the dock",
       "gesture": "tap"
     },
     "pane.toggle": {
-      "label": "点击左侧面板展开/收起按钮",
+      "label": "Toggle the left panel",
       "gesture": "tap"
     },
     "search.open": {
-      "label": "点击搜索框",
+      "label": "Focus the search field",
       "gesture": "tap"
     },
     "search.dismiss": {
-      "label": "点击搜索弹窗外部",
+      "label": "Close the search overlay by tapping outside it",
       "gesture": "dismiss"
     },
     "group.open": {
-      "label": "点击群聊"
+      "label": "Open a group conversation"
     },
     "list.back": {
-      "label": "返回上一级对话列表"
+      "label": "Return to the parent conversation list"
     },
     "create.open": {
-      "label": "点击新建菜单"
+      "label": "Open the create menu"
     },
     "create.group": {
-      "label": "新建群聊"
+      "label": "Create a group conversation"
     },
     "dialog.cancel": {
-      "label": "取消对话框"
+      "label": "Dismiss the dialog"
     },
     "menu.dismiss": {
-      "label": "点击空白关闭菜单"
+      "label": "Close the menu by tapping empty space"
     },
     "roster.toggle": {
-      "label": "展开或收起群成员"
+      "label": "Expand or collapse group members"
     },
     "group.actions": {
-      "label": "打开或关闭群聊操作"
+      "label": "Toggle the group conversation actions"
     },
     "group.clear": {
-      "label": "清空历史确认"
+      "label": "Confirm clearing the history"
     },
     "list.refresh": {
-      "label": "下拉刷新对话列表"
+      "label": "Pull to refresh the conversation list"
     },
     "conversation.scroll-up": {
-      "label": "向上翻阅群聊消息"
+      "label": "Scroll group messages up"
     },
     "conversation.scroll-down": {
-      "label": "向下翻阅群聊消息"
+      "label": "Scroll group messages down"
     },
     "search.type-settings": {
-      "label": "在搜索框输入 Settings"
+      "label": "Type Settings in the search field"
     },
     "search.clear": {
-      "label": "清空搜索内容"
+      "label": "Clear the search field"
     },
     "search.select-settings": {
-      "label": "点击搜索结果中的设置"
+      "label": "Open Settings from the search results"
     },
     "native.open": {
-      "label": "点击普通对话条目",
+      "label": "Open a direct conversation entry",
       "gesture": "tap"
     },
     "group.menu": {
-      "label": "打开或关闭群聊右上角更多菜单",
+      "label": "Toggle the group conversation more-menu",
       "gesture": "tap"
     },
     "project.collapse": {
-      "label": "折叠 Alpha 项目",
+      "label": "Collapse project Alpha",
       "gesture": "tap"
     },
     "project.expand": {
-      "label": "展开 Alpha 项目",
+      "label": "Expand project Alpha",
       "gesture": "tap"
     },
     "project.select-review": {
-      "label": "选择 Alpha 审阅单元",
+      "label": "Select the Alpha review unit",
       "gesture": "tap"
     },
     "project.select-build": {
-      "label": "选择 Alpha 构建单元",
+      "label": "Select the Alpha build unit",
       "gesture": "tap"
     },
     "detail.close": {
-      "label": "关闭单元详情",
+      "label": "Close the unit detail",
       "gesture": "tap"
     },
     "filter.anomalies": {
-      "label": "切换到异常筛选",
+      "label": "Switch to the exception filter",
       "gesture": "tap"
     },
     "filter.all": {
-      "label": "恢复全部筛选",
+      "label": "Restore the full filter",
       "gesture": "tap"
     },
     "view.list": {
-      "label": "切换紧凑列表",
+      "label": "Switch to the compact list",
       "gesture": "tap"
     },
     "view.lanes": {
-      "label": "切回泳道图",
+      "label": "Switch back to the lane graph",
       "gesture": "tap"
     },
     "view.inspector": {
-      "label": "打开高级检查器",
+      "label": "Open the advanced inspector",
       "gesture": "tap"
     },
     "view.inspector-close": {
-      "label": "关闭高级检查器",
+      "label": "Close the advanced inspector",
       "gesture": "tap"
     },
     "zoom.in": {
-      "label": "放大泳道图",
+      "label": "Zoom into the lane graph",
       "gesture": "tap"
     },
     "zoom.reset": {
-      "label": "重置平移与缩放",
+      "label": "Reset pan and zoom",
       "gesture": "tap"
     },
     "insert.open": {
-      "label": "打开插单对话框",
+      "label": "Open the insert dialog",
       "gesture": "tap"
     },
     "insert.preview": {
-      "label": "预览插单影响",
+      "label": "Preview the insert impact",
       "gesture": "tap"
     },
     "insert.commit": {
-      "label": "按预览版本提交插单",
+      "label": "Submit the insert at the previewed revision",
       "gesture": "tap"
     },
     "insert.discard": {
-      "label": "放弃插单预览",
+      "label": "Discard the insert preview",
       "gesture": "tap"
     },
     "insert.cancel": {
-      "label": "取消插单对话框",
+      "label": "Dismiss the insert dialog",
       "gesture": "tap"
     },
     "action.takeover": {
-      "label": "请求接管该单元",
+      "label": "Request takeover of this unit",
       "gesture": "tap"
     },
     "action.pause": {
-      "label": "请求暂停该单元",
+      "label": "Request pausing this unit",
       "gesture": "tap"
     },
     "confirm.takeover": {
-      "label": "确认接管范围",
+      "label": "Confirm the takeover scope",
       "gesture": "tap"
     },
     "confirm.pause": {
-      "label": "确认暂停请求",
+      "label": "Confirm the pause request",
       "gesture": "tap"
     },
     "confirm.cancel": {
-      "label": "取消确认",
+      "label": "Cancel the confirmation",
       "gesture": "tap"
     },
     "native.revoke": {
-      "label": "原生撤销授权（非 UI 事件）",
+      "label": "Native authorization revoked (not a UI event)",
       "gesture": "none"
     },
     "native.reconnect": {
-      "label": "原生重连补快照（非 UI 事件）",
+      "label": "Native reconnect delivers a snapshot (not a UI event)",
       "gesture": "none"
     },
     "filter.frontier": {
-      "label": "切换到前沿筛选",
+      "label": "Switch to the frontier filter",
       "gesture": "tap"
     },
     "role.builder": {
-      "label": "按角色过滤 builder",
+      "label": "Filter by the builder role",
       "gesture": "tap"
     },
     "role.all": {
-      "label": "清除角色过滤",
+      "label": "Clear the role filter",
       "gesture": "tap"
     },
     "project.collapse-beta": {
-      "label": "折叠 Beta 项目",
+      "label": "Collapse project Beta",
       "gesture": "tap"
     },
     "project.expand-beta": {
-      "label": "展开 Beta 项目",
+      "label": "Expand project Beta",
       "gesture": "tap"
     }
   },
   "machines": [
     {
       "id": "dashboard.navigation",
-      "label": "仪表盘：主导航和功能列表",
+      "label": "Dashboard: primary navigation and feature list",
       "presentation": "dashboard-wide",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "agent-center",
-          "label": "智能体中心"
+          "label": "Agent Center"
         },
         {
           "id": "model-gateway",
-          "label": "模型网关"
+          "label": "Model Gateway"
         },
         {
           "id": "device-pairing",
-          "label": "移动配对"
+          "label": "Mobile Pairing"
         },
         {
           "id": "usage",
-          "label": "统计面板"
+          "label": "Usage Dashboard"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         }
       ],
       "transitions": [
@@ -524,7 +524,7 @@
     },
     {
       "id": "dashboard.settings",
-      "label": "设置：点击目录到对应内容",
+      "label": "Settings: select a section to open its content",
       "presentation": "dashboard-wide",
       "initial": "general",
       "setup": [
@@ -534,31 +534,31 @@
       "states": [
         {
           "id": "general",
-          "label": "通用"
+          "label": "General"
         },
         {
           "id": "appearance",
-          "label": "外观"
+          "label": "Appearance"
         },
         {
           "id": "updates",
-          "label": "更新"
+          "label": "Updates"
         },
         {
           "id": "startup",
-          "label": "启动"
+          "label": "Launch"
         },
         {
           "id": "storage",
-          "label": "存储"
+          "label": "Storage"
         },
         {
           "id": "diagnostics",
-          "label": "诊断"
+          "label": "Diagnostics"
         },
         {
           "id": "archived-conversations",
-          "label": "已归档对话"
+          "label": "Archived conversations"
         }
       ],
       "transitions": [
@@ -860,7 +860,7 @@
     },
     {
       "id": "desktop.settings",
-      "label": "设置：点击目录到对应内容",
+      "label": "Settings: select a section to open its content",
       "presentation": "desktop-wide",
       "initial": "general",
       "setup": [
@@ -870,31 +870,31 @@
       "states": [
         {
           "id": "general",
-          "label": "通用"
+          "label": "General"
         },
         {
           "id": "appearance",
-          "label": "外观"
+          "label": "Appearance"
         },
         {
           "id": "updates",
-          "label": "更新"
+          "label": "Updates"
         },
         {
           "id": "startup",
-          "label": "启动"
+          "label": "Launch"
         },
         {
           "id": "storage",
-          "label": "存储"
+          "label": "Storage"
         },
         {
           "id": "diagnostics",
-          "label": "诊断"
+          "label": "Diagnostics"
         },
         {
           "id": "archived-conversations",
-          "label": "已归档对话"
+          "label": "Archived conversations"
         }
       ],
       "transitions": [
@@ -1196,34 +1196,34 @@
     },
     {
       "id": "dashboard.compact.navigation",
-      "label": "移动布局：导航及菜单",
+      "label": "Mobile layout: navigation and menu",
       "presentation": "dashboard-compact",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "device-pairing",
-          "label": "移动配对"
+          "label": "Mobile Pairing"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         },
         {
           "id": "chats.menu",
-          "label": "对话：导航菜单已打开"
+          "label": "Conversations: navigation menu open"
         },
         {
           "id": "device-pairing.menu",
-          "label": "移动配对：导航菜单已打开"
+          "label": "Mobile Pairing: navigation menu open"
         },
         {
           "id": "settings.menu",
-          "label": "设置：导航菜单已打开"
+          "label": "Settings: navigation menu open"
         }
       ],
       "transitions": [
@@ -1321,22 +1321,22 @@
     },
     {
       "id": "dashboard.medium.navigation",
-      "label": "移动布局：导航及菜单",
+      "label": "Mobile layout: navigation and menu",
       "presentation": "dashboard-medium",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "device-pairing",
-          "label": "移动配对"
+          "label": "Mobile Pairing"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         }
       ],
       "transitions": [
@@ -1398,34 +1398,34 @@
     },
     {
       "id": "desktop.compact.navigation",
-      "label": "移动布局：导航及菜单",
+      "label": "Mobile layout: navigation and menu",
       "presentation": "desktop-compact",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "device-pairing",
-          "label": "移动配对"
+          "label": "Mobile Pairing"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         },
         {
           "id": "chats.menu",
-          "label": "对话：导航菜单已打开"
+          "label": "Conversations: navigation menu open"
         },
         {
           "id": "device-pairing.menu",
-          "label": "移动配对：导航菜单已打开"
+          "label": "Mobile Pairing: navigation menu open"
         },
         {
           "id": "settings.menu",
-          "label": "设置：导航菜单已打开"
+          "label": "Settings: navigation menu open"
         }
       ],
       "transitions": [
@@ -1523,22 +1523,22 @@
     },
     {
       "id": "desktop.medium.navigation",
-      "label": "移动布局：导航及菜单",
+      "label": "Mobile layout: navigation and menu",
       "presentation": "desktop-medium",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "device-pairing",
-          "label": "移动配对"
+          "label": "Mobile Pairing"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         }
       ],
       "transitions": [
@@ -1600,18 +1600,18 @@
     },
     {
       "id": "desktop.navigation",
-      "label": "桌面布局：功能与设置",
+      "label": "Desktop layout: features and settings",
       "presentation": "desktop-wide",
       "initial": "features",
       "setup": [],
       "states": [
         {
           "id": "features",
-          "label": "功能"
+          "label": "Features"
         },
         {
           "id": "settings",
-          "label": "设置"
+          "label": "Settings"
         }
       ],
       "transitions": [
@@ -1643,18 +1643,18 @@
     },
     {
       "id": "desktop.window.agent-center",
-      "label": "桌面布局：智能体中心面板",
+      "label": "Desktop layout: Agent Center panel",
       "presentation": "desktop-wide",
       "initial": "features",
       "setup": [],
       "states": [
         {
           "id": "features",
-          "label": "功能面板"
+          "label": "Feature panel"
         },
         {
           "id": "app",
-          "label": "智能体中心面板"
+          "label": "Agent Center panel"
         }
       ],
       "transitions": [
@@ -1680,18 +1680,18 @@
     },
     {
       "id": "desktop.window.model-gateway",
-      "label": "桌面布局：模型网关面板",
+      "label": "Desktop layout: Model Gateway panel",
       "presentation": "desktop-wide",
       "initial": "features",
       "setup": [],
       "states": [
         {
           "id": "features",
-          "label": "功能面板"
+          "label": "Feature panel"
         },
         {
           "id": "app",
-          "label": "模型网关面板"
+          "label": "Model Gateway panel"
         }
       ],
       "transitions": [
@@ -1717,18 +1717,18 @@
     },
     {
       "id": "desktop.window.device-pairing",
-      "label": "桌面布局：移动配对面板",
+      "label": "Desktop layout: Mobile Pairing panel",
       "presentation": "desktop-wide",
       "initial": "features",
       "setup": [],
       "states": [
         {
           "id": "features",
-          "label": "功能面板"
+          "label": "Feature panel"
         },
         {
           "id": "app",
-          "label": "移动配对面板"
+          "label": "Mobile Pairing panel"
         }
       ],
       "transitions": [
@@ -1754,18 +1754,18 @@
     },
     {
       "id": "desktop.window.usage",
-      "label": "桌面布局：统计面板面板",
+      "label": "Desktop layout: Usage Dashboard panel",
       "presentation": "desktop-wide",
       "initial": "features",
       "setup": [],
       "states": [
         {
           "id": "features",
-          "label": "功能面板"
+          "label": "Feature panel"
         },
         {
           "id": "app",
-          "label": "统计面板面板"
+          "label": "Usage Dashboard panel"
         }
       ],
       "transitions": [
@@ -1791,18 +1791,18 @@
     },
     {
       "id": "desktop.pane",
-      "label": "桌面布局：左侧面板展开与收起",
+      "label": "Desktop layout: left panel expanded and collapsed",
       "presentation": "desktop-wide",
       "initial": "open",
       "setup": [],
       "states": [
         {
           "id": "open",
-          "label": "左侧面板展开"
+          "label": "Left panel expanded"
         },
         {
           "id": "collapsed",
-          "label": "左侧面板收起，对话列表贴左"
+          "label": "Left panel collapsed, conversation list flush left"
         }
       ],
       "transitions": [
@@ -1822,18 +1822,18 @@
     },
     {
       "id": "dashboard.search",
-      "label": "对话：搜索弹窗",
+      "label": "Conversations: search overlay",
       "presentation": "dashboard-wide",
       "initial": "chats",
       "setup": [],
       "states": [
         {
           "id": "chats",
-          "label": "对话"
+          "label": "Conversations"
         },
         {
           "id": "search",
-          "label": "搜索弹窗"
+          "label": "Search overlay"
         }
       ],
       "transitions": [
@@ -1853,7 +1853,7 @@
     },
     {
       "id": "dashboard.conversation-journey",
-      "label": "普通对话、群聊、返回、搜索与导航的连续随机操作",
+      "label": "Continuous random operations across direct conversations, group conversations, back, search and navigation",
       "presentation": "dashboard-wide",
       "scenario": "populated-conversations",
       "initial": "native-agent",
@@ -1861,7 +1861,7 @@
       "states": [
         {
           "id": "native-agent",
-          "label": "普通对话 / 历史列表",
+          "label": "Direct conversation / history list",
           "view": {
             "page": "native",
             "list": "agent",
@@ -1870,7 +1870,7 @@
         },
         {
           "id": "native-agent.search",
-          "label": "普通对话 / 历史列表 / 搜索框",
+          "label": "Direct conversation / history list / search field",
           "view": {
             "page": "native",
             "list": "agent",
@@ -1880,7 +1880,7 @@
         },
         {
           "id": "native-agent.create",
-          "label": "普通对话 / 历史列表 / 新建菜单",
+          "label": "Direct conversation / history list / create menu",
           "view": {
             "page": "native",
             "list": "agent",
@@ -1890,7 +1890,7 @@
         },
         {
           "id": "native-agent.new-group",
-          "label": "普通对话 / 历史列表 / 新建群聊对话框",
+          "label": "Direct conversation / history list / create group dialog",
           "view": {
             "page": "native",
             "list": "agent",
@@ -1900,7 +1900,7 @@
         },
         {
           "id": "native-agent.search-query",
-          "label": "普通对话 / 历史列表 / 搜索设置",
+          "label": "Direct conversation / history list / search for Settings",
           "view": {
             "page": "native",
             "list": "agent",
@@ -1911,42 +1911,42 @@
         },
         {
           "id": "native-agent.destination.settings",
-          "label": "设置 / 保留普通对话 / 历史列表",
+          "label": "Settings / direct conversation retained / history list",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "native-agent.destination.agent-center",
-          "label": "智能体中心 / 保留普通对话 / 历史列表",
+          "label": "Agent Center / direct conversation retained / history list",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "native-agent.destination.model-gateway",
-          "label": "模型网关 / 保留普通对话 / 历史列表",
+          "label": "Model Gateway / direct conversation retained / history list",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "native-agent.destination.device-pairing",
-          "label": "设备配对 / 保留普通对话 / 历史列表",
+          "label": "Device pairing / direct conversation retained / history list",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "native-agent.destination.usage",
-          "label": "用量统计 / 保留普通对话 / 历史列表",
+          "label": "Usage statistics / direct conversation retained / history list",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "native-catalog",
-          "label": "普通对话 / 对话总列表",
+          "label": "Direct conversation / all-conversations list",
           "view": {
             "page": "native",
             "list": "catalog",
@@ -1955,7 +1955,7 @@
         },
         {
           "id": "native-catalog.search",
-          "label": "普通对话 / 对话总列表 / 搜索框",
+          "label": "Direct conversation / all-conversations list / search field",
           "view": {
             "page": "native",
             "list": "catalog",
@@ -1965,7 +1965,7 @@
         },
         {
           "id": "native-catalog.create",
-          "label": "普通对话 / 对话总列表 / 新建菜单",
+          "label": "Direct conversation / all-conversations list / create menu",
           "view": {
             "page": "native",
             "list": "catalog",
@@ -1975,7 +1975,7 @@
         },
         {
           "id": "native-catalog.new-group",
-          "label": "普通对话 / 对话总列表 / 新建群聊对话框",
+          "label": "Direct conversation / all-conversations list / create group dialog",
           "view": {
             "page": "native",
             "list": "catalog",
@@ -1985,7 +1985,7 @@
         },
         {
           "id": "native-catalog.search-query",
-          "label": "普通对话 / 对话总列表 / 搜索设置",
+          "label": "Direct conversation / all-conversations list / search for Settings",
           "view": {
             "page": "native",
             "list": "catalog",
@@ -1996,42 +1996,42 @@
         },
         {
           "id": "native-catalog.destination.settings",
-          "label": "设置 / 保留普通对话 / 对话总列表",
+          "label": "Settings / direct conversation retained / all-conversations list",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "native-catalog.destination.agent-center",
-          "label": "智能体中心 / 保留普通对话 / 对话总列表",
+          "label": "Agent Center / direct conversation retained / all-conversations list",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "native-catalog.destination.model-gateway",
-          "label": "模型网关 / 保留普通对话 / 对话总列表",
+          "label": "Model Gateway / direct conversation retained / all-conversations list",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "native-catalog.destination.device-pairing",
-          "label": "设备配对 / 保留普通对话 / 对话总列表",
+          "label": "Device pairing / direct conversation retained / all-conversations list",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "native-catalog.destination.usage",
-          "label": "用量统计 / 保留普通对话 / 对话总列表",
+          "label": "Usage statistics / direct conversation retained / all-conversations list",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "group-group-1",
-          "label": "群聊 / 群内列表 / 成员展开",
+          "label": "Group conversation / in-group list / members expanded",
           "view": {
             "page": "group",
             "list": "group",
@@ -2040,7 +2040,7 @@
         },
         {
           "id": "group-group-1.search",
-          "label": "群聊 / 群内列表 / 成员展开 / 搜索框",
+          "label": "Group conversation / in-group list / members expanded / search field",
           "view": {
             "page": "group",
             "list": "group",
@@ -2050,7 +2050,7 @@
         },
         {
           "id": "group-group-1.create",
-          "label": "群聊 / 群内列表 / 成员展开 / 新建菜单",
+          "label": "Group conversation / in-group list / members expanded / create menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2060,7 +2060,7 @@
         },
         {
           "id": "group-group-1.new-group",
-          "label": "群聊 / 群内列表 / 成员展开 / 新建群聊对话框",
+          "label": "Group conversation / in-group list / members expanded / create group dialog",
           "view": {
             "page": "group",
             "list": "group",
@@ -2070,7 +2070,7 @@
         },
         {
           "id": "group-group-1.group-actions",
-          "label": "群聊 / 群内列表 / 成员展开 / 群聊操作菜单",
+          "label": "Group conversation / in-group list / members expanded / group actions menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2080,7 +2080,7 @@
         },
         {
           "id": "group-group-1.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员展开 / 归档确认框",
+          "label": "Group conversation / in-group list / members expanded / archive confirmation",
           "view": {
             "page": "group",
             "list": "group",
@@ -2090,7 +2090,7 @@
         },
         {
           "id": "group-group-1.search-query",
-          "label": "群聊 / 群内列表 / 成员展开 / 搜索设置",
+          "label": "Group conversation / in-group list / members expanded / search for Settings",
           "view": {
             "page": "group",
             "list": "group",
@@ -2101,42 +2101,42 @@
         },
         {
           "id": "group-group-1.destination.settings",
-          "label": "设置 / 保留群聊 / 群内列表 / 成员展开",
+          "label": "Settings / group conversation retained / in-group list / members expanded",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "group-group-1.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员展开",
+          "label": "Agent Center / group conversation retained / in-group list / members expanded",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "group-group-1.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 群内列表 / 成员展开",
+          "label": "Model Gateway / group conversation retained / in-group list / members expanded",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "group-group-1.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 群内列表 / 成员展开",
+          "label": "Device pairing / group conversation retained / in-group list / members expanded",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "group-group-1.destination.usage",
-          "label": "用量统计 / 保留群聊 / 群内列表 / 成员展开",
+          "label": "Usage statistics / group conversation retained / in-group list / members expanded",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "group-catalog-1",
-          "label": "群聊 / 对话总列表 / 成员展开",
+          "label": "Group conversation / all-conversations list / members expanded",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2145,7 +2145,7 @@
         },
         {
           "id": "group-catalog-1.search",
-          "label": "群聊 / 对话总列表 / 成员展开 / 搜索框",
+          "label": "Group conversation / all-conversations list / members expanded / search field",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2155,7 +2155,7 @@
         },
         {
           "id": "group-catalog-1.create",
-          "label": "群聊 / 对话总列表 / 成员展开 / 新建菜单",
+          "label": "Group conversation / all-conversations list / members expanded / create menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2165,7 +2165,7 @@
         },
         {
           "id": "group-catalog-1.new-group",
-          "label": "群聊 / 对话总列表 / 成员展开 / 新建群聊对话框",
+          "label": "Group conversation / all-conversations list / members expanded / create group dialog",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2175,7 +2175,7 @@
         },
         {
           "id": "group-catalog-1.group-actions",
-          "label": "群聊 / 对话总列表 / 成员展开 / 群聊操作菜单",
+          "label": "Group conversation / all-conversations list / members expanded / group actions menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2185,7 +2185,7 @@
         },
         {
           "id": "group-catalog-1.clear-confirm",
-          "label": "群聊 / 对话总列表 / 成员展开 / 归档确认框",
+          "label": "Group conversation / all-conversations list / members expanded / archive confirmation",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2195,7 +2195,7 @@
         },
         {
           "id": "group-catalog-1.search-query",
-          "label": "群聊 / 对话总列表 / 成员展开 / 搜索设置",
+          "label": "Group conversation / all-conversations list / members expanded / search for Settings",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2206,42 +2206,42 @@
         },
         {
           "id": "group-catalog-1.destination.settings",
-          "label": "设置 / 保留群聊 / 对话总列表 / 成员展开",
+          "label": "Settings / group conversation retained / all-conversations list / members expanded",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "group-catalog-1.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 对话总列表 / 成员展开",
+          "label": "Agent Center / group conversation retained / all-conversations list / members expanded",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "group-catalog-1.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 对话总列表 / 成员展开",
+          "label": "Model Gateway / group conversation retained / all-conversations list / members expanded",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "group-catalog-1.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 对话总列表 / 成员展开",
+          "label": "Device pairing / group conversation retained / all-conversations list / members expanded",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "group-catalog-1.destination.usage",
-          "label": "用量统计 / 保留群聊 / 对话总列表 / 成员展开",
+          "label": "Usage statistics / group conversation retained / all-conversations list / members expanded",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "group-group-0",
-          "label": "群聊 / 群内列表 / 成员收起",
+          "label": "Group conversation / in-group list / members collapsed",
           "view": {
             "page": "group",
             "list": "group",
@@ -2250,7 +2250,7 @@
         },
         {
           "id": "group-group-0.search",
-          "label": "群聊 / 群内列表 / 成员收起 / 搜索框",
+          "label": "Group conversation / in-group list / members collapsed / search field",
           "view": {
             "page": "group",
             "list": "group",
@@ -2260,7 +2260,7 @@
         },
         {
           "id": "group-group-0.create",
-          "label": "群聊 / 群内列表 / 成员收起 / 新建菜单",
+          "label": "Group conversation / in-group list / members collapsed / create menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2270,7 +2270,7 @@
         },
         {
           "id": "group-group-0.new-group",
-          "label": "群聊 / 群内列表 / 成员收起 / 新建群聊对话框",
+          "label": "Group conversation / in-group list / members collapsed / create group dialog",
           "view": {
             "page": "group",
             "list": "group",
@@ -2280,7 +2280,7 @@
         },
         {
           "id": "group-group-0.group-actions",
-          "label": "群聊 / 群内列表 / 成员收起 / 群聊操作菜单",
+          "label": "Group conversation / in-group list / members collapsed / group actions menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2290,7 +2290,7 @@
         },
         {
           "id": "group-group-0.clear-confirm",
-          "label": "群聊 / 群内列表 / 成员收起 / 归档确认框",
+          "label": "Group conversation / in-group list / members collapsed / archive confirmation",
           "view": {
             "page": "group",
             "list": "group",
@@ -2300,7 +2300,7 @@
         },
         {
           "id": "group-group-0.search-query",
-          "label": "群聊 / 群内列表 / 成员收起 / 搜索设置",
+          "label": "Group conversation / in-group list / members collapsed / search for Settings",
           "view": {
             "page": "group",
             "list": "group",
@@ -2311,42 +2311,42 @@
         },
         {
           "id": "group-group-0.destination.settings",
-          "label": "设置 / 保留群聊 / 群内列表 / 成员收起",
+          "label": "Settings / group conversation retained / in-group list / members collapsed",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "group-group-0.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 群内列表 / 成员收起",
+          "label": "Agent Center / group conversation retained / in-group list / members collapsed",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "group-group-0.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 群内列表 / 成员收起",
+          "label": "Model Gateway / group conversation retained / in-group list / members collapsed",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "group-group-0.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 群内列表 / 成员收起",
+          "label": "Device pairing / group conversation retained / in-group list / members collapsed",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "group-group-0.destination.usage",
-          "label": "用量统计 / 保留群聊 / 群内列表 / 成员收起",
+          "label": "Usage statistics / group conversation retained / in-group list / members collapsed",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "group-catalog-0",
-          "label": "群聊 / 对话总列表 / 成员收起",
+          "label": "Group conversation / all-conversations list / members collapsed",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2355,7 +2355,7 @@
         },
         {
           "id": "group-catalog-0.search",
-          "label": "群聊 / 对话总列表 / 成员收起 / 搜索框",
+          "label": "Group conversation / all-conversations list / members collapsed / search field",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2365,7 +2365,7 @@
         },
         {
           "id": "group-catalog-0.create",
-          "label": "群聊 / 对话总列表 / 成员收起 / 新建菜单",
+          "label": "Group conversation / all-conversations list / members collapsed / create menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2375,7 +2375,7 @@
         },
         {
           "id": "group-catalog-0.new-group",
-          "label": "群聊 / 对话总列表 / 成员收起 / 新建群聊对话框",
+          "label": "Group conversation / all-conversations list / members collapsed / create group dialog",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2385,7 +2385,7 @@
         },
         {
           "id": "group-catalog-0.group-actions",
-          "label": "群聊 / 对话总列表 / 成员收起 / 群聊操作菜单",
+          "label": "Group conversation / all-conversations list / members collapsed / group actions menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2395,7 +2395,7 @@
         },
         {
           "id": "group-catalog-0.clear-confirm",
-          "label": "群聊 / 对话总列表 / 成员收起 / 归档确认框",
+          "label": "Group conversation / all-conversations list / members collapsed / archive confirmation",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2405,7 +2405,7 @@
         },
         {
           "id": "group-catalog-0.search-query",
-          "label": "群聊 / 对话总列表 / 成员收起 / 搜索设置",
+          "label": "Group conversation / all-conversations list / members collapsed / search for Settings",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2416,42 +2416,42 @@
         },
         {
           "id": "group-catalog-0.destination.settings",
-          "label": "设置 / 保留群聊 / 对话总列表 / 成员收起",
+          "label": "Settings / group conversation retained / all-conversations list / members collapsed",
           "view": {
             "destination": "settings"
           }
         },
         {
           "id": "group-catalog-0.destination.agent-center",
-          "label": "智能体中心 / 保留群聊 / 对话总列表 / 成员收起",
+          "label": "Agent Center / group conversation retained / all-conversations list / members collapsed",
           "view": {
             "destination": "agent-center"
           }
         },
         {
           "id": "group-catalog-0.destination.model-gateway",
-          "label": "模型网关 / 保留群聊 / 对话总列表 / 成员收起",
+          "label": "Model Gateway / group conversation retained / all-conversations list / members collapsed",
           "view": {
             "destination": "model-gateway"
           }
         },
         {
           "id": "group-catalog-0.destination.device-pairing",
-          "label": "设备配对 / 保留群聊 / 对话总列表 / 成员收起",
+          "label": "Device pairing / group conversation retained / all-conversations list / members collapsed",
           "view": {
             "destination": "device-pairing"
           }
         },
         {
           "id": "group-catalog-0.destination.usage",
-          "label": "用量统计 / 保留群聊 / 对话总列表 / 成员收起",
+          "label": "Usage statistics / group conversation retained / all-conversations list / members collapsed",
           "view": {
             "destination": "usage"
           }
         },
         {
           "id": "group-group-1.menu",
-          "label": "群聊 / 群内列表 / 成员展开 / 更多菜单",
+          "label": "Group conversation / in-group list / members expanded / more menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2461,7 +2461,7 @@
         },
         {
           "id": "group-catalog-1.menu",
-          "label": "群聊 / 对话总列表 / 成员展开 / 更多菜单",
+          "label": "Group conversation / all-conversations list / members expanded / more menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -2471,7 +2471,7 @@
         },
         {
           "id": "group-group-0.menu",
-          "label": "群聊 / 群内列表 / 成员收起 / 更多菜单",
+          "label": "Group conversation / in-group list / members collapsed / more menu",
           "view": {
             "page": "group",
             "list": "group",
@@ -2481,7 +2481,7 @@
         },
         {
           "id": "group-catalog-0.menu",
-          "label": "群聊 / 对话总列表 / 成员收起 / 更多菜单",
+          "label": "Group conversation / all-conversations list / members collapsed / more menu",
           "view": {
             "page": "group",
             "list": "catalog",
@@ -4685,14 +4685,14 @@
     },
     {
       "id": "project-collaboration-wide",
-      "label": "宽屏原生项目协作：泳道、共享门、插单与授权回收",
+      "label": "Wide-screen native project collaboration: lanes, shared gates, insert and authorization recall",
       "presentation": "desktop-wide",
       "initial": "board",
       "setup": [],
       "states": [
         {
           "id": "board",
-          "label": "项目泳道主视图",
+          "label": "Project lane main view",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4703,7 +4703,7 @@
         },
         {
           "id": "collapsed",
-          "label": "折叠 Alpha 项目",
+          "label": "Collapse project Alpha",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4713,7 +4713,7 @@
         },
         {
           "id": "node-detail",
-          "label": "审阅单元详情与不能启动原因",
+          "label": "Review unit detail and why it cannot start",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4723,7 +4723,7 @@
         },
         {
           "id": "takeover-dialog",
-          "label": "接管确认（范围与旧写者缺口）",
+          "label": "Takeover confirmation (scope and missing previous writer)",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4734,7 +4734,7 @@
         },
         {
           "id": "takeover-refused",
-          "label": "接管按原生回执被拒",
+          "label": "Takeover refused per the native receipt",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4745,7 +4745,7 @@
         },
         {
           "id": "build-detail",
-          "label": "构建单元详情",
+          "label": "Build unit detail",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4755,7 +4755,7 @@
         },
         {
           "id": "pause-dialog",
-          "label": "暂停确认",
+          "label": "Pause confirmation",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4766,7 +4766,7 @@
         },
         {
           "id": "pause-receipt",
-          "label": "暂停等待并显示原生回执",
+          "label": "Paused and waiting, showing the native receipt",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4777,7 +4777,7 @@
         },
         {
           "id": "list",
-          "label": "紧凑列表（与图同源）",
+          "label": "Compact list (same source as the graph)",
           "view": {
             "project": {
               "screen": "list"
@@ -4786,7 +4786,7 @@
         },
         {
           "id": "inspector",
-          "label": "高级检查器（尝试/访问/事件/证据）",
+          "label": "Advanced inspector (attempts / visits / events / evidence)",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4797,7 +4797,7 @@
         },
         {
           "id": "zoomed",
-          "label": "放大后的可平移视图",
+          "label": "Zoomed, pannable view",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4807,7 +4807,7 @@
         },
         {
           "id": "anomalies",
-          "label": "异常筛选",
+          "label": "Exception filter",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4817,7 +4817,7 @@
         },
         {
           "id": "insert-dialog",
-          "label": "插单输入",
+          "label": "Insert input",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4827,7 +4827,7 @@
         },
         {
           "id": "insert-impact",
-          "label": "插单影响预览（含版本）",
+          "label": "Insert impact preview (with revision)",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4837,7 +4837,7 @@
         },
         {
           "id": "insert-committed",
-          "label": "按预览版本提交并收到回执",
+          "label": "Submit at the previewed revision and receive the receipt",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4848,7 +4848,7 @@
         },
         {
           "id": "revoked",
-          "label": "授权撤销后本地不可用",
+          "label": "Unavailable locally after the authorization was revoked",
           "view": {
             "project": {
               "unavailable": true
@@ -4857,7 +4857,7 @@
         },
         {
           "id": "reconnected",
-          "label": "重连后按新快照恢复",
+          "label": "Restored from the new snapshot after reconnect",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4868,7 +4868,7 @@
         },
         {
           "id": "frontier",
-          "label": "前沿筛选",
+          "label": "Frontier filter",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4878,7 +4878,7 @@
         },
         {
           "id": "role-filtered",
-          "label": "角色过滤 builder",
+          "label": "Role filter: builder",
           "view": {
             "project": {
               "screen": "lanes",
@@ -4888,7 +4888,7 @@
         },
         {
           "id": "beta-collapsed",
-          "label": "折叠 Beta 项目",
+          "label": "Collapse project Beta",
           "view": {
             "project": {
               "screen": "lanes",

@@ -20,21 +20,21 @@ functions. No model, network, credential or external service is involved.
 ## Running it
 
 ```bash
-python3 -B tests/integration/v71_agent_sdk/run_tests.py
+python3 -B tests/integration/agent_sdk/run_tests.py
 ```
 
 Single files, for focused work:
 
 ```bash
-python3 -B -m unittest discover -s tests/integration/v71_agent_sdk -p "test_full_agent.py" -v
-python3 -B -m unittest discover -s tests/integration/v71_agent_sdk -p "test_generic_carrier.py" -v
+python3 -B -m unittest discover -s tests/integration/agent_sdk -p "test_full_agent.py" -v
+python3 -B -m unittest discover -s tests/integration/agent_sdk -p "test_generic_carrier.py" -v
 ```
 
 Through the repository toolchain wrapper (this is what a regression module
 should use):
 
 ```bash
-node tools/scripts/client-toolchain-runner.mjs -- python3 -B tests/integration/v71_agent_sdk/run_tests.py
+node tools/scripts/client-toolchain-runner.mjs -- python3 -B tests/integration/agent_sdk/run_tests.py
 ```
 
 The native-executable cases need `cc`. That compiler is already required to
@@ -52,8 +52,8 @@ summary: "Language-agnostic extension.v1 Agent adapters: samples, generic CLI ca
 inputs:
   - sdk/agent-adapter/**
   - extensions/generic/**
-  - tests/integration/v71_agent_sdk/**
-command: node tools/scripts/client-toolchain-runner.mjs -- python3 -B tests/integration/v71_agent_sdk/run_tests.py
+  - tests/integration/agent_sdk/**
+command: node tools/scripts/client-toolchain-runner.mjs -- python3 -B tests/integration/agent_sdk/run_tests.py
 ```
 
 ## What this level does and does not prove

@@ -1,4 +1,4 @@
-//! Black-box scenario for `tests/integration/v71_package_lifecycle/`.
+//! Black-box scenario for `tests/integration/package_lifecycle/`.
 //!
 //! The packages this test installs are produced *outside* the Rust crate by an
 //! independent fixture generator, so it proves the store accepts bytes it did not
@@ -15,7 +15,7 @@
 //! Run it through the driver:
 //!
 //! ```text
-//! python3 tests/integration/v71_package_lifecycle/verify_component_lifecycle.py
+//! python3 tests/integration/package_lifecycle/verify_component_lifecycle.py
 //! ```
 
 use super::*;
@@ -30,7 +30,7 @@ fn fixture(directory: &std::path::Path, name: &str) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "driven by tests/integration/v71_package_lifecycle/verify_component_lifecycle.py"]
+#[ignore = "driven by tests/integration/package_lifecycle/verify_component_lifecycle.py"]
 fn externally_produced_packages_install_and_uninstall_on_the_real_filesystem() {
     let (Ok(fixtures), Ok(sandbox)) = (
         std::env::var("LICOUP_V71_PACKAGE_FIXTURES"),

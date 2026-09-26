@@ -60,13 +60,13 @@ with the dependent named, `requires` cycles refused, and optional dependencies
 reported as declined rather than installed. The plan side reimplements those
 declarations and is compared against the executing product:
 
-- `tests/contract/v71_distribution/vectors/catalogue-cases.json` is one shared
+- `tests/contract/distribution/vectors/catalogue-cases.json` is one shared
   vector corpus with the recorded decisions;
-- `tests/contract/v71_distribution/rust-probe/` is a minimal Cargo workspace
+- `tests/contract/distribution/rust-probe/` is a minimal Cargo workspace
   (its own `[workspace]`, no product membership) that consumes
   `crates/licoup-extension-contracts` by path and runs the real `install_closure`
   and `capability_owner` over that corpus, printing machine-readable decisions;
-- `tests/contract/v71_distribution/probe.mjs` runs the probe and compares the
+- `tests/contract/distribution/probe.mjs` runs the probe and compares the
   product and plan decisions item by item — selected and declined-optional sets
   for a pass; refusal code, offending field, package and dependent for a
   refusal. Either side changing a decision fails the suite, and the comparison

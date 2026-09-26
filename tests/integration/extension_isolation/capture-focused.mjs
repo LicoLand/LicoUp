@@ -19,7 +19,7 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const extensions = new Set([".rs", ".toml", ".json", ".mjs", ".py", ".c", ".sh", ".lock"]);
 const directories = [
   "crates", // build dependencies as well as the candidate, so concurrent Rust changes are visible
-  "tests/integration/v7_extension_isolation",
+  "tests/integration/extension_isolation",
   "sdk/agent-adapter/python", "sdk/agent-adapter/samples/minimal-specialist",
   "tools/regression",
 ];

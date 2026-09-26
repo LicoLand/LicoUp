@@ -20,7 +20,7 @@ use licoup_conversation::{
     ConversationStore, EventKind, EventPartKind, MembershipStatus, NewEventPart,
 };
 
-use crate::domain::mobile_relay::endpoint_v7_transport::{
+use crate::domain::mobile_relay::endpoint_transport::{
     DedupeOutcome, IntakeLedger, PeerMessage, PeerOrigin, PeerPart, StationHint,
 };
 

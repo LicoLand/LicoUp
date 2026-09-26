@@ -7,7 +7,7 @@
 //! membership, or an administrator, and a message can never name its own
 //! binding.
 
-use crate::domain::mobile_relay::endpoint_v7_transport::{PeerAuthor, PeerDevice};
+use crate::domain::mobile_relay::endpoint_transport::{PeerAuthor, PeerDevice};
 
 /// One pre-existing local binding of a verified peer device.
 ///

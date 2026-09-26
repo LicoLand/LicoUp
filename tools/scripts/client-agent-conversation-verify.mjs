@@ -138,8 +138,8 @@ export function classifyAdapter(
     || driver.blockerCodes?.[0]
     || "acceptance_evidence_unavailable";
   const resultLabel = liveRequested
-    ? liveStatus === "passed" || conversationPassed ? "成功" : `Failed: ${liveReason}`
-    : readinessReady ? "成功" : `Not ready: ${staticReason}`;
+    ? liveStatus === "passed" || conversationPassed ? "passed" : `Failed: ${liveReason}`
+    : readinessReady ? "passed" : `Not ready: ${staticReason}`;
   return {
     agentId: driver.agentId,
     driverId: driver.driverId,
@@ -170,7 +170,7 @@ export function classifyAdapter(
 
 function markdownReport(report) {
   const lines = [
-    "| 智能体 | 测试是否成功 | 通过率 | 测试会话数 | 请求数 | 运行原始返回值（脱敏） |",
+    "| Agent | Test passed | Pass rate | Test sessions | Requests | Raw runtime result (redacted) |",
     "| --- | --- | ---: | ---: | ---: | --- |",
   ];
   for (const row of report.adapters) {
@@ -206,7 +206,7 @@ function selfTest() {
     && ready.staticStatus === "passed" && ready.liveStatus === "passed" && ready.releaseStatus === "passed"
     && staticUnverified.staticStatus === "passed"
     && staticUnverified.resultLabel === "Not ready: evidence_missing"
-    && staticUnverified.resultLabel !== "成功";
+    && staticUnverified.resultLabel !== "passed";
   console.log(JSON.stringify({ schemaVersion: "lico-agent-conversation-verifier-self-test-v1", status: ok ? "passed" : "failed" }));
   process.exitCode = ok ? 0 : 1;
 }

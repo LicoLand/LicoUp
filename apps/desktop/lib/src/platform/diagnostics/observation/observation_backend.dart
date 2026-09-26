@@ -1,6 +1,6 @@
 import 'dart:developer' show TimelineTask;
 
-import 'package:licoup/src/platform/diagnostics/v7/observation_segment.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_segment.dart';
 
 /// Consumer of drained observation records.
 ///

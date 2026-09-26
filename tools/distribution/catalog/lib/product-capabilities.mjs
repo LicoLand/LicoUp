@@ -7,7 +7,7 @@ import { requireFact } from "../../../architecture-graph/lib/canonical.mjs";
  * (`CAPABILITY_OWNERSHIP`) and publishes it in
  * `docs/architecture/DEPLOYMENT-PROFILES.md` (section 3). The copy below exists
  * only because a Node tool cannot link the Rust crate;
- * `tests/contract/v71_distribution/provider-ownership.test.mjs` extracts both
+ * `tests/contract/distribution/provider-ownership.test.mjs` extracts both
  * owners and fails when the three disagree, so this cannot drift silently.
  *
  * Owner means "the package that must be present for this capability to work at

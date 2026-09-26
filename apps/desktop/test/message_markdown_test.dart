@@ -16,7 +16,7 @@ import 'package:licoup/src/frontend/shared/ui/message_markdown_block_view.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
 import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 
-import 'v7_conversation_ui/prepared_message_markdown_harness.dart';
+import 'conversation_ui/prepared_message_markdown_harness.dart';
 
 void main() {
   const accent = Color(0xFF0000FF);

@@ -30,8 +30,8 @@
       "crates/licoup-native/src/domain/workflow_runtime",
       "crates/licoup-native/src/domain/workflow_store",
       "crates/licoup-native/src/platform/strategy_runtime",
-      "crates/licoup-native/tests/v7_effect_adapter",
-      "crates/licoup-native/tests/v7_recovery",
+      "crates/licoup-native/tests/effect_adapter",
+      "crates/licoup-native/tests/recovery",
       "tests/contract/client/assistant-workflow-contract.test.mjs"
     ],
     "boundaries": [
@@ -130,8 +130,8 @@
     "guide": "docs/modules/endpoint-collaboration.md",
     "testRoots": [
       "crates/licoup-protocol-bindings/tests",
-      "crates/licoup-native/tests/v7_endpoint_storage",
-      "crates/licoup-native/tests/v7_peer_ingress",
+      "crates/licoup-native/tests/endpoint_storage",
+      "crates/licoup-native/tests/peer_ingress",
       "tests/contract/client"
     ],
     "regressionModules": [
@@ -149,8 +149,8 @@
       "crates/licoup-native/src/domain/secure_mesh_mls",
       "crates/licoup-native/src/platform/badtower_station",
       "crates/licoup-native/src/platform/secure_mesh_secret_store",
-      "crates/licoup-native/tests/v7_endpoint_storage",
-      "crates/licoup-native/tests/v7_peer_ingress",
+      "crates/licoup-native/tests/endpoint_storage",
+      "crates/licoup-native/tests/peer_ingress",
       "crates/licoup-native/src/domain/collaboration_plugin",
       "crates/licoup-native/src/core/secure_mesh_approval",
       "crates/licoup-native/src/core/secure_mesh_command",
@@ -179,8 +179,8 @@
     "guide": "docs/modules/extension-platform.md",
     "testRoots": [
       "crates/licoup-extension-contracts/tests",
-      "tests/integration/v71_agent_sdk",
-      "crates/licoup-native/tests/v71_package_lifecycle"
+      "tests/integration/agent_sdk",
+      "crates/licoup-native/tests/package_lifecycle"
     ],
     "regressionModules": [
       "rust.crate.extension-contracts",
@@ -194,16 +194,16 @@
       "crates/licoup-extension-contracts",
       "crates/licoup-native/src/platform/extension_host",
       "crates/licoup-native/src/platform/extension_packages",
-      "tests/integration/v71_agent_sdk",
-      "crates/licoup-native/tests/v71_package_lifecycle",
-      "crates/licoup-native/tests/v7_extension_contract",
-      "crates/licoup-native/tests/v7_host",
-      "tests/integration/v7_extension_isolation",
+      "tests/integration/agent_sdk",
+      "crates/licoup-native/tests/package_lifecycle",
+      "crates/licoup-native/tests/extension_contract",
+      "crates/licoup-native/tests/host_runtime",
+      "tests/integration/extension_isolation",
       "extensions/generic",
       "extensions/providers",
       "schemas/extensions",
       "sdk/agent-adapter",
-      "tests/integration/v71_package_lifecycle"
+      "tests/integration/package_lifecycle"
     ],
     "boundaries": [
       {
@@ -513,7 +513,7 @@
       "tests/contract/client",
       "components/analytics/src",
       "sdk/usage-source/src",
-      "tests/integration/v71_usage_sources",
+      "tests/integration/usage_sources",
       "crates/licoup-native/src/domain/agent_hub",
       "crates/licoup-native/src/domain/agent_usage",
       "crates/licoup-native/src/domain/provider_quota"
@@ -537,7 +537,7 @@
       "components/analytics",
       "crates/licoup-native/src/platform/diagnostics",
       "sdk/usage-source",
-      "tests/integration/v71_usage_sources",
+      "tests/integration/usage_sources",
       "crates/licoup-native/src/domain/agent_hub",
       "crates/licoup-native/resources/licoup-guide",
       "crates/licoup-native/resources/licoup-refactor",
@@ -562,7 +562,7 @@
     "testRoots": [
       "crates/licoup-native/src/domain",
       "sdk/model-provider/src",
-      "tests/integration/v71_model_providers"
+      "tests/integration/model_providers"
     ],
     "regressionModules": [
       "rust.domain.llm-gateway",
@@ -573,7 +573,7 @@
       "crates/licoup-native/src/domain/llm_gateway",
       "crates/licoup-native/src/platform/gateway_runtime",
       "sdk/model-provider",
-      "tests/integration/v71_model_providers"
+      "tests/integration/model_providers"
     ],
     "boundaries": []
   },
@@ -589,7 +589,7 @@
     "sourceRoots": [
       "tools/data-migration",
       "crates/licoup-native/src/domain/client_state_migration",
-      "crates/licoup-native/tests/v7_migration",
+      "crates/licoup-native/tests/migration",
       "tests/contract/client/client-state-migration-diagnostic.test.mjs"
     ],
     "boundaries": []
@@ -598,7 +598,7 @@
     "id": "distribution",
     "guide": "docs/modules/distribution.md",
     "testRoots": [
-      "tests/contract/v71_distribution",
+      "tests/contract/distribution",
       "tools/architecture-graph/test",
       "tools/release/tests"
     ],
@@ -616,7 +616,7 @@
       "tools/architecture-graph",
       "apps/desktop/packaging.modules.json",
       "tools/distribution",
-      "tests/contract/v71_distribution",
+      "tests/contract/distribution",
       "tests/verify-client-update-release-channel.mjs",
       "tests/contract/client/client-update-source-bundle.test.mjs",
       "tests/contract/client/package-client"

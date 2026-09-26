@@ -27,7 +27,7 @@ suites with `npm run client:regression:list`; test contents remain the authority
 
 Rust unit tests are colocated in `crates/licoup-native/src/domain/` and
 `sdk/model-provider/src/`; provider integration tests are under
-`tests/integration/v71_model_providers/`. The fixed command covers both the
+`tests/integration/model_providers/`. The fixed command covers both the
 gateway and its provider runtime.
 Keep new tests in the owning directory, grouped by behavior, not release milestone.
 

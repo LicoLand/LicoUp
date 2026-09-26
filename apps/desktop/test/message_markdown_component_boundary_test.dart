@@ -17,7 +17,7 @@ import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/projections/conversation/conversation_markdown_preparation.dart';
 
-import 'v7_conversation_ui/prepared_message_markdown_harness.dart';
+import 'conversation_ui/prepared_message_markdown_harness.dart';
 
 /// The renderer boundary is a behavior, not a file list: a block view renders
 /// the prepared display value it receives and has no tokenizer to fall back to.

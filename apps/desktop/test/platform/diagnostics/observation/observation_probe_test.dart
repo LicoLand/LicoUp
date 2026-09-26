@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 
-import 'package:licoup/src/platform/diagnostics/v7/observation_backend.dart';
-import 'package:licoup/src/platform/diagnostics/v7/observation_ids.dart';
-import 'package:licoup/src/platform/diagnostics/v7/observation_probe.dart';
-import 'package:licoup/src/platform/diagnostics/v7/observation_segment.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_backend.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_ids.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_probe.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_segment.dart';
 
 /// Bounded, test-only backend.
 final class _CapturingBackend implements ObservationTelemetryBackend {

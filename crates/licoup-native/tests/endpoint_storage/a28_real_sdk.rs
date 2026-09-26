@@ -20,7 +20,7 @@ use licoup_protocol_bindings::provider::RustCryptoProvider;
 use licoup_protocol_bindings::state::{AtomicState, CustodyRef, KeyCustody};
 use licoup_protocol_bindings::{EndpointConsumer, ErrorCode};
 
-use licoup_native::domain::mobile_relay::endpoint_v7_storage::{
+use licoup_native::domain::mobile_relay::endpoint_storage::{
     EndpointV7Continuity, EndpointV7Custody, EndpointV7StateStore, EndpointV7Storage,
     EndpointV7StorageError,
 };

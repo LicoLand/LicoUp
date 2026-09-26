@@ -19,7 +19,7 @@
 //!
 //! ```text
 //! LICOARC_AUTHORITY_BUNDLE=<LicoArc>/artifacts/v1/licoarc.bundle.json \
-//!   cargo test -p licoup-native --test v7_peer_ingress -- --ignored
+//!   cargo test -p licoup-native --test peer_ingress -- --ignored
 //! ```
 //!
 //! They are `#[ignore]`d so a checkout without the artifact reports them as not
@@ -45,7 +45,7 @@ use crate::domain::client_conversation::peer_ingress::{
     AcceptanceFact, AdmissionFact, DeliveryFact, PeerBinding, PeerIngress, PeerIngressRefusal,
     ReadFact,
 };
-use crate::domain::mobile_relay::endpoint_v7_transport::{
+use crate::domain::mobile_relay::endpoint_transport::{
     MAX_PEER_PARTS, MAX_PEER_TEXT_BYTES, MAX_STATION_ID_BYTES, MessageForwarder, PeerAuthor,
     PeerDevice, PeerMessage, PeerMessageBody, PeerPart, PeerUnitRefusal, StationHint, StationRef,
 };
@@ -859,7 +859,7 @@ fn handshake_facts_are_not_a_message_unit() {
             MessageForwarder::Direct,
             body([15; 16], None, "not a record"),
         ),
-        Err(crate::domain::mobile_relay::endpoint_v7_transport::PeerUnitRefusal::NotARecord)
+        Err(crate::domain::mobile_relay::endpoint_transport::PeerUnitRefusal::NotARecord)
     );
     let _ = pair.peer.send(b"still usable");
 }

@@ -9,9 +9,9 @@ import { requireFact } from "../../../architecture-graph/lib/canonical.mjs";
  * the dependent named, and a `requires` cycle is refused outright. The plan side
  * must preview the same closure, so it reimplements the declared semantics and
  * proves equality against shared test vectors
- * (`tests/contract/v71_distribution/vectors/catalogue-cases.json`) that are
+ * (`tests/contract/distribution/vectors/catalogue-cases.json`) that are
  * anchored to the product source by
- * `tests/contract/v71_distribution/catalogue-differential.test.mjs`.
+ * `tests/contract/distribution/catalogue-differential.test.mjs`.
  *
  * No range is solved here: the product records a version range and leaves
  * constraint resolution to the host package manager. This resolver follows

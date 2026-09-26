@@ -25,7 +25,7 @@ then run this module's command and the affected consumer commands.
 Run `npm run verify:distribution` from the repository root. Discover narrower registered
 suites with `npm run client:regression:list`; test contents remain the authority.
 
-Test directories: `tests/contract/v71_distribution/`, `tools/architecture-graph/test/`,
+Test directories: `tests/contract/distribution/`, `tools/architecture-graph/test/`,
 `tools/release/tests/`.
 Keep new tests in the owning directory, grouped by behavior, not release milestone.
 

@@ -81,16 +81,16 @@ if (existsSync(reportPath)) {
   const machines = Object.keys(report.declaredTransitions ?? {});
   complete = machines.length > 0 && machines.every((id) => report.completedMachines?.[id]);
   const escape = (value) => String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
-  const rows = ['# 界面状态转换结果', '',
-    profile ? '真实引擎 profile；按用户操作统计。' : '本机 widget 功能检查；虚拟时间不计作性能。', '',
-    `随机种子：${report.seed}；每个流程追加 ${report.randomSteps} 次随机操作。`, '',
-    '| 流程 | 已走过的不同转换 / 模型声明 | 执行结果 |', '| --- | --- | --- |'];
+  const rows = ['# Interface state-transition results', '',
+    profile ? 'Real-engine profile; counted per user operation.' : 'On-machine widget functional check; virtual time is not treated as performance.', '',
+    `Random seed: ${report.seed}; each flow appends ${report.randomSteps} random operations.`, '',
+    '| Flow | Distinct transitions walked / declared by the model | Result |', '| --- | --- | --- |'];
   for (const id of machines) {
     const covered = new Set((report.results ?? []).filter((row) => row.machine === id && row.passed).map((row) => row.transition)).size;
-    rows.push(`| ${model.machines.find((machine) => machine.id === id)?.label ?? id} | ${covered} / ${report.declaredTransitions[id]} | ${report.completedMachines?.[id] ? '完成' : id in (report.completedMachines ?? {}) ? '失败' : '未运行'} |`);
+    rows.push(`| ${model.machines.find((machine) => machine.id === id)?.label ?? id} | ${covered} / ${report.declaredTransitions[id]} | ${report.completedMachines?.[id] ? 'passed' : id in (report.completedMachines ?? {}) ? 'failed' : 'not run'} |`);
   }
   const number = (value) => typeof value === 'number' ? value.toFixed(1) : '—';
-  rows.push('', '## 操作汇总', '', '| 做什么 | 成功 / 执行次数 | 通常响应 ms（中位数） | 最慢响应 ms | 采到的帧数 | 长帧数 |', '| --- | --- | --- | --- | --- | --- |');
+  rows.push('', '## Operation summary', '', '| Action | Succeeded / executions | Typical response ms (median) | Slowest response ms | Frames sampled | Long frames |', '| --- | --- | --- | --- | --- | --- |');
   const byAction = Map.groupBy(report.results ?? [], (row) => row.actionId);
   for (const actionRows of byAction.values()) {
     const times = actionRows.flatMap((row) => typeof row.responseMs === 'number' ? [row.responseMs] : []).sort((a, b) => a - b);
@@ -99,20 +99,20 @@ if (existsSync(reportPath)) {
     const sampled = actionRows.filter((row) => row.frameCount > 0);
     rows.push(`| ${escape(actionRows[0].action)} | ${actionRows.filter((row) => row.passed).length} / ${actionRows.length} | ${number(median)} | ${number(times.at(-1))} | ${sampled.length ? sampled.reduce((sum, row) => sum + row.frameCount, 0) : '—'} | ${sampled.length ? sampled.reduce((sum, row) => sum + (row.overBudgetFrames ?? 0), 0) : '—'} |`);
   }
-  rows.push('', `完整的起点、动作、目标、逐次耗时、帧率与帧耗时见 [操作记录](${basename}.json)。`, '');
+  rows.push('', `Full origins, actions, targets, per-run timings, frame rates and frame costs are in the [operation record](${basename}.json).`, '');
   const details = (report.results ?? []).filter((row) => !row.passed);
   if (profile) details.push(...(report.results ?? []).filter((row) => row.passed).sort((a, b) => b.responseMs - a.responseMs).slice(0, 10));
   if (details.length) {
-    rows.push('## 失败步骤与最慢操作', '', '| 界面 / 步骤 | 从哪里 | 做什么 | 应到哪里 | 结果 | 响应 ms | 帧率 | 长帧数 |', '| --- | --- | --- | --- | --- | --- | --- | --- |');
-    for (const row of details) rows.push(`| ${row.presentation} / ${row.step} ${row.phase} | ${escape(row.from)} | ${escape(row.action)} | ${escape(row.to)} | ${row.passed ? '通过' : '失败'} | ${number(row.responseMs)} | ${number(row.renderedFramesPerSecond)} | ${row.overBudgetFrames ?? '—'} |`);
+    rows.push('## Failed steps and slowest operations', '', '| Interface / step | From | Action | Expected | Result | Response ms | Frame rate | Long frames |', '| --- | --- | --- | --- | --- | --- | --- | --- |');
+    for (const row of details) rows.push(`| ${row.presentation} / ${row.step} ${row.phase} | ${escape(row.from)} | ${escape(row.action)} | ${escape(row.to)} | ${row.passed ? 'passed' : 'failed'} | ${number(row.responseMs)} | ${number(row.renderedFramesPerSecond)} | ${row.overBudgetFrames ?? '—'} |`);
   }
-  rows.push('', '## 失败重放', '');
+  rows.push('', '## Failure replay', '');
   const profileReplay = profile ? ` --profile --device ${['macos', 'linux', 'windows'].includes(device) ? device : '<local-target>'}` : '';
   for (const [id, failure] of Object.entries(report.failures ?? {})) {
     const actions = failure.replay.length ? `--replay ${failure.replay.join(',')}` : '--steps 0';
     rows.push(`- ${id}: \`npm run client:test:ui -- --machine ${id} --seed ${seed}${profileReplay} ${actions}\``);
   }
-  rows.push('', '## 可见操作遗漏', '', '下面列出已访问界面中，当前状态尚未声明转换的按钮；全部已声明转换通过并不等于整个产品已经覆盖。无文字按钮也会列出，需补充语义名称或人工核对。完整位置保存在操作记录中。', '', '| 可见操作 | 已知动作 | 缺少转换的状态数 | 例如 |', '| --- | --- | --- | --- |');
+  rows.push('', '## Visible-operation omissions', '', 'The list below names buttons in visited interfaces whose current state declares no transition; every declared transition passing does not mean the whole product is covered. Buttons without text are listed too and need a semantic name or a manual check. Full locations are kept in the operation record.', '', '| Visible control | Known actions | States missing a transition | Example |', '| --- | --- | --- | --- |');
   const omissions = new Map();
   for (const [state, controls] of Object.entries(report.visibleControls ?? {})) {
     const [flowId, stateId] = state.split('/');
@@ -128,8 +128,8 @@ if (existsSync(reportPath)) {
       omissions.set(signature, item);
     }
   }
-  for (const { control, states } of omissions.values()) rows.push(`| ${escape(control.label)} | ${control.actions.map((action) => model.actions[action]?.label ?? action).join(', ') || '未映射'} | ${states.length} | ${escape(states.slice(0, 2).join('；'))} |`);
-  rows.push('', '响应耗时包含测试驱动开销。拖动耗时包括手势持续时间。长帧表示界面计算或绘制用时超过当前显示器的一帧间隔；原始帧耗时在 JSON 中。单帧操作不计算帧率；空闲界面不要求持续满帧。缺采样显示“—”。', '');
+  for (const { control, states } of omissions.values()) rows.push(`| ${escape(control.label)} | ${control.actions.map((action) => model.actions[action]?.label ?? action).join(', ') || 'unmapped'} | ${states.length} | ${escape(states.slice(0, 2).join('; '))} |`);
+  rows.push('', 'Response time includes test-driver overhead. Drag time includes the gesture duration. A long frame means interface computation or painting took longer than one refresh interval of the current display; raw frame costs are in the JSON. A single-frame operation has no frame rate, and an idle interface is not required to sustain full frame rate. A missing sample shows "none".', '');
   writeFileSync(markdown, rows.join('\n'));
   console.log(`Report: ${path.relative(root, markdown)}`);
 } else console.error('No UI report was produced; this run does not establish coverage.');

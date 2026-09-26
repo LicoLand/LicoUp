@@ -8,12 +8,12 @@ export const ADAPTERS_MODULES = Object.freeze([
     inputs: [
       "sdk/agent-adapter/**",
       "extensions/generic/**",
-      "tests/integration/v71_agent_sdk/**",
+      "tests/integration/agent_sdk/**",
       "crates/licoup-extension-contracts/src/**",
       "schemas/extensions/**",
     ],
     command: node("tools/scripts/client-toolchain-runner.mjs", [
-      "--", "python3", "-B", "tests/integration/v71_agent_sdk/run_tests.py",
+      "--", "python3", "-B", "tests/integration/agent_sdk/run_tests.py",
     ], 5 * 60_000),
   }),
   defineModule({

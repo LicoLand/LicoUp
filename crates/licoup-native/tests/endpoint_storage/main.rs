@@ -1,7 +1,7 @@
 //! V7-P1 endpoint storage — acceptance A28 at `component-integration`.
 //!
 //! The module under test is the production module
-//! (`licoup_native::domain::mobile_relay::endpoint_v7_storage`), now declared
+//! (`licoup_native::domain::mobile_relay::endpoint_storage`), now declared
 //! by the parent module.
 //!
 //! What is real here: the actual storage/custody sources, the pinned LicoArc

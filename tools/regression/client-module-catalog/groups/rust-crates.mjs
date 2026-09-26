@@ -34,8 +34,8 @@ export const RUST_CRATE_MODULES = Object.freeze([
     id: "rust.platform.host-integration",
     kind: "rust-crate",
     summary: "Native host workflow and conversation integration",
-    inputs: ["crates/licoup-native/tests/v7_host/**"],
-    command: command("cargo", ["test", "--manifest-path", "crates/licoup-native/Cargo.toml", "--test", "v7_host"], 20 * 60_000),
+    inputs: ["crates/licoup-native/tests/host_runtime/**"],
+    command: command("cargo", ["test", "--manifest-path", "crates/licoup-native/Cargo.toml", "--test", "host_runtime"], 20 * 60_000),
   }),
   defineModule({
     id: "rust.conversation.local-flow",
@@ -74,7 +74,7 @@ export const RUST_CRATE_MODULES = Object.freeze([
     id: "rust.component.analytics",
     kind: "rust-crate",
     summary: "Optional metrics correction/correlation and borrowed core-fact preservation on removal",
-    inputs: ["components/analytics/**", "sdk/usage-source/**", "tests/integration/v71_usage_sources/**", "crates/licoup-extension-contracts/src/usage.rs"],
+    inputs: ["components/analytics/**", "sdk/usage-source/**", "tests/integration/usage_sources/**", "crates/licoup-extension-contracts/src/usage.rs"],
     command: command("cargo", ["test", "--locked", "--offline", "--manifest-path", "components/analytics/Cargo.toml"], 20 * 60_000),
   }),
   ...[
@@ -140,7 +140,7 @@ export const RUST_CRATE_MODULES = Object.freeze([
     inputs: [
       "sdk/model-provider/**",
       "extensions/providers/**",
-      "tests/integration/v71_model_providers/**",
+      "tests/integration/model_providers/**",
       "crates/licoup-application/**",
       "crates/licoup-extension-contracts/**",
     ],

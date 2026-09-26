@@ -645,6 +645,97 @@ fn safe_error_code(error: &anyhow::Error) -> &'static str {
     "migration_step_failed"
 }
 
+/// The authoritative migration frontier in a form the standalone migration tool
+/// can read without duplicating the domain catalog.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierProjection {
+    pub frontier_id: String,
+    pub domains: Vec<FrontierDomainProjection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierDomainProjection {
+    pub domain_id: String,
+    pub target_schema_version: u32,
+    pub steps: Vec<FrontierStepProjection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontierStepProjection {
+    pub step_id: String,
+    pub from_schema_version: u32,
+    pub to_schema_version: u32,
+}
+
+/// One domain's observed state, as the standalone tool must report it.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DomainStateProjection {
+    pub domain_id: String,
+    /// The domain's own authoritative store version.
+    pub store_version: u32,
+    /// The marker's authoritative version when a marker exists.
+    pub marker_schema_version: Option<u32>,
+    /// The version the next migration edge will move from.
+    pub effective_version: u32,
+    pub target_schema_version: u32,
+}
+
+/// Probe the root through the same store owners the client uses, so the tool
+/// reports the client's own facts instead of re-deriving them.
+pub fn domain_state_projection(data_root: &Path) -> Result<Vec<DomainStateProjection>> {
+    let frontier = embedded_frontier()?;
+    let marker_root = data_root.join("client-state").join("migrations").join("domain-state");
+    let mut states = Vec::with_capacity(frontier.domains.len());
+    for domain in &frontier.domains {
+        let marker = load_domain_marker(&marker_root, domain)?;
+        let store_version = probe_authoritative_store(data_root, &domain.domain_id)
+            .map(|probe| probe.version)
+            .unwrap_or(0);
+        let marker_schema_version = marker.as_ref().map(|marker| marker.authoritative_schema_version);
+        let effective_version = marker_schema_version
+            .filter(|marker| *marker <= store_version)
+            .unwrap_or(store_version);
+        states.push(DomainStateProjection {
+            domain_id: domain.domain_id.clone(),
+            store_version,
+            marker_schema_version,
+            effective_version,
+            target_schema_version: domain.target_schema_version,
+        });
+    }
+    Ok(states)
+}
+
+/// Project the immutable embedded frontier. This is the single schema authority:
+/// the standalone tool reads it instead of keeping its own domain list.
+pub fn frontier_projection_struct() -> Result<FrontierProjection> {
+    let frontier = embedded_frontier()?;
+    Ok(FrontierProjection {
+        frontier_id: frontier.frontier_id.clone(),
+        domains: frontier
+            .domains
+            .iter()
+            .map(|domain| FrontierDomainProjection {
+                domain_id: domain.domain_id.clone(),
+                target_schema_version: domain.target_schema_version,
+                steps: domain
+                    .steps
+                    .iter()
+                    .map(|step| FrontierStepProjection {
+                        step_id: step.step_id.clone(),
+                        from_schema_version: step.from_schema_version,
+                        to_schema_version: step.to_schema_version,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    })
+}
+
 pub fn admission_json(data_root: &Path) -> Result<serde_json::Value> {
     Ok(serde_json::to_value(admit(data_root)?)?)
 }

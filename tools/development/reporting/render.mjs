@@ -3,46 +3,46 @@ import { graphView } from "./graph.mjs";
 import { directedLayout } from "./graph-layout.mjs";
 
 const moduleNames = {
-  conversation: "会话", workflow: "工作流引擎", presentation: "界面数据", "endpoint-collaboration": "端点与协作",
-  "extension-platform": "扩展平台", "client-ui": "客户端界面", "agent-runtime": "智能体运行时",
-  "native-bridge": "原生桥接", catalogs: "模型与用量", gateway: "模型网关", "data-migration": "数据迁移",
-  distribution: "分发与发布", development: "开发工具",
+  conversation: "Conversation", workflow: "Workflow engine", presentation: "Presentation data", "endpoint-collaboration": "Endpoint collaboration",
+  "extension-platform": "Extension platform", "client-ui": "Client UI", "agent-runtime": "Agent runtime",
+  "native-bridge": "Native bridge", catalogs: "Models and usage", gateway: "Model gateway", "data-migration": "Data migration",
+  distribution: "Distribution", development: "Development tooling",
 };
 const name = (value) => moduleNames[value] ?? String(value).replaceAll(/[._-]/gu, " ");
 const evidenceNames = {
-  "Workflow report tooling": "报告工具", "Change impact": "改动影响", "Source structure": "源码结构",
-  "State machine review": "状态机检查", "Upstream observations": "上游观察", "Module regression": "模块回归",
-  "Privacy review summary": "隐私审阅", "Release acceptance": "发布验收", "Completed privacy review": "隐私审阅结论",
-  "Engineering closure receipt": "工程交付记录",
+  "Workflow report tooling": "Report tooling", "Change impact": "Change impact", "Source structure": "Source structure",
+  "State machine review": "State machine review", "Upstream observations": "Upstream observations", "Module regression": "Module regression",
+  "Privacy review summary": "Privacy review", "Release acceptance": "Release acceptance", "Completed privacy review": "Completed privacy review",
+  "Engineering closure receipt": "Engineering closure receipt",
 };
 
 export function renderIndex({ now, receipts, plan }) {
-  const page = new ReportPage("项目报告", "index.html", now, { planAvailable: !!plan });
+  const page = new ReportPage("Project reports", "index.html", now, { planAvailable: !!plan });
   const cards = [
-    ...(plan ? [["delivery-plan.html", "临时计划", "Better Plan 本地工作区"]] : []),
-    ["workflows.html", "工作流", "从需求讨论到工程交付"],
-    ["state-machines.html", "状态机", "状态、事件与转移"],
-    ["architecture.html", "架构", "模块及其依赖"],
+    ...(plan ? [["delivery-plan.html", "Delivery plan", "Local Better Plan workspace"]] : []),
+    ["workflows.html", "Workflows", "From requirements discussion to engineering handoff"],
+    ["state-machines.html", "State machines", "States, events and transitions"],
+    ["architecture.html", "Architecture", "Modules and their dependencies"],
   ];
   const links = cards.map(([href, title, subtitle]) => `<article class="report-card"><a class="report-link" href="${href}"><div class="card-heading"><h2>${title}</h2>${chevron}</div><p>${subtitle}</p></a></article>`).join("");
   const evidence = receipts.map((entry) => page.card({ title: evidenceNames[entry.title] ?? entry.title,
-    subtitle: entry.present ? "已有记录 · 待核对" : "尚未生成",
+    subtitle: entry.present ? "Record present, scope to confirm" : "Not generated",
     detail: { title: evidenceNames[entry.title] ?? entry.title,
-      description: entry.present ? "记录已保存；是否适用于当前源码需核对其范围。" : "尚未生成这项报告。",
-      sections: entry.modified ? [{ title: "文件更新时间", items: [entry.modified] }] : [],
-      ...(entry.present ? { link: { label: "查看记录", href: entry.file } } : {}),
+      description: entry.present ? "A record is stored; whether it covers the current source must be confirmed against its scope." : "This report has not been generated.",
+      sections: entry.modified ? [{ title: "File updated", items: [entry.modified] }] : [],
+      ...(entry.present ? { link: { label: "Open record", href: entry.file } } : {}),
     },
   })).join("");
-  return page.render(`<div class="card-grid">${links}</div><h2 class="section-heading">工程记录</h2><div class="card-grid evidence-grid">${evidence}</div>`);
+  return page.render(`<div class="card-grid">${links}</div><h2 class="section-heading">Engineering records</h2><div class="card-grid evidence-grid">${evidence}</div>`);
 }
 
 export function renderWorkflows({ now, workflows, plan }) {
-  const page = new ReportPage("工作流", "workflows.html", now, { planAvailable: !!plan });
+  const page = new ReportPage("Workflows", "workflows.html", now, { planAvailable: !!plan });
   return page.render(workflows.map((flow, index) => {
     const details = { title: label(flow.title), description: label(flow.purpose), sections: [
-      { title: "负责人", items: [label(flow.owner)] }, { title: "开始条件", items: [label(flow.entry)] },
-      { title: "完成条件", items: [label(flow.exit)] }, { title: "异常处理", items: [label(flow.failure)] },
-      { title: "执行边界", items: [label(flow.boundary)] },
+      { title: "Owner", items: [label(flow.owner)] }, { title: "Entry condition", items: [label(flow.entry)] },
+      { title: "Exit condition", items: [label(flow.exit)] }, { title: "Failure handling", items: [label(flow.failure)] },
+      { title: "Execution boundary", items: [label(flow.boundary)] },
     ] };
     const nodes = flow.steps.map((step, stepIndex) => ({ code: `${flow.id}-${stepIndex}`, title: label(step),
       detail: { ...details, title: label(step) }, initial: stepIndex === 0, terminal: stepIndex === flow.steps.length - 1,
@@ -75,18 +75,18 @@ export function stateGraph(machine, eventLabels = {}) {
     const full = events.join(" / ");
     const short = full.length > 25 ? `${String(events[0]).slice(0, 21)} …` : full;
     return { from: first.from_state, to: first.to_state, label: short,
-      detail: { title: `${stateNames.get(first.from_state)} 至 ${stateNames.get(first.to_state)}`,
-        sections: [{ title: "触发事件", items: transitions.map((edge) => `${eventName(edge)}${edge.guard ? ` · ${typeof edge.guard === "string" ? edge.guard : JSON.stringify(edge.guard)}` : ""}`) }] },
+      detail: { title: `${stateNames.get(first.from_state)} to ${stateNames.get(first.to_state)}`,
+        sections: [{ title: "Triggering events", items: transitions.map((edge) => `${eventName(edge)}${edge.guard ? ` · ${typeof edge.guard === "string" ? edge.guard : JSON.stringify(edge.guard)}` : ""}`) }] },
     };
   });
   const initial = machine.initial ?? machine.initial_state;
   const terminals = new Set(machine.terminal ?? []);
   const nodes = machine.states.map((state) => ({ code: state.id, title: stateNames.get(state.id), initial: state.id === initial,
     terminal: terminals.has(state.id), detail: { title: stateNames.get(state.id),
-      description: state.id === initial ? "初始状态" : terminals.has(state.id) ? "终止状态" : undefined,
+      description: state.id === initial ? "Initial state" : terminals.has(state.id) ? "Terminal state" : undefined,
       sections: [
-        { title: "转出", items: outgoing.get(state.id) },
-        { title: "转入", items: incoming.get(state.id) },
+        { title: "Outgoing", items: outgoing.get(state.id) },
+        { title: "Incoming", items: incoming.get(state.id) },
       ],
     },
   }));
@@ -94,7 +94,7 @@ export function stateGraph(machine, eventLabels = {}) {
 }
 
 export function renderMachines({ now, machines, plan }) {
-  const page = new ReportPage("状态机", "state-machines.html", now, { planAvailable: !!plan });
+  const page = new ReportPage("State machines", "state-machines.html", now, { planAvailable: !!plan });
   let first = true;
   const groups = new Map();
   for (const entry of machines) {
@@ -107,18 +107,18 @@ export function renderMachines({ now, machines, plan }) {
         body: graphView(page, graph, title) }));
       first = false;
     }
-    if (entry.kind === "dynamic") groups.get(owner).push(page.card({ title: "用户定义工作流", subtitle: "运行时提供",
-      detail: { title: "用户定义工作流", description: "图由用户提供，此报告不读取私人执行实例。",
-        sections: [{ title: "实现归属", items: [entry.provider, entry.executor] }] } }));
+    if (entry.kind === "dynamic") groups.get(owner).push(page.card({ title: "User-defined workflow", subtitle: "Provided at runtime",
+      detail: { title: "User-defined workflow", description: "The graph is supplied by the user; this report reads no private execution instance.",
+        sections: [{ title: "Implementation owner", items: [entry.provider, entry.executor] }] } }));
   }
   return page.render([...groups].map(([owner, cards]) => `<h2 class="group-title">${escape(owner)}</h2>${cards.join("")}`).join(""));
 }
 
 export function renderArchitecture({ now, architecture, plan }) {
-  const page = new ReportPage("架构", "architecture.html", now, { planAvailable: !!plan });
+  const page = new ReportPage("Architecture", "architecture.html", now, { planAvailable: !!plan });
   return page.render(architecture.map((view) => page.card({ title: view.title,
-    detail: { title: view.title, description: "连线从组件指向其直接依赖，读取当前组件定义自动生成。",
-      sections: [{ title: "范围", items: ["当前视图内的运行时组件依赖；测试和构建工具依赖不在此图中。"] }] },
+    detail: { title: view.title, description: "Edges point from a component to its direct dependencies and are generated from the current component definitions.",
+      sections: [{ title: "Scope", items: ["Runtime component dependencies within this view; test and build-tool dependencies are not shown."] }] },
     body: graphView(page, directedLayout(view.nodes, view.edges), view.title),
   })).join(""));
 }

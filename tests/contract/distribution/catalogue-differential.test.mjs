@@ -20,7 +20,7 @@ import { REPOSITORY_ROOT, tempDir } from "./fixtures.mjs";
  * does not concern this oracle.
  */
 
-const VECTORS_PATH = "tests/contract/v71_distribution/vectors/catalogue-cases.json";
+const VECTORS_PATH = "tests/contract/distribution/vectors/catalogue-cases.json";
 const VECTORS = JSON.parse(fs.readFileSync(path.join(REPOSITORY_ROOT, VECTORS_PATH), "utf8"));
 
 function sameDecision(left, right) {

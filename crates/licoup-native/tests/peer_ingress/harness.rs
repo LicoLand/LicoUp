@@ -42,7 +42,7 @@ use licoup_conversation::{ConversationStore, MembershipAccess, Principal, Princi
 use licoup_protocol_bindings::{AuthorityInput, EndpointConsumer, InboundSession, TrustFacts};
 
 use crate::domain::client_conversation::peer_ingress::{PeerBinding, PeerBindings};
-use crate::domain::mobile_relay::endpoint_v7_transport::{PeerAuthor, PeerDevice};
+use crate::domain::mobile_relay::endpoint_transport::{PeerAuthor, PeerDevice};
 
 // ---------------------------------------------------------------------------
 // Caller-owned platform layer

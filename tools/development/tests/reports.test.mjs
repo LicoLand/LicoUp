@@ -32,7 +32,7 @@ test("report generation reflects sources without executing workflows or reading 
     assert.equal(first.configuredMachines, 1);
     const index = readFileSync(path.join(root, "build/reports/index.html"), "utf8");
     assert.match(index, /privacy-audit\/example.reviewed.html/);
-    assert.match(index, /尚未生成/);
+    assert.match(index, /Not generated/);
     assert.doesNotMatch(index, /PRIVATE_PAYLOAD/);
     assert.doesNotMatch(index, /delivery-plan.html|PRIVATE_DRAFT/);
     const flow = readFileSync(path.join(root, "build/reports/workflows.html"), "utf8");
@@ -63,7 +63,7 @@ test("report generation reflects sources without executing workflows or reading 
     assert.match(projected, /src\/example.mjs/);
     assert.match(projected, /Compare with the fixture/);
     assert.match(projected, /node --test tests\/example.test.mjs/);
-    assert.match(projected, /里程碑集成交付/);
+    assert.match(projected, /Milestone integration handoff/);
     assert.equal(readFileSync(path.join(root, "private/workspace/delivery/Plan.json"), "utf8"), source);
     assert.equal(existsSync(path.join(root, "private/workspace/delivery/Checkpoints.json")), false);
     const successor = structuredClone(native);

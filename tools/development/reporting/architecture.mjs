@@ -36,8 +36,8 @@ export function architectureViews(root) {
     const byDirectory = new Map(view.components.map((component) => [manifests.get(component.manifest).directory, component]));
     const nodes = view.components.map((component) => ({ code: component.manifest, title: label(component.title),
       detail: { title: label(component.title), description: manifests.get(component.manifest).name,
-        sections: [{ title: "依赖来源", items: [component.manifest] }],
-        link: { label: "组件定义", href: `../../${component.manifest}` } },
+        sections: [{ title: "Dependency sources", items: [component.manifest] }],
+        link: { label: "Component definition", href: `../../${component.manifest}` } },
     }));
     const edgeMap = new Map();
     for (const component of view.components) for (const dependency of manifests.get(component.manifest).dependencies) {
@@ -46,8 +46,8 @@ export function architectureViews(root) {
       const key = `${component.manifest}:${target.manifest}`;
       if (!edgeMap.has(key)) edgeMap.set(key, { from: component.manifest, to: target.manifest,
         detail: { title: `${label(component.title)} · ${label(target.title)}`,
-          description: "组件定义中的直接依赖", sections: [{ title: "适用范围", items: [] }] } });
-      edgeMap.get(key).detail.sections[0].items.push(dependency.condition ?? "通用");
+          description: "Direct dependencies declared by the component definitions", sections: [{ title: "Applies to", items: [] }] } });
+      edgeMap.get(key).detail.sections[0].items.push(dependency.condition ?? "universal");
     }
     return { title: label(view.title), nodes, edges: [...edgeMap.values()] };
   });

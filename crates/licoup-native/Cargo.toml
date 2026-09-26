@@ -152,5 +152,5 @@ required-features = ["test-support"]
 # crate so the isolation contract is read from the repository root; wiring the
 # target is a root-manifest change (see the task's interface note).
 [[test]]
-name = "v7_extension_isolation"
-path = "../../tests/integration/v7_extension_isolation/main.rs"
+name = "extension_isolation"
+path = "../../tests/integration/extension_isolation/main.rs"

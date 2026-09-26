@@ -26,7 +26,7 @@ Run `npm run verify:catalogs` from the repository root. Discover narrower regist
 suites with `npm run client:regression:list`; test contents remain the authority.
 
 Test directories: `crates/licoup-native/src/domain/skill_hub/tests/`, `tests/contract/client/`,
-`tests/integration/v71_usage_sources/`; analytics and usage SDK unit tests are
+`tests/integration/usage_sources/`; analytics and usage SDK unit tests are
 colocated under `components/analytics/src/` and `sdk/usage-source/src/`.
 Agent Hub and usage ledger unit tests live with their modules under
 `crates/licoup-native/src/domain/agent_hub/` and `crates/licoup-native/src/domain/agent_usage/`.

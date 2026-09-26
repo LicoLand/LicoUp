@@ -7,7 +7,7 @@
 //!
 //! The pipeline is:
 //!
-//! 1. a [`PeerMessage`](crate::domain::mobile_relay::endpoint_v7_transport::PeerMessage)
+//! 1. a [`PeerMessage`](crate::domain::mobile_relay::endpoint_transport::PeerMessage)
 //!    carries SDK-verified provenance and the peer's content;
 //! 2. [`PeerIngress::admit`] resolves that provenance to a pre-existing
 //!    membership through the host's [`PeerBindings`], checks it against the

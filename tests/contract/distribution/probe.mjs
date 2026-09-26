@@ -16,7 +16,7 @@ import { REPOSITORY_ROOT } from "./fixtures.mjs";
  * skip; a machine with `cargo` runs it and a failure is a failure, never a skip.
  */
 
-export const PROBE_MANIFEST = "tests/contract/v71_distribution/rust-probe/Cargo.toml";
+export const PROBE_MANIFEST = "tests/contract/distribution/rust-probe/Cargo.toml";
 export const PROBE_TARGET_DIRECTORY = "cache/u10-distribution-probe-target";
 export const PROBE_TIMEOUT_MS = 1_200_000;
 

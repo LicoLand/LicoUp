@@ -1,8 +1,8 @@
 import 'dart:collection';
 
-import 'package:licoup/src/platform/diagnostics/v7/observation_backend.dart';
-import 'package:licoup/src/platform/diagnostics/v7/observation_ids.dart';
-import 'package:licoup/src/platform/diagnostics/v7/observation_segment.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_backend.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_ids.dart';
+import 'package:licoup/src/platform/diagnostics/observation/observation_segment.dart';
 
 /// Reads the probe clock, in microseconds.
 ///

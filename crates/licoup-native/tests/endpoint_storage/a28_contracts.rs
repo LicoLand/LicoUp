@@ -16,7 +16,7 @@ use licoup_protocol_bindings::state::{
     AtomicState, Commit, CustodyRef, KeyCustody, KeyMutation, PendingId, PendingItem, Revision,
 };
 
-use licoup_native::domain::mobile_relay::endpoint_v7_storage::{
+use licoup_native::domain::mobile_relay::endpoint_storage::{
     EndpointV7Continuity, EndpointV7PendingKind, EndpointV7PendingPayload, EndpointV7Storage,
     EndpointV7StorageError,
 };

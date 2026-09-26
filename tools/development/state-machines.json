@@ -269,14 +269,14 @@
     "id": "security-custody-lifecycle",
     "owner": "endpoint-collaboration",
     "configuration": "crates/licoup-native/resources/state-machines/security-custody-lifecycle.json",
-    "executor": "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/store.rs",
+    "executor": "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/store.rs",
     "execution": "compiled-table",
     "verification": "verify:endpoint-collaboration",
     "source": "crates/licoup-endpoint-core/src/ports.rs",
     "symbol": "CustodyLifecycle",
     "consumers": [
-      "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/root.rs",
-      "crates/licoup-native/src/domain/mobile_relay/endpoint_v7_storage/custody.rs"
+      "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/root.rs",
+      "crates/licoup-native/src/domain/mobile_relay/endpoint_storage/custody.rs"
     ]
   },
   {

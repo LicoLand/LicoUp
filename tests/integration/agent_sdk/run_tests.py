@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the v7.1 Agent SDK component suite.
 
-    python3 -B tests/integration/v71_agent_sdk/run_tests.py
+    python3 -B tests/integration/agent_sdk/run_tests.py
 
 Every case starts real local processes: the SDK samples, the generic carrier
 with a wrapped command, and the compiled native sample. No model, no network and

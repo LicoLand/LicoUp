@@ -30,8 +30,11 @@ the recovery backup until the data transition is confirmed. Unpublished snapshot
 that contain user data require a bounded recovery mapping into the current target,
 not another supported release profile or permanent compatibility implementation.
 
-Extend the existing migration tool and durable owner when this workflow needs missing
-capability; do not establish a second schema authority. At present the CLI accepts
+The migration tool is a standalone Rust program packaged and distributed as a
+binary; it does not require a Node.js runtime on the user's machine. It is not
+kept alongside a second implementation, and it must not depend on the client
+checkout to run. Extend that program and the durable owner when this workflow
+needs missing capability; do not establish a second schema authority. At present the CLI accepts
 `--data-root`, but canonical Conversation conversion is delegated to native admission;
 the CLI alone does not execute the complete rehearsal. Real-client acceptance remains
 the separate phase defined in [Closure](../CLOSURE.md).

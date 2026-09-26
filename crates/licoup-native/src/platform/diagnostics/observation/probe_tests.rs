@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use super::*;
-use crate::platform::diagnostics::v7::backend::DisabledObservationTelemetryBackend;
+use crate::platform::diagnostics::observation::backend::DisabledObservationTelemetryBackend;
 
 fn record() -> ObservationSegmentRecord {
     ObservationSegmentRecord::new(ObservationPhase::QueueWait, CorrelationIds::default(), 0, 1)
