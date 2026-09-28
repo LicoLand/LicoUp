@@ -56,7 +56,7 @@ pub(crate) fn manual_runtime_executable_from_store(
 }
 
 fn portable_target_store() -> Option<ClientStateStore> {
-    let root = crate::platform::paths::portable_data_dir().ok()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir().ok()?;
     let stores = PORTABLE_TARGET_STORES.get_or_init(|| Mutex::new(VecDeque::new()));
     let mut stores = stores
         .lock()

@@ -24,8 +24,9 @@ use crate::{
         LlmApiKeyCredentialUpdate, LlmApiKeyInventory, LlmApiKeyMetadata, LlmApiKeyProvider,
         MAX_LLM_API_KEYS, NewLlmApiKey,
     },
-    platform::{file_security, paths, secure_mesh_secret_store::PlatformSecretStore},
+    platform::secure_mesh_secret_store::PlatformSecretStore,
 };
+use licoup_foundation::platform::{file_security, paths};
 
 const SERVICE: &str = "dev.licoland.licoup.llm-gateway";
 const PREFIX: &str = "llm-api-key";

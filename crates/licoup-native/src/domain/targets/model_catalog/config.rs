@@ -85,7 +85,7 @@ pub(super) fn collect_json_model_catalog_files(root: &Path, paths: &mut Vec<Path
 pub(super) fn home_dir_for_model_catalog(params: &Value) -> Option<PathBuf> {
     param_string(params, "homeDir")
         .map(PathBuf::from)
-        .or_else(crate::platform::paths::user_home_from_env)
+        .or_else(licoup_foundation::platform::paths::user_home_from_env)
 }
 
 pub(super) fn collect_named_model_cache_files(

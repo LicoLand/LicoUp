@@ -41,9 +41,11 @@ pub(super) fn load_domain_marker(
     domain: &DomainFrontier,
 ) -> Result<Option<DomainMarker>> {
     let path = marker_path(root, &domain.domain_id);
-    let Some(raw) =
-        crate::platform::file_security::read_existing_private_text_bounded(&path, 16 * 1024)
-            .context("unsupported_state_shape")?
+    let Some(raw) = licoup_foundation::platform::file_security::read_existing_private_text_bounded(
+        &path,
+        16 * 1024,
+    )
+    .context("unsupported_state_shape")?
     else {
         return Ok(None);
     };

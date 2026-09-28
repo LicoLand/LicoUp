@@ -582,9 +582,10 @@ mod tests {
             "licoup-subagent-production-construction-{}",
             uuid::Uuid::new_v4()
         ));
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let application = production_application();
-        crate::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
 
         assert!(application.is_ok());
         assert!(!root.join("conversations.sqlite3").exists());

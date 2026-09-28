@@ -1,8 +1,8 @@
 //! End-to-end skill-usage backfill acceptance over synthetic native history
 //! fixtures, driven through the public native facade.
 
+use licoup_foundation::platform::paths::set_portable_data_dir_override;
 use licoup_native::domain::skill_hub;
-use licoup_native::platform::paths::set_portable_data_dir_override;
 use serde_json::json;
 use std::fs;
 use std::io::Write;

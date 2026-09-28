@@ -3,7 +3,6 @@ pub mod acp;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub mod mcp;
-pub mod safe_archive;
 pub mod secure_mesh;
 pub mod secure_mesh_acp;
 pub mod secure_mesh_approval;

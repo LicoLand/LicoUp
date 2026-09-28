@@ -144,7 +144,7 @@ fn discover_path(
     if !explicitly_selected
         && crate::domain::targets::scan_paths::denied(
             path,
-            crate::platform::paths::user_home_from_env().as_deref(),
+            licoup_foundation::platform::paths::user_home_from_env().as_deref(),
         )
     {
         record_skip(discovery, path, "denied_personal_location");
@@ -481,7 +481,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn discovery_does_not_follow_symlink_into_personal_library() {
-        let Some(home) = crate::platform::paths::user_home_from_env() else {
+        let Some(home) = licoup_foundation::platform::paths::user_home_from_env() else {
             return;
         };
         let root = temp_root("symlink-escape");

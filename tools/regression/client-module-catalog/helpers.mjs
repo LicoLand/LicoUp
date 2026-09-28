@@ -2,6 +2,7 @@ import { classifyClientModule } from "../client-regression-metadata.mjs";
 
 const REPO_ROOT = ".";
 export const NATIVE_MANIFEST = "crates/licoup-native/Cargo.toml";
+export const FOUNDATION_MANIFEST = "crates/licoup-foundation/Cargo.toml";
 
 export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
   "apps/desktop/analysis_options.yaml",
@@ -13,6 +14,10 @@ export const FLUTTER_COMPOSITION_INPUTS = Object.freeze([
 export const RUST_COMPOSITION_INPUTS = Object.freeze([
   "Cargo.lock",
   "Cargo.toml",
+  FOUNDATION_MANIFEST,
+  "crates/licoup-foundation/src/lib.rs",
+  "crates/licoup-foundation/src/core/mod.rs",
+  "crates/licoup-foundation/src/platform/mod.rs",
   NATIVE_MANIFEST,
   "crates/licoup-native/src/core/mod.rs",
   "crates/licoup-native/src/domain/mod.rs",
@@ -148,6 +153,21 @@ export function rustLayer(filter, harnessArgs = []) {
       "test",
       "--manifest-path",
       NATIVE_MANIFEST,
+      "--lib",
+      filter,
+      ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),
+    ],
+    10 * 60_000,
+  );
+}
+
+export function foundationLayer(filter, harnessArgs = []) {
+  return command(
+    "cargo",
+    [
+      "test",
+      "--manifest-path",
+      FOUNDATION_MANIFEST,
       "--lib",
       filter,
       ...(harnessArgs.length > 0 ? ["--", ...harnessArgs] : []),

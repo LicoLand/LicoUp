@@ -109,12 +109,12 @@ struct HostOwnerLock {
 impl HostOwnerLock {
     /// Take the root's ownership lock, or `None` when a live host holds it.
     fn acquire() -> Result<Option<Self>> {
-        let root = licoup_native::platform::paths::portable_data_dir()?;
+        let root = licoup_foundation::platform::paths::portable_data_dir()?;
         let path = host_owner_lock_path(&root);
         if let Some(parent) = path.parent() {
-            licoup_native::platform::file_security::ensure_private_dir(parent)?;
+            licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
         }
-        let file = licoup_native::platform::file_security::open_private_lock_file(&path)?;
+        let file = licoup_foundation::platform::file_security::open_private_lock_file(&path)?;
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Some(Self { file })),
             Err(error) if error.kind() == ErrorKind::WouldBlock => Ok(None),
@@ -159,16 +159,16 @@ fn parse_host_generation_record(text: &str) -> Option<(String, Option<u32>, Opti
 }
 
 fn read_host_generation_record() -> Option<(String, Option<u32>, Option<u32>)> {
-    let root = licoup_native::platform::paths::portable_data_dir().ok()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir().ok()?;
     let text = fs::read_to_string(host_generation_path(&root)).ok()?;
     parse_host_generation_record(&text)
 }
 
 fn write_host_generation() -> Result<()> {
-    let root = licoup_native::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     let path = host_generation_path(&root);
     if let Some(parent) = path.parent() {
-        licoup_native::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
     let generation = executable_generation().context("conversation host unavailable")?;
     let mut body = format!("{generation}\n{}\n", std::process::id());
@@ -183,7 +183,7 @@ fn write_host_generation() -> Result<()> {
         .context("conversation host unavailable")?;
     file.write_all(body.as_bytes())?;
     file.sync_all()?;
-    licoup_native::platform::file_security::harden_private_path(&path)?;
+    licoup_foundation::platform::file_security::harden_private_path(&path)?;
     Ok(())
 }
 
@@ -586,7 +586,7 @@ pub(super) fn serve_host() -> Result<()> {
         Err(error) => return Err(error).context("conversation host listener failed"),
     };
     write_host_generation()?;
-    let root = licoup_native::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     // The persistent Conversation host and Gateway must admit the same
     // evidence-bound adapters. The Gateway persists hot reloads in this
     // standard overlay; load it before any runtime profile is resolved so a
@@ -915,9 +915,9 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lico-ca-ownership-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let previous =
-            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let answered = endpoint_accepts_connections_within(Duration::from_millis(60));
-        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(&root);
         assert!(!answered, "a fresh root has no host to answer");
     }
@@ -960,7 +960,7 @@ mod tests {
             std::env::temp_dir().join(format!("lico-ca-owner-lock-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let previous =
-            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let owner = HostOwnerLock::acquire().unwrap();
         assert!(owner.is_some(), "a fresh root has no owner");
         // A second host cannot reach the listener while the first holds the
@@ -970,7 +970,7 @@ mod tests {
         // does when the owning process dies — so the next host may take over.
         drop(owner);
         assert!(HostOwnerLock::acquire().unwrap().is_some());
-        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1586,7 +1586,7 @@ mod tests {
             std::env::temp_dir().join(format!("lico-ca-host-offline-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let previous =
-            licoup_native::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
 
         // When no host is running:
         // 1. connect_for_cli(true) returns persistent_conversation_transport_required
@@ -1606,7 +1606,7 @@ mod tests {
         // 3. host_is_current() is false
         assert!(!host_is_current());
 
-        licoup_native::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(&root);
     }
 

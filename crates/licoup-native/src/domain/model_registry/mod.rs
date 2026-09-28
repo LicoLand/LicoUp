@@ -99,7 +99,7 @@ pub fn refresh_cached_snapshot() -> Arc<RegistrySnapshot> {
     }
     #[cfg(not(test))]
     {
-        if let Ok(root) = crate::platform::paths::portable_data_dir_read_only() {
+        if let Ok(root) = licoup_foundation::platform::paths::portable_data_dir_read_only() {
             let _ = runtime().reload_at(&root.join("model-registry/catalog.json"));
         }
         runtime().snapshot()
@@ -137,9 +137,10 @@ pub fn read() -> Value {
 /// parse, or cache-write failure leaves the previous valid snapshot intact.
 pub fn refresh() -> Value {
     let _ = refresh_cached_snapshot();
-    let result = crate::platform::paths::portable_data_dir_read_only().and_then(|root| {
-        runtime().refresh_at(&root.join("model-registry/catalog.json"), source::download)
-    });
+    let result =
+        licoup_foundation::platform::paths::portable_data_dir_read_only().and_then(|root| {
+            runtime().refresh_at(&root.join("model-registry/catalog.json"), source::download)
+        });
     match result {
         Ok(changed) => {
             runtime().summary(true, if changed { "refreshed" } else { "unchanged" }, None)
@@ -220,8 +221,8 @@ impl RegistryRuntime {
         let parent = path
             .parent()
             .ok_or_else(|| anyhow!("model_registry_cache_path_invalid"))?;
-        crate::platform::file_security::ensure_private_dir(parent)?;
-        crate::platform::file_security::atomic_write_private_text(
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::atomic_write_private_text(
             path,
             &serde_json::to_string(&persisted)?,
         )?;

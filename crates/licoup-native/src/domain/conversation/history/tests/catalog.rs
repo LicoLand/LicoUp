@@ -296,12 +296,14 @@ fn browse_catalog_omits_lico_archived_native_sessions_but_keeps_exact_reads() {
     struct Override(Option<PathBuf>);
     impl Drop for Override {
         fn drop(&mut self) {
-            crate::platform::paths::set_portable_data_dir_override(self.0.take());
+            licoup_foundation::platform::paths::set_portable_data_dir_override(self.0.take());
         }
     }
-    let _guard = Override(crate::platform::paths::set_portable_data_dir_override(
-        Some(store_root.clone()),
-    ));
+    let _guard = Override(
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
+            store_root.clone(),
+        )),
+    );
     {
         use licoup_conversation::{ConversationStore, MembershipAccess, Principal, PrincipalKind};
         let store = ConversationStore::open(&store_root).unwrap();

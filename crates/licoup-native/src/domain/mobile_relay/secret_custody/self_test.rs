@@ -8,9 +8,9 @@ pub(in crate::domain::mobile_relay) fn e2ee_secret_store_self_test_in(
         Uuid::new_v4()
     ));
     let previous_portable =
-        crate::platform::paths::set_portable_data_dir_override(Some(temp_dir.clone()));
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(temp_dir.clone()));
     let result = e2ee_secret_store_self_test_in_current_portable_dir();
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     let _ = fs::remove_dir_all(&temp_dir);
     match result {
         Ok(value) => Ok(value),

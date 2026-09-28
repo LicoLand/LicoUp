@@ -1,10 +1,10 @@
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow};
+use fs2::FileExt;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text_bounded, ensure_private_dir, open_private_lock_file,
     read_private_text_bounded, remove_private_state_marker,
 };
-use crate::platform::paths;
-use anyhow::{Result, anyhow};
-use fs2::FileExt;
+use licoup_foundation::platform::paths;
 use serde_json::{Value, json};
 use std::fs::File;
 use std::io::ErrorKind;

@@ -26,7 +26,7 @@ pub(in crate::domain::mobile_relay) fn load_config_without_persistence() -> Resu
 }
 
 pub(in crate::domain::mobile_relay) fn read_persisted_config() -> Result<Option<Value>> {
-    let Some(raw) = crate::platform::file_security::read_private_text_bounded(
+    let Some(raw) = licoup_foundation::platform::file_security::read_private_text_bounded(
         &config_path()?,
         CONFIG_MAX_BYTES,
     )?
@@ -273,7 +273,7 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
         .lock()
         .map_err(|_| anyhow!("mobile relay config writer lock is unavailable"))?;
     let lock_path = config_lock_path()?;
-    let lock_file = crate::platform::file_security::open_private_lock_file(&lock_path)?;
+    let lock_file = licoup_foundation::platform::file_security::open_private_lock_file(&lock_path)?;
     fs2::FileExt::lock_exclusive(&lock_file)
         .map_err(|_| anyhow!("mobile relay config writer lock could not be acquired"))?;
     let durable = read_persisted_config()?;
@@ -314,7 +314,7 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
     config[CONFIG_GENERATION_FIELD] = json!(committed_generation);
     config[AUTHORITY_GENERATION_FIELD] = json!(candidate_authority_generation);
     let encoded = format!("{}\n", serde_json::to_string_pretty(config)?);
-    crate::platform::file_security::atomic_write_private_text_bounded(
+    licoup_foundation::platform::file_security::atomic_write_private_text_bounded(
         &config_path()?,
         &encoded,
         CONFIG_MAX_BYTES,

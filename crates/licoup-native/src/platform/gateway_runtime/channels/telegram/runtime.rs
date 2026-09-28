@@ -657,7 +657,7 @@ mod tests {
     use crate::platform::gateway_runtime::channels::telegram::transport::{
         MockBotTransport, Update,
     };
-    use crate::platform::paths::set_portable_data_dir_override;
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex};
     use std::thread;

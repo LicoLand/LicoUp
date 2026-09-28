@@ -43,10 +43,7 @@ pub fn read_private_text_bounded(path: &Path, max_bytes: usize) -> Result<Option
         .map_err(|_| anyhow!("private state text is not UTF-8"))
 }
 
-pub(crate) fn read_existing_private_text_bounded(
-    path: &Path,
-    max_bytes: usize,
-) -> Result<Option<String>> {
+pub fn read_existing_private_text_bounded(path: &Path, max_bytes: usize) -> Result<Option<String>> {
     let Some(content) =
         read_private_bytes_bounded_with_parent(path, max_bytes, ParentAccess::ExistingReadOnly)?
     else {

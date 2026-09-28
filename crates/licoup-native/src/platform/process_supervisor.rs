@@ -59,8 +59,8 @@ fn minimal_untrusted_agent_env() -> Vec<(OsString, OsString)> {
             pairs.push((OsString::from(*key), value));
         }
     }
-    if let Some(home) = crate::platform::paths::user_home_from_env() {
-        let home = crate::platform::paths::strip_macos_data_volume(&home);
+    if let Some(home) = licoup_foundation::platform::paths::user_home_from_env() {
+        let home = licoup_foundation::platform::paths::strip_macos_data_volume(&home);
         let home_value = home.into_os_string();
         pairs.push((OsString::from("HOME"), home_value.clone()));
         if cfg!(windows) {

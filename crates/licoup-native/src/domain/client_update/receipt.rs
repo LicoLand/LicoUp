@@ -22,7 +22,7 @@ fn receipt_path(params: &Value) -> PathBuf {
 pub(super) fn bind_check_result(params: &Value, result: &Value) -> Result<()> {
     let path = receipt_path(params);
     if result.get("updateAvailable").and_then(Value::as_bool) != Some(true) {
-        crate::platform::file_security::remove_private_state_marker(&path)
+        licoup_foundation::platform::file_security::remove_private_state_marker(&path)
             .context("client update active receipt could not be cleared")?;
         return Ok(());
     }
@@ -47,7 +47,7 @@ pub(super) fn bind_check_result(params: &Value, result: &Value) -> Result<()> {
     };
     let serialized = serde_json::to_string(&binding)
         .context("client update active receipt could not be serialized")?;
-    crate::platform::file_security::atomic_write_private_text_bounded(
+    licoup_foundation::platform::file_security::atomic_write_private_text_bounded(
         &path,
         &format!("{serialized}\n"),
         ACTIVE_RECEIPT_MAX_BYTES,
@@ -61,11 +61,11 @@ pub(super) fn params_with_bound_track(params: &Value) -> Result<(Value, String)>
         "client update target release track is accepted only during check"
     );
     let path = receipt_path(params);
-    let raw =
-        crate::platform::file_security::read_private_text_bounded(&path, ACTIVE_RECEIPT_MAX_BYTES)?
-            .ok_or_else(|| {
-                anyhow!("client update signed check receipt is required before this step")
-            })?;
+    let raw = licoup_foundation::platform::file_security::read_private_text_bounded(
+        &path,
+        ACTIVE_RECEIPT_MAX_BYTES,
+    )?
+    .ok_or_else(|| anyhow!("client update signed check receipt is required before this step"))?;
     let binding: ActiveReceipt =
         serde_json::from_str(&raw).context("client update active receipt is invalid")?;
     ensure!(

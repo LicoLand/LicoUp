@@ -18,6 +18,7 @@ crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
 lico-catalog-convergence = { path = "../lico-catalog-convergence" }
+licoup-foundation = { path = "../licoup-foundation" }
 licoup-protocol-bindings = { path = "../licoup-protocol-bindings" }
 licoup-client-state = { path = "../licoup-client-state" }
 licoup-endpoint-core = { path = "../licoup-endpoint-core" }

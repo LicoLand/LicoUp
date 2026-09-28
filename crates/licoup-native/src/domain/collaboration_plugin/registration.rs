@@ -168,11 +168,11 @@ pub(in crate::domain::collaboration_plugin) fn build_registrations(
         .map(|choice| (choice.id.as_str(), choice))
         .collect::<BTreeMap<_, _>>();
     let root = registration_root(store);
-    crate::platform::file_security::ensure_private_dir(&root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
     let mut registrations = Vec::with_capacity(destinations.len());
     for destination in destinations {
         let agent_root = root.join(&destination.agent_id);
-        crate::platform::file_security::ensure_private_dir(&agent_root)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&agent_root)?;
         let registration_id = Uuid::new_v4().to_string();
         registrations.push(build_registration(
             &root,

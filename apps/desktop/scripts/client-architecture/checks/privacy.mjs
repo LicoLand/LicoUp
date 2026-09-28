@@ -88,7 +88,7 @@ export async function checkFileSecurityAndClientState(context) {
     runJson,
     sameSet,
   } = context;
-  const fileSecurityRoot = "crates/licoup-native/src/platform/file_security";
+  const fileSecurityRoot = "crates/licoup-foundation/src/platform/file_security";
   const fileSecurityLeaves = [
     "append_lock.rs",
     "atomic_replace.rs",

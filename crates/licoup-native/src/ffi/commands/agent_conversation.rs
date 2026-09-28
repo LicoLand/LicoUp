@@ -156,7 +156,8 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("lico-agent-skill-observer-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(root));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root));
         let store = ClientStateStore::portable().unwrap();
         crate::domain::skill_hub::pair_request(&json!({"agent": "codex"})).unwrap();
         crate::domain::skill_hub::pair_approve(&json!({"agent": "codex"})).unwrap();
@@ -177,6 +178,6 @@ mod tests {
                 .to_string()
                 .contains("must not enter usage storage")
         );
-        crate::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     }
 }

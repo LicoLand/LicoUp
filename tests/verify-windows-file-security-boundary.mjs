@@ -38,12 +38,12 @@ const clientStateSourceFiles = [
     .filter((ref) => !ref.includes("/tests/")),
 ];
 const fileSecuritySourceFiles = [
-  "crates/licoup-native/src/platform/file_security.rs",
-  ...rustSourceBundle("crates/licoup-native/src/platform/file_security")
+  "crates/licoup-foundation/src/platform/file_security.rs",
+  ...rustSourceBundle("crates/licoup-foundation/src/platform/file_security")
     .filter((ref) => !ref.includes("/tests/")),
 ];
 const fileSecurityFacadeSource = readFileSync(
-  path.join(repoRoot, "crates/licoup-native/src/platform/file_security.rs"),
+  path.join(repoRoot, "crates/licoup-foundation/src/platform/file_security.rs"),
   "utf8",
 );
 const unixHardeningModuleGuarded =
@@ -67,7 +67,7 @@ const helperExpectations = new Map([
   ["crates/licoup-native/src/platform/client_state/serialization.rs", ["atomic_write_private_text"]],
   ["crates/licoup-native/src/platform/client_state/activity.rs", ["append_private_line"]],
   ["crates/licoup-native/src/domain/conversation/snapshots/mod.rs", ["atomic_write_private_text"]],
-  ["crates/licoup-native/src/platform/file_security/windows_acl.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
+  ["crates/licoup-foundation/src/platform/file_security/windows_acl.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
   ["crates/licoup-native/src/platform/secure_mesh_mls_store.rs", ["harden_private_path"]],
 ]);
 const notes = [

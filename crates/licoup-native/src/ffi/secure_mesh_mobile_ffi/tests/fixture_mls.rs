@@ -32,7 +32,7 @@ fn mobile_ffi_mls_product_path_exchanges_an_authenticated_payload_between_client
     let bob_key_package_bytes = general_purpose::URL_SAFE_NO_PAD
         .decode(bob_key_package["keyPackageBase64url"].as_str().unwrap())
         .unwrap();
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(
+    let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
         alice_dir.join("portable-data"),
     ));
     let selected: Arc<dyn SecureMeshSecretStore> = alice_store.clone();
@@ -46,13 +46,14 @@ fn mobile_ffi_mls_product_path_exchanges_an_authenticated_payload_between_client
             )
         })
         .unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let alice_identity_typed = mls_ffi_identity(&alice_identity);
     let alice_key_package_bytes = general_purpose::URL_SAFE_NO_PAD
         .decode(alice_key_package["keyPackageBase64url"].as_str().unwrap())
         .unwrap();
-    let previous =
-        crate::platform::paths::set_portable_data_dir_override(Some(bob_dir.join("portable-data")));
+    let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
+        bob_dir.join("portable-data"),
+    ));
     let selected: Arc<dyn SecureMeshSecretStore> = bob_store.clone();
     let alice_directory_response =
         crate::domain::mobile_relay::with_mobile_relay_secret_store_override(selected, || {
@@ -64,7 +65,7 @@ fn mobile_ffi_mls_product_path_exchanges_an_authenticated_payload_between_client
             )
         })
         .unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     initialize_mls_ffi_peer(&alice_dir, alice_store.clone(), &bob_identity);
     initialize_mls_ffi_peer(&bob_dir, bob_store.clone(), &alice_identity);
     let group_id = general_purpose::URL_SAFE_NO_PAD.encode(b"ffi-product-group");

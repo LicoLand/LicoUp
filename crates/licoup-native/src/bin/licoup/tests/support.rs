@@ -51,7 +51,7 @@ pub(super) struct PortableDirGuard {
 
 impl PortableDirGuard {
     pub(super) fn set(path: &Path) -> Self {
-        let previous = licoup_native::platform::paths::set_portable_data_dir_override(Some(
+        let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
             path.to_path_buf(),
         ));
         #[cfg(target_os = "macos")]
@@ -67,7 +67,7 @@ impl PortableDirGuard {
 
 impl Drop for PortableDirGuard {
     fn drop(&mut self) {
-        licoup_native::platform::paths::set_portable_data_dir_override(self.previous.take());
+        licoup_foundation::platform::paths::set_portable_data_dir_override(self.previous.take());
         #[cfg(target_os = "macos")]
         licoup_native::platform::secure_mesh_secret_store::set_macos_test_user_presence_disabled(
             self.previous_macos_test_user_presence_disabled,

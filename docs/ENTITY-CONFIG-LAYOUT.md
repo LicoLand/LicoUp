@@ -19,7 +19,7 @@ private addresses, or runtime data.
 | Native client protocol DTOs | schemas under `packages/protocols/native-client/` | Rust/Flutter/mobile bridge consumers |
 | [Retiring endpoint-protection Preview verification policy](STATUS.md) | reviewed JSON definitions under `tools/scripts/config/` plus current native implementation code | bounded verification and redacted report schemas for the current preview only; Lico Arc remains the authority for stable endpoint wire profiles |
 | Appearance presets | `apps/desktop/assets/appearance-presets/` and the Flutter appearance contract | desktop theme projections |
-| Local persisted state roots | `crates/licoup-native/src/platform/paths.rs` and `client_state.rs` | platform-specific resolved locations at runtime |
+| Local persisted state roots | `crates/licoup-foundation/src/platform/paths.rs` and `crates/licoup-native/src/platform/client_state/` | platform-specific resolved locations at runtime |
 
 ## Generated projections
 

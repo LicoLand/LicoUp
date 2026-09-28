@@ -166,7 +166,7 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
     ensure!(data_root.is_absolute(), "unsupported_state_shape");
     fs::create_dir_all(data_root).context("migration_lock_unavailable")?;
     let migration_root = data_root.join("client-state").join("migrations");
-    crate::platform::file_security::ensure_private_dir(&migration_root)
+    licoup_foundation::platform::file_security::ensure_private_dir(&migration_root)
         .context("migration_lock_unavailable")?;
     let lock = OpenOptions::new()
         .create(true)
@@ -255,7 +255,7 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
     ledger.frontier_id = frontier.frontier_id.clone();
     write_json_atomic(&ledger_path, &ledger).context("migration_ledger_invalid")?;
 
-    crate::platform::file_security::ensure_private_dir(&marker_root)
+    licoup_foundation::platform::file_security::ensure_private_dir(&marker_root)
         .context("migration_step_failed")?;
     let mut reconciled_current_domain = false;
     for domain in &frontier.domains {
@@ -300,7 +300,7 @@ fn admit_inner(data_root: &Path) -> Result<AdmissionResult> {
         migration_failpoint("after-ledger")?;
         applied.insert(item.domain.domain_id.clone());
     }
-    crate::platform::file_security::remove_private_state_marker(&handoff_path)
+    licoup_foundation::platform::file_security::remove_private_state_marker(&handoff_path)
         .context("update_handoff_mismatch")?;
     Ok(AdmissionResult {
         status: "ready",
@@ -548,9 +548,11 @@ pub fn embedded_frontier() -> Result<MigrationFrontier> {
 }
 
 fn load_ledger(path: &Path, frontier: &MigrationFrontier) -> Result<Ledger> {
-    let Some(raw) =
-        crate::platform::file_security::read_existing_private_text_bounded(path, 256 * 1024)
-            .context("migration_ledger_invalid")?
+    let Some(raw) = licoup_foundation::platform::file_security::read_existing_private_text_bounded(
+        path,
+        256 * 1024,
+    )
+    .context("migration_ledger_invalid")?
     else {
         return Ok(Ledger {
             schema_version: LEDGER_SCHEMA.to_owned(),
@@ -611,7 +613,7 @@ fn write_json_atomic(path: &Path, value: &impl Serialize) -> Result<()> {
         serialized.len() <= MAX_MIGRATION_JSON_BYTES,
         "migration_step_failed"
     );
-    crate::platform::file_security::atomic_write_private_text(path, &serialized)
+    licoup_foundation::platform::file_security::atomic_write_private_text(path, &serialized)
 }
 
 fn safe_error_code(error: &anyhow::Error) -> &'static str {

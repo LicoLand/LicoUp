@@ -3,7 +3,7 @@
 //! One approval also delivers the embedded usage Skill to the provider's user
 //! Skill Hub root, and publishes a copy of it on the shared Skill surface.
 
-use super::{file_security, paths};
+use licoup_foundation::platform::{file_security, paths};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;

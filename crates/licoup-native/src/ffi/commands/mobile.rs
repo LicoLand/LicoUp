@@ -82,8 +82,8 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
 mod tests {
     use super::*;
     use crate::domain::mobile_relay::with_mobile_relay_secret_store_override;
-    use crate::platform::paths::set_portable_data_dir_override;
     use crate::platform::secure_mesh_secret_store::{EphemeralSecretStore, SecureMeshSecretStore};
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use std::fs;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};

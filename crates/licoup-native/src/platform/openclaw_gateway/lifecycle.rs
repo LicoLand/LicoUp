@@ -1,5 +1,5 @@
-use crate::platform::file_security::ensure_private_dir;
 use anyhow::{Result, anyhow};
+use licoup_foundation::platform::file_security::ensure_private_dir;
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

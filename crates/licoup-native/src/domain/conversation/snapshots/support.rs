@@ -189,7 +189,7 @@ pub(super) fn home_dir_from_env<F>(var: F) -> PathBuf
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    crate::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
+    licoup_foundation::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub(super) fn hash_parts(parts: &[&str]) -> String {

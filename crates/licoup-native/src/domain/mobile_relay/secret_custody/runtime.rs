@@ -341,7 +341,7 @@ pub(in crate::domain::mobile_relay) fn with_secure_mesh_mls_participant_in<T>(
         .map_err(|_| anyhow!("secure mesh MLS participant operation lock is unavailable"))?;
     let operation_lock_path = secure_mesh_mls_state_dir()?.join("participant-operation.lock");
     let operation_lock =
-        crate::platform::file_security::open_private_lock_file(&operation_lock_path)?;
+        licoup_foundation::platform::file_security::open_private_lock_file(&operation_lock_path)?;
     fs2::FileExt::lock_exclusive(&operation_lock)
         .map_err(|_| anyhow!("secure mesh MLS participant operation lock could not be acquired"))?;
     ensure!(

@@ -57,7 +57,7 @@ pub(super) struct PortableDataDirGuard {
 #[cfg(unix)]
 impl PortableDataDirGuard {
     pub(super) fn isolate_under(root: &Path) -> Self {
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(
+        let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
             root.join("portable-data"),
         ));
         Self { previous }
@@ -67,7 +67,7 @@ impl PortableDataDirGuard {
 #[cfg(unix)]
 impl Drop for PortableDataDirGuard {
     fn drop(&mut self) {
-        crate::platform::paths::set_portable_data_dir_override(self.previous.take());
+        licoup_foundation::platform::paths::set_portable_data_dir_override(self.previous.take());
     }
 }
 

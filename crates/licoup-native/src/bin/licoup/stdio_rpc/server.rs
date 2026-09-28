@@ -510,7 +510,7 @@ where
                     let runtime = conversation_runtime.clone();
                     let execution = catch_unwind(AssertUnwindSafe(|| {
                         let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
-                        let root = licoup_native::platform::paths::portable_data_dir()?;
+                        let root = licoup_foundation::platform::paths::portable_data_dir()?;
                         let service =
                             licoup_native::domain::workflow_runtime::StrategyService::open(&root)?;
                         let service = if let Some(runtime) = runtime {
@@ -743,7 +743,7 @@ fn conversation_service(
         return Ok(service);
     }
     let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
-    let root = licoup_native::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     let service = ConversationService::open(&root)?;
     let service = match runtime {
         Some(runtime) => bind_conversation_runtime(service, runtime, portable_data_dir.clone()),

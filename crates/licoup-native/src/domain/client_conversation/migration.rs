@@ -38,7 +38,7 @@ pub fn migrate_legacy_state(
 ) -> Result<MigrationReport> {
     let state_root = portable_root.join("client-state");
     let canonical_root = state_root.join("conversations");
-    crate::platform::file_security::ensure_private_dir(&canonical_root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(&canonical_root)?;
     let marker = canonical_root.join(format!("migration-{MIGRATION_VERSION}.complete"));
     if marker.is_file() {
         return Ok(MigrationReport {
@@ -47,7 +47,7 @@ pub fn migrate_legacy_state(
         });
     }
     let lock_path = canonical_root.join("migration.lock");
-    let lock = crate::platform::file_security::open_private_lock_file(&lock_path)?;
+    let lock = licoup_foundation::platform::file_security::open_private_lock_file(&lock_path)?;
     lock.lock_exclusive()
         .map_err(|_| anyhow!("migration_lock_unavailable"))?;
     if marker.is_file() {
@@ -94,7 +94,7 @@ pub fn migrate_legacy_state(
     // schema routine before the completion marker makes the run final.
     store.normalize_reserved_default_group_after_legacy_import()?;
     let marker_text = format!("schema={MIGRATION_VERSION}\nstatus=complete\n");
-    crate::platform::file_security::atomic_write_private_text(&marker, &marker_text)?;
+    licoup_foundation::platform::file_security::atomic_write_private_text(&marker, &marker_text)?;
     Ok(report)
 }
 

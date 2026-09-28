@@ -28,7 +28,7 @@ fn write_hardened_activity(
     let path = activity_path(store);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, content).unwrap();
-    crate::platform::file_security::harden_private_path(&path).unwrap();
+    licoup_foundation::platform::file_security::harden_private_path(&path).unwrap();
     path
 }
 

@@ -44,8 +44,9 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                 "lico-mls-journal-failpoint-{}",
                 uuid::Uuid::new_v4()
             ));
-            let previous =
-                crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+            let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(
+                Some(root.clone()),
+            );
             let identity_key = SigningKey::generate(&mut OsRng);
             let signing_key = SigningKey::generate(&mut OsRng);
             let identity = DeviceTrustPublicIdentity::new(
@@ -210,7 +211,7 @@ fn mls_journal_failpoints_drive_reopen_recovery_for_every_mutating_action() {
                 );
             }
 
-            crate::platform::paths::set_portable_data_dir_override(previous);
+            licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
             let _ = std::fs::remove_dir_all(root);
         }
     }

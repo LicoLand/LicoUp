@@ -35,7 +35,8 @@ fn mls_status_keeps_runtime_wiring_distinct_from_production_readiness() {
         "lico-mls-status-readiness-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let status = status().unwrap();
     assert_eq!(status["cryptographicRuntimeWired"], true);
     assert_eq!(status["nativeActionPathWired"], true);
@@ -52,7 +53,7 @@ fn mls_status_keeps_runtime_wiring_distinct_from_production_readiness() {
             "current_key_transparency_receipts_unavailable"
         ])
     );
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }
 

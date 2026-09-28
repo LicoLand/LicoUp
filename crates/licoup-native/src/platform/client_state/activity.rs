@@ -1,7 +1,7 @@
-use crate::platform::file_security::{
+use anyhow::{Result, ensure};
+use licoup_foundation::platform::file_security::{
     ensure_private_dir, open_private_text_bounded, validate_private_file_unchanged,
 };
-use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::io::{BufRead, Read};
@@ -46,7 +46,7 @@ impl ActivityLog {
             encoded.len() <= policy::MAX_ACTIVITY_EVENT_BYTES,
             "activity event exceeds its bounded size"
         );
-        crate::platform::file_security::append_private_line(&self.path, &encoded)?;
+        licoup_foundation::platform::file_security::append_private_line(&self.path, &encoded)?;
         Ok(event)
     }
 

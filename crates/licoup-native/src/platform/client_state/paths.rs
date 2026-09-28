@@ -1,8 +1,8 @@
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::file_security::{
     validate_export_destination, validate_path_owner, validate_private_path_ancestors,
 };
-use crate::platform::paths::portable_data_dir;
-use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::paths::portable_data_dir;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -14,7 +14,10 @@ pub(super) fn portable_state_root() -> Result<PathBuf> {
 }
 
 pub(super) fn portable_state_root_read_only() -> Result<PathBuf> {
-    Ok(crate::platform::paths::portable_data_dir_read_only()?.join(policy::CLIENT_STATE_DIR))
+    Ok(
+        licoup_foundation::platform::paths::portable_data_dir_read_only()?
+            .join(policy::CLIENT_STATE_DIR),
+    )
 }
 
 pub(super) fn activity_path(root: &Path) -> PathBuf {

@@ -305,7 +305,7 @@ pub(super) fn archive_destination(params: &Value) -> Result<PathBuf> {
         ));
     };
     // Reject destinations not owned by the current user.
-    crate::platform::file_security::validate_export_destination(&canonical)?;
+    licoup_foundation::platform::file_security::validate_export_destination(&canonical)?;
     Ok(canonical)
 }
 

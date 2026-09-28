@@ -5,10 +5,6 @@ use crate::core::secure_mesh_capability::{
 use crate::core::secure_mesh_transparency::KT_JSON_SAFE_INTEGER_MAX;
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{
-    create_private_state_marker, private_state_marker_exists, read_private_state_marker,
-    remove_private_state_marker,
-};
 use crate::platform::secure_mesh_secret_store::{
     EphemeralSecretStore, PlatformSecretStore, SecretClassPersistenceProof,
     SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
@@ -17,6 +13,10 @@ use crate::platform::secure_mesh_secret_store::{
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use ed25519_dalek::SigningKey;
+use licoup_foundation::platform::file_security::{
+    create_private_state_marker, private_state_marker_exists, read_private_state_marker,
+    remove_private_state_marker,
+};
 use serde_json::{Map, Value, json};
 use std::cell::RefCell;
 use std::env;

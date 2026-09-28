@@ -29,7 +29,7 @@ impl Fixture {
             "lico-local-server-runtime-{name}-{}",
             Uuid::new_v4()
         ));
-        crate::platform::file_security::ensure_private_dir(&root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&root).unwrap();
         let store = ClientStateStore::new(root.join("state")).unwrap();
         Self { root, store }
     }

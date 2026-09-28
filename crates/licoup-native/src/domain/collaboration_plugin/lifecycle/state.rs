@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::ensure_private_dir;
+use licoup_foundation::platform::file_security::ensure_private_dir;
 
 const STATE_COLLECTION: &str = "collaboration-plugins";
 const STATE_SCHEMA: &str = "licoup.optional-collaboration-state.v5";

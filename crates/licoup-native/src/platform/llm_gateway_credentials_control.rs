@@ -36,7 +36,7 @@ pub fn serve_credentials_control(
 
     let _ = std::fs::remove_file(&socket_path);
     if let Some(parent) = socket_path.parent() {
-        crate::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
     let listener = UnixListener::bind(&socket_path)
         .map_err(|error| anyhow!("llm_gateway_credentials_control_bind_failed:{error}"))?;

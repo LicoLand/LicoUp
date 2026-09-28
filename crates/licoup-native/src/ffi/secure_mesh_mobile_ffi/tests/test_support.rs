@@ -93,13 +93,14 @@ pub(super) fn initialize_mls_ffi_client(
     endpoint_kind: &str,
 ) {
     let portable_dir = files_dir.join("portable-data");
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(portable_dir));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable_dir));
     let selected: Arc<dyn SecureMeshSecretStore> = store;
     crate::domain::mobile_relay::with_mobile_relay_secret_store_override(selected, || {
         crate::domain::mobile_relay::initialize_secure_mesh_mls_test_endpoint(endpoint_kind)
     })
     .unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
 }
 
 pub(super) fn initialize_mls_ffi_peer(
@@ -109,13 +110,14 @@ pub(super) fn initialize_mls_ffi_peer(
 ) {
     let peer_identity = mls_ffi_identity(peer);
     let portable_dir = files_dir.join("portable-data");
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(portable_dir));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable_dir));
     let selected: Arc<dyn SecureMeshSecretStore> = store;
     crate::domain::mobile_relay::with_mobile_relay_secret_store_override(selected, || {
         crate::domain::mobile_relay::initialize_secure_mesh_mls_test_peer(&peer_identity)
     })
     .unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
 }
 
 pub(super) fn mls_ffi_identity(

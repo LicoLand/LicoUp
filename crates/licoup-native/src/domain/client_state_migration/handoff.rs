@@ -28,9 +28,11 @@ pub(super) struct UpdateHandoff {
 }
 
 pub(super) fn claim_update_handoff(path: &Path, frontier: &MigrationFrontier) -> Result<()> {
-    let Some(raw) =
-        crate::platform::file_security::read_existing_private_text_bounded(path, 256 * 1024)
-            .context("update_handoff_mismatch")?
+    let Some(raw) = licoup_foundation::platform::file_security::read_existing_private_text_bounded(
+        path,
+        256 * 1024,
+    )
+    .context("update_handoff_mismatch")?
     else {
         return Ok(());
     };
@@ -64,7 +66,10 @@ pub(super) fn claim_update_handoff(path: &Path, frontier: &MigrationFrontier) ->
 
 pub(super) fn update_handoff_is_claimed(path: &Path) -> bool {
     let Ok(Some(raw)) =
-        crate::platform::file_security::read_existing_private_text_bounded(path, 256 * 1024)
+        licoup_foundation::platform::file_security::read_existing_private_text_bounded(
+            path,
+            256 * 1024,
+        )
     else {
         return false;
     };

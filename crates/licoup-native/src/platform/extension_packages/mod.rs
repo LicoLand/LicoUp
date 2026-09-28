@@ -34,7 +34,7 @@
 //! 2. **Nothing here runs a package.** There is no `postinstall` executor, no
 //!    `--version` probe in the discovery path, and no code load during matching.
 //!    Expansion goes through the host's bounded, no-follow extractor
-//!    ([`crate::core::safe_archive`]), and activation is a single rename.
+//!    ([`licoup_foundation::core::safe_archive`]), and activation is a single rename.
 //! 3. **Nothing here reaches the network.** A download is bytes handed in by the
 //!    host's fetcher together with the digest they were fetched against. A local
 //!    import hands in a directory or an already-running adapter endpoint, and
@@ -110,7 +110,7 @@ pub(crate) fn actionable(code: &str, stage: &str, field: &str) -> ApplicationFai
 
 /// Create a private directory below a managed root.
 ///
-/// The production hardening path is [`crate::platform::file_security`]; this is
+/// The production hardening path is [`licoup_foundation::platform::file_security`]; this is
 /// the same 0700-on-unix shape it applies, kept local so this module owns its
 /// own layout and tests can use an ordinary temporary root.
 pub(crate) fn ensure_private_directory(path: &Path) -> Result<(), ApplicationFailure> {

@@ -1,7 +1,7 @@
 use super::super::ownership;
 use super::support::test_store;
 use crate::domain::agent_hub::contract::{InstallOwnership, LIFECYCLE_AVAILABLE, OWNERSHIP_OWNED};
-use crate::platform::file_security::{atomic_write_private_text, ensure_private_dir};
+use licoup_foundation::platform::file_security::{atomic_write_private_text, ensure_private_dir};
 
 fn owned_codex() -> InstallOwnership {
     InstallOwnership {

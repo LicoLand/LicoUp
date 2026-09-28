@@ -3,7 +3,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 
 use crate::domain::workflow_runtime::StrategyService;
-use crate::platform::paths::portable_data_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 
 pub(super) fn handle_strategy_execute(mut command: AdmittedCommand) -> Result<CliExecution> {
     let input = match command.take_option_json("stdin-json") {

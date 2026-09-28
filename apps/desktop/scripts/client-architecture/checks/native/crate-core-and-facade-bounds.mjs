@@ -43,6 +43,12 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     assert(!modSource.includes("#[path ="), `${relativePath}/mod.rs must not remount flat native files with #[path]`);
   }
   const coreModuleSource = await readText("crates/licoup-native/src/core/mod.rs");
+  const foundationManifest = await readText("crates/licoup-foundation/Cargo.toml");
+  assert(
+    !/^licoup-native\s*=/mu.test(foundationManifest) &&
+      !/^licoup-(?:application|conversation|workflow|agent|client|protocol|endpoint)-[a-z0-9_-]*\s*=/mu.test(foundationManifest),
+    "Shared foundation utilities must not depend on LicoUp domain crates"
+  );
   const taskQueueSource = await readText("crates/licoup-native/src/core/task_queue.rs");
   const mcpAdapterSource = await readJoinedText([
     "crates/licoup-native/src/core/mcp.rs",
@@ -174,7 +180,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   );
 
   const reviewedRustUnsafeResponsibilities = new Map([
-    ["crates/licoup-native/src/core/safe_archive.rs", "bounded archive FFI"],
+    ["crates/licoup-foundation/src/core/safe_archive.rs", "bounded archive extraction"],
     ["crates/licoup-native/src/ffi/android_ffi.rs", "Android ABI boundary"],
     ["crates/licoup-native/src/ffi/ios_ffi.rs", "iOS ABI boundary"],
     ["crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs", "atomic package filesystem ownership"],
@@ -207,11 +213,14 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   const reviewedRustUnsafeFiles = new Set(reviewedRustUnsafeResponsibilities.keys());
   assert([...reviewedRustUnsafeResponsibilities.values()].every((value) => value.length > 0),
     "every reviewed unsafe owner must retain one explicit responsibility");
-  const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
+  const rustCliUnsafeFiles = (await Promise.all([
+    collectRustUnsafeFiles(rustCliRoot),
+    collectRustUnsafeFiles("crates/licoup-foundation/src"),
+  ])).flat()
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));
   assert(
     rustCliUnsafeFiles.length === 0,
-    `Rust CLI source path must not contain unreviewed unsafe: ${rustCliUnsafeFiles.join(", ")}`
+    `Rust client source paths must not contain unreviewed unsafe: ${rustCliUnsafeFiles.join(", ")}`
   );
 
 

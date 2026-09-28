@@ -158,8 +158,8 @@ pub(super) fn validate_new_destination(path: &Path) -> Result<()> {
         parent,
     )?);
     #[cfg(not(unix))]
-    crate::platform::file_security::validate_no_symlink_ancestors(path)?;
-    crate::platform::file_security::validate_export_destination(path)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(path)?;
+    licoup_foundation::platform::file_security::validate_export_destination(path)?;
     let parent_metadata = fs::symlink_metadata(parent)
         .map_err(|_| anyhow!("collaboration_workflow_destination_parent_missing"))?;
     ensure!(

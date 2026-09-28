@@ -12,8 +12,8 @@
 
 use crate::domain::conversation::parameters::text_param;
 use crate::domain::conversation::paths::expand_home;
-use crate::platform::paths::portable_data_dir;
 use fs2::FileExt;
+use licoup_foundation::platform::paths::portable_data_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};

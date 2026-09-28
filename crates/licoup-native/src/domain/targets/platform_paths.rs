@@ -1,6 +1,6 @@
 use super::parameters::param_string;
 use super::scan_paths::{self, HostRoots, probe_exists_for_os_with, probe_exists_with};
-use crate::platform::paths::user_home_from_env;
+use licoup_foundation::platform::paths::user_home_from_env;
 use serde_json::Value;
 use std::env;
 use std::fs;

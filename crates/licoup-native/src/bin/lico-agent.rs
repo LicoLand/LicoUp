@@ -1,10 +1,10 @@
 //! Lico-owned agent process: stdio JSONL RPC, Gateway models, base|plan profiles.
 
+use licoup_foundation::platform::file_security::{append_private_line, ensure_private_dir};
+use licoup_foundation::platform::paths::portable_data_dir;
 use licoup_native::domain::lico_agent::{
     Agent, AgentConfig, AgentEvent, AgentProfileKind, GatewayChatTransport, LlmTransport,
 };
-use licoup_native::platform::file_security::{append_private_line, ensure_private_dir};
-use licoup_native::platform::paths::portable_data_dir;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;

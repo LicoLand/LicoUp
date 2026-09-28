@@ -1,5 +1,6 @@
 import {
   command,
+  foundationLayer,
   rustLayer,
   rustBinaryTests,
   defineModule,
@@ -141,9 +142,9 @@ export const RUST_CORE_MODULES = Object.freeze([
       kind: "rust-core",
       summary: "Bounded no-follow archive inspection and extraction",
       inputs: [
-        "crates/licoup-native/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
       ],
-      command: rustLayer("core::safe_archive::tests"),
+      command: foundationLayer("core::safe_archive::tests"),
     }),
   secureMeshModule({
       id: "rust.core.secure-mesh",

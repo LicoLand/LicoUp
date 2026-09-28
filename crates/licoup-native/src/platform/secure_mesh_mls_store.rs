@@ -8,7 +8,7 @@ use crate::core::secure_mesh_mls::SecureMeshMlsDurableStore;
 pub(crate) fn open(path: impl AsRef<Path>) -> Result<SecureMeshMlsDurableStore> {
     SecureMeshMlsDurableStore::open_with_path_hardener(
         path,
-        crate::platform::file_security::harden_private_path,
+        licoup_foundation::platform::file_security::harden_private_path,
     )
 }
 

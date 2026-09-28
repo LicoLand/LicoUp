@@ -12,7 +12,7 @@ const scanPaths = read("crates/licoup-native/src/domain/targets/scan_paths.rs");
 const platformPaths = read(
   "crates/licoup-native/src/domain/targets/platform_paths.rs",
 );
-const nativeHome = read("crates/licoup-native/src/platform/paths.rs");
+const nativeHome = read("crates/licoup-foundation/src/platform/paths.rs");
 const binaries = read("crates/licoup-native/src/domain/targets/binaries.rs").split(
   "#[cfg(test)]",
   1,

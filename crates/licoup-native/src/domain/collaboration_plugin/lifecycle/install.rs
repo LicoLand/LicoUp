@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{atomic_write_private_text_bounded, ensure_private_dir};
+use licoup_foundation::platform::file_security::{
+    atomic_write_private_text_bounded, ensure_private_dir,
+};
 
 const PLAN_SCHEMA: &str = "licoup.optional-collaboration-install-plan.v3";
 const PLAN_TTL_SECONDS: u64 = 30 * 60;

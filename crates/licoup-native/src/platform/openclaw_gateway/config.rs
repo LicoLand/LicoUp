@@ -1,7 +1,7 @@
-use crate::platform::file_security::{
+use anyhow::Result;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text_bounded, ensure_private_dir, read_private_text_bounded,
 };
-use anyhow::Result;
 use std::path::Path;
 
 const MAX_CONFIG_BYTES: usize = 16 * 1024;

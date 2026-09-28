@@ -15,7 +15,8 @@ use super::support::{
 #[test]
 fn mls_member_add_uses_explicit_local_pin_and_persisted_endpoint_checkpoint() {
     let root = std::env::temp_dir().join(format!("lico-mls-kt-authority-{}", uuid::Uuid::new_v4()));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let local = test_identity("desktop_gui:mls-kt-local");
     let member = test_identity("mobile:mls-kt-member");
     let mut log = SecureMeshKtLog::new(SigningKey::generate(&mut OsRng));
@@ -52,7 +53,7 @@ fn mls_member_add_uses_explicit_local_pin_and_persisted_endpoint_checkpoint() {
     .unwrap_err();
     assert!(rollback.to_string().contains("rollback"));
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -86,7 +87,8 @@ fn mls_member_add_has_no_default_kt_pin() {
 #[test]
 fn mls_member_add_rejects_response_signed_by_a_non_pinned_log() {
     let root = std::env::temp_dir().join(format!("lico-mls-kt-wrong-pin-{}", uuid::Uuid::new_v4()));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let local = test_identity("desktop_gui:mls-kt-wrong-pin");
     let member = test_identity("mobile:mls-kt-wrong-pin-member");
     let mut response_log = SecureMeshKtLog::new(SigningKey::generate(&mut OsRng));
@@ -102,6 +104,6 @@ fn mls_member_add_rejects_response_signed_by_a_non_pinned_log() {
     .unwrap_err();
     assert!(error.to_string().contains("signature is invalid"));
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

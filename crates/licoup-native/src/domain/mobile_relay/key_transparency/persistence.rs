@@ -1,8 +1,8 @@
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{
+use anyhow::Result;
+use licoup_foundation::platform::file_security::{
     create_private_state_marker, read_private_state_marker, remove_private_state_marker,
 };
-use anyhow::Result;
 use std::path::PathBuf;
 
 fn authority_challenge_path() -> Result<PathBuf> {

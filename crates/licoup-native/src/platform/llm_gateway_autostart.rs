@@ -5,11 +5,11 @@
 //! disconnected (no Keychain handoff) until the user authorizes in the app.
 //! Credentials are never stored in the launch item.
 
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, bail, ensure};
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
 };
-use crate::platform::paths;
-use anyhow::{Result, anyhow, bail, ensure};
+use licoup_foundation::platform::paths;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
