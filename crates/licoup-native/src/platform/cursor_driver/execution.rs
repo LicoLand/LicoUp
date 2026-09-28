@@ -382,7 +382,7 @@ fn run_turn(
     });
     // The deadline already spans the whole turn, including any create-chat
     // phase, so the turn phase simply keeps consuming the same window.
-    let (outcome, failure, stdout_truncated) = consume_turn_stream(
+    let (outcome, mut failure, stdout_truncated) = consume_turn_stream(
         &receiver,
         session_id,
         prompt,
@@ -392,13 +392,42 @@ fn run_turn(
         max_stdout,
         child.pid(),
     );
-    let status = child
-        .finish_or_terminate_tree(Duration::from_millis(250))
-        .ok()
-        .flatten();
+    let closed_before_terminal = outcome.is_none() && failure.is_none();
+    let (status, eof_timed_out) = if closed_before_terminal {
+        let natural_exit = child.wait_for_natural_exit(deadline);
+        // On Unix the wait observes the root without reaping it. Remove its
+        // cancellation registration while its process-group ID is still
+        // reserved, then let the supervisor clean up descendants and reap.
+        clear_active_turn(session_id);
+        (
+            child.terminate_tree().ok().flatten(),
+            matches!(natural_exit, Ok(false)),
+        )
+    } else {
+        // A parsed terminal frame (or a classified protocol failure) ends this
+        // turn. Stop accepting cancellation before bounded tree cleanup so a
+        // late request cannot target the process group after it is reaped.
+        clear_active_turn(session_id);
+        (
+            child
+                .finish_or_terminate_tree(Duration::from_millis(250))
+                .ok()
+                .flatten(),
+            false,
+        )
+    };
+    if eof_timed_out {
+        failure = Some(
+            ProtocolFailure::new(
+                "cursor_cli_timeout",
+                "Cursor Agent CLI timed out before the turn completed.",
+                "turn/wait",
+            )
+            .with_session(Some(session_id)),
+        );
+    }
     let _ = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE);
     let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE).ok();
-    clear_active_turn(session_id);
     let stderr_was_truncated = stderr.as_ref().is_some_and(|report| report.truncated);
     let stderr_failure = stderr
         .as_ref()
@@ -425,19 +454,27 @@ fn run_turn(
         };
     }
     if let Some(failure) = failure {
+        let status_code = status.and_then(|status| status.code());
         if matches!(
             failure.code,
             "cursor_cli_turn_failed" | "cursor_cli_execution_failed"
         ) && let Some(kind) = stderr_failure
         {
-            return RunResult::failed(
+            return RunResult::failed_with_status(
                 kind.failure(Some(session_id)),
                 started_at,
                 stdout_truncated,
                 stderr_was_truncated,
+                status_code,
             );
         }
-        return RunResult::failed(failure, started_at, stdout_truncated, stderr_was_truncated);
+        return RunResult::failed_with_status(
+            failure,
+            started_at,
+            stdout_truncated,
+            stderr_was_truncated,
+            status_code,
+        );
     }
     // consume_turn_stream returned no outcome and no protocol failure: stdout
     // closed before a terminal result arrived (cancel, crash, or early exit).
@@ -448,7 +485,7 @@ fn run_turn(
         use libc::SIGTERM;
         use std::os::unix::process::ExitStatusExt;
         if status.is_some_and(|status| status.signal() == Some(SIGTERM)) {
-            return RunResult::failed(
+            return RunResult::failed_with_status(
                 ProtocolFailure::new(
                     "cursor_cli_cancelled",
                     "Cursor Agent CLI turn was cancelled.",
@@ -459,19 +496,21 @@ fn run_turn(
                 started_at,
                 stdout_truncated,
                 stderr_was_truncated,
+                status.and_then(|status| status.code()),
             );
         }
     }
     if !status.is_some_and(|status| status.success()) {
         if let Some(kind) = stderr_failure {
-            return RunResult::failed(
+            return RunResult::failed_with_status(
                 kind.failure(Some(session_id)),
                 started_at,
                 stdout_truncated,
                 stderr_was_truncated,
+                status.and_then(|status| status.code()),
             );
         }
-        return RunResult::failed(
+        return RunResult::failed_with_status(
             ProtocolFailure::new(
                 "cursor_cli_turn_failed",
                 "Cursor Agent CLI exited without completing the turn.",
@@ -481,9 +520,10 @@ fn run_turn(
             started_at,
             stdout_truncated,
             stderr_was_truncated,
+            status.and_then(|status| status.code()),
         );
     }
-    RunResult::failed(
+    RunResult::failed_with_status(
         ProtocolFailure::new(
             "cursor_cli_turn_failed",
             "Cursor Agent CLI did not complete the requested turn.",
@@ -493,6 +533,7 @@ fn run_turn(
         started_at,
         stdout_truncated,
         stderr_was_truncated,
+        status.and_then(|status| status.code()),
     )
 }
 

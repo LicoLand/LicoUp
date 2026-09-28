@@ -38,31 +38,45 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     if !safe_session_id(session_id) {
         return ControlDisposition::SessionUnavailable;
     }
-    let pid = active_turns()
-        .lock()
-        .ok()
-        .and_then(|registry| registry.get(session_id).copied());
-    let Some(pid) = pid else {
-        return ControlDisposition::NoActiveTurn;
-    };
     #[cfg(unix)]
     {
         use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
-        // The turn runs as its own process group (command_group group_spawn),
-        // so a negative pid signals the whole process tree. Descendants that
-        // hold the pty open would otherwise keep the turn alive after the
-        // root exits.
-        if kill(Pid::from_raw(-(pid as i32)), Signal::SIGTERM).is_ok() {
-            clear_active_turn(session_id);
-            return ControlDisposition::Accepted;
-        }
+        cancel_registered(session_id, |pid| {
+            // The turn runs as its own process group (command_group group_spawn),
+            // so a negative pid signals the whole process tree. Descendants that
+            // hold the pty open would otherwise keep the turn alive after the
+            // root exits.
+            kill(Pid::from_raw(-(pid as i32)), Signal::SIGTERM).is_ok()
+        })
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
+        ControlDisposition::TransportUnavailable
     }
-    ControlDisposition::TransportUnavailable
+}
+
+#[cfg(unix)]
+fn cancel_registered(
+    session_id: &str,
+    signal_group: impl FnOnce(u32) -> bool,
+) -> ControlDisposition {
+    let Ok(mut registry) = active_turns().lock() else {
+        return ControlDisposition::TransportUnavailable;
+    };
+    let Some(pid) = registry.get(session_id).copied() else {
+        return ControlDisposition::NoActiveTurn;
+    };
+    // Keep the registry lock through the group signal and removal. Natural
+    // exit cleanup first observes the leader without reaping it, then removes
+    // this entry before reaping; a cancellation racing that handoff can only
+    // signal the still-reserved process group, never a recycled group id.
+    if signal_group(pid) {
+        registry.remove(session_id);
+        ControlDisposition::Accepted
+    } else {
+        ControlDisposition::TransportUnavailable
+    }
 }
 
 pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDisposition {
@@ -173,4 +187,44 @@ fn is_safe_transcript_dir(home: &Path, target: &Path, session_id: &str) -> bool 
             .and_then(|parent| parent.file_name())
             .and_then(|name| name.to_str())
             == Some("agent-transcripts")
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::{
+        ControlDisposition, active_turns, cancel_registered, clear_active_turn,
+        register_active_turn,
+    };
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn cancellation_holds_registration_until_signal_finishes() {
+        let session_id = "cursor-cancel-race-00000001";
+        register_active_turn(session_id, 12345);
+        let (signal_started, signal_started_rx) = mpsc::channel();
+        let (allow_signal, allow_signal_rx) = mpsc::channel();
+        let cancel_session = session_id.to_owned();
+        let cancel_thread = thread::spawn(move || {
+            cancel_registered(&cancel_session, |pid| {
+                assert_eq!(pid, 12345);
+                signal_started.send(()).unwrap();
+                allow_signal_rx.recv().unwrap();
+                true
+            })
+        });
+
+        signal_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("cancellation did not reach the process-group signal");
+        assert!(active_turns().try_lock().is_err());
+
+        let clear_session = session_id.to_owned();
+        let clear_thread = thread::spawn(move || clear_active_turn(&clear_session));
+        allow_signal.send(()).unwrap();
+        assert_eq!(cancel_thread.join().unwrap(), ControlDisposition::Accepted);
+        clear_thread.join().unwrap();
+        assert!(!active_turns().lock().unwrap().contains_key(session_id));
+    }
 }

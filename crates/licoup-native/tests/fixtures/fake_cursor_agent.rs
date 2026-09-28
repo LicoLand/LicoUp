@@ -75,6 +75,20 @@ fn json_string(value: &str) -> String {
     out
 }
 
+#[cfg(unix)]
+fn close_turn_stream() {
+    unsafe extern "C" {
+        fn close(fd: i32) -> i32;
+    }
+    // The Cursor turn transport uses one pty slave for stdin/stdout. Closing
+    // both descriptors produces a real EOF on the driver's pty reader while
+    // this synthetic process can remain alive for the test to release.
+    unsafe {
+        close(0);
+        close(1);
+    }
+}
+
 fn run_turn(args: &[String]) {
     if env::var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT").is_ok() {
         assert!(
@@ -148,6 +162,22 @@ fn run_turn(args: &[String]) {
         json_string(&observed_session),
         json_string(&first_fragment)
     ));
+    #[cfg(unix)]
+    if prompt.contains("__lico_stdout_eof__") {
+        if let Ok(ready_path) = env::var("LICO_FAKE_CURSOR_AGENT_EOF_READY_PATH") {
+            std::fs::write(ready_path, b"ready").unwrap();
+        }
+        close_turn_stream();
+        if let Ok(release_path) = env::var("LICO_FAKE_CURSOR_AGENT_EOF_RELEASE_PATH") {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while !std::path::Path::new(&release_path).is_file()
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        return;
+    }
     // Test hook: crash after the partial chunk, before any terminal result.
     // Gated on a prompt marker so a concurrent test's env vars can never
     // crash a fake spawned by another test.

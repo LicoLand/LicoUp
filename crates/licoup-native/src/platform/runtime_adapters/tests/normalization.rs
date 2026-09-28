@@ -181,6 +181,7 @@ fn cursor_usage_limit_response_preserves_safe_resolution_contract() {
     assert_eq!(response["error"]["code"], "cursor_cli_usage_limit_exceeded");
     assert_eq!(response["error"]["component"], "native_cli");
     assert_eq!(response["error"]["retryable"], false);
+    assert_eq!(response["statusCode"], 1);
     assert_eq!(
         response["error"]["recovery"],
         "select_available_model_or_wait_for_quota_reset"
