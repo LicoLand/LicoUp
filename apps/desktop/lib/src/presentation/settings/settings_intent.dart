@@ -91,6 +91,17 @@ final class SetConversationSnapshotLocation extends SettingsIntent {
   final String path;
 }
 
+final class RelocateDataHome extends SettingsIntent {
+  const RelocateDataHome(this.destinationParent, {super.trace});
+  final String destinationParent;
+}
+
+final class CleanupPreviousDataHome extends SettingsIntent {
+  const CleanupPreviousDataHome(this.expectedPreviousRootPath, {super.trace});
+
+  final String expectedPreviousRootPath;
+}
+
 final class RefreshArchivedConversations extends SettingsIntent {
   const RefreshArchivedConversations({super.trace});
 }

@@ -924,6 +924,128 @@ extension LicoStringsLabels on LicoStrings {
     'testOverride' => isChinese ? '测试目录' : 'Test directory',
     _ => isChinese ? '默认位置' : 'Default location',
   };
+  String get moveDataHome => isChinese ? '移动数据目录' : 'Move data folder';
+  String get moveDataHomeDescription => isChinese
+      ? '选择新位置后，客户端会先停止写入，再复制应用数据。原目录会保留。'
+      : 'Choose a destination. LicoUp will stop its writers before copying. The original folder stays in place.';
+  String get dataHomeMoveRequiresSavedSelection => isChinese
+      ? '环境变量指定的位置和移动设备沙盒由其各自的设置管理，不能在此移动。'
+      : 'Environment-selected locations and mobile sandbox data are managed by their respective settings.';
+  String get chooseDataHomeDestination =>
+      isChinese ? '选择目标文件夹' : 'Choose destination folder';
+  String get confirmDataHomeMove =>
+      isChinese ? '移动 LicoUp 数据？' : 'Move LicoUp data?';
+  String dataHomeMoveConfirmation(String folder) => isChinese
+      ? '将在“$folder”中创建 LicoUp 文件夹并复制当前数据。迁移成功后，客户端会继续使用新位置，原目录仍会保留。'
+      : 'LicoUp will create a LicoUp folder inside “$folder”, copy the current data, and continue from the new location. The original folder will remain.';
+  String get move => isChinese ? '移动' : 'Move';
+  String get dismiss => isChinese ? '关闭' : 'Dismiss';
+  String get dataHomeMoveTitle =>
+      isChinese ? '正在移动 LicoUp 数据' : 'Moving LicoUp data';
+  String get dataHomeMoveSourcePreserved => isChinese
+      ? '原目录会保留，直到你明确选择清理。'
+      : 'The original folder stays in place until you choose to remove it.';
+  String dataHomePreviousRootRetained(String path) =>
+      isChinese ? '已保留原目录：$path' : 'Original folder retained: $path';
+  String get cleanPreviousDataHome =>
+      isChinese ? '将原目录移到废纸篓' : 'Move original folder to Trash';
+  String get confirmPreviousDataHomeCleanup =>
+      isChinese ? '清理原数据目录？' : 'Move the original data folder to Trash?';
+  String dataHomeCleanupConfirmation(String path) => isChinese
+      ? '“$path”将被移到系统废纸篓。当前 LicoUp 数据目录不会更改。'
+      : '“$path” will be moved to the system Trash. Your current LicoUp data folder will not change.';
+  String get cleaningPreviousDataHome =>
+      isChinese ? '正在清理原数据目录' : 'Cleaning the original data folder';
+  String get dataHomeRecoveryTitle =>
+      isChinese ? '找不到已保存的数据目录' : 'Saved data folder not found';
+  String get dataHomeRecoveryDescription => isChinese
+      ? 'LicoUp 不会创建空目录替代原数据。请重新连接原位置并重试，或选择一个已有的 LicoUp 数据目录。'
+      : 'LicoUp will not replace your data with an empty folder. Reconnect the saved location and retry, or choose an existing LicoUp data folder.';
+  String get chooseExistingDataHome =>
+      isChinese ? '选择已有数据目录' : 'Choose existing data folder';
+  String get confirmDataHomeRecovery =>
+      isChinese ? '使用此数据目录？' : 'Use this data folder?';
+  String get dataHomeRecoveryConfirmation => isChinese
+      ? '此现有目录将成为 LicoUp 的数据位置。请确认它包含你要继续使用的数据。'
+      : 'This existing folder will become LicoUp’s data location. Confirm that it contains the data you want to use.';
+  String dataHomeRecoveryFailed(String _) => isChinese
+      ? '恢复失败，已保存的数据位置仍不可用，LicoUp 没有创建空目录。请重试或选择包含数据的现有目录。'
+      : 'Recovery failed. The saved location is still unavailable, and LicoUp did not create an empty folder. Retry or choose an existing folder that contains your data.';
+  String get useThisFolder => isChinese ? '使用此文件夹' : 'Use this folder';
+  String dataHomeOperationTitle(String operation) => switch (operation) {
+    'cleanup' => cleaningPreviousDataHome,
+    'recovery' => isChinese ? '正在恢复 LicoUp 数据' : 'Recovering LicoUp data',
+    _ => dataHomeMoveTitle,
+  };
+  String dataHomeMovePhase(String phase) => switch (phase) {
+    'stopping-writers' =>
+      isChinese ? '正在停止应用写入进程…' : 'Stopping application writers…',
+    'stopping-conversation-host' =>
+      isChinese ? '正在排空会话主机…' : 'Draining the conversation host…',
+    'stopping-mcp-service' =>
+      isChinese ? '正在停止 MCP 服务…' : 'Stopping the MCP service…',
+    'stopping-gateway' => isChinese ? '正在停止网关…' : 'Stopping the Gateway…',
+    'waiting-for-native-access' =>
+      isChinese
+          ? '正在等待其他 LicoUp 进程释放数据目录…'
+          : 'Waiting for other LicoUp processes to release the data root…',
+    'copying-data' => isChinese ? '正在复制应用数据…' : 'Copying application data…',
+    'publishing-data' =>
+      isChinese ? '正在完成新目录…' : 'Finalizing the copied folder…',
+    'updating-owned-references' =>
+      isChinese ? '正在更新应用管理的路径引用…' : 'Updating app-managed path references…',
+    'switching-data-home' =>
+      isChinese ? '正在切换数据位置…' : 'Switching to the new location…',
+    'cleaning-previous-root' =>
+      isChinese
+          ? '正在将原目录移到系统废纸篓…'
+          : 'Moving the original folder to the system Trash…',
+    'recovering-root' =>
+      isChinese ? '正在恢复数据位置…' : 'Recovering the data location…',
+    'complete' => isChinese ? '正在重新载入客户端…' : 'Reloading the client…',
+    _ => isChinese ? '正在准备迁移…' : 'Preparing the move…',
+  };
+  String dataHomeOperationFailed(
+    String operation,
+    String code,
+  ) => switch (code) {
+    'data_home_destination_exists' ||
+    'data_home_destination_nested' ||
+    'data_home_destination_invalid' ||
+    'data_home_destination_unavailable' =>
+      isChinese
+          ? '目标位置不可用或已包含数据。当前数据位置未更改，请选择其他目标文件夹后重试。'
+          : 'Choose another destination folder and try again. The current data folder was not changed.',
+    'data_home_copy_failed' || 'data_home_copy_unsupported_entry' =>
+      isChinese
+          ? '复制未完成，当前数据位置未更改，原数据仍保留。请检查目标磁盘空间和文件访问权限后重试。'
+          : 'The copy did not finish, and the current data folder was not changed. Your original data remains. Check the destination space and file access, then retry.',
+    'data_home_relocation_recovery_required' ||
+    'data_home_recovery_autostart_failed' =>
+      isChinese
+          ? '数据副本和原数据都已保留。新位置可能已经生效；请查看设置中显示的当前数据位置，并检查已启用的自启动项。'
+          : 'Both data folders were preserved, and the new location may already be active. Check the current folder shown in Settings and review enabled startup items.',
+    'data_home_previous_root_cleanup_failed' =>
+      isChinese
+          ? '未能将原目录移到废纸篓。当前数据位置未更改，原目录仍保留；你可以稍后重试。'
+          : 'The original folder could not be moved to Trash. The active data folder is unchanged, and the original remains available to retry later.',
+    'data_home_previous_root_marker_cleanup_failed' =>
+      isChinese
+          ? '原目录已移到废纸篓，但 LicoUp 未能清除保存的清理记录。当前数据位置未更改。'
+          : 'The original folder was moved to Trash, but LicoUp could not clear its saved cleanup record. The active data folder is unchanged.',
+    _ when operation == 'cleanup' =>
+      isChinese
+          ? '清理未完成，当前数据位置未更改，原目录仍保留。请稍后重试。'
+          : 'Cleanup did not finish. The current data folder is unchanged and the original remains available to retry later.',
+    _ when operation == 'recovery' =>
+      isChinese
+          ? '恢复未完成，原有选择未更改，也没有创建空目录。请重新连接原位置并重试，或选择包含数据的现有目录。'
+          : 'Recovery did not finish, the saved selection was not changed, and no empty folder was created. Reconnect the original location or choose an existing data folder, then retry.',
+    _ =>
+      isChinese
+          ? '移动未完成，当前数据位置未更改，原数据仍保留。请检查目标文件夹后重试。'
+          : 'The move did not finish, and the current data folder was not changed. Your original data remains. Check the destination and retry.',
+  };
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
   String get exportLogsDescription => '';

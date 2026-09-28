@@ -52,6 +52,7 @@ import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
 import 'package:licoup/src/platform/presentation/macos_reduce_motion_channel.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/native_client/data_home_executor.dart';
 import 'package:licoup/src/projections/environment/environment_projection_source.dart';
 import 'package:licoup/src/presentation/skill_hub/skill_hub_binding.dart';
 import 'package:licoup/src/presentation/targets/targets_binding.dart';
@@ -395,6 +396,49 @@ final class ClientAppComposition {
 
   Future<void> initialize() => _controller.initialize();
 
+  bool get initialized => _controller.lifecycleProjection.initialized;
+
+  bool get bootstrapFailed =>
+      _controller.lifecycleController.lastFailureStepId.isNotEmpty;
+
+  Future<bool> get needsDataHomeRecovery async =>
+      _controller.lifecycleController.lastFailureStepId ==
+          'client_storage_root' &&
+      await _controller.portableData.missingSavedDataHome();
+
+  /// Closes every root-bound controller and native session before invoking
+  /// the isolated migration process. The returned native facade retains only
+  /// the immutable process bootstrap needed to locate and start that helper.
+  Future<Map<String, dynamic>> relocateDataHome(
+    String destinationParent, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.relocateDataHome(destinationParent, onPhase: onPhase);
+  }
+
+  Future<Map<String, dynamic>> recoverDataHome(
+    String dataHome, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.recoverDataHome(dataHome, onPhase: onPhase);
+  }
+
+  Future<Map<String, dynamic>> cleanupPreviousDataHome(
+    String expectedPreviousRootPath, {
+    DataHomePhaseHandler? onPhase,
+  }) async {
+    final native = _controller.agentService;
+    await dispose();
+    return native.cleanupPreviousDataHome(
+      expectedPreviousRootPath,
+      onPhase: onPhase,
+    );
+  }
+
   Future<void> initializeLlmGateway() => _controller.initializeLlmGateway();
 
   void attachFlutterObservation(WidgetsBinding binding) =>
@@ -418,27 +462,30 @@ final class ClientAppComposition {
 
   Future<void> dispose() => _disposal ??= _dispose();
 
-  Future<void> _dispose() => disposeAll([
-    _renderer.dispose,
-    _layout.dispose,
-    _projectionTracing.dispose,
-    () => telemetry?.dispose(),
-    _settings.dispose,
-    _chrome.close,
-    _search.close,
-    _targets.dispose,
-    _agentHub.dispose,
-    _pluginManagement.dispose,
-    _skillHub.dispose,
-    _models.dispose,
-    _mobileRelay.dispose,
-    _conversation.close,
-    _monitoring.close,
-    _agents.close,
-    _shellProjection.dispose,
-    _systemReduceMotionSubscription.cancel,
-    _environment.dispose,
-    _shellEffects.dispose,
-    _controller.close,
-  ]);
+  Future<void> _dispose() async {
+    await _controller.portableData.stopAppManagedWritersAndDrain();
+    await disposeAll([
+      _renderer.dispose,
+      _layout.dispose,
+      _projectionTracing.dispose,
+      () => telemetry?.dispose(),
+      _settings.dispose,
+      _chrome.close,
+      _search.close,
+      _targets.dispose,
+      _agentHub.dispose,
+      _pluginManagement.dispose,
+      _skillHub.dispose,
+      _models.dispose,
+      _mobileRelay.dispose,
+      _conversation.close,
+      _monitoring.close,
+      _agents.close,
+      _shellProjection.dispose,
+      _systemReduceMotionSubscription.cancel,
+      _environment.dispose,
+      _shellEffects.dispose,
+      _controller.close,
+    ]);
+  }
 }

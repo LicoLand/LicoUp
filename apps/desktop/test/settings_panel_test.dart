@@ -18,6 +18,7 @@ import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
 import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
 import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/presentation/presentation_semantics.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_card.dart';
@@ -107,6 +108,65 @@ void main() {
       find.text('test-data/licoup/native-conversation-snapshots'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('retained data root moves to Trash only after confirmation', (
+    tester,
+  ) async {
+    final fixture = _settingsFixture();
+    final storage = fixture.presentation.storage.value;
+    fixture.presentation.storage.publish(
+      SettingsStorageInputs(
+        portableDataPath: storage.portableDataPath,
+        portableDataSource: 'saved',
+        previousDataHomePath: '/synthetic/previous-root',
+        previousDataHomeAvailable: true,
+        snapshotRootPath: storage.snapshotRootPath,
+        savingSnapshotRoot: false,
+      ),
+    );
+    await _pumpSettings(tester, fixture, height: 1400);
+
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final cleanup = find.byKey(
+      const Key('settings-data-home-cleanup-previous'),
+    );
+    await tester.scrollUntilVisible(cleanup, 360, scrollable: scrollable);
+    await tester.ensureVisible(cleanup);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Original folder retained: /synthetic/previous-root'),
+      findsOneWidget,
+    );
+    final relocate = find.byKey(const Key('settings-data-home-relocate'));
+    await tester.ensureVisible(relocate);
+    expect(tester.widget<FilledButton>(relocate).onPressed, isNotNull);
+    expect(tester.widget<OutlinedButton>(cleanup).onPressed, isNotNull);
+
+    await tester.tap(cleanup);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Move the original data folder to Trash?'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        '“/synthetic/previous-root” will be moved to the system Trash. Your current LicoUp data folder will not change.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Move original folder to Trash').last);
+    await tester.pump();
+
+    final cleanupIntent = fixture.intents.values
+        .whereType<CleanupPreviousDataHome>()
+        .single;
+    expect(cleanupIntent.expectedPreviousRootPath, '/synthetic/previous-root');
   });
 
   testWidgets('backup directory open intent retains the edited path', (

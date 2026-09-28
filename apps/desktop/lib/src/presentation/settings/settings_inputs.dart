@@ -95,12 +95,16 @@ final class SettingsStorageInputs {
   const SettingsStorageInputs({
     required this.portableDataPath,
     this.portableDataSource = '',
+    this.previousDataHomePath = '',
+    this.previousDataHomeAvailable = false,
     required this.snapshotRootPath,
     required this.savingSnapshotRoot,
   });
 
   final String portableDataPath;
   final String portableDataSource;
+  final String previousDataHomePath;
+  final bool previousDataHomeAvailable;
   final String snapshotRootPath;
   final bool savingSnapshotRoot;
 
@@ -110,6 +114,8 @@ final class SettingsStorageInputs {
       other is SettingsStorageInputs &&
           other.portableDataPath == portableDataPath &&
           other.portableDataSource == portableDataSource &&
+          other.previousDataHomePath == previousDataHomePath &&
+          other.previousDataHomeAvailable == previousDataHomeAvailable &&
           other.snapshotRootPath == snapshotRootPath &&
           other.savingSnapshotRoot == savingSnapshotRoot;
 
@@ -117,6 +123,8 @@ final class SettingsStorageInputs {
   int get hashCode => Object.hash(
     portableDataPath,
     portableDataSource,
+    previousDataHomePath,
+    previousDataHomeAvailable,
     snapshotRootPath,
     savingSnapshotRoot,
   );

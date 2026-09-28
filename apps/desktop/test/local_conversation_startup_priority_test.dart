@@ -7,7 +7,6 @@ import 'package:licoup/src/contracts/client_conversation_models.dart';
 import 'package:licoup/src/contracts/client_memory_diagnostics.dart';
 import 'package:licoup/src/contracts/conversation_native_port.dart';
 import 'package:licoup/src/contracts/presentation/client_current_view.dart';
-
 import 'fixtures/client_controller/support/client_controller_scenario_dependencies.dart';
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 
@@ -15,6 +14,29 @@ const _localId = ClientConversation.defaultLocalAgentGroupId;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('missing saved root shows retry and choose recovery actions', (
+    tester,
+  ) async {
+    final controller = ClientController(
+      portableData: _UnavailableSavedDataRoot(),
+      agentService: FakeAgentService(),
+    );
+    final composition = ClientAppComposition(controller: controller);
+    addTearDown(() => tester.runAsync(composition.dispose));
+
+    await tester.pumpWidget(LicoApp(compositionFactory: () => composition));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(find.text('Saved data folder not found'), findsOneWidget);
+    expect(find.text('Choose existing data folder'), findsOneWidget);
+    expect(find.byKey(const Key('data-home-recovery-retry')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(composition.dispose);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final remainsMounted in [true, false]) {
     testWidgets(
@@ -198,6 +220,22 @@ void main() {
       expect(controller.failureCode, isEmpty);
     },
   );
+}
+
+final class _UnavailableSavedDataRoot extends PortableDataRoot {
+  @override
+  Future<Directory> dataDirectory() async =>
+      throw const MissingSavedDataHome('/synthetic/removed/LicoUp');
+
+  @override
+  Future<DataHomeSelection> dataHomeSelection() async =>
+      const DataHomeSelection(
+        path: '/synthetic/removed/LicoUp',
+        source: DataHomeSelectionSource.saved,
+      );
+
+  @override
+  Future<bool> missingSavedDataHome() async => true;
 }
 
 final class _BlockedDiagnosticDataRoot extends PortableDataRoot {
