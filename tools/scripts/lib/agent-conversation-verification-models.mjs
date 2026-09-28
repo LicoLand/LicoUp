@@ -13,12 +13,17 @@ export const verificationModelsPath = join(
 export const VERIFICATION_MODELS_SCHEMA =
   "licoup.agent-conversation-verification-models.v1";
 
-/** @type {{ schemaVersion: string, models: Readonly<Record<string, string>> } | null} */
+/** @type {{
+ * schemaVersion: string,
+ * models: Readonly<Record<string, string>>,
+ * providers: Readonly<Record<string, string>>,
+ * reasoningEfforts: Readonly<Record<string, string>>
+ * } | null} */
 let cached = null;
 
 /**
- * Constrained TOML reader for this config only:
- * top-level `schema_version`, then `[models]` with `key = "value"` rows.
+ * Constrained TOML reader for this config only. Supported tables are models,
+ * providers, and reasoning_efforts; each contains string selector rows.
  */
 export function parseVerificationModelsToml(source) {
   if (typeof source !== "string" || source.trim().length === 0) {
@@ -27,13 +32,16 @@ export function parseVerificationModelsToml(source) {
   let section = null;
   let schemaVersion = "";
   const models = {};
+  const providers = {};
+  const reasoningEfforts = {};
+  const sections = { models, providers, reasoning_efforts: reasoningEfforts };
   for (const rawLine of source.split(/\r?\n/u)) {
     const line = rawLine.replace(/#.*$/u, "").trim();
     if (!line) continue;
     const sectionMatch = line.match(/^\[([^\]]+)\]$/u);
     if (sectionMatch) {
       section = sectionMatch[1].trim();
-      if (section !== "models") {
+      if (!Object.hasOwn(sections, section)) {
         throw new Error(`verification_models_section_unsupported:${section}`);
       }
       continue;
@@ -56,12 +64,11 @@ export function parseVerificationModelsToml(source) {
       schemaVersion = value;
       continue;
     }
-    if (section === "models") {
-      if (Object.prototype.hasOwnProperty.call(models, key)) {
-        throw new Error(`verification_models_duplicate:${key}`);
-      }
-      models[key] = value;
+    const selector = sections[section];
+    if (Object.prototype.hasOwnProperty.call(selector, key)) {
+      throw new Error(`verification_models_duplicate:${key}`);
     }
+    selector[key] = value;
   }
   if (schemaVersion !== VERIFICATION_MODELS_SCHEMA) {
     throw new Error("verification_models_schema_invalid");
@@ -69,9 +76,18 @@ export function parseVerificationModelsToml(source) {
   if (Object.keys(models).length === 0) {
     throw new Error("verification_models_empty");
   }
+  for (const selector of [providers, reasoningEfforts]) {
+    for (const id of Object.keys(selector)) {
+      if (!Object.hasOwn(models, id)) {
+        throw new Error(`verification_models_selector_unconfigured:${id}`);
+      }
+    }
+  }
   return {
     schemaVersion,
     models: Object.freeze({ ...models }),
+    providers: Object.freeze({ ...providers }),
+    reasoningEfforts: Object.freeze({ ...reasoningEfforts }),
   };
 }
 
@@ -93,22 +109,25 @@ export function verificationModelForAgent(agentId, options = {}) {
   return typeof models[id] === "string" ? models[id] : "";
 }
 
-/**
- * Reasoning effort paired with a verification model, so the pairing lives next
- * to the model authority instead of in every gate. A short greeting uses the
- * lowest supported effort; it does not need extended reasoning.
- *
- * An agent or model without a recorded pairing keeps the harness default.
- */
-export function verificationEffortForAgent(agentId, model) {
+export function verificationProviderForAgent(agentId, options = {}) {
   const id = String(agentId || "").trim();
   if (!id) return "";
-  const loweredModel = String(model || "").toLowerCase();
-  if (id === "codex") {
-    if (loweredModel.includes("spark")) return "low";
-    if (loweredModel.includes("luna")) return "low";
-  }
-  return "";
+  const { providers } = loadVerificationModels(options);
+  return typeof providers[id] === "string" ? providers[id] : "";
+}
+
+/**
+ * Return only an effort explicitly paired with the exact configured model.
+ *
+ * An agent, model, or effort without a recorded pairing keeps the harness
+ * default. Model-name fragments never imply an independent effort.
+ */
+export function verificationEffortForAgent(agentId, model, options = {}) {
+  const id = String(agentId || "").trim();
+  if (!id) return "";
+  const selection = loadVerificationModels(options);
+  if (String(model || "").trim() !== selection.models[id]) return "";
+  return selection.reasoningEfforts[id] || "";
 }
 
 export function verificationModelsMap(options = {}) {

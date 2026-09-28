@@ -39,6 +39,33 @@ is unavailable. Stop an interactive development client through its normal
 platform UI or the foreground process that launched it. Do not treat a
 successful development launch as package, store, or release evidence.
 
+## Run the assigned Agent conversation acceptance
+
+Only the maintainer-assigned delivery owner performs live acceptance on the
+integrated ordinary Release candidate. First record the candidate identity,
+stop every installed writer, and create a consistent recoverable backup of the
+same selected data root, including application-owned encrypted files. Keep
+platform-held keys in place; do not read or export them.
+
+A read-only inspection of the selected root's domain, schema, version, and
+admission status is required before the candidate writes to it. The candidate
+does not yet provide an approved read-only command for this inspection. Hold
+real-root delivery at this preflight until the maintainer resolves that
+interface; `state admit` and normal store opens mutate state and cannot serve
+as inspection.
+
+Use the four configured targets—Codex, Cursor, Antigravity, and DeepSeek
+Harness—and their exact model, provider, and independent-effort selections from
+the [maintained selector configuration](../tools/scripts/config/agent-conversation-verification-models.toml).
+Cursor and Antigravity do not use a separate effort selection; Antigravity's
+selected model already identifies its effort variant.
+
+Run the four selections sequentially in the system UI through CUA, on the same
+data root. Submit exactly one plain `Hi` for each model and accept its actual
+reply without a format requirement. Retain only the candidate identity,
+selected model/provider/effort, submission and reply status, and result; do not
+retain conversation history or reply content.
+
 ## Build a client or release package
 
 Platform build commands produce runnable client build output:

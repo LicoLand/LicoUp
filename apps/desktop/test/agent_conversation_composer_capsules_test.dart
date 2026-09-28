@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -582,65 +584,86 @@ void main() {
   });
 
   testWidgets(
-    'ComposerRuntimeCapsule keeps submenu bounded for long catalogs',
+    'ComposerRuntimeCapsule scrolls and selects the last long-catalog option',
     (tester) async {
       _useComposerPopoverViewport(tester);
-      const options = [
-        'gpt-5.6-terra-alpha',
-        'gpt-5.6-terra-beta',
-        'gpt-5.6-terra-gamma',
-        'gpt-5.6-terra-delta',
-        'gpt-5.6-terra-epsilon',
-        'gpt-5.6-terra-zeta',
-        'gpt-5.6-terra-eta',
-        'gpt-5.6-terra-theta',
-        'gpt-5.6-terra-iota',
-        'gpt-5.6-terra-kappa',
-        'gpt-5.6-terra-lambda',
-        'gpt-5.6-terra-mu',
-      ];
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLicoTheme(platformBrightness: Brightness.dark),
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ComposerRuntimeCapsule(
-                  modelOptions: options,
-                  selectedModel: options.first,
-                  defaultModel: '',
-                  enabled: true,
-                  onModelChanged: (_) {},
-                  reasoningEffortOptions: const [],
-                  selectedReasoningEffort: '',
-                  onReasoningEffortChanged: null,
+      final semantics = tester.ensureSemantics();
+      try {
+        final options = <String>[
+          for (var index = 0; index < 240; index++)
+            'synthetic-model-${index.toString().padLeft(3, '0')}',
+          'composer-2.5',
+        ];
+        String? selected;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLicoTheme(platformBrightness: Brightness.dark),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: ComposerRuntimeCapsule(
+                    modelOptions: options,
+                    selectedModel: options.first,
+                    defaultModel: '',
+                    enabled: true,
+                    onModelChanged: (value) => selected = value,
+                    reasoningEffortOptions: const [],
+                    selectedReasoningEffort: '',
+                    onReasoningEffortChanged: null,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      await tester.tap(find.byKey(const Key('conversation-model-button')));
-      await tester.pumpAndSettle();
-      await _tapRuntimeSelectorRow(
-        tester,
-        const Key('conversation-runtime-model-row'),
-      );
+        await tester.tap(find.byKey(const Key('conversation-model-button')));
+        await tester.pumpAndSettle();
+        await _tapRuntimeSelectorRow(
+          tester,
+          const Key('conversation-runtime-model-row'),
+        );
 
-      final submenu = tester.getSize(
-        find.byKey(const Key('conversation-runtime-submenu')),
-      );
-      expect(
-        submenu.height,
-        lessThanOrEqualTo(
-          MessagingDesktopMetrics.composerRuntimeSelectorSubmenuMaxHeight + 1,
-        ),
-      );
-      expect(find.byType(Scrollable), findsWidgets);
+        final submenu = tester.getSize(
+          find.byKey(const Key('conversation-runtime-submenu')),
+        );
+        expect(
+          submenu.height,
+          lessThanOrEqualTo(
+            MessagingDesktopMetrics.composerRuntimeSelectorSubmenuMaxHeight + 1,
+          ),
+        );
+        final scrollable = find.descendant(
+          of: find.byKey(const Key('conversation-runtime-submenu')),
+          matching: find.byType(Scrollable),
+        );
+        expect(scrollable, findsOneWidget);
+
+        final composerOption = find.descendant(
+          of: find.byKey(const Key('conversation-runtime-submenu')),
+          matching: find.text('composer-2.5'),
+        );
+        await tester.scrollUntilVisible(
+          composerOption,
+          280,
+          scrollable: scrollable,
+        );
+
+        final optionSemantics = tester
+            .getSemantics(composerOption)
+            .getSemanticsData();
+        expect(optionSemantics.label, 'composer-2.5');
+        expect(optionSemantics.hasAction(SemanticsAction.tap), isTrue);
+
+        await tester.tap(composerOption);
+        await tester.pumpAndSettle();
+        expect(selected, 'composer-2.5');
+      } finally {
+        semantics.dispose();
+      }
     },
   );
 
