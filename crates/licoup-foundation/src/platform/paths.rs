@@ -23,6 +23,18 @@ pub struct DataHomeSelection {
     pub source: DataHomeSource,
 }
 
+/// Environment value for an owned login item when the user selected an
+/// environment-managed root. Saved and default roots must resolve through the
+/// boot locator so a missing volume remains detectable at startup.
+pub fn managed_data_home_environment_override(selection: &DataHomeSelection) -> Option<&Path> {
+    match selection.source {
+        DataHomeSource::Environment | DataHomeSource::LegacyEnvironment => {
+            Some(selection.path.as_path())
+        }
+        DataHomeSource::Saved | DataHomeSource::Default | DataHomeSource::TestOverride => None,
+    }
+}
+
 thread_local! {
     static PORTABLE_DATA_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
@@ -442,6 +454,17 @@ mod tests {
         let fallback = select_saved_data_home(None, default.clone());
         assert_eq!(fallback.path, default);
         assert_eq!(fallback.source, DataHomeSource::Default);
+
+        assert_eq!(
+            managed_data_home_environment_override(&legacy),
+            Some(Path::new("/fixture/legacy"))
+        );
+        assert_eq!(
+            managed_data_home_environment_override(&explicit),
+            Some(Path::new("/fixture/explicit"))
+        );
+        assert_eq!(managed_data_home_environment_override(&stored), None);
+        assert_eq!(managed_data_home_environment_override(&fallback), None);
     }
 
     #[test]

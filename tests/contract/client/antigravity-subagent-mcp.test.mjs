@@ -19,7 +19,7 @@ test("Antigravity registration uses one common namespaced ownership contract", (
   assert.doesNotMatch(manager, /SERVER_KEY/u);
   assert.match(common, /\.gemini.*config.*skills/su);
   assert.match(common, /fn antigravity_context_environment/u);
-  assert.match(common, /"\$\{LICOUP_PORTABLE_DIR\}"/u);
+  assert.match(common, /"\$\{LICOUP_HOME\}"/u);
   assert.doesNotMatch(common, /Antigravity => entry\.get\("env"\)\.is_none\(\)/u);
   const envFn = common.indexOf("fn antigravity_context_environment");
   const envFnEnd = common.indexOf("#[derive", envFn);

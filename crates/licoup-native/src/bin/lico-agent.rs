@@ -42,6 +42,9 @@ fn run(raw: Vec<String>) -> Result<(), &'static str> {
         );
         return Ok(());
     }
+    let _data_home_access =
+        licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
+            .map_err(|_| "data_home_access_unavailable")?;
     let args = parse_args(&raw)?;
     let transport = GatewayChatTransport::from_base_url(&args.gateway_base_url)
         .map_err(|_| "gateway_base_url_must_be_loopback")?;

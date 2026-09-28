@@ -12,7 +12,11 @@ use crate::contracts::conversation_protocol::{
 use anyhow::{Result, anyhow, ensure};
 use interprocess::local_socket::{Stream, traits::Stream as _};
 use serde_json::{Value, json};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::{
+    io::{self, BufRead, BufReader, Read, Write},
+    thread,
+    time::Duration,
+};
 
 const FRAME_LIMIT: usize = 64 * 1024;
 
@@ -32,6 +36,26 @@ pub fn execute_existing(method: &str, params: &Value) -> Result<Value> {
         params,
         conversation_host_transport::connect_existing,
     )
+}
+
+/// Stop the current root's host and wait for its owner lock to become
+/// available. The RPC acknowledgment closes admission; the OS lock release is
+/// the proof that the host process has stopped writing.
+pub fn stop_existing_and_wait() -> Result<()> {
+    let root = licoup_foundation::platform::paths::portable_data_dir_read_only()?;
+    if let Some(owner) = super::conversation_host_transport::try_acquire_host_owner_lock(&root)? {
+        drop(owner);
+        return Ok(());
+    }
+    execute_existing("shutdown", &json!({ "host": true }))?;
+    loop {
+        if let Some(owner) = super::conversation_host_transport::try_acquire_host_owner_lock(&root)?
+        {
+            drop(owner);
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn execute_with_connector(

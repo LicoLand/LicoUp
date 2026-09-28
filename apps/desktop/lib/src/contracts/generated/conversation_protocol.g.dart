@@ -46,7 +46,11 @@ enum ConversationProtocolMethod {
   targetsScan("targets.scan"),
   targetsAdd("targets.add"),
   gatewayCredentialsCreate("gateway.credentials.create"),
-  gatewayCredentialsUpdate("gateway.credentials.update");
+  gatewayCredentialsUpdate("gateway.credentials.update"),
+  dataHomeRelocate("data.home.relocate"),
+  dataHomeStatus("data.home.status"),
+  dataHomeRecover("data.home.recover"),
+  dataHomeCleanup("data.home.cleanup");
 
   const ConversationProtocolMethod(this.wireName);
 
@@ -292,6 +296,34 @@ conversationProtocolMethodMetadata =
         inFlightControl: false,
       ),
       'gateway.credentials.update': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'data.home.relocate': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'data.home.status': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'data.home.recover': ConversationProtocolMethodMetadata(
+        kind: ConversationProtocolMethodKind.command,
+        lane: ConversationProtocolLane.command,
+        structured: true,
+        stream: false,
+        inFlightControl: false,
+      ),
+      'data.home.cleanup': ConversationProtocolMethodMetadata(
         kind: ConversationProtocolMethodKind.command,
         lane: ConversationProtocolLane.command,
         structured: true,
@@ -608,6 +640,10 @@ const List<String> conversationProtocolMethods = <String>[
   'targets.add',
   'gateway.credentials.create',
   'gateway.credentials.update',
+  'data.home.relocate',
+  'data.home.status',
+  'data.home.recover',
+  'data.home.cleanup',
 ];
 
 final class ConversationCommand {

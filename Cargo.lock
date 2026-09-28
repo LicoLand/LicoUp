@@ -2116,6 +2116,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "flate2",
+ "fs2",
  "nix",
  "serde",
  "serde_json",

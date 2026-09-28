@@ -50,7 +50,6 @@ const MAX_PID_BYTES: usize = 1024;
 const HEALTH_PROBE_BYTES: usize = 4 * 1024;
 const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 const START_TIMEOUT: Duration = Duration::from_secs(10);
-const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Secret material unlocked by the owner once for the lifetime of the native
@@ -577,7 +576,7 @@ pub fn service_start(port: u16) -> Result<Value> {
             ));
         }
         if Instant::now() >= deadline {
-            terminate(record.pid);
+            let _ = terminate(record.pid);
             let _ = child.wait();
             let _ = clear_pid_record(&paths.pid);
             return Err(anyhow!("llm_gateway_start_failed"));
@@ -634,19 +633,59 @@ pub fn service_stop(port: u16) -> Result<Value> {
             Some("not_running"),
         ));
     };
-    terminate(record.pid);
-    let deadline = Instant::now() + STOP_TIMEOUT;
+    terminate(record.pid)?;
     loop {
         if !pid_alive(record.pid) && !probe_health(port, HEALTH_PROBE_TIMEOUT) {
             clear_pid_record(&paths.pid)?;
             let _ = std::fs::remove_file(&paths.credentials_control);
             return Ok(report("stopped", false, None, port, &paths, None));
         }
-        if Instant::now() >= deadline {
-            return Err(anyhow!("llm_gateway_stop_failed"));
-        }
         thread::sleep(POLL_INTERVAL);
     }
+}
+
+/// Stop the Gateway only when this application owns a pid record, using the
+/// port recorded by that owned process. Relocation must not guess a customized
+/// port or signal an unmanaged listener.
+pub fn service_stop_managed() -> Result<Value> {
+    let paths = ServicePaths::resolve()?;
+    service_stop_managed_at(&paths)
+}
+
+fn service_stop_managed_at(paths: &ServicePaths) -> Result<Value> {
+    let Some(record) = read_pid_record(&paths.pid)? else {
+        // This entry point controls only a sidecar owned by this data root.
+        // Probing the default port here could make an unrelated local service
+        // block a relocation even though LicoUp has no process to stop.
+        return Ok(report(
+            "stopped",
+            false,
+            None,
+            DEFAULT_PORT,
+            paths,
+            Some("not_running"),
+        ));
+    };
+    if pid_alive(record.pid) {
+        terminate(record.pid)?;
+        loop {
+            if !pid_alive(record.pid) {
+                clear_pid_record(&paths.pid)?;
+                let _ = std::fs::remove_file(&paths.credentials_control);
+                return Ok(report("stopped", false, None, record.port, paths, None));
+            }
+            thread::sleep(POLL_INTERVAL);
+        }
+    }
+    clear_pid_record(&paths.pid)?;
+    Ok(report(
+        "stopped",
+        false,
+        None,
+        record.port,
+        paths,
+        Some("not_running"),
+    ))
 }
 
 fn status_report(port: u16, probe_timeout: Duration) -> Result<Value> {
@@ -1099,7 +1138,7 @@ fn spawn_sidecar_with_handoff(
         // A broken pipe means the sidecar died before reading the handoff;
         // either way the doomed child is reaped instead of left running.
         if error.kind() == std::io::ErrorKind::BrokenPipe {
-            terminate(child.id());
+            let _ = terminate(child.id());
             let _ = child.wait();
             let _ = clear_pid_record(&paths.pid);
         }
@@ -1209,18 +1248,32 @@ fn pid_is_zombie(_pid: u32) -> bool {
     false
 }
 
-fn terminate(pid: u32) {
+fn terminate(pid: u32) -> Result<()> {
     #[cfg(unix)]
-    unsafe {
-        libc::kill(pid as i32, libc::SIGTERM);
+    {
+        let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        if result == 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        return Err(anyhow!("llm_gateway_stop_failed"));
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let status = Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status();
+            .status()
+            .map_err(|_| anyhow!("llm_gateway_stop_failed"))?;
+        if status.success() || !pid_alive(pid) {
+            Ok(())
+        } else {
+            Err(anyhow!("llm_gateway_stop_failed"))
+        }
     }
 }
 
@@ -1384,6 +1437,21 @@ mod tests {
 
         atomic_write_private_text(&paths.pid, "not-a-pid-record").unwrap();
         assert_eq!(read_pid_record(&paths.pid).unwrap(), None);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn managed_stop_without_an_owned_pid_record_does_not_probe_default_port() {
+        let root = temp_state_root();
+        let _guard = PortableDataDirOverrideGuard::set(root.clone());
+        let paths = ServicePaths::resolve().unwrap();
+
+        let result = service_stop_managed_at(&paths).unwrap();
+
+        assert_eq!(result["state"], "stopped");
+        assert_eq!(result["managed"], false);
+        assert_eq!(result["port"], DEFAULT_PORT);
+        assert_eq!(result["message"], "not_running");
         let _ = std::fs::remove_dir_all(root);
     }
 

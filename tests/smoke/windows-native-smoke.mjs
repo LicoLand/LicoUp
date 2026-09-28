@@ -189,7 +189,7 @@ async function main() {
 
   const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-windows-native-smoke-"));
   await recordProgress("portable-dir", "created");
-  const env = { LICOUP_PORTABLE_DIR: portableDir };
+  const env = { LICOUP_HOME: portableDir };
   try {
     await recordProgress("targets-scan", "start");
     const targets = await runJson(licoClientExe, ["targets", "scan"], { env, timeoutMs: 30000 });

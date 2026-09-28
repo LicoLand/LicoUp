@@ -212,6 +212,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["crates/licoup-native/src/platform/gateway_runtime/channels/telegram/credentials.rs", "isolated credential environment fixture"],
     ["crates/licoup-native/src/platform/lico_agent_driver/tests.rs", "isolated process environment fixtures"],
     ["crates/licoup-native/src/platform/llm_gateway_autostart.rs", "launchd user identity"],
+    ["crates/licoup-native/src/platform/data_home_relocation.rs", "atomic selected-root publication and process-safe relocation"],
     ["crates/licoup-native/src/platform/llm_gateway_credentials_control.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_inventory_control.rs", "Unix peer credential verification"],
     ["crates/licoup-native/src/platform/llm_gateway_service.rs", "bounded sidecar pipe and process lifecycle"],

@@ -70,7 +70,7 @@ export async function runAgentConversation(argv = process.argv.slice(2)) {
       ...wrapper.environment,
       ...process.env,
       LICO_AGENT_CONVERSATION_ACCEPTANCE: acceptanceMode,
-      LICOUP_PORTABLE_DIR: portableDataRoot,
+      LICOUP_HOME: portableDataRoot,
     };
     const context = {
       config,

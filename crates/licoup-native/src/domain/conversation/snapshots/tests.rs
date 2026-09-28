@@ -10,6 +10,7 @@ mod discovery;
 mod materialization;
 mod orchestration;
 mod privacy_projection;
+mod relocation;
 mod reporting;
 mod selection;
 mod selection_plan;

@@ -30,6 +30,19 @@ pub fn service_stop(port: u16) -> Result<Value> {
     layered_status(port, stopped)
 }
 
+/// Stop an application-managed Gateway using its recorded port, without
+/// touching an unrelated listener on a guessed port.
+pub fn service_stop_managed() -> Result<Value> {
+    let stopped = crate::platform::llm_gateway_service::service_stop_managed()?;
+    let port = stopped
+        .get("port")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .unwrap_or(DEFAULT_PORT);
+    let _ = channels::telegram::clear_ready();
+    layered_status(port, stopped)
+}
+
 pub fn service_status(port: u16) -> Result<Value> {
     let base = crate::platform::llm_gateway_service::service_status(port)?;
     layered_status(port, base)

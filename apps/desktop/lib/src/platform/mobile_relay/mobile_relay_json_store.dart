@@ -52,16 +52,21 @@ class MobileRelayJsonStore {
     Object? payload, {
     bool lock = false,
   }) async {
-    final file = await _file(portableData, fileName);
-    await file.parent.create(recursive: true);
-    if (lock) {
-      await _enqueueWrite(
-        file,
-        () => _writeJsonAtomicallyWithLock(file, payload),
-      );
-      return;
+    if (portableData is! PortableDataRoot) {
+      throw ArgumentError.value(portableData, 'portableData');
     }
-    await _enqueueWrite(file, () => _writeJsonAtomically(file, payload));
+    await portableData.withAppManagedWriter(() async {
+      final file = await _file(portableData, fileName);
+      await file.parent.create(recursive: true);
+      if (lock) {
+        await _enqueueWrite(
+          file,
+          () => _writeJsonAtomicallyWithLock(file, payload),
+        );
+        return;
+      }
+      await _enqueueWrite(file, () => _writeJsonAtomically(file, payload));
+    });
   }
 
   Future<File> _file(Object portableData, String fileName) async {

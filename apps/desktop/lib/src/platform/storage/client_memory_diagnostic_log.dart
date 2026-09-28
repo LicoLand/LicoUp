@@ -21,15 +21,17 @@ final class ClientMemoryDiagnosticLog implements ClientMemoryDiagnosticSink {
 
   @override
   Future<void> record(ClientMemoryDiagnosticRecord record) {
-    final write = (_pendingWrite ?? Future<void>.value()).then(
-      (_) => _append(record),
-    );
-    late final Future<void> settled;
-    settled = write.catchError((_) {}).whenComplete(() {
-      if (identical(_pendingWrite, settled)) _pendingWrite = null;
+    return _portableData.withAppManagedWriter(() {
+      final write = (_pendingWrite ?? Future<void>.value()).then(
+        (_) => _append(record),
+      );
+      late final Future<void> settled;
+      settled = write.catchError((_) {}).whenComplete(() {
+        if (identical(_pendingWrite, settled)) _pendingWrite = null;
+      });
+      _pendingWrite = settled;
+      return write;
     });
-    _pendingWrite = settled;
-    return write;
   }
 
   Future<void> _append(ClientMemoryDiagnosticRecord record) async {

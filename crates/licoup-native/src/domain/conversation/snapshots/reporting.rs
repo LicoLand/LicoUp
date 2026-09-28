@@ -102,7 +102,8 @@ pub(super) fn markdown_cell(value: &str) -> String {
 pub(super) fn archive_summary_markdown(
     profile: &ArchiveProfile,
     root: &Path,
-    discovery: &DiscoveryResult,
+    candidate_count: usize,
+    source_summaries: &[Value],
     index_records: &[Value],
     validation: &Value,
 ) -> String {
@@ -125,7 +126,7 @@ pub(super) fn archive_summary_markdown(
         "- Profile: `{}`\n- Archive root: `{}`\n- Candidates scanned: {}\n- Archived records: {}\n- Health: `{}`\n\n",
         profile.profile_id,
         display_path(root),
-        discovery.candidates.len(),
+        candidate_count,
         index_records.len(),
         validation.get("healthStatus").and_then(Value::as_str).unwrap_or("unknown")
     ));
@@ -134,7 +135,7 @@ pub(super) fn archive_summary_markdown(
         out.push_str(&format!("- `{}`: {}\n", source, count));
     }
     out.push_str("\n## Source Coverage\n\n");
-    for source in &discovery.source_summaries {
+    for source in source_summaries {
         out.push_str(&format!(
             "- `{}` `{}`: {} sessions, {} files seen\n",
             source.get("agentId").and_then(Value::as_str).unwrap_or(""),

@@ -343,6 +343,31 @@ void main() {
   );
 
   test(
+    'saved-root recovery detects reattachment without creating a root',
+    () async {
+      final home = await Directory.systemTemp.createTemp(
+        'licoup-recovery-home-',
+      );
+      final missingRoot = p.join(home.path, 'removed-volume', 'LicoUp');
+      addTearDown(() => home.delete(recursive: true));
+      final locatorDirectory = _locatorDirectory(home.path);
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString('$missingRoot\n', flush: true);
+      final portableData = PortableDataRoot(
+        environmentOverride: {'HOME': home.path},
+      );
+
+      expect(await portableData.missingSavedDataHome(), isTrue);
+      expect(await Directory(missingRoot).exists(), isFalse);
+
+      await Directory(missingRoot).create(recursive: true);
+      expect(await portableData.missingSavedDataHome(), isFalse);
+    },
+  );
+
+  test(
     'cached saved root disappearance is rejected before client state recreation',
     () async {
       final home = await Directory.systemTemp.createTemp(

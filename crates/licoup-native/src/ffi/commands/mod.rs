@@ -778,7 +778,7 @@ fn handle_commands(_command: AdmittedCommand) -> Result<CliExecution> {
         "commands": cli_command_schemas(),
         "rpc": {
             "protocol": CONVERSATION_PROTOCOL_VERSION,
-            "methods": CONVERSATION_PROTOCOL_METHODS,
+            "methods": CONVERSATION_PROTOCOL_METHODS.as_slice(),
             "stream": ["rpc", "conversation"],
             "bridge": ["rpc", "stdio"],
             "call": ["rpc", "call"],

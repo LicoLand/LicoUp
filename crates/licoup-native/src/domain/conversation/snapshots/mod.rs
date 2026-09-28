@@ -136,6 +136,7 @@ mod discovery;
 mod materialization;
 mod orchestration;
 mod privacy_projection;
+mod relocation;
 mod reporting;
 mod selection;
 mod selection_plan;
@@ -155,6 +156,7 @@ use support::*;
 use validation::*;
 
 pub(crate) use orchestration::{archive_collect, archive_run, collect};
+pub(crate) use relocation::relocate_copied_data_home_references;
 pub(crate) use reporting::archive_report;
 pub(crate) use selection_plan::{archive_selection_collect, archive_selection_preview};
 pub(crate) use settings::{

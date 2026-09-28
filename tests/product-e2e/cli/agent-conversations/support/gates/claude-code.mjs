@@ -114,7 +114,7 @@ function buildContext(options) {
     ...process.env,
     [config.noHistoryEnvironmentKey]: "1",
     LICO_AGENT_CONVERSATION_ACCEPTANCE: acceptanceMode,
-    LICOUP_PORTABLE_DIR: portableDataRoot,
+    LICOUP_HOME: portableDataRoot,
   };
   return {
     config,

@@ -16,13 +16,15 @@ mixin ClientRoutingFacade on AgentWorkspaceCoordinator {
     try {
       final portable = agentWorkspacePortableData;
       if (portable is! PortableDataRoot) return;
-      final clientDir = await portable.clientDirectory();
-      final plansDir = Directory(p.join(clientDir.path, 'plans'));
-      await plansDir.create(recursive: true);
-      final file = File(p.join(plansDir.path, 'active-plan.md'));
-      if (!await file.exists()) {
-        await file.writeAsString('');
-      }
+      await portable.withAppManagedWriter(() async {
+        final clientDir = await portable.clientDirectory();
+        final plansDir = Directory(p.join(clientDir.path, 'plans'));
+        await plansDir.create(recursive: true);
+        final file = File(p.join(plansDir.path, 'active-plan.md'));
+        if (!await file.exists()) {
+          await file.writeAsString('');
+        }
+      });
     } on Object {
       // Optional plan file must not block profile selection.
     }

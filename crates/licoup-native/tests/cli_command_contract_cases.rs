@@ -222,7 +222,7 @@ fn command_discovery_exposes_every_admitted_route_and_generated_method_without_r
     assert_eq!(catalog["rpc"]["protocol"], CONVERSATION_PROTOCOL_VERSION);
     assert_eq!(
         catalog["rpc"]["methods"],
-        json!(CONVERSATION_PROTOCOL_METHODS)
+        json!(CONVERSATION_PROTOCOL_METHODS.as_slice())
     );
     let commands = catalog["commands"].as_array().unwrap();
     assert_eq!(commands.len(), AUTHORITATIVE_ROUTE_COUNT);

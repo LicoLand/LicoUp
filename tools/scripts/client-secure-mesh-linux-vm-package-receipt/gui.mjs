@@ -16,7 +16,7 @@ export async function runGuiSession(ctx, flutterClient, installedBundle, portabl
     GDK_GL: "software",
     LIBGL_ALWAYS_SOFTWARE: "1",
     NO_AT_BRIDGE: "1",
-    LICOUP_PORTABLE_DIR: portableRoot
+    LICOUP_HOME: portableRoot
   };
   const xvfb = spawn("Xvfb", [
     display,

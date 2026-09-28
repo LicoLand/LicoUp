@@ -21,7 +21,7 @@ mod stdio_rpc;
 
 use presentation::{print_json, print_usage};
 use private_stdin_json::materialize_private_stdin_json;
-use stdio_rpc::{execute_rpc_cli, serve_stdio_rpc};
+use stdio_rpc::{execute_rpc_cli, serve_data_home_stdio_rpc, serve_stdio_rpc};
 
 // Keep the public CLI boundary token explicit here: the source-boundary gate
 // verifies that malformed or substituted protocols cannot silently enter the
@@ -36,6 +36,14 @@ fn main() -> Result<()> {
         .target(env_logger::Target::Stderr)
         .init();
     let args = env::args().skip(1).collect::<Vec<_>>();
+    // Relocation uses a dedicated, otherwise idle RPC process: its command
+    // must acquire the exclusive coordinator lease rather than wait on its
+    // own process-lifetime shared lease.
+    let _data_home_access = if args.as_slice() == ["rpc", "data-home"] {
+        None
+    } else {
+        Some(licoup_foundation::platform::data_home_access::acquire_process_data_home_access()?)
+    };
     if args.as_slice() == ["rpc", "stdio"] {
         // The RPC wire response is already fail-closed and redacted. Keep the
         // process panic hook equally bounded so a panic payload cannot leak a
@@ -50,6 +58,13 @@ fn main() -> Result<()> {
         conversation_host::ensure_host_for_desktop_start();
         let stdin = io::stdin();
         return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
+    }
+    if args.as_slice() == ["rpc", "data-home"] {
+        panic::set_hook(Box::new(|_| {
+            eprintln!("licoup data-home operation terminated unexpectedly");
+        }));
+        let stdin = io::stdin();
+        return serve_data_home_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
     }
     if args.as_slice() == ["rpc", "conversation"] {
         panic::set_hook(Box::new(|_| {

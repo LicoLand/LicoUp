@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 export 'package:licoup/src/platform/storage/client_workspace_manifest.dart'
     show ClientWorkspaceManifest, ClientWorkspaceManifestStore;
+
+final Object _appManagedWriterZoneKey = Object();
 
 enum DataHomeSelectionSource {
   explicitEnvironment,
@@ -63,6 +66,9 @@ class PortableDataRoot {
   final ClientWorkspaceManifestStore _workspaceManifestStore;
   Directory? _cachedDataDir;
   DataHomeSelection? _cachedSelection;
+  bool _acceptAppManagedWrites = true;
+  int _activeAppManagedWrites = 0;
+  Completer<void>? _appManagedWritesDrained;
 
   /// Drop the macOS data-volume firmlink prefix so a home path and the same
   /// path under that prefix classify as the same location.
@@ -106,6 +112,12 @@ class PortableDataRoot {
 
   Future<DataHomeSelection> dataHomeSelection() async =>
       _cachedSelection ??= await _resolveDataHomeSelection();
+
+  Future<bool> missingSavedDataHome() async {
+    final selection = await dataHomeSelection();
+    return selection.source == DataHomeSelectionSource.saved &&
+        !await Directory(selection.path).exists();
+  }
 
   Future<DataHomeSelection> _resolveDataHomeSelection() async {
     if (_dataDirectoryOverride != null) {
@@ -217,7 +229,7 @@ class PortableDataRoot {
   Future<Directory> clientDirectory() async {
     final dataDir = await dataDirectory();
     final directory = Directory(p.join(dataDir.path, 'client-state'));
-    await directory.create(recursive: true);
+    await withAppManagedWriter(() => directory.create(recursive: true));
     return directory;
   }
 
@@ -231,13 +243,52 @@ class PortableDataRoot {
     return Directory(p.join(root.path, 'snapshots'));
   }
 
-  Future<ClientWorkspaceManifest> loadWorkspaceManifest() async {
-    final directory = await dataDirectory();
-    return _workspaceManifestStore.loadOrCreate(directory);
+  Future<ClientWorkspaceManifest> loadWorkspaceManifest() =>
+      withAppManagedWriter(() async {
+        final directory = await dataDirectory();
+        return _workspaceManifestStore.loadOrCreate(directory);
+      });
+
+  /// Runs one app-owned write under this composition's local root admission.
+  /// Relocation closes admission and waits for all accepted writes before the
+  /// native process releases its root lease and starts copying.
+  Future<T> withAppManagedWriter<T>(Future<T> Function() operation) {
+    if (identical(Zone.current[_appManagedWriterZoneKey], this)) {
+      return operation();
+    }
+    if (!_acceptAppManagedWrites) {
+      return Future<T>.error(StateError('data_home_writers_quiescing'));
+    }
+    _activeAppManagedWrites += 1;
+    return runZoned<Future<T>>(
+      () => _runAppManagedWriter(operation),
+      zoneValues: <Object, Object>{_appManagedWriterZoneKey: this},
+    );
+  }
+
+  Future<T> _runAppManagedWriter<T>(Future<T> Function() operation) async {
+    try {
+      return await operation();
+    } finally {
+      _activeAppManagedWrites -= 1;
+      if (!_acceptAppManagedWrites &&
+          _activeAppManagedWrites == 0 &&
+          !(_appManagedWritesDrained?.isCompleted ?? true)) {
+        _appManagedWritesDrained!.complete();
+      }
+    }
+  }
+
+  /// Permanently closes writes for this composition and waits for accepted
+  /// operations. A replacement composition owns a new admission gate.
+  Future<void> stopAppManagedWritersAndDrain() {
+    _acceptAppManagedWrites = false;
+    if (_activeAppManagedWrites == 0) return Future<void>.value();
+    return (_appManagedWritesDrained ??= Completer<void>()).future;
   }
 
   Future<Directory> _prepareDataDirectory(Directory directory) async {
-    await directory.create(recursive: true);
+    await withAppManagedWriter(() => directory.create(recursive: true));
     return directory;
   }
 

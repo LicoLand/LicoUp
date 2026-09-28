@@ -17,6 +17,9 @@ mod conversation;
 pub(crate) use conversation::PersistentConversationRuntime;
 #[path = "server/blocking_commands.rs"]
 mod blocking_commands;
+#[cfg(test)]
+#[path = "server/data_home_tests.rs"]
+mod data_home_tests;
 #[path = "server/state.rs"]
 mod state;
 
@@ -32,6 +35,27 @@ where
         execute,
         None,
         None,
+        false,
+        blocking_commands::Workers::default(),
+    )
+}
+
+/// One-shot bridge reserved for the data-home relocation owner. Its process
+/// deliberately has no shared data-home lease, so only this operation may
+/// acquire the exclusive relocation lease.
+pub(crate) fn serve_data_home_stdio_rpc<R, W, F>(reader: R, writer: W, execute: F) -> Result<W>
+where
+    R: BufRead,
+    W: Write + Send + 'static,
+    F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
+{
+    serve_stdio_rpc_inner(
+        reader,
+        writer,
+        execute,
+        None,
+        None,
+        true,
         blocking_commands::Workers::default(),
     )
 }
@@ -54,6 +78,7 @@ where
         execute,
         Some(conversation_runtime),
         None,
+        false,
         blocking_commands::Workers::default(),
     )
 }
@@ -76,6 +101,7 @@ where
         execute,
         Some(conversation_runtime),
         Some(conversation_service),
+        false,
         blocking_commands::Workers::default(),
     )
 }
@@ -86,6 +112,7 @@ fn serve_stdio_rpc_inner<R, W, F>(
     mut execute: F,
     conversation_runtime: Option<PersistentConversationRuntime>,
     initial_conversation_service: Option<ConversationService>,
+    data_home_rpc_enabled: bool,
     mut blocking_commands: blocking_commands::Workers,
 ) -> Result<W>
 where
@@ -155,6 +182,27 @@ where
         if bound_workflow_id.is_none() {
             bound_workflow_id = Some(request.workflow_id.clone());
         }
+        let data_home_mutation = matches!(
+            &request.method,
+            StdioRpcMethod::DataHomeRelocate { .. }
+                | StdioRpcMethod::DataHomeRecover { .. }
+                | StdioRpcMethod::DataHomeCleanup { .. }
+        );
+        let data_home_status = matches!(&request.method, StdioRpcMethod::DataHomeStatus);
+        if (data_home_rpc_enabled && (!data_home_mutation || data_home_status))
+            || (!data_home_rpc_enabled && data_home_mutation)
+        {
+            write_stdio_rpc_error_shared(
+                &writer,
+                Some(&request.id),
+                Some(&request.workflow_id),
+                "data_home_operation_requires_dedicated_process",
+            )?;
+            if data_home_rpc_enabled {
+                return recover_stdio_rpc_writer(writer);
+            }
+            continue;
+        }
 
         // One host-facing boundary: the whole per-request dispatch is
         // unwind-safe. A panic in any arm (including arms without their own
@@ -207,6 +255,30 @@ where
                     // already accepted. Acknowledge first so the client can leave.
                     conversation::join_until_completion(&mut conversation_workers);
                     blocking_commands.join_until_completion();
+                    return Ok(true);
+                }
+                StdioRpcMethod::DataHomeRelocate { params } => {
+                    dispatch_data_home_result(&writer, &request.id, &request.workflow_id, || {
+                        licoup_native::platform::data_home_relocation::relocate(&params)
+                    })?;
+                    return Ok(true);
+                }
+                StdioRpcMethod::DataHomeStatus => dispatch_data_home_result(
+                    &writer,
+                    &request.id,
+                    &request.workflow_id,
+                    licoup_native::platform::data_home_relocation::status,
+                )?,
+                StdioRpcMethod::DataHomeRecover { params } => {
+                    dispatch_data_home_result(&writer, &request.id, &request.workflow_id, || {
+                        licoup_native::platform::data_home_relocation::recover(&params)
+                    })?;
+                    return Ok(true);
+                }
+                StdioRpcMethod::DataHomeCleanup { params } => {
+                    dispatch_data_home_result(&writer, &request.id, &request.workflow_id, || {
+                        licoup_native::platform::data_home_relocation::cleanup_previous(&params)
+                    })?;
                     return Ok(true);
                 }
                 StdioRpcMethod::Conversation {
@@ -756,6 +828,60 @@ fn conversation_service(
         .entries
         .push_back((portable_data_dir, service.clone()));
     Ok(service)
+}
+
+fn dispatch_data_home_result<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: &str,
+    workflow_id: &str,
+    operation: impl FnOnce() -> anyhow::Result<Value>,
+) -> io::Result<()> {
+    let execution = catch_unwind(AssertUnwindSafe(operation));
+    match execution {
+        Ok(Ok(value)) => write_stdio_rpc_success_shared(writer, id, workflow_id, value),
+        Ok(Err(error)) => write_stdio_rpc_error_shared(
+            writer,
+            Some(id),
+            Some(workflow_id),
+            data_home_rpc_error_code(&error),
+        ),
+        Err(_) => write_stdio_rpc_error_shared(
+            writer,
+            Some(id),
+            Some(workflow_id),
+            "data_home_operation_failed",
+        ),
+    }
+}
+
+fn data_home_rpc_error_code(error: &anyhow::Error) -> &'static str {
+    const SAFE_CODES: &[&str] = &[
+        "data_home_confirmation_required",
+        "data_home_copy_failed",
+        "data_home_copy_unsupported_entry",
+        "data_home_destination_exists",
+        "data_home_destination_invalid",
+        "data_home_destination_nested",
+        "data_home_destination_unavailable",
+        "data_home_environment_selected",
+        "data_home_previous_root_cleanup_failed",
+        "data_home_previous_root_marker_cleanup_failed",
+        "data_home_previous_root_invalid",
+        "data_home_previous_root_unavailable",
+        "data_home_recovery_autostart_failed",
+        "data_home_recovery_cleanup_failed",
+        "data_home_recovery_not_available",
+        "data_home_recovery_not_required",
+        "data_home_relocation_recovery_required",
+        "data_home_selection_changed",
+        "data_home_source_unavailable",
+    ];
+    let candidate = error.to_string();
+    SAFE_CODES
+        .iter()
+        .copied()
+        .find(|code| *code == candidate)
+        .unwrap_or("data_home_operation_failed")
 }
 
 /// Attach every host-only execution port to one service instance. The

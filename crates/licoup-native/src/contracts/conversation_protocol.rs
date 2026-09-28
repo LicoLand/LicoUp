@@ -11,7 +11,7 @@ pub const CONVERSATION_PROTOCOL_MAX_CLIENT_ARGS: usize = 256;
 pub const CONVERSATION_PROTOCOL_MAX_ERROR_CODE_BYTES: usize = 64;
 pub const CONVERSATION_PROTOCOL_MAX_STDERR_BYTES: usize = 524288;
 
-pub const CONVERSATION_PROTOCOL_METHODS: [&str; 31] = [
+pub const CONVERSATION_PROTOCOL_METHODS: [&str; 35] = [
     "execute",
     "shutdown",
     "catalog.status",
@@ -43,6 +43,10 @@ pub const CONVERSATION_PROTOCOL_METHODS: [&str; 31] = [
     "targets.add",
     "gateway.credentials.create",
     "gateway.credentials.update",
+    "data.home.relocate",
+    "data.home.status",
+    "data.home.recover",
+    "data.home.cleanup",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,6 +82,10 @@ pub enum ConversationProtocolMethod {
     TargetsAdd,
     GatewayCredentialsCreate,
     GatewayCredentialsUpdate,
+    DataHomeRelocate,
+    DataHomeStatus,
+    DataHomeRecover,
+    DataHomeCleanup,
 }
 
 impl ConversationProtocolMethod {
@@ -114,6 +122,10 @@ impl ConversationProtocolMethod {
             Self::TargetsAdd => "targets.add",
             Self::GatewayCredentialsCreate => "gateway.credentials.create",
             Self::GatewayCredentialsUpdate => "gateway.credentials.update",
+            Self::DataHomeRelocate => "data.home.relocate",
+            Self::DataHomeStatus => "data.home.status",
+            Self::DataHomeRecover => "data.home.recover",
+            Self::DataHomeCleanup => "data.home.cleanup",
         }
     }
 
@@ -150,6 +162,10 @@ impl ConversationProtocolMethod {
             "targets.add" => Some(Self::TargetsAdd),
             "gateway.credentials.create" => Some(Self::GatewayCredentialsCreate),
             "gateway.credentials.update" => Some(Self::GatewayCredentialsUpdate),
+            "data.home.relocate" => Some(Self::DataHomeRelocate),
+            "data.home.status" => Some(Self::DataHomeStatus),
+            "data.home.recover" => Some(Self::DataHomeRecover),
+            "data.home.cleanup" => Some(Self::DataHomeCleanup),
             _ => None,
         }
     }
