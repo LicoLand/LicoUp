@@ -2160,6 +2160,7 @@ dependencies = [
  "licoup-extension-contracts",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
+ "licoup-state-machine-codegen",
  "licoup-workflow",
  "log",
  "mime_guess",

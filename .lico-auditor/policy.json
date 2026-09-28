@@ -14,6 +14,10 @@
       "kind": "config-object"
     },
     {
+      "path": "crates/licoup-native/resources/state-machines/update-handoff.json",
+      "kind": "config-object"
+    },
+    {
       "path": "schemas/extensions/deployment.schema.json",
       "kind": "config-object"
     },

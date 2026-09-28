@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const frontierPath = "crates/licoup-native/resources/client-state-migration-frontier.json";
 const migrationPath = "crates/licoup-native/src/domain/client_state_migration.rs";
+const storesPath = "crates/licoup-native/src/domain/client_state_migration/stores.rs";
 const lifecyclePath = "apps/desktop/lib/src/application/controller/client_lifecycle_facade.dart";
 const portableRootPath = "apps/desktop/lib/src/platform/storage/portable_data_root.dart";
 const conversationServicePath =
@@ -44,23 +45,25 @@ test("embedded migration frontier is closed, unique, and contiguous", async () =
 });
 
 test("Rust admission owns every frontier adapter and the legacy conversation import", async () => {
-  const [frontier, migration, conversationService] = await Promise.all([
+  const [frontier, migration, stores, conversationService] = await Promise.all([
     read(frontierPath).then(JSON.parse),
     read(migrationPath),
+    read(storesPath),
     read(conversationServicePath),
   ]);
+  const admissionSource = `${migration}\n${stores}`;
   for (const domain of frontier.domains) {
-    const occurrences = migration.split(`"${domain.domainId}"`).length - 1;
+    const occurrences = admissionSource.split(`"${domain.domainId}"`).length - 1;
     assert.ok(
       occurrences >= 2,
       `${domain.domainId} must have explicit probe and apply routing`,
     );
   }
-  assert.match(migration, /client_conversation::migrate_legacy_state/u);
+  assert.match(stores, /client_conversation::migrate_legacy_state/u);
   assert.doesNotMatch(conversationService, /migrate_legacy_state/u);
   assert.match(migration, /write_json_atomic\(&ledger_path/u);
   assert.match(migration, /probe_domain\(&marker_root/u);
-  assert.match(migration, /state_newer_than_binary/u);
+  assert.match(admissionSource, /state_newer_than_binary/u);
 });
 
 test("desktop startup admits the raw root before loading product state", async () => {
