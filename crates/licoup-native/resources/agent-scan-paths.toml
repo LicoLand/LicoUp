@@ -167,8 +167,9 @@ history = [
 [[agents]]
 id = "codex"
 binaries = [
-  { oses = ["macos"], path = "/Applications/ChatGPT.app/Contents/Resources" },
-  { oses = ["macos"], path = "{home}/Applications/ChatGPT.app/Contents/Resources" },
+  # The official ChatGPT desktop bundle ships the Codex CLI at this package entrypoint.
+  { oses = ["macos"], path = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin" },
+  { oses = ["macos"], path = "{home}/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin" },
 ]
 config = [{ path = "{home}/.codex/config.toml" }]
 history = [

@@ -1,7 +1,9 @@
+use super::catalog::normalize_target;
 use super::discovery::scan_targets_with_store;
+use super::manual::manual_targets_read_only;
 use super::target_cache::cached_runtime_executable;
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::runtime_adapters;
+use crate::platform::runtime_adapters::{self, RuntimeAdapterError};
 use serde_json::json;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -26,6 +28,31 @@ pub(super) fn available_runtime_executable(target: &str) -> Option<PathBuf> {
     // re-read the coherent projection instead of scanning the response.
     scan_targets_with_store(&json!({}), &store).ok()?;
     cached_runtime_executable(&store, target)
+}
+
+/// A saved local binary path is an explicit user choice. It is kept separate
+/// from automatic discovery-cache routes so a stale automatic route cannot be
+/// mistaken for a manual override.
+pub(super) fn manual_runtime_executable(
+    target: &str,
+) -> Result<Option<PathBuf>, RuntimeAdapterError> {
+    let store = ClientStateStore::portable_read_only()
+        .map_err(|_| RuntimeAdapterError::ExecutableUnavailable)?;
+    manual_runtime_executable_from_store(&store, target)
+}
+
+pub(crate) fn manual_runtime_executable_from_store(
+    store: &ClientStateStore,
+    target: &str,
+) -> Result<Option<PathBuf>, RuntimeAdapterError> {
+    let normalized = normalize_target(target);
+    let manuals =
+        manual_targets_read_only(store).map_err(|_| RuntimeAdapterError::ExecutableUnavailable)?;
+    Ok(manuals
+        .into_iter()
+        .find(|manual| manual.target == normalized && manual.location == "local")
+        .and_then(|manual| manual.binary_path)
+        .filter(|path| path.is_absolute()))
 }
 
 fn portable_target_store() -> Option<ClientStateStore> {
