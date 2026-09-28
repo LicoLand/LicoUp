@@ -219,22 +219,19 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "rust.core.secure-mesh.pairwise-codec",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
   ])), [
-    "architecture.client-boundaries",
-    "rust.core.licoarc-relay.contract",
+    "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay/mailbox/schedule.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay/mailbox/schedule.rs",
   ])), [
-    "architecture.client-boundaries",
-    "rust.core.licoarc-relay.schedule",
+    "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
   ])), [
-    "architecture.client-boundaries",
-    "rust.core.licoarc-relay.header",
+    "rust.core.protocol-bindings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/secure_mesh_command.rs",

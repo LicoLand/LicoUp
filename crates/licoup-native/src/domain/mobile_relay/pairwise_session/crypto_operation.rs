@@ -1,7 +1,6 @@
 use super::transaction::MobileRelayPairwiseOperation;
 #[cfg(test)]
 use super::transaction::mobile_relay_pairwise_operation;
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{
     SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
 };
@@ -21,6 +20,7 @@ use crate::domain::mobile_relay::support::{
 };
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose};
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 use rand_core::{OsRng, RngCore};
 use serde_json::Value;
 use uuid::Uuid;

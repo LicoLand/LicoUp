@@ -16,16 +16,21 @@ pub(super) use std::thread;
 pub(super) use std::time::{Duration, Instant};
 
 pub(super) fn secure_envelope_fixture() -> Value {
-    let mailbox = crate::core::licoarc_relay::SecureMeshMailboxToken::from_base64url(
+    let mailbox = licoup_protocol_bindings::licoarc_relay::SecureMeshMailboxToken::from_base64url(
         general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
     )
     .unwrap();
-    let envelope = crate::core::licoarc_relay::LicoArcRelayEnvelope::new(
+    let envelope = licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelopeDraft::begin(
         &mailbox,
         "2099-01-01T00:10:00Z",
-        &[7u8; crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
-        &[9u8; licoup_protocol_bindings::MIN_PADDING_BUCKET_BYTES],
+        licoup_protocol_bindings::MIN_PADDING_BUCKET_BYTES,
     )
+    .and_then(|draft| {
+        draft.finish(
+            &[7u8; licoup_protocol_bindings::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
+            &[9u8; licoup_protocol_bindings::MIN_PADDING_BUCKET_BYTES],
+        )
+    })
     .unwrap();
     serde_json::from_str(&envelope.to_json().unwrap()).unwrap()
 }

@@ -513,34 +513,26 @@ test("transparency modules retain leaf-owned inputs and exact command filters", 
   }
 });
 
-test("Lico Arc relay modules retain complete leaf ownership and exact command filters", async () => {
-  const filters = new Map([
-    ["rust.core.licoarc-relay.contract", "core::licoarc_relay::tests::contract::"],
-    ["rust.core.licoarc-relay.carrier", "core::licoarc_relay::tests::carrier::"],
-    ["rust.core.licoarc-relay.delivery", "core::licoarc_relay::tests::delivery::"],
-    ["rust.core.licoarc-relay.header", "core::licoarc_relay::tests::header::"],
-    ["rust.core.licoarc-relay.mailbox-token", "core::licoarc_relay::tests::mailbox_token::"],
-    ["rust.core.licoarc-relay.schedule", "core::licoarc_relay::tests::schedule::"],
-  ]);
-  const relayModules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("rust.core.licoarc-relay."));
-  assert.equal(relayModules.length, filters.size);
-  for (const [id, filter] of filters) {
-    const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
-    assert.equal(module.command.args.at(-1), filter);
-  }
+test("protocol bindings own and test the complete Lico Arc relay codec", async () => {
+  const module = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "rust.core.protocol-bindings");
+  assert.ok(module);
+  assert.equal(module.command.program, "cargo");
+  assert.deepEqual(module.command.args, ["test", "-p", "licoup-protocol-bindings"]);
 
-  const ownedInputs = new Set(relayModules.flatMap((module) => module.inputs));
-  const splitSources = await sourceFiles(
-    "crates/licoup-native/src/core/licoarc_relay",
+  const relaySources = await sourceFiles(
+    "crates/licoup-protocol-bindings/src/licoarc_relay",
     ".rs",
   );
   for (const relativePath of [
-    "crates/licoup-native/src/core/licoarc_relay.rs",
-    ...splitSources,
+    "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
+    ...relaySources,
   ]) {
-    assert.equal(ownedInputs.has(relativePath), true,
-      `Lico Arc relay source must have a precise regression owner: ${relativePath}`);
+    assert.deepEqual(
+      ids(selectModulesForChangedPaths([relativePath])),
+      ["rust.core.protocol-bindings"],
+      `protocol bindings must own and test ${relativePath}`,
+    );
   }
 });
 

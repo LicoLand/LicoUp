@@ -8,7 +8,7 @@ use super::constants::{
     CARRIER_LENGTH_BYTES, CARRIER_MAGIC, CARRIER_PREFIX_BYTES, CARRIER_VERSION,
     LICOARC_ENCRYPTED_HEADER_BYTES, LICOARC_MAX_CIPHERTEXT_CHARS,
 };
-use licoup_protocol_bindings::validate_authenticated_padding_bucket;
+use crate::validate_authenticated_padding_bucket;
 
 pub(super) struct DecodedCarrier {
     pub(super) encrypted_header: Vec<u8>,

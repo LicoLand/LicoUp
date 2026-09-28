@@ -266,7 +266,8 @@ fn reject_non_conformant_envelopes(origin: &str, observed: &Value) -> Result<boo
     unsupported_contract["envelopeId"] = json!(random_base64url(24));
     let unsupported_wire = serde_json::to_string(&unsupported_contract)?;
     let client_rejected_unsupported =
-        crate::core::licoarc_relay::LicoArcRelayEnvelope::from_json(&unsupported_wire).is_err();
+        licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope::from_json(&unsupported_wire)
+            .is_err();
     let station_rejected_unsupported = station_rejects_json(origin, &unsupported_wire)?;
 
     let mut extra_field = observed.clone();
@@ -274,7 +275,8 @@ fn reject_non_conformant_envelopes(origin: &str, observed: &Value) -> Result<boo
     extra_field["endpointEvidence"] = json!(true);
     let extra_field_wire = serde_json::to_string(&extra_field)?;
     let client_rejected_extra =
-        crate::core::licoarc_relay::LicoArcRelayEnvelope::from_json(&extra_field_wire).is_err();
+        licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope::from_json(&extra_field_wire)
+            .is_err();
     let station_rejected_extra = station_rejects_json(origin, &extra_field_wire)?;
 
     Ok(client_rejected_unsupported

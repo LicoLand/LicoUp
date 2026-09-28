@@ -482,7 +482,7 @@ fn secure_mesh_pairwise_encrypted_relay_header_hides_ratchet_structure_and_rejec
     let wire = envelope.decoded_encrypted_header().unwrap();
     assert_eq!(
         wire.len(),
-        crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES
+        licoup_protocol_bindings::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES
     );
     assert!(!wire.windows(8).any(|window| window == 1u64.to_be_bytes()));
     assert!(

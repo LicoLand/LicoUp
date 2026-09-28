@@ -1,6 +1,5 @@
 use super::super::station::{deletion_transport_hint, lease_transport_hint, station_context};
 use super::poll::{StationPoll, receive_station_envelopes_with_config};
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::SecureMeshPayloadKind;
 use crate::core::secure_mesh_pairwise::SecureMeshPairwiseReceivedPayload;
 use crate::domain::mobile_relay::endpoint_trust::{ensure_peer_verified, now_iso};
@@ -18,6 +17,7 @@ use crate::domain::mobile_relay::secret_custody::{
 use crate::domain::mobile_relay::support::{CONFIG_SCHEMA_VERSION, text_param};
 use anyhow::{Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose};
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 

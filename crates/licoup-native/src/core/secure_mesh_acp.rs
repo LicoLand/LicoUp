@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow, bail, ensure};
 use sha2::{Digest, Sha256};
 
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh::SECURE_MESH_PROTOCOL_VERSION;
 use crate::core::secure_mesh_crypto::{
     OpenedSecureMeshPayload, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
 };
 use crate::core::secure_mesh_pairwise::SecureMeshPairwiseSession;
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 
 pub const SECURE_MESH_ACP_ENVELOPE_PROTOCOL: &str = "licomesh.secure-mesh.acp-envelope.v1";
 pub const SECURE_MESH_ACP_STATUS: &str = "acp_protected_envelope_aad_available_plaintext_protected_payload_relay_blocked_independent_review_pending_pqxdh_mlkem1024_triple_ratchet";

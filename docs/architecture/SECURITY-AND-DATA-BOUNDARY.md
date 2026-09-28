@@ -34,6 +34,8 @@ Algorithms are combined only when they have distinct roles and validated composi
 
 The client probes platform capabilities and selects system secure storage when available, otherwise explicitly falling back to ephemeral in-memory storage. Private key custody and local Provider selection remain LicoUp responsibilities; wire-observable profiles and negotiation belong to the fixed Lico Arc Protocol Line.
 
+The canonical five-field Lico Arc envelope, bounded carrier, private-header format, mailbox derivation, and authenticated-padding bucket validator have one implementation in `licoup-protocol-bindings`. Native endpoint callers supply ratchet/header material and retain content encryption, bucket selection and padding effects, key custody, persistence, and Station I/O; they consume the shared codec directly.
+
 ## 4. Provider-Managed History and Recovery
 
 Provider-managed cloud history is a separate source from the local Canonical

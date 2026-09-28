@@ -8,5 +8,3 @@ pub mod core;
 pub mod domain;
 pub mod ffi;
 pub mod platform;
-
-pub use core::licoarc_relay;

@@ -26,7 +26,7 @@ pub use delivery::{SecureMeshDeliverySecret, SecureMeshRelayChannelBinding};
 pub use draft::LicoArcRelayEnvelopeDraft;
 pub use envelope::LicoArcRelayEnvelope;
 pub use mailbox::{SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshMailboxToken};
-pub(crate) use private_header::{open_private_relay_header, seal_private_relay_header};
+pub use private_header::{open_private_relay_header, seal_private_relay_header};
 
 #[cfg(test)]
 mod tests;

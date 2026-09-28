@@ -8,7 +8,7 @@ use super::constants::{
     RELAY_HEADER_LENGTH_BYTES,
 };
 
-pub(in crate::core::licoarc_relay) fn encode_private_relay_header_frame(
+pub(in crate::licoarc_relay) fn encode_private_relay_header_frame(
     private_header: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>> {
     ensure!(
@@ -29,7 +29,7 @@ pub(in crate::core::licoarc_relay) fn encode_private_relay_header_frame(
     Ok(frame)
 }
 
-pub(in crate::core::licoarc_relay) fn decode_private_relay_header_frame(
+pub(in crate::licoarc_relay) fn decode_private_relay_header_frame(
     frame: Zeroizing<Vec<u8>>,
 ) -> Result<Zeroizing<Vec<u8>>> {
     ensure!(

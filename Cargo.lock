@@ -2212,7 +2212,18 @@ dependencies = [
 name = "licoup-protocol-bindings"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "base64",
+ "chacha20poly1305 0.10.1",
+ "hkdf 0.12.4",
  "licoarc-rust",
+ "rand_core 0.6.4",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]

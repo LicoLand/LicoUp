@@ -1,8 +1,8 @@
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::domain::mobile_relay::support::json_param;
 #[cfg(test)]
 use anyhow::anyhow;
 use anyhow::{Context, Result};
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 use serde_json::Value;
 
 pub(in crate::domain::mobile_relay) fn secure_envelope_param(params: &Value) -> Option<Value> {

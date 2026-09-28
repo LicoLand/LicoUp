@@ -250,8 +250,9 @@ fn recover_pending_result_delivery(
             && binding.station_binding_digest == station_binding_digest(params, config)?,
         "mobile relay pending result station binding changed"
     );
-    let result =
-        crate::core::licoarc_relay::LicoArcRelayEnvelope::from_json(&pending.envelope_json)?;
+    let result = licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope::from_json(
+        &pending.envelope_json,
+    )?;
     anyhow::ensure!(
         result.envelope_id() == pending.envelope_id && result.expires_at() == pending.expires_at,
         "mobile relay pending result envelope binding is invalid"

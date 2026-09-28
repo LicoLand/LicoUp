@@ -115,7 +115,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     .unwrap();
     assert_eq!(
         command_envelope["contractVersion"],
-        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
+        licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let command_wire = serde_json::to_string(&command_envelope).unwrap();
     assert!(!command_wire.contains("plaintext-canary-mobile-relay"));
@@ -147,7 +147,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     .unwrap();
     assert_eq!(
         result_envelope["contractVersion"],
-        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
+        licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let result_wire = serde_json::to_string(&result_envelope).unwrap();
     assert!(!result_wire.contains("plaintext-result-canary"));
