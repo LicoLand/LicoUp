@@ -388,10 +388,30 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: rustLayer("core::secure_mesh_crypto::tests::tamper::"),
     }),
   defineModule({
+      id: "rust.core.protocol-bindings",
+      kind: "rust-core",
+      summary: "Fixed-input admission and authenticated wire rules owned by protocol bindings",
+      inputs: [
+        "crates/licoup-protocol-bindings/Cargo.toml",
+        "crates/licoup-protocol-bindings/src/admission.rs",
+        "crates/licoup-protocol-bindings/src/lib.rs",
+        "crates/licoup-protocol-bindings/src/padding.rs",
+        "crates/licoup-protocol-bindings/src/tests.rs",
+        "crates/licoup-protocol-bindings/tests/endpoint_consumer.rs",
+      ],
+      command: command(
+        "cargo",
+        ["test", "-p", "licoup-protocol-bindings"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.core.secure-mesh.crypto.padding",
       kind: "rust-core",
       summary: "Authenticated bounded bucket padding across power-of-two and large-payload ranges",
       inputs: [
+        "crates/licoup-protocol-bindings/src/lib.rs",
+        "crates/licoup-protocol-bindings/src/padding.rs",
         "crates/licoup-native/src/core/secure_mesh_crypto/constants.rs",
         "crates/licoup-native/src/core/secure_mesh_crypto/frame_codec.rs",
         "crates/licoup-native/src/core/secure_mesh_crypto/padding.rs",
@@ -942,8 +962,11 @@ export const RUST_CORE_MODULES = Object.freeze([
       kind: "rust-core",
       summary: "Canonical bounded binary carrier for endpoint-owned encrypted parts",
       inputs: [
+        "crates/licoup-protocol-bindings/src/lib.rs",
+        "crates/licoup-protocol-bindings/src/padding.rs",
         "crates/licoup-native/src/core/licoarc_relay/carrier.rs",
         "crates/licoup-native/src/core/licoarc_relay/tests/carrier.rs",
+        "crates/licoup-native/src/core/licoarc_relay/tests/support.rs",
       ],
       command: rustLayer("core::licoarc_relay::tests::carrier::"),
     }),

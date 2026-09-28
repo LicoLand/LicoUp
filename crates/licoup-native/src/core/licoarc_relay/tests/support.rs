@@ -13,11 +13,11 @@ pub(super) use super::super::{
     SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshMailboxToken,
     SecureMeshRelayChannelBinding,
 };
-pub(super) use crate::core::secure_mesh_crypto::{
+pub(super) use base64::{Engine as _, engine::general_purpose};
+pub(super) use licoup_protocol_bindings::{
     LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
     POWER_OF_TWO_PADDING_LIMIT_BYTES,
 };
-pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use serde_json::{Value, json};
 
 pub(super) const VECTOR_TIME_SECONDS: u64 = 1_800_000_123;

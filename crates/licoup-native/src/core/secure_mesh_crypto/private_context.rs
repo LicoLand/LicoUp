@@ -19,11 +19,10 @@ use super::{
         OpenedSecureMeshPrivateContextPayload, SealedSecureMeshPrivateContextPayload,
         SecureMeshContentContext, SecureMeshPlaintext,
     },
-    padding::{
-        add_bucket_padding, remove_authenticated_padding, validate_authenticated_padding_bucket,
-    },
+    padding::{add_bucket_padding, remove_authenticated_padding},
     validation::validate_plaintext,
 };
+use licoup_protocol_bindings::validate_authenticated_padding_bucket;
 
 impl SealedSecureMeshPrivateContextPayload {
     pub(crate) fn from_encoded_parts(

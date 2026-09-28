@@ -11,11 +11,6 @@ mod private_context;
 mod public_payload;
 mod validation;
 
-#[cfg(test)]
-pub(crate) use constants::{
-    LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
-    POWER_OF_TWO_PADDING_LIMIT_BYTES,
-};
 pub use constants::{SECURE_MESH_CONTENT_CIPHER_SUITE, SECURE_MESH_CONTENT_CRYPTO_STATUS};
 pub use content_key::ContentKey;
 pub use model::{
@@ -26,7 +21,6 @@ pub use model::{
 pub(crate) use model::{
     OpenedSecureMeshPrivateContextPayload, SealedSecureMeshPrivateContextPayload,
 };
-pub(crate) use padding::validate_authenticated_padding_bucket;
 pub(crate) use private_context::{open_private_context_payload, seal_private_context_payload};
 pub use public_payload::{
     open_payload, open_payload_with_aad_binding, seal_payload, seal_payload_with_aad_binding,

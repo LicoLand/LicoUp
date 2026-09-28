@@ -24,7 +24,7 @@ pub(super) fn secure_envelope_fixture() -> Value {
         &mailbox,
         "2099-01-01T00:10:00Z",
         &[7u8; crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
-        &[9u8; crate::core::secure_mesh_crypto::MIN_PADDING_BUCKET_BYTES],
+        &[9u8; licoup_protocol_bindings::MIN_PADDING_BUCKET_BYTES],
     )
     .unwrap();
     serde_json::from_str(&envelope.to_json().unwrap()).unwrap()

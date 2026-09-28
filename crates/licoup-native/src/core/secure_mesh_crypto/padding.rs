@@ -1,9 +1,10 @@
 use anyhow::{Result, anyhow, ensure};
 use zeroize::Zeroizing;
 
-use super::constants::{
-    AEAD_TAG_LEN, LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES,
-    MIN_PADDING_BUCKET_BYTES, PADDED_PLAINTEXT_MAGIC, POWER_OF_TWO_PADDING_LIMIT_BYTES,
+use super::constants::{AEAD_TAG_LEN, PADDED_PLAINTEXT_MAGIC};
+use licoup_protocol_bindings::{
+    LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
+    POWER_OF_TWO_PADDING_LIMIT_BYTES,
 };
 
 pub(super) fn padding_bucket_for_ciphertext_size(unpadded_plaintext_size: usize) -> Result<usize> {
@@ -30,25 +31,6 @@ pub(super) fn padding_bucket_for_ciphertext_size(unpadded_plaintext_size: usize)
         "secure mesh payload exceeds the maximum padding bucket"
     );
     Ok(bucket)
-}
-
-pub(crate) fn validate_authenticated_padding_bucket(ciphertext_size: usize) -> Result<()> {
-    ensure!(
-        ciphertext_size >= MIN_PADDING_BUCKET_BYTES && ciphertext_size <= MAX_PADDING_BUCKET_BYTES,
-        "secure mesh ciphertext bucket is outside bounds"
-    );
-    if ciphertext_size <= POWER_OF_TWO_PADDING_LIMIT_BYTES {
-        ensure!(
-            ciphertext_size.is_power_of_two(),
-            "secure mesh ciphertext bucket is not a supported power-of-two bucket"
-        );
-    } else {
-        ensure!(
-            ciphertext_size % LARGE_PADDING_BUCKET_STEP_BYTES == 0,
-            "secure mesh ciphertext bucket is not aligned to the large-payload step"
-        );
-    }
-    Ok(())
 }
 
 pub(super) fn add_bucket_padding(encoded_plaintext: &[u8]) -> Result<Zeroizing<Vec<u8>>> {

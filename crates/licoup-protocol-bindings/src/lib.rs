@@ -13,10 +13,16 @@
 //! upgrade rather than by following an upstream branch.
 
 mod admission;
+mod padding;
 
 pub use admission::{AUTHORIZATION_REQUIRED, AdmissionRefusal, AuthorityInput};
 pub use licoarc::artifact::VerifiedProtocolLine;
 pub use licoarc::error::{Error, ErrorCode};
+pub use padding::{
+    AuthenticatedPaddingBucketError, LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES,
+    MIN_PADDING_BUCKET_BYTES, POWER_OF_TWO_PADDING_LIMIT_BYTES,
+    validate_authenticated_padding_bucket,
+};
 
 #[cfg(test)]
 mod tests;

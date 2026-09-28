@@ -1,8 +1,6 @@
 pub(super) use super::super::{
     constants::{
-        CONTENT_KEY_LEN, CONTENT_NONCE_LEN, LARGE_PADDING_BUCKET_STEP_BYTES,
-        MAX_CONTEXT_FIELD_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
-        POWER_OF_TWO_PADDING_LIMIT_BYTES, PRIVATE_CONTEXT_AEAD_AAD,
+        CONTENT_KEY_LEN, CONTENT_NONCE_LEN, MAX_CONTEXT_FIELD_BYTES, PRIVATE_CONTEXT_AEAD_AAD,
     },
     content_key::ContentKey,
     frame_codec::{encode_plaintext, encode_private_context_frame},
@@ -14,7 +12,6 @@ pub(super) use super::super::{
     },
     padding::{
         add_bucket_padding, padding_bucket_for_ciphertext_size, remove_authenticated_padding,
-        validate_authenticated_padding_bucket,
     },
     private_context::{open_private_context_payload, seal_private_context_payload_with_nonce},
     public_payload::{open_payload, seal_payload_with_nonce},
@@ -23,6 +20,10 @@ pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, KeyInit, Payload as AeadPayload},
+};
+pub(super) use licoup_protocol_bindings::{
+    LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
+    POWER_OF_TWO_PADDING_LIMIT_BYTES, validate_authenticated_padding_bucket,
 };
 pub(super) use sha2::{Digest, Sha256};
 
