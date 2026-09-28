@@ -2,10 +2,10 @@
 
 use super::super::process_supervisor::BoundedStdinWriter;
 use super::io::write_message;
-use crate::core::acp;
 use crate::platform::native_agent_parser::adapters::driver_registry::{
     registry_get, registry_insert, registry_remove_if,
 };
+use licoup_foundation::core::acp;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::time::Duration;

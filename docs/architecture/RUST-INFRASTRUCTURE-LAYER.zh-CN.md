@@ -5,7 +5,7 @@
 | **规范版本** | [English (Normative)](RUST-INFRASTRUCTURE-LAYER.md) | 基础设施与对外交互层英文规范 |
 | **架构主文档** | [docs/architecture/README.zh-CN.md](README.zh-CN.md) | 四层顶层客户端架构与总览 |
 | **Conversation 垂直领域** | [CONVERSATION-DOMAIN.zh-CN.md](CONVERSATION-DOMAIN.zh-CN.md) | 统一聊天存储、Membership 与调度门 |
-| **共享基础组件** | `crates/licoup-foundation/` | 词法路径解析、私有文件操作与有界安全归档解压 |
+| **共享基础组件** | `crates/licoup-foundation/` | 词法路径、私有文件与归档操作、有界队列、ACP 报文编解码、ANSI 清理与严格 URL 校验 |
 | **原生系统适配** | `crates/licoup-native/src/platform/` | 操作系统专用 API、原生进程、驱动与平台脚本 |
 | **安全与数据边界** | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 数据流动规则与零信任通信边界 |
 

@@ -134,20 +134,26 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp.rs",
+    "crates/licoup-foundation/src/core/acp.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/requests.rs",
+    "crates/licoup-foundation/src/core/acp/requests.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.requests"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/responses.rs",
+    "crates/licoup-foundation/src/core/acp/responses.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.responses"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/codec.rs",
+    "crates/licoup-foundation/src/core/acp/codec.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.codec"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/task_queue.rs",
+    "crates/licoup-foundation/src/core/task_queue.rs",
   ])), ["architecture.client-boundaries", "rust.core.task-queue"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/platform/ansi_stripper.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.ansi-stripper"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/platform/url_security.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.url-security"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/authorized_secure_record.rs",
   ])), [

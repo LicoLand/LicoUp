@@ -1,5 +1,5 @@
-use crate::platform::url_security::canonical_https_or_loopback_http_origin;
 use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::url_security::canonical_https_or_loopback_http_origin;
 use serde_json::{Value, json};
 use std::env;
 use uuid::Uuid;

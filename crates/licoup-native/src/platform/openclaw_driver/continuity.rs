@@ -1,6 +1,6 @@
 use super::errors::ProtocolFailure;
 use super::params::ProtocolConfig;
-use crate::core::acp::{self, AcpSessionMethod, AcpSessionOptions, AcpSessionUpdate};
+use licoup_foundation::core::acp::{self, AcpSessionMethod, AcpSessionOptions, AcpSessionUpdate};
 use serde_json::Value;
 use std::path::Path;
 

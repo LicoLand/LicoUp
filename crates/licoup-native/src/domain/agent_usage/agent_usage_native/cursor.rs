@@ -246,7 +246,7 @@ fn post_events_page(
     start_ms: i64,
     end_ms: i64,
 ) -> Result<Value, HostedUsageFailure> {
-    if !crate::platform::url_security::is_https_or_loopback_http_url(EVENTS_URL) {
+    if !licoup_foundation::platform::url_security::is_https_or_loopback_http_url(EVENTS_URL) {
         return Err(HostedUsageFailure::ResponseInvalid);
     }
     let body = json!({

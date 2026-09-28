@@ -2117,7 +2117,10 @@ dependencies = [
  "anyhow",
  "flate2",
  "nix",
+ "serde",
+ "serde_json",
  "tar",
+ "url",
  "uuid",
  "zip",
 ]

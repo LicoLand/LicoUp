@@ -1,6 +1,6 @@
 use super::AdapterContract;
-use crate::core::acp::{self, AcpSessionUpdate, AcpStopReason};
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_foundation::core::acp::{self, AcpSessionUpdate, AcpStopReason};
 use serde_json::Value;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("hermes", "stdio-jsonrpc-acp");

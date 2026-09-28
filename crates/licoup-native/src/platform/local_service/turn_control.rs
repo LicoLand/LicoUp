@@ -164,7 +164,7 @@ fn accepted(response: &Value) -> bool {
 
 fn session_action_url(base: &str, session_id: &str, action: &str) -> Result<String, ()> {
     let mut url = Url::parse(base).map_err(|_| ())?;
-    if !crate::platform::url_security::is_https_or_loopback_http_url(base) {
+    if !licoup_foundation::platform::url_security::is_https_or_loopback_http_url(base) {
         return Err(());
     }
     {

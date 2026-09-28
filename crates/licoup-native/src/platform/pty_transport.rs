@@ -19,8 +19,6 @@
 //!   future interactive-TUI lane); `isatty` plus streaming is all the current
 //!   `--print` lanes need.
 
-#[cfg(test)]
-use crate::platform::ansi_stripper::AnsiStripper;
 use crate::platform::process_supervisor::SupervisedChild;
 use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
 use std::io::{self, Read, Write};
@@ -303,78 +301,6 @@ mod tests {
         let mut command = Command::new("sh");
         command.arg("-c").arg(script).stderr(Stdio::null());
         spawn(command).expect("pty spawn failed")
-    }
-
-    #[test]
-    fn stripper_strips_csi_osc_and_cr() {
-        let mut stripper = AnsiStripper::new();
-        let text = stripper.push(b"\x1b[32mhello\x1b[0m\r\n\x1b]0;title\x07world\x1b(B\n");
-        assert_eq!(text, "hello\nworld\n");
-        assert_eq!(stripper.finish(), "");
-    }
-
-    #[test]
-    fn stripper_handles_sequences_split_across_pushes() {
-        let mut stripper = AnsiStripper::new();
-        assert_eq!(stripper.push(b"\x1b[3"), "");
-        assert_eq!(stripper.push(b"2mred\x1b[0"), "red");
-        assert_eq!(stripper.push(b"m\n"), "\n");
-        assert_eq!(stripper.finish(), "");
-    }
-
-    #[test]
-    fn stripper_finish_drops_incomplete_escape_tail() {
-        let mut stripper = AnsiStripper::new();
-        assert_eq!(stripper.push(b"\x1b[31mhi"), "hi");
-        assert_eq!(stripper.finish(), "");
-    }
-
-    #[test]
-    fn stripper_preserves_multibyte_utf8_across_pushes() {
-        let mut stripper = AnsiStripper::new();
-        let bytes = "héllo".as_bytes();
-        let first = stripper.push(&bytes[..3]);
-        let second = stripper.push(&bytes[3..]);
-        assert_eq!(format!("{first}{second}"), "héllo");
-        assert!(!first.ends_with('\u{FFFD}'));
-    }
-
-    /// A UTF-8 continuation byte is not a control introducer.
-    ///
-    /// `0x9B` is the second byte of `回` (E5 9B 9E), `集` (E9 9B 86) and `盖`
-    /// (E7 9B 96), and the third byte of `；` (EF BC 9B). Reading it as a C1 CSI
-    /// truncates that character and then swallows every following byte up to the
-    /// next 0x40-0x7E, which is how ordinary Chinese prose came back with whole
-    /// clauses missing and a replacement character in their place.
-    #[test]
-    fn stripper_does_not_treat_utf8_continuation_bytes_as_controls() {
-        for text in [
-            "活动回显轮询改动进行了只读独立 Review。",
-            "Mesh caller 集合改为从 `AdapterRegistry` 派生后？",
-            "覆盖用户输入或产生多余读？ | **FAIL**",
-            "既有行为回退？",
-            "全角分号；连接",
-        ] {
-            let mut stripper = AnsiStripper::new();
-            let bytes = text.as_bytes();
-            // Split mid-character so the held-back tail also exercises the
-            // sequence-spanning path.
-            let mut produced = String::new();
-            for chunk in bytes.chunks(3) {
-                produced.push_str(&stripper.push(chunk));
-            }
-            produced.push_str(&stripper.finish());
-            assert_eq!(produced, text, "damaged: {produced:?}");
-            assert!(!produced.contains('\u{FFFD}'), "damaged: {produced:?}");
-        }
-    }
-
-    /// Real escape sequences must still be stripped after that fix.
-    #[test]
-    fn stripper_still_strips_sequences_containing_continuation_like_bytes() {
-        let mut stripper = AnsiStripper::new();
-        let text = stripper.push("\x1b[1;32m回显\x1b[0m 完成；\x1b]0;标题\x07读".as_bytes());
-        assert_eq!(format!("{text}{}", stripper.finish()), "回显 完成；读");
     }
 
     #[test]

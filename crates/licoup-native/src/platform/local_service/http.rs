@@ -111,7 +111,7 @@ pub(in crate::platform) fn probe_status(url: &str, timeout: Duration) -> Result<
 
 pub(in crate::platform) fn validate_url(raw: &str) -> Result<Url, HttpFailure> {
     let url = Url::parse(raw).map_err(|_| HttpFailure::InvalidUrl)?;
-    if crate::platform::url_security::is_https_or_loopback_http_url(raw) {
+    if licoup_foundation::platform::url_security::is_https_or_loopback_http_url(raw) {
         Ok(url)
     } else {
         Err(HttpFailure::InvalidUrl)

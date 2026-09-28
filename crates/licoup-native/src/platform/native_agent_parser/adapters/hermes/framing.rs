@@ -1,5 +1,5 @@
 // Shared bounded stdio framing feeding the Hermes parser exactly once.
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use std::io::BufRead;
 use std::sync::mpsc::Sender;
 

@@ -26,6 +26,24 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: foundationLayer("platform::paths::tests::"),
     }),
   defineModule({
+      id: "rust.platform.ansi-stripper",
+      kind: "rust-platform",
+      summary: "Incremental ANSI escape removal with UTF-8-safe chunk handling",
+      inputs: [
+        "crates/licoup-foundation/src/platform/ansi_stripper.rs",
+      ],
+      command: foundationLayer("platform::ansi_stripper::tests::"),
+    }),
+  defineModule({
+      id: "rust.platform.url-security",
+      kind: "rust-platform",
+      summary: "HTTPS and exact-loopback URL validation and canonical gateway origins",
+      inputs: [
+        "crates/licoup-foundation/src/platform/url_security.rs",
+      ],
+      command: foundationLayer("platform::url_security::tests::"),
+    }),
+  defineModule({
       id: "rust.platform.extension-packages",
       kind: "rust-platform",
       summary: "Offline extension package lifecycle and bounded archive consumer",
@@ -1857,7 +1875,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/lico_agent_driver/**",
         "crates/licoup-native/src/platform/llm_api_key_vault.rs",
         "crates/licoup-native/src/platform/llm_api_key_vault/**",
-        "crates/licoup-native/src/platform/ansi_stripper.rs",
         "crates/licoup-native/src/platform/llm_gateway_autostart.rs",
         "crates/licoup-native/src/platform/llm_gateway_client_auth.rs",
         "crates/licoup-native/src/platform/llm_gateway_credentials_control.rs",
@@ -1885,7 +1902,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/user_shell_environment.rs",
         "crates/licoup-native/src/platform/work_context_ports/**",
         "crates/licoup-native/src/platform/conversation_host_client.rs",
-        "crates/licoup-native/src/platform/url_security.rs",
         "crates/licoup-native/src/platform/virtual_machine.rs",
         "crates/licoup-native/tests/fixtures/claude_process_local_test_lock.rs",
         "crates/licoup-native/tests/fixtures/fake_lico_agent.rs",

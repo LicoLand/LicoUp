@@ -419,7 +419,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
       `Local service foundation must not depend on target policy ${targetToken}`
     );
   }
-  for (const jsonlToken of ["crate::core::acp", "decode_json_line", "MAX_JSON_LINE_BYTES"]) {
+  for (const jsonlToken of ["licoup_foundation::core::acp", "decode_json_line", "MAX_JSON_LINE_BYTES"]) {
     assert(
       !localServiceSource.includes(jsonlToken),
       `Local HTTP/SSE foundation must not absorb ACP JSONL ownership ${jsonlToken}`

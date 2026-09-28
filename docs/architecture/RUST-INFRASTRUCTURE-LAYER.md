@@ -6,7 +6,7 @@
 | **Localization** | [简体中文](RUST-INFRASTRUCTURE-LAYER.zh-CN.md) | Localized Chinese projection |
 | **Architecture Root** | [docs/architecture/README.md](README.md) | 4-tier client architecture overview |
 | **Conversation Domain** | [CONVERSATION-DOMAIN.md](CONVERSATION-DOMAIN.md) | Canonical conversation store, memberships, and dispatch |
-| **Shared Foundation** | `crates/licoup-foundation/` | Lexical path resolution, private-file operations, and bounded safe archive extraction |
+| **Shared Foundation** | `crates/licoup-foundation/` | Lexical paths, private-file and archive operations, bounded queues, ACP wire codec, ANSI stripping, and strict URL validation |
 | **Native Adaptation** | `crates/licoup-native/src/platform/` | OS-specific APIs, native processes, drivers, and platform scripts |
 | **Security & Data** | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | Data flow boundaries and zero-trust rules |
 

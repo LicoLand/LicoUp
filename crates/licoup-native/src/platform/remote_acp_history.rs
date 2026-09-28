@@ -5,11 +5,11 @@ use super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
 use super::virtual_machine::SshRuntimeConnection;
-use crate::core::acp::{
+use anyhow::{Result, anyhow};
+use licoup_foundation::core::acp::{
     self, AcpClientCapabilities, AcpImplementation, AcpSessionInfo, AcpSessionMethod,
     AcpSessionOptions, AcpSessionUpdateKind,
 };
-use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
 use std::io::BufReader;

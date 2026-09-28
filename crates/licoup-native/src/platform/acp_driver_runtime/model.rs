@@ -1,5 +1,5 @@
 use super::errors::ProtocolFailure;
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use serde_json::Value;
 use std::time::Duration;
 

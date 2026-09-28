@@ -1,6 +1,6 @@
 use super::AdapterContract;
-use crate::platform::ansi_stripper::AnsiStripper;
 use crate::platform::native_agent_parser::{LifecycleStage, Transition, TransitionReducer};
+use licoup_foundation::platform::ansi_stripper::AnsiStripper;
 use serde_json::Value;
 
 pub(super) const CONTRACT: AdapterContract = AdapterContract::new("antigravity", "pty-hook-json");

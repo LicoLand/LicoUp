@@ -8,7 +8,7 @@ use super::errors::ProtocolFailure;
 use super::events::projected_event;
 use super::model::EffectiveSettings;
 use super::params::ProtocolConfig;
-use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation};
+use licoup_foundation::core::acp::{self, AcpClientCapabilities, AcpImplementation};
 use serde_json::{Value, json};
 
 #[derive(Clone, Debug)]

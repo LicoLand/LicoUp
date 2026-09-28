@@ -120,7 +120,7 @@ test("HTTP and SSE foundation does not absorb ACP JSONL or target policy", async
   ]);
   const joined = sources.join("\n");
   for (const forbidden of [
-    "crate::core::acp",
+    "licoup_foundation::core::acp",
     "decode_json_line",
     "MAX_JSON_LINE_BYTES",
     "opencode_serve",

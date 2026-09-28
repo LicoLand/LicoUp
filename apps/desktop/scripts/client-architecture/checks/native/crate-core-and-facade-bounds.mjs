@@ -43,13 +43,18 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     assert(!modSource.includes("#[path ="), `${relativePath}/mod.rs must not remount flat native files with #[path]`);
   }
   const coreModuleSource = await readText("crates/licoup-native/src/core/mod.rs");
+  const foundationCoreModuleSource = await readText(
+    "crates/licoup-foundation/src/core/mod.rs"
+  );
   const foundationManifest = await readText("crates/licoup-foundation/Cargo.toml");
   assert(
     !/^licoup-native\s*=/mu.test(foundationManifest) &&
       !/^licoup-(?:application|conversation|workflow|agent|client|protocol|endpoint)-[a-z0-9_-]*\s*=/mu.test(foundationManifest),
     "Shared foundation utilities must not depend on LicoUp domain crates"
   );
-  const taskQueueSource = await readText("crates/licoup-native/src/core/task_queue.rs");
+  const taskQueueSource = await readText(
+    "crates/licoup-foundation/src/core/task_queue.rs"
+  );
   const mcpAdapterSource = await readJoinedText([
     "crates/licoup-native/src/core/mcp.rs",
     ...await collectSourceFiles("crates/licoup-native/src/core/mcp", ".rs")
@@ -64,7 +69,9 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "apps/desktop/lib/src/platform/native_client/native_mcp_actions.dart",
     "apps/desktop/lib/src/application/features/mcp/controller/mcp_transfer_controller.dart"
   ]);
-  const acpAdapterSource = await readText("crates/licoup-native/src/core/acp.rs");
+  const acpAdapterSource = await readText(
+    "crates/licoup-foundation/src/core/acp.rs"
+  );
   const secureMeshCoreFiles = (await collectSourceFiles(
     "crates/licoup-native/src/core",
     ".rs"
@@ -111,7 +118,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "Secure Mesh must initialize current state or require reset without retaining runtime migrations"
   );
   assert(
-    coreModuleSource.includes("pub mod task_queue;") &&
+    foundationCoreModuleSource.includes("pub mod task_queue;") &&
+      !coreModuleSource.includes("pub mod task_queue;") &&
       taskQueueSource.includes("sync_channel") &&
       taskQueueSource.includes("try_submit") &&
       taskQueueSource.includes("bounded_queue_preserves_fifo_and_reports_depth"),
@@ -144,7 +152,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     );
   }
   assert(
-    coreModuleSource.includes("pub mod acp;") &&
+    foundationCoreModuleSource.includes("pub mod acp;") &&
+      !coreModuleSource.includes("pub mod acp;") &&
       acpAdapterSource.includes("PROTOCOL_VERSION") &&
       acpAdapterSource.includes("initialize_request") &&
       acpAdapterSource.includes("session_request") &&

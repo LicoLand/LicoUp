@@ -1,5 +1,5 @@
 use super::model::AcpDriverSpec;
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use serde_json::Value;
 
 #[derive(Clone, Debug)]

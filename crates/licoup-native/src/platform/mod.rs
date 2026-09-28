@@ -2,11 +2,9 @@ mod acp_driver_runtime;
 pub(in crate::platform) mod acp_session_transport;
 pub(crate) mod agent_workspace;
 pub(crate) mod antigravity_driver;
-pub(crate) mod badtower_station;
-// Linux keeps the fail-closed adapter surface without a native record backend.
-pub(crate) mod ansi_stripper;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
+pub(crate) mod badtower_station;
 mod claude_code_driver;
 mod codex_app_server;
 pub(crate) mod codex_runtime_observation;
@@ -74,7 +72,6 @@ pub mod runtime_adapters;
 pub mod secure_mesh_capability_probe;
 pub mod secure_mesh_secret_store;
 pub mod subagent_mcp_ensure;
-pub mod url_security;
 
 pub use acp_session_transport::resolve_interaction_approval as resolve_native_agent_interaction_approval;
 pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;
