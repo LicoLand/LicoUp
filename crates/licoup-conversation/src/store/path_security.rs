@@ -46,6 +46,21 @@ pub(super) fn harden_private_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn validate_existing_private_file(path: &Path) -> Result<bool> {
+    validate_no_parent_traversal(path)?;
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            ensure!(
+                metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
+                "private path is not a stable file"
+            );
+            Ok(true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(anyhow!("private path metadata is unavailable")),
+    }
+}
+
 pub(super) fn validate_export_destination(path: &Path) -> Result<()> {
     validate_no_parent_traversal(path)?;
     let check = match fs::symlink_metadata(path) {

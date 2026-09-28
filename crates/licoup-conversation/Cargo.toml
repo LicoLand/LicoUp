@@ -21,3 +21,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"
+
+[build-dependencies]
+licoup-state-machine-codegen = { path = "../licoup-state-machine-codegen" }

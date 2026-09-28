@@ -430,81 +430,24 @@ sequenceDiagram
 
 ---
 
-## 8. 严格状态机驱动与底层受控调用映射
+## 8. 配置定义的对话生命周期
 
-会话管理模块内部运行着一个**严格的有限状态机（Finite State Machine, FSM）**。所有的底层基础设施与原生层调用，**都必须且只能在特定的状态机阶段由状态机受控触发**：
+`crates/licoup-conversation/resources/state-machines.json` 是对话持久化状态转换关系的唯一来源。构建过程将其中选定的六个状态机编译为 crate 私有 Rust 类型和转换表：直接轮次、发送、成员关系、派发、子智能体认领及派发投递。生成类型保留当前调用方使用的 kebab-case 持久化名称。
 
-```mermaid
-stateDiagram-v2
-    [*] --> Submitted: 用户发起 (RPC Post)
+生成的转换表只判断给定状态和事件对应的后继状态，不执行数据库、进程、网络或调度操作。对话 store 在 `src/store/lifecycle.rs` 及其仓储中负责守卫条件、操作效果和事务；每次持久化状态变化都与相应的 store 操作一并提交。这样转换关系保持声明式，运行时仍负责执行。
 
-    state Submitted {
-        note right of Submitted: 【受控调用】SQLite: 写入定稿 Human Event
-    }
-
-    Submitted --> Accepted: 调度门准入 (Dispatch After-Post)
-
-    state Accepted {
-        note right of Accepted: 【受控调用】DynamicConfig: 检索可执行文件与环境
-    }
-
-    Accepted --> Processing: 进程/连接启动
-
-    state Processing {
-        note right of Processing: 【受控调用】PTY / Network: 启动进程、打开管道并建立流监听
-    }
-
-    Processing --> Streaming: L1 解析到数据
-
-    state Streaming {
-        note right of Streaming: 【受控调用】SQLite: 追加 EventPart · 上行推流
-    }
-
-    Streaming --> WaitingForHuman: L1 识别到交互审批请求
-
-    state WaitingForHuman {
-        note right of WaitingForHuman: 【受控调用】L2 交互路由: 生成 Token 挂起，通知前端弹窗
-    }
-
-    WaitingForHuman --> Processing: 用户响应批准
-
-    Streaming --> Completed: 收到显式 Finish / EOF
-    Processing --> Failed: 进程异常崩溃 / 校验失败
-    Processing --> Cancelled: 用户取消
-
-    state Completed {
-        note right of Completed: 【受控调用】SQLite Finalize · L3 进程优雅退出
-    }
-    state Failed {
-        note right of Failed: 【受控调用】SQLite 写入错误码 · L3 进程回收
-    }
-    state Cancelled {
-        note right of Cancelled: 【受控调用】L3 进程监督阶梯 (Grace → SIGTERM → SIGKILL)
-    }
-
-    Completed --> [*]
-    Failed --> [*]
-    Cancelled --> [*]
-```
-
----
-
-## 9. 前端进度条/过程黑板与后端状态机的同步反射机制
-
-为了彻底消除前端“自造状态”导致的假死与信息漂移，系统强制执行 **前后端状态机严格一对一同步反射机制**：
-
-| 后端状态机阶段 (Rust State) | 触发条件与底层行为 | 前端反射行为 (Flutter UI Reflection) |
+| 持久化记录 | 生成状态类型 | 持久化生命周期 |
 |:---|:---|:---|
-| **`Submitted`** | 人类消息成功写入 SQLite | 前端清空 Composer 草稿，锁住发送按钮，消息气泡显示“已发送” |
-| **`Accepted`** | 调度门确认 Membership，生成轮次句柄 | 前端挂接 `_liveTurns`，过程黑板亮起，进度条进入 **“准备执行”** 阶段 |
-| **`Processing`** | 底层 PTY 启动或网络连接建立 | 过程黑板显示 **“正在连接智能体”**，显示思考中动画 |
-| **`Streaming / Reasoning`** | L1 解析器持续产出 Reasoning / ToolCall / ContentPart | 过程黑板流式展开推理步骤，气泡实时打字渲染，进度条指示 **“正在生成”** |
-| **`WaitingForHuman`** | L1 识别到工具调用需要用户确认，L2 挂起 Token | 进度条变为 **黄色等待状态**，界面居中弹出审批确认卡片与参数摘要 |
-| **`Completed`** | L1 终态仲裁判定正常完成，Event 被 Finalize | 进度条变为 **绿色完成状态**，过程黑板折叠为可回溯摘要，解锁 Composer |
-| **`Failed`** | 进程崩溃或 L1 判定不可恢复错误 | 进度条变为 **红色失败状态**，黑板展示带错误码的诊断详情与重试入口 |
-| **`Cancelled`** | 用户点击取消，L3 完成进程梯队回收 | 进度条变为 **灰色取消状态**，保留已接收部分，恢复 Composer 可编辑 |
+| 直接轮次 | `TurnState` | `pending`、`claimed`、`running`、`waiting-for-human`，之后进入终态 |
+| 发送 | `SendState` | `sending` 到 `delivered` 或 `failed` |
+| 成员关系 | `MembershipStatus` | `active` 或 `left` |
+| 派发 | `DispatchState` | `accepted`、`running`、取消请求及终态 |
+| 子智能体认领 | `SubagentDispatchClaimState` | 认领、执行、对账及终态 |
+| 派发投递 | `DispatchDeliveryState` | `pending`、`delivering`、`delivered` 或 `failed` |
 
-> **同步铁律**：**前端进度条与黑板只是后端状态机的实时镜像（Mirror Reflection）**。后端每推进一步，产生一个规范的 `Typed Transition`，前端监听后立即反射刷新；前端绝不脱离后端状态机擅自修改进度。
+## 9. 持久化状态的界面呈现
+
+Rust 对话 store 是持久化记录和已提交事件的权威来源。界面呈现这些结果和投影；它不消费独立的生成式转换事件流，也不自行提交生命周期变化。草稿等本地展示状态仍由界面负责，持久化状态则来自对话权威。观察连接断开本身不会改变轮次的持久化状态；恢复流程会读取已保存的生命周期并应用对话恢复规则。
 
 ---
 
@@ -650,8 +593,10 @@ sequenceDiagram
 `conversation_native_sessions` 是关联关系的唯一依据，对已确认的
 `(conversationId, membershipId, nativeSessionId)` 只保留一条关系；替换当前运行绑定、
 切换模型或成员离群都不会删除旧关联。同一个智能体及原生会话只有分别留下明确绑定，
-才可同时属于多个群。Schema 15 仅从当前绑定、明确的执行来源记录和旧运行来源链接
-记载的准确所属群回填；没有证据就不建立关系。
+才可同时属于多个群。Schema 18 是当前对话布局。从已发布的 Schema 12 到 Schema 18
+采用一次原子转换，补齐当前绑定和明确的派发来源，并记录旧运行来源链接中可确认的
+所属群。未发布的 Schema 13 至 17 不是受支持的迁移输入；更新版本或缺失必要字段的
+元数据会在修改 schema 前被拒绝。缺失所属证据时不会建立关系。
 
 桌面端在 `conversation.get` 中显式传入 `includeNativeSessionReferences: true`，
 取得仅限本地查表的 `membershipId`、`agentId`、`nativeSessionId`。默认 get、可移植

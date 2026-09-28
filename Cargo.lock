@@ -2086,6 +2086,7 @@ name = "licoup-conversation"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "licoup-state-machine-codegen",
  "proptest",
  "rusqlite",
  "serde",

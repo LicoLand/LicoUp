@@ -2,7 +2,7 @@
 
 use super::*;
 
-const TABLE: &str = "CREATE TABLE IF NOT EXISTS conversation_native_sessions (
+pub(super) const TABLE: &str = "CREATE TABLE IF NOT EXISTS conversation_native_sessions (
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     membership_id TEXT NOT NULL REFERENCES memberships(id) ON DELETE CASCADE,
     native_session_id TEXT NOT NULL,
@@ -101,6 +101,59 @@ pub(super) fn record_native_session(
     )?;
     if inserted > 0 {
         bump_revision(connection, conversation_id, now_ms())?;
+    }
+    Ok(())
+}
+
+pub(super) fn backfill_native_sessions(connection: &Connection) -> StoreResult<()> {
+    connection.execute_batch(
+        "INSERT OR IGNORE INTO conversation_native_sessions
+         SELECT rb.conversation_id,rb.membership_id,rb.runtime_session_id
+         FROM runtime_bindings rb JOIN memberships m ON m.id=rb.membership_id AND m.conversation_id=rb.conversation_id
+         JOIN principals p ON p.id=m.principal_id
+         WHERE p.kind='agent' AND length(trim(rb.runtime_session_id))>0;
+         INSERT OR IGNORE INTO conversation_native_sessions
+         SELECT d.conversation_id,d.membership_id,json_extract(d.native_provenance,'$.nativeSessionId')
+         FROM conversation_dispatches d JOIN memberships m ON m.id=d.membership_id AND m.conversation_id=d.conversation_id
+         JOIN principals p ON p.id=m.principal_id
+         WHERE d.native_provenance IS NOT NULL AND p.kind='agent'
+           AND p.agent_id=json_extract(d.native_provenance,'$.agentId')
+           AND length(trim(json_extract(d.native_provenance,'$.nativeSessionId')))>0;",
+    )?;
+    // The old source key is a byte-length-prefixed adapter identity. Decode
+    // that exact stored format; never infer ownership from project/model/time.
+    let links = {
+        let mut statement = connection.prepare(
+            "SELECT conversation_id,native_identity FROM source_links WHERE source_kind='agent-runtime'",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (conversation_id, identity) in links {
+        let Some((length, rest)) = identity.split_once(':') else {
+            continue;
+        };
+        let Ok(length) = length.parse::<usize>() else {
+            continue;
+        };
+        let Some(agent_id) = rest.get(..length) else {
+            continue;
+        };
+        let Some(session_id) = rest.get(length..).and_then(|tail| tail.strip_prefix(':')) else {
+            continue;
+        };
+        if agent_id.is_empty() || session_id.trim().is_empty() {
+            continue;
+        }
+        connection.execute(
+            "INSERT OR IGNORE INTO conversation_native_sessions
+             SELECT m.conversation_id,m.id,?3 FROM memberships m JOIN principals p ON p.id=m.principal_id
+             WHERE m.conversation_id=?1 AND p.kind='agent' AND p.agent_id=?2",
+            params![conversation_id,agent_id,session_id],
+        )?;
     }
     Ok(())
 }
@@ -229,10 +282,8 @@ mod tests {
 
     #[test]
     fn group_native_sessions_migration_uses_only_explicit_old_evidence() {
-        let mut connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE schema_meta(key TEXT PRIMARY KEY,value TEXT);
-          INSERT INTO schema_meta VALUES('version','14');
-          CREATE TABLE conversations(id TEXT PRIMARY KEY);
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("CREATE TABLE conversations(id TEXT PRIMARY KEY);
           INSERT INTO conversations VALUES('g1'),('g2'),('empty');
           CREATE TABLE principals(id TEXT PRIMARY KEY,kind TEXT,agent_id TEXT);
           INSERT INTO principals VALUES('p','agent','synthetic');
@@ -245,7 +296,8 @@ mod tests {
           CREATE TABLE source_links(conversation_id TEXT,source_kind TEXT,native_identity TEXT);
           INSERT INTO source_links VALUES('g1','agent-runtime','9:synthetic:older'),('g1','agent-runtime','9:synthetic:current'),
             ('empty','agent-runtime','pending:dispatch'),('empty','agent-runtime','other:unknown');").unwrap();
-        migrate_native_sessions_v15(&mut connection).unwrap();
+        connection.execute_batch(TABLE).unwrap();
+        backfill_native_sessions(&connection).unwrap();
         let mut statement = connection.prepare("SELECT conversation_id,native_session_id FROM conversation_native_sessions ORDER BY 1,2").unwrap();
         let rows = statement
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
@@ -261,61 +313,4 @@ mod tests {
             ]
         );
     }
-}
-
-pub(super) fn migrate_native_sessions_v15(connection: &mut Connection) -> StoreResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(TABLE)?;
-    transaction.execute_batch(
-        "INSERT OR IGNORE INTO conversation_native_sessions
-         SELECT rb.conversation_id,rb.membership_id,rb.runtime_session_id
-         FROM runtime_bindings rb JOIN memberships m ON m.id=rb.membership_id AND m.conversation_id=rb.conversation_id
-         JOIN principals p ON p.id=m.principal_id
-         WHERE p.kind='agent' AND length(trim(rb.runtime_session_id))>0;
-         INSERT OR IGNORE INTO conversation_native_sessions
-         SELECT d.conversation_id,d.membership_id,json_extract(d.native_provenance,'$.nativeSessionId')
-         FROM conversation_dispatches d JOIN memberships m ON m.id=d.membership_id AND m.conversation_id=d.conversation_id
-         JOIN principals p ON p.id=m.principal_id
-         WHERE d.native_provenance IS NOT NULL AND p.kind='agent'
-           AND p.agent_id=json_extract(d.native_provenance,'$.agentId')
-           AND length(trim(json_extract(d.native_provenance,'$.nativeSessionId')))>0;",
-    )?;
-    // The old source key is a byte-length-prefixed adapter identity. Decode
-    // that exact stored format; never infer ownership from project/model/time.
-    let links = {
-        let mut statement = transaction.prepare(
-            "SELECT conversation_id,native_identity FROM source_links WHERE source_kind='agent-runtime'",
-        )?;
-        statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-    };
-    for (conversation_id, identity) in links {
-        let Some((length, rest)) = identity.split_once(':') else {
-            continue;
-        };
-        let Ok(length) = length.parse::<usize>() else {
-            continue;
-        };
-        let Some(agent_id) = rest.get(..length) else {
-            continue;
-        };
-        let Some(session_id) = rest.get(length..).and_then(|tail| tail.strip_prefix(':')) else {
-            continue;
-        };
-        if agent_id.is_empty() || session_id.trim().is_empty() {
-            continue;
-        }
-        transaction.execute(
-            "INSERT OR IGNORE INTO conversation_native_sessions
-             SELECT m.conversation_id,m.id,?3 FROM memberships m JOIN principals p ON p.id=m.principal_id
-             WHERE m.conversation_id=?1 AND p.kind='agent' AND p.agent_id=?2",
-            params![conversation_id,agent_id,session_id],
-        )?;
-    }
-    transaction.execute("UPDATE schema_meta SET value='15' WHERE key='version'", [])?;
-    transaction.commit()?;
-    Ok(())
 }
