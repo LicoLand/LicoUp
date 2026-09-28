@@ -305,6 +305,7 @@ final class SettingsProjection {
     required this.appearancePresetDirectoryPath,
     required this.appearancePresetLoadErrorCount,
     required this.portableDataPath,
+    this.portableDataSource = '',
     required this.snapshotRootPath,
     required this.savingSnapshotRoot,
     required this.clientLogExportPath,
@@ -332,6 +333,7 @@ final class SettingsProjection {
   final String appearancePresetDirectoryPath;
   final int appearancePresetLoadErrorCount;
   final String portableDataPath;
+  final String portableDataSource;
   final String snapshotRootPath;
   final bool savingSnapshotRoot;
   final String clientLogExportPath;

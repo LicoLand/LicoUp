@@ -101,6 +101,28 @@ void main() {
     expect(chosen, '/synthetic/workspaces/real-project');
   });
 
+  test('selected data home owns the fallback workspace exclusion', () {
+    const selectedRoot = '/synthetic/selected-data';
+    final fallback = localConversationWorkingDirectoryFallback(
+      agentId: 'codex',
+      dataHome: selectedRoot,
+    );
+
+    expect(fallback, '$selectedRoot/agent-workspace');
+    expect(
+      isClientOwnedAgentWorkspace(fallback, dataHome: selectedRoot),
+      isTrue,
+    );
+    expect(
+      isUsableLocalConversationWorkingDirectory(
+        fallback,
+        dataHome: selectedRoot,
+        directoryExists: syntheticProjectExists,
+      ),
+      isFalse,
+    );
+  });
+
   test('explicit binds stay admissible without a presence check', () {
     expect(
       isBoundableConversationWorkingDirectory(

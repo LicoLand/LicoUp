@@ -25,6 +25,7 @@ const _retiredClientAgentWorkspaceDirectoryName = 'agent-workspaces';
 String historicalConversationWorkingDirectory(
   Iterable<AgentConversationSession> sessions, {
   Map<String, String>? environment,
+  String? dataHome,
   bool Function(String path)? directoryExists,
 }) {
   for (final session in sortConversationSessionsByUpdatedAt(
@@ -34,6 +35,7 @@ String historicalConversationWorkingDirectory(
     if (!isUsableLocalConversationWorkingDirectory(
       directory,
       environment: environment,
+      dataHome: dataHome,
       directoryExists: directoryExists,
       automaticFallback: true,
     )) {
@@ -52,6 +54,7 @@ String historicalConversationWorkingDirectory(
 bool isBoundableConversationWorkingDirectory(
   String path, {
   Map<String, String>? environment,
+  String? dataHome,
 }) {
   final normalized = path.trim();
   if (normalized.isEmpty || !p.isAbsolute(normalized)) {
@@ -61,7 +64,11 @@ bool isBoundableConversationWorkingDirectory(
         normalized,
         environment: environment,
       ) &&
-      !isClientOwnedAgentWorkspace(normalized, environment: environment);
+      !isClientOwnedAgentWorkspace(
+        normalized,
+        environment: environment,
+        dataHome: dataHome,
+      );
 }
 
 /// Whether [path] is a concrete project directory the client may treat as a
@@ -77,12 +84,14 @@ bool isBoundableConversationWorkingDirectory(
 bool isUsableLocalConversationWorkingDirectory(
   String path, {
   Map<String, String>? environment,
+  String? dataHome,
   bool Function(String path)? directoryExists,
   bool automaticFallback = false,
 }) {
   if (!isBoundableConversationWorkingDirectory(
     path,
     environment: environment,
+    dataHome: dataHome,
   )) {
     return false;
   }
@@ -155,23 +164,21 @@ bool isAutomaticFilesystemProbeDenied(
 bool isClientOwnedAgentWorkspace(
   String path, {
   Map<String, String>? environment,
+  String? dataHome,
 }) {
   final normalized = p.normalize(path.trim());
   if (normalized.isEmpty || !p.isAbsolute(normalized)) {
     return false;
   }
-  final home = userHomeDirectory(environment: environment);
-  if (home.isEmpty) {
-    return false;
-  }
+  final root = _clientDataRoot(environment: environment, dataHome: dataHome);
+  if (root.isEmpty) return false;
   for (final directoryName in [
     clientAgentWorkspaceDirectoryName,
     _retiredClientAgentWorkspaceDirectoryName,
   ]) {
-    final root = p.normalize(
-      p.join(home, _clientHomeStateDirectoryName, directoryName),
-    );
-    if (p.equals(normalized, root) || p.isWithin(root, normalized)) {
+    final workspaceRoot = p.normalize(p.join(root, directoryName));
+    if (p.equals(normalized, workspaceRoot) ||
+        p.isWithin(workspaceRoot, normalized)) {
       return true;
     }
   }
@@ -194,16 +201,21 @@ bool isClientOwnedAgentWorkspace(
 String localConversationWorkingDirectoryFallback({
   required String agentId,
   Map<String, String>? environment,
+  String? dataHome,
 }) {
-  final home = userHomeDirectory(environment: environment);
-  if (home.isEmpty) {
+  final root = _clientDataRoot(environment: environment, dataHome: dataHome);
+  if (root.isEmpty) {
     return '';
   }
-  return p.join(
-    home,
-    _clientHomeStateDirectoryName,
-    clientAgentWorkspaceDirectoryName,
-  );
+  return p.join(root, clientAgentWorkspaceDirectoryName);
+}
+
+String _clientDataRoot({Map<String, String>? environment, String? dataHome}) {
+  final selected = dataHome?.trim() ?? '';
+  if (selected.isNotEmpty && p.isAbsolute(selected))
+    return p.normalize(selected);
+  final home = userHomeDirectory(environment: environment);
+  return home.isEmpty ? '' : p.join(home, _clientHomeStateDirectoryName);
 }
 
 /// Whether an explicitly chosen directory is a personal root whose whole tree

@@ -34,7 +34,7 @@ pub(crate) fn apply_subagent_caller_context(command: &mut std::process::Command,
 /// the desktop-owned supervisor. Caller context stays a separate, exact set.
 pub(crate) fn apply_mcp_runtime_root(command: &mut std::process::Command) {
     if let Ok(root) = licoup_foundation::platform::paths::portable_data_dir() {
-        command.env("LICOUP_PORTABLE_DIR", root);
+        command.env("LICOUP_HOME", root);
     }
 }
 
@@ -901,7 +901,7 @@ mod tests {
             licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let mut command = std::process::Command::new("fixture");
         apply_mcp_runtime_root(&mut command);
-        let bound = command_environment(&command, "LICOUP_PORTABLE_DIR");
+        let bound = command_environment(&command, "LICOUP_HOME");
         licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let expected = root.to_string_lossy().into_owned();
         assert_eq!(bound.as_deref(), Some(expected.as_str()));

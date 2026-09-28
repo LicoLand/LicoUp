@@ -53,7 +53,7 @@ void main() {
       await guard!.release();
     });
 
-    test('lock path stays inside the canonical client state root', () async {
+    test('test override lock path stays inside its isolated root', () async {
       final dataDir = Directory('${stateDir.path}/portable');
       final first = await SingleInstanceGuard.lockFileFor(
         PortableDataRoot(dataDirectoryOverride: dataDir),
@@ -69,6 +69,32 @@ void main() {
         ),
       );
       expect(other.path, isNot(first.path));
+    });
+
+    test('desktop boot lock stays outside a movable root', () async {
+      final home = await Directory.systemTemp.createTemp('lico-boot-home-');
+      addTearDown(() => home.delete(recursive: true));
+      final first = await SingleInstanceGuard.lockFileFor(
+        PortableDataRoot(
+          environmentOverride: {
+            'HOME': home.path,
+            'LICOUP_HOME': p.join(home.path, 'one'),
+          },
+        ),
+      );
+      final second = await SingleInstanceGuard.lockFileFor(
+        PortableDataRoot(
+          environmentOverride: {
+            'HOME': home.path,
+            'LICOUP_HOME': p.join(home.path, 'two'),
+          },
+        ),
+      );
+
+      expect(first.path, second.path);
+      expect(p.basename(first.path), 'client.instance.lock');
+      expect(await Directory(p.join(home.path, 'one')).exists(), isFalse);
+      expect(await Directory(p.join(home.path, 'two')).exists(), isFalse);
     });
 
     test('lock path normalizes macos data volume homes', () {

@@ -335,6 +335,7 @@ final class SettingsPresentationHub {
   static SettingsStorageInputs _readStorage(ClientController controller) {
     return SettingsStorageInputs(
       portableDataPath: controller.portableDataPath,
+      portableDataSource: controller.portableDataSource,
       snapshotRootPath: controller.snapshotRootDraft,
       savingSnapshotRoot: controller.isSavingSnapshotRoot,
     );

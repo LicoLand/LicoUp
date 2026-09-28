@@ -370,6 +370,8 @@ class ClientController extends AgentConversationController
   @override
   Object get agentWorkspacePortableData => portableData;
   @override
+  String get agentWorkspaceDataRoot => portableDataPath;
+  @override
   final AgentService agentService;
   @override
   final LlmVaultAuthorization llmVaultAuthorization = LlmVaultAuthorization();

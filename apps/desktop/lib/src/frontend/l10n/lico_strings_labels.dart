@@ -912,6 +912,18 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
   String get portableData =>
       isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
+  String dataHomeSource(String source) => switch (source) {
+    'explicitEnvironment' =>
+      isChinese ? '由 LICOUP_HOME 环境变量指定' : 'Set by LICOUP_HOME',
+    'legacyEnvironment' =>
+      isChinese
+          ? '由已发布的 LICOUP_PORTABLE_DIR 别名指定'
+          : 'Set by the published LICOUP_PORTABLE_DIR alias',
+    'saved' => isChinese ? '已保存的位置' : 'Saved location',
+    'mobileSandbox' => isChinese ? '应用沙盒' : 'Application sandbox',
+    'testOverride' => isChinese ? '测试目录' : 'Test directory',
+    _ => isChinese ? '默认位置' : 'Default location',
+  };
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
   String get exportLogsDescription => '';

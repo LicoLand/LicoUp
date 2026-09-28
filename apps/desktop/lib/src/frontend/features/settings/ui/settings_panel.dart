@@ -1026,6 +1026,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
           title: strings.portableData,
           label: strings.portableData,
           path: widget.inputs.portableDataPath,
+          subtitle: strings.dataHomeSource(widget.inputs.portableDataSource),
           icon: Icons.folder_outlined,
           readOnly: true,
           padding: presentation.rowPadding,

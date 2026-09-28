@@ -942,13 +942,19 @@ mixin AgentConversationSessionController
     // the shared client-owned fallback.
     final draftDirectory =
         (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isBoundableConversationWorkingDirectory(draftDirectory)) {
+    if (isBoundableConversationWorkingDirectory(
+      draftDirectory,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return draftDirectory;
     }
     if (!preparingNewConversation) {
       final sessionDirectory =
           selectedConversationSession?.workingDirectory.trim() ?? '';
-      if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
+      if (isUsableLocalConversationWorkingDirectory(
+        sessionDirectory,
+        dataHome: agentWorkspaceDataRoot,
+      )) {
         return sessionDirectory;
       }
       // Same native identity may appear twice (turn projection + catalog).
@@ -961,7 +967,10 @@ mixin AgentConversationSessionController
             continue;
           }
           final directory = session.workingDirectory.trim();
-          if (isUsableLocalConversationWorkingDirectory(directory)) {
+          if (isUsableLocalConversationWorkingDirectory(
+            directory,
+            dataHome: agentWorkspaceDataRoot,
+          )) {
             return directory;
           }
         }
@@ -969,15 +978,22 @@ mixin AgentConversationSessionController
     }
     final historicalDirectory = historicalConversationWorkingDirectory(
       agentSessions,
+      dataHome: agentWorkspaceDataRoot,
     );
     if (historicalDirectory.isNotEmpty) {
       return historicalDirectory;
     }
     final remoteDirectory = agent.remoteWorkingDirectory.trim();
-    if (isUsableLocalConversationWorkingDirectory(remoteDirectory)) {
+    if (isUsableLocalConversationWorkingDirectory(
+      remoteDirectory,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return remoteDirectory;
     }
-    return localConversationWorkingDirectoryFallback(agentId: agent.target);
+    return localConversationWorkingDirectoryFallback(
+      agentId: agent.target,
+      dataHome: agentWorkspaceDataRoot,
+    );
   }
 
   /// Local desktop agents may always rebind the next-turn working directory.
@@ -1061,16 +1077,23 @@ mixin AgentConversationSessionController
     }
     final existingDraft =
         (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isBoundableConversationWorkingDirectory(existingDraft)) {
+    if (isBoundableConversationWorkingDirectory(
+      existingDraft,
+      dataHome: agentWorkspaceDataRoot,
+    )) {
       return;
     }
     final selectedDirectory =
         selectedConversationSession?.workingDirectory.trim() ?? '';
     final previousWorkingDirectory =
-        isUsableLocalConversationWorkingDirectory(selectedDirectory)
+        isUsableLocalConversationWorkingDirectory(
+          selectedDirectory,
+          dataHome: agentWorkspaceDataRoot,
+        )
         ? selectedDirectory
         : historicalConversationWorkingDirectory(
             conversationSessionsByAgent[agent.target] ?? const [],
+            dataHome: agentWorkspaceDataRoot,
           );
     if (previousWorkingDirectory.isEmpty) {
       return;
@@ -1192,14 +1215,17 @@ mixin AgentConversationSessionController
       final cachedSessions =
           conversationSessionsByAgent[normalizedAgentId] ?? const [];
       final hasUsableWorkingDirectory = cachedSessions.any(
-        (session) =>
-            isUsableLocalConversationWorkingDirectory(session.workingDirectory),
+        (session) => isUsableLocalConversationWorkingDirectory(
+          session.workingDirectory,
+          dataHome: agentWorkspaceDataRoot,
+        ),
       );
       if (runtimeBound &&
           !hasUsableWorkingDirectory &&
           cachedSessions.any(
             (session) => isBoundableConversationWorkingDirectory(
               session.workingDirectory,
+              dataHome: agentWorkspaceDataRoot,
             ),
           )) {
         await loadConversationSessions(normalizedAgentId);

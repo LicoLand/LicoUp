@@ -36,7 +36,7 @@ void main() {
       }
     });
 
-    test('scanTargets passes LICOUP_PORTABLE_DIR', () async {
+    test('scanTargets passes LICOUP_HOME', () async {
       await service.scanTargets();
       expect(capturedArgs, [
         'targets',
@@ -46,7 +46,7 @@ void main() {
         '--include-history-model-catalog',
         'false',
       ]);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
       expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
       final parentPath = Platform.environment['PATH']?.trim() ?? '';
       if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
@@ -60,13 +60,13 @@ void main() {
       }
     });
 
-    test('addTarget passes LICOUP_PORTABLE_DIR', () async {
+    test('addTarget passes LICOUP_HOME', () async {
       await service.addTarget(target: 'opencode');
       expect(capturedArgs, ['targets', 'add', '--target', 'opencode']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('inspectTarget passes LICOUP_PORTABLE_DIR', () async {
+    test('inspectTarget passes LICOUP_HOME', () async {
       await service.inspectTarget('opencode');
       expect(capturedArgs, [
         'targets',
@@ -77,61 +77,58 @@ void main() {
         '--enable-agent-cli-model-lookup',
         'true',
       ]);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('restoreSnapshot passes LICOUP_PORTABLE_DIR', () async {
+    test('restoreSnapshot passes LICOUP_HOME', () async {
       await service.restoreSnapshot('snap-1');
       expect(capturedArgs, ['snapshots', 'restore', 'snap-1']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listSnapshots passes LICOUP_PORTABLE_DIR', () async {
+    test('listSnapshots passes LICOUP_HOME', () async {
       await service.listSnapshots(target: 'opencode');
       expect(capturedArgs, ['snapshots', 'list', '--target', 'opencode']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listPairings passes LICOUP_PORTABLE_DIR', () async {
+    test('listPairings passes LICOUP_HOME', () async {
       await service.listPairings(agent: 'codex');
       expect(capturedArgs, ['agents', 'pair', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listSkills passes LICOUP_PORTABLE_DIR', () async {
+    test('listSkills passes LICOUP_HOME', () async {
       await service.listSkills(agent: 'codex');
       expect(capturedArgs, ['skill', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test(
-      'without dataDirectory, env does not contain LICOUP_PORTABLE_DIR',
-      () async {
-        final noDataService = AgentService(
-          resolveCliBinary: () async => cliBinary,
-          runCliExecutable: (executable, args, env) async {
-            capturedArgs = args;
-            capturedEnv = env;
-            return ProcessResult(0, 0, '{"ok":true}', '');
-          },
+    test('without dataDirectory, env does not contain LICOUP_HOME', () async {
+      final noDataService = AgentService(
+        resolveCliBinary: () async => cliBinary,
+        runCliExecutable: (executable, args, env) async {
+          capturedArgs = args;
+          capturedEnv = env;
+          return ProcessResult(0, 0, '{"ok":true}', '');
+        },
+      );
+      await noDataService.scanTargets();
+      expect(capturedEnv?['LICOUP_HOME'], isNull);
+      expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
+      if (Platform.isMacOS) {
+        expect(
+          capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
+          'production',
         );
-        await noDataService.scanTargets();
-        expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
-        expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
-        if (Platform.isMacOS) {
-          expect(
-            capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
-            'production',
-          );
-        } else {
-          expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
-          final parentPath = Platform.environment['PATH']?.trim() ?? '';
-          if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
-            expect(capturedEnv?['PATH'], parentPath);
-          }
+      } else {
+        expect(capturedEnv?['LICOUP_HOME'], isNull);
+        final parentPath = Platform.environment['PATH']?.trim() ?? '';
+        if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
+          expect(capturedEnv?['PATH'], parentPath);
         }
-      },
-    );
+      }
+    });
   });
 
   group('resolveCliBinaryFor', () {

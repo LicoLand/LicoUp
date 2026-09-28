@@ -64,15 +64,18 @@ final class ClientAppComposition {
     CausalFrameTelemetry? telemetry,
     Stream<bool>? systemReduceMotionChanges,
   }) {
-    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
-      loadJson: DefaultAgentRenderAdapterJsonSource().loadAdapterJson,
-    );
     final resolvedTelemetry = telemetry ?? createOptInCausalFrameTelemetry();
     final layout = controller == null
         ? BuiltInLayoutComposition()
         : BuiltInLayoutComposition.attach(catalog: controller.layoutCatalog);
     final resolvedController =
         controller ?? _createProductionController(layout);
+    AgentRenderAdapterRegistry.instance = AgentRenderAdapterRegistry(
+      loadJson: DefaultAgentRenderAdapterJsonSource(
+        dataDirectory: () async =>
+            (await resolvedController.portableData.dataDirectory()).path,
+      ).loadAdapterJson,
+    );
     // Frontend code never imports the platform layer; the composition root
     // hands the renderer its platform-backed services here instead.
     ClientPlatformPorts.install(

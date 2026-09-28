@@ -35,7 +35,7 @@ pub fn execute(action: &str, binary: Option<&Path>) -> Result<Value> {
     let output = Command::new(binary)
         .args(["service", action])
         .env("LICOUP_CLI_BINARY", cli)
-        .env("LICOUP_PORTABLE_DIR", root)
+        .env("LICOUP_HOME", root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

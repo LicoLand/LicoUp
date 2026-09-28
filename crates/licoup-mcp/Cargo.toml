@@ -10,6 +10,7 @@ description = "Independent MCP process adapter for the public LicoUp CLI"
 [dependencies]
 anyhow = "1.0"
 fs2 = "0.4"
+licoup-foundation = { path = "../licoup-foundation" }
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

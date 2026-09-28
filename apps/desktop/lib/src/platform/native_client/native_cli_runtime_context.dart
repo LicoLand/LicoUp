@@ -145,7 +145,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     final dataDirectory = _dataDirectory;
     if (dataDirectory != null) {
       final directory = await dataDirectory();
-      environment['LICOUP_PORTABLE_DIR'] = directory;
+      environment['LICOUP_HOME'] = directory;
     }
     return environment.isEmpty ? null : environment;
   }

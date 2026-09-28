@@ -54,6 +54,7 @@ mixin ClientLifecycleFacade
   Future<void> loadConversationSessions(String agentId);
 
   String portableDataPath = '';
+  String portableDataSource = '';
   Future<void> initialize() => initializeWithOptions();
 
   Future<void> initializeWithOptions({bool runBackgroundSteps = true}) =>
@@ -131,8 +132,10 @@ mixin ClientLifecycleFacade
   }
 
   Future<void> _resolveClientStorageRoot() async {
+    final selection = await portableData.dataHomeSelection();
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
+    portableDataSource = selection.source.name;
   }
 
   Future<void> _admitClientStateMigration() async {

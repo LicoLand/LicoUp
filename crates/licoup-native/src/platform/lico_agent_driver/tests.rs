@@ -49,7 +49,7 @@ fn unsafe_stale_and_client_owned_workspaces_fail_before_process_launch() {
     let _guard = ENV_LOCK.lock().unwrap();
     let prior_home = std::env::var_os("HOME");
     unsafe {
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable);
+        std::env::set_var("LICOUP_HOME", &portable);
         std::env::set_var("HOME", &home);
     }
     let cases = [
@@ -79,7 +79,7 @@ fn unsafe_stale_and_client_owned_workspaces_fail_before_process_launch() {
         );
     }
     unsafe {
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
         if let Some(prior_home) = prior_home {
             std::env::set_var("HOME", prior_home);
         } else {
@@ -101,7 +101,7 @@ fn readiness_handshake_hang_fails_bounded() {
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
         std::env::set_var("LICO_FAKE_LICO_AGENT_HANG", "1");
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
     let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
@@ -109,7 +109,7 @@ fn readiness_handshake_hang_fails_bounded() {
     let result = execute_with_production_bound(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
         std::env::remove_var("LICO_FAKE_LICO_AGENT_HANG");
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     let _ = fs::remove_dir_all(&dir);
@@ -144,14 +144,14 @@ fn rejected_readiness_handshake_fails_before_prompt() {
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
         std::env::set_var("LICO_FAKE_LICO_AGENT_REJECT", "1");
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
     let _pin = crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
     let result = execute_with(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
         std::env::remove_var("LICO_FAKE_LICO_AGENT_REJECT");
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     let _ = fs::remove_dir_all(dir);
@@ -177,11 +177,11 @@ fn successful_readiness_handshake_keeps_the_turn_flow() {
     fs::create_dir_all(&portable_dir).unwrap();
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     let result = execute_with(executable.to_string_lossy().as_ref(), &dir);
     unsafe {
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     let _ = fs::remove_dir_all(&dir);
@@ -218,7 +218,7 @@ fn resume_requires_persisted_header_and_observed_native_identity() {
     .unwrap();
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
     }
     let resumed = execute_with_test_handshake_bound(
         executable.to_string_lossy().as_ref(),
@@ -250,7 +250,7 @@ fn resume_requires_persisted_header_and_observed_native_identity() {
     );
     unsafe {
         std::env::remove_var("LICO_FAKE_SESSION_ID");
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     assert!(resumed.ok, "resume failed: {:?}", resumed.error);
@@ -270,7 +270,7 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
     fs::create_dir_all(&portable_dir).unwrap();
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
         std::env::set_var("LICO_FAKE_OUTPUT", "complete synthetic output");
     }
     // Pin the fixture steering channel into the launch snapshot explicitly.
@@ -306,7 +306,7 @@ fn explicit_output_bound_and_persistence_failure_are_visible() {
     );
     unsafe {
         std::env::remove_var("LICO_FAKE_PERSIST_FAIL");
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     assert_eq!(
@@ -329,7 +329,7 @@ fn omitted_output_bound_is_complete_and_sustained_stderr_cannot_deadlock() {
     let expected = "synthetic-output".repeat(512);
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {
-        std::env::set_var("LICOUP_PORTABLE_DIR", &portable_dir);
+        std::env::set_var("LICOUP_HOME", &portable_dir);
         std::env::set_var("LICO_FAKE_OUTPUT", &expected);
         std::env::set_var("LICO_FAKE_STDERR_BYTES", "262144");
     }
@@ -349,7 +349,7 @@ fn omitted_output_bound_is_complete_and_sustained_stderr_cannot_deadlock() {
     unsafe {
         std::env::remove_var("LICO_FAKE_STDERR_BYTES");
         std::env::remove_var("LICO_FAKE_OUTPUT");
-        std::env::remove_var("LICOUP_PORTABLE_DIR");
+        std::env::remove_var("LICOUP_HOME");
     }
     drop(_guard);
     assert!(result.ok, "unbounded output failed: {:?}", result.error);

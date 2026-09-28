@@ -6,10 +6,10 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Enforces one running LicoUp client instance per machine.
 ///
-/// The guard owns an exclusive operating-system file lock inside the
-/// client-controlled state directory for the process lifetime. The lock is
-/// acquired without waiting, so a duplicate exits before any bootstrap work
-/// (target scans, bridge workloads) can start.
+/// Desktop uses an exclusive operating-system lock beside the boot locator,
+/// so changing roots or recovering an unavailable volume cannot admit a
+/// second client. Mobile and isolated tests keep the lock inside their sandbox
+/// root. The lock is acquired without waiting, before bootstrap work starts.
 ///
 /// A file lock avoids the probe/delete/bind race inherent in a Unix socket
 /// guard and works across all desktop platforms. The lock file is deliberately
@@ -23,10 +23,9 @@ class SingleInstanceGuard {
   final String _lockKey;
   bool _released = false;
 
-  /// Resolves the lock file inside the canonical client state directory.
+  /// Resolves the stable desktop lock beside the boot locator.
   static Future<File> lockFileFor(PortableDataRoot portableData) async {
-    final directory = await portableData.clientDirectory();
-    final raw = File(p.join(directory.path, 'client.instance.lock'));
+    final raw = await portableData.bootInstanceLockFile();
     return File(
       PortableDataRoot.stripMacosDataVolume(p.normalize(p.absolute(raw.path))),
     );

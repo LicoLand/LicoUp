@@ -400,7 +400,7 @@ fn platform_mcp_install(cli: &Path) -> Result<()> {
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>LICOUP_PORTABLE_DIR</key>
+    <key>LICOUP_HOME</key>
     <string>{}</string>
   </dict>
   <key>RunAtLoad</key>
@@ -502,7 +502,7 @@ fn platform_desktop_uninstall() -> Result<()> {
 fn platform_mcp_install(cli: &Path) -> Result<()> {
     let portable = paths::portable_data_dir()?;
     let unit = format!(
-        "[Unit]\nDescription=LicoUp MCP prepare\n\n[Service]\nType=oneshot\nEnvironment=LICOUP_PORTABLE_DIR={}\nExecStart={} autostart prepare-mcp\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=LicoUp MCP prepare\n\n[Service]\nType=oneshot\nEnvironment=LICOUP_HOME={}\nExecStart={} autostart prepare-mcp\n\n[Install]\nWantedBy=default.target\n",
         portable.display(),
         cli.display(),
     );

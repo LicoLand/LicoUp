@@ -191,7 +191,7 @@ fn platform_install(program: &Path, port: u16) -> Result<()> {
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>LICOUP_PORTABLE_DIR</key>
+    <key>LICOUP_HOME</key>
     <string>{}</string>
   </dict>
   <key>RunAtLoad</key>
@@ -268,7 +268,7 @@ fn platform_installed() -> Result<bool> {
 fn platform_install(program: &Path, port: u16) -> Result<()> {
     let portable = paths::portable_data_dir()?;
     let unit = format!(
-        "[Unit]\nDescription=LicoUp LLM Gateway\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nEnvironment=LICOUP_PORTABLE_DIR={}\nExecStart={} llm-gateway service start --port {port}\nExecStop={} llm-gateway service stop --port {port}\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=LicoUp LLM Gateway\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nEnvironment=LICOUP_HOME={}\nExecStart={} llm-gateway service start --port {port}\nExecStop={} llm-gateway service stop --port {port}\n\n[Install]\nWantedBy=default.target\n",
         shell_escape(&portable.to_string_lossy()),
         shell_escape(&program.to_string_lossy()),
         shell_escape(&program.to_string_lossy()),

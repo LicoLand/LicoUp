@@ -1,26 +1,20 @@
 //! Local transport credentials. No runtime content enters this directory.
 use anyhow::{Result, anyhow};
 use std::{
-    env, fs,
+    fs,
     io::{Read, Write},
     path::{Path, PathBuf},
 };
 
 pub fn portable_data_dir_read_only() -> Result<PathBuf> {
-    if let Some(path) = env::var_os("LICOUP_PORTABLE_DIR").filter(|value| !value.is_empty()) {
-        let path = PathBuf::from(path);
-        return Ok(path.canonicalize().unwrap_or(path));
-    }
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(|path| {
-            let path = PathBuf::from(path).join(".lico-up");
-            path.canonicalize().unwrap_or(path)
-        })
-        .ok_or_else(|| anyhow!("mcp_state_unavailable"))
+    licoup_foundation::platform::paths::portable_data_dir_read_only()
+        .map(|path| path.canonicalize().unwrap_or(path))
+        .map_err(|_| anyhow!("mcp_state_unavailable"))
 }
 pub fn portable_data_dir() -> Result<PathBuf> {
-    portable_data_dir_read_only()
+    licoup_foundation::platform::paths::portable_data_dir()
+        .and_then(|path| path.canonicalize().map_err(Into::into))
+        .map_err(|_| anyhow!("mcp_state_unavailable"))
 }
 
 fn reject_links(path: &Path) -> Result<()> {
@@ -168,6 +162,7 @@ pub fn atomic_write_private_text_bounded(path: &Path, text: &str, limit: usize) 
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::env;
     use std::os::unix::fs::{PermissionsExt, symlink};
     #[test]
     fn discovery_rejects_public_permissions_and_symlink_substitution() {

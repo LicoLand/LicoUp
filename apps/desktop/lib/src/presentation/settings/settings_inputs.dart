@@ -94,11 +94,13 @@ final class SettingsLayoutInputs {
 final class SettingsStorageInputs {
   const SettingsStorageInputs({
     required this.portableDataPath,
+    this.portableDataSource = '',
     required this.snapshotRootPath,
     required this.savingSnapshotRoot,
   });
 
   final String portableDataPath;
+  final String portableDataSource;
   final String snapshotRootPath;
   final bool savingSnapshotRoot;
 
@@ -107,12 +109,17 @@ final class SettingsStorageInputs {
       identical(this, other) ||
       other is SettingsStorageInputs &&
           other.portableDataPath == portableDataPath &&
+          other.portableDataSource == portableDataSource &&
           other.snapshotRootPath == snapshotRootPath &&
           other.savingSnapshotRoot == savingSnapshotRoot;
 
   @override
-  int get hashCode =>
-      Object.hash(portableDataPath, snapshotRootPath, savingSnapshotRoot);
+  int get hashCode => Object.hash(
+    portableDataPath,
+    portableDataSource,
+    snapshotRootPath,
+    savingSnapshotRoot,
+  );
 }
 
 /// Values consumed by the client update card.
