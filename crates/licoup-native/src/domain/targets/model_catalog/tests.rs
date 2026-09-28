@@ -2254,6 +2254,9 @@ mod deepseek {
     use super::super::deepseek::SOURCE;
     use super::*;
 
+    const OFFICIAL_ADAPTER_FIXTURE: &str =
+        include_str!("test_support/deepseek_adapter_fixture.mjs");
+
     #[test]
     fn disabled_lookup_does_not_execute_an_installed_adapter() {
         let catalog = model_catalog_for_target(
@@ -2278,32 +2281,45 @@ mod deepseek {
     #[cfg(unix)]
     #[test]
     fn installed_catalog_preserves_native_ids_provider_and_supported_efforts() {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::{PermissionsExt, symlink};
         let directory =
-            std::env::temp_dir().join(format!("licoup-dsh-catalog-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("lico-dsh-catalog-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
+        let node_target = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("node"))
+            .find(|path| path.is_file())
+            .expect("the test runner's Node executable is on PATH");
         let node = directory.join("node");
-        fs::write(&node, r##"#!/bin/sh
-case "$1 $2" in '--input-type=module --eval') ;; *) exit 9 ;; esac
-printf '%s' '{"models":[{"name":"deepseek-native-next","displayName":"DeepSeek Native Next","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off","low","high","max"]},{"name":"deepseek-vision-experiment","displayName":"DeepSeek Vision Experiment","providerId":"deepseek-official","provider":"DeepSeek","reasoningEfforts":["off"]}]}'
-"##).unwrap();
-        fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+        symlink(node_target, &node).unwrap();
+
+        let harness = directory.join("dsh");
+        fs::write(&harness, "fixture package resolver entry\n").unwrap();
+        fs::set_permissions(&harness, fs::Permissions::from_mode(0o700)).unwrap();
+        let package = directory.join("node_modules/@deepseek-ai/dsh-llm-deepseek");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("package.json"),
+            r#"{"name":"@deepseek-ai/dsh-llm-deepseek","type":"module","exports":"./index.mjs"}"#,
+        )
+        .unwrap();
+        fs::write(package.join("index.mjs"), OFFICIAL_ADAPTER_FIXTURE).unwrap();
+
         let catalog = model_catalog_for_target(
             "deepseek-harness",
             None,
             &json!({
                 "enableAgentCliModelLookup":true,
-                "deepseekHarnessCliPath":directory.join("dsh"),
+                "deepseekHarnessCliPath":harness,
                 "deepseekHarnessNodePath":node,
             }),
         );
         let models = catalog["models"].as_array().unwrap();
-        assert_eq!(models.len(), 2);
+        assert_eq!(models.len(), 1);
         let model = models
             .iter()
-            .find(|model| model["name"] == "deepseek-native-next")
+            .find(|model| model["name"] == "deepseek-flash")
             .unwrap();
-        assert_eq!(model["displayName"], "DeepSeek Native Next");
+        assert_eq!(model["displayName"], "DeepSeek V41 Flash");
         assert_eq!(model["providerId"], "deepseek-official");
         assert_eq!(model["provider"], "DeepSeek");
         assert_eq!(
