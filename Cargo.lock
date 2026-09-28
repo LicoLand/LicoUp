@@ -2214,6 +2214,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-state-machine-codegen"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "licoup-workflow"
 version = "0.3.0"
 dependencies = [

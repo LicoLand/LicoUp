@@ -10,8 +10,7 @@
     "Cargo.lock",
     "package.json",
     "package-lock.json",
-    "crates/licoup-native",
-    "crates/licoup-mcp",
+    "crates",
     "apps/desktop",
     "packages/protocols",
     "tools"
