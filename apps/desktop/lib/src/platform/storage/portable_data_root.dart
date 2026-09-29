@@ -229,7 +229,10 @@ class PortableDataRoot {
   Future<Directory> clientDirectory() async {
     final dataDir = await dataDirectory();
     final directory = Directory(p.join(dataDir.path, 'client-state'));
-    await withAppManagedWriter(() => directory.create(recursive: true));
+    // Reads also resolve their path through here; the idempotent mkdir is not
+    // an app-managed document write, so it stays outside writer admission.
+    // Document writes admit themselves, keeping the relocation drain intact.
+    await directory.create(recursive: true);
     return directory;
   }
 
@@ -288,7 +291,9 @@ class PortableDataRoot {
   }
 
   Future<Directory> _prepareDataDirectory(Directory directory) async {
-    await withAppManagedWriter(() => directory.create(recursive: true));
+    // Same reasoning as clientDirectory(): path resolution serves reads, and
+    // the idempotent mkdir is not an app-managed document write.
+    await directory.create(recursive: true);
     return directory;
   }
 

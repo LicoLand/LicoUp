@@ -35,6 +35,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
   rust: freezeLane([
     "client:native:fmt:check",
     "client:native:clippy",
+    "client:native:test:helpers",
     "client:native:test",
     "client:native:smoke",
   ]),

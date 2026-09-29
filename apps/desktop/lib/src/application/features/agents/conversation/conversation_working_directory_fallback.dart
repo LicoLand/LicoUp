@@ -212,8 +212,9 @@ String localConversationWorkingDirectoryFallback({
 
 String _clientDataRoot({Map<String, String>? environment, String? dataHome}) {
   final selected = dataHome?.trim() ?? '';
-  if (selected.isNotEmpty && p.isAbsolute(selected))
+  if (selected.isNotEmpty && p.isAbsolute(selected)) {
     return p.normalize(selected);
+  }
   final home = userHomeDirectory(environment: environment);
   return home.isEmpty ? '' : p.join(home, _clientHomeStateDirectoryName);
 }
