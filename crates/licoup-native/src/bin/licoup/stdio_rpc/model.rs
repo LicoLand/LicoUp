@@ -42,6 +42,16 @@ pub(crate) enum StdioRpcMethod {
     Shutdown {
         params: Value,
     },
+    DataHomeRelocate {
+        params: Value,
+    },
+    DataHomeStatus,
+    DataHomeRecover {
+        params: Value,
+    },
+    DataHomeCleanup {
+        params: Value,
+    },
 }
 
 #[derive(Debug)]

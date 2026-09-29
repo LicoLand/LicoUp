@@ -47,12 +47,11 @@ stop every installed writer, and create a consistent recoverable backup of the
 same selected data root, including application-owned encrypted files. Keep
 platform-held keys in place; do not read or export them.
 
-A read-only inspection of the selected root's domain, schema, version, and
-admission status is required before the candidate writes to it. The candidate
-does not yet provide an approved read-only command for this inspection. Hold
-real-root delivery at this preflight until the maintainer resolves that
-interface; `state admit` and normal store opens mutate state and cannot serve
-as inspection.
+Let the candidate's normal startup admission handle the selected root before
+opening mutable stores. If bootstrap admission fails, stop the acceptance and
+record the candidate's bounded error evidence for the maintainer. Routine
+acceptance does not require a separate public read-only state-inspection
+command or a manually invoked admission command.
 
 Use the four configured targets—Codex, Cursor, Antigravity, and DeepSeek
 Harness—and their exact model, provider, and independent-effort selections from

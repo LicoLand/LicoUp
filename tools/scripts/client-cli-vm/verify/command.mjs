@@ -25,7 +25,7 @@ export function verifyCommand(distro) {
       ...commands,
     ].join(" && "))} 2>/dev/null`;
   const ubuntuSecretStoreCommand = secretServiceSessionCommand([
-    'export LICOUP_PORTABLE_DIR="$(mktemp -d)"',
+    'export LICOUP_HOME="$(mktemp -d)"',
     `"$LICO_VM_ORIGINAL_HOME/lico-artifacts/${artifactName}" mobile relay e2ee secret-store-self-test > "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json"`,
     `node -e ${quoteShellArg(assertSecretServicePlatformBinding)} "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json"`,
     `node tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs --input-report "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json" --expect-strategy os_secure_store`,

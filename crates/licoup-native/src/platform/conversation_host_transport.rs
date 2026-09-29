@@ -3,14 +3,36 @@
 //! portable data root; no runtime path or process fact crosses the RPC wire.
 
 use anyhow::{Context, Result, anyhow};
+use fs2::FileExt;
 use interprocess::local_socket::{GenericNamespaced, Stream, ToNsName as _, traits::Stream as _};
 use sha2::{Digest, Sha256};
 use std::{
     env, fs,
     io::{self, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
+
+fn host_owner_lock_path(root: &Path) -> PathBuf {
+    root.join("client-state")
+        .join("conversation-runtime")
+        .join("host-owner.lock")
+}
+
+/// Try to take the listener owner lock. A returned file remains locked until
+/// it is dropped, giving stop callers direct proof that the host has exited.
+pub fn try_acquire_host_owner_lock(root: &Path) -> Result<Option<fs::File>> {
+    let path = host_owner_lock_path(root);
+    if let Some(parent) = path.parent() {
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
+    }
+    let file = licoup_foundation::platform::file_security::open_private_lock_file(&path)?;
+    match FileExt::try_lock_exclusive(&file) {
+        Ok(()) => Ok(Some(file)),
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
+        Err(_) => Err(anyhow!("conversation host unavailable")),
+    }
+}
 
 pub const STDIO_RPC_PROTOCOL: &str = "licoup.stdio.v1";
 

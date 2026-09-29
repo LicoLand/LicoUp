@@ -13,6 +13,7 @@ import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
 import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/data_home_executor.dart';
 import 'package:licoup/src/platform/native_client/native_catalog_actions.dart';
 import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
 import 'package:licoup/src/platform/native_client/native_command_router.dart';
@@ -20,6 +21,7 @@ import 'package:licoup/src/platform/native_client/native_conversation_port.dart'
 import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:licoup/src/platform/native_client/native_state_actions.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 export 'package:licoup/src/contracts/target_candidate.dart';
 export 'package:licoup/src/platform/native_client/native_cli_ports.dart'
@@ -40,6 +42,7 @@ class AgentService
         TargetManagementGateway {
   AgentService({
     Future<String> Function()? dataDirectory,
+    Future<DataHomeSelection> Function()? dataHomeSelection,
     NativeResolveCliBinary? resolveCliBinary,
     NativeRunCliExecutable? runCliExecutable,
     NativeStartCliExecutable? startCliExecutable,
@@ -56,10 +59,12 @@ class AgentService
         processContext ??
         NativeCliRuntimeContext(
           dataDirectory: dataDirectory,
+          dataHomeSelection: dataHomeSelection,
           resolveCliBinary: resolveCliBinary,
           startCliExecutable: startCliExecutable,
           requestTimeout: privateRuntimeTimeout,
         );
+    _processContext = runtimeContext;
     final oneShotExecutor =
         oneShotCommandExecutor ??
         NativeOneShotCommandExecutor(
@@ -117,6 +122,7 @@ class AgentService
   }
 
   late final NativeCommandExecutor _commandExecutor;
+  late final NativeCliProcessContext _processContext;
   late final ConversationNativePort _conversationNativePort;
   late final NativeStdioRpcTransport _stdioRpcTransport;
   late final AgentCommandRunner _processIo;
@@ -133,6 +139,28 @@ class AgentService
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) =>
       _commandExecutor.execute(args);
+
+  Future<Map<String, dynamic>> relocateDataHome(
+    String destinationParent, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(
+    _processContext,
+  ).relocate(destinationParent, onPhase: onPhase);
+
+  Future<Map<String, dynamic>> dataHomeStatus() =>
+      DataHomeExecutor(_processContext).status();
+
+  Future<Map<String, dynamic>> recoverDataHome(
+    String dataHome, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(_processContext).recover(dataHome, onPhase: onPhase);
+
+  Future<Map<String, dynamic>> cleanupPreviousDataHome(
+    String expectedPreviousRootPath, {
+    DataHomePhaseHandler? onPhase,
+  }) => DataHomeExecutor(
+    _processContext,
+  ).cleanupPrevious(expectedPreviousRootPath, onPhase: onPhase);
 
   Future<Map<String, dynamic>> planCodexPlugin({required String binaryPath}) {
     return runCli([

@@ -104,8 +104,12 @@ mixin AgentConversationSessionStateController
         final catalogDirectory = next[matchingIndex].workingDirectory;
         if (!isBoundableConversationWorkingDirectory(
               retainedSession.workingDirectory,
+              dataHome: agentWorkspaceDataRoot,
             ) &&
-            isBoundableConversationWorkingDirectory(catalogDirectory)) {
+            isBoundableConversationWorkingDirectory(
+              catalogDirectory,
+              dataHome: agentWorkspaceDataRoot,
+            )) {
           retainedSession = retainedSession.withWorkingDirectory(
             catalogDirectory,
           );
@@ -317,7 +321,10 @@ mixin AgentConversationSessionStateController
       final workingDirectory = session.workingDirectory.trim();
       // Never bind the client-owned fallback or a personal-tree root onto a
       // later native readback — those are not the conversation's project path.
-      if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
+      if (!isBoundableConversationWorkingDirectory(
+        workingDirectory,
+        dataHome: agentWorkspaceDataRoot,
+      )) {
         continue;
       }
 
@@ -336,7 +343,10 @@ mixin AgentConversationSessionStateController
     final merged = incoming
         .map((session) {
           final incomingDirectory = session.workingDirectory.trim();
-          if (isBoundableConversationWorkingDirectory(incomingDirectory)) {
+          if (isBoundableConversationWorkingDirectory(
+            incomingDirectory,
+            dataHome: agentWorkspaceDataRoot,
+          )) {
             return session;
           }
           final nativeSessionId = session.nativeSessionId.trim();
@@ -346,7 +356,10 @@ mixin AgentConversationSessionStateController
                   : byNativeSessionId[nativeSessionId]) ??
               bySessionId[session.id.trim()] ??
               '';
-          if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
+          if (!isBoundableConversationWorkingDirectory(
+            workingDirectory,
+            dataHome: agentWorkspaceDataRoot,
+          )) {
             return session;
           }
           changed = true;
@@ -700,6 +713,7 @@ mixin AgentConversationSessionStateController
       workingDirectory: _conversationTurnWorkingDirectory(
         requested: workingDirectory,
         previous: previous?.workingDirectory ?? '',
+        dataHome: agentWorkspaceDataRoot,
       ),
     );
     if (groupNativeSessions.conversationId.isNotEmpty) {
@@ -751,7 +765,10 @@ mixin AgentConversationSessionStateController
     final bySessionId = <String, String>{};
     for (final session in authority) {
       final workingDirectory = session.workingDirectory.trim();
-      if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
+      if (!isBoundableConversationWorkingDirectory(
+        workingDirectory,
+        dataHome: agentWorkspaceDataRoot,
+      )) {
         continue;
       }
       final nativeSessionId = session.nativeSessionId.trim();
@@ -772,6 +789,7 @@ mixin AgentConversationSessionStateController
         .map((session) {
           if (isBoundableConversationWorkingDirectory(
             session.workingDirectory,
+            dataHome: agentWorkspaceDataRoot,
           )) {
             return session;
           }
@@ -782,7 +800,10 @@ mixin AgentConversationSessionStateController
                   : byNativeSessionId[nativeSessionId]) ??
               bySessionId[session.id.trim()] ??
               '';
-          if (!isBoundableConversationWorkingDirectory(workingDirectory)) {
+          if (!isBoundableConversationWorkingDirectory(
+            workingDirectory,
+            dataHome: agentWorkspaceDataRoot,
+          )) {
             return session;
           }
           changed = true;
@@ -842,13 +863,20 @@ Set<ConversationExecutionReference> _assistantExecutionReferences(
 String _conversationTurnWorkingDirectory({
   required String requested,
   required String previous,
+  required String dataHome,
 }) {
   final requestedDirectory = requested.trim();
-  if (isUsableLocalConversationWorkingDirectory(requestedDirectory)) {
+  if (isUsableLocalConversationWorkingDirectory(
+    requestedDirectory,
+    dataHome: dataHome,
+  )) {
     return requestedDirectory;
   }
   final previousDirectory = previous.trim();
-  if (isUsableLocalConversationWorkingDirectory(previousDirectory)) {
+  if (isUsableLocalConversationWorkingDirectory(
+    previousDirectory,
+    dataHome: dataHome,
+  )) {
     return previousDirectory;
   }
   // Never persist the client-owned fallback onto the session projection —

@@ -165,6 +165,16 @@ pub(crate) fn parse_stdio_rpc_request(
         ConversationProtocolMethod::Shutdown => StdioRpcMethod::Shutdown {
             params: command.params,
         },
+        ConversationProtocolMethod::DataHomeRelocate => StdioRpcMethod::DataHomeRelocate {
+            params: command.params,
+        },
+        ConversationProtocolMethod::DataHomeStatus => StdioRpcMethod::DataHomeStatus,
+        ConversationProtocolMethod::DataHomeRecover => StdioRpcMethod::DataHomeRecover {
+            params: command.params,
+        },
+        ConversationProtocolMethod::DataHomeCleanup => StdioRpcMethod::DataHomeCleanup {
+            params: command.params,
+        },
     };
     Ok(StdioRpcRequest {
         id: request_id.clone(),

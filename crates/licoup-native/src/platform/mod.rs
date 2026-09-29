@@ -55,6 +55,7 @@ pub mod codex_plugin_manager;
 pub mod conversation_host_client;
 pub mod conversation_host_transport;
 pub mod cursor_subagent_mcp_manager;
+pub mod data_home_relocation;
 pub mod gateway_runtime;
 pub mod llm_api_key_vault;
 pub mod llm_gateway_autostart;

@@ -142,6 +142,19 @@ void main() {
     );
   });
 
+  test('resolves Windows home from HOMEDRIVE and HOMEPATH', () async {
+    const drive = 'C:';
+    const path = r'\Users\Fixture';
+    final portableData = PortableDataRoot(
+      environmentOverride: {'HOMEDRIVE': drive, 'HOMEPATH': path},
+    );
+
+    final selection = await portableData.dataHomeSelection();
+
+    expect(selection.path, p.normalize(p.join('$drive$path', '.lico-up')));
+    expect(selection.source, DataHomeSelectionSource.defaultHome);
+  }, skip: !Platform.isWindows);
+
   test('first launch creates only the canonical client state root', () async {
     final directory = await Directory.systemTemp.createTemp(
       'lico-state-root-reset-',
@@ -160,38 +173,227 @@ void main() {
     expect(topLevelEntries, {'client-state'});
   });
 
+  test('bundled desktop honors new home before the published alias', () async {
+    final home = await Directory.systemTemp.createTemp('licoup-mac-home-');
+    final envDirectory = await Directory.systemTemp.createTemp(
+      'lico-env-portable-',
+    );
+    final newRoot = await Directory.systemTemp.createTemp('lico-new-home-');
+    addTearDown(() => home.delete(recursive: true));
+    addTearDown(() => envDirectory.delete(recursive: true));
+    addTearDown(() => newRoot.delete(recursive: true));
+
+    final portableData = PortableDataRoot(
+      environmentOverride: {
+        'LICOUP_HOME': newRoot.path,
+        'LICOUP_PORTABLE_DIR': envDirectory.path,
+        'HOME': home.path,
+      },
+    );
+
+    final resolved = await portableData.dataDirectory();
+
+    expect(resolved.path, newRoot.path);
+    expect(resolved.path, isNot(envDirectory.path));
+    expect(
+      await File('${resolved.path}/.licoup-workspace.json').exists(),
+      isFalse,
+    );
+  });
+
   test(
-    'packaged macOS app uses the home dot directory instead of portable env',
+    'relative environment roots resolve against the process directory',
     () async {
-      final home = await Directory.systemTemp.createTemp('licoup-mac-home-');
-      final envDirectory = await Directory.systemTemp.createTemp(
-        'lico-env-portable-',
+      for (final (variable, source) in [
+        ('LICOUP_HOME', DataHomeSelectionSource.explicitEnvironment),
+        ('LICOUP_PORTABLE_DIR', DataHomeSelectionSource.legacyEnvironment),
+      ]) {
+        final selection = await PortableDataRoot(
+          environmentOverride: {variable: 'relative/licoup-data'},
+        ).dataHomeSelection();
+
+        expect(selection.path, p.normalize(p.absolute('relative/licoup-data')));
+        expect(selection.source, source);
+      }
+    },
+  );
+
+  test(
+    'desktop reads a saved root when environment selection is absent',
+    () async {
+      final home = await Directory.systemTemp.createTemp('licoup-saved-home-');
+      final savedRoot = await Directory.systemTemp.createTemp(
+        'licoup-saved-root-',
       );
       addTearDown(() => home.delete(recursive: true));
-      addTearDown(() => envDirectory.delete(recursive: true));
-
+      addTearDown(() => savedRoot.delete(recursive: true));
+      final locatorDirectory = _locatorDirectory(home.path);
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString('${savedRoot.path}\n', flush: true);
       final portableData = PortableDataRoot(
-        environmentOverride: {
-          'LICOUP_PORTABLE_DIR': envDirectory.path,
-          'HOME': home.path,
-        },
-        resolvedExecutableOverride: p.join(
-          Directory.systemTemp.path,
-          'LicoUp.app',
-          'Contents',
-          'MacOS',
-          'licoup',
-        ),
+        environmentOverride: {'HOME': home.path},
       );
 
-      final resolved = await portableData.dataDirectory();
+      final selection = await portableData.dataHomeSelection();
 
-      expect(resolved.path, p.join(home.path, '.lico-up'));
-      expect(resolved.path, isNot(envDirectory.path));
-      expect(
-        await File('${resolved.path}/.licoup-workspace.json').exists(),
-        isFalse,
+      expect(selection.path, savedRoot.path);
+      expect(selection.source, DataHomeSelectionSource.saved);
+      expect((await portableData.dataDirectory()).path, savedRoot.path);
+    },
+  );
+
+  test(
+    'empty Windows APPDATA uses the home-based locator directory',
+    () async {
+      final home = await Directory.systemTemp.createTemp(
+        'licoup-appdata-fallback-home-',
       );
+      final savedRoot = await Directory.systemTemp.createTemp(
+        'licoup-appdata-fallback-root-',
+      );
+      addTearDown(() => home.delete(recursive: true));
+      addTearDown(() => savedRoot.delete(recursive: true));
+      final locatorDirectory = Directory(
+        p.join(home.path, 'AppData', 'Roaming', 'LicoUp'),
+      );
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString('${savedRoot.path}\n', flush: true);
+
+      final selection = await PortableDataRoot(
+        environmentOverride: {'HOME': home.path, 'APPDATA': '  '},
+      ).dataHomeSelection();
+
+      expect(selection.path, savedRoot.path);
+      expect(selection.source, DataHomeSelectionSource.saved);
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test('saved-root locator uses the native 32 KiB read bound', () async {
+    final home = await Directory.systemTemp.createTemp('licoup-bounded-home-');
+    addTearDown(() => home.delete(recursive: true));
+    final locatorDirectory = _locatorDirectory(home.path);
+    await locatorDirectory.create(recursive: true);
+    final locator = File(p.join(locatorDirectory.path, 'data-home'));
+    final atLimit = '/${'x' * (32 * 1024 - 1)}';
+    await locator.writeAsString(atLimit, flush: true);
+
+    final accepted = await PortableDataRoot(
+      environmentOverride: {'HOME': home.path},
+    ).dataHomeSelection();
+    expect(accepted.path, atLimit);
+    expect(accepted.source, DataHomeSelectionSource.saved);
+
+    await locator.writeAsString('${atLimit}x', flush: true);
+    await expectLater(
+      PortableDataRoot(
+        environmentOverride: {'HOME': home.path},
+      ).dataHomeSelection(),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('published root alias remains available below LICOUP_HOME', () async {
+    final home = await Directory.systemTemp.createTemp('licoup-alias-home-');
+    final aliasRoot = await Directory.systemTemp.createTemp(
+      'licoup-alias-root-',
+    );
+    addTearDown(() => home.delete(recursive: true));
+    addTearDown(() => aliasRoot.delete(recursive: true));
+    final portableData = PortableDataRoot(
+      environmentOverride: {
+        'HOME': home.path,
+        'LICOUP_PORTABLE_DIR': aliasRoot.path,
+      },
+    );
+
+    final selection = await portableData.dataHomeSelection();
+
+    expect(selection.path, aliasRoot.path);
+    expect(selection.source, DataHomeSelectionSource.legacyEnvironment);
+  });
+
+  test(
+    'missing saved root does not create a replacement default root',
+    () async {
+      final home = await Directory.systemTemp.createTemp(
+        'licoup-missing-home-',
+      );
+      final missingRoot = p.join(home.path, 'removed-volume', 'LicoUp');
+      addTearDown(() => home.delete(recursive: true));
+      final locatorDirectory = _locatorDirectory(home.path);
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString(missingRoot);
+      final portableData = PortableDataRoot(
+        environmentOverride: {'HOME': home.path},
+      );
+
+      await expectLater(
+        portableData.dataDirectory(),
+        throwsA(isA<MissingSavedDataHome>()),
+      );
+      expect(await Directory(p.join(home.path, '.lico-up')).exists(), isFalse);
+    },
+  );
+
+  test(
+    'saved-root recovery detects reattachment without creating a root',
+    () async {
+      final home = await Directory.systemTemp.createTemp(
+        'licoup-recovery-home-',
+      );
+      final missingRoot = p.join(home.path, 'removed-volume', 'LicoUp');
+      addTearDown(() => home.delete(recursive: true));
+      final locatorDirectory = _locatorDirectory(home.path);
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString('$missingRoot\n', flush: true);
+      final portableData = PortableDataRoot(
+        environmentOverride: {'HOME': home.path},
+      );
+
+      expect(await portableData.missingSavedDataHome(), isTrue);
+      expect(await Directory(missingRoot).exists(), isFalse);
+
+      await Directory(missingRoot).create(recursive: true);
+      expect(await portableData.missingSavedDataHome(), isFalse);
+    },
+  );
+
+  test(
+    'cached saved root disappearance is rejected before client state recreation',
+    () async {
+      final home = await Directory.systemTemp.createTemp(
+        'licoup-disappearing-home-boot-',
+      );
+      final savedRoot = await Directory.systemTemp.createTemp(
+        'licoup-disappearing-saved-root-',
+      );
+      addTearDown(() => home.delete(recursive: true));
+      final locatorDirectory = _locatorDirectory(home.path);
+      await locatorDirectory.create(recursive: true);
+      await File(
+        p.join(locatorDirectory.path, 'data-home'),
+      ).writeAsString('${savedRoot.path}\n', flush: true);
+      final portableData = PortableDataRoot(
+        environmentOverride: {'HOME': home.path},
+      );
+
+      expect((await portableData.dataDirectory()).path, savedRoot.path);
+      await savedRoot.delete(recursive: true);
+
+      await expectLater(
+        portableData.clientDirectory(),
+        throwsA(isA<MissingSavedDataHome>()),
+      );
+      expect(await savedRoot.exists(), isFalse);
     },
   );
 
@@ -211,7 +413,6 @@ void main() {
 
     final portableData = PortableDataRoot(
       environmentOverride: {'LICOUP_PORTABLE_DIR': envDirectory.path},
-      resolvedExecutableOverride: p.join(executableDirectory.path, 'Runner'),
       mobileRuntimeOverride: true,
       applicationSupportDirectoryResolver: () async => applicationSupport,
     );
@@ -250,4 +451,14 @@ void main() {
       '/',
     );
   });
+}
+
+Directory _locatorDirectory(String home) {
+  if (Platform.isMacOS) {
+    return Directory(p.join(home, 'Library', 'Application Support', 'LicoUp'));
+  }
+  if (Platform.isWindows) {
+    return Directory(p.join(home, 'AppData', 'Roaming', 'LicoUp'));
+  }
+  return Directory(p.join(home, '.config', 'licoup'));
 }

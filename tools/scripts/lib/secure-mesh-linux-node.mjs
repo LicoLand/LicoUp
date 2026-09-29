@@ -185,7 +185,7 @@ class ContainerCliRpc {
       "-i",
       this.containerId,
       "env",
-      `LICOUP_PORTABLE_DIR=${this.stateRoot}`,
+      `LICOUP_HOME=${this.stateRoot}`,
       this.cli,
       "rpc",
       "stdio"

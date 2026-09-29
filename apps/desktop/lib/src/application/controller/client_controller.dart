@@ -164,13 +164,6 @@ class ClientController extends AgentConversationController
     ClientConversationNativePort? conversationNativePort,
     Duration? pendingNoticePollInterval,
   }) : portableData = portableData ?? PortableDataRoot(),
-       agentService =
-           agentService ??
-           AgentService(
-             dataDirectory: () async => (portableData ?? PortableDataRoot())
-                 .dataDirectory()
-                 .then((directory) => directory.path),
-           ),
        agentUsageService = agentUsageService ?? const AgentUsageService(),
        clientUpdateService = clientUpdateService ?? const ClientUpdateService(),
        mobileRelayService = mobileRelayService ?? const MobileRelayService(),
@@ -217,6 +210,11 @@ class ClientController extends AgentConversationController
        diagnosticSink = applicationDiagnosticSink ?? _discardDiagnostic,
        _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
+    this.agentService =
+        agentService ??
+        AgentService(
+          dataHomeSelection: () => this.portableData.dataHomeSelection(),
+        );
     this.conversationService =
         conversationService ??
         AgentConversationService(
@@ -370,7 +368,9 @@ class ClientController extends AgentConversationController
   @override
   Object get agentWorkspacePortableData => portableData;
   @override
-  final AgentService agentService;
+  String get agentWorkspaceDataRoot => portableDataPath;
+  @override
+  late final AgentService agentService;
   @override
   final LlmVaultAuthorization llmVaultAuthorization = LlmVaultAuthorization();
   late final AgentConversationService conversationService;

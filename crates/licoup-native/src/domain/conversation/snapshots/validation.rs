@@ -70,6 +70,32 @@ pub(super) fn validate_archive_collection(
     index_records: &[Value],
     profile: &ArchiveProfile,
 ) -> Result<Value> {
+    validate_archive_collection_with_options(collection_dir, index_records, profile, None, None)
+}
+
+pub(super) fn validate_archive_collection_for_relocation(
+    collection_dir: &Path,
+    index_records: &[Value],
+    profile: &ArchiveProfile,
+    data_root: &Path,
+    preserved_external_baseline: Option<Value>,
+) -> Result<Value> {
+    validate_archive_collection_with_options(
+        collection_dir,
+        index_records,
+        profile,
+        Some(data_root),
+        preserved_external_baseline,
+    )
+}
+
+fn validate_archive_collection_with_options(
+    collection_dir: &Path,
+    index_records: &[Value],
+    profile: &ArchiveProfile,
+    data_root: Option<&Path>,
+    baseline_override: Option<Value>,
+) -> Result<Value> {
     let mut issues = Vec::<Value>::new();
     let mut archive_keys = BTreeMap::<String, usize>::new();
     let mut fingerprints = BTreeMap::<String, usize>::new();
@@ -108,7 +134,7 @@ pub(super) fn validate_archive_collection(
             "semantic_markdown_path",
         ] {
             let path = record.get(key).and_then(Value::as_str).unwrap_or_default();
-            if path.is_empty() || !Path::new(path).exists() {
+            if path.is_empty() || validation_file_path(path, data_root).is_none() {
                 issues.push(json!({
                     "type": if key.starts_with("semantic_") {
                         "missing_semantic_document"
@@ -134,8 +160,8 @@ pub(super) fn validate_archive_collection(
                 .get("semantic_document_path")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if !semantic_path.is_empty() && Path::new(semantic_path).exists() {
-                let content = fs::read_to_string(semantic_path)?;
+            if let Some(semantic_file) = validation_file_path(semantic_path, data_root) {
+                let content = fs::read_to_string(semantic_file)?;
                 let actual = hash_text(&content.trim_end_matches('\n'));
                 // materialize writes pretty JSON + trailing newline; compare both forms.
                 let actual_raw = hash_text(&content);
@@ -196,8 +222,8 @@ pub(super) fn validate_archive_collection(
                 .get("raw_content_path")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if !raw_path.is_empty() && Path::new(raw_path).exists() {
-                let actual_bytes = fs::metadata(raw_path)?.len();
+            if let Some(raw_file) = validation_file_path(raw_path, data_root) {
+                let actual_bytes = fs::metadata(raw_file)?.len();
                 if actual_bytes != bytes {
                     issues.push(json!({
                         "type": "raw_content_size_mismatch",
@@ -215,8 +241,8 @@ pub(super) fn validate_archive_collection(
                 .get("raw_content_path")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if !raw_path.is_empty() && Path::new(raw_path).exists() {
-                let content = fs::read(raw_path)?;
+            if let Some(raw_file) = validation_file_path(raw_path, data_root) {
+                let content = fs::read(raw_file)?;
                 let actual_fingerprint = hash_bytes(&content);
                 if actual_fingerprint != fingerprint {
                     issues.push(json!({
@@ -257,7 +283,7 @@ pub(super) fn validate_archive_collection(
         for entry in fs::read_dir(&conversations_dir)? {
             let entry = entry?;
             let snapshot_path = entry.path().join(SNAPSHOT_JSON);
-            if snapshot_path.exists()
+            if validation_file_path(&display_path(&snapshot_path), data_root).is_some()
                 && !indexed_snapshot_paths.contains(display_path(&snapshot_path).as_str())
             {
                 issues.push(json!({
@@ -268,7 +294,13 @@ pub(super) fn validate_archive_collection(
             }
         }
     }
-    let baseline = baseline_coverage(profile, index_records, total_bytes)?;
+    let baseline = if let Some(baseline) = baseline_override {
+        baseline
+    } else if let Some(data_root) = data_root {
+        baseline_coverage_with_root(profile, index_records, total_bytes, data_root)?
+    } else {
+        baseline_coverage(profile, index_records, total_bytes)?
+    };
     let error_count = issues
         .iter()
         .filter(|issue| issue.get("severity").and_then(Value::as_str) == Some("error"))
@@ -295,6 +327,18 @@ pub(super) fn validate_archive_collection(
     }))
 }
 
+fn validation_file_path(path: &str, data_root: Option<&Path>) -> Option<PathBuf> {
+    if path.is_empty() {
+        return None;
+    }
+    let path = Path::new(path);
+    match data_root {
+        Some(root) => super::relocation::copied_file(root, path),
+        None if path.exists() => Some(path.to_path_buf()),
+        None => None,
+    }
+}
+
 pub(super) fn baseline_coverage(
     profile: &ArchiveProfile,
     index_records: &[Value],
@@ -311,6 +355,39 @@ pub(super) fn baseline_coverage(
         }));
     }
     let records = read_index_records(path)?;
+    let baseline_count = records.len() as u64;
+    let baseline_bytes = records.iter().filter_map(record_numeric_bytes).sum::<u64>();
+    let current_count = index_records.len() as u64;
+    Ok(json!({
+        "configured": true,
+        "status": "compared",
+        "baselineIndexPath": display_path(path),
+        "baselineCount": baseline_count,
+        "currentCount": current_count,
+        "countCoverage": if baseline_count == 0 { 1.0 } else { current_count as f64 / baseline_count as f64 },
+        "baselineBytes": baseline_bytes,
+        "currentBytes": total_bytes,
+        "byteCoverage": if baseline_bytes == 0 { 1.0 } else { total_bytes as f64 / baseline_bytes as f64 }
+    }))
+}
+
+fn baseline_coverage_with_root(
+    profile: &ArchiveProfile,
+    index_records: &[Value],
+    total_bytes: u64,
+    data_root: &Path,
+) -> Result<Value> {
+    let Some(path) = &profile.baseline_index_path else {
+        return Ok(json!({"configured": false}));
+    };
+    let Some(copied_path) = super::relocation::copied_file(data_root, path) else {
+        return Ok(json!({
+            "configured": true,
+            "status": "missing_baseline",
+            "baselineIndexPath": display_path(path)
+        }));
+    };
+    let records = read_index_records(&copied_path)?;
     let baseline_count = records.len() as u64;
     let baseline_bytes = records.iter().filter_map(record_numeric_bytes).sum::<u64>();
     let current_count = index_records.len() as u64;

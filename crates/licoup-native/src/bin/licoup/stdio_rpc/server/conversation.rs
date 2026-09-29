@@ -201,11 +201,22 @@ impl PersistentConversationRuntime {
     }
 
     pub(crate) fn client_connected(&self) {
+        let _turns = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         self.inner.clients.fetch_add(1, Ordering::AcqRel);
     }
 
     pub(crate) fn client_disconnected(&self) {
+        let _turns = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         self.inner.clients.fetch_sub(1, Ordering::AcqRel);
+        self.inner.turns_changed.notify_all();
     }
 
     pub(crate) fn set_settlement_hook(
@@ -276,6 +287,7 @@ impl PersistentConversationRuntime {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn drain_admitted_turns(&self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         let mut turns_guard = self
@@ -313,6 +325,51 @@ impl PersistentConversationRuntime {
                 });
                 return !still_active;
             }
+        }
+    }
+
+    /// Wait until every admitted turn has reached a terminal state. Host
+    /// relocation and explicit shutdown use this as a quiescence condition;
+    /// elapsed time is never treated as proof that writers have stopped.
+    pub(crate) fn wait_for_admitted_turns(&self) {
+        let mut turns_guard = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            let active = turns_guard.values().any(|turn| {
+                turn.state
+                    .lock()
+                    .map(|state| state.terminal.is_none())
+                    .unwrap_or(false)
+            });
+            if !active {
+                return;
+            }
+            turns_guard = self
+                .inner
+                .turns_changed
+                .wait(turns_guard)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+    }
+
+    /// Wait until all admitted RPC sessions have left. The count transition
+    /// and waiter use the same mutex, so a disconnect notification cannot be
+    /// lost between the condition check and Condvar wait.
+    pub(crate) fn wait_for_clients_to_disconnect(&self) {
+        let mut turns_guard = self
+            .inner
+            .turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while self.inner.clients.load(Ordering::Acquire) != 0 {
+            turns_guard = self
+                .inner
+                .turns_changed
+                .wait(turns_guard)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
         }
     }
 

@@ -380,6 +380,7 @@ async function runRustAcceptance({
 }) {
   const env = filteredEnvironment((name) =>
     !name.startsWith("LICOUP_ACCEPTANCE_") &&
+    name !== "LICOUP_HOME" &&
     name !== "LICOUP_PORTABLE_DIR" &&
     name !== "LICO_MOBILE_RELAY_STATION_BASE_URL" &&
     name !== "LICO_MOBILE_RELAY_NATIVE_SECRET_STORE");

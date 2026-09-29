@@ -388,6 +388,42 @@
         "flags": ["--stdin-json", "true"],
         "paramAliases": [{"argvIndex": 3, "param": "credentialId"}]
       }
+    },
+    {
+      "name": "data.home.relocate",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.status",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.recover",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
+    },
+    {
+      "name": "data.home.cleanup",
+      "kind": "command",
+      "lane": "command",
+      "structured": true,
+      "stream": false,
+      "inFlightControl": false,
+      "cli": null
     }
   ]
 }

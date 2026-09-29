@@ -36,19 +36,26 @@ impl CodexLaunchSpec {
         if let Some(cwd) = self.cwd.as_ref() {
             command.current_dir(cwd);
         }
-        apply_launch_environment(&mut command, params);
+        apply_launch_environment(&mut command, params)?;
         SupervisedChild::spawn(&mut command)
     }
 }
 
-/// Membership headers must be present on the plugin MCP child. The portable
-/// data root arrives through the live LicoUp process environment (the sidecar
-/// channel), never from a captured shell value: the Codex plugin already lists
-/// `LICOUP_PORTABLE_DIR` in `env_vars`, and re-binding it through
-/// `portable_data_dir()` at launch races two app-servers that share one plugin
-/// home.
-pub(super) fn apply_launch_environment(command: &mut Command, params: Option<&Value>) {
-    apply_launch_environment_with_root(command, params, std::env::var_os("LICOUP_PORTABLE_DIR"));
+/// Membership headers must be present on the plugin MCP child. Resolve the
+/// same effective root as the rest of the app (including its saved selection)
+/// and never trust a captured shell value from Codex's launch profile. The
+/// released plugin currently allowlists the legacy variable, so pass both
+/// names at this one plugin boundary with the same effective value.
+pub(super) fn apply_launch_environment(
+    command: &mut Command,
+    params: Option<&Value>,
+) -> io::Result<()> {
+    let root = licoup_foundation::platform::paths::selected_data_home()
+        .map_err(|_| io::Error::other("cannot resolve selected LicoUp data root"))?
+        .path
+        .into_os_string();
+    apply_launch_environment_with_root(command, params, Some(root));
+    Ok(())
 }
 
 pub(super) fn apply_launch_environment_with_root(
@@ -57,8 +64,10 @@ pub(super) fn apply_launch_environment_with_root(
     portable_root: Option<std::ffi::OsString>,
 ) {
     super::super::user_shell_environment::apply_to_command(command);
+    command.env_remove("LICOUP_HOME");
     command.env_remove("LICOUP_PORTABLE_DIR");
     if let Some(root) = portable_root.filter(|value| !value.is_empty()) {
+        command.env("LICOUP_HOME", root.clone());
         command.env("LICOUP_PORTABLE_DIR", root);
     }
     if let Some(params) = params {

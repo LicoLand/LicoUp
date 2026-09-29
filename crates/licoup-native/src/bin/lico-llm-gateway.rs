@@ -94,6 +94,9 @@ fn run(raw: Vec<String>) -> Result<(), ()> {
         println!(r#"{{"ok":true,"schemaVersion":"licoup.gateway-runtime-check.v1"}}"#);
         return Ok(());
     }
+    let _data_home_access =
+        licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
+            .map_err(|_| ())?;
     let credentials = Arc::new(match credentials_fd {
         Some(fd) => {
             let vault = PlatformLlmApiKeyVault::production().map_err(|_| ())?;

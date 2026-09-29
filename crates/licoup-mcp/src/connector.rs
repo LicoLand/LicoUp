@@ -86,7 +86,7 @@ fn run() -> Result<(), ()> {
     };
     // Missing discovery exits before the first stdio frame. Antigravity IDE
     // then reports EOF on `initialize`. The owned MCP `env` block must bind
-    // `LICOUP_PORTABLE_DIR` so this lookup can find the independent service.
+    // `LICOUP_HOME` so this lookup can find the independent service.
     let mut discovery = match load_connector_discovery(&provider) {
         Ok(discovery) => discovery,
         Err(ConnectorDiscoveryError::CallerNotSupported(supported)) => {

@@ -205,6 +205,38 @@ pub fn set_gateway(enabled: bool, port: u16) -> Result<Value> {
     status()
 }
 
+/// Rewrites already installed login definitions after saved-root recovery.
+/// Presence of the OS definitions is the enablement record when the data
+/// volume is unavailable; the user-facing settings remain enabled.
+pub fn refresh_after_data_home_recovery() -> Result<()> {
+    if !platform_supported() {
+        return Ok(());
+    }
+    refresh_installed_client_autostarts(
+        platform_desktop_silent_start()?,
+        platform_mcp_installed()?,
+        |silent| set_desktop(true, silent).map(|_| ()),
+        || set_mcp(true).map(|_| ()),
+    )?;
+    crate::platform::llm_gateway_autostart::refresh_after_data_home_recovery()?;
+    Ok(())
+}
+
+fn refresh_installed_client_autostarts(
+    desktop_silent: Option<bool>,
+    mcp_installed: bool,
+    mut set_desktop: impl FnMut(bool) -> Result<()>,
+    mut set_mcp: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if let Some(silent) = desktop_silent {
+        set_desktop(silent)?;
+    }
+    if mcp_installed {
+        set_mcp()?;
+    }
+    Ok(())
+}
+
 /// Login oneshot for the MCP prepare LaunchAgent. Never silently installs
 /// agent MCP plugins (digest confirmation required). Verifies packaged
 /// binaries and writes a readiness stamp.
@@ -314,6 +346,17 @@ fn platform_desktop_installed() -> Result<bool> {
 }
 
 #[cfg(target_os = "macos")]
+fn platform_desktop_silent_start() -> Result<Option<bool>> {
+    let path = launch_agents_dir()?.join(format!("{DESKTOP_LABEL}.plist"));
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let contents =
+        fs::read_to_string(path).map_err(|_| anyhow!("client_autostart_state_unavailable"))?;
+    Ok(Some(macos_silent_start(&contents)))
+}
+
+#[cfg(target_os = "macos")]
 fn platform_mcp_installed() -> Result<bool> {
     Ok(launch_agents_dir()?
         .join(format!("{MCP_LABEL}.plist"))
@@ -384,7 +427,15 @@ fn platform_desktop_uninstall() -> Result<()> {
 #[cfg(target_os = "macos")]
 fn platform_mcp_install(cli: &Path) -> Result<()> {
     let log = state_dir()?.join("mcp-autostart.log");
-    let portable = paths::portable_data_dir()?;
+    let selection = paths::selected_data_home()?;
+    let environment_variables = paths::managed_data_home_environment_override(&selection)
+        .map(|portable| {
+            format!(
+                "  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LICOUP_HOME</key>\n    <string>{}</string>\n  </dict>\n",
+                xml_escape(&portable.to_string_lossy())
+            )
+        })
+        .unwrap_or_default();
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -398,11 +449,7 @@ fn platform_mcp_install(cli: &Path) -> Result<()> {
     <string>autostart</string>
     <string>prepare-mcp</string>
   </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>LICOUP_PORTABLE_DIR</key>
-    <string>{}</string>
-  </dict>
+{environment_variables}
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -417,7 +464,6 @@ fn platform_mcp_install(cli: &Path) -> Result<()> {
 </plist>
 "#,
         xml_escape(&cli.to_string_lossy()),
-        xml_escape(&portable.to_string_lossy()),
         xml_escape(&log.to_string_lossy()),
         xml_escape(&log.to_string_lossy()),
     );
@@ -445,6 +491,33 @@ fn systemd_unit(name: &str) -> Result<PathBuf> {
 #[cfg(target_os = "linux")]
 fn platform_desktop_installed() -> Result<bool> {
     Ok(systemd_unit("lico-desktop.service")?.is_file())
+}
+
+#[cfg(target_os = "linux")]
+fn platform_desktop_silent_start() -> Result<Option<bool>> {
+    let path = systemd_unit("lico-desktop.service")?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let contents =
+        fs::read_to_string(path).map_err(|_| anyhow!("client_autostart_state_unavailable"))?;
+    Ok(Some(linux_silent_start(&contents)))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_silent_start(contents: &str) -> bool {
+    contents.contains("<string>--silent-start</string>")
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn linux_silent_start(contents: &str) -> bool {
+    contents.lines().any(|line| {
+        line.strip_prefix("ExecStart=").is_some_and(|command| {
+            command
+                .split_whitespace()
+                .any(|argument| argument == "--silent-start")
+        })
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -500,10 +573,12 @@ fn platform_desktop_uninstall() -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn platform_mcp_install(cli: &Path) -> Result<()> {
-    let portable = paths::portable_data_dir()?;
+    let selection = paths::selected_data_home()?;
+    let environment = paths::managed_data_home_environment_override(&selection)
+        .map(|portable| format!("Environment=LICOUP_HOME={}\n", portable.display()))
+        .unwrap_or_default();
     let unit = format!(
-        "[Unit]\nDescription=LicoUp MCP prepare\n\n[Service]\nType=oneshot\nEnvironment=LICOUP_PORTABLE_DIR={}\nExecStart={} autostart prepare-mcp\n\n[Install]\nWantedBy=default.target\n",
-        portable.display(),
+        "[Unit]\nDescription=LicoUp MCP prepare\n\n[Service]\nType=oneshot\n{environment}ExecStart={} autostart prepare-mcp\n\n[Install]\nWantedBy=default.target\n",
         cli.display(),
     );
     atomic_write_private_text(&systemd_unit("lico-mcp-prepare.service")?, &unit)?;
@@ -530,6 +605,10 @@ fn platform_mcp_uninstall() -> Result<()> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn platform_desktop_installed() -> Result<bool> {
     Ok(false)
+}
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn platform_desktop_silent_start() -> Result<Option<bool>> {
+    Ok(None)
 }
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn platform_mcp_installed() -> Result<bool> {
@@ -561,5 +640,43 @@ mod tests {
         assert_eq!(SCHEMA, "licoup.client-autostart.v1");
         assert_eq!(DESKTOP_LABEL, "land.lico.licoup.desktop");
         assert_eq!(MCP_LABEL, "land.lico.licoup.mcp-prepare");
+    }
+
+    #[test]
+    fn recovery_rewrites_only_installed_items_and_preserves_silent_start() {
+        assert!(macos_silent_start(
+            "<key>ProgramArguments</key><array><string>--silent-start</string></array>"
+        ));
+        assert!(linux_silent_start(
+            "ExecStart=/usr/bin/env /Applications/LicoUp.app/Contents/MacOS/lico-up --silent-start"
+        ));
+        assert!(!macos_silent_start("<string>--normal-start</string>"));
+        assert!(!linux_silent_start("ExecStart=/usr/bin/open LicoUp"));
+
+        let mut desktop_enabled = Vec::new();
+        let mut mcp_enabled = 0;
+        refresh_installed_client_autostarts(
+            Some(true),
+            true,
+            |silent| {
+                desktop_enabled.push(silent);
+                Ok(())
+            },
+            || {
+                mcp_enabled += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(desktop_enabled, [true]);
+        assert_eq!(mcp_enabled, 1);
+
+        refresh_installed_client_autostarts(
+            None,
+            false,
+            |_| panic!("an absent desktop autostart must remain disabled"),
+            || panic!("an absent MCP autostart must remain disabled"),
+        )
+        .unwrap();
     }
 }

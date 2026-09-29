@@ -97,32 +97,47 @@ fn start() -> Result<Value> {
     }
 }
 fn stop() -> Result<Value> {
-    let Some(document) = current() else {
-        return Ok(status());
-    };
     let agent = ureq::AgentBuilder::new()
         .redirects(0)
         .timeout_connect(Duration::from_secs(2))
         .build();
-    let endpoint = document
-        .endpoint
-        .strip_suffix("/mcp")
-        .ok_or_else(|| anyhow!("mcp_state_invalid"))?;
-    match agent
-        .post(&format!("{endpoint}/control/stop"))
-        .set(
-            "authorization",
-            &format!("Bearer {}", document.control_token),
-        )
-        .send_bytes(&[])
-    {
-        Ok(response) if response.status() == 202 => {}
-        Err(ureq::Error::Transport(_)) if !service_lease_held() => {
-            clean_stale_generation(&document.generation);
-            return Ok(status());
+    let document = loop {
+        let Some(document) = current() else {
+            if !service_lease_held() {
+                return Ok(status());
+            }
+            // A service may hold its process lease while its listener is
+            // starting and before it publishes discovery. Keep waiting for
+            // the owned generation to become addressable or to exit.
+            thread::sleep(Duration::from_millis(25));
+            continue;
+        };
+        let endpoint = document
+            .endpoint
+            .strip_suffix("/mcp")
+            .ok_or_else(|| anyhow!("mcp_state_invalid"))?;
+        match agent
+            .post(&format!("{endpoint}/control/stop"))
+            .set(
+                "authorization",
+                &format!("Bearer {}", document.control_token),
+            )
+            .send_bytes(&[])
+        {
+            Ok(response) if response.status() == 202 => break document,
+            Err(ureq::Error::Transport(_)) if !service_lease_held() => {
+                clean_stale_generation(&document.generation);
+                return Ok(status());
+            }
+            Err(ureq::Error::Transport(_)) => {
+                // A transient connect failure is not evidence that the
+                // process released its data-root lease. Retry until its
+                // lifecycle lock proves exit, or the stop endpoint responds.
+                thread::sleep(Duration::from_millis(25));
+            }
+            _ => return Err(anyhow!("mcp_stop_failed")),
         }
-        _ => return Err(anyhow!("mcp_stop_failed")),
-    }
+    };
     // Drain acknowledged protocol calls, without an arbitrary task deadline.
     while current().is_some_and(|value| value.generation == document.generation) {
         if !service_lease_held() {

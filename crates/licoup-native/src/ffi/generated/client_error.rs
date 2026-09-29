@@ -26,6 +26,48 @@ pub enum ClientErrorCode {
     TerminalResultInvalid,
     #[serde(rename = "command_failed")]
     CommandFailed,
+    #[serde(rename = "data_home_operation_failed")]
+    DataHomeOperationFailed,
+    #[serde(rename = "data_home_operation_requires_dedicated_process")]
+    DataHomeOperationRequiresDedicatedProcess,
+    #[serde(rename = "data_home_confirmation_required")]
+    DataHomeConfirmationRequired,
+    #[serde(rename = "data_home_copy_failed")]
+    DataHomeCopyFailed,
+    #[serde(rename = "data_home_copy_unsupported_entry")]
+    DataHomeCopyUnsupportedEntry,
+    #[serde(rename = "data_home_destination_exists")]
+    DataHomeDestinationExists,
+    #[serde(rename = "data_home_destination_invalid")]
+    DataHomeDestinationInvalid,
+    #[serde(rename = "data_home_destination_nested")]
+    DataHomeDestinationNested,
+    #[serde(rename = "data_home_destination_unavailable")]
+    DataHomeDestinationUnavailable,
+    #[serde(rename = "data_home_environment_selected")]
+    DataHomeEnvironmentSelected,
+    #[serde(rename = "data_home_previous_root_cleanup_failed")]
+    DataHomePreviousRootCleanupFailed,
+    #[serde(rename = "data_home_previous_root_marker_cleanup_failed")]
+    DataHomePreviousRootMarkerCleanupFailed,
+    #[serde(rename = "data_home_previous_root_invalid")]
+    DataHomePreviousRootInvalid,
+    #[serde(rename = "data_home_previous_root_unavailable")]
+    DataHomePreviousRootUnavailable,
+    #[serde(rename = "data_home_recovery_autostart_failed")]
+    DataHomeRecoveryAutostartFailed,
+    #[serde(rename = "data_home_recovery_cleanup_failed")]
+    DataHomeRecoveryCleanupFailed,
+    #[serde(rename = "data_home_recovery_not_available")]
+    DataHomeRecoveryNotAvailable,
+    #[serde(rename = "data_home_recovery_not_required")]
+    DataHomeRecoveryNotRequired,
+    #[serde(rename = "data_home_relocation_recovery_required")]
+    DataHomeRelocationRecoveryRequired,
+    #[serde(rename = "data_home_selection_changed")]
+    DataHomeSelectionChanged,
+    #[serde(rename = "data_home_source_unavailable")]
+    DataHomeSourceUnavailable,
     #[serde(rename = "command_panicked")]
     CommandPanicked,
     #[serde(rename = "response_too_large")]

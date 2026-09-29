@@ -2,6 +2,8 @@ import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:path/path.dart' as p;
 import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
 import 'package:presentation_contract/presentation_contract.dart';
 import 'package:presentation_flutter/presentation_flutter.dart';
@@ -37,6 +39,11 @@ import 'package:licoup/src/presentation/settings/settings_projection.dart';
 import 'package:licoup/src/presentation/settings/settings_providers.dart';
 
 const _settingsSectionIds = settingsSectionIdOrder;
+
+bool _supportsDesktopDataHome(TargetPlatform platform) =>
+    platform == TargetPlatform.macOS ||
+    platform == TargetPlatform.windows ||
+    platform == TargetPlatform.linux;
 
 /// Settings index rail bounds. The rail defaults to the narrowest usable
 /// width and the user drags the split divider wider, mirroring the
@@ -1000,6 +1007,69 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
     }
   }
 
+  bool _canRelocateDataHome(BuildContext context) =>
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  bool _canCleanPreviousDataHome(BuildContext context) =>
+      widget.inputs.previousDataHomeAvailable &&
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  Future<void> _chooseDataHomeDestination(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final destination = await getDirectoryPath(
+      confirmButtonText: strings.chooseDataHomeDestination,
+    );
+    if (destination == null || !mounted || !context.mounted) return;
+    final folder = p.basename(p.normalize(destination));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmDataHomeMove),
+        content: Text(strings.dataHomeMoveConfirmation(folder)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.move),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(RelocateDataHome(destination));
+  }
+
+  Future<void> _confirmPreviousDataHomeCleanup(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final path = widget.inputs.previousDataHomePath;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmPreviousDataHomeCleanup),
+        content: Text(strings.dataHomeCleanupConfirmation(path)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.cleanPreviousDataHome),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(CleanupPreviousDataHome(path));
+  }
+
   @override
   void dispose() {
     _snapshotRootController.dispose();
@@ -1026,6 +1096,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
           title: strings.portableData,
           label: strings.portableData,
           path: widget.inputs.portableDataPath,
+          subtitle: strings.dataHomeSource(widget.inputs.portableDataSource),
           icon: Icons.folder_outlined,
           readOnly: true,
           padding: presentation.rowPadding,
@@ -1038,6 +1109,52 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
             );
             return Future<void>.value();
           },
+        ),
+        Padding(
+          padding: presentation.rowPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(strings.moveDataHomeDescription),
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: FilledButton.icon(
+                  key: const Key('settings-data-home-relocate'),
+                  onPressed: _canRelocateDataHome(context)
+                      ? () => unawaited(_chooseDataHomeDestination(context))
+                      : null,
+                  icon: const Icon(Icons.drive_file_move_outline),
+                  label: Text(strings.moveDataHome),
+                ),
+              ),
+              if (!_canRelocateDataHome(context)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  strings.dataHomeMoveRequiresSavedSelection,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (widget.inputs.previousDataHomeAvailable) ...[
+                const SizedBox(height: 12),
+                Text(
+                  strings.dataHomePreviousRootRetained(
+                    widget.inputs.previousDataHomePath,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('settings-data-home-cleanup-previous'),
+                  onPressed: _canCleanPreviousDataHome(context)
+                      ? () =>
+                            unawaited(_confirmPreviousDataHomeCleanup(context))
+                      : null,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(strings.cleanPreviousDataHome),
+                ),
+              ],
+            ],
+          ),
         ),
         DirectoryPathField(
           title: strings.conversationArchiveRoot,

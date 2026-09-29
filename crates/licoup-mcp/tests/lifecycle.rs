@@ -23,7 +23,7 @@ impl Fixture {
         fs::write(&cli, r##"#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const root = process.env.LICOUP_PORTABLE_DIR;
+const root = process.env.LICOUP_HOME;
 const marker = path.join(root, 'synthetic-kernel-state');
 if (!fs.existsSync(marker)) fs.writeFileSync(marker, 'turn:fixture:running');
 const tools = ['lico_subagents_list','lico_subagent_probe','lico_subagent_delegate','lico_subagent_continue','lico_subagent_cancel','lico_assistant_profiles'].map(name => ({name,inputSchema:{type:'object',additionalProperties:false,properties:{},required:[]}}));
@@ -54,7 +54,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     fn lifecycle(&self, action: &str) -> Value {
         let output = Command::new(MCP)
             .args(["service", action])
-            .env("LICOUP_PORTABLE_DIR", &self.root)
+            .env("LICOUP_HOME", &self.root)
             .env("LICOUP_CLI_BINARY", &self.cli)
             .output()
             .unwrap();
@@ -67,7 +67,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     fn connector(&self) -> Child {
         Command::new(MCP)
             .args(["--caller", "fixture"])
-            .env("LICOUP_PORTABLE_DIR", &self.root)
+            .env("LICOUP_HOME", &self.root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -79,7 +79,7 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = Command::new(MCP)
             .args(["service", "stop"])
-            .env("LICOUP_PORTABLE_DIR", &self.root)
+            .env("LICOUP_HOME", &self.root)
             .env("LICOUP_CLI_BINARY", &self.cli)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -210,7 +210,7 @@ fn stale_discovery_after_an_owned_service_crash_does_not_block_stop() {
     let fixture = Fixture::new();
     let mut service = Command::new(MCP)
         .args(["service", "serve"])
-        .env("LICOUP_PORTABLE_DIR", &fixture.root)
+        .env("LICOUP_HOME", &fixture.root)
         .env("LICOUP_CLI_BINARY", &fixture.cli)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -237,4 +237,37 @@ fn stale_discovery_after_an_owned_service_crash_does_not_block_stop() {
             .join("client-state/subagent-mcp/discovery.json")
             .exists()
     );
+}
+
+#[test]
+fn missing_saved_data_home_refuses_the_real_service_writer_path() {
+    let fixture_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("licoup-mcp-missing-home-{}", uuid::Uuid::new_v4()));
+    let home = fixture_root.join("home");
+    let missing_data_root = fixture_root.join("removed-volume/licoup-data");
+    #[cfg(target_os = "macos")]
+    let locator_parent = home.join("Library/Application Support/LicoUp");
+    #[cfg(not(target_os = "macos"))]
+    let locator_parent = home.join(".config/licoup");
+    fs::create_dir_all(&locator_parent).unwrap();
+    fs::set_permissions(&locator_parent, fs::Permissions::from_mode(0o700)).unwrap();
+    let locator = locator_parent.join("data-home");
+    fs::write(&locator, format!("{}\n", missing_data_root.display())).unwrap();
+    fs::set_permissions(&locator, fs::Permissions::from_mode(0o600)).unwrap();
+
+    let output = Command::new(MCP)
+        .args(["service", "serve"])
+        .env("HOME", &home)
+        .env_remove("LICOUP_HOME")
+        .env_remove("LICOUP_PORTABLE_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(!missing_data_root.exists());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("service operation failed"));
+    fs::remove_dir_all(fixture_root).unwrap();
 }

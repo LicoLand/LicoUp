@@ -92,7 +92,7 @@ fn close_turn_stream() {
 fn run_turn(args: &[String]) {
     if env::var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT").is_ok() {
         assert!(
-            env::var("LICOUP_PORTABLE_DIR")
+            env::var("LICOUP_HOME")
                 .map(std::path::PathBuf::from)
                 .is_ok_and(|path| path.is_absolute())
         );
@@ -225,7 +225,7 @@ fn main() {
     if args == ["create-chat"] {
         if env::var("LICO_FAKE_CURSOR_AGENT_REQUIRE_CALLER_CONTEXT").is_ok() {
             assert!(
-                env::var("LICOUP_PORTABLE_DIR")
+                env::var("LICOUP_HOME")
                     .map(std::path::PathBuf::from)
                     .is_ok_and(|path| path.is_absolute())
             );

@@ -3,19 +3,24 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Resolves the native sidecar and its bounded, client-owned environment.
-class NativeCliRuntimeContext implements NativeCliProcessContext {
+class NativeCliRuntimeContext
+    implements NativeCliProcessContext, NativeCliDataHomeMutationContext {
   NativeCliRuntimeContext({
     Future<String> Function()? dataDirectory,
+    Future<DataHomeSelection> Function()? dataHomeSelection,
     NativeResolveCliBinary? resolveCliBinary,
     NativeStartCliExecutable? startCliExecutable,
     this.requestTimeout = const Duration(seconds: 150),
   }) : _dataDirectory = dataDirectory,
+       _dataHomeSelection = dataHomeSelection,
        _resolveCliBinaryOverride = resolveCliBinary,
        _startCliExecutable = startCliExecutable ?? _defaultStartCliExecutable;
 
   final Future<String> Function()? _dataDirectory;
+  final Future<DataHomeSelection> Function()? _dataHomeSelection;
   final NativeResolveCliBinary? _resolveCliBinaryOverride;
   final NativeStartCliExecutable _startCliExecutable;
 
@@ -130,6 +135,36 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
 
   @override
   Future<Map<String, String>?> buildEnvironment() async {
+    final environment = _baseEnvironment();
+    final dataHomeSelection = _dataHomeSelection;
+    if (dataHomeSelection != null) {
+      final selection = await dataHomeSelection();
+      environment['LICOUP_HOME'] = switch (selection.source) {
+        DataHomeSelectionSource.explicitEnvironment ||
+        DataHomeSelectionSource.legacyEnvironment => selection.path,
+        _ => '',
+      };
+      // A parent process may have launched with an older alias. Blank both
+      // variables when the selection comes from the locator/default so child
+      // CLI processes preserve that same boot authority.
+      environment['LICOUP_PORTABLE_DIR'] = '';
+      return environment;
+    }
+    final dataDirectory = _dataDirectory;
+    if (dataDirectory != null) {
+      final directory = await dataDirectory();
+      environment['LICOUP_HOME'] = directory;
+    }
+    return environment.isEmpty ? null : environment;
+  }
+
+  @override
+  Future<Map<String, String>?> buildDataHomeMutationEnvironment() async {
+    final environment = _baseEnvironment();
+    return environment.isEmpty ? null : environment;
+  }
+
+  Map<String, String> _baseEnvironment() {
     final environment = <String, String>{
       ..._macOSLocalAuthenticationEnvironment(),
       'LICOUP_CLIENT_PID': '$pid',
@@ -142,12 +177,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
       // the same local agent executables as the product process.
       environment['PATH'] = executablePath;
     }
-    final dataDirectory = _dataDirectory;
-    if (dataDirectory != null) {
-      final directory = await dataDirectory();
-      environment['LICOUP_PORTABLE_DIR'] = directory;
-    }
-    return environment.isEmpty ? null : environment;
+    return environment;
   }
 
   @override

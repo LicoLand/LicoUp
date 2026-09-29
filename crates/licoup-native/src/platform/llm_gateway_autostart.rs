@@ -144,6 +144,28 @@ pub fn autostart_disable() -> Result<Value> {
     autostart_status()
 }
 
+/// Rewrites an installed Gateway login definition after saved-root recovery.
+/// The service definition is the surviving enablement record while the
+/// selected data volume is unavailable.
+pub fn refresh_after_data_home_recovery() -> Result<()> {
+    if !platform_supported() {
+        return Ok(());
+    }
+    refresh_gateway_autostart(configured_port()?, |port| {
+        autostart_enable(port).map(|_| ())
+    })
+}
+
+fn refresh_gateway_autostart(
+    configured_port: Option<u16>,
+    mut enable: impl FnMut(u16) -> Result<()>,
+) -> Result<()> {
+    if let Some(port) = configured_port {
+        enable(port)?;
+    }
+    Ok(())
+}
+
 fn platform_supported() -> bool {
     cfg!(target_os = "macos") || cfg!(target_os = "linux")
 }
@@ -170,9 +192,30 @@ fn platform_installed() -> Result<bool> {
 }
 
 #[cfg(target_os = "macos")]
+fn configured_port() -> Result<Option<u16>> {
+    let path = plist_path()?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let contents =
+        fs::read_to_string(path).map_err(|_| anyhow!("llm_gateway_autostart_state_unavailable"))?;
+    let port = gateway_port_from_plist(&contents)
+        .ok_or_else(|| anyhow!("llm_gateway_autostart_state_unavailable"))?;
+    Ok(Some(port))
+}
+
+#[cfg(target_os = "macos")]
 fn platform_install(program: &Path, port: u16) -> Result<()> {
     let log_path = state_dir()?.join("autostart.log");
-    let portable = paths::portable_data_dir()?;
+    let selection = paths::selected_data_home()?;
+    let environment_variables = paths::managed_data_home_environment_override(&selection)
+        .map(|portable| {
+            format!(
+                "  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LICOUP_HOME</key>\n    <string>{}</string>\n  </dict>\n",
+                xml_escape(&portable.to_string_lossy())
+            )
+        })
+        .unwrap_or_default();
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -189,11 +232,7 @@ fn platform_install(program: &Path, port: u16) -> Result<()> {
     <string>--port</string>
     <string>{port}</string>
   </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>LICOUP_PORTABLE_DIR</key>
-    <string>{}</string>
-  </dict>
+{environment_variables}
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -208,7 +247,6 @@ fn platform_install(program: &Path, port: u16) -> Result<()> {
 </plist>
 "#,
         xml_escape(&program.to_string_lossy()),
-        xml_escape(&portable.to_string_lossy()),
         xml_escape(&log_path.to_string_lossy()),
         xml_escape(&log_path.to_string_lossy()),
     );
@@ -265,11 +303,31 @@ fn platform_installed() -> Result<bool> {
 }
 
 #[cfg(target_os = "linux")]
+fn configured_port() -> Result<Option<u16>> {
+    let path = systemd_unit_path()?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let contents =
+        fs::read_to_string(path).map_err(|_| anyhow!("llm_gateway_autostart_state_unavailable"))?;
+    let port = gateway_port_from_systemd(&contents)
+        .ok_or_else(|| anyhow!("llm_gateway_autostart_state_unavailable"))?;
+    Ok(Some(port))
+}
+
+#[cfg(target_os = "linux")]
 fn platform_install(program: &Path, port: u16) -> Result<()> {
-    let portable = paths::portable_data_dir()?;
+    let selection = paths::selected_data_home()?;
+    let environment = paths::managed_data_home_environment_override(&selection)
+        .map(|portable| {
+            format!(
+                "Environment=LICOUP_HOME={}\n",
+                shell_escape(&portable.to_string_lossy())
+            )
+        })
+        .unwrap_or_default();
     let unit = format!(
-        "[Unit]\nDescription=LicoUp LLM Gateway\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nEnvironment=LICOUP_PORTABLE_DIR={}\nExecStart={} llm-gateway service start --port {port}\nExecStop={} llm-gateway service stop --port {port}\n\n[Install]\nWantedBy=default.target\n",
-        shell_escape(&portable.to_string_lossy()),
+        "[Unit]\nDescription=LicoUp LLM Gateway\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\n{environment}ExecStart={} llm-gateway service start --port {port}\nExecStop={} llm-gateway service stop --port {port}\n\n[Install]\nWantedBy=default.target\n",
         shell_escape(&program.to_string_lossy()),
         shell_escape(&program.to_string_lossy()),
     );
@@ -306,6 +364,11 @@ fn platform_uninstall() -> Result<()> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn platform_installed() -> Result<bool> {
     Ok(false)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn configured_port() -> Result<Option<u16>> {
+    Ok(None)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -357,4 +420,62 @@ mod tests {
         assert_eq!(restored.port, 15722);
         assert!(restored.program.contains("licoup-cli"));
     }
+
+    #[test]
+    fn saved_root_gateway_definitions_recover_the_selected_port() {
+        let plist = "<string>--port</string>\n    <string>16400</string>";
+        assert_eq!(gateway_port_from_plist(plist), Some(16400));
+        assert_eq!(
+            gateway_port_from_systemd("ExecStart=/cli llm-gateway service start --port 16400"),
+            Some(16400)
+        );
+        assert_eq!(gateway_port_from_systemd("ExecStart=/cli gateway"), None);
+        assert_eq!(gateway_port_from_systemd("ExecStart=/cli --port 0"), None);
+
+        let mut enabled_port = None;
+        refresh_gateway_autostart(
+            gateway_port_from_systemd("ExecStart=/cli llm-gateway service start --port 16400"),
+            |port| {
+                enabled_port = Some(port);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(enabled_port, Some(16400));
+
+        refresh_gateway_autostart(None, |_| {
+            panic!("an absent Gateway login item must remain disabled")
+        })
+        .unwrap();
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn gateway_port_from_plist(contents: &str) -> Option<u16> {
+    let lines: Vec<&str> = contents.lines().collect();
+    let argument = lines
+        .iter()
+        .position(|line| line.trim() == "<string>--port</string>")?;
+    lines
+        .get(argument + 1)?
+        .trim()
+        .strip_prefix("<string>")?
+        .strip_suffix("</string>")?
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port != 0)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn gateway_port_from_systemd(contents: &str) -> Option<u16> {
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("ExecStart="))?
+        .split("--port")
+        .nth(1)?
+        .split_whitespace()
+        .next()?
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port != 0)
 }

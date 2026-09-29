@@ -41,7 +41,7 @@ function runClient(args) {
       env: {
         ...process.env,
         CARGO_TARGET_DIR: cargoArtifactLease.targetPath,
-        LICOUP_PORTABLE_DIR: portableDir
+        LICOUP_HOME: portableDir
       },
       stdio: ["ignore", "pipe", "pipe"]
     });

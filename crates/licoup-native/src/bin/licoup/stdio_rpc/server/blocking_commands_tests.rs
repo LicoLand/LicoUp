@@ -96,6 +96,7 @@ fn blocked_scan_and_key_migration_leave_the_same_rpc_frame_loop_responsive() {
                 },
                 None,
                 None,
+                false,
                 Workers {
                     handles: Vec::new(),
                     execute: worker_executor,
@@ -162,6 +163,7 @@ fn ordinary_commands_stay_on_the_ordered_lane() {
         },
         None,
         None,
+        false,
         Workers {
             handles: Vec::new(),
             execute: Arc::new(|_| panic!("unrelated command reached worker")),

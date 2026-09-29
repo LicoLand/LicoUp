@@ -269,7 +269,7 @@ export function runtimeDataPolicyRecord(platform = "generic") {
           ? "system-xdg-data"
           : "system-application-support",
     directoryName: "portable-data",
-    environmentOverride: "LICOUP_PORTABLE_DIR",
+    environmentOverride: "LICOUP_HOME",
     packagedMacAppIgnoresEnvironmentOverride: true,
   });
 }

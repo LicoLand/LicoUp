@@ -414,10 +414,17 @@ mixin AgentConversationMessageController
       return false;
     }
     final directory = turn.workingDirectory.trim();
-    if (directory.isEmpty || isClientOwnedAgentWorkspace(directory)) {
+    if (directory.isEmpty ||
+        isClientOwnedAgentWorkspace(
+          directory,
+          dataHome: agentWorkspaceDataRoot,
+        )) {
       return false;
     }
-    return !isUsableLocalConversationWorkingDirectory(directory);
+    return !isUsableLocalConversationWorkingDirectory(
+      directory,
+      dataHome: agentWorkspaceDataRoot,
+    );
   }
 
   Future<void> _steerOrEnqueueConversationTurn(

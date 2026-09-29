@@ -164,6 +164,7 @@ final class SettingsProjectionProducer
       appearancePresetLoadErrorCount:
           controller.appearancePresetLoadErrors.length,
       portableDataPath: controller.portableDataPath,
+      portableDataSource: controller.portableDataSource,
       snapshotRootPath: controller.snapshotRootDraft,
       savingSnapshotRoot: controller.isSavingSnapshotRoot,
       clientLogExportPath: controller.clientLogExportPath,
@@ -235,6 +236,7 @@ final class SettingsProjectionProducer
       left.appearancePresetLoadErrorCount ==
           right.appearancePresetLoadErrorCount &&
       left.portableDataPath == right.portableDataPath &&
+      left.portableDataSource == right.portableDataSource &&
       left.snapshotRootPath == right.snapshotRootPath &&
       left.savingSnapshotRoot == right.savingSnapshotRoot &&
       left.clientLogExportPath == right.clientLogExportPath &&

@@ -17,7 +17,7 @@ const SKILL_SOURCE: &str = crate::domain::client_conversation::LICOUP_GUIDE_SKIL
 
 fn cursor_context_environment() -> Value {
     json!({
-        "LICOUP_PORTABLE_DIR": "${env:LICOUP_PORTABLE_DIR}",
+        "LICOUP_HOME": "${env:LICOUP_HOME}",
         "LICOUP_MCP_CONVERSATION_ID": "${env:LICOUP_MCP_CONVERSATION_ID}",
         "LICOUP_MCP_MEMBERSHIP_ID": "${env:LICOUP_MCP_MEMBERSHIP_ID}",
         "LICOUP_MCP_PARENT_DISPATCH_ID": "${env:LICOUP_MCP_PARENT_DISPATCH_ID}",
@@ -31,7 +31,7 @@ fn cursor_context_environment() -> Value {
 /// pass that spelling through as a literal path.
 fn antigravity_context_environment() -> Value {
     json!({
-        "LICOUP_PORTABLE_DIR": "${LICOUP_PORTABLE_DIR}",
+        "LICOUP_HOME": "${LICOUP_HOME}",
         "LICOUP_MCP_CONVERSATION_ID": "${LICOUP_MCP_CONVERSATION_ID}",
         "LICOUP_MCP_MEMBERSHIP_ID": "${LICOUP_MCP_MEMBERSHIP_ID}",
         "LICOUP_MCP_PARENT_DISPATCH_ID": "${LICOUP_MCP_PARENT_DISPATCH_ID}",
@@ -754,7 +754,7 @@ mod tests {
                 "command": connector.to_string_lossy(),
                 "args": ["--caller", "cursor"],
                 "env": {
-                    "LICOUP_PORTABLE_DIR": "${env:LICOUP_PORTABLE_DIR}",
+                    "LICOUP_HOME": "${env:LICOUP_HOME}",
                     "LICOUP_MCP_CONVERSATION_ID": "${env:LICOUP_MCP_CONVERSATION_ID}",
                     "LICOUP_MCP_MEMBERSHIP_ID": "${env:LICOUP_MCP_MEMBERSHIP_ID}",
                     "LICOUP_MCP_PARENT_DISPATCH_ID": "${env:LICOUP_MCP_PARENT_DISPATCH_ID}"
@@ -809,8 +809,8 @@ mod tests {
             &connector
         ));
         assert_eq!(
-            antigravity_context_environment()["LICOUP_PORTABLE_DIR"],
-            "${LICOUP_PORTABLE_DIR}"
+            antigravity_context_environment()["LICOUP_HOME"],
+            "${LICOUP_HOME}"
         );
         let _ = fs::remove_dir_all(root);
     }

@@ -191,12 +191,12 @@ export async function runReceipt(ctx) {
     "false",
   ], {
     ...process.env,
-    LICOUP_PORTABLE_DIR: smokeState
+    LICOUP_HOME: smokeState
   });
   assertTargetScan(targetScan);
   const secureMeshStatus = runJson(nativeClient, ["secure-mesh", "status"], {
     ...process.env,
-    LICOUP_PORTABLE_DIR: smokeState
+    LICOUP_HOME: smokeState
   });
   const capabilityReport = secureMeshStatus.capabilityReport;
   ctx.verificationPhase = "gui_session";

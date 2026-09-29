@@ -72,7 +72,8 @@ licoup mcp reload --binary <built-lico-subagent-mcp>
 
 The module also accepts `service start|stop|status|reload` directly. Its native
 CLI executable is explicitly supplied in `LICOUP_CLI_BINARY`; state is scoped by
-`LICOUP_PORTABLE_DIR`. A reusable bounded pool of public CLI sessions carries
+`LICOUP_HOME`. `LICOUP_PORTABLE_DIR` remains a lower-priority alias for existing
+published installations. A reusable bounded pool of public CLI sessions carries
 admissions. Cancellation has its own reserved transport session, so a slow
 inventory or admission request cannot occupy its channel.
 

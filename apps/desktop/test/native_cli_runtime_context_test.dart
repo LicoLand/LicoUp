@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 void main() {
   group('NativeCliRuntimeContext', () {
@@ -36,7 +38,7 @@ void main() {
       }
     });
 
-    test('scanTargets passes LICOUP_PORTABLE_DIR', () async {
+    test('scanTargets passes LICOUP_HOME', () async {
       await service.scanTargets();
       expect(capturedArgs, [
         'targets',
@@ -46,7 +48,7 @@ void main() {
         '--include-history-model-catalog',
         'false',
       ]);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
       expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
       final parentPath = Platform.environment['PATH']?.trim() ?? '';
       if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
@@ -60,13 +62,13 @@ void main() {
       }
     });
 
-    test('addTarget passes LICOUP_PORTABLE_DIR', () async {
+    test('addTarget passes LICOUP_HOME', () async {
       await service.addTarget(target: 'opencode');
       expect(capturedArgs, ['targets', 'add', '--target', 'opencode']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('inspectTarget passes LICOUP_PORTABLE_DIR', () async {
+    test('inspectTarget passes LICOUP_HOME', () async {
       await service.inspectTarget('opencode');
       expect(capturedArgs, [
         'targets',
@@ -77,58 +79,125 @@ void main() {
         '--enable-agent-cli-model-lookup',
         'true',
       ]);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('restoreSnapshot passes LICOUP_PORTABLE_DIR', () async {
+    test('restoreSnapshot passes LICOUP_HOME', () async {
       await service.restoreSnapshot('snap-1');
       expect(capturedArgs, ['snapshots', 'restore', 'snap-1']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listSnapshots passes LICOUP_PORTABLE_DIR', () async {
+    test('listSnapshots passes LICOUP_HOME', () async {
       await service.listSnapshots(target: 'opencode');
       expect(capturedArgs, ['snapshots', 'list', '--target', 'opencode']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listPairings passes LICOUP_PORTABLE_DIR', () async {
+    test('listPairings passes LICOUP_HOME', () async {
       await service.listPairings(agent: 'codex');
       expect(capturedArgs, ['agents', 'pair', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
     });
 
-    test('listSkills passes LICOUP_PORTABLE_DIR', () async {
+    test('listSkills passes LICOUP_HOME', () async {
       await service.listSkills(agent: 'codex');
       expect(capturedArgs, ['skill', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_HOME'], portableDir.path);
+    });
+
+    test('without dataDirectory, env does not contain LICOUP_HOME', () async {
+      final noDataService = AgentService(
+        resolveCliBinary: () async => cliBinary,
+        runCliExecutable: (executable, args, env) async {
+          capturedArgs = args;
+          capturedEnv = env;
+          return ProcessResult(0, 0, '{"ok":true}', '');
+        },
+      );
+      await noDataService.scanTargets();
+      expect(capturedEnv?['LICOUP_HOME'], isNull);
+      expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
+      if (Platform.isMacOS) {
+        expect(
+          capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
+          'production',
+        );
+      } else {
+        expect(capturedEnv?['LICOUP_HOME'], isNull);
+        final parentPath = Platform.environment['PATH']?.trim() ?? '';
+        if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
+          expect(capturedEnv?['PATH'], parentPath);
+        }
+      }
     });
 
     test(
-      'without dataDirectory, env does not contain LICOUP_PORTABLE_DIR',
+      'data-home mutation environment does not resolve the current root',
       () async {
-        final noDataService = AgentService(
-          resolveCliBinary: () async => cliBinary,
-          runCliExecutable: (executable, args, env) async {
-            capturedArgs = args;
-            capturedEnv = env;
-            return ProcessResult(0, 0, '{"ok":true}', '');
+        var resolvedDataDirectory = false;
+        final context = NativeCliRuntimeContext(
+          dataDirectory: () async {
+            resolvedDataDirectory = true;
+            throw StateError('the saved data root is unavailable');
           },
         );
-        await noDataService.scanTargets();
-        expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
-        expect(capturedEnv?['LICOUP_CLIENT_PID'], '$pid');
-        if (Platform.isMacOS) {
-          expect(
-            capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
-            'production',
+
+        final environment = await context.buildDataHomeMutationEnvironment();
+
+        expect(resolvedDataDirectory, isFalse);
+        expect(environment?['LICOUP_HOME'], isNull);
+        expect(environment?['LICOUP_CLIENT_PID'], '$pid');
+      },
+    );
+
+    test(
+      'saved selection is resolved by the child locator, not inherited env',
+      () async {
+        final saved = Directory('${portableDir.path}/saved-root');
+        await saved.create();
+        final locator = _dataHomeLocator(portableDir.path);
+        await locator.parent.create(recursive: true);
+        await locator.writeAsString(saved.path);
+        final root = PortableDataRoot(
+          environmentOverride: _homeEnvironment(portableDir.path),
+        );
+        final context = NativeCliRuntimeContext(
+          dataHomeSelection: root.dataHomeSelection,
+        );
+
+        final environment = await context.buildEnvironment();
+
+        expect(
+          (await root.dataHomeSelection()).source,
+          DataHomeSelectionSource.saved,
+        );
+        expect(environment?['LICOUP_HOME'], '');
+        expect(environment?['LICOUP_PORTABLE_DIR'], '');
+      },
+    );
+
+    test(
+      'explicit and legacy user selections become the effective root only',
+      () async {
+        for (final variable in ['LICOUP_HOME', 'LICOUP_PORTABLE_DIR']) {
+          final selected = '${portableDir.path}/$variable';
+          final environmentOverride = <String, String>{
+            ..._homeEnvironment(portableDir.path),
+            variable: selected,
+          };
+          final root = PortableDataRoot(
+            environmentOverride: environmentOverride,
           );
-        } else {
-          expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
-          final parentPath = Platform.environment['PATH']?.trim() ?? '';
-          if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
-            expect(capturedEnv?['PATH'], parentPath);
-          }
+          final context = NativeCliRuntimeContext(
+            dataHomeSelection: root.dataHomeSelection,
+          );
+
+          final environment = await context.buildEnvironment();
+
+          expect((await root.dataHomeSelection()).path, selected);
+          expect(environment?['LICOUP_HOME'], selected);
+          expect(environment?['LICOUP_PORTABLE_DIR'], '');
         }
       },
     );
@@ -285,4 +354,22 @@ void main() {
       },
     );
   });
+}
+
+Map<String, String> _homeEnvironment(String home) => <String, String>{
+  'HOME': home,
+  'USERPROFILE': home,
+  'APPDATA': p.join(home, 'AppData', 'Roaming'),
+};
+
+File _dataHomeLocator(String home) {
+  if (Platform.isMacOS) {
+    return File(
+      p.join(home, 'Library', 'Application Support', 'LicoUp', 'data-home'),
+    );
+  }
+  if (Platform.isWindows) {
+    return File(p.join(home, 'AppData', 'Roaming', 'LicoUp', 'data-home'));
+  }
+  return File(p.join(home, '.config', 'licoup', 'data-home'));
 }

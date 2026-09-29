@@ -2299,4 +2299,20 @@ export const FLUTTER_MODULES = Object.freeze([
         "test/continuous_assistant/completion_notice_delivery_test.dart",
       ]),
     }),
+  defineModule({
+      id: "flutter.contract.data-home",
+      kind: "flutter-contract",
+      summary: "Structured data-home relocation bridge actions, error copy and lifecycle presentation",
+      inputs: [
+        "apps/desktop/lib/src/platform/native_client/data_home_executor.dart",
+        "apps/desktop/test/data_home_error_copy_test.dart",
+        "apps/desktop/test/data_home_executor_test.dart",
+        "apps/desktop/test/data_home_lifecycle_test.dart",
+      ],
+      command: flutterTests([
+        "test/data_home_error_copy_test.dart",
+        "test/data_home_executor_test.dart",
+        "test/data_home_lifecycle_test.dart",
+      ]),
+    }),
 ]);

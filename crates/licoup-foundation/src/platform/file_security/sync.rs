@@ -20,7 +20,7 @@ pub(super) fn parent(path: &Path) -> Result<()> {
     directory(parent)
 }
 
-pub(super) fn directory(directory: &Path) -> Result<()> {
+pub fn directory(directory: &Path) -> Result<()> {
     let file = match fs::File::open(directory) {
         Ok(file) => file,
         Err(error) if unsupported(&error) => return Ok(()),

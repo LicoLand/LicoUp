@@ -20,6 +20,17 @@ fn default_binary() -> Result<PathBuf> {
     Ok(directory.join(name))
 }
 pub fn execute(action: &str, binary: Option<&Path>) -> Result<Value> {
+    execute_inner(action, binary, false)
+}
+
+/// Ask the independently owned MCP service to stop while the data-home
+/// admission barrier is held. The service's stop-only control process must
+/// run so the coordinator can prove that its existing writer lease drained.
+pub fn stop_for_data_home_transition() -> Result<Value> {
+    execute_inner("stop", None, true)
+}
+
+fn execute_inner(action: &str, binary: Option<&Path>, data_home_transition: bool) -> Result<Value> {
     if !matches!(action, "start" | "stop" | "reload" | "status") {
         return Err(anyhow!("mcp_lifecycle_invalid"));
     }
@@ -32,10 +43,14 @@ pub fn execute(action: &str, binary: Option<&Path>) -> Result<Value> {
     licoup_foundation::platform::file_security::ensure_private_dir(
         &root.join("client-state").join("subagent-mcp"),
     )?;
-    let output = Command::new(binary)
-        .args(["service", action])
+    let mut command = Command::new(binary);
+    command.args(["service", action]);
+    if data_home_transition {
+        command.arg("--data-home-transition");
+    }
+    let output = command
         .env("LICOUP_CLI_BINARY", cli)
-        .env("LICOUP_PORTABLE_DIR", root)
+        .env("LICOUP_HOME", root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

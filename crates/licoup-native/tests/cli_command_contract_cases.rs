@@ -222,7 +222,7 @@ fn command_discovery_exposes_every_admitted_route_and_generated_method_without_r
     assert_eq!(catalog["rpc"]["protocol"], CONVERSATION_PROTOCOL_VERSION);
     assert_eq!(
         catalog["rpc"]["methods"],
-        json!(CONVERSATION_PROTOCOL_METHODS)
+        json!(CONVERSATION_PROTOCOL_METHODS.as_slice())
     );
     let commands = catalog["commands"].as_array().unwrap();
     assert_eq!(commands.len(), AUTHORITATIVE_ROUTE_COUNT);
@@ -1420,7 +1420,7 @@ fn native_cli_starts_and_reuses_its_durable_host_without_flutter() {
         let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
             .args(args)
             .args(["--stdin-json", "true"])
-            .env("LICOUP_PORTABLE_DIR", &root)
+            .env("LICOUP_HOME", &root)
             .env("LICOUP_CLIENT_PID", std::process::id().to_string())
             .env("LICOUP_MCP_AUTOSTART", "0")
             .env_remove("RUST_LOG")
@@ -1522,7 +1522,7 @@ fn run_lico_client_rpc(args: Vec<String>) -> Output {
 fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(["rpc", "conversation"])
-        .env("LICOUP_PORTABLE_DIR", portable_root)
+        .env("LICOUP_HOME", portable_root)
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
         .stdin(Stdio::piped())
@@ -1553,7 +1553,7 @@ fn persistent_conversation_rpc_accepts_a_request_after_its_first_response() {
     let portable_root = temporary_directory("licoup-conversation-rpc-sequential");
     let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(["rpc", "conversation"])
-        .env("LICOUP_PORTABLE_DIR", &portable_root)
+        .env("LICOUP_HOME", &portable_root)
         .env_remove("LICOUP_CLIENT_PID")
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")

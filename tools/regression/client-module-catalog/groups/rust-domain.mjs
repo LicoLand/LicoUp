@@ -2986,5 +2986,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/secure_mesh_mls/tests/input_codec.rs",
       ],
       command: rustLayer("domain::secure_mesh_mls::tests::input_codec::"),
+    }),
+  defineModule({
+      id: "rust.domain.conversation-snapshot-relocation",
+      kind: "rust-domain",
+      summary: "Structured snapshot reference rebasing across a data-root relocation",
+      inputs: [
+        "crates/licoup-native/src/domain/conversation/snapshots/relocation.rs",
+        "crates/licoup-native/src/domain/conversation/snapshots/tests/relocation.rs",
+      ],
+      command: rustLayer("domain::conversation::snapshots::"),
     })
 ]);

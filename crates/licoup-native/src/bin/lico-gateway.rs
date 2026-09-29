@@ -53,6 +53,9 @@ fn run(raw: Vec<String>) -> Result<(), ()> {
         );
         return Ok(());
     }
+    let _data_home_access =
+        licoup_foundation::platform::data_home_access::acquire_process_data_home_access()
+            .map_err(|_| ())?;
     let credentials = Arc::new(match arguments.credentials_fd {
         Some(fd) => {
             let vault = PlatformLlmApiKeyVault::production().map_err(|_| ())?;

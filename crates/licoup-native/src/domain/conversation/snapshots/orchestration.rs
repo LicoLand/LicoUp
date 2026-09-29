@@ -175,7 +175,14 @@ pub(super) fn run_archive_with_profile_discovery(
     )?;
     atomic_write_text(
         &collection_dir.join(SUMMARY_MD),
-        &archive_summary_markdown(&profile, &root, &discovery, &index_records, &validation),
+        &archive_summary_markdown(
+            &profile,
+            &root,
+            discovery.candidates.len(),
+            &discovery.source_summaries,
+            &index_records,
+            &validation,
+        ),
     )?;
 
     let workflow_diagnostics =

@@ -9,5 +9,5 @@ pub use channels::telegram;
 pub use serve::{GatewayServeArgs, serve_gateway_runtime};
 pub use service::{
     REPORT_SCHEMA, reload_conversation_inventory, service_initialize, service_start,
-    service_status, service_stop, state_directory,
+    service_status, service_stop, service_stop_managed, state_directory,
 };

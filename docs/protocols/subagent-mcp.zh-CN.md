@@ -53,7 +53,8 @@ licoup mcp reload --binary <built-lico-subagent-mcp>
 ```
 
 模块也可直接执行 `service start|stop|status|reload`，通过 `LICOUP_CLI_BINARY`
-明确指定原生 CLI，通过 `LICOUP_PORTABLE_DIR` 限定状态目录。可复用、有界的
+明确指定原生 CLI，通过 `LICOUP_HOME` 限定状态目录。已发布安装仍可使用优先级更低的
+`LICOUP_PORTABLE_DIR` 别名。可复用、有界的
 公开 CLI 会话池承载准入请求；取消具有独立保留通道，不被缓慢清单或准入请求占用。
 
 停止操作先认证私有控制请求，停止接受新帧，并在释放服务租约前排空已准入请求。

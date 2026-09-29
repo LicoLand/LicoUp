@@ -231,6 +231,17 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
         _run(_controller.refreshConversationSnapshotRoot, trace);
       case SetConversationSnapshotLocation(:final path):
         _run(() => _controller.setConversationSnapshotRoot(path), trace);
+      case RelocateDataHome(:final destinationParent):
+        _effects.emit(
+          DataHomeRelocationRequested(destinationParent, trace: trace),
+        );
+      case CleanupPreviousDataHome(:final expectedPreviousRootPath):
+        _effects.emit(
+          PreviousDataHomeCleanupRequested(
+            expectedPreviousRootPath,
+            trace: trace,
+          ),
+        );
       case RefreshArchivedConversations():
         _run(_controller.clientConversationController.refreshArchived, trace);
       case RestoreArchivedConversation(:final conversationId):

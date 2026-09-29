@@ -3,8 +3,9 @@
 //! The Flutter process owns a replaceable stdio proxy. The listener and every
 //! accepted Agent turn live in this CLI host, scoped to the client-owned
 //! portable data root. The host belongs to that LicoUp process: when the
-//! client pid in `LICOUP_CLIENT_PID` is gone, the host exits on its next
-//! bounded owner check, including in-flight turns. A five-minute idle exit
+//! client pid in `LICOUP_CLIENT_PID` is gone, the host observes that on its
+//! next owner check. Explicit shutdown closes admission and drains accepted
+//! turns and sessions before releasing root ownership. A five-minute idle exit
 //! applies only when that owner pid is unset (CLI and tests).
 
 use anyhow::{Context, Result, anyhow};
@@ -15,7 +16,7 @@ use interprocess::local_socket::{
 use std::{
     env,
     fs::{self, File, OpenOptions},
-    io::{self, BufReader, ErrorKind, Read, Write},
+    io::{self, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -39,7 +40,6 @@ const STALE_HOST_WAIT: Duration = Duration::from_secs(2);
 const OWNER_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 #[allow(dead_code)]
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(300);
-const NORMAL_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const CLIENT_PID_ENV: &str = "LICOUP_CLIENT_PID";
 
 static HOST_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -65,18 +65,23 @@ fn register_termination_signal_handler() {
 fn register_termination_signal_handler() {}
 
 pub(super) fn request_host_stop() -> Result<()> {
+    // An unlocked owner file is stronger evidence than a socket probe: it
+    // proves there is no process currently writing through this host.
+    if let Some(owner) = HostOwnerLock::acquire()? {
+        drop(owner);
+        return Ok(());
+    }
     let params = serde_json::json!({ "host": true });
     let _response =
         licoup_native::platform::conversation_host_client::execute_existing("shutdown", &params)
             .map_err(|_| anyhow!("persistent_conversation_transport_required"))?;
-    let deadline = Instant::now() + NORMAL_SHUTDOWN_DRAIN_TIMEOUT + Duration::from_secs(5);
-    while endpoint_accepts_connections() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(50));
+    loop {
+        if let Some(owner) = HostOwnerLock::acquire()? {
+            drop(owner);
+            return Ok(());
+        }
+        thread::sleep(CONNECT_RETRY);
     }
-    if endpoint_accepts_connections() {
-        return Err(anyhow!("conversation_host_stop_timeout"));
-    }
-    Ok(())
 }
 
 fn host_generation_path(root: &Path) -> PathBuf {
@@ -90,18 +95,6 @@ fn host_generation_path(root: &Path) -> PathBuf {
 /// Deliberately separate from the record on disk: the record says who *did*
 /// own the listener, this says who owns it, and the OS releases it when the
 /// owning process dies.
-fn host_owner_lock_path(root: &Path) -> PathBuf {
-    root.join("client-state")
-        .join("conversation-runtime")
-        .join("host-owner.lock")
-}
-
-/// The exclusive advisory lock a serving host holds for its whole lifetime.
-///
-/// The kernel drops it when the holding process dies, so it is the ownership
-/// proof the record can only approximate, and it serializes the takeover: a
-/// host may only create or take the listener while it holds this lock, so two
-/// hosts can never both conclude that nobody owns the root.
 struct HostOwnerLock {
     file: File,
 }
@@ -110,16 +103,12 @@ impl HostOwnerLock {
     /// Take the root's ownership lock, or `None` when a live host holds it.
     fn acquire() -> Result<Option<Self>> {
         let root = licoup_foundation::platform::paths::portable_data_dir()?;
-        let path = host_owner_lock_path(&root);
-        if let Some(parent) = path.parent() {
-            licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
-        }
-        let file = licoup_foundation::platform::file_security::open_private_lock_file(&path)?;
-        match file.try_lock_exclusive() {
-            Ok(()) => Ok(Some(Self { file })),
-            Err(error) if error.kind() == ErrorKind::WouldBlock => Ok(None),
-            Err(error) => Err(error).context("conversation host unavailable"),
-        }
+        Ok(
+            licoup_native::platform::conversation_host_transport::try_acquire_host_owner_lock(
+                &root,
+            )?
+            .map(|file| Self { file }),
+        )
     }
 }
 
@@ -674,12 +663,13 @@ impl AttendanceOwner {
         self.active.load(Ordering::Acquire)
     }
 
-    fn shutdown(self) {
+    fn shutdown(self) -> Result<()> {
         self.stop.store(true, Ordering::Release);
         self.wake.1.notify_all();
-        // Detach: configured host-owner exit must release the listener
-        // without waiting for an in-flight cognition call.
-        drop(self.join);
+        self.join
+            .ok_or_else(|| anyhow!("conversation attendance worker unavailable"))?
+            .join()
+            .map_err(|_| anyhow!("conversation attendance worker failed"))
     }
 }
 
@@ -697,7 +687,11 @@ fn serve_bound_host(
     HOST_STOP_REQUESTED.store(false, Ordering::Release);
     register_termination_signal_handler();
     let attendance = AttendanceOwner::spawn(service.clone())?;
+    let mut sessions = Vec::new();
     let result = loop {
+        if let Err(error) = reap_finished_conversation_sessions(&mut sessions) {
+            break Err(error);
+        }
         if stop
             .as_ref()
             .is_some_and(|flag| flag.load(Ordering::Acquire))
@@ -715,19 +709,28 @@ fn serve_bound_host(
                     continue;
                 }
                 runtime.client_connected();
-                let runtime = runtime.clone();
+                let session_runtime = runtime.clone();
+                let failed_spawn_runtime = runtime.clone();
                 let conversation_service = service.clone();
-                thread::spawn(move || {
-                    let (receiver, sender) = stream.split();
-                    let _ = serve_stdio_rpc_with_persistent_conversation(
-                        BufReader::new(receiver),
-                        sender,
-                        execute_rpc_cli,
-                        runtime.clone(),
-                        conversation_service,
-                    );
-                    runtime.client_disconnected();
-                });
+                match thread::Builder::new()
+                    .name("conversation-rpc".into())
+                    .spawn(move || {
+                        let _client = ConversationClientOwner(session_runtime.clone());
+                        let (receiver, sender) = stream.split();
+                        let _ = serve_stdio_rpc_with_persistent_conversation(
+                            BufReader::new(receiver),
+                            sender,
+                            execute_rpc_cli,
+                            session_runtime.clone(),
+                            conversation_service,
+                        );
+                    }) {
+                    Ok(session) => sessions.push(session),
+                    Err(_) => {
+                        failed_spawn_runtime.client_disconnected();
+                        break Err(anyhow!("conversation host session worker failed"));
+                    }
+                }
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 // Per D19, GUI client exit does not stop the host, and generic idle
@@ -739,12 +742,50 @@ fn serve_bound_host(
             }
         }
     };
-    // Normal shutdown: drain admitted in-flight work and flush database checkpoint
-    // before releasing host-owner lock and attendance.
-    let _ = runtime.drain_admitted_turns(NORMAL_SHUTDOWN_DRAIN_TIMEOUT);
-    let _ = service.store().checkpoint();
-    attendance.shutdown();
-    result
+    // Close admission first, then wait for every admitted turn and RPC session
+    // to finish before checkpointing and releasing host ownership. No elapsed
+    // time or endpoint probe is used as evidence that writers are quiescent.
+    runtime.request_host_stop();
+    runtime.wait_for_admitted_turns();
+    runtime.wait_for_clients_to_disconnect();
+    let session_result = sessions.into_iter().try_for_each(|session| {
+        session
+            .join()
+            .map_err(|_| anyhow!("conversation host session worker failed"))
+    });
+    let checkpoint_result = service
+        .store()
+        .checkpoint()
+        .map_err(|_| anyhow!("conversation host checkpoint failed"));
+    let attendance_result = attendance.shutdown();
+    result?;
+    session_result?;
+    checkpoint_result?;
+    attendance_result?;
+    Ok(())
+}
+
+fn reap_finished_conversation_sessions(sessions: &mut Vec<thread::JoinHandle<()>>) -> Result<()> {
+    let mut index = 0;
+    while index < sessions.len() {
+        if sessions[index].is_finished() {
+            let session = sessions.swap_remove(index);
+            session
+                .join()
+                .map_err(|_| anyhow!("conversation host session worker failed"))?;
+        } else {
+            index += 1;
+        }
+    }
+    Ok(())
+}
+
+struct ConversationClientOwner(PersistentConversationRuntime);
+
+impl Drop for ConversationClientOwner {
+    fn drop(&mut self) {
+        self.0.client_disconnected();
+    }
 }
 
 #[cfg(test)]
@@ -1183,7 +1224,7 @@ mod tests {
     }
 
     #[test]
-    fn host_owner_stop_returns_while_wake_cognition_is_still_held() {
+    fn host_owner_stop_drains_a_held_wake_before_returning() {
         use interprocess::local_socket::ListenerOptions;
         use licoup_conversation::continuity::list_all_pending_wakes;
         use licoup_native::domain::client_conversation::{
@@ -1299,34 +1340,6 @@ mod tests {
         );
 
         stop.store(true, Ordering::Release);
-        let host_deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            if host_thread.is_finished() {
-                break;
-            }
-            assert!(
-                Instant::now() < host_deadline,
-                "serve_bound_host must return without waiting for held cognition"
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
-        host_thread
-            .join()
-            .expect("host thread must return after stop")
-            .expect("serve_bound_host stop path");
-        assert!(
-            try_connect_test_host(&root, Duration::from_millis(150)).is_err(),
-            "listener/endpoint must be released before the synthetic hold is released"
-        );
-        assert_eq!(
-            complete_calls
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .len(),
-            0,
-            "host return must happen before held cognition finishes"
-        );
-
         {
             let (lock, cv) = &*hold;
             let mut released = lock.lock().unwrap_or_else(|poison| poison.into_inner());
@@ -1341,10 +1354,26 @@ mod tests {
         {
             assert!(
                 Instant::now() < finish_deadline,
-                "detached attendance must finish the held review after hold release"
+                "the admitted wake must finish after hold release"
             );
             thread::sleep(Duration::from_millis(20));
         }
+        host_thread
+            .join()
+            .expect("host thread must finish its drain")
+            .expect("serve_bound_host stop path");
+        assert!(
+            try_connect_test_host(&root, Duration::from_millis(150)).is_err(),
+            "listener/endpoint must be released after the held wake finishes"
+        );
+        assert_eq!(
+            complete_calls
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .len(),
+            1,
+            "host shutdown must join the admitted wake before returning"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1566,6 +1595,7 @@ mod tests {
         assert_eq!(response["ok"], true);
         assert_eq!(response["result"]["status"], "shutdown");
         assert_eq!(response["result"]["host_stop_requested"], true);
+        drop(reader);
 
         // Host thread must terminate after receiving host stop
         let deadline = Instant::now() + Duration::from_secs(4);
@@ -1596,12 +1626,10 @@ mod tests {
             "persistent_conversation_transport_required"
         );
 
-        // 2. request_host_stop() returns persistent_conversation_transport_required
-        let stop_err = request_host_stop().unwrap_err();
-        assert_eq!(
-            stop_err.to_string(),
-            "persistent_conversation_transport_required"
-        );
+        // 2. request_host_stop() succeeds quietly: the acquirable owner lock
+        // proves no host is writing through this root, so stopping is a no-op
+        // rather than a transport failure.
+        request_host_stop().unwrap();
 
         // 3. host_is_current() is false
         assert!(!host_is_current());

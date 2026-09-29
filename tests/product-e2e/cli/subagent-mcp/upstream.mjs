@@ -33,7 +33,7 @@ export async function runUpstream(options = {}) {
 }
 
 async function defaultHealth(options) {
-  const root = options.portableRoot ?? process.env.LICOUP_PORTABLE_DIR;
+  const root = options.portableRoot ?? process.env.LICOUP_HOME;
   if (!root) return { result: "unavailable", reason: "service_discovery_unavailable" };
   try {
     const discovery = admitDiscoveryDocument(JSON.parse(await readFile(

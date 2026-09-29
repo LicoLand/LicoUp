@@ -95,7 +95,7 @@ export function acquireLiveLease(path) {
 
 export async function runDownstream(options = {}) {
   const appVersion = options.appVersion ?? readRepoAppVersion(options.repositoryRoot);
-  const portableRoot = options.portableRoot ?? process.env.LICOUP_PORTABLE_DIR;
+  const portableRoot = options.portableRoot ?? process.env.LICOUP_HOME;
   const executable = options.executable ?? process.env.LICOUP_CLI_EXECUTABLE;
   const targetFacts = options.targetFacts ?? await (options.resolveTargetFacts ?? resolveTargetFacts)({
     executable,
@@ -292,7 +292,7 @@ export async function resolveTargetFacts({ executable, portableRoot, executeJson
 
 async function executeLicoupJson(executable, portableRoot, args) {
   const { stdout } = await execFileAsync(executable, args, {
-    env: { ...process.env, LICOUP_PORTABLE_DIR: portableRoot },
+    env: { ...process.env, LICOUP_HOME: portableRoot },
     maxBuffer: 1024 * 1024,
     encoding: "utf8",
     windowsHide: true,
@@ -388,7 +388,7 @@ export async function executeConversationCli(executable, portableRoot, request, 
   const { stdout } = await executeFile(executable, [
     "conversation", "execute", "--require-running-host", "--stdin-json", JSON.stringify(request),
   ], {
-    env: { ...process.env, LICOUP_PORTABLE_DIR: portableRoot }, maxBuffer: 256 * 1024, encoding: "utf8",
+    env: { ...process.env, LICOUP_HOME: portableRoot }, maxBuffer: 256 * 1024, encoding: "utf8",
   });
   const value = JSON.parse(stdout);
   if (value?.ok !== true) throw new DownstreamVerificationError("target_membership_unavailable");

@@ -33,7 +33,9 @@ final class AppearancePresetCatalogService {
     PortableDataRoot portableData,
   ) async {
     final directory = await presetsDirectory(portableData);
-    await directory.create(recursive: true);
+    await portableData.withAppManagedWriter(
+      () => directory.create(recursive: true),
+    );
 
     final errors = <String>[];
     final loadedConfigs = <AppearancePresetConfig>[];

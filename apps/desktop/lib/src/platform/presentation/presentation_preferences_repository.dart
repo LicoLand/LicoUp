@@ -31,7 +31,8 @@ final class FilePresentationPreferencesRepository
   Future<void> _operationTail = Future<void>.value();
 
   @override
-  Future<PresentationPreferencesLoadResult> load() => _enqueue(_loadWithLock);
+  Future<PresentationPreferencesLoadResult> load() =>
+      _portableData.withAppManagedWriter(() => _enqueue(_loadWithLock));
 
   @override
   Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) =>
@@ -55,19 +56,21 @@ final class FilePresentationPreferencesRepository
 
   Future<PresentationPreferences> _update(
     PresentationPreferences Function(PresentationPreferences current) mutate,
-  ) => _enqueue(() async {
-    final destination = await _preferencesFile();
-    return _withFileLock(
-      destination,
-      () async {
-        final loaded = await _read(destination);
-        final next = mutate(loaded.preferences);
-        await _writeAtomically(destination, next);
-        return next;
-      },
-      errorCode: PresentationPreferencesRepositoryErrorCode.writeFailed,
-    );
-  });
+  ) => _portableData.withAppManagedWriter(
+    () => _enqueue(() async {
+      final destination = await _preferencesFile();
+      return _withFileLock(
+        destination,
+        () async {
+          final loaded = await _read(destination);
+          final next = mutate(loaded.preferences);
+          await _writeAtomically(destination, next);
+          return next;
+        },
+        errorCode: PresentationPreferencesRepositoryErrorCode.writeFailed,
+      );
+    }),
+  );
 
   Future<PresentationPreferencesLoadResult> _loadWithLock() async {
     final destination = await _preferencesFile();

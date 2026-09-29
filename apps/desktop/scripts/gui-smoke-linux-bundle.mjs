@@ -159,7 +159,7 @@ async function main() {
     GDK_GL: "software",
     LIBGL_ALWAYS_SOFTWARE: "1",
     NO_AT_BRIDGE: "1",
-    LICOUP_PORTABLE_DIR: dataDir,
+    LICOUP_HOME: dataDir,
   };
   const xvfb = spawn(
     "Xvfb",

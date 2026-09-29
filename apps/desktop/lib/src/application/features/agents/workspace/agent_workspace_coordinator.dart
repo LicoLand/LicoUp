@@ -52,6 +52,7 @@ abstract class AgentWorkspaceCoordinator extends ApplicationStateOwner {
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
   Object get agentWorkspacePortableData;
+  String get agentWorkspaceDataRoot;
   AgentToolAllowlistRepository get agentToolAllowlistRepository;
   Future<Map<String, Object?>> agentWorkspaceReadSettingsState();
   Future<void> agentWorkspaceWriteSettingsState(Map<String, Object?> content);
