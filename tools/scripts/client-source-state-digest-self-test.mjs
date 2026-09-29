@@ -104,11 +104,21 @@ try {
     rejects(() => validateClientSourceRoots(invalid),
       "unsafe source root was accepted");
   }
-  if (!canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS) ||
+  if (!CANONICAL_CLIENT_SOURCE_ROOTS.includes("crates") ||
+    !canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS) ||
     canonicalClientSourceRootsMatch(CANONICAL_CLIENT_SOURCE_ROOTS.filter(
       (entry) => entry !== "package-lock.json",
     ))) {
-    throw new Error("canonical source roots could be narrowed");
+    throw new Error("canonical source roots could be narrowed or omit Rust crates");
+  }
+
+  const nestedCrateSource = path.join(root, "crates", "licoup-conversation", "src", "lib.rs");
+  mkdirSync(path.dirname(nestedCrateSource), { recursive: true });
+  writeFileSync(nestedCrateSource, "pub fn source_state() {}\n", "utf8");
+  const nestedCrateDigest = clientSourceStateDigest(root, ["crates"]);
+  writeFileSync(nestedCrateSource, "pub fn source_state_changed() {}\n", "utf8");
+  if (clientSourceStateDigest(root, ["crates"]) === nestedCrateDigest) {
+    throw new Error("nested crate source mutation was omitted from digest");
   }
 
   const ignoredInput = path.join(root, "src", "ignored-input.txt");
@@ -152,7 +162,7 @@ try {
 
   console.log(JSON.stringify({
     ok: true,
-    caseCount: 16,
+    caseCount: 17,
     ignoredBuildInputBound: true,
     untrackedModeBound: true,
     exclusionsCodeOwned: true,

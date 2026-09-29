@@ -745,6 +745,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "rust.bin.licoup.core-commands",
   "rust.bin.licoup.skill-commands",
   "rust.bin.licoup.parsing",
+  "rust.platform.extension-package-store",
   "rust.bin.secure-mesh-kt-mock",
   "bridge.native-mcp-command",
   "bridge.native-mcp-rpc-guard",

@@ -1,0 +1,46 @@
+{
+  "machines": [
+    {
+      "id": "native.update-handoff",
+      "rust_module": "update_handoff",
+      "states": [
+        { "id": "pending" },
+        { "id": "claimed" }
+      ],
+      "events": ["claim"],
+      "initial": "pending",
+      "terminal": ["claimed"],
+      "transitions": [
+        {
+          "from_state": "pending",
+          "event": "claim",
+          "to_state": "claimed"
+        }
+      ]
+    },
+    {
+      "id": "native.strategy-store-artifact",
+      "rust_module": "strategy_store_artifact",
+      "states": [
+        { "id": "legacy" },
+        { "id": "workflow-routed" },
+        { "id": "current" }
+      ],
+      "events": ["normalize-store", "materialize-workflow-routing"],
+      "initial": "legacy",
+      "terminal": ["current"],
+      "transitions": [
+        {
+          "from_state": "legacy",
+          "event": "normalize-store",
+          "to_state": "workflow-routed"
+        },
+        {
+          "from_state": "workflow-routed",
+          "event": "materialize-workflow-routing",
+          "to_state": "current"
+        }
+      ]
+    }
+  ]
+}

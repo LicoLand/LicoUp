@@ -688,7 +688,69 @@ fn crashed_cli_after_partial_output_is_reported_as_failed() {
         result.error.as_ref().map(|error| error.code),
         Some("cursor_cli_turn_failed")
     );
+    assert_eq!(result.status_code, Some(3));
     assert_ne!(result.turn_status, "completed");
+}
+
+#[cfg(unix)]
+#[test]
+fn stdout_eof_waits_for_the_live_child_before_classifying_the_turn() {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let (dir, executable) = compile_fake_cursor(stamp);
+    let _guard = env_lock();
+    let ready_path = dir.join("stdout-eof-ready");
+    let release_path = dir.join("stdout-eof-release");
+    unsafe {
+        std::env::set_var("LICO_FAKE_CURSOR_AGENT_EOF_READY_PATH", &ready_path);
+        std::env::set_var("LICO_FAKE_CURSOR_AGENT_EOF_RELEASE_PATH", &release_path);
+    }
+    let executable = executable.to_string_lossy().into_owned();
+    let turn_dir = dir.clone();
+    let handle = std::thread::spawn(move || {
+        let _pin =
+            crate::platform::user_shell_environment::pin_process_env_snapshot_for_testing(&[]);
+        cursor_driver::execute(
+            &executable,
+            &json!({}),
+            "synthetic request __lico_stdout_eof__",
+            "",
+            Some(turn_dir.as_path()),
+            0,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+
+    let ready_deadline = Instant::now() + Duration::from_secs(20);
+    while !ready_path.is_file() && Instant::now() < ready_deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let stream_closed = ready_path.is_file();
+    std::thread::sleep(Duration::from_millis(350));
+    let child_was_still_active = !handle.is_finished();
+    fs::write(&release_path, b"release").unwrap();
+    let result = handle.join().unwrap();
+    unsafe {
+        std::env::remove_var("LICO_FAKE_CURSOR_AGENT_EOF_READY_PATH");
+        std::env::remove_var("LICO_FAKE_CURSOR_AGENT_EOF_RELEASE_PATH");
+    }
+    drop(_guard);
+    let _ = fs::remove_dir_all(dir);
+
+    assert!(stream_closed, "the fixture did not close the turn stream");
+    assert!(
+        child_was_still_active,
+        "stdout EOF must not terminate a child that has not ended the turn"
+    );
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.as_ref().map(|error| error.code),
+        Some("cursor_cli_turn_failed")
+    );
+    assert_eq!(result.status_code, Some(0));
 }
 
 #[test]

@@ -11,6 +11,12 @@ discovery can instead bind a known absolute executable, so entering `codex` or
 `claude` in the User's terminal and starting that Agent from LicoUp can select
 different targets and different startup behavior.
 
+Codex has one approved product-specific exception: when the official ChatGPT
+desktop application is installed, its bundled Codex CLI is the preferred
+automatic runtime. The User's terminal-selected Codex CLI remains the fallback
+when that bundled runtime is unavailable, and a saved manual binary selection
+remains authoritative.
+
 An absolute leaf executable is not always the complete command identity. An
 alias may contribute prefix arguments, and a function may contribute
 environment, wrapper logic, or target selection. Resolving only the final
@@ -23,7 +29,9 @@ appearing to honor it.
    discovery asks the User's configured command-line environment to resolve
    each canonical Agent command. Without an Agent Center override, LicoUp's
    effective launch binding must be observationally equivalent at the command
-   boundary to entering that command in the configured terminal environment.
+   boundary to entering that command in the configured terminal environment,
+   except for Codex when the official ChatGPT desktop bundle provides its CLI.
+   In that case, the bundled Codex CLI is selected before the terminal result.
 2. **Resolve commands in one shared environment snapshot.** A discovery batch
    initializes the selected platform shell environment once and resolves all
    relevant Agent commands against that snapshot. It does not start an Agent,
@@ -36,12 +44,14 @@ appearing to honor it.
 4. **Keep the scan manifest supplementary.** Named paths remain useful for
    configuration and history stores, additional installed versions, desktop
    applications, and LicoUp-managed runtimes. They must not silently outrank a
-   valid command selected by the User's command-line environment.
+   valid command selected by the User's command-line environment, except for
+   the approved Codex desktop-bundle priority stated above.
 5. **Make every alternative visible in Agent Center.** The shell-observed
-   binding is the default candidate. Additional detected and managed versions
-   are selectable candidates with distinct provenance. An explicit User
-   selection replaces the observed default and remains authoritative until the
-   User changes it or the selected target becomes unavailable.
+   binding is the default candidate, except that the approved Codex desktop
+   bundle is the default when available. Additional detected and managed
+   versions are selectable candidates with distinct provenance. An explicit
+   User selection replaces the automatic default and remains authoritative
+   until the User changes it or the selected target becomes unavailable.
 6. **Layer customization after target selection.** Agent Center environment
    variables, arguments, Hooks, and supported version controls extend the
    selected binding through one visible launch profile with deterministic
@@ -80,7 +90,11 @@ depart from, inspect, or extend the terminal default.
 ## Consequences
 
 - The manifest-first absolute executable is no longer the approved default for
-  User-installed Agent CLIs.
+  User-installed Agent CLIs, except for the official ChatGPT desktop-bundled
+  Codex CLI.
+- Codex automatic resolution prefers the official ChatGPT bundle, then the
+  terminal-selected CLI, then supplementary manifest locations; a saved manual
+  Codex binary selection precedes all automatic candidates.
 - Discovery and launch need a command-binding model that can distinguish direct
   executable and shell-backed semantics.
 - A shared shell snapshot avoids one shell startup per Agent while keeping all
@@ -97,7 +111,14 @@ depart from, inspect, or extend the terminal default.
   user's login-shell environment once per process (bounded, sentinel-framed,
   process-environment fallback) and every conversation-execution launch site
   starts from that snapshot before applying its own functional injections;
-  executable discovery consults the snapshot PATH before the scan manifest.
+  executable discovery consults the snapshot PATH before the scan manifest for
+  ordinary targets. Codex first checks the approved desktop-bundled runtime,
+  then uses the snapshot PATH as its terminal-selected fallback. Candidate
+  priority does not modify the inherited launch environment.
   The command-binding model of decisions 1, 3, 5, and 6 (alias/function
   capture, structured bindings, Agent Center candidate surfaces, launch
   profiles) remains approved-but-unimplemented decision scope.
+- 2026-09-28: The Codex desktop-bundle exception is implemented. A saved local
+  manual binary path takes precedence; otherwise automatic selection checks
+  the official ChatGPT bundle, the terminal PATH, supplementary manifest
+  locations, and finally the prior automatic route cache.

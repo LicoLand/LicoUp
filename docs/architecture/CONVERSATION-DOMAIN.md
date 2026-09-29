@@ -433,81 +433,40 @@ sequenceDiagram
 
 ---
 
-## 8. State Machine Driven Controlled Invocations
+## 8. Configuration-Owned Conversation Lifecycles
 
-The Session Manager executes a **strict Finite State Machine (FSM)**. All underlying infrastructure and native calls **must and can only be invoked within specific state machine phases**:
+`crates/licoup-conversation/resources/state-machines.json` is the single source
+for the durable Conversation transition relations. The crate build compiles its
+six selected machines into private Rust types and transition tables: direct
+turns, sends, memberships, dispatches, subagent claims, and dispatch deliveries.
+The generated types retain the persisted kebab-case names used by current
+callers.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Submitted: User Post (RPC Post)
+The generated tables answer which state follows a given state and event. They do
+not perform database, process, network, or scheduling work. The Conversation
+store owns guards, effects, and transactions in `src/store/lifecycle.rs` and its
+repositories; each durable state change is committed with its associated store
+effects. This keeps the transition relation declarative while the runtime
+remains responsible for executing it.
 
-    state Submitted {
-        note right of Submitted: [Controlled Call] SQLite: Write finalized Human Event
-    }
-
-    Submitted --> Accepted: Dispatch Admission (Dispatch After-Post)
-
-    state Accepted {
-        note right of Accepted: [Controlled Call] DynamicConfig: Resolve binaries & env
-    }
-
-    Accepted --> Processing: Launch Process / Connect Stream
-
-    state Processing {
-        note right of Processing: [Controlled Call] PTY / Network: Open pipes & attach listeners
-    }
-
-    Processing --> Streaming: L1 Parser Emits Content
-
-    state Streaming {
-        note right of Streaming: [Controlled Call] SQLite: Append EventPart & Stream Uplink
-    }
-
-    Streaming --> WaitingForHuman: L1 Detects Tool Approval Request
-
-    state WaitingForHuman {
-        note right of WaitingForHuman: [Controlled Call] L2 Interaction: Park Token & Prompt UI Modal
-    }
-
-    WaitingForHuman --> Processing: User Approves
-
-    Streaming --> Completed: Explicit Finish / EOF Received
-    Processing --> Failed: Process Crash / Unrecoverable Error
-    Processing --> Cancelled: User Cancels
-
-    state Completed {
-        note right of Completed: [Controlled Call] SQLite Finalize · Graceful Process Exit
-    }
-    state Failed {
-        note right of Failed: [Controlled Call] SQLite Write Error Code · Process Reaped
-    }
-    state Cancelled {
-        note right of Cancelled: [Controlled Call] L3 Supervision Ladder (Grace → SIGTERM → SIGKILL)
-    }
-
-    Completed --> [*]
-    Failed --> [*]
-    Cancelled --> [*]
-```
-
----
-
-## 9. Synchronized State Machine Progress Reflection
-
-To eliminate phantom UI locks and state drift, the architecture mandates **strict one-to-one synchronization between backend state machine phases and frontend UI reflection**:
-
-| Backend State (Rust State) | Trigger & Controlled Action | Frontend UI Reflection (Flutter) |
+| Durable record | Generated state type | Persisted lifecycle |
 |:---|:---|:---|
-| **`Submitted`** | Human message written to SQLite | Clears composer draft, locks send button, marks bubble as "Sent" |
-| **`Accepted`** | Dispatch door accepts Membership and returns handle | Attaches `_liveTurns`, activates blackboard, progress bar enters **"Preparing"** |
-| **`Processing`** | PTY launched or stream connection opened | Blackboard shows **"Connecting to Agent"**, renders thinking spinner |
-| **`Streaming / Reasoning`** | L1 parser emits Reasoning / ToolCall / ContentPart | Blackboard expands reasoning steps, streams text into bubble, progress bar shows **"Generating"** |
-| **`WaitingForHuman`** | L1 detects tool call requiring user approval; L2 parks token | Progress bar turns **Yellow (Waiting)**, pops up interactive approval modal |
-| **`Completed`** | L1 arbiter resolves normal completion; Event finalized | Progress bar turns **Green (Completed)**, collapses blackboard to summary, unlocks composer |
-| **`Failed`** | Process crash or unrecoverable error | Progress bar turns **Red (Failed)**, displays diagnostic error code with retry option |
-| **`Cancelled`** | User cancels; L3 reaps process via ladder | Progress bar turns **Grey (Cancelled)**, preserves partial output, restores composer |
+| Direct turn | `TurnState` | `pending`, `claimed`, `running`, `waiting-for-human`, then a terminal state |
+| Send | `SendState` | `sending` to `delivered` or `failed` |
+| Membership | `MembershipStatus` | `active` or `left` |
+| Dispatch | `DispatchState` | `accepted`, `running`, cancellation request, and terminal state |
+| Subagent claim | `SubagentDispatchClaimState` | claim, execution, reconciliation, and terminal state |
+| Dispatch delivery | `DispatchDeliveryState` | `pending`, `delivering`, `delivered`, or `failed` |
 
-> **Synchronization Invariant**: **The frontend progress bar and blackboard are a real-time mirror of the backend state machine**. When the backend advances one step, it emits a `Typed Transition`; the frontend reacts immediately. The frontend never fabricates its own progression.
+## 9. Durable Status Reflection
+
+The Rust Conversation store is authoritative for durable records and committed
+events. The UI renders those results and projections; it does not consume a
+separate generated-transition stream or commit lifecycle changes itself. Local
+drafts and other presentation state remain UI concerns, while persisted status
+comes from the Conversation authority. A disconnected observer does not by
+itself change a turn's durable status; recovery reads the stored lifecycle and
+applies the Conversation recovery rules.
 
 ---
 
@@ -653,9 +612,12 @@ The group sidebar binds directly to the group's own associated-session subset.
 each confirmed `(conversationId, membershipId, nativeSessionId)` once; replacing
 the current runtime binding, changing a model, or a Membership leaving does not
 erase earlier associations. The same Agent and native session can belong to
-multiple groups only when each group has its own recorded binding. Schema 15
-backfills current bindings, explicit dispatch provenance, and the exact recorded
-owner of old runtime source links. Missing evidence never creates a relationship.
+multiple groups only when each group has its own recorded binding. Schema 18
+is the current Conversation layout. The atomic conversion from published schema
+12 adds the current bindings and explicit dispatch provenance, and records the
+known owner of old runtime source links. Unpublished schemas 13 through 17 are
+not supported migration inputs; newer or malformed metadata is rejected before
+schema changes. Missing ownership evidence never creates a relationship.
 
 Desktop `conversation.get` opts into `includeNativeSessionReferences: true` to
 receive local `membershipId`, `agentId`, and `nativeSessionId` lookup facts. The

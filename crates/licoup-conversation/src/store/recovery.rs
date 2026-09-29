@@ -26,7 +26,7 @@ impl ColdRecoverableConversationStore for ConversationStore {
             let transaction = connection.unchecked_transaction()?;
             let recoverable = {
                 let mut statement = transaction.prepare(
-                    "SELECT d.id, d.conversation_id, e.id
+                    "SELECT d.id, d.conversation_id, e.id, d.state
                      FROM conversation_dispatches d
                      LEFT JOIN events e ON e.conversation_id=d.conversation_id
                        AND e.correlation_id=d.id AND e.author_membership_id=d.membership_id
@@ -40,22 +40,22 @@ impl ColdRecoverableConversationStore for ConversationStore {
                             row.get::<_, String>(0)?,
                             row.get::<_, String>(1)?,
                             row.get::<_, Option<String>>(2)?,
+                            row.get::<_, String>(3)?,
                         ))
                     })?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             };
             let mut report = ColdRecoveryReport::default();
-            for (dispatch_id, conversation_id, event_id) in recoverable {
+            for (dispatch_id, conversation_id, event_id, dispatch_state) in recoverable {
+                let dispatch_state = DispatchState::from_name(&dispatch_state)
+                    .ok_or_else(|| anyhow::anyhow!("runtime_dispatch_state_invalid"))?;
+                let failed = super::lifecycle::fail_dispatch(dispatch_state)
+                    .ok_or_else(|| anyhow::anyhow!("runtime_dispatch_transition_invalid"))?;
                 let changed = transaction.execute(
                     "UPDATE conversation_dispatches
                      SET state=?2, error_code=?3, updated_at=?4
                      WHERE id=?1 AND state IN ('accepted','running','cancel-requested')",
-                    params![
-                        dispatch_id,
-                        enum_wire(DispatchState::Failed)?,
-                        HOST_INTERRUPTED,
-                        now_ms(),
-                    ],
+                    params![dispatch_id, enum_wire(failed)?, HOST_INTERRUPTED, now_ms(),],
                 )?;
                 if changed > 0 {
                     report.recovered_dispatches += 1;

@@ -4,6 +4,13 @@
 //! value fails the build rather than shipping a wrong version.
 
 fn main() {
+    let source = "resources/state-machines/update-handoff.json";
+    println!("cargo:rerun-if-changed={source}");
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"))
+        .join("state_machines.rs");
+    licoup_state_machine_codegen::compile_file(source, output)
+        .expect("compile native client state machines");
+
     println!("cargo:rerun-if-env-changed=LICO_CLIENT_PRODUCT_VERSION");
     let Ok(value) = std::env::var("LICO_CLIENT_PRODUCT_VERSION") else {
         return;

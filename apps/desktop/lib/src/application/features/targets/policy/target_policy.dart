@@ -68,6 +68,7 @@ class TargetPolicy {
       'kilo-cli',
       'claude-settings',
       'codex-app-server',
+      'deepseek-harness-installed-adapter',
       'opencode-cli:models',
       'pi-cli:list-models',
     };

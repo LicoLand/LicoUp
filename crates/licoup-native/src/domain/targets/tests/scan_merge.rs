@@ -72,6 +72,7 @@ fn selected_catalog_reuses_every_manually_bound_cli() {
     for (target, parameter) in [
         ("antigravity", "antigravityCliPath"),
         ("claude-code", "claudeCliPath"),
+        ("codex", "codexCliPath"),
         ("cursor", "cursorCliPath"),
         ("deepseek-harness", "deepseekHarnessCliPath"),
         ("kilo-code", "kiloCliPath"),

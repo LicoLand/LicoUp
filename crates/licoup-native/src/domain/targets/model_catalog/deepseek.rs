@@ -19,10 +19,13 @@ const require = createRequire(pathToFileURL(entry));
 const modulePath = require.resolve('@deepseek-ai/dsh-llm-deepseek', {
   paths: [dirname(entry), join(dirname(entry), 'node_modules/@deepseek-ai/dsh')],
 });
-const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(modulePath));
+const { DeepSeekAdapter, resolveAdapterOptions, catalogModelInfo } =
+  await import(pathToFileURL(modulePath));
+const options = resolveAdapterOptions({});
 const adapter = new DeepSeekAdapter({
-  options: () => resolveAdapterOptions({}),
+  options: () => options,
   resolveFiles: () => ({}),
+  discoverModels: provider => options.models.map(row => catalogModelInfo(provider, row)),
 });
 const provider = adapter.providerInfo('deepseek-official');
 const models = [];

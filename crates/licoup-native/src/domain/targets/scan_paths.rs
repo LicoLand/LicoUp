@@ -289,6 +289,12 @@ pub fn binary_dirs(os: &str, roots: &HostRoots) -> Vec<PathBuf> {
         .collect()
 }
 
+pub fn agent_binary_dirs(agent_id: &str, os: &str, roots: &HostRoots) -> Vec<PathBuf> {
+    agent(agent_id)
+        .map(|agent| expand_os_paths(&agent.binaries, os, roots))
+        .unwrap_or_default()
+}
+
 pub fn config_path(agent_id: &str, os: &str, roots: &HostRoots) -> Option<PathBuf> {
     agent(agent_id).and_then(|agent| {
         agent.config.iter().find_map(|entry| {
@@ -790,6 +796,15 @@ mod tests {
     #[test]
     fn agent_specific_paths_apply_os_filters() {
         let roots = fixture_roots();
+        let codex_macos = agent_binary_dirs("codex", "macos", &roots);
+        assert_eq!(
+            codex_macos,
+            vec![
+                PathBuf::from("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin"),
+                PathBuf::from("/profile/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin"),
+            ]
+        );
+        assert!(agent_binary_dirs("codex", "linux", &roots).is_empty());
         assert!(
             binary_dirs("macos", &roots)
                 .iter()

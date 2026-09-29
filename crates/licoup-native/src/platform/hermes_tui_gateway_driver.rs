@@ -3,17 +3,13 @@ use super::hermes_tui_gateway::{
     GatewayClient, GatewayFailure, event_payload, event_session_id, event_type,
 };
 use super::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
+use crate::domain::client_conversation::{
+    TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
+};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-
-#[allow(dead_code)]
-#[path = "../../../licoup-conversation/src/state_machine/mod.rs"]
-mod conversation_state_machine;
-use conversation_state_machine::{
-    TurnEvent as CanonicalTurnEvent, TurnState as CanonicalTurnState,
-};
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 

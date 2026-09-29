@@ -2,11 +2,19 @@
   "schemaVersion": 1,
   "allowedJsonPaths": [
     {
+      "path": "crates/licoup-conversation/resources/state-machines.json",
+      "kind": "config-object"
+    },
+    {
       "path": "crates/licoup-extension-contracts/samples/echo-agent/manifest.json",
       "kind": "config-object"
     },
     {
       "path": "crates/licoup-extension-contracts/samples/echo-agent/wire_fixture.json",
+      "kind": "config-object"
+    },
+    {
+      "path": "crates/licoup-native/resources/state-machines/update-handoff.json",
       "kind": "config-object"
     },
     {

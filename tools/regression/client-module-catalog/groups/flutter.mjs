@@ -1710,6 +1710,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/application/features/layout/**",
         "apps/desktop/lib/src/composition/built_in_layout_composition.dart",
         "apps/desktop/lib/src/contracts/presentation/**",
+        "apps/desktop/lib/src/frontend/layout/layout_agents_directive.dart",
         "apps/desktop/lib/src/frontend/layout/layout_agents_strategy.dart",
         "apps/desktop/lib/src/frontend/layout/layout_chrome_features.dart",
         "apps/desktop/lib/src/frontend/layout/layout_chrome_port.dart",

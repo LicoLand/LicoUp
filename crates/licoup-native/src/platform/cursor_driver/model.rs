@@ -54,6 +54,22 @@ impl RunResult {
         stdout_truncated: bool,
         stderr_truncated: bool,
     ) -> Self {
+        Self::failed_with_status(
+            failure,
+            started_at,
+            stdout_truncated,
+            stderr_truncated,
+            None,
+        )
+    }
+
+    pub(super) fn failed_with_status(
+        failure: ProtocolFailure,
+        started_at: String,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        status_code: Option<i32>,
+    ) -> Self {
         let session_id = failure.session_id.clone().unwrap_or_default();
         let transitions =
             crate::platform::native_agent_parser::adapters::cursor::failure_transitions(
@@ -71,7 +87,7 @@ impl RunResult {
             turn_status: failure.turn_status.clone().unwrap_or_default(),
             effective: EffectiveSettings::default(),
             error: Some(failure),
-            status_code: None,
+            status_code,
             stdout_truncated,
             stderr_truncated,
             started_at,

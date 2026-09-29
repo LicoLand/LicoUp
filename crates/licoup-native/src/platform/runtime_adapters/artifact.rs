@@ -46,6 +46,22 @@ pub(super) fn runtime_executable(
     adapter: RuntimeAdapter,
     requested: &str,
 ) -> Result<String, RuntimeAdapterError> {
+    runtime_executable_with_discovery(
+        adapter,
+        requested,
+        crate::domain::targets::manual_runtime_executable,
+        crate::domain::targets::agent_cli_executable,
+        crate::domain::targets::available_runtime_executable,
+    )
+}
+
+pub(super) fn runtime_executable_with_discovery(
+    adapter: RuntimeAdapter,
+    requested: &str,
+    discover_manual: impl FnOnce(&str) -> Result<Option<std::path::PathBuf>, RuntimeAdapterError>,
+    discover_current: impl FnOnce(&str) -> Option<std::path::PathBuf>,
+    discover_cached: impl FnOnce(&str) -> Option<std::path::PathBuf>,
+) -> Result<String, RuntimeAdapterError> {
     if runtime_driver_profile(adapter.id()).is_none() {
         return Err(RuntimeAdapterError::RuntimeProfileUnavailable);
     }
@@ -55,17 +71,21 @@ pub(super) fn runtime_executable(
         // never an executable path. When such a turn carries the adapter's
         // default command, recover the exact executable from the same native
         // discovery authority used by one-to-one chat. This is especially
-        // important for product-bundled runtimes such as Kilo Code, whose
-        // official CLI may live inside an editor extension instead of PATH.
-        if requested == adapter.default_binary()
-            && let Some(discovered) =
-                crate::domain::targets::available_runtime_executable(adapter.id())
-                    .or_else(|| crate::domain::targets::agent_cli_executable(adapter.id()))
-        {
-            return discovered
-                .to_str()
-                .map(str::to_string)
-                .ok_or(RuntimeAdapterError::ExecutableUnavailable);
+        // important for product-bundled runtimes such as Codex and Kilo Code,
+        // whose official CLIs may live inside desktop or editor packages.
+        if requested == adapter.default_binary() {
+            if let Some(discovered) = default_runtime_discovery(
+                adapter,
+                adapter.id(),
+                discover_manual,
+                discover_current,
+                discover_cached,
+            )? {
+                return discovered
+                    .to_str()
+                    .map(str::to_string)
+                    .ok_or(RuntimeAdapterError::ExecutableUnavailable);
+            }
         }
         return Ok(requested.to_string());
     }
@@ -78,6 +98,23 @@ pub(super) fn runtime_executable(
         .to_str()
         .map(str::to_string)
         .ok_or(RuntimeAdapterError::ExecutableUnavailable)
+}
+
+fn default_runtime_discovery(
+    adapter: RuntimeAdapter,
+    target: &str,
+    discover_manual: impl FnOnce(&str) -> Result<Option<std::path::PathBuf>, RuntimeAdapterError>,
+    discover_current: impl FnOnce(&str) -> Option<std::path::PathBuf>,
+    discover_cached: impl FnOnce(&str) -> Option<std::path::PathBuf>,
+) -> Result<Option<std::path::PathBuf>, RuntimeAdapterError> {
+    if adapter == RuntimeAdapter::Codex {
+        let manual = discover_manual(target)?
+            .filter(|path| path.is_absolute())
+            .or_else(|| discover_current(target));
+        Ok(manual.or_else(|| discover_cached(target)))
+    } else {
+        Ok(discover_cached(target).or_else(|| discover_current(target)))
+    }
 }
 
 #[cfg(unix)]

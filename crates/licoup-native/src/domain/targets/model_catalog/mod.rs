@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const CODEX_RESERVE_MODEL: &str = "gpt-reserve";
+
 mod antigravity;
 mod builtin;
 mod claude;
@@ -69,6 +71,7 @@ pub(super) struct ModelCatalogEntry {
     pub(super) provider: Option<String>,
     pub(super) provider_id: Option<String>,
     pub(super) provider_inferred: bool,
+    pub(super) ephemeral: bool,
     pub(super) sources: BTreeSet<String>,
     /// Insertion-ordered and deduplicated so the built-in table controls the
     /// picker order for known models.
@@ -100,6 +103,7 @@ pub(super) fn model_catalog_for_target(
     let mut diagnostics = Vec::<Value>::new();
     let mut default_model = None::<String>;
     let mut authoritative_native_catalog = false;
+    let mut codex_reserve_authorized = false;
     if let Some(fixture) = model_catalog_fixture_for_target(target, params) {
         default_model = fixture
             .get("defaultModel")
@@ -117,12 +121,35 @@ pub(super) fn model_catalog_for_target(
     // Codex App Server is a live projection, not an exclusive directory.
     // Merge it with ~/.codex/models_cache.json and model-catalogs so custom
     // providers (for example DeepSeek) and cache-only rows stay selectable.
+    // Reuse the executable selected by target discovery when present. A stale
+    // PATH wrapper can coexist with the packaged ChatGPT Codex binary; doing a
+    // second PATH lookup here would make the live account response disappear.
+    let codex_binary = if target == "codex" {
+        param_string(params, "codexCliPath")
+            .map(PathBuf::from)
+            .filter(|path| path.is_file())
+            .or_else(|| find_binary(&["codex"]))
+    } else {
+        None
+    };
     if target == "codex"
         && model_catalog_fixture_for_target(target, params).is_none()
         && agent_cli_model_lookup_enabled(params)
-        && let Some(binary) = find_binary(&["codex"])
+        && let Some(binary) = codex_binary
         && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
     {
+        codex_reserve_authorized = catalog
+            .get("models")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|model| {
+                model
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|name| name.eq_ignore_ascii_case(CODEX_RESERVE_MODEL))
+                    && model.get("ephemeral").and_then(Value::as_bool) == Some(true)
+            });
         if default_model.is_none() {
             default_model = catalog
                 .get("defaultModel")
@@ -286,6 +313,15 @@ pub(super) fn model_catalog_for_target(
     }
     if target == "cursor" {
         remove_cursor_independent_reasoning_efforts(&mut entries);
+    }
+    if target == "codex" && !codex_reserve_authorized {
+        if default_model
+            .as_deref()
+            .is_some_and(|name| name.eq_ignore_ascii_case(CODEX_RESERVE_MODEL))
+        {
+            default_model = None;
+        }
+        entries.retain(|_, entry| !entry.name.eq_ignore_ascii_case(CODEX_RESERVE_MODEL));
     }
 
     build_model_catalog(target, entries, sources, diagnostics, default_model)

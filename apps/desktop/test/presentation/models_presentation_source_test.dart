@@ -151,7 +151,7 @@ void main() {
       await actions.createGatewayCredential(
         provider: 'openai',
         label: 'work',
-        apiKey: 'test-api-key',
+        apiKey: 'synthetic',
         leaseDays: 7,
       );
       await actions.updateGatewayCredential(
@@ -189,7 +189,7 @@ void main() {
       final create = intents.values[9] as CreateGatewayCredential;
       expect(create.provider, 'openai');
       expect(create.label, 'work');
-      expect(create.apiKey, 'test-api-key');
+      expect(create.apiKey, 'synthetic');
       expect(create.leaseDays, 7);
       final update = intents.values[10] as UpdateGatewayCredential;
       expect(update.credentialId, 'credential-1');

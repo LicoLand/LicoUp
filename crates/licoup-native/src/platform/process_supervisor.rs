@@ -247,6 +247,67 @@ impl SupervisedChild {
         }
     }
 
+    /// Waits for the supervised process to exit without imposing a cleanup
+    /// grace. On Unix, the leader is observed with WNOWAIT so its process-group
+    /// ID remains reserved until the caller removes its cancellation entry and
+    /// calls `terminate_tree`. On Windows, the job handle remains the stable
+    /// cleanup identity, so the existing group wait is sufficient.
+    pub(super) fn wait_for_natural_exit(
+        &mut self,
+        deadline: Option<Instant>,
+    ) -> Result<bool, LifecycleFailure> {
+        if self.cleaned {
+            return self
+                .child
+                .try_wait()
+                .map(|status| status.is_some())
+                .map_err(|_| LifecycleFailure::Wait);
+        }
+
+        #[cfg(unix)]
+        loop {
+            let mut info = unsafe { std::mem::zeroed::<libc::siginfo_t>() };
+            let result = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    self.pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                )
+            };
+            if result != 0 {
+                if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(LifecycleFailure::Wait);
+            }
+            if unsafe { info.si_pid() } != 0 {
+                return Ok(true);
+            }
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return Ok(false);
+            }
+            thread::sleep(PROCESS_POLL_INTERVAL);
+        }
+
+        #[cfg(not(unix))]
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => {
+                    self.cleaned = true;
+                    return Ok(true);
+                }
+                Ok(None) => {
+                    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                        return Ok(false);
+                    }
+                    thread::sleep(PROCESS_POLL_INTERVAL);
+                }
+                Err(_) => return Err(LifecycleFailure::Wait),
+            }
+        }
+    }
+
     /// Gives a batch-style child a bounded opportunity to report its natural
     /// exit status before terminating any process tree it left behind. The
     /// root stays unreaped during the grace period so its process-group ID

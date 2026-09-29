@@ -172,6 +172,13 @@ unknown shapes, gaps, and incomplete or failed steps keep startup closed with a
 stable privacy-safe error code. A committed step is reconciled and not replayed
 after a crash. Durable user and security state is never silently reset.
 
+The native build generates the update-handoff and Adaptive Flywheel artifact
+state types and transitions from one declarative state-machine resource. The
+handoff owner validates and persists the generated pending-to-claimed transition;
+the strategy-store owner applies generated transitions through the existing
+SQLite migration APIs. These modules own admission effects, while the generated
+tables remain the transition authority.
+
 The current admission implementation can recover by reinstalling the same
 verified capable build or a newer signed build and retrying. It denies an older
 binary after high-water advances. Supporting explicit downgrade requires the

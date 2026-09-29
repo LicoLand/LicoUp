@@ -1,10 +1,14 @@
 //! Canonical client-owned Conversation records.
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use serde::{Deserialize, Serialize};
 
 use crate::store::NativeSessionReference;
 
 pub use crate::state_machine::TurnState;
+pub use crate::state_machine::conversation_dispatch::State as DispatchState;
+pub use crate::state_machine::conversation_dispatch_delivery::State as DispatchDeliveryState;
+pub use crate::state_machine::conversation_membership::State as MembershipStatus;
+pub use crate::state_machine::conversation_subagent_claim::State as SubagentDispatchClaimState;
 
 pub const CONVERSATION_SCHEMA_VERSION: &str = "lico.conversation.v1";
 pub const DEFAULT_LOCAL_AGENT_GROUP_ID: &str = "lico-group-default";
@@ -33,13 +37,6 @@ pub enum PrincipalKind {
 pub enum MembershipAccess {
     Owner,
     Member,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MembershipStatus {
-    Active,
-    Left,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -411,30 +408,6 @@ pub struct ConversationDispatch {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum DispatchState {
-    Accepted,
-    Running,
-    Completed,
-    Failed,
-    CancelRequested,
-    Cancelled,
-}
-
-impl DispatchState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Accepted => "accepted",
-            Self::Running => "running",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::CancelRequested => "cancel-requested",
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum DispatchSessionMode {
     New,
     Resume,
@@ -453,31 +426,6 @@ pub struct SubagentDispatchClaim {
     pub state: SubagentDispatchClaimState,
     pub created_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SubagentDispatchClaimState {
-    Claimed,
-    Running,
-    CancelRequested,
-    ReconciliationRequired,
-    Completed,
-    Failed,
-    Cancelled,
-}
-
-impl SubagentDispatchClaimState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Claimed => "claimed",
-            Self::Running => "running",
-            Self::CancelRequested => "cancel-requested",
-            Self::ReconciliationRequired => "reconciliation-required",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
 }
 
 /// Privacy-safe Subagent MCP edge status. Identifiers and prompts stay out.
@@ -519,33 +467,9 @@ impl DispatchDeliveryKind {
 }
 
 /// Settlement lifecycle of a dispatch delivery.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DispatchDeliveryState {
-    Pending,
-    Delivering,
-    Delivered,
-    Failed,
-}
-
 impl DispatchDeliveryState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Delivering => "delivering",
-            Self::Delivered => "delivered",
-            Self::Failed => "failed",
-        }
-    }
-
     pub fn from_wire(s: &str) -> Option<Self> {
-        match s {
-            "pending" => Some(Self::Pending),
-            "delivering" => Some(Self::Delivering),
-            "delivered" => Some(Self::Delivered),
-            "failed" => Some(Self::Failed),
-            _ => None,
-        }
+        Self::from_name(s)
     }
 }
 
@@ -641,37 +565,6 @@ pub struct DirectTurn {
     pub ordinal: i64,
 }
 
-impl Serialize for TurnState {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(match self {
-            Self::Pending => "pending",
-            Self::Claimed => "claimed",
-            Self::Running => "running",
-            Self::WaitingForHuman => "waiting-for-human",
-            Self::Succeeded => "succeeded",
-            Self::Failed => "failed",
-            Self::Interrupted => "interrupted",
-            Self::Cancelled => "cancelled",
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for TurnState {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        match String::deserialize(deserializer)?.as_str() {
-            "pending" => Ok(Self::Pending),
-            "claimed" => Ok(Self::Claimed),
-            "running" => Ok(Self::Running),
-            "waiting-for-human" => Ok(Self::WaitingForHuman),
-            "succeeded" => Ok(Self::Succeeded),
-            "failed" => Ok(Self::Failed),
-            "interrupted" => Ok(Self::Interrupted),
-            "cancelled" => Ok(Self::Cancelled),
-            _ => Err(de::Error::custom("invalid turn state")),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -735,5 +628,56 @@ mod tests {
 
         let missing_fields = image_part(r#"{"path":"fixtures/a.png"}"#.to_owned());
         assert_eq!(missing_fields.image_attachment(), None);
+    }
+
+    fn assert_generated_state_wire<T>(state: T, wire_name: &str)
+    where
+        T: Copy + PartialEq + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned,
+    {
+        let encoded = serde_json::to_string(&state).unwrap();
+        assert_eq!(encoded, format!("\"{wire_name}\""));
+        assert_eq!(serde_json::from_str::<T>(&encoded).unwrap(), state);
+    }
+
+    #[test]
+    fn generated_lifecycle_states_keep_persisted_wire_names() {
+        let turn = TurnState::WaitingForHuman;
+        assert_eq!(turn.as_str(), "waiting-for-human");
+        assert_eq!(TurnState::from_name("waiting-for-human"), Some(turn));
+        assert_generated_state_wire(turn, "waiting-for-human");
+
+        let send = crate::state_machine::SendState::Delivered;
+        assert_eq!(send.as_str(), "delivered");
+        assert_eq!(
+            crate::state_machine::SendState::from_name("delivered"),
+            Some(send)
+        );
+        assert_generated_state_wire(send, "delivered");
+
+        let membership = MembershipStatus::Left;
+        assert_eq!(membership.as_str(), "left");
+        assert_eq!(MembershipStatus::from_name("left"), Some(membership));
+        assert_generated_state_wire(membership, "left");
+
+        let dispatch = DispatchState::CancelRequested;
+        assert_eq!(dispatch.as_str(), "cancel-requested");
+        assert_eq!(DispatchState::from_name("cancel-requested"), Some(dispatch));
+        assert_generated_state_wire(dispatch, "cancel-requested");
+
+        let claim = SubagentDispatchClaimState::ReconciliationRequired;
+        assert_eq!(claim.as_str(), "reconciliation-required");
+        assert_eq!(
+            SubagentDispatchClaimState::from_name("reconciliation-required"),
+            Some(claim)
+        );
+        assert_generated_state_wire(claim, "reconciliation-required");
+
+        let delivery = DispatchDeliveryState::Delivering;
+        assert_eq!(delivery.as_str(), "delivering");
+        assert_eq!(
+            DispatchDeliveryState::from_name("delivering"),
+            Some(delivery)
+        );
+        assert_generated_state_wire(delivery, "delivering");
     }
 }

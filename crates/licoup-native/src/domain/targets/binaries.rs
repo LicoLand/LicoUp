@@ -35,6 +35,9 @@ pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<Path
     if def.id == "command-code" {
         return find_command_code_binary();
     }
+    if def.id == "codex" {
+        return find_codex_binary_with_source().map(|(path, _)| path);
+    }
     if def.id != "cursor" {
         return find_binary(def.binary_names);
     }
@@ -82,6 +85,9 @@ pub(super) fn find_target_binary_with_source(
     def: &TargetDef,
     params: &Value,
 ) -> Option<(PathBuf, &'static str)> {
+    if def.id == "codex" {
+        return find_codex_binary_with_source();
+    }
     if let Some(path) = find_target_binary(def, params) {
         let source = classify_binary_source(&path);
         return Some((path, source));
@@ -90,6 +96,31 @@ pub(super) fn find_target_binary_with_source(
         let source = classify_binary_source(&path);
         (path, source)
     })
+}
+
+/// Prefer the official desktop package entrypoint; standalone Codex CLIs stay
+/// available when no packaged runtime is installed.
+fn find_codex_binary_with_source() -> Option<(PathBuf, &'static str)> {
+    let roots = HostRoots::from_environment();
+    let os = std::env::consts::OS;
+    let bundled_dirs = scan_paths::agent_binary_dirs("codex", os, &roots);
+    find_codex_binary_with_source_from_dirs(
+        &bundled_dirs,
+        || crate::platform::user_shell_environment::search_path_dirs(),
+        || scan_paths::binary_dirs(os, &roots),
+    )
+}
+
+fn find_codex_binary_with_source_from_dirs(
+    bundled_dirs: &[PathBuf],
+    path_dirs: impl FnOnce() -> Vec<PathBuf>,
+    fallback_dirs: impl FnOnce() -> Vec<PathBuf>,
+) -> Option<(PathBuf, &'static str)> {
+    let candidate = find_binary_in_dirs(&["codex"], bundled_dirs)
+        .or_else(|| find_binary_in_dirs(&["codex"], &path_dirs()))
+        .or_else(|| find_binary_in_dirs(&["codex"], &fallback_dirs()))?;
+    let source = classify_binary_source(&candidate);
+    Some((candidate, source))
 }
 
 /// Some targets ship their official executable inside a product package
@@ -457,7 +488,6 @@ mod tests {
                 "app",
                 "bin",
             ]),
-            posix_path(&["Applications", "ChatGPT.app", "Contents", "Resources"]),
             posix_path(&["profile", ".local", "bin"]),
             posix_path(&["profile", ".nvm", "current", "bin"]),
             posix_path(&["profile", ".local", "share", "mise", "shims"]),
@@ -489,6 +519,62 @@ mod tests {
             classify_binary_source(&posix_path(&["custom", "bin", "codex"])),
             BINARY_SOURCE_EXECUTABLE_PATH
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_bundle_precedes_a_stale_path_wrapper_and_cli_path_remains_a_fallback() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_temp_dir("codex-bundle-precedence");
+        let path_dir = dir.join("shell-bin");
+        let bundled_dir = dir.join("Applications/ChatGPT.app/Contents/Resources/codex-cli/bin");
+        fs::create_dir_all(&path_dir).unwrap();
+        fs::create_dir_all(&bundled_dir).unwrap();
+
+        let stale_wrapper = path_dir.join("codex");
+        fs::write(
+            &stale_wrapper,
+            "#!/bin/sh\nexec /missing/vendor/codex \"$@\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&stale_wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+        let bundled_cli = bundled_dir.join("codex");
+        fs::write(&bundled_cli, "synthetic packaged Codex entrypoint").unwrap();
+
+        let found = find_codex_binary_with_source_from_dirs(
+            std::slice::from_ref(&bundled_dir),
+            || panic!("bundle hit must not read shell PATH"),
+            || panic!("bundle hit must not enumerate fallback paths"),
+        )
+        .unwrap();
+        assert_eq!(found.0, bundled_cli);
+        assert_eq!(found.1, BINARY_SOURCE_APPLICATION_STORE);
+
+        fs::remove_file(&bundled_cli).unwrap();
+        fs::remove_file(&stale_wrapper).unwrap();
+        let independent_cli = path_dir.join("codex");
+        fs::write(&independent_cli, "synthetic independent Codex CLI").unwrap();
+        let found = find_codex_binary_with_source_from_dirs(
+            &[],
+            || vec![path_dir.clone()],
+            || panic!("PATH hit must not enumerate fallback paths"),
+        )
+        .unwrap();
+        assert_eq!(found.0, independent_cli);
+        assert_eq!(found.1, BINARY_SOURCE_EXECUTABLE_PATH);
+
+        let manifest_dir = dir.join("manifest-bin");
+        fs::create_dir_all(&manifest_dir).unwrap();
+        let manifest_cli = manifest_dir.join("codex");
+        fs::write(&manifest_cli, "synthetic manifest Codex candidate").unwrap();
+        let found =
+            find_codex_binary_with_source_from_dirs(&[], Vec::new, || vec![manifest_dir.clone()])
+                .unwrap();
+        assert_eq!(found.0, manifest_cli);
+        assert_eq!(found.1, BINARY_SOURCE_EXECUTABLE_PATH);
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

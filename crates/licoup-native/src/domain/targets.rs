@@ -34,6 +34,15 @@ pub(crate) fn available_runtime_executable(target: &str) -> Option<PathBuf> {
     runtime_binding::available_runtime_executable(target)
 }
 
+pub(crate) fn manual_runtime_executable(
+    target: &str,
+) -> Result<Option<PathBuf>, crate::platform::runtime_adapters::RuntimeAdapterError> {
+    runtime_binding::manual_runtime_executable(target)
+}
+
+#[cfg(test)]
+pub(crate) use runtime_binding::manual_runtime_executable_from_store;
+
 /// CLI/runtime executable presence for the adapter management catalog: the
 /// agent's official binary names on the automatic search dirs, or a verified
 /// product-bundled executable (editor extension or desktop bundle).
