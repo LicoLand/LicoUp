@@ -7,6 +7,7 @@ mod launch;
 pub(in crate::platform) mod limits;
 pub(in crate::platform) mod model;
 mod model_catalog;
+pub(in crate::platform) mod reserve;
 mod supervision;
 mod transport;
 

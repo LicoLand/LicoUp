@@ -417,6 +417,7 @@ pub(super) fn model_catalog_params(
     let parameter = match target {
         "antigravity" => "antigravityCliPath",
         "claude-code" => "claudeCliPath",
+        "codex" => "codexCliPath",
         "cursor" => "cursorCliPath",
         "deepseek-harness" => "deepseekHarnessCliPath",
         "kilo-code" => "kiloCliPath",

@@ -12,6 +12,8 @@ use crate::platform::client_state::{
     ClientStateStore, TARGET_DISCOVERY_CACHE_SCHEMA as CACHE_SCHEMA, TargetRouteRecord,
 };
 
+const CODEX_RESERVE_MODEL: &str = "gpt-reserve";
+
 pub(super) fn persist_discovery_cache(
     store: &ClientStateStore,
     candidates: &[TargetCandidate],
@@ -166,7 +168,31 @@ fn persisted_scan_catalog(catalog: Option<&Value>) -> Option<Value> {
     if !model_catalog_has_models(Some(catalog)) || is_builtin_fallback(catalog) {
         return None;
     }
-    Some(catalog.clone())
+    let mut persisted = catalog.clone();
+    let codex_catalog = catalog
+        .get("sources")
+        .and_then(Value::as_array)
+        .is_some_and(|sources| {
+            sources.iter().any(|source| {
+                source
+                    .as_str()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("codex-app-server"))
+            })
+        });
+    let models = persisted.get_mut("models")?.as_array_mut()?;
+    models.retain(|model| {
+        model.get("ephemeral").and_then(Value::as_bool) != Some(true)
+            && model
+                .get("name")
+                .and_then(Value::as_str)
+                .is_none_or(|name| {
+                    !codex_catalog || !name.eq_ignore_ascii_case(CODEX_RESERVE_MODEL)
+                })
+    });
+    if models.is_empty() {
+        return None;
+    }
+    Some(persisted)
 }
 
 fn model_catalog_has_models(catalog: Option<&Value>) -> bool {
@@ -299,6 +325,35 @@ mod tests {
         assert!(item.get("historyRoots").is_none());
         assert_eq!(item["modelCatalog"]["models"][0]["name"], "gemini-3");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cache_drops_quota_dependent_reserve_rows() {
+        let root = temp_test_dir("drop-reserve-row");
+        let store = ClientStateStore::new(root.join("client-state")).unwrap();
+        let mut item = candidate(
+            Some(root.join("codex").to_string_lossy().into_owned()),
+            Some(root.join("config.toml").to_string_lossy().into_owned()),
+        );
+        item.model_catalog = Some(json!({
+            "schemaVersion": 1,
+            "status": "available",
+            "sources": ["codex-app-server"],
+            "models": [
+                {"name": "gpt-6-luna"},
+                {"name": "gpt-reserve"},
+                {"name": "gpt-reserve", "ephemeral": true}
+            ],
+            "diagnostics": []
+        }));
+        persist_discovery_cache(&store, &[item]).unwrap();
+        let document = store.read_collection(COLLECTION).unwrap();
+        let models = document["items"][0]["modelCatalog"]["models"]
+            .as_array()
+            .unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["name"], "gpt-6-luna");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

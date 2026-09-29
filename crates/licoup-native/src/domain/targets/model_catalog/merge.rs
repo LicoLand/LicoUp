@@ -48,7 +48,7 @@ pub(super) fn merge_model_catalog_value_into(
         }
         let efforts = reasoning_efforts_from_value(model);
         let display_name = model_display_name_from_value(model, &name);
-        add_model_catalog_entry_with_provider(
+        let Some(entry) = add_model_catalog_entry_with_provider(
             entries,
             &name,
             display_name.as_deref(),
@@ -56,7 +56,12 @@ pub(super) fn merge_model_catalog_value_into(
             provider_name_from_model_value(model).as_deref(),
             source,
             efforts,
-        );
+        ) else {
+            continue;
+        };
+        if model.get("ephemeral").and_then(Value::as_bool) == Some(true) {
+            entry.ephemeral = true;
+        }
     }
 }
 
@@ -66,7 +71,7 @@ pub(super) fn add_model_catalog_entry(
     source: &str,
     reasoning_efforts: BTreeSet<String>,
 ) {
-    add_model_catalog_entry_with_provider(
+    let _ = add_model_catalog_entry_with_provider(
         entries,
         name,
         None,
@@ -77,17 +82,17 @@ pub(super) fn add_model_catalog_entry(
     );
 }
 
-pub(super) fn add_model_catalog_entry_with_provider(
-    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+pub(super) fn add_model_catalog_entry_with_provider<'a>(
+    entries: &'a mut BTreeMap<String, ModelCatalogEntry>,
     name: &str,
     display_name: Option<&str>,
     provider_id: Option<&str>,
     provider_name: Option<&str>,
     source: &str,
     reasoning_efforts: BTreeSet<String>,
-) {
+) -> Option<&'a mut ModelCatalogEntry> {
     let Some(name) = sanitize_model_name(name) else {
-        return;
+        return None;
     };
     let provider_id = provider_id.and_then(sanitize_option_name);
     let provider_name = provider_name.and_then(sanitize_option_name);
@@ -113,6 +118,7 @@ pub(super) fn add_model_catalog_entry_with_provider(
         provider,
         provider_id: provider_id.clone(),
         provider_inferred: false,
+        ephemeral: false,
         name: entry_name,
         display_name: display_name.clone(),
         sources: BTreeSet::new(),
@@ -135,6 +141,7 @@ pub(super) fn add_model_catalog_entry_with_provider(
     }
     entry.sources.insert(source.to_string());
     entry.extend_reasoning_efforts(reasoning_efforts);
+    Some(entry)
 }
 
 /// Kimi history may store the same native selector as `kimi-code/<id>` while
@@ -232,6 +239,9 @@ pub(super) fn model_catalog_entry_json(entry: ModelCatalogEntry) -> Value {
         "sources": entry.sources.into_iter().collect::<Vec<_>>(),
         "reasoningEfforts": entry.reasoning_efforts.into_iter().collect::<Vec<_>>(),
     });
+    if entry.ephemeral {
+        object["ephemeral"] = json!(true);
+    }
     if let Some(map) = object.as_object_mut() {
         crate::domain::agent_intelligence_catalog::attach_allowlisted_model_fields(
             &entry.name,

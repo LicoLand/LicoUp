@@ -88,6 +88,107 @@ fn native_catalog_uses_shared_display_typography_for_unresolved_models() {
     }
 }
 
+#[test]
+fn ephemeral_models_are_presented_before_the_regular_catalog() {
+    let mut entries = BTreeMap::new();
+    add_model_catalog_entry(&mut entries, "gpt-6-luna", "native-cli", BTreeSet::new());
+    add_model_catalog_entry(
+        &mut entries,
+        "gpt-reserve",
+        "codex-app-server",
+        BTreeSet::new(),
+    );
+    entries
+        .get_mut("gpt-reserve")
+        .expect("reserve entry")
+        .ephemeral = true;
+
+    let catalog = build_model_catalog(
+        "test-target",
+        entries,
+        BTreeSet::from(["codex-app-server".to_owned()]),
+        Vec::new(),
+        None,
+    );
+    assert_eq!(catalog["models"][0]["name"], "gpt-reserve");
+    assert_eq!(catalog["models"][0]["ephemeral"], true);
+}
+
+#[test]
+fn codex_reserve_rows_from_non_authoritative_sources_are_hidden() {
+    let catalog = model_catalog_for_target(
+        "codex",
+        None,
+        &json!({
+            "includeHistoryModelCatalog": false,
+            "modelCatalogFixture": {
+                "codex": {
+                    "defaultModel": "gpt-reserve",
+                    "models": [
+                        {"name": "gpt-6-luna"},
+                        {"name": "gpt-reserve"}
+                    ]
+                }
+            }
+        }),
+    );
+    assert_eq!(catalog["defaultModel"], "");
+    assert!(
+        catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|model| model["name"] != "gpt-reserve")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_catalog_reuses_the_selected_binary_for_live_rate_limits() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_test_dir("codex-selected-catalog");
+    let executable = root.join("codex");
+    fs::write(
+        &executable,
+        r##"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"id":91001'*) printf '%s\n' '{"id":91001,"result":{}}' ;;
+    *'"id":91003'*) printf '%s\n' '{"id":91003,"result":{"ordinaryUsageAllowed":false,"rateLimitUpsell":{"banner_type":"luna_reserve"},"rateLimitsByLimitId":{"base_model_inference":{"limitName":"gpt-reserve"}}}}' ;;
+    *'"id":91002'*) printf '%s\n' '{"id":91002,"result":{"data":[{"model":"gpt-6-luna","displayName":"GPT-6 Luna","hidden":false}]}}' ;;
+  esac
+done
+"##,
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let catalog = model_catalog_for_target(
+        "codex",
+        None,
+        &json!({
+            "includeHistoryModelCatalog": false,
+            "enableAgentCliModelLookup": true,
+            "codexCliPath": display_path(executable),
+        }),
+    );
+
+    assert!(
+        catalog["sources"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("codex-app-server"))
+    );
+    let reserve = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["name"] == "gpt-reserve")
+        .unwrap();
+    assert_eq!(reserve["ephemeral"], true);
+}
+
 // Catalog tests must not discover the developer's real Agent configuration or
 // launch a login shell. Explicit fixture homes remain owned by each case.
 fn model_catalog_for_target(target: &str, config_path: Option<&Path>, params: &Value) -> Value {

@@ -41,8 +41,17 @@ pub(super) fn ordered_model_entries(
     rows.sort_by(
         |(left, left_provider, left_version, left_score),
          (right, right_provider, right_version, right_score)| {
-            official_provider_rank(target, left_provider)
-                .cmp(&official_provider_rank(target, right_provider))
+            // Ephemeral rows are live availability signals (for example
+            // Codex's quota reserve model). Keep them at the top of the
+            // picker while they are present so a bounded popup cannot hide
+            // the only model the user can currently use.
+            right
+                .ephemeral
+                .cmp(&left.ephemeral)
+                .then_with(|| {
+                    official_provider_rank(target, left_provider)
+                        .cmp(&official_provider_rank(target, right_provider))
+                })
                 .then_with(|| left_provider.cmp(right_provider))
                 .then_with(|| right_version.cmp(left_version))
                 .then_with(|| right_score.cmp(left_score))
