@@ -15,7 +15,8 @@ fn mls_join_missing_snapshot_rejects_existing_durable_authority_before_crypto() 
         "lico-mls-join-durable-authority-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let identity_key = SigningKey::generate(&mut OsRng);
     let signing_key = SigningKey::generate(&mut OsRng);
     let identity = DeviceTrustPublicIdentity::new(
@@ -51,6 +52,6 @@ fn mls_join_missing_snapshot_rejects_existing_durable_authority_before_crypto() 
     .unwrap_err();
     assert!(error.to_string().contains("diverges from durable metadata"));
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

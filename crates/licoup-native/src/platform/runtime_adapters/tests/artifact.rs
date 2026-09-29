@@ -38,7 +38,8 @@ fn kilo_default_command_uses_the_native_discovery_binding_for_group_turns() {
     let executable = root.join("extension/bin/kilo");
     fs::create_dir_all(executable.parent().unwrap()).unwrap();
     fs::write(&executable, b"fixture").unwrap();
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let store = ClientStateStore::portable().unwrap();
     store
         .write_target_routes(&[TargetRouteRecord {
@@ -54,7 +55,7 @@ fn kilo_default_command_uses_the_native_discovery_binding_for_group_turns() {
         .unwrap();
 
     let resolved = runtime_executable(RuntimeAdapter::KiloCode, "kilo").unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
 
     assert_eq!(
         resolved,

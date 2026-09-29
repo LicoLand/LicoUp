@@ -1,5 +1,5 @@
 // Privacy-safe OpenClaw update projection owned by its parser adapter.
-use crate::core::acp::{AcpSessionUpdate, AcpSessionUpdateKind};
+use licoup_foundation::core::acp::{AcpSessionUpdate, AcpSessionUpdateKind};
 use serde_json::{Value, json};
 
 /// Project only fields needed by the client. OpenClaw metadata, session keys,

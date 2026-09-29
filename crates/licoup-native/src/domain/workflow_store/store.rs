@@ -35,7 +35,7 @@ pub struct StrategyStore {
 impl StrategyStore {
     pub fn open(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
-        crate::platform::file_security::ensure_private_dir(&root)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let db_path = root.join(DATABASE_FILE);
         let existed = db_path.exists();
         let store = Self {
@@ -49,33 +49,33 @@ impl StrategyStore {
                 initialize_schema(connection)
             }
         })?;
-        crate::platform::file_security::harden_private_path(&store.db_path)?;
+        licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
         store.remove_retired_revision_trees(&retired);
         Ok(store)
     }
 
     pub(crate) fn open_for_migration(portable_root: &Path) -> Result<Self> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
-        crate::platform::file_security::ensure_private_dir(&root)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let store = Self {
             db_path: root.join(DATABASE_FILE),
             package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
         };
         let retired = store.with_connection(initialize_schema)?;
-        crate::platform::file_security::harden_private_path(&store.db_path)?;
+        licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
         store.remove_retired_revision_trees(&retired);
         Ok(store)
     }
 
     pub(crate) fn migrate_to_schema_2(portable_root: &Path) -> Result<()> {
         let root = portable_root.join("client-state").join("adaptive-flywheel");
-        crate::platform::file_security::ensure_private_dir(&root)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
         let store = Self {
             db_path: root.join(DATABASE_FILE),
             package_revisions_root: Some(root.join("strategy-packages").join("revisions")),
         };
         let retired = store.with_connection(initialize_schema_2)?;
-        crate::platform::file_security::harden_private_path(&store.db_path)?;
+        licoup_foundation::platform::file_security::harden_private_path(&store.db_path)?;
         store.remove_retired_revision_trees(&retired);
         Ok(())
     }

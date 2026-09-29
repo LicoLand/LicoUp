@@ -1,7 +1,7 @@
 use super::errors::ProtocolFailure;
 use super::model::CapabilityProbe;
 use super::params::ProtocolConfig;
-use crate::core::acp::AcpSessionMethod;
+use licoup_foundation::core::acp::AcpSessionMethod;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum AcpSessionPlan {

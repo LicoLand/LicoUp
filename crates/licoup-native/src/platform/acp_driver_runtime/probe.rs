@@ -7,7 +7,7 @@ use super::io::{drain_stderr, write_message};
 use super::model::{AcpDriverSpec, AcpParserKind, CapabilityProbe, PROCESS_POLL_INTERVAL};
 use super::protocol::INITIALIZE_REQUEST_ID;
 use super::supervision::{LaunchSpec, acp_pipe_failure};
-use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation};
+use licoup_foundation::core::acp::{self, AcpClientCapabilities, AcpImplementation};
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;

@@ -17,7 +17,7 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
 
 /// The desktop owns the custody helper, while independently supervised
 /// sidecars remain in the outer app's executable directory.
-pub(crate) fn desktop_bundle_for_cli(executable: &Path) -> Option<&Path> {
+pub fn desktop_bundle_for_cli(executable: &Path) -> Option<&Path> {
     if !executable.ends_with("Contents/Helpers/LicoUpCustody.app/Contents/MacOS/licoup-cli") {
         return None;
     }
@@ -28,7 +28,7 @@ pub(crate) fn desktop_bundle_for_cli(executable: &Path) -> Option<&Path> {
     })
 }
 
-pub(crate) fn packaged_binary_directory(executable: &Path) -> Option<PathBuf> {
+pub fn packaged_binary_directory(executable: &Path) -> Option<PathBuf> {
     match desktop_bundle_for_cli(executable) {
         Some(bundle) => Some(bundle.join("Contents/MacOS")),
         None => executable.parent().map(Path::to_path_buf),
@@ -47,7 +47,7 @@ pub fn portable_data_dir() -> Result<PathBuf> {
 
 /// Resolve the current LicoUp state root lexically without creating or
 /// hardening it. Read-only observers use this before opening existing state.
-pub(crate) fn portable_data_dir_read_only() -> Result<PathBuf> {
+pub fn portable_data_dir_read_only() -> Result<PathBuf> {
     if let Some(path) = portable_data_dir_override() {
         return Ok(path);
     }
@@ -92,7 +92,7 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
 /// Music, and Movies by joining `$HOME`; that is path construction, not a TCC
 /// trigger. Keep this owner anyway so home resolution stays lexical, firmlink-
 /// normalized, and independent of that crate.
-pub(crate) fn user_home_from_env() -> Option<PathBuf> {
+pub fn user_home_from_env() -> Option<PathBuf> {
     env_home_from(|name| env::var_os(name))
 }
 
@@ -103,12 +103,7 @@ fn macos_data_volume_prefix() -> PathBuf {
     Path::new("/").join("System").join("Volumes").join("Data")
 }
 
-#[cfg(test)]
-pub(crate) fn posix_absolute(parts: &[&str]) -> PathBuf {
-    PathBuf::from(format!("/{}", parts.join("/")))
-}
-
-pub(crate) fn strip_macos_data_volume(path: &Path) -> PathBuf {
+pub fn strip_macos_data_volume(path: &Path) -> PathBuf {
     match path.strip_prefix(macos_data_volume_prefix()) {
         Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("/"),
         Ok(rest) => Path::new("/").join(rest),
@@ -116,7 +111,7 @@ pub(crate) fn strip_macos_data_volume(path: &Path) -> PathBuf {
     }
 }
 
-pub(crate) fn env_home_from<F>(var: F) -> Option<PathBuf>
+pub fn env_home_from<F>(var: F) -> Option<PathBuf>
 where
     F: Fn(&str) -> Option<OsString>,
 {

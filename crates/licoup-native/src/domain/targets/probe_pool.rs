@@ -38,7 +38,7 @@ where
     }
     let worker_count = concurrency.clamp(1, probes.len());
     let (result_queue, result_worker) =
-        crate::core::task_queue::bounded::<(usize, Result<R>)>(worker_count)
+        licoup_foundation::core::task_queue::bounded::<(usize, Result<R>)>(worker_count)
             .map_err(|error| anyhow!(error))?;
     let next_probe = AtomicUsize::new(0);
     let probe_count = probes.len();

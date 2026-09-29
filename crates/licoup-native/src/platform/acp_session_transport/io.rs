@@ -1,6 +1,6 @@
 use super::super::process_supervisor::BoundedStdinWriter;
-use crate::core::acp;
 use crate::platform::raw_execution::{RawExecutionDirection, RawExecutionObserver};
+use licoup_foundation::core::acp;
 use serde_json::Value;
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};

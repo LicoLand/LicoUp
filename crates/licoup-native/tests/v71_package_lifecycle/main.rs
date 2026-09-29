@@ -5,7 +5,7 @@
 //! What is real here: a real managed root on disk, real package archives built
 //! from real manifests, the production `PackageStore` (staging directory, install
 //! journal, atomic publication, recovery), the real bounded extractor
-//! (`crate::core::safe_archive`), the real state machines, and the real storage
+//! (`licoup_foundation::core::safe_archive`), the real state machines, and the real storage
 //! accounting and GC planner.
 //!
 //! What is synthetic, stated plainly: the "directory" is a hundred generated

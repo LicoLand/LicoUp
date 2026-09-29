@@ -2,7 +2,9 @@
 //! search space; PATH, personal library roots, and network volumes are never
 //! walked.
 
-use crate::platform::paths::{portable_data_dir, strip_macos_data_volume, user_home_from_env};
+use licoup_foundation::platform::paths::{
+    portable_data_dir, strip_macos_data_volume, user_home_from_env,
+};
 use serde::Deserialize;
 use std::collections::{BTreeSet, VecDeque};
 use std::ffi::OsString;
@@ -479,7 +481,7 @@ pub fn discovered_agent_may_execute(path: &Path, execution_requested: bool) -> b
         && !automatic_agent_execution_admitted()
         && !denied(
             path,
-            crate::platform::paths::user_home_from_env().as_deref(),
+            licoup_foundation::platform::paths::user_home_from_env().as_deref(),
         )
 }
 
@@ -680,7 +682,10 @@ fn dedupe(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::paths::posix_absolute;
+
+    fn posix_absolute(parts: &[&str]) -> PathBuf {
+        PathBuf::from(format!("/{}", parts.join("/")))
+    }
 
     fn fixture_roots() -> HostRoots {
         let home = PathBuf::from("/profile");

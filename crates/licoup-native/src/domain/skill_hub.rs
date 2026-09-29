@@ -5,8 +5,8 @@
 //! install, update, synchronize, or roll back skill packages.
 
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::validate_no_symlink_ancestors;
 use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::file_security::validate_no_symlink_ancestors;
 use serde_json::{Value, json};
 use std::env;
 use std::fs;

@@ -10,7 +10,7 @@ use fs2::FileExt;
 use std::fs::File;
 
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{ensure_private_dir, open_private_lock_file};
+use licoup_foundation::platform::file_security::{ensure_private_dir, open_private_lock_file};
 
 pub(super) struct CollaborationTransactionGuard {
     lock: File,

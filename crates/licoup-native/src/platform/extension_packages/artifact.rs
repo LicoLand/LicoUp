@@ -10,14 +10,14 @@
 //! - **Nothing is expanded without a bound, and nothing expanded is run.**
 //!   A pre-flight reads the archive's own metadata for entry count, declared
 //!   sizes and compression ratio before a single byte is written; the host's
-//!   no-follow extractor ([`crate::core::safe_archive`]) then enforces the same
+//!   no-follow extractor ([`licoup_foundation::core::safe_archive`]) then enforces the same
 //!   bounds again while writing. Install scripts are *reported*, not executed:
 //!   there is no executor in this module for them to reach.
 
-use crate::core::safe_archive::{ZipExtractionLimits, extract_zip_safe};
 use crate::platform::extension_packages::{ensure_private_directory, refusal};
 use licoup_application::ApplicationFailure;
 use licoup_extension_contracts::manifest::{PackageManifest, Runtime};
+use licoup_foundation::core::safe_archive::{ZipExtractionLimits, extract_zip_safe};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

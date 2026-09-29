@@ -7,7 +7,7 @@ use serde_json::Value;
 pub(super) fn annotate_selected_session(agent_id: &str, session: &mut Value) -> Result<()> {
     // Existing history tests must never open the developer's Canonical store.
     #[cfg(test)]
-    if crate::platform::paths::portable_data_dir_override_path().is_none() {
+    if licoup_foundation::platform::paths::portable_data_dir_override_path().is_none() {
         return Ok(());
     }
     let Some(native_session_id) = session
@@ -17,7 +17,7 @@ pub(super) fn annotate_selected_session(agent_id: &str, session: &mut Value) -> 
     else {
         return Ok(());
     };
-    let root = crate::platform::paths::portable_data_dir_read_only()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir_read_only()?;
     let references =
         ConversationStore::native_execution_references(&root, agent_id, native_session_id)?;
     annotate_messages(session, &references);
@@ -73,12 +73,12 @@ mod tests {
         struct Override(Option<std::path::PathBuf>);
         impl Drop for Override {
             fn drop(&mut self) {
-                crate::platform::paths::set_portable_data_dir_override(self.0.take());
+                licoup_foundation::platform::paths::set_portable_data_dir_override(self.0.take());
             }
         }
-        let _guard = Override(crate::platform::paths::set_portable_data_dir_override(
-            Some(root.clone()),
-        ));
+        let _guard = Override(
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone())),
+        );
         let store = ConversationStore::open(&root).unwrap();
         let mut expected = Vec::new();
         for turn_id in ["native-turn-one", "native-turn-two"] {

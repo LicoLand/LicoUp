@@ -724,7 +724,7 @@ mod tests {
             "licoup-gateway-model-server-usage-{}",
             uuid::Uuid::new_v4()
         ));
-        crate::platform::file_security::ensure_private_dir(&usage_root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&usage_root).unwrap();
         let usage = Arc::new(GatewayUsageRecorder::open(usage_root.join("usage.json")).unwrap());
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let server_address = listener.local_addr().unwrap();
@@ -779,7 +779,7 @@ mod tests {
             "licoup-gateway-server-usage-{}",
             uuid::Uuid::new_v4()
         ));
-        crate::platform::file_security::ensure_private_dir(&usage_root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&usage_root).unwrap();
         let usage_path = usage_root.join("usage.json");
         let usage = Arc::new(GatewayUsageRecorder::open(usage_path).unwrap());
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -844,7 +844,7 @@ mod tests {
             "licoup-gateway-server-usage-{}",
             uuid::Uuid::new_v4()
         ));
-        crate::platform::file_security::ensure_private_dir(&usage_root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&usage_root).unwrap();
         let usage_path = usage_root.join("usage.json");
         let usage = Arc::new(GatewayUsageRecorder::open(usage_path).unwrap());
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

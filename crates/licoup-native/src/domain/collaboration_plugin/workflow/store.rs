@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{atomic_write_private_text_bounded, ensure_private_dir};
+use licoup_foundation::platform::file_security::{
+    atomic_write_private_text_bounded, ensure_private_dir,
+};
 
 pub(super) struct ClaimedPlan {
     pub(super) root: PathBuf,

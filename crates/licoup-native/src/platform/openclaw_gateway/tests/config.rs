@@ -1,4 +1,4 @@
-use crate::platform::file_security::read_private_text_bounded;
+use licoup_foundation::platform::file_security::read_private_text_bounded;
 
 use super::super::config::ensure_minimal;
 

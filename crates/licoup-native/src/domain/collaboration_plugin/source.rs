@@ -108,7 +108,7 @@ pub(super) fn stage_github_package(
     source: &GitHubSource,
     plan_root: &Path,
 ) -> Result<InspectedPackage> {
-    crate::platform::file_security::ensure_private_dir(plan_root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(plan_root)?;
     let archive_root = plan_root.join("archive");
     ensure!(
         !archive_root.exists(),
@@ -157,7 +157,7 @@ pub(super) fn stage_github_package(
         archive.len() as u64 <= MAX_GITHUB_ARCHIVE_BYTES,
         "collaboration_plugin_github_archive_too_large"
     );
-    crate::core::safe_archive::extract_tar_gz_safe(
+    licoup_foundation::core::safe_archive::extract_tar_gz_safe(
         &archive,
         &archive_root,
         Some(MAX_GITHUB_ARCHIVE_BYTES),

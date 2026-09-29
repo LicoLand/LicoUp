@@ -134,20 +134,26 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp.rs",
+    "crates/licoup-foundation/src/core/acp.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/requests.rs",
+    "crates/licoup-foundation/src/core/acp/requests.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.requests"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/responses.rs",
+    "crates/licoup-foundation/src/core/acp/responses.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.responses"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/acp/codec.rs",
+    "crates/licoup-foundation/src/core/acp/codec.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.codec"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/task_queue.rs",
+    "crates/licoup-foundation/src/core/task_queue.rs",
   ])), ["architecture.client-boundaries", "rust.core.task-queue"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/platform/ansi_stripper.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.ansi-stripper"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/platform/url_security.rs",
+  ])), ["architecture.client-boundaries", "rust.platform.url-security"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/authorized_secure_record.rs",
   ])), [
@@ -195,12 +201,42 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "crates/licoup-native/src/core/mcp/transfer.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/safe_archive.rs",
+    "crates/licoup-foundation/src/core/safe_archive.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.adaptive-flywheel",
     "rust.core.safe-archive",
   ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-foundation/src/platform/paths.rs",
+  ])), [
+    "regression.agent-scan-paths",
+    "architecture.client-boundaries",
+    "rust.domain.targets.scan-paths",
+    "rust.domain.targets.platform-paths",
+    "rust.platform.paths",
+    "rust.platform",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/src/platform/extension_packages/artifact.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.platform.extension-packages",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/licoup-native/tests/v71_package_lifecycle/main.rs",
+  ])), ["rust.platform.extension-packages"]);
+  assert.deepEqual(
+    CLIENT_MODULE_CATALOG.find((candidate) =>
+      candidate.id === "rust.platform.extension-packages").command.args,
+    [
+      "test",
+      "--manifest-path",
+      "crates/licoup-native/Cargo.toml",
+      "--test",
+      "v71_package_lifecycle",
+    ],
+  );
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
   ])), [
@@ -691,7 +727,7 @@ test("file security leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/licoup-native/src/platform/file_security.rs"), false);
+        "crates/licoup-foundation/src/platform/file_security.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -703,9 +739,9 @@ test("file security leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/licoup-native/src/platform/file_security", ".rs");
+    "crates/licoup-foundation/src/platform/file_security", ".rs");
   for (const relativePath of [
-    "crates/licoup-native/src/platform/file_security.rs",
+    "crates/licoup-foundation/src/platform/file_security.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,

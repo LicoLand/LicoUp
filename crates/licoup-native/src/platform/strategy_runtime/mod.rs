@@ -194,12 +194,12 @@ pub(crate) fn execute_script(
         metadata.is_file() && !metadata.file_type().is_symlink(),
         "strategy_script_entry_invalid"
     );
-    crate::platform::file_security::ensure_private_dir(runtime_state_root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(runtime_state_root)?;
     let scratch = runtime_state_root.join(&command.id);
     if scratch.exists() {
         let _ = fs::remove_dir_all(&scratch);
     }
-    crate::platform::file_security::ensure_private_dir(&scratch)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(&scratch)?;
     let scratch = fs::canonicalize(&scratch)?;
     let mut process = crate::platform::process_sandbox::strategy_script_command(
         &runtime.executable,
@@ -343,7 +343,7 @@ pub(crate) fn admit_strategy_cwd(cwd: &str) -> Result<()> {
             && !cwd.chars().any(char::is_control),
         "strategy_cwd_invalid"
     );
-    let home = crate::platform::paths::user_home_from_env();
+    let home = licoup_foundation::platform::paths::user_home_from_env();
     ensure!(
         !crate::platform::agent_workspace::is_unbounded_agent_workspace(path, home.as_deref()),
         "strategy_cwd_invalid"

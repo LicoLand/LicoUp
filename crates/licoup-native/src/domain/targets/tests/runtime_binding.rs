@@ -28,7 +28,8 @@ fn runtime_binding_reuses_each_explicit_root_without_cross_root_routes() {
     fs::write(&first_binary, b"").unwrap();
     fs::write(&second_binary, b"").unwrap();
 
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(first_root));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(first_root));
     let first_store = ClientStateStore::portable().unwrap();
     first_store
         .write_target_routes(&[route(&first_binary)])
@@ -38,7 +39,7 @@ fn runtime_binding_reuses_each_explicit_root_without_cross_root_routes() {
         Some(fs::canonicalize(&first_binary).unwrap())
     );
 
-    crate::platform::paths::set_portable_data_dir_override(Some(second_root));
+    licoup_foundation::platform::paths::set_portable_data_dir_override(Some(second_root));
     let second_store = ClientStateStore::portable().unwrap();
     second_store
         .write_target_routes(&[route(&second_binary)])
@@ -48,7 +49,7 @@ fn runtime_binding_reuses_each_explicit_root_without_cross_root_routes() {
         Some(fs::canonicalize(&second_binary).unwrap())
     );
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = fs::remove_dir_all(parent);
 }
 

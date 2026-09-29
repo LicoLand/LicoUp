@@ -1,4 +1,4 @@
-use crate::platform::paths::set_portable_data_dir_override;
+use licoup_foundation::platform::paths::set_portable_data_dir_override;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};

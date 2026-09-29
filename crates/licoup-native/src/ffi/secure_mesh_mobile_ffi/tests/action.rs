@@ -99,7 +99,8 @@ fn mobile_ffi_kt_status_is_routed_and_rejects_unknown_fields() {
         "lico-mobile-ffi-kt-status-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let status = dispatch_json(
         &json!({
             "action": "secure_mesh.kt.status",
@@ -121,6 +122,6 @@ fn mobile_ffi_kt_status_is_routed_and_rejects_unknown_fields() {
     .to_string();
     assert_eq!(failure, "native_operation_failed");
     assert!(!failure.contains("callerAssertedTrust"));
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

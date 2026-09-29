@@ -13,9 +13,10 @@ pub fn dispatch_json_with_files_dir(
     validate_ffi_request_bytes(request_json)?;
     let request = serde_json::from_str::<Value>(request_json)?;
     let portable_dir = PathBuf::from(files_dir).join("portable-data");
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(portable_dir));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable_dir));
     let result = dispatch_json(&request, unsupported_code);
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     result
 }
 
@@ -28,7 +29,8 @@ pub fn dispatch_json_with_files_dir_and_pairwise_secret_store(
     validate_ffi_request_bytes(request_json)?;
     let request = serde_json::from_str::<Value>(request_json)?;
     let portable_dir = PathBuf::from(files_dir).join("portable-data");
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(portable_dir));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable_dir));
     let mobile_relay_secret_store = Arc::clone(&pairwise_secret_store);
     let result = crate::domain::mobile_relay::with_pairwise_secret_store_override(
         pairwise_secret_store,
@@ -39,6 +41,6 @@ pub fn dispatch_json_with_files_dir_and_pairwise_secret_store(
             )
         },
     );
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     result
 }

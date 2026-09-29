@@ -10,7 +10,7 @@ export async function checkLicoArcBadTowerBoundary(context) {
   ));
   const stationFacade = await readText(`${stationRoot}/mod.rs`);
   const urlSecurity = await readText(
-    "crates/licoup-native/src/platform/url_security.rs",
+    "crates/licoup-foundation/src/platform/url_security.rs",
   );
   assert(
     stationLeaves.every((leaf) =>

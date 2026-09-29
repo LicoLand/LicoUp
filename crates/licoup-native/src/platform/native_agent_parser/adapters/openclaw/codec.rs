@@ -1,5 +1,5 @@
 // OpenClaw-specific JSON-RPC/ACP framing and response classification.
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use serde_json::Value;
 use std::io;
 

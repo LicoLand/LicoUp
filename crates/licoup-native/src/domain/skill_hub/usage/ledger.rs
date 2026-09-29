@@ -11,9 +11,9 @@
 use crate::domain::skill_hub::{
     ClientStateStore, Result, Value, collection_items_mut, is_agent_approved, json,
 };
-use crate::platform::file_security::open_private_lock_file;
 use anyhow::{anyhow, ensure};
 use fs2::FileExt;
+use licoup_foundation::platform::file_security::open_private_lock_file;
 use std::collections::BTreeMap;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 

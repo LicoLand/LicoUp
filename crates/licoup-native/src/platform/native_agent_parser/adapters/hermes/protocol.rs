@@ -2,7 +2,7 @@
 use super::capabilities::EffectiveSettings;
 use super::command::ProtocolConfig;
 use super::errors::ProtocolFailure;
-use crate::core::acp::{
+use licoup_foundation::core::acp::{
     self, AcpClientCapabilities, AcpImplementation, AcpSessionMethod, AcpSessionOptions,
 };
 use serde_json::{Value, json};

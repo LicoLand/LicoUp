@@ -129,8 +129,8 @@ fn validate_commit_unit(unit: &CommitUnit) -> Result<()> {
     #[cfg(unix)]
     drop(open_parent_no_follow(&unit.destination)?);
     #[cfg(not(unix))]
-    crate::platform::file_security::validate_no_symlink_ancestors(&unit.destination)?;
-    crate::platform::file_security::validate_export_destination(&unit.destination)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(&unit.destination)?;
+    licoup_foundation::platform::file_security::validate_export_destination(&unit.destination)?;
     ensure!(
         fs::symlink_metadata(&unit.destination).is_err(),
         "collaboration_workflow_destination_must_be_new"
@@ -205,7 +205,7 @@ fn create_private_staging_file(path: &Path, content: &[u8]) -> Result<()> {
 
 #[cfg(not(unix))]
 fn create_private_staging_file(path: &Path, content: &[u8]) -> Result<()> {
-    crate::platform::file_security::validate_no_symlink_ancestors(path)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(path)?;
     let mut options = fs::OpenOptions::new();
     options.create_new(true).write(true);
     #[cfg(windows)]
@@ -219,7 +219,7 @@ fn create_private_staging_file(path: &Path, content: &[u8]) -> Result<()> {
         .map_err(|_| anyhow!("collaboration_workflow_staging_create_failed"))?;
     file.write_all(content)?;
     file.sync_all()?;
-    crate::platform::file_security::harden_private_path(path)?;
+    licoup_foundation::platform::file_security::harden_private_path(path)?;
     let metadata = fs::symlink_metadata(path)?;
     ensure!(
         metadata.is_file()
@@ -293,8 +293,8 @@ fn rename_no_replace(source: &Path, destination: &Path, kind: CommitKind) -> Res
 
 #[cfg(not(unix))]
 fn rename_no_replace(source: &Path, destination: &Path, kind: CommitKind) -> Result<()> {
-    crate::platform::file_security::validate_no_symlink_ancestors(source)?;
-    crate::platform::file_security::validate_no_symlink_ancestors(destination)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(source)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(destination)?;
     ensure!(
         fs::symlink_metadata(destination).is_err(),
         "collaboration_workflow_destination_must_be_new"

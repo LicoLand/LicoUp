@@ -134,7 +134,7 @@ fn unix_unlinked_file(
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let root = store.root().join(".local-server-runtime-images");
-    crate::platform::file_security::ensure_private_dir(&root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
     let path = root.join(format!("image-{}", uuid::Uuid::new_v4()));
     let mut writer = OpenOptions::new()
         .create_new(true)

@@ -235,8 +235,8 @@ fn default_completed_at() -> String {
 mod tests {
     use super::*;
     use crate::ffi::commands::CliExecution;
-    use crate::platform::paths::set_portable_data_dir_override;
     use base64::{Engine as _, engine::general_purpose};
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use serde_json::{Value, json};
     use std::path::PathBuf;
 

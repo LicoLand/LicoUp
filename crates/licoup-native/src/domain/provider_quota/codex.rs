@@ -117,8 +117,9 @@ fn resolve_codex_home(params: &Value) -> Option<PathBuf> {
             return Some(PathBuf::from(trimmed));
         }
     }
-    crate::platform::paths::user_home_from_env()
-        .map(|home| crate::platform::paths::strip_macos_data_volume(&home).join(".codex"))
+    licoup_foundation::platform::paths::user_home_from_env().map(|home| {
+        licoup_foundation::platform::paths::strip_macos_data_volume(&home).join(".codex")
+    })
 }
 
 /// Identity labels come from the user's own local auth store claims

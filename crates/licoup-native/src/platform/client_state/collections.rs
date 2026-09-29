@@ -1,6 +1,6 @@
-use crate::platform::file_security::{ensure_private_dir, open_private_lock_file};
 use anyhow::{Result, anyhow, ensure};
 use fs2::FileExt;
+use licoup_foundation::platform::file_security::{ensure_private_dir, open_private_lock_file};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;

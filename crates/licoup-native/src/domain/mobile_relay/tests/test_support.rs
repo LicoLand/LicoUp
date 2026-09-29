@@ -6,8 +6,8 @@ pub(super) use crate::core::secure_mesh_capability::{
     CapabilityEvidenceKind, CapabilityFact, capability_catalog, mandatory_protocol_facts,
 };
 pub(super) use crate::platform::badtower_station::BadTowerStationOperation;
-pub(super) use crate::platform::paths::set_portable_data_dir_override;
 pub(super) use crate::platform::secure_mesh_secret_store::{EphemeralSecretStore, SecretBytes};
+pub(super) use licoup_foundation::platform::paths::set_portable_data_dir_override;
 pub(super) use std::env;
 pub(super) use std::io::{BufRead, BufReader, Read, Write};
 pub(super) use std::net::{TcpListener, TcpStream};

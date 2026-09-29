@@ -105,6 +105,7 @@ test("catalog commands reference existing dedicated scripts and test targets", a
         assert.equal(
           crate === "licoup-native" ||
             crate === "licoup-protocol-bindings" ||
+            crate === "licoup-foundation" ||
             (crate === "licoup-conversation" &&
               module.id === "rust.domain.conversation-continuity-store"),
           true,
@@ -182,6 +183,7 @@ test("catalog maps every Flutter, Rust, and platform-host source file", async ()
     ...await sourceFiles("crates/licoup-native/tests", ".rs"),
     ...await sourceFiles("crates/licoup-protocol-bindings/src", ".rs"),
     ...await sourceFiles("crates/licoup-protocol-bindings/tests", ".rs"),
+    ...await sourceFiles("crates/licoup-foundation/src", ".rs"),
     ...await sourceFiles("crates/lico-catalog-convergence/src", ".rs"),
     ...await sourceFiles("crates/licoup-mcp/src", ".rs"),
     ...await sourceFiles("apps/desktop/android/app/src/main", ".kt"),

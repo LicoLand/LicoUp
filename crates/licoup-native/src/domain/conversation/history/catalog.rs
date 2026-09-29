@@ -46,10 +46,10 @@ use super::session_metadata::{
 /// portable data directory override never open the developer's store.
 fn archived_native_sessions(agent_id: &str) -> std::collections::BTreeSet<String> {
     #[cfg(test)]
-    if crate::platform::paths::portable_data_dir_override_path().is_none() {
+    if licoup_foundation::platform::paths::portable_data_dir_override_path().is_none() {
         return Default::default();
     }
-    let Ok(root) = crate::platform::paths::portable_data_dir_read_only() else {
+    let Ok(root) = licoup_foundation::platform::paths::portable_data_dir_read_only() else {
         return Default::default();
     };
     licoup_conversation::store::ConversationStore::archived_native_session_ids(&root, agent_id)

@@ -74,7 +74,8 @@ fn uninstall_removes_only_lico_hook_namespace() {
             .as_nanos()
     ));
     fs::create_dir_all(&portable).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let fixture = FakeExecutable::new("uninstall", true);
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
@@ -102,7 +103,7 @@ fn uninstall_removes_only_lico_hook_namespace() {
     let after = fs::read_to_string(&hooks_path).unwrap();
     assert!(!after.contains("lico-up-antigravity-session"));
     assert!(after.contains("user-hook"));
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -169,7 +170,8 @@ fn execute_reads_hook_receipt_and_returns_session_output() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -188,7 +190,7 @@ fn execute_reads_hook_receipt_and_returns_session_output() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -226,7 +228,8 @@ fn execute_streams_pty_chunks_before_completion() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -252,7 +255,7 @@ fn execute_streams_pty_chunks_before_completion() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -375,7 +378,8 @@ fn execute_and_cancel(
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -427,7 +431,7 @@ fn execute_and_cancel(
         std::thread::sleep(Duration::from_millis(50));
     }
     let (result, events) = handle.join().unwrap();
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -499,7 +503,8 @@ fn execute_with_zero_timeout_runs_to_completion() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -518,7 +523,7 @@ fn execute_with_zero_timeout_runs_to_completion() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -554,7 +559,8 @@ fn execute_resume_binds_exact_requested_conversation() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -575,7 +581,7 @@ fn execute_resume_binds_exact_requested_conversation() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -611,7 +617,8 @@ fn execute_resume_rejects_receipt_drift() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -632,7 +639,7 @@ fn execute_resume_rejects_receipt_drift() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -668,7 +675,8 @@ fn execute_reads_legacy_wrapped_receipt_for_compatibility() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -692,7 +700,7 @@ fn execute_reads_legacy_wrapped_receipt_for_compatibility() {
         Some(8_192),
         8_192,
     );
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -728,7 +736,8 @@ fn antigravity_effective_settings_match_executed_command() {
     ));
     fs::create_dir_all(&portable).unwrap();
     fs::create_dir_all(&gemini).unwrap();
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
@@ -885,7 +894,7 @@ fn antigravity_effective_settings_match_executed_command() {
     assert_token(&argv, "--model=gemini-test");
     assert_eq!(result.session_id, resume_id);
 
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -1538,7 +1547,8 @@ fn logged_out_send_returns_auth_required_without_spawning_a_turn() {
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
     }
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let fixture = AuthFakeExecutable::new("logged-out", "logged_out");
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
@@ -1554,7 +1564,7 @@ fn logged_out_send_returns_auth_required_without_spawning_a_turn() {
         8_192,
     );
 
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
@@ -1588,7 +1598,8 @@ fn authorized_send_proceeds_past_the_probe() {
     unsafe {
         std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
     }
-    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let previous_portable =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(portable));
     let fixture = AuthFakeExecutable::new("authorized", "authorized");
     let workspace = fixture.root.join("workspace");
     fs::create_dir_all(&workspace).unwrap();
@@ -1604,7 +1615,7 @@ fn authorized_send_proceeds_past_the_probe() {
         8_192,
     );
 
-    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous_portable);
     if let Some(value) = previous_gemini {
         unsafe {
             std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);

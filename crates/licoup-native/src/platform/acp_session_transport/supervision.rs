@@ -8,10 +8,10 @@ use super::errors::ProtocolFailure;
 use super::events::{ConversationTransportEvent as TransportEvent, read_conversation_frames};
 use super::io::{drain_stderr_observed, write_message};
 use super::protocol::{INITIALIZE_REQUEST_ID, SessionProtocol};
-use crate::core::acp;
 use crate::platform::raw_execution::{
     RawExecutionBinding, RawExecutionBindingGuard, RawExecutionDirection, RawExecutionReader,
 };
+use licoup_foundation::core::acp;
 use std::io::{self, BufReader};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;

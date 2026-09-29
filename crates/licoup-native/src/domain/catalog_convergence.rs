@@ -71,7 +71,7 @@ impl CatalogRuntime {
 }
 
 pub fn dispatch(args: &[String], params: &Value) -> Result<Value> {
-    let root = crate::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     let runtime = RUNTIME.get_or_init(|| Mutex::new(None));
     let mut guard = runtime
         .lock()
@@ -96,7 +96,8 @@ mod tests {
             std::env::temp_dir().join(format!("lico-catalog-runtime-{}", std::process::id()));
         let first = base.join("first");
         let second = base.join("second");
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(first.clone()));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(first.clone()));
         let refresh = dispatch(
             &["catalog".into(), "refresh".into()],
             &json!({
@@ -110,9 +111,9 @@ mod tests {
         .unwrap();
         assert_eq!(refresh["outcome"], "replaced");
 
-        crate::platform::paths::set_portable_data_dir_override(Some(second));
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(second));
         dispatch(&["catalog".into(), "status".into()], &json!({})).unwrap();
-        crate::platform::paths::set_portable_data_dir_override(Some(first.clone()));
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(first.clone()));
         let restored = dispatch(&["catalog".into(), "status".into()], &json!({})).unwrap();
         assert_eq!(restored["partitionCount"], 1);
         assert_eq!(restored["reconnectFence"], true);
@@ -124,13 +125,15 @@ mod tests {
         assert_eq!(blocked["ok"], false);
 
         dispatch(&["catalog".into(), "purge".into()], &json!({})).unwrap();
-        crate::platform::paths::set_portable_data_dir_override(Some(base.join("third")));
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
+            base.join("third"),
+        ));
         dispatch(&["catalog".into(), "status".into()], &json!({})).unwrap();
-        crate::platform::paths::set_portable_data_dir_override(Some(first));
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(first));
         let purged = dispatch(&["catalog".into(), "status".into()], &json!({})).unwrap();
         assert_eq!(purged["partitionCount"], 0);
 
-        crate::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(base);
     }
 }

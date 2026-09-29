@@ -2,11 +2,11 @@
 
 use super::contract::{InstallOwnership, OWNERSHIP_EXTERNAL, OWNERSHIP_NONE, OWNERSHIP_OWNED};
 use crate::platform::client_state::ClientStateStore;
-use crate::platform::file_security::{
+use anyhow::{Result, ensure};
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
     remove_private_state_marker,
 };
-use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};

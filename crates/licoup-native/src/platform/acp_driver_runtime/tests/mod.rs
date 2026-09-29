@@ -28,7 +28,7 @@ use super::session_plan::{AcpSessionPlan, reconcile_acp_session_id};
 use super::settings::{ConfigChange, ConfigValue, requested_config_changes, setting_applied};
 use super::stdio_transport::execute_acp;
 use super::supervision::LaunchSpec;
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};

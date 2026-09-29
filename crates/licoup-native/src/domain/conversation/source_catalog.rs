@@ -1,6 +1,6 @@
 use super::parameters::text_param;
 use super::paths::{expand_home, expand_home_from, home_dir};
-use crate::platform::paths::portable_data_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 use serde_json::Value;
 use std::env;
 use std::path::{Path, PathBuf};

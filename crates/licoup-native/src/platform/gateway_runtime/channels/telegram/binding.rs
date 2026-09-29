@@ -1,12 +1,12 @@
 //! Pairing and per-chat agent/session binding store.
 
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, ensure};
+use fs2::FileExt;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, open_private_lock_file,
     read_private_text_bounded,
 };
-use crate::platform::paths;
-use anyhow::{Result, anyhow, ensure};
-use fs2::FileExt;
+use licoup_foundation::platform::paths;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -332,7 +332,7 @@ fn read_document(path: &Path) -> Result<BindingDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::paths::set_portable_data_dir_override;
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;

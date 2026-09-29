@@ -21,7 +21,7 @@ pub(super) struct AssemblyOperationLock {
 
 impl AssemblyOperationLock {
     pub(super) fn acquire(store: &ClientStateStore) -> Result<Self> {
-        let file = crate::platform::file_security::open_private_lock_file(
+        let file = licoup_foundation::platform::file_security::open_private_lock_file(
             &store.root().join(OPERATION_LOCK_FILE),
         )?;
         let deadline = Instant::now() + OPERATION_LOCK_WAIT;

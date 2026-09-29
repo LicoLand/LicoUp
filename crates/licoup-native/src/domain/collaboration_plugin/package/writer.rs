@@ -153,7 +153,7 @@ impl SecureNewTree {
 
         #[cfg(not(unix))]
         {
-            crate::platform::file_security::validate_no_symlink_ancestors(parent_path)?;
+            licoup_foundation::platform::file_security::validate_no_symlink_ancestors(parent_path)?;
             let parent_metadata = fs::symlink_metadata(parent_path)
                 .map_err(|_| anyhow!("collaboration_plugin_destination_parent_missing"))?;
             ensure!(
@@ -162,7 +162,7 @@ impl SecureNewTree {
             );
             fs::create_dir(path)
                 .map_err(|_| anyhow!("collaboration_plugin_destination_must_be_new"))?;
-            crate::platform::file_security::harden_private_path(path)?;
+            licoup_foundation::platform::file_security::harden_private_path(path)?;
             return Ok(Self {
                 path: path.to_path_buf(),
             });
@@ -269,7 +269,7 @@ impl SecureNewTree {
         #[cfg(not(unix))]
         let mut file = {
             let path = self.path.join(relative_path);
-            crate::platform::file_security::validate_no_symlink_ancestors(&path)?;
+            licoup_foundation::platform::file_security::validate_no_symlink_ancestors(&path)?;
             OpenOptions::new()
                 .read(true)
                 .open(path)
@@ -352,8 +352,8 @@ impl SecureNewTree {
         #[cfg(not(unix))]
         {
             let path = self.path.join(relative_path);
-            crate::platform::file_security::validate_no_symlink_ancestors(&path)?;
-            crate::platform::file_security::harden_private_path(&path)?;
+            licoup_foundation::platform::file_security::validate_no_symlink_ancestors(&path)?;
+            licoup_foundation::platform::file_security::harden_private_path(&path)?;
         }
         self.sync_and_validate_binding()
     }
@@ -382,7 +382,7 @@ impl SecureNewTree {
         }
         #[cfg(not(unix))]
         {
-            crate::platform::file_security::validate_no_symlink_ancestors(&self.path)?;
+            licoup_foundation::platform::file_security::validate_no_symlink_ancestors(&self.path)?;
             let metadata = fs::symlink_metadata(&self.path)?;
             ensure!(
                 metadata.is_dir() && !metadata.file_type().is_symlink(),
@@ -463,7 +463,7 @@ pub(in crate::domain::collaboration_plugin) fn open_directory_path_no_follow(
             .any(|component| matches!(component, Component::CurDir | Component::ParentDir)),
         "collaboration_plugin_destination_path_invalid"
     );
-    crate::platform::file_security::validate_no_symlink_ancestors(&absolute)?;
+    licoup_foundation::platform::file_security::validate_no_symlink_ancestors(&absolute)?;
     let metadata = fs::symlink_metadata(&absolute)
         .map_err(|_| anyhow!("collaboration_plugin_destination_parent_invalid"))?;
     ensure!(
@@ -649,7 +649,7 @@ fn create_directory_path_no_follow(path: &Path) -> Result<()> {
             ),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 fs::create_dir(&current)?;
-                crate::platform::file_security::harden_private_path(&current)?;
+                licoup_foundation::platform::file_security::harden_private_path(&current)?;
                 let metadata = fs::symlink_metadata(&current)?;
                 ensure!(
                     metadata.is_dir() && !metadata.file_type().is_symlink(),

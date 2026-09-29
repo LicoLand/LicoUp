@@ -1,9 +1,7 @@
-pub mod acp;
 // Linux currently exposes the portable contract without a native authorized-record backend.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 pub mod mcp;
-pub mod safe_archive;
 pub mod secure_mesh;
 pub mod secure_mesh_acp;
 pub mod secure_mesh_approval;
@@ -28,4 +26,3 @@ pub mod secure_mesh_session_negotiation;
 pub mod secure_mesh_sparse_pq_ratchet;
 pub mod secure_mesh_transparency;
 pub mod secure_mesh_trust;
-pub mod task_queue;

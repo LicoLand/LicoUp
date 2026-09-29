@@ -136,7 +136,7 @@ pub(super) fn read_conversation_id(receipt: &Path) -> Option<String> {
 }
 
 fn receipt_root() -> Result<PathBuf, ProtocolFailure> {
-    let root = crate::platform::paths::portable_data_dir()
+    let root = licoup_foundation::platform::paths::portable_data_dir()
         .map_err(|_| {
             ProtocolFailure::new(
                 "antigravity_hook_bridge_unavailable",

@@ -1,4 +1,4 @@
-use crate::core::acp;
+use licoup_foundation::core::acp;
 
 #[derive(Clone, Debug)]
 pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);

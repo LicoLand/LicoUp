@@ -19,12 +19,12 @@ use crate::domain::llm_gateway::{
     CompiledGateway, CredentialStyle, GatewayConfig, GatewayProvider, MAX_GATEWAY_BODY_BYTES,
     UpstreamProtocol,
 };
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
     remove_private_state_marker,
 };
-use crate::platform::paths;
-use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::paths;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -948,7 +948,7 @@ fn validate_config(path: &Path) -> Result<()> {
 
 fn sidecar_path() -> Result<PathBuf> {
     let current = std::env::current_exe().map_err(|_| anyhow!("llm_gateway_sidecar_missing"))?;
-    let parent = super::paths::packaged_binary_directory(&current)
+    let parent = licoup_foundation::platform::paths::packaged_binary_directory(&current)
         .ok_or_else(|| anyhow!("llm_gateway_sidecar_missing"))?;
     for name in [SIDECAR_BINARY, LEGACY_SIDECAR_BINARY] {
         let sibling = parent.join(format!("{}{}", name, std::env::consts::EXE_SUFFIX));

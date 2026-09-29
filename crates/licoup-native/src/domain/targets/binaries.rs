@@ -236,7 +236,7 @@ pub(super) fn cursor_binary_supports_acp(binary: &Path, params: &Value) -> bool 
 }
 
 pub(super) fn find_binary_in_dirs(names: &[&str], dirs: &[PathBuf]) -> Option<PathBuf> {
-    let home = crate::platform::paths::user_home_from_env();
+    let home = licoup_foundation::platform::paths::user_home_from_env();
     for dir in dirs {
         for name in names {
             for candidate in binary_candidate_paths(dir, name) {
@@ -366,7 +366,7 @@ pub(super) fn find_macos_app_executable(
     executable: &str,
     roots: &[PathBuf],
 ) -> Option<PathBuf> {
-    let home = crate::platform::paths::user_home_from_env();
+    let home = licoup_foundation::platform::paths::user_home_from_env();
     roots
         .iter()
         .map(|root| {

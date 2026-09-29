@@ -1,12 +1,12 @@
 //! Minimal private persistence for one-shot MCP transfer previews.
 
 use crate::domain::mcp_adapter::McpApprovalPlanStore;
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, ensure};
+use fs2::FileExt;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text_bounded, ensure_private_dir, open_private_lock_file,
     read_private_text_bounded,
 };
-use anyhow::{Result, anyhow, ensure};
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,9 @@ enum PlanKind {
 
 impl PrivateMcpApprovalPlanStore {
     pub(crate) fn open_default() -> Result<Self> {
-        Self::open(crate::platform::paths::portable_data_dir()?.join("mcp-transfer-plans"))
+        Self::open(
+            licoup_foundation::platform::paths::portable_data_dir()?.join("mcp-transfer-plans"),
+        )
     }
 
     fn open(root: PathBuf) -> Result<Self> {

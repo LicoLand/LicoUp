@@ -102,7 +102,8 @@ fn apply_test_history_home(params: &mut Value) {
 fn apply_test_history_home(_params: &mut Value) {}
 
 pub(crate) fn default_secure_command_ledger_path() -> Result<PathBuf> {
-    let path = crate::platform::paths::portable_data_dir()?.join(SECURE_MESH_COMMAND_LEDGER_PATH);
+    let path = licoup_foundation::platform::paths::portable_data_dir()?
+        .join(SECURE_MESH_COMMAND_LEDGER_PATH);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

@@ -7,7 +7,9 @@ use super::session_plan::{AcpSessionPlan, reconcile_acp_session_id, select_acp_s
 use super::settings::{
     ConfigChange, config_request, effective_settings, requested_config_changes, setting_applied,
 };
-use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation, AcpSessionOptions};
+use licoup_foundation::core::acp::{
+    self, AcpClientCapabilities, AcpImplementation, AcpSessionOptions,
+};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::path::Path;

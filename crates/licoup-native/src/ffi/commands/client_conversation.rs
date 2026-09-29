@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use crate::domain::client_conversation::ConversationService;
-use crate::platform::paths::portable_data_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 
 const MAX_CONVERSATION_SERVICE_ROOTS: usize = 4;
 static CONVERSATION_SERVICES: OnceLock<Mutex<VecDeque<(PathBuf, ConversationService)>>> =
@@ -46,7 +46,7 @@ pub(super) fn handle_conversation_execute(mut command: AdmittedCommand) -> Resul
 #[cfg(test)]
 mod tests {
     use super::super::execute_cli;
-    use crate::platform::paths::set_portable_data_dir_override;
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
 
     #[test]
     fn required_host_mode_never_opens_a_local_conversation_store() {

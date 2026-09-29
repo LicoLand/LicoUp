@@ -6,7 +6,8 @@
 | **Localization** | [简体中文](RUST-INFRASTRUCTURE-LAYER.zh-CN.md) | Localized Chinese projection |
 | **Architecture Root** | [docs/architecture/README.md](README.md) | 4-tier client architecture overview |
 | **Conversation Domain** | [CONVERSATION-DOMAIN.md](CONVERSATION-DOMAIN.md) | Canonical conversation store, memberships, and dispatch |
-| **Native Adaptation** | `crates/licoup-native/src/platform/` | Low-level OS APIs and platform scripts |
+| **Shared Foundation** | `crates/licoup-foundation/` | Lexical paths, private-file and archive operations, bounded queues, ACP wire codec, ANSI stripping, and strict URL validation |
+| **Native Adaptation** | `crates/licoup-native/src/platform/` | OS-specific APIs, native processes, drivers, and platform scripts |
 | **Security & Data** | [SECURITY-AND-DATA-BOUNDARY.md](SECURITY-AND-DATA-BOUNDARY.md) | Data flow boundaries and zero-trust rules |
 
 This document defines the **Infrastructure and External Boundary Layer** residing within **Tier 3: Rust Functional Core Layer**. This layer interacts directly with the underlying operating system, local filesystem, terminal devices, network, and external processes, acting as the explicit **boundary interface between LicoUp's internal domain logic and the external physical world**.

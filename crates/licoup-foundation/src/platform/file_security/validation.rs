@@ -51,12 +51,12 @@ pub(super) fn ensure_atomic_write_parent(path: &Path) -> Result<()> {
 }
 
 #[cfg(unix)]
-pub(crate) fn validate_private_path_ancestors(path: &Path) -> Result<()> {
+pub fn validate_private_path_ancestors(path: &Path) -> Result<()> {
     super::unix_hardening::validate_no_user_owned_symlink_ancestors(path)
 }
 
 #[cfg(not(unix))]
-pub(crate) fn validate_private_path_ancestors(path: &Path) -> Result<()> {
+pub fn validate_private_path_ancestors(path: &Path) -> Result<()> {
     validate_no_symlink_ancestors(path)
 }
 
@@ -148,16 +148,16 @@ fn validate_current_owner(_metadata: &fs::Metadata) -> Result<()> {
 }
 
 #[cfg(unix)]
-pub(crate) fn validate_path_owner(metadata: &fs::Metadata) -> Result<()> {
+pub fn validate_path_owner(metadata: &fs::Metadata) -> Result<()> {
     super::unix_hardening::validate_path_owner(metadata)
 }
 
 #[cfg(not(unix))]
-pub(crate) fn validate_path_owner(_metadata: &fs::Metadata) -> Result<()> {
+pub fn validate_path_owner(_metadata: &fs::Metadata) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_export_destination(path: &Path) -> Result<()> {
+pub fn validate_export_destination(path: &Path) -> Result<()> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => Some(metadata),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -178,7 +178,7 @@ pub(crate) fn validate_export_destination(path: &Path) -> Result<()> {
     validate_path_owner(&metadata)
 }
 
-pub(crate) fn validate_no_symlink_ancestors(path: &Path) -> Result<()> {
+pub fn validate_no_symlink_ancestors(path: &Path) -> Result<()> {
     ensure!(
         !path
             .components()

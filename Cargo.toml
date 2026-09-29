@@ -2,6 +2,7 @@
 members = [
     "crates/lico-catalog-convergence",
     "crates/licoup-state-machine-codegen",
+    "crates/licoup-foundation",
     "crates/licoup-protocol-bindings",
     "crates/licoup-client-state",
     "crates/licoup-endpoint-core",

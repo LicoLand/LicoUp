@@ -26,7 +26,7 @@ use super::params::{ProtocolConfig, normalize_agent_id};
 use super::probe::{first_nonempty_line, probe};
 use super::protocol::{OpenClawProtocol, ProtocolEffect, ProtocolPhase};
 use super::supervision::{ATTACH_ARGS_PREFIX, LaunchSpec, attach_mode, resolve_gateway_endpoint};
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use serde_json::{Value, json};
 use std::fs;
 use std::io::Cursor;

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
-use crate::core::safe_archive::{ZipEntryInfo, ZipExtractionLimits, extract_zip_safe};
+use licoup_foundation::core::safe_archive::{ZipEntryInfo, ZipExtractionLimits, extract_zip_safe};
 
 use licoup_workflow::{
     CompiledWorkflow, PreflightDiagnostic, WorkflowDefinition, WorkflowDiagnosticCode,
@@ -60,9 +60,9 @@ impl StrategyPackageImporter {
             .join("client-state")
             .join("adaptive-flywheel")
             .join("strategy-packages");
-        crate::platform::file_security::ensure_private_dir(&root)?;
-        crate::platform::file_security::ensure_private_dir(&root.join("prepared"))?;
-        crate::platform::file_security::ensure_private_dir(&root.join("revisions"))?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root.join("prepared"))?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&root.join("revisions"))?;
         let root = fs::canonicalize(root)?;
         Ok(Self { root })
     }
@@ -72,7 +72,7 @@ impl StrategyPackageImporter {
         let preparation_id = format!("preparation-{}", Uuid::new_v4());
         let staging = self.root.join("prepared").join(&preparation_id);
         ensure!(!staging.exists(), "preparation_identity_conflict");
-        crate::platform::file_security::ensure_private_dir(&staging)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(&staging)?;
         let content = staging.join("content");
         let prepared = (|| {
             let entries = extract_zip_safe(
@@ -100,7 +100,7 @@ impl StrategyPackageImporter {
             let compiled = compile_workflow_source(&source)?;
             validate_script_references(&compiled, &inventory)?;
             let canonical = serde_json::to_vec(compiled.definition())?;
-            crate::platform::file_security::atomic_write_private_text(
+            licoup_foundation::platform::file_security::atomic_write_private_text(
                 &workflow_path,
                 std::str::from_utf8(&canonical).map_err(|_| anyhow!("workflow_invalid"))?,
             )?;
@@ -121,7 +121,7 @@ impl StrategyPackageImporter {
                 prepared: prepared.clone(),
             };
             let envelope_json = serde_json::to_string(&envelope)?;
-            crate::platform::file_security::atomic_write_private_text(
+            licoup_foundation::platform::file_security::atomic_write_private_text(
                 &staging.join("preparation.json"),
                 &envelope_json,
             )?;
@@ -161,8 +161,9 @@ impl StrategyPackageImporter {
             prepared.revision_digest == expected_revision_digest,
             "revision_conflict"
         );
-        let commit_lock =
-            crate::platform::file_security::open_private_lock_file(&self.root.join("commit.lock"))?;
+        let commit_lock = licoup_foundation::platform::file_security::open_private_lock_file(
+            &self.root.join("commit.lock"),
+        )?;
         commit_lock
             .lock_exclusive()
             .map_err(|_| anyhow!("strategy_revision_commit_failed"))?;

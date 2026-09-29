@@ -9,7 +9,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/workflow_runtime/**",
         "crates/licoup-native/src/domain/workflow_store/**",
         "crates/licoup-workflow/**",
-        "crates/licoup-native/src/core/safe_archive.rs",
+        "crates/licoup-foundation/src/core/safe_archive.rs",
         "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
         "crates/licoup-native/src/platform/strategy_runtime/**",
       ],
@@ -2277,7 +2277,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Agent Scan Path Manifest: allowlisted discovery, lexical deny, unused-agent other-app skip",
       inputs: [
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-foundation/src/platform/paths.rs",
         "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::scan_paths::tests::"),
@@ -2318,7 +2318,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/domain/targets/platform_paths.rs",
         "crates/licoup-native/src/domain/targets/scan_paths.rs",
-        "crates/licoup-native/src/platform/paths.rs",
+        "crates/licoup-foundation/src/platform/paths.rs",
         "crates/licoup-native/resources/agent-scan-paths.toml",
       ],
       command: rustLayer("domain::targets::platform_paths::tests::"),

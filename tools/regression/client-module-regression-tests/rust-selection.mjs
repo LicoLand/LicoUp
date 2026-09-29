@@ -666,6 +666,10 @@ test("foundation and security modules retain exact narrow command filters", () =
   assert.equal(commandFilter("rust.core.secure-mesh.pairwise-persistence.schema-reset"),
     "core::secure_mesh_pairwise::tests::persistence_schema_reset::");
   assert.equal(commandFilter("rust.core.task-queue"), "core::task_queue::tests");
+  assert.equal(commandFilter("rust.platform.ansi-stripper"),
+    "platform::ansi_stripper::tests::");
+  assert.equal(commandFilter("rust.platform.url-security"),
+    "platform::url_security::tests::");
   assert.equal(commandFilter("rust.core.secure-mesh.command"),
     "core::secure_mesh_command::tests");
   assert.equal(commandFilter("rust.core.secure-mesh.command.schema"),
@@ -692,9 +696,9 @@ test("foundation and security modules retain exact narrow command filters", () =
   ]);
 
   for (const [id, sharedFacade] of [
-    ["rust.core.acp.requests", "crates/licoup-native/src/core/acp.rs"],
-    ["rust.core.acp.responses", "crates/licoup-native/src/core/acp.rs"],
-    ["rust.core.acp.codec", "crates/licoup-native/src/core/acp.rs"],
+    ["rust.core.acp.requests", "crates/licoup-foundation/src/core/acp.rs"],
+    ["rust.core.acp.responses", "crates/licoup-foundation/src/core/acp.rs"],
+    ["rust.core.acp.codec", "crates/licoup-foundation/src/core/acp.rs"],
     ["rust.core.mcp.wire", "crates/licoup-native/src/core/mcp.rs"],
     ["rust.core.mcp.transfer", "crates/licoup-native/src/core/mcp.rs"],
   ]) {

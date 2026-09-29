@@ -85,7 +85,7 @@ impl Fixture {
             &source, manifest,
         );
         let store = ClientStateStore::new(state_root).unwrap();
-        crate::platform::file_security::ensure_private_dir(&output_root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&output_root).unwrap();
         enable_in(
             &store,
             &json!({"requestOrigin": "direct-user", "confirmed": true}),

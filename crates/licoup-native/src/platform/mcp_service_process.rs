@@ -15,7 +15,7 @@ fn default_binary() -> Result<PathBuf> {
     } else {
         "lico-subagent-mcp"
     };
-    let directory = super::paths::packaged_binary_directory(&executable)
+    let directory = licoup_foundation::platform::paths::packaged_binary_directory(&executable)
         .ok_or_else(|| anyhow!("mcp_binary_unavailable"))?;
     Ok(directory.join(name))
 }
@@ -28,8 +28,10 @@ pub fn execute(action: &str, binary: Option<&Path>) -> Result<Value> {
         .map(Ok)
         .unwrap_or_else(default_binary)?;
     let cli = env::current_exe().map_err(|_| anyhow!("mcp_cli_unavailable"))?;
-    let root = super::paths::portable_data_dir()?;
-    super::file_security::ensure_private_dir(&root.join("client-state").join("subagent-mcp"))?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
+    licoup_foundation::platform::file_security::ensure_private_dir(
+        &root.join("client-state").join("subagent-mcp"),
+    )?;
     let output = Command::new(binary)
         .args(["service", action])
         .env("LICOUP_CLI_BINARY", cli)

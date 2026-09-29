@@ -34,7 +34,7 @@ pub fn serve_inventory_control(socket_path: PathBuf, stop: Arc<AtomicBool>) -> R
 
     let _ = std::fs::remove_file(&socket_path);
     if let Some(parent) = socket_path.parent() {
-        crate::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
     let listener = UnixListener::bind(&socket_path)
         .map_err(|error| anyhow!("gateway_inventory_control_bind_failed:{error}"))?;
@@ -136,9 +136,9 @@ pub fn write_inventory_overlay(path: &Path, readiness_json: &str) -> Result<()> 
     crate::platform::runtime_adapters::reload_conversation_readiness_document(readiness_json)
         .map_err(|code| anyhow!(code))?;
     if let Some(parent) = path.parent() {
-        crate::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
-    crate::platform::file_security::atomic_write_private_text(path, readiness_json)?;
+    licoup_foundation::platform::file_security::atomic_write_private_text(path, readiness_json)?;
     Ok(())
 }
 
@@ -165,9 +165,9 @@ fn handle_control_message(stream: &mut impl Read, overlay: &Path) -> Result<()> 
         .map_err(|code| anyhow!(code))?;
     // Persist so soft-restart / next boot keep the hot-applied verified set.
     if let Some(parent) = overlay.parent() {
-        crate::platform::file_security::ensure_private_dir(parent)?;
+        licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     }
-    crate::platform::file_security::atomic_write_private_text(overlay, text)?;
+    licoup_foundation::platform::file_security::atomic_write_private_text(overlay, text)?;
     Ok(())
 }
 

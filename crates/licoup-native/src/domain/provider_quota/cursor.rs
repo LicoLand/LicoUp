@@ -123,7 +123,7 @@ pub(crate) fn state_db_path(params: &Value) -> Option<PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn state_db_path_in_home(home: &Path) -> PathBuf {
-    crate::platform::paths::strip_macos_data_volume(home)
+    licoup_foundation::platform::paths::strip_macos_data_volume(home)
         .join("Library/Application Support/Cursor")
         .join(STATE_DB_SUBPATH)
 }
@@ -216,8 +216,8 @@ fn derive_session_cookie(token: &str) -> Option<String> {
 fn cursor_user_data_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        crate::platform::paths::user_home_from_env().map(|home| {
-            crate::platform::paths::strip_macos_data_volume(&home)
+        licoup_foundation::platform::paths::user_home_from_env().map(|home| {
+            licoup_foundation::platform::paths::strip_macos_data_volume(&home)
                 .join("Library")
                 .join("Application Support")
                 .join("Cursor")
@@ -232,7 +232,8 @@ fn cursor_user_data_dir() -> Option<PathBuf> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        crate::platform::paths::user_home_from_env().map(|home| home.join(".config").join("Cursor"))
+        licoup_foundation::platform::paths::user_home_from_env()
+            .map(|home| home.join(".config").join("Cursor"))
     }
 }
 

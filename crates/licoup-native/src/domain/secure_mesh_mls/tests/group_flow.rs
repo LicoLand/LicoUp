@@ -14,7 +14,8 @@ fn group_create_reconciles_one_authoritative_local_projection() {
         "lico-mls-group-create-projection-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let identity_key = SigningKey::generate(&mut OsRng);
     let signing_key = SigningKey::generate(&mut OsRng);
     let identity = DeviceTrustPublicIdentity::new(
@@ -46,6 +47,6 @@ fn group_create_reconciles_one_authoritative_local_projection() {
     assert_eq!(status["participantScopeRedacted"], true);
     assert_eq!(status.get("participantEndpointId"), None);
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

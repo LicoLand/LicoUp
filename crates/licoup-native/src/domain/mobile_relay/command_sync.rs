@@ -370,7 +370,7 @@ pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -
         "Mobile Relay secure command operation authorization batch",
         5,
     )?;
-    let history_home = crate::platform::paths::portable_data_dir()?;
+    let history_home = licoup_foundation::platform::paths::portable_data_dir()?;
     let result = crate::domain::secure_mesh_command_runtime::with_secure_command_test_history_home(
         &history_home,
         || {

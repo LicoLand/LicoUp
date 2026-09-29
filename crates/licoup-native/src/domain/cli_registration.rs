@@ -5,7 +5,7 @@
 //! no dedicated RuntimeAdapter.
 
 use crate::domain::targets::normalize_target;
-use crate::platform::paths::portable_data_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;

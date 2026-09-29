@@ -32,7 +32,7 @@ pub(super) fn resolve_skill_root(agent_id: &str, params: &Value) -> Result<PathB
 }
 
 pub(super) fn home_dir() -> Option<PathBuf> {
-    crate::platform::paths::user_home_from_env()
+    licoup_foundation::platform::paths::user_home_from_env()
 }
 
 pub(super) fn get_approved_pairing(

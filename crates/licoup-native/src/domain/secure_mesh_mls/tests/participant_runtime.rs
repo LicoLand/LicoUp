@@ -20,7 +20,8 @@ fn missing_mls_snapshot_purges_only_memory_custody_and_fails_closed_for_persiste
         "lico-mls-missing-snapshot-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     let identity_key = SigningKey::generate(&mut OsRng);
     let signing_key = SigningKey::generate(&mut OsRng);
     let identity = DeviceTrustPublicIdentity::new(
@@ -231,6 +232,6 @@ fn missing_mls_snapshot_purges_only_memory_custody_and_fails_closed_for_persiste
             .unwrap()
     );
 
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

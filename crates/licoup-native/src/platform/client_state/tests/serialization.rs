@@ -1,4 +1,4 @@
-use crate::platform::file_security::ensure_private_dir;
+use licoup_foundation::platform::file_security::ensure_private_dir;
 use serde_json::json;
 
 use super::support::TestRoot;

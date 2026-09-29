@@ -33,7 +33,7 @@ pub(crate) fn apply_subagent_caller_context(command: &mut std::process::Command,
 /// Bind the portable data root so a provider-spawned MCP connector can locate
 /// the desktop-owned supervisor. Caller context stays a separate, exact set.
 pub(crate) fn apply_mcp_runtime_root(command: &mut std::process::Command) {
-    if let Ok(root) = crate::platform::paths::portable_data_dir() {
+    if let Ok(root) = licoup_foundation::platform::paths::portable_data_dir() {
         command.env("LICOUP_PORTABLE_DIR", root);
     }
 }
@@ -897,11 +897,12 @@ mod tests {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let mut command = std::process::Command::new("fixture");
         apply_mcp_runtime_root(&mut command);
         let bound = command_environment(&command, "LICOUP_PORTABLE_DIR");
-        crate::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let expected = root.to_string_lossy().into_owned();
         assert_eq!(bound.as_deref(), Some(expected.as_str()));
         assert_eq!(

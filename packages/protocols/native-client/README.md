@@ -9,7 +9,7 @@ does not apply to the
 
 ## Implementation Entry Points
 
-- `../../../crates/licoup-native/src/core/task_queue.rs`: bounded local task
+- `../../../crates/licoup-foundation/src/core/task_queue.rs`: bounded local task
   queue.
 - `../../../crates/licoup-native/src/platform/runtime_adapters.rs`: native
   agent-session adapter registry.

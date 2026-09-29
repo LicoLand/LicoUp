@@ -64,7 +64,7 @@ fn blocked_scan_and_key_migration_leave_the_same_rpc_frame_loop_responsive() {
                 ["targets", "scan"] | ["llm-gateway", "credentials", "migrate"]
             ));
             assert_eq!(
-                licoup_native::platform::paths::portable_data_dir_override_path(),
+                licoup_foundation::platform::paths::portable_data_dir_override_path(),
                 Some(root.clone())
             );
             started.send(()).unwrap();
@@ -89,7 +89,8 @@ fn blocked_scan_and_key_migration_leave_the_same_rpc_frame_loop_responsive() {
                         return fallback(admit_cli_command(args)?);
                     }
                     assert!(
-                        licoup_native::platform::paths::portable_data_dir_override_path().is_none()
+                        licoup_foundation::platform::paths::portable_data_dir_override_path()
+                            .is_none()
                     );
                     Ok(CliExecution::Json(json!({"status": "responsive"})))
                 },

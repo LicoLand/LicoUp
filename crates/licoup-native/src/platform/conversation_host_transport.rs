@@ -70,18 +70,20 @@ fn endpoint_generation(identity: &str) -> String {
 }
 
 pub fn endpoint_name() -> Result<interprocess::local_socket::Name<'static>> {
-    let root = super::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     endpoint_name_for_root(&root)
 }
 
 fn existing_endpoint_name() -> Result<interprocess::local_socket::Name<'static>> {
-    let root = super::paths::portable_data_dir_read_only()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir_read_only()?;
     existing_endpoint_name_for_root(&root)
 }
 
 fn read_endpoint_token(token_path: &Path) -> Result<String> {
-    let token = super::file_security::read_existing_private_text_bounded(token_path, 64)?
-        .ok_or_else(|| anyhow!("conversation endpoint unavailable"))?;
+    let token = licoup_foundation::platform::file_security::read_existing_private_text_bounded(
+        token_path, 64,
+    )?
+    .ok_or_else(|| anyhow!("conversation endpoint unavailable"))?;
     let token = token.trim();
     if token.len() != 32 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(anyhow!("conversation endpoint unavailable"));
@@ -114,7 +116,7 @@ fn existing_endpoint_name_for_root(
 
 pub fn endpoint_name_for_root(root: &Path) -> Result<interprocess::local_socket::Name<'static>> {
     let endpoint_root = root.join("client-state").join("conversation-runtime");
-    super::file_security::ensure_private_dir(&endpoint_root)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(&endpoint_root)?;
     let token_path = endpoint_root.join("endpoint-token");
     let token = match read_endpoint_token(&token_path) {
         Ok(token) => token,
@@ -128,7 +130,7 @@ pub fn endpoint_name_for_root(root: &Path) -> Result<interprocess::local_socket:
                 Ok(mut file) => {
                     file.write_all(token.as_bytes())?;
                     file.sync_all()?;
-                    super::file_security::harden_private_path(&token_path)?;
+                    licoup_foundation::platform::file_security::harden_private_path(&token_path)?;
                     token
                 }
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
@@ -205,9 +207,10 @@ mod tests {
             "licoup-conversation-endpoint-read-only-test-{}",
             uuid::Uuid::new_v4()
         ));
-        let previous = super::super::paths::set_portable_data_dir_override(Some(root.clone()));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
         let missing = existing_endpoint_name();
-        super::super::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         assert!(missing.is_err());
         assert!(!root.exists());
 

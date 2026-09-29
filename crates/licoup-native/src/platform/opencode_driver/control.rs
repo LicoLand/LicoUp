@@ -8,7 +8,7 @@ pub(in crate::platform) fn cancel(
 
 pub(in crate::platform) fn serve_capabilities() -> CapabilityProbe {
     CapabilityProbe {
-        protocol_version: Some(u64::from(crate::core::acp::PROTOCOL_VERSION)),
+        protocol_version: Some(u64::from(licoup_foundation::core::acp::PROTOCOL_VERSION)),
         load_session: true,
         resume_session: true,
         close_session: true,

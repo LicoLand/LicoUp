@@ -1,0 +1,22 @@
+[package]
+name = "licoup-foundation"
+version = "0.3.0"
+edition = "2024"
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", default-features = false, features = ["fs", "user"] }

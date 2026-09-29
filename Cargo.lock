@@ -2111,6 +2111,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "licoup-foundation"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "nix",
+ "serde",
+ "serde_json",
+ "tar",
+ "url",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "licoup-mcp"
 version = "0.2.1"
 dependencies = [
@@ -2158,6 +2173,7 @@ dependencies = [
  "licoup-conversation",
  "licoup-endpoint-core",
  "licoup-extension-contracts",
+ "licoup-foundation",
  "licoup-platform-bridges",
  "licoup-protocol-bindings",
  "licoup-state-machine-codegen",

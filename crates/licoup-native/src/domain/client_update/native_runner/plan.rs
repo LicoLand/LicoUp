@@ -120,7 +120,7 @@ fn macos_install_root() -> PathBuf {
     std::env::current_exe()
         .ok()
         .and_then(|executable| {
-            crate::platform::paths::desktop_bundle_for_cli(&executable)
+            licoup_foundation::platform::paths::desktop_bundle_for_cli(&executable)
                 .and_then(Path::parent)
                 .map(Path::to_path_buf)
         })

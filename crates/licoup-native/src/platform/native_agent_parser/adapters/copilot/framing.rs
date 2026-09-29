@@ -1,5 +1,5 @@
 // Shared bounded LF framing for the Copilot and Kimi ACP parser policies.
-use crate::core::acp;
+use licoup_foundation::core::acp;
 use std::io::BufRead;
 use std::sync::mpsc::SyncSender;
 

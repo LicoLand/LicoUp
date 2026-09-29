@@ -76,7 +76,7 @@ fn admission_is_incremental_and_rerun_is_a_noop() {
 fn admission_lock_preserves_existing_contents() {
     let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
     let migration_root = root.join("client-state/migrations");
-    crate::platform::file_security::ensure_private_dir(&migration_root).unwrap();
+    licoup_foundation::platform::file_security::ensure_private_dir(&migration_root).unwrap();
     let lock_path = migration_root.join("admission.lock");
     let canary = b"existing-lock-content";
     fs::write(&lock_path, canary).unwrap();
@@ -91,7 +91,7 @@ fn admission_lock_preserves_existing_contents() {
 fn ahead_domain_fails_without_advancing_other_domains() {
     let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
     let marker_root = root.join("client-state/migrations/domain-state");
-    crate::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+    licoup_foundation::platform::file_security::ensure_private_dir(&marker_root).unwrap();
     let domain = &embedded_frontier().unwrap().domains[0];
     write_json_atomic(
         &marker_path(&marker_root, &domain.domain_id),
@@ -255,14 +255,14 @@ fn json_domain_migrations_preserve_durable_canaries_and_secret_custody() {
 fn client_state_collection_adoption_preserves_items_and_adds_current_authority() {
     let root = std::env::temp_dir().join(format!("licoup-migration-{}", uuid::Uuid::new_v4()));
     let path = root.join("client-state/settings.json");
-    crate::platform::file_security::ensure_private_dir(&root).unwrap();
-    crate::platform::file_security::ensure_private_dir(path.parent().unwrap()).unwrap();
+    licoup_foundation::platform::file_security::ensure_private_dir(&root).unwrap();
+    licoup_foundation::platform::file_security::ensure_private_dir(path.parent().unwrap()).unwrap();
     let canary = json!({
         "collection": "settings",
         "items": [{"id": "preserved-canary", "value": 42}]
     });
     write_json_atomic(&path, &canary).unwrap();
-    crate::platform::file_security::harden_private_path(&path).unwrap();
+    licoup_foundation::platform::file_security::harden_private_path(&path).unwrap();
 
     admit(&root).unwrap();
 
@@ -654,7 +654,7 @@ fn completed_frontier_one_advances_adaptive_flywheel_ledger_and_marker() {
 
     let migration_root = root.join("client-state/migrations");
     let marker_root = migration_root.join("domain-state");
-    crate::platform::file_security::ensure_private_dir(&marker_root).unwrap();
+    licoup_foundation::platform::file_security::ensure_private_dir(&marker_root).unwrap();
     write_json_atomic(
         &marker_path(&marker_root, "adaptive-flywheel"),
         &DomainMarker {

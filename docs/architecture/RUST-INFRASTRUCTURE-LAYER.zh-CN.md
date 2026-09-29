@@ -5,7 +5,8 @@
 | **规范版本** | [English (Normative)](RUST-INFRASTRUCTURE-LAYER.md) | 基础设施与对外交互层英文规范 |
 | **架构主文档** | [docs/architecture/README.zh-CN.md](README.zh-CN.md) | 四层顶层客户端架构与总览 |
 | **Conversation 垂直领域** | [CONVERSATION-DOMAIN.zh-CN.md](CONVERSATION-DOMAIN.zh-CN.md) | 统一聊天存储、Membership 与调度门 |
-| **原生系统适配** | `crates/licoup-native/src/platform/` | 各操作系统底层 API、脚本与工具链 |
+| **共享基础组件** | `crates/licoup-foundation/` | 词法路径、私有文件与归档操作、有界队列、ACP 报文编解码、ANSI 清理与严格 URL 校验 |
+| **原生系统适配** | `crates/licoup-native/src/platform/` | 操作系统专用 API、原生进程、驱动与平台脚本 |
 | **安全与数据边界** | [SECURITY-AND-DATA-BOUNDARY.zh-CN.md](SECURITY-AND-DATA-BOUNDARY.zh-CN.md) | 数据流动规则与零信任通信边界 |
 
 本文档定义 **第 3 层：Rust 功能核心层** 中的「基础设施与对外交互层（Infrastructure & External Boundary Layer）」。这一层直接与底层操作系统、文件系统、终端设备、网络或外部进程环境交互，构成了 LicoUp 应用内部核心业务与外部物理世界的**清晰交界线**。

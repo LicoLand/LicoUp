@@ -10,7 +10,7 @@ pub(crate) fn home_dir_from_env<F>(var: F) -> PathBuf
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    crate::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
+    licoup_foundation::platform::paths::env_home_from(var).unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub(crate) fn expand_home(value: &str) -> PathBuf {

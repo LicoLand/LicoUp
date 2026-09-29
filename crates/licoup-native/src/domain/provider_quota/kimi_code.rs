@@ -135,8 +135,9 @@ fn resolve_kimi_code_home(params: &Value) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("KIMI_CODE_HOME").filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(path));
     }
-    crate::platform::paths::user_home_from_env()
-        .map(|home| crate::platform::paths::strip_macos_data_volume(&home).join(".kimi-code"))
+    licoup_foundation::platform::paths::user_home_from_env().map(|home| {
+        licoup_foundation::platform::paths::strip_macos_data_volume(&home).join(".kimi-code")
+    })
 }
 
 /// Numeric quota counters arrive as numbers from the live endpoint, but the

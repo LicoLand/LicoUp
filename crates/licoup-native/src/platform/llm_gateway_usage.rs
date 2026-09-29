@@ -1,8 +1,10 @@
 //! Private, bounded request counters for traffic actually handled by the
 //! local LLM Gateway. This is intentionally separate from agent token usage.
 
-use crate::platform::file_security::{atomic_write_private_text, read_private_text_bounded};
 use anyhow::Result;
+use licoup_foundation::platform::file_security::{
+    atomic_write_private_text, read_private_text_bounded,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -156,7 +158,7 @@ mod tests {
     fn recorder_persists_separate_agent_and_model_request_counts() {
         let root =
             std::env::temp_dir().join(format!("licoup-gateway-usage-{}", uuid::Uuid::new_v4()));
-        crate::platform::file_security::ensure_private_dir(&root).unwrap();
+        licoup_foundation::platform::file_security::ensure_private_dir(&root).unwrap();
         let path = root.join("usage.json");
         let recorder = GatewayUsageRecorder::open(path.clone()).unwrap();
         recorder.record(

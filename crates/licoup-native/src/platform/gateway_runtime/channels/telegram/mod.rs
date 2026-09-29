@@ -23,12 +23,12 @@ pub use transport::{
     bot_commands,
 };
 
-use crate::platform::file_security::{
+use anyhow::Result;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
     remove_private_state_marker,
 };
-use crate::platform::paths;
-use anyhow::Result;
+use licoup_foundation::platform::paths;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 

@@ -14,13 +14,13 @@ pub(crate) struct PortableDataDirOverrideGuard {
 
 impl PortableDataDirOverrideGuard {
     pub(crate) fn set(path: Option<PathBuf>) -> Self {
-        let previous = licoup_native::platform::paths::set_portable_data_dir_override(path);
+        let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(path);
         Self { previous }
     }
 }
 
 impl Drop for PortableDataDirOverrideGuard {
     fn drop(&mut self) {
-        licoup_native::platform::paths::set_portable_data_dir_override(self.previous.take());
+        licoup_foundation::platform::paths::set_portable_data_dir_override(self.previous.take());
     }
 }

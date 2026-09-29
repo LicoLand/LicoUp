@@ -3,12 +3,12 @@
 //! Inventory and status never return the token. Development may fall back to
 //! `TELEGRAM_BOT_TOKEN` when no stored credential exists.
 
-use crate::platform::file_security::{
+use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, ensure_private_dir, read_private_text_bounded,
     remove_private_state_marker,
 };
-use crate::platform::paths;
-use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::paths;
 use serde_json::{Value, json};
 use std::env;
 use std::path::PathBuf;
@@ -116,7 +116,7 @@ pub fn credentials_status() -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::paths::set_portable_data_dir_override;
+    use licoup_foundation::platform::paths::set_portable_data_dir_override;
     use std::sync::Mutex;
 
     static LOCK: Mutex<()> = Mutex::new(());

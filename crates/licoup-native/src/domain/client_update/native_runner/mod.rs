@@ -60,8 +60,10 @@ pub(super) fn apply_live(
         // Dispatch failed before ownership could pass to the candidate. The
         // current binary remains authoritative and may clear this pre-handoff
         // claim; after successful dispatch only forward repair is allowed.
-        crate::platform::file_security::remove_private_state_marker(&prepared.handoff_path)
-            .context("failed to clear the pre-dispatch client update handoff")?;
+        licoup_foundation::platform::file_security::remove_private_state_marker(
+            &prepared.handoff_path,
+        )
+        .context("failed to clear the pre-dispatch client update handoff")?;
         return Err(error);
     }
     Ok(json!({

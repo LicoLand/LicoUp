@@ -12,7 +12,7 @@ use std::time::Duration;
 use super::constants::{ARCHIVE_JOB_DB, ARCHIVE_JOB_DIR};
 use super::request::optional_local_path_param;
 use crate::platform::client_state::{ActivityLog, ClientStateStore};
-use crate::platform::paths::portable_data_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 
 pub(super) use jobs::row_to_job;
 

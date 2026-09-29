@@ -27,7 +27,7 @@ pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
 }
 
 pub(super) fn handle_list(_command: AdmittedCommand) -> Result<CliExecution> {
-    let root = crate::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     let inventory =
         crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::at_state_root(&root)?.list()?;
     let mut result = serde_json::to_value(inventory)?;
@@ -39,7 +39,7 @@ pub(super) fn handle_list(_command: AdmittedCommand) -> Result<CliExecution> {
 }
 
 pub(super) fn handle_migrate(_command: AdmittedCommand) -> Result<CliExecution> {
-    let root = crate::platform::paths::portable_data_dir()?;
+    let root = licoup_foundation::platform::paths::portable_data_dir()?;
     let inventory = crate::domain::client_state_migration::migrate_gateway_credentials(&root)?;
     let mut result = serde_json::to_value(inventory)?;
     result["ok"] = json!(true);
@@ -163,7 +163,7 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
         .destination
         .parent()
         .ok_or_else(|| anyhow!("llm_gateway_agent_config_path_invalid"))?;
-    crate::platform::file_security::ensure_private_dir(parent)?;
+    licoup_foundation::platform::file_security::ensure_private_dir(parent)?;
     let content = if plan
         .content
         .contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER)
@@ -182,7 +182,10 @@ pub(super) fn handle_agent_apply(mut command: AdmittedCommand) -> Result<CliExec
     if content.contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER) {
         return Err(anyhow!("gateway_client_token_invalid"));
     }
-    crate::platform::file_security::atomic_write_private_text(&plan.destination, &content)?;
+    licoup_foundation::platform::file_security::atomic_write_private_text(
+        &plan.destination,
+        &content,
+    )?;
     Ok(CliExecution::Json(
         json!({"ok": true, "agentId": plan.agent_id,
         "configured": true, "destination": plan.destination, "containsUpstreamSecret": false}),

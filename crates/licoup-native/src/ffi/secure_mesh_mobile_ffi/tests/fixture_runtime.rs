@@ -6,10 +6,11 @@ fn mobile_ffi_self_test_covers_native_secure_mesh_runtime() {
         "lico-mobile-ffi-pure-runtime-probe-{}",
         uuid::Uuid::new_v4()
     ));
-    let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+    let previous =
+        licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
     assert_eq!(runtime_feature_flags(), EXPECTED_FEATURES);
     assert!(runtime_self_test());
-    crate::platform::paths::set_portable_data_dir_override(previous);
+    licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
     assert!(!root.exists());
 }
 

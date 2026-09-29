@@ -1,8 +1,8 @@
-use crate::platform::file_security::read_existing_private_text_bounded;
-use crate::platform::file_security::{
+use anyhow::{Result, ensure};
+use licoup_foundation::platform::file_security::read_existing_private_text_bounded;
+use licoup_foundation::platform::file_security::{
     atomic_write_private_text, atomic_write_private_text_bounded, read_private_text_bounded,
 };
-use anyhow::{Result, ensure};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};

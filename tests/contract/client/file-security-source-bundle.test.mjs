@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/licoup-native/src/platform/file_security.rs";
-const root = "crates/licoup-native/src/platform/file_security";
+const facadePath = "crates/licoup-foundation/src/platform/file_security.rs";
+const root = "crates/licoup-foundation/src/platform/file_security";
 const productionLeaves = Object.freeze([
   "append_lock.rs",
   "atomic_replace.rs",
@@ -113,8 +113,7 @@ test("platform policy leaves stay independent and production emits no sensitive 
 test("all consumers use only the stable file security facade", async () => {
   const internalModules = "append_lock|atomic_replace|hardening|marker|policy|sync|unix_hardening|validation|windows_acl";
   const internalPath = new RegExp(`file_security::(?:${internalModules})`, "u");
-  const consumers = (await sourceFiles("crates/licoup-native/src"))
-    .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
+  const consumers = await sourceFiles("crates/licoup-native/src");
   for (const relativePath of consumers) {
     const source = await read(relativePath);
     assert.equal(internalPath.test(source), false, relativePath);

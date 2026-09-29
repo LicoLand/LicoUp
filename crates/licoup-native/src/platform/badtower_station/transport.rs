@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::platform::url_security::canonical_https_or_loopback_http_origin;
+use licoup_foundation::platform::url_security::canonical_https_or_loopback_http_origin;
 use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 
 use super::contract::{

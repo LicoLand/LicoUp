@@ -6,8 +6,10 @@
 //! its own small workspace under the LicoUp state root and uses it whenever the
 //! requested directory is one of those unbounded roots.
 
-use crate::platform::file_security::ensure_private_dir;
-use crate::platform::paths::{portable_data_dir, strip_macos_data_volume, user_home_from_env};
+use licoup_foundation::platform::file_security::ensure_private_dir;
+use licoup_foundation::platform::paths::{
+    portable_data_dir, strip_macos_data_volume, user_home_from_env,
+};
 use std::path::{Component, Path, PathBuf};
 
 /// Single client-owned fallback workspace under the LicoUp state root. Not
@@ -131,7 +133,10 @@ fn lexical_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::paths::posix_absolute;
+
+    fn posix_absolute(parts: &[&str]) -> PathBuf {
+        PathBuf::from(format!("/{}", parts.join("/")))
+    }
 
     fn synthetic_home() -> PathBuf {
         std::env::temp_dir().join("licoup-agent-workspace-home-fixture")
@@ -207,7 +212,8 @@ mod tests {
     fn default_workspace_is_shared_under_the_client_state_root() {
         let root =
             std::env::temp_dir().join(format!("licoup-agent-workspace-{}", uuid::Uuid::new_v4()));
-        let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
+        let previous =
+            licoup_foundation::platform::paths::set_portable_data_dir_override(Some(root.clone()));
 
         let workspace = default_local_agent_workspace("cursor").unwrap();
 
@@ -233,7 +239,7 @@ mod tests {
             resolve_local_agent_workspace("cursor", Some(&project)),
             Some(project)
         );
-        crate::platform::paths::set_portable_data_dir_override(previous);
+        licoup_foundation::platform::paths::set_portable_data_dir_override(previous);
         let _ = std::fs::remove_dir_all(root);
     }
 }

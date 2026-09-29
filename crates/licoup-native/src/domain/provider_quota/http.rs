@@ -112,7 +112,7 @@ impl rustls::client::danger::ServerCertVerifier for AcceptSelfSignedServerVerifi
 }
 
 fn validate_url(url: &str, code: &'static str) -> Result<(), QuotaFetchError> {
-    if crate::platform::url_security::is_https_or_loopback_http_url(url) {
+    if licoup_foundation::platform::url_security::is_https_or_loopback_http_url(url) {
         Ok(())
     } else {
         Err(QuotaFetchError::new(code))
@@ -177,7 +177,7 @@ fn validate_loopback_url(url: &str, code: &'static str) -> Result<(), QuotaFetch
 fn is_loopback_only_url(value: &str) -> bool {
     // Reuse the shared parser's strictness (no userinfo, fragments, spoofed
     // hosts, port 0), then require the host to be a loopback address.
-    if !crate::platform::url_security::is_https_or_loopback_http_url(value) {
+    if !licoup_foundation::platform::url_security::is_https_or_loopback_http_url(value) {
         return false;
     }
     match url::Url::parse(value.trim()).ok() {

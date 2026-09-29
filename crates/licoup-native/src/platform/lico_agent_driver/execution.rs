@@ -4,18 +4,18 @@ use crate::domain::lico_agent::{Agent, AgentProfileKind};
 use crate::platform::agent_workspace::{
     default_local_agent_workspace, resolve_local_agent_workspace,
 };
-use crate::platform::file_security::ensure_private_dir;
 use crate::platform::native_agent_parser::adapters::NativeLineParser;
 use crate::platform::native_agent_parser::adapters::lico_agent::{
     RpcEffect, RpcParser, encode_request,
 };
-use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
 use crate::platform::raw_execution::{
     RawExecutionBinding, RawExecutionDirection, RawExecutionObserver, RawExecutionReader,
     RawExecutionScope,
 };
+use licoup_foundation::platform::file_security::ensure_private_dir;
+use licoup_foundation::platform::paths::portable_data_dir;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};

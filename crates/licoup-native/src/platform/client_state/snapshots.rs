@@ -1,5 +1,5 @@
-use crate::platform::file_security::ensure_private_dir;
 use anyhow::{Result, anyhow, ensure};
+use licoup_foundation::platform::file_security::ensure_private_dir;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};

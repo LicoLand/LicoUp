@@ -3276,7 +3276,7 @@ struct PortableDataOverride {
 
 impl PortableDataOverride {
     fn set(root: &Path) -> Self {
-        let previous = licoup_native::platform::paths::set_portable_data_dir_override(Some(
+        let previous = licoup_foundation::platform::paths::set_portable_data_dir_override(Some(
             root.to_path_buf(),
         ));
         Self {
@@ -3288,7 +3288,7 @@ impl PortableDataOverride {
 
 impl Drop for PortableDataOverride {
     fn drop(&mut self) {
-        licoup_native::platform::paths::set_portable_data_dir_override(self.previous.take());
+        licoup_foundation::platform::paths::set_portable_data_dir_override(self.previous.take());
         let _ = fs::remove_dir_all(&self.root);
     }
 }

@@ -7,7 +7,7 @@ use crate::platform::client_state::ClientStateStore;
 
 pub(super) fn prepare(store: &ClientStateStore, deployment_id: &str) -> Result<PathBuf> {
     let path = path(store, deployment_id);
-    let file = crate::platform::file_security::open_private_lock_file(&path)?;
+    let file = licoup_foundation::platform::file_security::open_private_lock_file(&path)?;
     match file.try_lock_exclusive() {
         Ok(()) => {
             FileExt::unlock(&file)?;
@@ -21,7 +21,10 @@ pub(super) fn prepare(store: &ClientStateStore, deployment_id: &str) -> Result<P
 }
 
 pub(super) fn is_held(store: &ClientStateStore, deployment_id: &str) -> Result<bool> {
-    let file = crate::platform::file_security::open_private_lock_file(&path(store, deployment_id))?;
+    let file = licoup_foundation::platform::file_security::open_private_lock_file(&path(
+        store,
+        deployment_id,
+    ))?;
     match file.try_lock_exclusive() {
         Ok(()) => {
             FileExt::unlock(&file)?;
