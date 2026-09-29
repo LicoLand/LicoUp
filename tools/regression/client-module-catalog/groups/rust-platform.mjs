@@ -2142,5 +2142,24 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/extension_packages/uninstall.rs",
       ],
       command: rustLayer("platform::extension_packages::"),
+    }),
+  defineModule({
+      id: "rust.platform.data-home-relocation",
+      kind: "rust-platform",
+      summary: "Coordinated data-root relocation and its dedicated-process lifecycle proof",
+      inputs: [
+        "crates/licoup-native/src/platform/data_home_relocation.rs",
+        "crates/licoup-native/tests/data_home_process.rs",
+      ],
+      command: rustIntegrationTest("data_home_process"),
+    }),
+  defineModule({
+      id: "rust.platform.data-home-access",
+      kind: "rust-platform",
+      summary: "Foundation data-home access leases and relocation admission barrier",
+      inputs: [
+        "crates/licoup-foundation/src/platform/data_home_access.rs",
+      ],
+      command: foundationLayer("platform::data_home_access"),
     })
 ]);
