@@ -120,11 +120,13 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
   }
 
   const licoArcRelayFiles = (await collectSourceFiles(
-    "crates/licoup-native/src/core/licoarc_relay",
+    "crates/licoup-protocol-bindings/src/licoarc_relay",
     ".rs"
   )).filter((relativePath) => !relativePath.includes("/tests/"));
   const licoArcRelayRustSource = await readJoinedText([
-    "crates/licoup-native/src/core/licoarc_relay.rs",
+    "crates/licoup-protocol-bindings/src/lib.rs",
+    "crates/licoup-protocol-bindings/src/licoarc_relay.rs",
+    "crates/licoup-protocol-bindings/src/padding.rs",
     ...licoArcRelayFiles
   ]);
   for (const token of [
@@ -141,12 +143,12 @@ export async function checkSecureMeshFoundationsAndLocalArchive(context) {
   ]) {
     assert(
       licoArcRelayRustSource.includes(token),
-      `Lico Arc relay split must preserve cryptographic and bounded-codec evidence: ${token}`
+      `protocol bindings must preserve Lico Arc relay cryptographic and bounded-codec evidence: ${token}`
     );
   }
   assert(
     !/(^|[^A-Za-z])ChaCha20Poly1305::new/u.test(licoArcRelayRustSource),
-    "Lico Arc relay production code must keep the XChaCha20-Poly1305 header cipher"
+    "protocol bindings must keep the XChaCha20-Poly1305 relay-header cipher"
   );
 
 }

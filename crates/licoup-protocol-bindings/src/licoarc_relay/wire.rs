@@ -10,11 +10,11 @@ use super::envelope::LicoArcRelayEnvelope;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(super) struct LicoArcRelayEnvelopeWire {
-    pub(in crate::core::licoarc_relay) contract_version: String,
-    pub(in crate::core::licoarc_relay) envelope_id: String,
-    pub(in crate::core::licoarc_relay) mailbox_id: String,
-    pub(in crate::core::licoarc_relay) ciphertext: String,
-    pub(in crate::core::licoarc_relay) expires_at: String,
+    pub(in crate::licoarc_relay) contract_version: String,
+    pub(in crate::licoarc_relay) envelope_id: String,
+    pub(in crate::licoarc_relay) mailbox_id: String,
+    pub(in crate::licoarc_relay) ciphertext: String,
+    pub(in crate::licoarc_relay) expires_at: String,
 }
 
 impl LicoArcRelayEnvelope {

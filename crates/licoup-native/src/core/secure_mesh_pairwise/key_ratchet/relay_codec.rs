@@ -5,13 +5,13 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::super::codec::{SecureMeshPairwiseMessage, SecureMeshPairwisePrivateRelayHeader};
 use super::super::support::{SECURE_MESH_PAIRWISE_CIPHER_SUITE, parse_key_bytes};
 use super::SecureMeshPairwiseSession;
-use crate::core::licoarc_relay::{
-    LicoArcRelayEnvelope, LicoArcRelayEnvelopeDraft, open_private_relay_header,
-    seal_private_relay_header,
-};
 use crate::core::secure_mesh::SECURE_MESH_PROTOCOL_VERSION;
 use crate::core::secure_mesh_crypto::{
     OpenedSecureMeshPayload, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
+};
+use licoup_protocol_bindings::licoarc_relay::{
+    LicoArcRelayEnvelope, LicoArcRelayEnvelopeDraft, open_private_relay_header,
+    seal_private_relay_header,
 };
 
 const MAX_RELAY_PAYLOAD_LIFETIME_SECONDS: i64 = 10 * 60;

@@ -18,7 +18,7 @@ use super::private_header_frame::{
     decode_private_relay_header_frame, encode_private_relay_header_frame,
 };
 
-pub(crate) fn seal_private_relay_header(
+pub fn seal_private_relay_header(
     draft: &LicoArcRelayEnvelopeDraft,
     header_key: &[u8],
     private_header: &[u8],
@@ -28,7 +28,7 @@ pub(crate) fn seal_private_relay_header(
     seal_private_relay_header_with_nonce(draft, header_key, private_header, nonce)
 }
 
-pub(crate) fn open_private_relay_header<'a>(
+pub fn open_private_relay_header<'a>(
     envelope: &LicoArcRelayEnvelope,
     candidate_header_keys: impl IntoIterator<Item = &'a [u8]>,
 ) -> Result<Zeroizing<Vec<u8>>> {
@@ -68,7 +68,7 @@ pub(crate) fn open_private_relay_header<'a>(
     ))
 }
 
-pub(in crate::core::licoarc_relay) fn seal_private_relay_header_with_nonce(
+pub(in crate::licoarc_relay) fn seal_private_relay_header_with_nonce(
     draft: &LicoArcRelayEnvelopeDraft,
     header_key: &[u8],
     private_header: &[u8],

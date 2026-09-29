@@ -31,11 +31,11 @@
     {
       "id": "pairwise-relay-header-uses-double-ratchet-header-encryption",
       "files": [
-        "crates/licoup-native/src/core/licoarc_relay/constants.rs",
-        "crates/licoup-native/src/core/licoarc_relay/aad.rs",
-        "crates/licoup-native/src/core/licoarc_relay/private_header_frame.rs",
-        "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
-        "crates/licoup-native/src/core/licoarc_relay/tests/header.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/constants.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/aad.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/private_header_frame.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/private_header.rs",
+        "crates/licoup-protocol-bindings/src/licoarc_relay/tests/header.rs",
         "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
         "crates/licoup-native/src/core/secure_mesh_pairwise/tests/codec.rs"
       ],

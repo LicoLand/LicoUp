@@ -1,3 +1,5 @@
+use licoup_protocol_bindings::MAX_PADDING_BUCKET_BYTES;
+
 pub const SECURE_MESH_CONTENT_CIPHER_SUITE: &str =
     "licomesh.secure-payload.v1.chacha20poly1305-hkdfsha256";
 pub const SECURE_MESH_CONTENT_CRYPTO_STATUS: &str = "content_and_file_aead_available_authenticated_bucket_padding_available_pairwise_session_key_payload_codec_available_mls_exporter_diagnostic_only_product_group_messaging_disabled";
@@ -9,10 +11,6 @@ pub(super) const MAX_CONTENT_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const MAX_CONTEXT_FIELD_BYTES: usize = 4096;
 pub(super) const MAX_CONTENT_TYPE_BYTES: usize = 255;
 pub(super) const AEAD_TAG_LEN: usize = 16;
-pub(crate) const MIN_PADDING_BUCKET_BYTES: usize = 256;
-pub(crate) const POWER_OF_TWO_PADDING_LIMIT_BYTES: usize = 64 * 1024;
-pub(crate) const LARGE_PADDING_BUCKET_STEP_BYTES: usize = 64 * 1024;
-pub(crate) const MAX_PADDING_BUCKET_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const MAX_SEALED_CONTENT_BYTES: usize = MAX_PADDING_BUCKET_BYTES;
 pub(super) const AAD_MAGIC: &[u8] = b"LCOSM-AAD-v1";
 pub(super) const PLAINTEXT_MAGIC: &[u8] = b"LCOSM-PT-v1";

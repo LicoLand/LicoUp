@@ -3,9 +3,9 @@ use serde_json::Value;
 
 use super::evaluate_service_action_json;
 use super::projection::{decode_protected_projection, protected_plaintext};
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{OpenedSecureMeshPayload, SecureMeshContentContext};
 use crate::core::secure_mesh_pairwise::SecureMeshPairwiseSession;
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 
 /// Seal a lifecycle service action inside a pairwise envelope. Plaintext service-action
 /// transport outside pairwise/MLS envelopes is not a production path.

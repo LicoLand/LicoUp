@@ -2,13 +2,13 @@ use super::super::mailbox::local_canonical_mailbox_tokens;
 use super::super::station::{
     lease_transport_hint, station_context, station_lease_seconds, station_receive_limit,
 };
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::domain::mobile_relay::secret_custody::{
     RuntimeSecretMaterial, load_config_with_runtime_secret_context,
 };
 use crate::domain::mobile_relay::support::CONFIG_SCHEMA_VERSION;
 use crate::platform::badtower_station::BadTowerLeaseTransportHint;
 use anyhow::{Result, anyhow};
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 use serde_json::{Value, json};
 
 pub(in crate::domain::mobile_relay) struct StationPoll {

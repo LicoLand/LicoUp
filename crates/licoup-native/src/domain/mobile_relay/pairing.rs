@@ -30,7 +30,7 @@ pub fn pairing_create(params: &Value) -> Result<Value> {
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
-        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+        "relayContract": licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
         "pairingId": pairing_id,
         "pairingCode": pairing_code,
         "serverVisiblePairingState": false
@@ -105,7 +105,7 @@ pub fn pairing_claim(params: &Value) -> Result<Value> {
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
-        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+        "relayContract": licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
         "pairingId": pairing_id,
         "outOfBandPairingResponse": {
             "mobileSecureMesh": mobile_secure_mesh,
@@ -144,7 +144,7 @@ pub(super) fn pairing_status_response(config: &Value) -> Value {
             "ok": true,
             "schemaVersion": CONFIG_SCHEMA_VERSION,
             "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
-            "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+            "relayContract": licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
             "stationConfigured": effective_station_base_url(config).is_ok(),
             "paired": config.get("paired").and_then(Value::as_bool).unwrap_or(false),
             "serverVisiblePairingState": false
@@ -163,7 +163,7 @@ pub(super) fn refresh_pairing_status_with_context(
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
-        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+        "relayContract": licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
         "stationConfigured": effective_station_base_url(config).is_ok(),
         "paired": config.get("paired").and_then(Value::as_bool).unwrap_or(false),
         "serverVisiblePairingState": false

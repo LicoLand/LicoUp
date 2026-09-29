@@ -92,7 +92,7 @@ impl LicoArcRelayEnvelopeDraft {
         Ok(envelope)
     }
 
-    pub(in crate::core::licoarc_relay) fn begin_with_envelope_id(
+    pub(in crate::licoarc_relay) fn begin_with_envelope_id(
         mailbox_id: &SecureMeshMailboxToken,
         expires_at: &str,
         content_ciphertext_bytes: usize,

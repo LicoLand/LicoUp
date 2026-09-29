@@ -8,7 +8,7 @@ use regex::{Captures, Regex};
 
 use super::constants::{LICOARC_EXPIRES_AT_MAX_CHARS, LICOARC_ID_MAX_CHARS, LICOARC_ID_MIN_CHARS};
 
-pub(in crate::core::licoarc_relay) fn append_len_prefixed(
+pub(in crate::licoarc_relay) fn append_len_prefixed(
     output: &mut Vec<u8>,
     value: &[u8],
 ) -> Result<()> {
@@ -19,7 +19,7 @@ pub(in crate::core::licoarc_relay) fn append_len_prefixed(
     Ok(())
 }
 
-pub(in crate::core::licoarc_relay) fn decode_exact_base64url(
+pub(in crate::licoarc_relay) fn decode_exact_base64url(
     label: &str,
     value: &str,
     expected_bytes: usize,
@@ -27,7 +27,7 @@ pub(in crate::core::licoarc_relay) fn decode_exact_base64url(
     decode_bounded_base64url(label, value, expected_bytes, expected_bytes)
 }
 
-pub(in crate::core::licoarc_relay) fn decode_bounded_base64url(
+pub(in crate::licoarc_relay) fn decode_bounded_base64url(
     label: &str,
     value: &str,
     minimum_bytes: usize,
@@ -56,7 +56,7 @@ pub(in crate::core::licoarc_relay) fn decode_bounded_base64url(
     Ok(decoded)
 }
 
-pub(in crate::core::licoarc_relay) fn base64url_encoded_len(input_bytes: usize) -> Result<usize> {
+pub(in crate::licoarc_relay) fn base64url_encoded_len(input_bytes: usize) -> Result<usize> {
     let complete = input_bytes
         .checked_div(3)
         .and_then(|groups| groups.checked_mul(4))
@@ -72,7 +72,7 @@ pub(in crate::core::licoarc_relay) fn base64url_encoded_len(input_bytes: usize) 
         .ok_or_else(|| anyhow!("Lico Arc base64url encoded length overflow"))
 }
 
-pub(in crate::core::licoarc_relay) fn validate_licoarc_id(label: &str, value: &str) -> Result<()> {
+pub(in crate::licoarc_relay) fn validate_licoarc_id(label: &str, value: &str) -> Result<()> {
     ensure!(
         (LICOARC_ID_MIN_CHARS..=LICOARC_ID_MAX_CHARS).contains(&value.len()),
         "Lico Arc {label} length is outside contract bounds"
@@ -86,7 +86,7 @@ pub(in crate::core::licoarc_relay) fn validate_licoarc_id(label: &str, value: &s
     Ok(())
 }
 
-pub(in crate::core::licoarc_relay) fn validate_expires_at(value: &str) -> Result<()> {
+pub(in crate::licoarc_relay) fn validate_expires_at(value: &str) -> Result<()> {
     ensure!(
         !value.is_empty() && value.len() <= LICOARC_EXPIRES_AT_MAX_CHARS,
         "Lico Arc expiresAt is outside endpoint bounds"

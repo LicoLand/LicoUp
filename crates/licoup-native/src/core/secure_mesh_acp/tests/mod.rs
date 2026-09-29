@@ -4,7 +4,6 @@ use super::{
     open_acp_protected_payload, reject_plaintext_acp_protected_payload_relay,
     seal_acp_protected_payload,
 };
-use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{
     ContentKey, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
     open_payload_with_aad_binding, seal_payload_with_aad_binding,
@@ -18,6 +17,7 @@ use crate::core::secure_mesh_prekey::{
 use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
+use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};

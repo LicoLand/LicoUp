@@ -190,8 +190,9 @@ fn recover_pending_secure_command(
         binding.intent_digest == requested_intent_digest,
         "a different secure command delivery is pending"
     );
-    let envelope =
-        crate::core::licoarc_relay::LicoArcRelayEnvelope::from_json(&pending.envelope_json)?;
+    let envelope = licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope::from_json(
+        &pending.envelope_json,
+    )?;
     ensure!(
         envelope.envelope_id() == pending.envelope_id
             && envelope.expires_at() == pending.expires_at,

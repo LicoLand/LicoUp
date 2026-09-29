@@ -1,12 +1,12 @@
-use crate::core::licoarc_relay::{
-    SECURE_MESH_MAILBOX_ROTATION_WINDOW_SECONDS, SecureMeshDeliverySecret,
-    SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshRelayChannelBinding,
-};
 use crate::domain::mobile_relay::endpoint_trust::decode_key_32;
 use crate::domain::mobile_relay::secret_custody::{
     MobileRelayE2eeSecretField, RuntimeSecretMaterial,
 };
 use anyhow::{Result, anyhow};
+use licoup_protocol_bindings::licoarc_relay::{
+    SECURE_MESH_MAILBOX_ROTATION_WINDOW_SECONDS, SecureMeshDeliverySecret,
+    SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshRelayChannelBinding,
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;

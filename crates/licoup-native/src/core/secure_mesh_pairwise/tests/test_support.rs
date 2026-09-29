@@ -5,7 +5,6 @@ pub(super) use super::super::persistence::*;
 pub(super) use super::super::runtime_self_test::*;
 pub(super) use super::super::session_negotiation::*;
 pub(super) use super::super::support::*;
-pub(super) use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 pub(super) use crate::core::secure_mesh::{
     SECURE_MESH_PROTOCOL_BUILD_REVISION, SECURE_MESH_PROTOCOL_VERSION,
 };
@@ -44,6 +43,7 @@ pub(super) use crate::platform::secure_mesh_secret_store::EphemeralSecretStore;
 pub(super) use anyhow::{Result, anyhow, ensure};
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::SigningKey;
+pub(super) use licoup_protocol_bindings::licoarc_relay::LicoArcRelayEnvelope;
 pub(super) use rand_core::OsRng;
 pub(super) use rusqlite::{Connection as TestConnection, params};
 pub(super) use serde_json::{Value, json};
@@ -687,7 +687,7 @@ impl OpaquePairwiseRelay {
     pub(super) fn send(&mut self, envelope: LicoArcRelayEnvelope, forbidden_plaintext: &str) {
         assert_eq!(
             envelope.contract_version(),
-            crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
+            licoup_protocol_bindings::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
         );
         assert!(!envelope.envelope_id().contains(forbidden_plaintext));
         assert!(!envelope.mailbox_id().contains(forbidden_plaintext));

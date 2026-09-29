@@ -19,16 +19,16 @@ use super::mailbox::SecureMeshMailboxToken;
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct LicoArcRelayEnvelope {
-    pub(in crate::core::licoarc_relay) contract_version: String,
-    pub(in crate::core::licoarc_relay) envelope_id: String,
-    pub(in crate::core::licoarc_relay) mailbox_id: String,
-    pub(in crate::core::licoarc_relay) ciphertext: String,
-    pub(in crate::core::licoarc_relay) expires_at: String,
+    pub(in crate::licoarc_relay) contract_version: String,
+    pub(in crate::licoarc_relay) envelope_id: String,
+    pub(in crate::licoarc_relay) mailbox_id: String,
+    pub(in crate::licoarc_relay) ciphertext: String,
+    pub(in crate::licoarc_relay) expires_at: String,
 }
 
 impl LicoArcRelayEnvelope {
     #[cfg(test)]
-    pub(crate) fn new(
+    pub fn new(
         mailbox_id: &SecureMeshMailboxToken,
         expires_at: &str,
         encrypted_header: &[u8],
@@ -58,15 +58,15 @@ impl LicoArcRelayEnvelope {
         &self.expires_at
     }
 
-    pub(crate) fn decoded_encrypted_header(&self) -> Result<Vec<u8>> {
+    pub fn decoded_encrypted_header(&self) -> Result<Vec<u8>> {
         Ok(self.decode_validated_carrier()?.encrypted_header)
     }
 
-    pub(crate) fn decoded_content_ciphertext(&self) -> Result<Vec<u8>> {
+    pub fn decoded_content_ciphertext(&self) -> Result<Vec<u8>> {
         Ok(self.decode_validated_carrier()?.content_ciphertext)
     }
 
-    pub(crate) fn authenticated_outer_data(&self) -> Result<Vec<u8>> {
+    pub fn authenticated_outer_data(&self) -> Result<Vec<u8>> {
         let carrier = self.decode_validated_carrier()?;
         licoarc_outer_authenticated_data(
             &self.envelope_id,
@@ -93,7 +93,7 @@ impl LicoArcRelayEnvelope {
     }
 
     #[cfg(test)]
-    pub(in crate::core::licoarc_relay) fn new_with_envelope_id(
+    pub(in crate::licoarc_relay) fn new_with_envelope_id(
         mailbox_id: &SecureMeshMailboxToken,
         expires_at: &str,
         encrypted_header: &[u8],

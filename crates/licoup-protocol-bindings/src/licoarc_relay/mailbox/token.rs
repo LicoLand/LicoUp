@@ -9,8 +9,8 @@ use super::super::constants::MAILBOX_TOKEN_BYTES;
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct SecureMeshMailboxToken {
-    pub(in crate::core::licoarc_relay) value: String,
-    pub(in crate::core::licoarc_relay) epoch: u64,
+    pub(in crate::licoarc_relay) value: String,
+    pub(in crate::licoarc_relay) epoch: u64,
 }
 
 impl SecureMeshMailboxToken {
@@ -25,7 +25,7 @@ impl SecureMeshMailboxToken {
     }
 
     #[cfg(test)]
-    pub(in crate::core::licoarc_relay) fn epoch(&self) -> u64 {
+    pub(in crate::licoarc_relay) fn epoch(&self) -> u64 {
         self.epoch
     }
 }

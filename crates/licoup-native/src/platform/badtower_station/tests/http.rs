@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use base64::{Engine as _, engine::general_purpose};
 use serde_json::{Value, json};
 
-use crate::core::licoarc_relay::{
+use licoup_protocol_bindings::licoarc_relay::{
     LICOARC_ENCRYPTED_HEADER_BYTES, LicoArcRelayEnvelope, LicoArcRelayEnvelopeDraft,
 };
 
