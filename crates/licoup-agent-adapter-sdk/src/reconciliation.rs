@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum TextForm<'a> {
+pub enum TextForm<'a> {
     Delta(&'a str),
     Cumulative(&'a str),
 }
 
 #[derive(Default)]
-pub(in crate::platform) struct TextReconciler {
+pub struct TextReconciler {
     units: HashMap<String, TextUnit>,
 }
 
@@ -21,7 +21,7 @@ impl TextReconciler {
     /// Reconcile one text unit in amortized O(new bytes). Cumulative snapshots
     /// may extend or repeat the current text. A shorter prefix is an out-of-order
     /// stale observation and emits nothing; only genuinely divergent text fails.
-    pub(in crate::platform) fn observe(
+    pub fn observe(
         &mut self,
         unit_id: &str,
         form: TextForm<'_>,
@@ -48,7 +48,7 @@ impl TextReconciler {
         Ok(suffix)
     }
 
-    pub(in crate::platform) fn observed(&self, unit_id: &str) -> Option<&str> {
+    pub fn observed(&self, unit_id: &str) -> Option<&str> {
         self.units.get(unit_id).map(|unit| unit.observed.as_str())
     }
 }

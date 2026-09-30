@@ -1,25 +1,35 @@
-//! The sole boundary between native-agent returned frames and conversation state.
+//! The native Agent parser family: the thirteen per-Agent parsers this host
+//! still holds, and the composition that injects them into the adapter SDK.
 //!
-//! Transports own bytes and process/HTTP lifecycle.  Parser adapters own vendor
-//! framing and convert it into this closed transition vocabulary.  No caller
-//! outside this module receives or persists a vendor frame.
+//! `licoup-agent-adapter-sdk` is the single authority for what every adapter
+//! program shares: the byte-line ingress contract, the adapter declaration, the
+//! closed transition vocabulary and its arrival-ordered reducer, the
+//! delta/cumulative text reconciliation, the process-local driver registry, the
+//! registry lookup, the recorded-transcript replay harness and the parser
+//! lifecycle machine. None of that is here any more, and none of it is
+//! duplicated here.
+//!
+//! What is here is one Agent each. `adapters` holds the thirteen parsers that
+//! classify one Agent's vendor frames and the `REGISTRATIONS` list that names
+//! their declarations; `replay` holds the arm that drives each of them from a
+//! recorded transcript and the corpus checks that belong to the family; and
+//! `tests` holds the family's own claims. Each per-Agent subtree and its arm
+//! move to that Agent's crate (`licoup-agent-<agent>`); this root and the
+//! composition are what remain, because they are what names thirteen parsers
+//! and, later, thirteen crates.
+//!
+//! Two members of the SDK's `port::ParserRegistration` are declared and not yet
+//! answered here: `execution_transitions`, which projects one execution outcome
+//! into the shared transition vocabulary, and `valid_identity`, which answers
+//! whether a durable native session identity is valid for one Agent. The host
+//! reads those facts through one Agent's own functions today
+//! (`adapters/{hermes,codex,cursor,antigravity}`); composing the per-Agent
+//! answers into `REGISTRATIONS` and calling them through the port is the work
+//! of the Nodes that own those call sites and those crates. Until then every
+//! entry answers fail-closed and nothing reads them, so no behaviour depends on
+//! the gap.
 
-pub(in crate::platform) mod adapters;
-mod lifecycle;
-mod reconciliation;
-mod registry;
-
-pub(in crate::platform) use lifecycle::{LifecycleStage, Transition, TransitionReducer};
-pub(in crate::platform) use reconciliation::{TextForm, TextReconciler};
-#[cfg(test)]
-use registry::parser_for;
-
-pub(in crate::platform) fn require_registered(
-    adapter: crate::platform::runtime_adapters::RuntimeAdapter,
-) {
-    let _ = registry::parser_for(adapter);
-}
-
+pub(crate) mod adapters;
 #[cfg(test)]
 pub(in crate::platform) mod replay;
 #[cfg(test)]
@@ -43,3 +53,12 @@ const PACKAGED_ADAPTER_IDS: [&str; 13] = [
     "lico-agent",
     "deepseek-harness",
 ];
+
+/// The parser set this host injects into the adapter SDK.
+///
+/// The declarations live in `adapters`, where the thirteen parsers that report
+/// them live; this is the composition's name for the set, so a caller outside
+/// the family never names a parser to reach the SDK.
+pub(in crate::platform) const fn parser_set() -> licoup_agent_adapter_sdk::port::AdapterParserSet {
+    adapters::parser_set()
+}

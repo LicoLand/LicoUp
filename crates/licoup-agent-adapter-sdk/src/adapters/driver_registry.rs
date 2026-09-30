@@ -16,7 +16,7 @@ fn registry() -> &'static Mutex<HashMap<RegistryKey, RegistryValue>> {
     DRIVER_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub(in crate::platform) fn registry_insert<T>(
+pub fn registry_insert<T>(
     namespace: &'static str,
     key: &str,
     value: T,
@@ -38,7 +38,7 @@ where
     Ok(())
 }
 
-pub(in crate::platform) fn registry_get<T>(namespace: &'static str, key: &str) -> Option<T>
+pub fn registry_get<T>(namespace: &'static str, key: &str) -> Option<T>
 where
     T: Any + Clone + Send + Sync,
 {
@@ -52,7 +52,7 @@ where
 
 /// Insert without replacing a concurrently registered value. The existing
 /// typed value is returned to the caller so it can discard duplicate work.
-pub(in crate::platform) fn registry_insert_if_absent<T>(
+pub fn registry_insert_if_absent<T>(
     namespace: &'static str,
     key: &str,
     value: T,
@@ -77,7 +77,7 @@ where
     Ok(Ok(()))
 }
 
-pub(in crate::platform) fn registry_remove<T>(namespace: &'static str, key: &str) -> Option<T>
+pub fn registry_remove<T>(namespace: &'static str, key: &str) -> Option<T>
 where
     T: Any + Send + Sync,
 {
@@ -90,7 +90,7 @@ where
         .map(|value| *value)
 }
 
-pub(in crate::platform) fn registry_remove_if<T>(
+pub fn registry_remove_if<T>(
     namespace: &'static str,
     key: &str,
     predicate: impl FnOnce(&T) -> bool,

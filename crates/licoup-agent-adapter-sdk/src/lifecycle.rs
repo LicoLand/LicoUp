@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 
-pub(in crate::platform) use crate::state_machines::parser_lifecycle::State as LifecycleStage;
+pub use crate::state_machines::parser_lifecycle::State as LifecycleStage;
 use crate::state_machines::parser_lifecycle::{self, Event};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::platform) enum Transition {
+pub enum Transition {
     Lifecycle(LifecycleStage),
     Text {
         unit_id: String,
@@ -23,7 +23,7 @@ pub(in crate::platform) enum Transition {
 }
 
 impl Transition {
-    pub(in crate::platform) fn to_json(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         match self {
             Self::Lifecycle(stage) => json!({
                 "kind": "lifecycle",
@@ -56,13 +56,13 @@ impl Transition {
 /// Arrival-ordered lifecycle and terminal reduction. Stages are prefix closed;
 /// the first exact native failure is write-once.
 #[derive(Default)]
-pub(in crate::platform) struct TransitionReducer {
+pub struct TransitionReducer {
     highest: Option<LifecycleStage>,
     failure: Option<Transition>,
 }
 
 impl TransitionReducer {
-    pub(in crate::platform) fn advance(&mut self, stage: LifecycleStage) -> Vec<Transition> {
+    pub fn advance(&mut self, stage: LifecycleStage) -> Vec<Transition> {
         if self.failure.is_some() || self.highest.is_some_and(|current| current >= stage) {
             return Vec::new();
         }
@@ -86,7 +86,7 @@ impl TransitionReducer {
         emitted
     }
 
-    pub(in crate::platform) fn fail(
+    pub fn fail(
         &mut self,
         code: impl Into<String>,
         stage: impl Into<String>,
