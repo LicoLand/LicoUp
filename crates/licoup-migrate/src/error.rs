@@ -70,8 +70,12 @@ pub const DATA_ROOT_REQUIRED: ToolError = ToolError::new("data_root_required");
 pub const ARCHIVE_REQUIRED: ToolError = ToolError::new("archive_required");
 /// An import was reached without the empty destination it publishes into.
 pub const TARGET_ROOT_REQUIRED: ToolError = ToolError::new("target_root_required");
+/// A rehearsal was reached without the disposable working directory it stages in.
+pub const WORK_ROOT_REQUIRED: ToolError = ToolError::new("work_root_required");
 /// The archive an export was asked to write sits inside the root it would capture.
 pub const ARCHIVE_INSIDE_DATA_ROOT: ToolError = ToolError::new("archive_path_inside_data_root");
+/// The rehearsal's disposable working root sits inside the source it promised only to read.
+pub const WORK_ROOT_INSIDE_DATA_ROOT: ToolError = ToolError::new("work_root_inside_data_root");
 
 /// A failure that names the marker it read, never the path it read it from.
 pub fn marker_read_failed(_path: &std::path::Path) -> ToolError {

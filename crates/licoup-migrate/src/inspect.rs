@@ -5,7 +5,10 @@
 //! version would make the tool a second authority, which is exactly what the delivery
 //! forbids.
 
-use crate::error::{DATA_ROOT_MISSING, DATA_ROOT_NOT_DIRECTORY, FRONTIER_UNAVAILABLE, STATE_UNAVAILABLE, ToolError, ToolResult};
+use crate::error::{
+    DATA_ROOT_MISSING, DATA_ROOT_NOT_DIRECTORY, FRONTIER_UNAVAILABLE, STATE_UNAVAILABLE, ToolError,
+    ToolResult,
+};
 use serde::Serialize;
 use std::path::Path;
 
@@ -14,7 +17,10 @@ use std::path::Path;
 #[serde(rename_all = "camelCase")]
 pub struct DomainReport {
     pub domain_id: String,
-    /// The domain's authoritative store version.
+    /// The domain's authoritative version, resolved by the client's own owner: the
+    /// version its store reports when that store exists, otherwise the version its
+    /// durable marker records, so a converted domain that owns no store file reports
+    /// its marker's version rather than zero.
     pub store_version: u32,
     /// The marker's version when a marker exists.
     pub marker_schema_version: Option<u32>,
@@ -90,5 +96,9 @@ pub fn inspect(data_root: &Path) -> ToolResult<InspectReport> {
 
 /// The domains that still owe work on this root.
 pub fn outstanding(report: &InspectReport) -> Vec<&DomainReport> {
-    report.domains.iter().filter(|domain| !domain.at_target).collect()
+    report
+        .domains
+        .iter()
+        .filter(|domain| !domain.at_target)
+        .collect()
 }

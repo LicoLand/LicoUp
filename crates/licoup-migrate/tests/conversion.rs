@@ -70,15 +70,20 @@ fn convert_reports_every_owed_domain_and_claims_no_more_than_the_owner() {
         root.to_str().expect("utf-8 root"),
         "--writers-stopped",
     ]);
-    assert_eq!(report["frontierId"], "licoup-state-0.2.2");
+    assert_eq!(report["frontierId"], "licoup-state-0.3.0");
 
     let domains = report["domains"].as_array().expect("domains");
     assert!(!domains.is_empty(), "a fresh root owes work");
     for domain in domains {
         let outcome = domain["outcome"].as_str().expect("outcome");
         assert!(
-            ["converted", "already-current", "pending-authorization", "still-owed"]
-                .contains(&outcome),
+            [
+                "converted",
+                "already-current",
+                "pending-authorization",
+                "still-owed"
+            ]
+            .contains(&outcome),
             "unexpected outcome {outcome}"
         );
     }

@@ -13,4 +13,5 @@ pub mod error;
 pub mod inspect;
 pub mod journal;
 pub mod plan;
+pub mod rehearse;
 pub mod resume;

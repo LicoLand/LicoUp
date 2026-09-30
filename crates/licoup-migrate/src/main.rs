@@ -6,8 +6,9 @@
 
 use licoup_migrate::cli::{Invocation, Usage, Verb, parse};
 use licoup_migrate::error::{
-    ARCHIVE_REQUIRED, DATA_ROOT_REQUIRED, TARGET_ROOT_REQUIRED, ToolError,
+    ARCHIVE_REQUIRED, DATA_ROOT_REQUIRED, TARGET_ROOT_REQUIRED, ToolError, WORK_ROOT_REQUIRED,
 };
+use licoup_migrate::rehearse::{RehearsalRequest, rehearse};
 use licoup_migrate::resume::{ResumeOptions, resume};
 use licoup_migrate::{archive, convert, inspect, plan};
 use std::path::Path;
@@ -26,7 +27,10 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Err(usage) => {
-            println!("{}", serde_json::json!({ "status": "refused", "error": usage.to_string() }));
+            println!(
+                "{}",
+                serde_json::json!({ "status": "refused", "error": usage.to_string() })
+            );
             return ExitCode::from(2);
         }
     };
@@ -39,7 +43,25 @@ fn main() -> ExitCode {
             ExitCode::from(if outcome.finished { 0 } else { 1 })
         }
         Err(error) => {
-            println!("{}", serde_json::json!({ "status": "refused", "error": error.code() }));
+            // A rehearsal refusal names the shape it refused, because "not the last published
+            // format" is only actionable with the format the source actually carries. The
+            // read writes nothing, so a refusal still leaves the source untouched.
+            let refusal = match invocation.verb {
+                Verb::Rehearse => match invocation
+                    .data_root
+                    .as_deref()
+                    .map(licoup_migrate::rehearse::source_shape)
+                {
+                    Some(Ok(shape)) => serde_json::json!({
+                        "status": "refused",
+                        "error": error.code(),
+                        "observedShape": shape,
+                    }),
+                    _ => serde_json::json!({ "status": "refused", "error": error.code() }),
+                },
+                _ => serde_json::json!({ "status": "refused", "error": error.code() }),
+            };
+            println!("{refusal}");
             ExitCode::from(1)
         }
     }
@@ -72,7 +94,9 @@ impl Outcome {
 
 fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
     match invocation.verb {
-        Verb::Inspect => Ok(Outcome::done(render(&inspect::inspect(data_root(invocation)?)?)?)),
+        Verb::Inspect => Ok(Outcome::done(render(&inspect::inspect(data_root(
+            invocation,
+        )?)?)?)),
         Verb::Plan => {
             let report = plan::plan(data_root(invocation)?, invocation.target.as_deref())?;
             plan::ensure_readable(&report)?;
@@ -124,6 +148,25 @@ fn run(invocation: &Invocation) -> Result<Outcome, ToolError> {
             archive_path(invocation)?,
             target_root(invocation)?,
         )?)?)),
+        // The rehearsal drives the same owners as a conversion and the two archive verbs,
+        // one stage at a time. Its report names every stage whether or not it ran, so a run
+        // that stopped part way is rendered rather than hidden; the exit status follows the
+        // report so a caller that scripts it cannot read a partial rehearsal as a recovery.
+        Verb::Rehearse => {
+            let report = rehearse(&RehearsalRequest {
+                data_root: data_root(invocation)?.to_path_buf(),
+                work_root: work_root(invocation)?.to_path_buf(),
+                writers_stopped: invocation.writers_stopped,
+                keep_work_root: invocation.keep_work_root,
+            })?;
+            let finished = report.is_complete();
+            let rendered = render(&report)?;
+            if finished {
+                Ok(Outcome::done(rendered))
+            } else {
+                Ok(Outcome::unfinished(rendered))
+            }
+        }
     }
 }
 
@@ -139,7 +182,14 @@ fn archive_path(invocation: &Invocation) -> Result<&Path, ToolError> {
 }
 
 fn target_root(invocation: &Invocation) -> Result<&Path, ToolError> {
-    invocation.target_root.as_deref().ok_or(TARGET_ROOT_REQUIRED)
+    invocation
+        .target_root
+        .as_deref()
+        .ok_or(TARGET_ROOT_REQUIRED)
+}
+
+fn work_root(invocation: &Invocation) -> Result<&Path, ToolError> {
+    invocation.work_root.as_deref().ok_or(WORK_ROOT_REQUIRED)
 }
 
 fn render<T: serde::Serialize>(value: &T) -> Result<String, ToolError> {
