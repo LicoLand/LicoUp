@@ -428,12 +428,18 @@ void registerClientBootstrapScenarios() {
     await File(
       '${presetsDirectory.path}/broken.json',
     ).writeAsString('{"schemaVersion": 1, "id": "broken"}', flush: true);
-    await controller.reloadAppearancePresets();
 
-    expect(controller.appearancePresetId, 'agent-preview');
-    expect(controller.appearancePresetLoadErrors, isNotEmpty);
-    expect(controller.statusMessage, '外观预设已重新加载，部分配置无效。');
-    expect(controller.statusCaption, 'Appearance');
+    // The preset catalog loads at startup; external file changes are picked
+    // up on the next launch.
+    final restarted = ClientController(
+      portableData: portableData,
+      agentService: FakeAgentService(),
+    );
+    addTearDown(restarted.dispose);
+    await restarted.initialize();
+
+    expect(restarted.appearancePresetId, 'agent-preview');
+    expect(restarted.appearancePresetLoadErrors, isNotEmpty);
   });
 
   test(

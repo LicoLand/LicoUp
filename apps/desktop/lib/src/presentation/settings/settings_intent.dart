@@ -78,14 +78,6 @@ final class OpenSettingsDirectory extends SettingsIntent {
   final String caption;
 }
 
-final class ReloadAppearancePresets extends SettingsIntent {
-  const ReloadAppearancePresets({super.trace});
-}
-
-final class RefreshConversationSnapshotLocation extends SettingsIntent {
-  const RefreshConversationSnapshotLocation({super.trace});
-}
-
 final class SetConversationSnapshotLocation extends SettingsIntent {
   const SetConversationSnapshotLocation(this.path, {super.trace});
   final String path;

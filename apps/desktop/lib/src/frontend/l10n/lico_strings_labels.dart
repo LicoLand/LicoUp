@@ -78,6 +78,9 @@ extension LicoStringsLabels on LicoStrings {
   String get nightlyChannel => isChinese ? 'Nightly' : 'Nightly';
   String get stableChannel => isChinese ? '稳定版' : 'Stable';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
+  String get clientUpdateAdvanced => isChinese ? '高级' : 'Advanced';
+  String updateAvailableNamed(String version) =>
+      isChinese ? '新版本 $version 可用' : 'Version $version available';
   String get digest => isChinese ? '摘要' : 'Digest';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
@@ -907,19 +910,18 @@ extension LicoStringsLabels on LicoStrings {
 
   String get appearancePresetDirectory =>
       isChinese ? '主题目录' : 'Theme directory';
-  String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
       isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
   String get portableData =>
       isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
-  String get exportLogsDescription => '';
+  String get exportLogsDescription => isChinese
+      ? '导出最近的客户端运行日志，用于诊断与问题反馈。'
+      : 'Export recent client runtime logs for diagnostics and support.';
   String get exportingLogs => isChinese ? '正在导出日志...' : 'Exporting logs...';
   String get conversationArchiveRoot =>
       isChinese ? 'LicoUp 备份目录' : 'LicoUp Backup Directory';
-  String get refreshArchiveRoot =>
-      isChinese ? '刷新归档目录' : 'Refresh Archive Directory';
   String get snapshotRootPath => isChinese ? '快照根路径' : 'Snapshot Root Path';
   String get save => isChinese ? '保存' : 'Save';
   String get recommendedPlugins => isChinese ? '推荐插件' : 'Recommended Plugins';

@@ -225,10 +225,6 @@ final class _SettingsIntents implements IntentSink<SettingsIntent> {
           () => _controller.openDirectoryPath(path, caption: caption),
           trace,
         );
-      case ReloadAppearancePresets():
-        _run(_controller.reloadAppearancePresets, trace);
-      case RefreshConversationSnapshotLocation():
-        _run(_controller.refreshConversationSnapshotRoot, trace);
       case SetConversationSnapshotLocation(:final path):
         _run(() => _controller.setConversationSnapshotRoot(path), trace);
       case RefreshArchivedConversations():

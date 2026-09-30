@@ -13,8 +13,8 @@ import 'package:licoup/src/frontend/layout/layout_state_port.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/diagnostics_settings_section.dart';
 import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
-import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
 import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
@@ -509,7 +509,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
       'archived-conversations' => ArchivedConversationsSettingsSection(
         binding: widget.binding,
       ),
-      _ => SettingsLogExportTile(binding: widget.binding),
+      _ => DiagnosticsSettingsSection(binding: widget.binding),
     };
     return [
       for (final descriptor in settingsSectionDescriptors(strings))
@@ -684,6 +684,7 @@ class _GeneralSettings extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               LicoSectionHeader(
+                key: const Key('settings-section-header-general'),
                 title: strings.general,
                 leading: Icon(
                   Icons.tune_outlined,
@@ -767,6 +768,7 @@ class _AppearanceSettings extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LicoSectionHeader(
+          key: const Key('settings-section-header-appearance'),
           title: strings.appearance,
           leading: Icon(
             Icons.palette_outlined,
@@ -851,13 +853,6 @@ class _AppearanceSettings extends StatelessWidget {
               );
               return Future<void>.value();
             },
-            headerTrailing: IconButton(
-              tooltip: strings.reloadPresets,
-              onPressed: () {
-                intents.send(const ReloadAppearancePresets());
-              },
-              icon: const Icon(Icons.refresh_outlined, size: 18),
-            ),
           ),
         if (projection.appearancePresetLoadErrorCount > 0)
           Padding(
@@ -1014,6 +1009,7 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LicoSectionHeader(
+          key: const Key('settings-section-header-storage'),
           title: strings.storageAndData,
           leading: Icon(
             Icons.inventory_2_outlined,
@@ -1057,18 +1053,9 @@ class _StorageSettingsState extends State<_StorageSettingsBody> {
             );
             return Future<void>.value();
           },
-          headerTrailing: IconButton(
-            tooltip: strings.refreshArchiveRoot,
-            onPressed: () {
-              widget.binding.intents.send(
-                const RefreshConversationSnapshotLocation(),
-              );
-            },
-            icon: const Icon(Icons.refresh_outlined, size: 18),
-          ),
           actions: [
             SizedBox(
-              height: 38,
+              height: settingsControlHeight,
               child: FilledButton.icon(
                 onPressed: widget.inputs.savingSnapshotRoot
                     ? null

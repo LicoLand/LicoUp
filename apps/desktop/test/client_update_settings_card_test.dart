@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/presentation/settings/settings_binding.dart';
@@ -15,7 +16,7 @@ import 'fixtures/settings_presentation_fixture.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
-  testWidgets('update actions share dimensions on wide and narrow screens', (
+  testWidgets('the update action keeps control height on any width', (
     tester,
   ) async {
     final fixture = _fixture(
@@ -29,26 +30,16 @@ void main() {
     for (final width in [800.0, 360.0]) {
       await tester.binding.setSurfaceSize(Size(width, 700));
       await _pumpCard(tester, fixture);
-      final actions = [
-        'client-update-check-github',
-        'client-update-download-local',
-        'client-update-apply-restart',
-      ].map((key) => find.byKey(Key(key))).toList();
-      final sizes = actions.map(tester.getSize).toSet();
-      expect(sizes, hasLength(1));
-      expect(sizes.single.height, 40);
-      final positions = actions.map(tester.getTopLeft).toList();
-      if (width > 560) {
-        expect(positions.map((position) => position.dy).toSet(), hasLength(1));
-      } else {
-        expect(positions.map((position) => position.dx).toSet(), hasLength(1));
-      }
+      final size = tester.getSize(
+        find.byKey(const Key('client-update-check-github')),
+      );
+      expect(size.height, settingsControlHeight);
       expect(tester.takeException(), isNull);
     }
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('shows three actions, version, and public source address', (
+  testWidgets('headline and single action render; advanced stays collapsed', (
     tester,
   ) async {
     final fixture = _fixture(
@@ -61,22 +52,26 @@ void main() {
     );
     await _pumpCard(tester, fixture, locale: const Locale('zh'));
 
+    expect(find.text('0.1.0 · Nightly'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
-    expect(find.text('下载到本地'), findsOneWidget);
-    expect(find.text('更新并重启'), findsOneWidget);
-    expect(find.text('0.1.0'), findsOneWidget);
+    expect(find.text('更新并重启'), findsNothing);
+    expect(find.text('下载到本地'), findsNothing);
+    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
+    expect(find.text(kClientUpdateGithubReleasesUrl), findsNothing);
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(
+      fixture.intents.values.whereType<HydrateClientUpdateIdentity>(),
+      hasLength(1),
+    );
+
+    await _expandAdvanced(tester);
     expect(
       find.byKey(const Key('client-update-release-track')),
       findsOneWidget,
     );
     expect(find.text(kClientUpdateGithubReleasesUrl), findsOneWidget);
-    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(find.text('下载到本地'), findsOneWidget);
     expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
-    expect(
-      fixture.intents.values.whereType<HydrateClientUpdateIdentity>(),
-      hasLength(1),
-    );
   });
 
   testWidgets('nightly selects the stable update track', (tester) async {
@@ -89,6 +84,7 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture);
+    await _expandAdvanced(tester);
     await tester.tap(find.text('Stable'));
     await tester.pump();
     expect(
@@ -100,7 +96,7 @@ void main() {
     );
   });
 
-  testWidgets('download enables only for a newer signed release', (
+  testWidgets('available update starts the download from the primary action', (
     tester,
   ) async {
     final fixture = _fixture(
@@ -116,16 +112,25 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture);
-    expect(_onPressed(tester, 'client-update-download-local'), isNotNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
-    await tester.tap(find.byKey(const Key('client-update-download-local')));
+    expect(find.text('Version 1.1.0 available'), findsOneWidget);
+    expect(find.byKey(const Key('client-update-check-github')), findsNothing);
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNotNull);
+    await tester.tap(find.byKey(const Key('client-update-apply-restart')));
     expect(
       fixture.intents.values.whereType<DownloadClientUpdate>(),
       hasLength(1),
     );
+
+    await _expandAdvanced(tester);
+    expect(_onPressed(tester, 'client-update-download-local'), isNotNull);
+    await tester.tap(find.byKey(const Key('client-update-download-local')));
+    expect(
+      fixture.intents.values.whereType<DownloadClientUpdate>(),
+      hasLength(2),
+    );
   });
 
-  testWidgets('up-to-date and failed states keep download and apply disabled', (
+  testWidgets('up-to-date and failed states render status and a quiet retry', (
     tester,
   ) async {
     var fixture = _fixture(
@@ -148,9 +153,8 @@ void main() {
           .licoColors
           .success,
     );
-    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
-    expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(find.byKey(const Key('client-update-apply-restart')), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     fixture = _fixture(
@@ -163,12 +167,10 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('更新失败'), findsOneWidget);
     expect(find.text('无法检查更新，请重试'), findsOneWidget);
-    expect(find.text('更新失败，请重试'), findsNothing);
     expect(find.text('已是最新版本'), findsNothing);
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
-    expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
 
   testWidgets('verified update dispatches semantic apply intent', (
@@ -202,7 +204,7 @@ void main() {
       ),
     );
     await _pumpCard(tester, fixture, locale: const Locale('zh'));
-    expect(find.text('当前发布尚未提供更新资料'), findsOneWidget);
+    expect(find.text('暂无更新资料'), findsOneWidget);
     expect(find.text('已是最新版本'), findsNothing);
     final status = tester.widget<Text>(
       find.byKey(const Key('client-update-status')),
@@ -215,9 +217,12 @@ void main() {
           .textSecondary,
     );
     expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
-    expect(_onPressed(tester, 'client-update-download-local'), isNull);
-    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
   });
+}
+
+Future<void> _expandAdvanced(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('client-update-advanced-toggle')));
+  await tester.pump();
 }
 
 ({
