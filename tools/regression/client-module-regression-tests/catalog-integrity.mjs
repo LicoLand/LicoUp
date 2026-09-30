@@ -268,6 +268,13 @@ test("development report sources select the existing report suite", () => {
       "regression.development-reports",
     ], `${relativePath} must select the report suite`);
   }
+  // Dependency inputs keep every existing owner and additionally select the
+  // report suite, so a dependency change reruns the rendered-fixture contract.
+  for (const relativePath of ["package.json", "package-lock.json"]) {
+    const selected = ids(selectModulesForChangedPaths([relativePath]));
+    assert.ok(selected.includes("regression.development-reports"), `${relativePath} must select the report suite`);
+    assert.ok(selected.includes("regression.infrastructure"), `${relativePath} keeps its dependency owner`);
+  }
 });
 
 test("agent-usage routing sources select the dedicated evidence verifier", () => {

@@ -40,7 +40,7 @@
     "zh": "代码缺口返回开发；真实环境待证项单独列出；没有显式有限程序安排时，下一个里程碑保持不启动。"
   },
   "boundary": {
-    "en": "Do not initiate real conversations, Computer Use, per-worker installations, or the next milestone without an explicit finite programme assignment.",
-    "zh": "不得自行启动真实对话、Computer Use 或各自安装客户端，也不得在没有显式有限程序安排时启动下一个里程碑。"
+    "en": "Do not initiate real conversations, Computer Use or per-worker installations. Only an explicit finite programme assignment continuing to a reviewed, recorded, dependency-satisfied successor starts the next milestone.",
+    "zh": "不得自行启动真实对话、Computer Use 或各自安装客户端。只有在显式有限程序安排下，继续到已通过评审、已记录交付且依赖已满足的后续里程碑，才启动下一个里程碑。"
   }
 }

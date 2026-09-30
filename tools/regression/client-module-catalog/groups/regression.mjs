@@ -304,6 +304,8 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Developer report renderer, plan projection adapter, and current delivery fidelity fixtures",
       inputs: [
+        "package.json",
+        "package-lock.json",
         "tools/development/architecture-views.json",
         "tools/development/reports.mjs",
         "tools/development/reporting/**",
