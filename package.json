@@ -14,8 +14,11 @@
     "node": "^22.0.0 || ^24.0.0"
   },
   "devDependencies": {
+    "@dagrejs/dagre": "3.1.1",
     "ajv": "^8.20.0",
-    "ajv-formats": "3.0.1"
+    "ajv-formats": "3.0.1",
+    "smol-toml": "1.9.0",
+    "yaml": "2.9.1"
   },
   "scripts": {
     "repo:identity:install": "node tools/scripts/repository-identity-policy.mjs install",

@@ -1,0 +1,50 @@
+{
+  "id": "requirements",
+  "file": "01-requirements.json",
+  "title": {
+    "en": "Investigation, requirements and decisions",
+    "zh": "调查、需求与决策"
+  },
+  "purpose": {
+    "en": "Establish the facts before designing or discussing bounded requirements.",
+    "zh": "先查清事实，再设计和讨论有明确边界的需求。"
+  },
+  "owner": {
+    "en": "Investigation lead, maintainer and designer",
+    "zh": "调查负责人、维护者与设计者"
+  },
+  "entry": {
+    "en": "A requested outcome",
+    "zh": "收到目标"
+  },
+  "steps": [
+    {
+      "en": "Investigate source, history and dependencies",
+      "zh": "调查源码、历史与依赖"
+    },
+    {
+      "en": "Consolidate evidence and resolve discoverable gaps",
+      "zh": "汇总证据，补齐可查缺口"
+    },
+    {
+      "en": "Discuss consequential choices",
+      "zh": "讨论重要取舍"
+    },
+    {
+      "en": "Record decisions and hand the baseline to the Designer",
+      "zh": "记录决定，将依据交给 Designer"
+    }
+  ],
+  "exit": {
+    "en": "Investigation is consolidated and material decisions for dependent design are resolved.",
+    "zh": "调查已汇总，依赖的重要设计决策已确定。"
+  },
+  "failure": {
+    "en": "Investigate facts and alternatives; pause only dependent work.",
+    "zh": "查清事实和选项，只暂停依赖该决定的工作。"
+  },
+  "boundary": {
+    "en": "Complete investigation before planning, Designer dispatch, requirements discussion or edits. Independent investigations may run in parallel; dependent design may not. A proposal or silence is not approval.",
+    "zh": "调查完成后才能写计划、派 Designer、讨论需求或修改。独立调查可并行，依赖它的设计不可提前；提案和沉默不表示同意。"
+  }
+}
