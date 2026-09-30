@@ -1639,7 +1639,7 @@ fn validate_current_schema(connection: &mut Connection) -> Result<()> {
 
 /// One core table's exact column: name, SQLite type, NOT NULL flag, and
 /// 1-based primary-key position (0 when the column is not part of the key).
-type PublishedCoreColumn = (&'static str, &'static str, bool, u8);
+type PublishedCoreColumn = (&'static str, &'static str, Option<bool>, u8);
 /// One exact foreign key: child column, parent table, parent column, ON DELETE.
 type PublishedCoreForeignKey = (&'static str, &'static str, &'static str, &'static str);
 /// One unique column set and whether the uniqueness is partial.
@@ -1671,7 +1671,10 @@ const PUBLISHED_CORE_TABLES: &[(
 )] = &[
     (
         "strategy_meta",
-        &[("key", "TEXT", false, 1), ("value", "TEXT", true, 0)],
+        &[
+            ("key", "TEXT", Some(false), 1),
+            ("value", "TEXT", Some(true), 0),
+        ],
         &[],
         &[(&["key"], false)],
         &[],
@@ -1679,14 +1682,14 @@ const PUBLISHED_CORE_TABLES: &[(
     (
         "strategy_definitions",
         &[
-            ("definition_id", "TEXT", true, 0),
-            ("revision_digest", "TEXT", false, 1),
-            ("semantics_digest", "TEXT", true, 0),
-            ("name", "TEXT", true, 0),
-            ("version", "TEXT", true, 0),
-            ("workflow_json", "TEXT", true, 0),
-            ("asset_count", "INTEGER", true, 0),
-            ("imported_at", "INTEGER", true, 0),
+            ("definition_id", "TEXT", Some(true), 0),
+            ("revision_digest", "TEXT", Some(false), 1),
+            ("semantics_digest", "TEXT", Some(true), 0),
+            ("name", "TEXT", Some(true), 0),
+            ("version", "TEXT", Some(true), 0),
+            ("workflow_json", "TEXT", Some(true), 0),
+            ("asset_count", "INTEGER", Some(true), 0),
+            ("imported_at", "INTEGER", Some(true), 0),
         ],
         &[],
         &[(&["revision_digest"], false)],
@@ -1701,13 +1704,13 @@ const PUBLISHED_CORE_TABLES: &[(
     (
         "strategy_bindings",
         &[
-            ("revision_digest", "TEXT", true, 1),
-            ("slot_id", "TEXT", true, 2),
-            ("ordinal", "INTEGER", true, 3),
-            ("value_id", "TEXT", true, 0),
-            ("model", "TEXT", true, 0),
-            ("reasoning_effort", "TEXT", true, 0),
-            ("revision", "INTEGER", true, 0),
+            ("revision_digest", "TEXT", Some(true), 1),
+            ("slot_id", "TEXT", Some(true), 2),
+            ("ordinal", "INTEGER", Some(true), 3),
+            ("value_id", "TEXT", Some(true), 0),
+            ("model", "TEXT", Some(true), 0),
+            ("reasoning_effort", "TEXT", Some(true), 0),
+            ("revision", "INTEGER", Some(true), 0),
         ],
         &[(
             "revision_digest",
@@ -1721,13 +1724,13 @@ const PUBLISHED_CORE_TABLES: &[(
     (
         "strategy_authorizations",
         &[
-            ("revision_digest", "TEXT", true, 1),
-            ("revision", "INTEGER", true, 2),
-            ("semantics_digest", "TEXT", true, 0),
-            ("binding_digest", "TEXT", true, 0),
-            ("authorization_digest", "TEXT", true, 0),
-            ("active", "INTEGER", true, 0),
-            ("created_at", "INTEGER", true, 0),
+            ("revision_digest", "TEXT", Some(true), 1),
+            ("revision", "INTEGER", Some(true), 2),
+            ("semantics_digest", "TEXT", Some(true), 0),
+            ("binding_digest", "TEXT", Some(true), 0),
+            ("authorization_digest", "TEXT", Some(true), 0),
+            ("active", "INTEGER", Some(true), 0),
+            ("created_at", "INTEGER", Some(true), 0),
         ],
         &[(
             "revision_digest",
@@ -1744,22 +1747,22 @@ const PUBLISHED_CORE_TABLES: &[(
             &["revision_digest"],
             true,
             true,
-            "WHERE active=1",
+            "active=1",
         )],
     ),
     (
         "strategy_runs",
         &[
-            ("run_id", "TEXT", false, 1),
-            ("revision_digest", "TEXT", true, 0),
-            ("semantics_digest", "TEXT", true, 0),
-            ("idempotency_key", "TEXT", true, 0),
-            ("request_digest", "TEXT", true, 0),
-            ("snapshot_json", "TEXT", true, 0),
-            ("conversation_id", "TEXT", false, 0),
-            ("terminal", "INTEGER", true, 0),
-            ("created_at", "INTEGER", true, 0),
-            ("updated_at", "INTEGER", true, 0),
+            ("run_id", "TEXT", Some(false), 1),
+            ("revision_digest", "TEXT", Some(true), 0),
+            ("semantics_digest", "TEXT", Some(true), 0),
+            ("idempotency_key", "TEXT", Some(true), 0),
+            ("request_digest", "TEXT", Some(true), 0),
+            ("snapshot_json", "TEXT", Some(true), 0),
+            ("conversation_id", "TEXT", Some(false), 0),
+            ("terminal", "INTEGER", None, 0),
+            ("created_at", "INTEGER", Some(true), 0),
+            ("updated_at", "INTEGER", Some(true), 0),
         ],
         &[(
             "revision_digest",
@@ -1793,11 +1796,11 @@ const PUBLISHED_CORE_TABLES: &[(
     (
         "strategy_run_events",
         &[
-            ("run_id", "TEXT", true, 1),
-            ("sequence", "INTEGER", true, 2),
-            ("event_type", "TEXT", true, 0),
-            ("event_json", "TEXT", true, 0),
-            ("created_at", "INTEGER", true, 0),
+            ("run_id", "TEXT", Some(true), 1),
+            ("sequence", "INTEGER", Some(true), 2),
+            ("event_type", "TEXT", Some(true), 0),
+            ("event_json", "TEXT", Some(true), 0),
+            ("created_at", "INTEGER", Some(true), 0),
         ],
         &[("run_id", "strategy_runs", "run_id", "CASCADE")],
         &[(&["run_id", "sequence"], false)],
@@ -1806,17 +1809,17 @@ const PUBLISHED_CORE_TABLES: &[(
     (
         "strategy_commands",
         &[
-            ("command_id", "TEXT", false, 1),
-            ("run_id", "TEXT", true, 0),
-            ("state_id", "TEXT", true, 0),
-            ("kind", "TEXT", true, 0),
-            ("status", "TEXT", true, 0),
-            ("attempt", "INTEGER", true, 0),
-            ("attempt_token", "TEXT", true, 0),
-            ("command_json", "TEXT", true, 0),
-            ("lease_owner", "TEXT", false, 0),
-            ("lease_until", "INTEGER", false, 0),
-            ("updated_at", "INTEGER", true, 0),
+            ("command_id", "TEXT", Some(false), 1),
+            ("run_id", "TEXT", Some(true), 0),
+            ("state_id", "TEXT", Some(true), 0),
+            ("kind", "TEXT", Some(true), 0),
+            ("status", "TEXT", Some(true), 0),
+            ("attempt", "INTEGER", Some(true), 0),
+            ("attempt_token", "TEXT", Some(true), 0),
+            ("command_json", "TEXT", Some(true), 0),
+            ("lease_owner", "TEXT", Some(false), 0),
+            ("lease_until", "INTEGER", Some(false), 0),
+            ("updated_at", "INTEGER", Some(true), 0),
         ],
         &[("run_id", "strategy_runs", "run_id", "CASCADE")],
         &[(&["command_id"], false)],
@@ -1833,7 +1836,7 @@ const PUBLISHED_CORE_TABLES: &[(
                 &["lease_until"],
                 false,
                 true,
-                "WHERE status IN ('claimed', 'running')",
+                "statusin('claimed','running')",
             ),
         ],
     ),
@@ -1896,7 +1899,10 @@ fn validate_table_columns(
         };
         ensure!(
             actual_type.eq_ignore_ascii_case(type_name)
-                && *actual_not_null == *not_null
+                // `None` accepts the two producer variants: the fresh CREATE
+                // table and the `ensure_column` upgrade output, which added the
+                // column without the NOT NULL that the batch declares.
+                && not_null.is_none_or(|expected| *actual_not_null == expected)
                 && *actual_pk == *primary_key,
             "unsupported_state_shape"
         );
@@ -2029,11 +2035,32 @@ fn validate_table_indexes(
             let Some(sql) = sql else {
                 bail!("unsupported_state_shape");
             };
-            let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
-            ensure!(normalized.contains(*predicate), "unsupported_state_shape");
+            // The predicate must be exactly the owner's one, not merely contain
+            // it: `WHERE active=1 AND 0` names the same index but is a different
+            // uniqueness constraint, and `CREATE INDEX IF NOT EXISTS` would
+            // never repair it.
+            ensure!(
+                normalized_index_predicate(&sql).as_deref() == Some(*predicate),
+                "unsupported_state_shape"
+            );
         }
     }
     Ok(())
+}
+
+/// The index predicate as one comparable token: everything after `WHERE`, with
+/// whitespace removed and lowercased. Comparing this for equality rejects a
+/// predicate that merely contains the expected fragment (`active=1 AND 0`).
+fn normalized_index_predicate(sql: &str) -> Option<String> {
+    let lowered = sql.to_ascii_lowercase();
+    let index = lowered.find("where")?;
+    Some(
+        sql[index + "where".len()..]
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase(),
+    )
 }
 
 fn index_columns(connection: &Connection, index_name: &str) -> Result<Vec<String>> {

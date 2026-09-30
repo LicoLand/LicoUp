@@ -43,7 +43,114 @@ const CONVERSATION_SCHEMA = "crates/licoup-conversation/src/store/schema.rs";
 const WORKFLOW_STORE_MODULE = "crates/licoup-native/src/domain/workflow_store/store.rs";
 const FRONTIER_CONSUMER = "tools/scripts/client-state-migration/frontier.mjs";
 const REPORT_CONSUMER = "tools/scripts/client-state-migration/report.mjs";
+const RELEASED_FIXTURE = "tests/fixtures/client_state_migration/released_source.rs";
 const BACKSLASH = String.fromCharCode(92);
+
+/** A Rust source file from the repository. */
+function ownerSource(relative) {
+  return fs.readFileSync(path.join(repoRoot, relative), "utf8");
+}
+
+/**
+ * The quoted Rust string literal containing `anchor`, unescaped. Fixtures are
+ * built from the actual owner DDL and the frozen fixture, never from the
+ * validator contract the tests are checking.
+ */
+function rustLiteralContaining(source, anchor) {
+  const index = source.indexOf(anchor);
+  assert.ok(index !== -1, `the Rust source no longer contains ${anchor}`);
+  const start = source.lastIndexOf('"', index);
+  const end = source.indexOf('"', index);
+  assert.ok(start !== -1 && end !== -1 && end > start, `${anchor} is not a quoted literal`);
+  return source
+    .slice(start + 1, end)
+    .replace(/\\n/gu, "\n")
+    .replace(/\\"/gu, '"');
+}
+
+/** A `const NAME: &str = "..."` value. */
+function rustConstString(source, name) {
+  const marker = `const ${name}: &str = "`;
+  const start = source.indexOf(marker);
+  assert.ok(start !== -1, `${name} moved`);
+  const from = start + marker.length;
+  const end = source.indexOf('";', from);
+  assert.ok(end !== -1, `${name} is not closed`);
+  return source.slice(from, end);
+}
+
+/** A `const NAME: &str = r#"..."#` value. */
+function rustRawString(source, name) {
+  const marker = `const ${name}: &str = r#"`;
+  const start = source.indexOf(marker);
+  assert.ok(start !== -1, `${name} moved`);
+  const from = start + marker.length;
+  const end = source.indexOf('"#;', from);
+  assert.ok(end !== -1, `${name} is not closed`);
+  return source.slice(from, end);
+}
+
+function currentConversationSchemaVersion() {
+  const match = ownerSource(CONVERSATION_STORE).match(
+    /pub const CURRENT_SCHEMA_VERSION: &str = "(\d+)";/u,
+  );
+  assert.ok(match, "the conversation store schema version moved");
+  return match[1];
+}
+
+/** The owner's current Conversation DDL plus its converged indexes. */
+function ownerConversationCurrentDdl() {
+  const source = ownerSource(CONVERSATION_SCHEMA);
+  return [
+    "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    rustLiteralContaining(source, "CREATE TABLE IF NOT EXISTS principals"),
+    rustLiteralContaining(
+      ownerSource("crates/licoup-conversation/src/store/native_sessions.rs"),
+      "CREATE TABLE IF NOT EXISTS conversation_native_sessions",
+    ),
+    rustLiteralContaining(source, "CREATE INDEX IF NOT EXISTS conversations_pinned_updated_idx"),
+    rustLiteralContaining(source, "DROP INDEX IF EXISTS memberships_active_unique"),
+  ].join("\n");
+}
+
+/** The owner's current strategy core DDL plus the active-conversation index. */
+function ownerStrategyCurrentDdl() {
+  const source = ownerSource(WORKFLOW_STORE_MODULE);
+  return [
+    rustLiteralContaining(source, "CREATE TABLE IF NOT EXISTS strategy_meta"),
+    rustLiteralContaining(source, "CREATE INDEX IF NOT EXISTS strategy_runs_active_conversation_idx"),
+  ].join("\n");
+}
+
+/** The frozen released Store DDL from the shared fixture resource. */
+function releasedConversationDdl() {
+  return rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_CONVERSATION_SCHEMA");
+}
+
+function releasedStrategyDdl({ producerUpgraded = false } = {}) {
+  let ddl = rustRawString(ownerSource(RELEASED_FIXTURE), "RELEASED_STRATEGY_SCHEMA");
+  if (producerUpgraded) {
+    // The published producer added this column through `ensure_column`, which
+    // leaves it nullable.
+    ddl = ddl.replace("terminal INTEGER NOT NULL,", "terminal INTEGER,");
+    assert.ok(!ddl.includes("terminal INTEGER NOT NULL,"));
+  }
+  return ddl;
+}
+
+/** The shared fixture's business rows with its own constants substituted. */
+function releasedStrategyRows() {
+  const fixture = ownerSource(RELEASED_FIXTURE);
+  const template = rustLiteralContaining(fixture, "INSERT INTO strategy_definitions");
+  return template
+    .replace(/\{\{/gu, "{")
+    .replace(/\}\}/gu, "}")
+    .replace(/\{([A-Z_]+)\}/gu, (_, name) =>
+      fixture.includes(`const ${name}: &str = "`)
+        ? rustConstString(fixture, name)
+        : rustRawString(fixture, name),
+    );
+}
 
 function tempRoot(label) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `licoup-migration-${label}-`));
@@ -114,50 +221,34 @@ function seedLedger(root, frontier, domains) {
  * it (its required tables plus the startup columns). The evaluator mirrors the
  * owner, so the fixture is generated from the same mirrored contract.
  */
+/// The current Conversation layout as its owner actually creates it: the
+/// owner's DDL, its converged indexes, and the current version row. Nothing
+/// here is generated from the validator being tested.
 function createCurrentConversationStore(database) {
-  for (const table of CONVERSATION_CURRENT_TABLES) {
-    const columns = CONVERSATION_CURRENT_COLUMNS[table] ?? ["id"];
-    database.exec(
-      `CREATE TABLE ${table}(${columns.map((column) => `${column} TEXT`).join(", ")});`,
-    );
-  }
+  database.exec(ownerConversationCurrentDdl());
   database.exec(
-    "INSERT INTO schema_meta(key,value) VALUES ('version','18');",
+    `INSERT INTO schema_meta(key,value) VALUES ('version','${currentConversationSchemaVersion()}');`,
   );
 }
 
-/** The exact current strategy core layout, generated from the mirrored contract. */
+/// The current strategy layout as its owner actually creates it.
 function createCurrentStrategyStore(database) {
-  for (const table of STRATEGY_CORE_TABLES) {
-    const uniqueColumns = new Set(
-      table.uniqueSets
-        .filter(([columns, partial]) => !partial && columns.length === 1)
-        .map(([columns]) => columns[0]),
-    );
-    const primaryColumns = table.columns
-      .filter(([, , , pk]) => pk > 0)
-      .sort((left, right) => left[3] - right[3])
-      .map(([name]) => name);
-    const definitions = table.columns.map(([name, type, notNull, pk]) => {
-      const primary = pk > 0 && primaryColumns.length === 1 ? " PRIMARY KEY" : "";
-      const unique = uniqueColumns.has(name) ? " UNIQUE" : "";
-      return `${name} ${type}${notNull ? " NOT NULL" : ""}${primary}${unique}`;
-    });
-    if (primaryColumns.length > 1) {
-      definitions.push(`PRIMARY KEY(${primaryColumns.join(", ")})`);
-    }
-    for (const [from, parent, to, onDelete] of table.foreignKeys) {
-      definitions.push(`FOREIGN KEY(${from}) REFERENCES ${parent}(${to}) ON DELETE ${onDelete}`);
-    }
-    database.exec(`CREATE TABLE ${table.name}(${definitions.join(", ")});`);
-    for (const [name, columns, unique, partial, predicate] of table.indexes) {
-      database.exec(
-        `CREATE ${unique ? "UNIQUE " : ""}INDEX ${name} ON ${table.name}(${columns.join(", ")})` +
-          `${partial ? ` ${predicate}` : ""};`,
-      );
-    }
-  }
-  database.exec("INSERT INTO strategy_meta(key,value) VALUES ('version','3');");
+  database.exec(ownerStrategyCurrentDdl());
+}
+
+/// The frozen released Conversation layout from the shared fixture.
+function createReleasedConversationStore(database) {
+  database.exec(releasedConversationDdl());
+  database.exec(
+    "INSERT INTO schema_meta(key,value) VALUES ('version','12');",
+  );
+}
+
+/// The frozen released strategy layout, optionally the published producer's
+/// in-place upgrade output (nullable `terminal`).
+function createReleasedStrategyStore(database, options = {}) {
+  database.exec(releasedStrategyDdl(options));
+  database.exec(releasedStrategyRows());
 }
 
 /** The state a completed admission leaves behind, for the healthy verdict. */
@@ -1029,6 +1120,157 @@ test("the evaluator refuses fake conversation and malformed strategy databases",
   }
 });
 
+test("released and producer-variant stores are accepted; mutations and malformed inspections are bounded", () => {
+  const frontier = loadEmbeddedFrontier();
+  const seedReleasedConversation = (root) => {
+    const directory = path.join(root, "client-state/conversations");
+    fs.mkdirSync(directory, { recursive: true });
+    const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+    createReleasedConversationStore(database);
+    database.close();
+    fs.writeFileSync(
+      path.join(directory, "migration-v5.complete"),
+      ["schema=v5", "status=complete", ""].join("\n"),
+    );
+  };
+  const seedReleasedStrategy = (root, options = {}) => {
+    const directory = path.join(root, "client-state/adaptive-flywheel");
+    fs.mkdirSync(directory, { recursive: true });
+    const database = new DatabaseSync(path.join(directory, "strategies.sqlite3"));
+    createReleasedStrategyStore(database, options);
+    database.close();
+  };
+  const evaluate = (root) =>
+    evaluateMigrationState({ root, frontier, binaryProductVersion: "0.3.0", platform: "linux" });
+
+  // The frozen released layouts, including the published producer's in-place
+  // upgrade output with a nullable terminal, are owner-supported sources.
+  const accepted = tempRoot("released-accepted");
+  try {
+    seedReleasedConversation(accepted);
+    seedReleasedStrategy(accepted, { producerUpgraded: true });
+    const report = evaluate(accepted);
+    const conversation = report.domains.find(
+      (domain) => domain.domainId === "canonical-conversation",
+    );
+    assert.equal(conversation.observedSchemaVersion, 1, JSON.stringify(report.codes));
+    const adaptive = report.domains.find((domain) => domain.domainId === "adaptive-flywheel");
+    assert.equal(adaptive.observedSchemaVersion, 1, JSON.stringify(report.codes));
+    assert.equal(
+      report.codes.some((entry) => entry.code === "unsupported_state_shape"),
+      false,
+      JSON.stringify(report.codes),
+    );
+  } finally {
+    removeRoot(accepted);
+  }
+
+  const mutations = [
+    {
+      label: "the released membership identity index is not unique",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        seedReleasedConversation(root);
+        const database = new DatabaseSync(
+          path.join(root, "client-state/conversations/conversations.sqlite3"),
+        );
+        database.exec(
+          "DROP INDEX memberships_principal_unique;" +
+            "CREATE INDEX memberships_principal_unique ON memberships(conversation_id, principal_id);",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "the released partial predicate was weakened",
+      domainId: "adaptive-flywheel",
+      seed: (root) => {
+        seedReleasedStrategy(root, { producerUpgraded: true });
+        const database = new DatabaseSync(
+          path.join(root, "client-state/adaptive-flywheel/strategies.sqlite3"),
+        );
+        database.exec(
+          "DROP INDEX strategy_authorization_active_idx;" +
+            "CREATE UNIQUE INDEX strategy_authorization_active_idx" +
+            " ON strategy_authorizations(revision_digest) WHERE active=1 AND 0;",
+        );
+        database.close();
+      },
+    },
+    {
+      label: "an older published stamp on two tables",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec(
+          "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
+            "INSERT INTO schema_meta(key,value) VALUES ('version','11');" +
+            "CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);",
+        );
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a current stamped store without a conversation title",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        createCurrentConversationStore(database);
+        database.exec("ALTER TABLE conversations DROP COLUMN title;");
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+    {
+      label: "a malformed schema_meta inspection",
+      domainId: "canonical-conversation",
+      seed: (root) => {
+        const directory = path.join(root, "client-state/conversations");
+        fs.mkdirSync(directory, { recursive: true });
+        const database = new DatabaseSync(path.join(directory, "conversations.sqlite3"));
+        database.exec("CREATE TABLE schema_meta(key TEXT);");
+        database.close();
+        fs.writeFileSync(
+          path.join(directory, "migration-v5.complete"),
+          ["schema=v5", "status=complete", ""].join("\n"),
+        );
+      },
+    },
+  ];
+  for (const mutation of mutations) {
+    const root = tempRoot("released-mutation");
+    try {
+      mutation.seed(root);
+      const report = evaluate(root);
+      assert.equal(report.verdict, "invalid", mutation.label);
+      const domain = report.domains.find((entry) => entry.domainId === mutation.domainId);
+      assert.equal(domain.verdict, "invalid", mutation.label);
+      assert.ok(
+        domain.codes.includes("unsupported_state_shape"),
+        `${mutation.label}: ${JSON.stringify(domain.codes)}`,
+      );
+      assert.equal(
+        report.domains.length,
+        frontier.domains.length,
+        `${mutation.label}: every other domain stays reported`,
+      );
+    } finally {
+      removeRoot(root);
+    }
+  }
+});
+
 test("pending custody is incomplete, never healthy", () => {
   const frontier = loadEmbeddedFrontier();
   const root = tempRoot("pending-custody");
@@ -1150,8 +1392,15 @@ test("every mirrored durable shape and constant still matches the Rust admission
       `the Rust core layout must name ${table.name}`,
     );
     for (const [name, type, notNull, pk] of table.columns) {
+      // `null` is the published two-producer variant: the batch's NOT NULL
+      // column and the nullable column `ensure_column` adds must both be
+      // accepted, and the Rust descriptor carries `None` for it.
+      const expectation =
+        notNull === null
+          ? `("${name}","${type}",None,${pk})`
+          : `("${name}","${type}",Some(${notNull}),${pk})`;
       assert.ok(
-        compact.includes(`("${name}","${type}",${notNull},${pk})`),
+        compact.includes(expectation),
         `${table.name}.${name} drifted in the Rust core layout`,
       );
     }
@@ -1159,7 +1408,7 @@ test("every mirrored durable shape and constant still matches the Rust admission
       assert.ok(compact.includes(`"${name}"`), `${name} drifted in the Rust core layout`);
       if (predicate !== "") {
         assert.ok(
-          compact.includes(predicate.replace(/\s+/gu, "")),
+          compact.includes(`"${predicate}"`),
           `${name} predicate drifted in the Rust core layout`,
         );
       }
@@ -1178,7 +1427,7 @@ test("every mirrored durable shape and constant still matches the Rust admission
     );
   }
   assert.ok(
-    conversationSchemaCompact.includes(`'${CONVERSATION_RELEASED_MEMBERSHIP_INDEX}'`),
+    conversationSchemaCompact.includes(`"${CONVERSATION_RELEASED_MEMBERSHIP_INDEX}"`),
     "the released membership uniqueness index moved in the Conversation owner",
   );
   for (const table of CONVERSATION_CURRENT_TABLES) {

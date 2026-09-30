@@ -261,11 +261,141 @@ pub(super) fn preflight_schema(connection: &Connection) -> StoreResult<Option<St
 pub fn validate_migration_source(connection: &Connection) -> StoreResult<Option<String>> {
     let version = preflight_schema(connection)?;
     match version.as_deref() {
-        Some(CURRENT_SCHEMA_VERSION) => {}
+        Some(CURRENT_SCHEMA_VERSION) => validate_current_migration_fields(connection)?,
         Some("12") => validate_released_schema_shape(connection)?,
-        _ => {}
+        Some(prior) => validate_published_upgrade(connection, prior)?,
+        None => {}
     }
     Ok(version)
+}
+
+/// The current schema fields the migration admission relies on beyond the
+/// owner's startup contract: the conversation title every reader uses and the
+/// membership uniqueness the convergence owns. A version stamp on a layout that
+/// merely satisfies the startup subset is not the current store.
+fn validate_current_migration_fields(connection: &Connection) -> StoreResult<()> {
+    let columns = table_columns(connection, "conversations")?;
+    if !columns.contains("title") {
+        return Err(anyhow!("conversation_schema_incomplete"));
+    }
+    require_membership_identity_index(connection)
+}
+
+/// The membership identity `(conversation_id, principal_id)` must be a real
+/// unique, non-partial index, not merely an object with the expected name.
+fn require_membership_identity_index(connection: &Connection) -> StoreResult<()> {
+    let mut statement = connection.prepare("PRAGMA index_list(memberships)")?;
+    let listed = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? != 0,
+                row.get::<_, i64>(4)? != 0,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let Some((unique, partial)) = listed
+        .iter()
+        .find(|(name, ..)| name == "memberships_principal_unique")
+        .map(|(_, unique, partial)| (*unique, *partial))
+    else {
+        return Err(anyhow!("conversation_schema_incomplete"));
+    };
+    if !unique || partial {
+        return Err(anyhow!("conversation_schema_incomplete"));
+    }
+    let mut info = connection.prepare("PRAGMA index_info(memberships_principal_unique)")?;
+    let columns = info
+        .query_map([], |row| row.get::<_, Option<String>>(2))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let expected = ["conversation_id", "principal_id"];
+    if columns.len() != expected.len()
+        || columns
+            .iter()
+            .zip(expected)
+            .any(|(column, expected)| column.as_deref() != Some(expected))
+    {
+        return Err(anyhow!("conversation_schema_incomplete"));
+    }
+    Ok(())
+}
+
+/// Older published schemas (1..11) are legitimate sources: the released
+/// admission reported an existing store as conversation domain version 1 and
+/// relied on the owner's in-store upgrade, so they are preserved rather than
+/// banned. Before the caller advances anything, the migration proves
+/// applicability read-only. First the identity columns every published
+/// generation carries must exist; then the owner's real upgrade path must
+/// succeed over a schema-only in-memory copy of the store. Rows are never
+/// copied: a data-dependent migration failure remains the apply step's
+/// responsibility, exactly as in the released client.
+fn validate_published_upgrade(source: &Connection, prior: &str) -> StoreResult<()> {
+    for (table, required) in [
+        ("schema_meta", &["key", "value"] as &[&str]),
+        ("principals", &["id"]),
+        ("conversations", &["id", "title"]),
+        ("memberships", &["id"]),
+        ("events", &["id"]),
+    ] {
+        let columns = table_columns(source, table)?;
+        if required.iter().any(|column| !columns.contains(*column)) {
+            return Err(anyhow!("conversation_schema_incomplete"));
+        }
+    }
+
+    let mut virtual_tables = source.prepare(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND sql LIKE 'CREATE VIRTUAL TABLE%'",
+    )?;
+    let shadow_prefixes = virtual_tables
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|name| format!("{name}_"))
+        .collect::<Vec<_>>();
+    drop(virtual_tables);
+
+    let mut statement = source.prepare(
+        "SELECT name, sql FROM sqlite_schema
+          WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+          ORDER BY CASE type
+                     WHEN 'table' THEN 0
+                     WHEN 'index' THEN 1
+                     WHEN 'trigger' THEN 2
+                     ELSE 3
+                   END",
+    )?;
+    let objects = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+
+    let mut memory = Connection::open_in_memory()?;
+    for (name, sql) in objects {
+        if shadow_prefixes
+            .iter()
+            .any(|prefix| name.starts_with(prefix.as_str()))
+        {
+            continue;
+        }
+        memory.execute_batch(&sql)?;
+    }
+    memory.execute(
+        "INSERT INTO schema_meta(key, value) VALUES ('version', ?1)",
+        [prior],
+    )?;
+    initialize_schema(&mut memory)?;
+    validate_current_schema_shape(&memory)?;
+    Ok(())
+}
+
+fn table_columns(connection: &Connection, table: &str) -> StoreResult<BTreeSet<String>> {
+    let pragma = format!("PRAGMA table_info({table})");
+    Ok(connection
+        .prepare(&pragma)?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()?)
 }
 
 /// The final released schema-12 layout: every table and column the released
@@ -437,19 +567,9 @@ fn validate_released_schema_shape(connection: &Connection) -> StoreResult<()> {
         }
     }
     // The released converge pass replaced the partial membership index with the
-    // principal uniqueness the current reader relies on.
-    let membership_unique: bool = connection.query_row(
-        "SELECT EXISTS(
-           SELECT 1 FROM sqlite_schema
-           WHERE type='index' AND name='memberships_principal_unique'
-         )",
-        [],
-        |row| row.get(0),
-    )?;
-    if !membership_unique {
-        return Err(anyhow!("conversation_schema_incomplete"));
-    }
-    Ok(())
+    // principal uniqueness the current reader relies on, as an actual unique
+    // non-partial index over the identity columns.
+    require_membership_identity_index(connection)
 }
 
 fn validate_current_schema_shape(connection: &Connection) -> StoreResult<()> {

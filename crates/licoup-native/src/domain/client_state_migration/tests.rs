@@ -782,17 +782,45 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
     assert_eq!(definition.bindings.len(), 1);
     assert_eq!(definition.bindings[0].slot_id, "actor");
     assert!(definition.authorization.unwrap().active);
-    let connection = Connection::open(&database).unwrap();
-    let run: (String, String, String) = connection
+    // The published legacy workflow is normalized by its owner: the first actor
+    // slot becomes the entry, while the metadata, states and transitions it was
+    // seeded with survive.
+    assert!(definition.workflow.actor_slots[0].entry);
+    assert_eq!(definition.workflow.states.len(), 3);
+    assert_eq!(definition.workflow.transitions.len(), 2);
+    let stored_workflow: String = Connection::open(&database)
+        .unwrap()
         .query_row(
-            "SELECT conversation_id, idempotency_key, snapshot_json
-               FROM strategy_runs WHERE run_id=?1",
-            rusqlite::params![RELEASED_RUN_ID],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            "SELECT workflow_json FROM strategy_definitions WHERE revision_digest=?1",
+            rusqlite::params![RELEASED_DEFINITION_REVISION],
+            |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(run.0, RELEASED_CONVERSATION_ID);
-    assert_eq!(run.1, "released-idempotency");
+    assert_ne!(
+        stored_workflow, RELEASED_WORKFLOW_JSON,
+        "the legacy definition must have been rewritten"
+    );
+    assert!(stored_workflow.contains("\"entry\":true"));
+    // The published run snapshot is readable through the owning store, and the
+    // published run event is a valid serialized reducer event.
+    let snapshot = strategy.run(RELEASED_RUN_ID).unwrap();
+    assert_eq!(
+        snapshot.status,
+        licoup_workflow::ir::StrategyRunStatus::Completed
+    );
+    assert_eq!(
+        snapshot.conversation_id.as_deref(),
+        Some(RELEASED_CONVERSATION_ID)
+    );
+    let connection = Connection::open(&database).unwrap();
+    let idempotency: String = connection
+        .query_row(
+            "SELECT idempotency_key FROM strategy_runs WHERE run_id=?1",
+            rusqlite::params![RELEASED_RUN_ID],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(idempotency, "released-idempotency");
     let event: (String, String) = connection
         .query_row(
             "SELECT event_type, event_json FROM strategy_run_events
@@ -801,7 +829,12 @@ fn a_released_source_root_is_admitted_to_the_current_frontier() {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
-    assert_eq!(event.0, "run-completed");
+    assert_eq!(event.0, "start");
+    let reducer_event: licoup_workflow::ReducerEvent = serde_json::from_str(&event.1).unwrap();
+    assert!(matches!(
+        reducer_event,
+        licoup_workflow::ReducerEvent::Start { .. }
+    ));
     drop(connection);
 
     // The released Conversation store is upgraded in place by its owner; the
@@ -1264,6 +1297,206 @@ fn durable_file_bytes(root: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut files = BTreeMap::new();
     visit(root, root, &mut files);
     files
+}
+
+/// Replace the conversation store with a two-table store stamped as an older
+/// published schema: the identity tables every published generation carried are
+/// missing, so the preflight refuses before the owner could fail later.
+fn truncate_older_conversation_store(root: &Path) {
+    let database = root.join(RELEASED_CONVERSATION_DATABASE);
+    fs::remove_file(&database).unwrap();
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_meta(key, value) VALUES ('version', '11');
+             CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL);",
+        )
+        .unwrap();
+}
+
+/// Keep the released layout but weaken the membership identity index to a
+/// non-unique object with the same name: an index name alone is not the
+/// constraint.
+fn weaken_membership_identity_index(root: &Path) {
+    let connection = Connection::open(root.join(RELEASED_CONVERSATION_DATABASE)).unwrap();
+    connection
+        .execute_batch(
+            "DROP INDEX memberships_principal_unique;
+             CREATE INDEX memberships_principal_unique
+               ON memberships(conversation_id, principal_id);",
+        )
+        .unwrap();
+}
+
+/// Admit the current store, then remove the conversation title the migration
+/// admission relies on.
+fn remove_conversation_title(root: &Path) {
+    admit_as_version(root, "0.3.0").unwrap();
+    let connection = Connection::open(root.join(RELEASED_CONVERSATION_DATABASE)).unwrap();
+    connection
+        .execute_batch("ALTER TABLE conversations DROP COLUMN title;")
+        .unwrap();
+}
+
+/// A refusal leaves an existing ledger, high-water and every store byte for
+/// byte as they were.
+#[test]
+fn admission_preserves_existing_ledger_and_stores_when_it_refuses() {
+    let cases: [(&str, fn(&Path), &str); 3] = [
+        (
+            "a truncated older published store",
+            truncate_older_conversation_store,
+            SOURCE_FRONTIER_ID,
+        ),
+        (
+            "a non-unique membership identity index",
+            weaken_membership_identity_index,
+            SOURCE_FRONTIER_ID,
+        ),
+        (
+            // This case first admits the root, so its existing ledger already
+            // names this binary's target; the refusal must not move it.
+            "a current store missing the conversation title",
+            remove_conversation_title,
+            "licoup-state-0.3.0",
+        ),
+    ];
+    for (label, mutate, expected_frontier) in cases {
+        let root =
+            std::env::temp_dir().join(format!("licoup-refusal-preserves-{}", uuid::Uuid::new_v4()));
+        seed_released_source_root(&root);
+        mutate(&root);
+        let ledger_path = root.join("client-state/migrations/ledger.json");
+        let conversation_path = root.join(RELEASED_CONVERSATION_DATABASE);
+        let strategy_path = root.join(strategy_store::STRATEGY_STORE_DATABASE);
+        let before = [
+            fs::read(&ledger_path).unwrap(),
+            fs::read(&conversation_path).unwrap(),
+            fs::read(&strategy_path).unwrap(),
+        ];
+        let artifact_path = strategy_store::strategy_store_artifact_path(&root);
+        let artifact_before = artifact_path
+            .exists()
+            .then(|| fs::read(&artifact_path).unwrap());
+
+        assert_eq!(
+            admit_as_version(&root, "0.3.0").unwrap_err().to_string(),
+            "unsupported_state_shape",
+            "{label}"
+        );
+        assert_eq!(
+            fs::read(&ledger_path).unwrap(),
+            before[0],
+            "{label}: ledger"
+        );
+        assert_eq!(
+            fs::read(&conversation_path).unwrap(),
+            before[1],
+            "{label}: conversation store"
+        );
+        assert_eq!(
+            fs::read(&strategy_path).unwrap(),
+            before[2],
+            "{label}: strategy store"
+        );
+        let ledger: Ledger = serde_json::from_slice(&before[0]).unwrap();
+        assert_eq!(ledger.frontier_id, expected_frontier, "{label}");
+        assert!(
+            !ledger.highest_admitted_product_version.is_empty(),
+            "{label}: the high-water survived"
+        );
+        if artifact_path.exists() {
+            assert_eq!(
+                fs::read(&artifact_path).unwrap(),
+                artifact_before.clone().unwrap(),
+                "{label}: an existing conversion record is preserved"
+            );
+        } else {
+            assert!(artifact_before.is_none(), "{label}: no conversion record");
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+/// The published producer upgraded older stores in place, adding
+/// `strategy_runs.terminal` through `ensure_column`, which leaves the column
+/// nullable. That variant is a valid source within the same product and
+/// frontier, and its business rows must convert and read back through the
+/// owner.
+#[test]
+fn a_producer_upgraded_strategy_store_is_admitted_and_read_back() {
+    let root =
+        std::env::temp_dir().join(format!("licoup-producer-upgraded-{}", uuid::Uuid::new_v4()));
+    seed_released_source_root(&root);
+    let path = root.join(strategy_store::STRATEGY_STORE_DATABASE);
+    fs::remove_file(&path).unwrap();
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(&released_strategy_schema_producer_upgraded())
+        .unwrap();
+    connection.execute_batch(&released_strategy_rows()).unwrap();
+    assert_eq!(
+        strategy_store::read_strategy_store_format(&path)
+            .unwrap()
+            .format_id,
+        "strategy-store-2"
+    );
+    drop(connection);
+
+    let result = admit_as_version(&root, "0.3.0").unwrap();
+    assert!(
+        result
+            .applied_domain_ids
+            .iter()
+            .any(|domain| domain == "adaptive-flywheel")
+    );
+    let strategy = crate::domain::workflow_store::StrategyStore::open(&root).unwrap();
+    let snapshot = strategy.run(RELEASED_RUN_ID).unwrap();
+    assert_eq!(
+        snapshot.status,
+        licoup_workflow::ir::StrategyRunStatus::Completed
+    );
+    assert_eq!(
+        snapshot.conversation_id.as_deref(),
+        Some(RELEASED_CONVERSATION_ID)
+    );
+    let definition = strategy
+        .definition_by_revision(RELEASED_DEFINITION_REVISION)
+        .unwrap();
+    assert!(definition.workflow.actor_slots[0].entry);
+    assert_eq!(definition.bindings[0].slot_id, "actor");
+    assert!(definition.authorization.unwrap().active);
+    let _ = fs::remove_dir_all(root);
+}
+
+/// `CREATE INDEX IF NOT EXISTS` never repairs an existing index, and a
+/// predicate that merely contains `active=1` is a different uniqueness
+/// constraint, so the partial predicate is compared exactly.
+#[test]
+fn a_weakened_authorization_predicate_is_refused() {
+    let root = std::env::temp_dir().join(format!("licoup-weak-predicate-{}", uuid::Uuid::new_v4()));
+    seed_released_source_root(&root);
+    let path = root.join(strategy_store::STRATEGY_STORE_DATABASE);
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(
+            "DROP INDEX strategy_authorization_active_idx;
+             CREATE UNIQUE INDEX strategy_authorization_active_idx
+               ON strategy_authorizations(revision_digest) WHERE active=1 AND 0;",
+        )
+        .unwrap();
+    drop(connection);
+    let ledger_path = root.join("client-state/migrations/ledger.json");
+    let before = [fs::read(&path).unwrap(), fs::read(&ledger_path).unwrap()];
+
+    assert_eq!(
+        admit_as_version(&root, "0.3.0").unwrap_err().to_string(),
+        "unsupported_state_shape"
+    );
+    assert_eq!(fs::read(&path).unwrap(), before[0]);
+    assert_eq!(fs::read(&ledger_path).unwrap(), before[1]);
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

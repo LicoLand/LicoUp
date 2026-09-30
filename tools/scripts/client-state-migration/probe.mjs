@@ -495,7 +495,7 @@ export const STRATEGY_CORE_TABLES = Object.freeze([
         Object.freeze(["revision_digest"]),
         true,
         true,
-        "WHERE active=1",
+        "active=1",
       ]),
     ]),
   }),
@@ -509,7 +509,7 @@ export const STRATEGY_CORE_TABLES = Object.freeze([
       ["request_digest", "TEXT", true, 0],
       ["snapshot_json", "TEXT", true, 0],
       ["conversation_id", "TEXT", false, 0],
-      ["terminal", "INTEGER", true, 0],
+      ["terminal", "INTEGER", null, 0],
       ["created_at", "INTEGER", true, 0],
       ["updated_at", "INTEGER", true, 0],
     ]),
@@ -593,7 +593,7 @@ export const STRATEGY_CORE_TABLES = Object.freeze([
         Object.freeze(["lease_until"]),
         false,
         true,
-        "WHERE status IN ('claimed', 'running')",
+        "statusin('claimed','running')",
       ]),
     ]),
   }),
@@ -620,6 +620,13 @@ function withReadOnlyDatabase(pathname, callback) {
   }
   try {
     return callback(database);
+  } catch (error) {
+    // A malformed schema (for example a `schema_meta` without its `value`
+    // column) makes inspection queries throw SQLite errors. They are one
+    // domain's bounded refusal, not a tool crash that loses every other
+    // domain's report.
+    if (error instanceof MigrationStateError) throw error;
+    throw new MigrationStateError("unsupported_state_shape");
   } finally {
     database.close();
   }
@@ -684,6 +691,46 @@ function stableKey(value) {
   return JSON.stringify(value);
 }
 
+/// The index predicate as one comparable token: everything after `WHERE`, with
+/// whitespace removed and lowercased. Equality rejects a predicate that merely
+/// contains the expected fragment (`active=1 AND 0`).
+function normalizedIndexPredicate(sql) {
+  if (sql === null || sql === undefined) return null;
+  const index = String(sql).toLowerCase().indexOf("where");
+  if (index === -1) return null;
+  return String(sql)
+    .slice(index + "where".length)
+    .split(/\s+/u)
+    .join("")
+    .toLowerCase();
+}
+
+/// The identity columns every published Conversation generation carries. Older
+/// published schemas are legitimate sources the owner upgrades in place, but a
+/// stamp on a truncated file (for example a two-table store) is not one of
+/// them.
+const CONVERSATION_LEGACY_BASELINE = Object.freeze([
+  Object.freeze(["schema_meta", Object.freeze(["key", "value"])]),
+  Object.freeze(["principals", Object.freeze(["id"])]),
+  Object.freeze(["conversations", Object.freeze(["id", "title"])]),
+  Object.freeze(["memberships", Object.freeze(["id"])]),
+  Object.freeze(["events", Object.freeze(["id"])]),
+]);
+
+/// The membership identity must be a real unique, non-partial index over the
+/// identity columns, not merely an object with the expected name.
+function requireMembershipIdentityIndex(database) {
+  const listed = sqliteIndexList(database, "memberships");
+  const entry = listed.find((index) => index.name === CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
+  if (entry === undefined || !entry.unique || entry.partial) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+  const columns = sqliteIndexColumns(database, CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
+  if (stableKey(columns) !== stableKey(["conversation_id", "principal_id"])) {
+    throw new MigrationStateError("unsupported_state_shape");
+  }
+}
+
 function inspectConversationLayout(database) {
   const tables = sqliteTableNames(database);
   if (!tables.has("schema_meta")) {
@@ -705,6 +752,12 @@ function inspectConversationLayout(database) {
         throw new MigrationStateError("unsupported_state_shape");
       }
     }
+    // The startup subset alone permits a missing conversation title; the
+    // migration relies on it, and it must be a real column.
+    if (!sqliteColumns(database, "conversations").has("title")) {
+      throw new MigrationStateError("unsupported_state_shape");
+    }
+    requireMembershipIdentityIndex(database);
     return { version };
   }
   if (version === CONVERSATION_RELEASED_SCHEMA_VERSION) {
@@ -714,13 +767,18 @@ function inspectConversationLayout(database) {
         throw new MigrationStateError("unsupported_state_shape");
       }
     }
-    const membership = database
-      .prepare("SELECT 1 FROM sqlite_schema WHERE type='index' AND name=?")
-      .get(CONVERSATION_RELEASED_MEMBERSHIP_INDEX);
-    if (membership === undefined) throw new MigrationStateError("unsupported_state_shape");
+    requireMembershipIdentityIndex(database);
     return { version };
   }
-  if (/^(?:[1-9]|10|11)$/u.test(version)) return { version };
+  if (/^(?:[1-9]|10|11)$/u.test(version)) {
+    for (const [table, columns] of CONVERSATION_LEGACY_BASELINE) {
+      const present = sqliteColumns(database, table);
+      if (columns.some((column) => !present.has(column))) {
+        throw new MigrationStateError("unsupported_state_shape");
+      }
+    }
+    return { version };
+  }
   throw new MigrationStateError("unsupported_state_shape");
 }
 
@@ -739,7 +797,10 @@ function requireStrategyCoreLayout(database, expectedVersion) {
       if (
         column === undefined ||
         column.type.toUpperCase() !== type ||
-        column.notNull !== notNull ||
+        // `null` accepts both published producer variants: the batch's
+        // NOT NULL column and the nullable column `ensure_column` added when
+        // the published producer upgraded an older store in place.
+        (notNull !== null && column.notNull !== notNull) ||
         column.pk !== pk
       ) {
         throw new MigrationStateError("unsupported_state_shape");
@@ -785,11 +846,7 @@ function requireStrategyCoreLayout(database, expectedVersion) {
         const sqlRow = database
           .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name=?")
           .get(name);
-        const normalized =
-          sqlRow === undefined || sqlRow.sql === null
-            ? ""
-            : String(sqlRow.sql).split(/\s+/u).join(" ");
-        if (!normalized.includes(predicate)) {
+        if (normalizedIndexPredicate(sqlRow?.sql ?? null) !== predicate) {
           throw new MigrationStateError("unsupported_state_shape");
         }
       }

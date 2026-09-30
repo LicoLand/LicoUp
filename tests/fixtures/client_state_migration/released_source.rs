@@ -52,7 +52,17 @@ pub const RELEASED_CONVERSATION_ID: &str = "released-conversation";
 pub const RELEASED_EVENT_ID: &str = "released-event-1";
 pub const RELEASED_DEFINITION_REVISION: &str = "sha256:released-definition";
 pub const RELEASED_RUN_ID: &str = "released-run-1";
-pub const RELEASED_WORKFLOW_JSON: &str = r#"{"schema":"licoup.adaptive-flywheel.workflow.v1","metadata":{"id":"assistant-temporary","name":"Temporary","version":"1"},"limits":{"maxParallelism":2,"maxWorksetItems":16,"maxAttempts":2},"actorSlots":[{"id":"actor","kind":"actor","label":"Actor","required":true,"entry":true}],"runtimes":[],"worksets":[],"initial":"run","states":[{"id":"run","kind":"actor","label":"Run","binding":"actor"},{"id":"done","kind":"succeed","label":"Done"},{"id":"failed","kind":"fail","label":"Failed"}],"transitions":[{"id":"done","from":"run","to":"done","event":"success"},{"id":"failed","from":"run","to":"failed","event":"failure"}]}"#;
+/// A published legacy workflow document: the actor slot carries no `entry`
+/// flag (the field's serde default is false), so the owner's legacy
+/// normalization marks the first actor slot as the entry when it converts the
+/// definition. Its other fields must survive the rewrite unchanged.
+pub const RELEASED_WORKFLOW_JSON: &str = r#"{"schema":"licoup.adaptive-flywheel.workflow.v1","metadata":{"id":"assistant-temporary","name":"Temporary","version":"1"},"limits":{"maxParallelism":2,"maxWorksetItems":16,"maxAttempts":2},"actorSlots":[{"id":"actor","kind":"actor","label":"Actor","required":true}],"runtimes":[],"worksets":[],"initial":"run","states":[{"id":"run","kind":"actor","label":"Run","binding":"actor"},{"id":"done","kind":"succeed","label":"Done"},{"id":"failed","kind":"fail","label":"Failed"}],"transitions":[{"id":"done","from":"run","to":"done","event":"success"},{"id":"failed","from":"run","to":"failed","event":"failure"}]}"#;
+
+/// A valid published `RunSnapshot` serialization for the fixture run.
+pub const RELEASED_RUN_SNAPSHOT_JSON: &str = r#"{"runId":"released-run-1","definitionDigest":"sha256:released-definition","semanticsDigest":"sha256:released-semantics","status":"completed","sequence":2,"input":{},"activeStates":[],"completedStates":["done"],"stateVisits":{"run":1,"done":1},"joinArrivals":{},"conversationId":"released-conversation","commands":{}}"#;
+
+/// A valid published `ReducerEvent` serialization for the fixture run event.
+pub const RELEASED_RUN_EVENT_JSON: &str = r#"{"type":"start","input":{}}"#;
 
 /// The final released Conversation layout, including the converged indexes.
 pub const RELEASED_CONVERSATION_SCHEMA: &str = r#"
@@ -313,12 +323,20 @@ pub fn released_strategy_rows() -> String {
            snapshot_json, conversation_id, terminal, created_at, updated_at
          ) VALUES (
            '{RELEASED_RUN_ID}', '{RELEASED_DEFINITION_REVISION}', 'sha256:released-semantics',
-           'released-idempotency', 'sha256:released-request', '{{}}',
+           'released-idempotency', 'sha256:released-request', '{RELEASED_RUN_SNAPSHOT_JSON}',
            '{RELEASED_CONVERSATION_ID}', 1, 1, 1
          );
          INSERT INTO strategy_run_events(run_id, sequence, event_type, event_json, created_at)
-           VALUES ('{RELEASED_RUN_ID}', 1, 'run-completed', '{{}}', 1);"
+           VALUES ('{RELEASED_RUN_ID}', 1, 'start', '{RELEASED_RUN_EVENT_JSON}', 1);"
     )
+}
+
+/// The schema a store has after the published producer upgraded an older
+/// database in place: the same seven tables, but `strategy_runs.terminal` was
+/// added by `ensure_column` and is therefore nullable. This is a source the
+/// released product itself produced, not a new historical format.
+pub fn released_strategy_schema_producer_upgraded() -> String {
+    RELEASED_STRATEGY_SCHEMA.replace("terminal INTEGER NOT NULL,", "terminal INTEGER,")
 }
 
 pub fn released_marker_json(domain_id: &str) -> String {
