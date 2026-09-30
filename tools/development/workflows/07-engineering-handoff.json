@@ -1,0 +1,46 @@
+{
+  "id": "engineering-handoff",
+  "file": "07-engineering-handoff.json",
+  "title": {
+    "en": "Engineering handoff",
+    "zh": "工程交付"
+  },
+  "purpose": {
+    "en": "Close one milestone without starting another.",
+    "zh": "闭环一个里程碑，然后停止。"
+  },
+  "owner": {
+    "en": "Integrator",
+    "zh": "集成人"
+  },
+  "entry": {
+    "en": "Implementation, review and non-live checks are complete",
+    "zh": "实现、审阅与非真实验证完成"
+  },
+  "steps": [
+    {
+      "en": "Map requirements to evidence",
+      "zh": "对应需求与证据"
+    },
+    {
+      "en": "List live-only unknowns",
+      "zh": "列明仅真实环境待证项"
+    },
+    {
+      "en": "Deliver and stop",
+      "zh": "交付并停止"
+    }
+  ],
+  "exit": {
+    "en": "Reviewed buildable source and concise completion evidence are handed over.",
+    "zh": "交付审阅过的可构建源码和简洁完成证据。"
+  },
+  "failure": {
+    "en": "Incomplete code returns to implementation; missing live evidence stays separate.",
+    "zh": "代码缺口返回开发；真实环境待证项单独列出。"
+  },
+  "boundary": {
+    "en": "Do not initiate real conversations, Computer Use or per-worker installations.",
+    "zh": "不自行启动真实对话、Computer Use 或各自安装客户端。"
+  }
+}

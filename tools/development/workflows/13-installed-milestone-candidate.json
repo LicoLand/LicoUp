@@ -1,0 +1,54 @@
+{
+  "id": "installed-milestone-candidate",
+  "file": "13-installed-milestone-candidate.json",
+  "title": {
+    "en": "Installed milestone candidate and maintainer fine-tuning",
+    "zh": "里程碑安装候选与维护者微调"
+  },
+  "purpose": {
+    "en": "Turn one completed milestone into the installed application the maintainer reviews before the next milestone starts.",
+    "zh": "把一个已完成里程碑变成维护者可评审的已安装应用，再进入下一个里程碑。"
+  },
+  "owner": {
+    "en": "Integrator for the current milestone",
+    "zh": "当前里程碑的集成人"
+  },
+  "entry": {
+    "en": "One milestone's implementation, source review, non-live verification and engineering handoff are complete",
+    "zh": "单个里程碑的实现、源码审阅、非真实验证与工程交付均已完成"
+  },
+  "steps": [
+    {
+      "en": "Build the integrated candidate",
+      "zh": "构建集成候选"
+    },
+    {
+      "en": "Package the macOS release artifact",
+      "zh": "打包 macOS 发行产物"
+    },
+    {
+      "en": "Install the built application into the Applications directory",
+      "zh": "把已构建应用安装到 Applications"
+    },
+    {
+      "en": "Launch the exact installed bundle",
+      "zh": "启动刚刚安装的那一份应用"
+    },
+    {
+      "en": "Stop and hand the running build to the maintainer for fine-tuning",
+      "zh": "停止并把运行中的应用交给维护者微调"
+    }
+  ],
+  "exit": {
+    "en": "The maintainer has the installed build of this milestone and its fine-tuning result.",
+    "zh": "维护者拿到该里程碑的已安装构建及其微调结果。"
+  },
+  "failure": {
+    "en": "A defect found here repairs the current milestone; it never activates the next one.",
+    "zh": "此阶段发现的缺陷在当前里程碑内修复，绝不激活下一个里程碑。"
+  },
+  "boundary": {
+    "en": "Build, install and launch belong to this delivery step. Driving the interface, user-scenario acceptance and Computer Use stay separate and are not implied; signing, notarization and publication keep their own authorization.",
+    "zh": "构建、安装与启动属于本交付步骤；操作界面、用户场景验收与 Computer Use 另属独立范围，不由此隐含；签名、公证与发布保留各自授权。"
+  }
+}

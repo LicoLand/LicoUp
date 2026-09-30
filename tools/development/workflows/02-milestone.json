@@ -1,0 +1,46 @@
+{
+  "id": "milestone",
+  "file": "02-milestone.json",
+  "title": {
+    "en": "Milestone readiness",
+    "zh": "里程碑就绪"
+  },
+  "purpose": {
+    "en": "Establish the correct starting point for one delivery.",
+    "zh": "为一次交付建立正确起点。"
+  },
+  "owner": {
+    "en": "Designer and module owners",
+    "zh": "设计者与模块负责人"
+  },
+  "entry": {
+    "en": "Approved requirements",
+    "zh": "需求已确认"
+  },
+  "steps": [
+    {
+      "en": "Select one milestone",
+      "zh": "选定一个里程碑"
+    },
+    {
+      "en": "Resolve inherited defects",
+      "zh": "处理范围内遗留问题"
+    },
+    {
+      "en": "Assign exclusive scopes",
+      "zh": "明确写入边界"
+    }
+  ],
+  "exit": {
+    "en": "Prerequisites, deliverables, ownership and stop condition are explicit.",
+    "zh": "前置条件、交付物、责任和停止点均明确。"
+  },
+  "failure": {
+    "en": "Repair scoped inherited faults; route unrelated work separately.",
+    "zh": "直接修复范围内遗留问题，其他工作单独安排。"
+  },
+  "boundary": {
+    "en": "A snapshot does not establish correctness; later milestones remain inactive.",
+    "zh": "保存快照不代表起点正确；后续里程碑保持未启动。"
+  }
+}

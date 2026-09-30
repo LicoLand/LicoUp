@@ -1,0 +1,46 @@
+{
+  "id": "release",
+  "file": "12-release.json",
+  "title": {
+    "en": "Central release preparation",
+    "zh": "统一发布准备"
+  },
+  "purpose": {
+    "en": "Prepare the integrated candidate through the release owner.",
+    "zh": "由发布负责人统一准备集成候选。"
+  },
+  "owner": {
+    "en": "Assigned release owner",
+    "zh": "指定发布负责人"
+  },
+  "entry": {
+    "en": "Integrated candidate and publication authorization when needed",
+    "zh": "集成候选就绪；发布操作具备授权"
+  },
+  "steps": [
+    {
+      "en": "Run release checks",
+      "zh": "执行发布检查"
+    },
+    {
+      "en": "Refresh reports",
+      "zh": "刷新报告"
+    },
+    {
+      "en": "Perform authorized promotion",
+      "zh": "执行获授权的晋级"
+    }
+  ],
+  "exit": {
+    "en": "Release evidence names the actual candidate and remaining limits.",
+    "zh": "发布证据对应实际候选，并列出剩余限制。"
+  },
+  "failure": {
+    "en": "Repair the same target release; keep published source and target fixed.",
+    "zh": "修复同一目标发布，保持已发布源与目标边界固定。"
+  },
+  "boundary": {
+    "en": "Packaging, signing, publication and production effects retain their actual authorization.",
+    "zh": "打包、签名、发布与生产影响遵循各自实际授权边界。"
+  }
+}
