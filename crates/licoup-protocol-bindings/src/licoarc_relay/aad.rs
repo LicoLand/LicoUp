@@ -9,7 +9,7 @@ use super::constants::{
     OUTER_AAD_MAGIC,
 };
 
-pub(in crate::core::licoarc_relay) fn licoarc_outer_authenticated_data(
+pub(in crate::licoarc_relay) fn licoarc_outer_authenticated_data(
     envelope_id: &str,
     mailbox_id: &str,
     expires_at: &str,

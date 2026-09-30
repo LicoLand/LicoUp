@@ -13,7 +13,7 @@ pub(super) use super::super::{
     SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshMailboxToken,
     SecureMeshRelayChannelBinding,
 };
-pub(super) use crate::core::secure_mesh_crypto::{
+pub(super) use crate::padding_bucket::{
     LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
     POWER_OF_TWO_PADDING_LIMIT_BYTES,
 };

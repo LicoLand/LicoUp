@@ -24,7 +24,7 @@ impl SecureMeshDeliverySecret {
         }
     }
 
-    pub(in crate::core::licoarc_relay) fn as_bytes(&self) -> &[u8; DELIVERY_SECRET_BYTES] {
+    pub(in crate::licoarc_relay) fn as_bytes(&self) -> &[u8; DELIVERY_SECRET_BYTES] {
         &self.bytes
     }
 }
@@ -43,7 +43,7 @@ impl SecureMeshRelayChannelBinding {
         Self(bytes)
     }
 
-    pub(in crate::core::licoarc_relay) fn as_bytes(&self) -> &[u8; CHANNEL_BINDING_BYTES] {
+    pub(in crate::licoarc_relay) fn as_bytes(&self) -> &[u8; CHANNEL_BINDING_BYTES] {
         &self.0
     }
 }

@@ -340,9 +340,9 @@ const FORBIDDEN_REFERENCES: [(&str, &str, &str, &str); 3] = [
         "bindings_cannot_use_the_platform_adapter",
         BINDINGS,
         "licoup_native",
-        "use licoup_native::domain::protocol_input_admission::AuthorityInput;\n\
+        "use licoup_native::platform::paths::portable_data_dir;\n\
          #[allow(dead_code)]\n\
-         fn probe<'a>(bytes: &'a [u8]) -> AuthorityInput<'a> { AuthorityInput::new(bytes) }\n",
+         fn probe() { let _ = portable_data_dir(); }\n",
     ),
 ];
 

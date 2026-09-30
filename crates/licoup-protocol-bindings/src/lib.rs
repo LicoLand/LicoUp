@@ -1,4 +1,5 @@
-//! Fixed-input admission and inbound verification for the LicoArc Candidate.
+//! Fixed-input admission, inbound verification, and the endpoint-owned LicoArc
+//! envelope codec for the LicoArc Candidate.
 //!
 //! LicoUp owns caller-side trust, custody, persistence, and application
 //! effects. The Protocol Line, its definitions, and all cryptography stay with
@@ -11,7 +12,13 @@
 //! * [`version`] freezes the one Protocol Line version this client accepts and
 //!   refuses any other version for that call only;
 //! * [`inbound`] runs the SDK's own verification entries and records what they
-//!   verified as an explicit [`inbound::TrustFacts`] value.
+//!   verified as an explicit [`inbound::TrustFacts`] value;
+//! * [`licoarc_relay`] is the endpoint-owned codec for the neutral Lico Arc
+//!   relay envelope: the closed five-field v1 contract and the canonical carrier
+//!   that holds LicoUp's encrypted private header and authenticated padded
+//!   content, so the relay and the secure mesh consume one envelope format;
+//! * [`padding_bucket`] is the padded-content bucket rule that envelope carries,
+//!   which the secure mesh names downward rather than restating.
 //!
 //! The fixed input is pinned by the revision-pinned `licoarc` dependency in the
 //! workspace manifest, so a different line can only arrive as a deliberate
@@ -27,6 +34,9 @@
 mod admission;
 mod inbound;
 mod version;
+
+pub mod licoarc_relay;
+pub mod padding_bucket;
 
 pub use admission::{AUTHORIZATION_REQUIRED, AdmissionRefusal, AuthorityInput};
 pub use inbound::{
